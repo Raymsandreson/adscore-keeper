@@ -269,7 +269,6 @@ REGRAS:
           send_signed_pdf: sendSignedPdf,
           request_documents: requestDocuments,
           document_types: documentTypes,
-          agent_id: shortcutAgentId,
         })
         .select()
         .single();
