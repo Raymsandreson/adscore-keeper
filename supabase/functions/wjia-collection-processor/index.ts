@@ -415,12 +415,87 @@ serve(async (req) => {
       const isMedia = media_url && (message_type === 'image' || message_type === 'document');
 
       if (isMedia) {
-        // Determine which type this doc is for
+        // Use AI to classify the document type
         let assignedType = 'outros';
         const pendingTypes = requestedTypes.filter(t => !receivedDocs.some((d: any) => d.type === t));
+
         if (pendingTypes.length > 0) {
-          // Use AI or heuristic to assign - for simplicity, assign to first pending type
-          assignedType = pendingTypes[0];
+          try {
+            const classifyResult = await geminiChat({
+              model: "google/gemini-2.5-flash",
+              messages: [
+                { role: "system", content: `Você é um classificador de documentos. Analise a imagem e determine qual tipo de documento é.
+
+TIPOS POSSÍVEIS:
+- rg_cnh: Documento de identidade (RG, CNH, carteira de identidade, documento com foto e CPF)
+- comprovante_endereco: Comprovante de endereço (conta de luz, água, telefone, extrato bancário com endereço, contrato de aluguel)
+- comprovante_renda: Comprovante de renda (holerite, contracheque, declaração de IR, extrato bancário de rendimentos, carteira de trabalho com salário)
+- outros: Qualquer documento que não se encaixe nos anteriores
+- invalido: NÃO é um documento válido (selfie, foto de paisagem, meme, print aleatório, etc.)
+
+TIPOS AINDA PENDENTES: ${pendingTypes.join(', ')}
+
+Classifique o documento enviado.` },
+                { role: "user", content: [
+                  { type: "text", text: "Classifique este documento:" },
+                  { type: "image_url", image_url: { url: media_url } },
+                ]},
+              ],
+              tools: [{ type: "function", function: { name: "classify_document", description: "Classifica o tipo do documento", parameters: { type: "object", properties: { document_type: { type: "string", enum: ["rg_cnh", "comprovante_endereco", "comprovante_renda", "outros", "invalido"] }, confidence: { type: "string", enum: ["alta", "media", "baixa"] }, description: { type: "string", description: "Breve descrição do que foi identificado na imagem" } }, required: ["document_type", "confidence", "description"] } } }],
+              tool_choice: { type: "function", function: { name: "classify_document" } },
+              temperature: 0.1,
+            });
+
+            const classifyTc = classifyResult.choices?.[0]?.message?.tool_calls?.[0];
+            if (classifyTc?.function?.arguments) {
+              const classification = JSON.parse(classifyTc.function.arguments);
+              console.log("Document classification:", JSON.stringify(classification));
+
+              // Check if document is invalid
+              if (classification.document_type === 'invalido') {
+                const invalidMsg = `⚠️ *Documento não reconhecido*\n\nO que você enviou não parece ser um documento válido (${classification.description}).\n\nPor favor, envie a foto ou arquivo de: *${pendingTypes.map(t => docTypeLabels[t] || t).join(', ')}*`;
+
+                if (inst?.instance_token) {
+                  const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+                  await fetch(`${baseUrl}/send/text`, { method: "POST", headers: { "Content-Type": "application/json", token: inst.instance_token }, body: JSON.stringify({ number: normalizedPhone, text: invalidMsg }) }).catch(e => console.error(e));
+                  await supabase.from("whatsapp_messages").insert({ phone: normalizedPhone, instance_name, message_text: invalidMsg, message_type: "text", direction: "outbound", contact_id: session.contact_id || null, lead_id: session.lead_id || null, external_message_id: `wjia_invalid_doc_${Date.now()}` });
+                }
+
+                return new Response(JSON.stringify({ active_session: true, processed: true, invalid_document: true, session_id: session.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+              }
+
+              // Check if the classified type matches a pending type
+              if (pendingTypes.includes(classification.document_type)) {
+                assignedType = classification.document_type;
+              } else if (requestedTypes.includes(classification.document_type) && receivedDocs.some((d: any) => d.type === classification.document_type)) {
+                // Already received this type - warn user
+                const alreadyMsg = `⚠️ Parece que você enviou outro *${docTypeLabels[classification.document_type] || classification.document_type}*, mas eu já recebi esse tipo de documento.\n\nAinda preciso de: *${pendingTypes.map(t => docTypeLabels[t] || t).join(', ')}*.\n\nPor favor, envie o documento correto.`;
+
+                if (inst?.instance_token) {
+                  const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+                  await fetch(`${baseUrl}/send/text`, { method: "POST", headers: { "Content-Type": "application/json", token: inst.instance_token }, body: JSON.stringify({ number: normalizedPhone, text: alreadyMsg }) }).catch(e => console.error(e));
+                  await supabase.from("whatsapp_messages").insert({ phone: normalizedPhone, instance_name, message_text: alreadyMsg, message_type: "text", direction: "outbound", contact_id: session.contact_id || null, lead_id: session.lead_id || null, external_message_id: `wjia_dup_doc_${Date.now()}` });
+                }
+
+                return new Response(JSON.stringify({ active_session: true, processed: true, duplicate_document: true, session_id: session.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+              } else {
+                // Type doesn't match any pending - warn but accept as "outros" if pending
+                const wrongTypeMsg = `⚠️ O documento enviado parece ser *${classification.description}*, mas estou esperando: *${pendingTypes.map(t => docTypeLabels[t] || t).join(', ')}*.\n\nPor favor, envie o documento correto. Se este é o documento certo, envie novamente.`;
+
+                if (inst?.instance_token) {
+                  const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+                  await fetch(`${baseUrl}/send/text`, { method: "POST", headers: { "Content-Type": "application/json", token: inst.instance_token }, body: JSON.stringify({ number: normalizedPhone, text: wrongTypeMsg }) }).catch(e => console.error(e));
+                  await supabase.from("whatsapp_messages").insert({ phone: normalizedPhone, instance_name, message_text: wrongTypeMsg, message_type: "text", direction: "outbound", contact_id: session.contact_id || null, lead_id: session.lead_id || null, external_message_id: `wjia_wrong_doc_${Date.now()}` });
+                }
+
+                return new Response(JSON.stringify({ active_session: true, processed: true, wrong_document_type: true, session_id: session.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+              }
+            }
+          } catch (classifyErr) {
+            console.error("Document classification error:", classifyErr);
+            // Fallback: assign to first pending type
+            assignedType = pendingTypes[0];
+          }
         }
 
         receivedDocs.push({
