@@ -1236,63 +1236,14 @@ const ActivitiesPage = () => {
 
       <Separator />
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
           variant="outline"
           size="sm"
           className="flex-1 gap-2"
           onClick={() => {
-            const notifDate = formNotificationDate ? (() => {
-              const d = parseISO(formNotificationDate);
-              const dias = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
-              return `${format(d, 'dd/MM/yyyy')} ${dias[d.getDay()]}`;
-            })() : '';
-
-            const valueMap: Record<string, string> = {
-              what_was_done: formWhatWasDone,
-              current_status: formCurrentStatus,
-              next_steps: formNextSteps,
-              notes: formNotes,
-            };
-
-            const fieldLines = fieldSettings
-              .filter(f => f.include_in_message)
-              .map(f => `*${f.label}:* ${valueMap[f.field_key] || '—'}`)
-              .join('\n\n');
-
-            const createdByName = selectedActivity ? resolveUserName(selectedActivity.created_by) : resolveUserName(user?.id || null);
-            const createdAtFmt = selectedActivity ? format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm") : format(new Date(), "dd/MM/yyyy 'às' HH:mm");
-            const updatedByName = selectedActivity ? resolveUserName((selectedActivity as any).updated_by) : null;
-            const updatedAtFmt = selectedActivity?.updated_at && selectedActivity.updated_at !== selectedActivity.created_at ? format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm") : null;
-
-            const timeSpent = workflowMode ? getActivityTimeSpent() : 0;
-            const tempoStr = timeSpent > 0 ? `\n⏱️ Tempo dedicado à atividade: ${formatDuration(timeSpent)}` : '';
-
-            const activityLink = selectedActivity ? `\n🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
-
-            const msg = `*Boa tarde Sr(a). *
-
-*Assunto da atividade:* ${formTitle.toUpperCase()}
-
-${formLeadName ? `Referente ao caso de ${formLeadName}` : ''}
-
-${fieldLines}
-
-${formAssignedToName ? `*${formAssignedToName}* voltará com mais informações no dia *${notifDate || '—'}*, até o final do dia.` : ''}
-${tempoStr}
-
-*Registrado por:* ${createdByName || '—'} em ${createdAtFmt}${updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : ''}
-${activityLink}
-
-Atenciosamente, ${createdByName || 'Equipe'}
-
-Estamos à disposição para quaisquer dúvidas.
-
-🚀Avante!
-
-Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
-
+            const msg = buildWhatsAppMessage();
             navigator.clipboard.writeText(msg);
             toast.success('Mensagem copiada para o WhatsApp!');
           }}
@@ -1300,6 +1251,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           <Copy className="h-4 w-4" />
           Gerar mensagem WhatsApp
         </Button>
+        <ActivityTTSButton messageText={buildWhatsAppMessage()} />
         <ActivityFieldSettingsDialog
           fields={fieldSettings}
           onUpdateField={updateFieldSetting}
