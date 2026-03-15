@@ -1050,6 +1050,38 @@ REGRAS:
 
     console.log("Collection result:", JSON.stringify(result));
 
+    // If AI detected conflicts, don't update fields - wait for clarification
+    if (result.conflicts && result.conflicts.length > 0) {
+      console.log("AI detected data conflicts:", JSON.stringify(result.conflicts));
+      // Don't update fields, just send the reply asking for clarification
+      const { data: inst } = await supabase
+        .from("whatsapp_instances")
+        .select("instance_token, base_url")
+        .eq("instance_name", instance_name)
+        .maybeSingle();
+
+      if (inst?.instance_token && result.reply_to_client) {
+        const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+        await fetch(`${baseUrl}/send/text`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", token: inst.instance_token },
+          body: JSON.stringify({ number: normalizedPhone, text: result.reply_to_client }),
+        }).catch(e => console.error("Error sending conflict reply:", e));
+
+        await supabase.from("whatsapp_messages").insert({
+          phone: normalizedPhone, instance_name,
+          message_text: result.reply_to_client, message_type: "text", direction: "outbound",
+          contact_id: session.contact_id || null, lead_id: session.lead_id || null,
+          external_message_id: `wjia_conflict_${Date.now()}`,
+        });
+      }
+
+      return new Response(JSON.stringify({
+        active_session: true, processed: true, has_conflicts: true,
+        conflicts: result.conflicts, session_id: session.id,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // Update collected data using template-variable normalization
     const updatedFields = [...(collectedData.fields || [])];
 
