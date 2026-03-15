@@ -278,7 +278,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   }, [showForm, loadZapSignTemplates]);
 
   const resetForm = () => {
-    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true });
+    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] });
     setFollowupSteps([]);
     setEditingId(null);
     setShowForm(false);
