@@ -382,7 +382,9 @@ Usuário: "criar tarefa teste para amanhã"
 → response_text: "✅ Atividade criada!\\n📋 *teste*\\n📅 Prazo: 14/03/2026 09:00\\n🔔 Notificação: 14/03/2026 08:00\\n👤 ${config.user_name}\\n\\n✏️ Editar: {link}"
 
 EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
-"Qual o tipo de atividade? Escolha entre: tarefa, audiência, prazo..." ← PROIBIDO listar opções`;
+"Qual o tipo de atividade? Escolha entre: tarefa, audiência, prazo..." ← PROIBIDO listar opções
+
+IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, links, textos) de uma vez. Todas as informações foram consolidadas antes de chegar até você. Considere TODO o conteúdo junto. Se houver referências a mídias ([MÍDIA: ...]), considere como anexos relevantes ao contexto do comando.`;
 
     // Build AI messages
     const aiMessages: any[] = [{ role: "system", content: systemPrompt }];
