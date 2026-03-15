@@ -275,6 +275,7 @@ export function ContactDetailSheet({
           follower_status: followerStatus || 'none',
           profession: profession || null,
           profession_cbo_code: professionCboCode || null,
+          whatsapp_group_id: whatsappGroupId || null,
         })
         .eq('id', contact.id);
 
