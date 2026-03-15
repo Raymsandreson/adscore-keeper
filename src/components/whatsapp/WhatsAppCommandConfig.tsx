@@ -42,6 +42,7 @@ interface Shortcut {
   send_signed_pdf: boolean;
   request_documents: boolean;
   document_types: string[];
+  agent_id: string | null;
 }
 
 interface FollowupStep {
