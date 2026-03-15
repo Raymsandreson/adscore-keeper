@@ -19,6 +19,80 @@ Deno.serve(async (req) => {
     const { action } = body
 
     // ========================
+    // RESOLVE GROUP INVITE LINK
+    // ========================
+    if (action === 'resolve_group_link') {
+      const { group_link, instance_id } = body
+
+      if (!group_link) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'group_link is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // Extract invite code from link
+      const match = group_link.match(/chat\.whatsapp\.com\/([A-Za-z0-9]+)/)
+      if (!match) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Link de grupo inválido. Use o formato https://chat.whatsapp.com/...' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      const inviteCode = match[1]
+
+      const instance = await getInstance(supabase, instance_id)
+      if (!instance) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
+      
+      try {
+        const res = await fetch(`${baseUrl}/group/inviteInfo`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
+          body: JSON.stringify({ code: inviteCode }),
+        })
+
+        if (!res.ok) {
+          const errText = await res.text()
+          console.error('Group inviteInfo error:', res.status, errText)
+          return new Response(
+            JSON.stringify({ success: false, error: `Erro ao resolver link: ${res.status}` }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const groupData = await res.json()
+        console.log('Group inviteInfo response:', JSON.stringify(groupData).substring(0, 500))
+        const groupId = groupData?.id || groupData?.jid || groupData?.data?.id || null
+        const groupName = groupData?.subject || groupData?.name || groupData?.data?.subject || ''
+
+        if (!groupId) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Não foi possível extrair o ID do grupo' }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, group_id: groupId, group_name: groupName }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      } catch (e) {
+        console.error('Error resolving group link:', e)
+        return new Response(
+          JSON.stringify({ success: false, error: e instanceof Error ? e.message : 'Unknown error' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
+    // ========================
     // DELETE MESSAGE
     // ========================
     // ========================
