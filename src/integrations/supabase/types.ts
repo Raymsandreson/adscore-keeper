@@ -6789,6 +6789,7 @@ export type Database = {
           display_order: number | null
           document_types: string[] | null
           followup_steps: Json | null
+          human_reply_pause_minutes: number | null
           id: string
           is_active: boolean | null
           notify_on_signature: boolean
@@ -6796,7 +6797,6 @@ export type Database = {
           request_documents: boolean | null
           send_signed_pdf: boolean
           shortcut_name: string
-          stop_on_human_reply: boolean
           template_name: string | null
           template_token: string | null
           updated_at: string | null
@@ -6807,6 +6807,7 @@ export type Database = {
           display_order?: number | null
           document_types?: string[] | null
           followup_steps?: Json | null
+          human_reply_pause_minutes?: number | null
           id?: string
           is_active?: boolean | null
           notify_on_signature?: boolean
@@ -6814,7 +6815,6 @@ export type Database = {
           request_documents?: boolean | null
           send_signed_pdf?: boolean
           shortcut_name: string
-          stop_on_human_reply?: boolean
           template_name?: string | null
           template_token?: string | null
           updated_at?: string | null
@@ -6825,6 +6825,7 @@ export type Database = {
           display_order?: number | null
           document_types?: string[] | null
           followup_steps?: Json | null
+          human_reply_pause_minutes?: number | null
           id?: string
           is_active?: boolean | null
           notify_on_signature?: boolean
@@ -6832,7 +6833,6 @@ export type Database = {
           request_documents?: boolean | null
           send_signed_pdf?: boolean
           shortcut_name?: string
-          stop_on_human_reply?: boolean
           template_name?: string | null
           template_token?: string | null
           updated_at?: string | null
