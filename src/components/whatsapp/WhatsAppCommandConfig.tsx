@@ -342,7 +342,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       template_name: form.template_name || null,
       prompt_instructions: form.prompt_instructions || null,
       followup_steps: followupSteps,
-      stop_on_human_reply: stopOnHumanReply,
+      human_reply_pause_minutes: humanReplyPauseMinutes,
       notify_on_signature: form.notify_on_signature,
       send_signed_pdf: form.send_signed_pdf,
       request_documents: form.request_documents,
