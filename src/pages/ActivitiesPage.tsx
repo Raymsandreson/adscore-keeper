@@ -1269,7 +1269,7 @@ const ActivitiesPage = () => {
           <Copy className="h-4 w-4" />
           Gerar mensagem WhatsApp
         </Button>
-        <ActivityTTSButton messageText={buildMsg()} />
+        <ActivityTTSButton messageText={buildMsg()} leadId={formLeadId || undefined} contactId={formContactId || undefined} />
         <ActivityFieldSettingsDialog
           fields={fieldSettings}
           onUpdateField={updateFieldSetting}

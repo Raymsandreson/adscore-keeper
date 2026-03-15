@@ -1,21 +1,101 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Volume2, Loader2 } from 'lucide-react';
+import { Volume2, Loader2, Send, ChevronDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface ActivityTTSButtonProps {
   messageText: string;
+  leadId?: string;
+  contactId?: string;
 }
 
-export function ActivityTTSButton({ messageText }: ActivityTTSButtonProps) {
+export function ActivityTTSButton({ messageText, leadId, contactId }: ActivityTTSButtonProps) {
   const [generating, setGenerating] = useState(false);
+  const [sending, setSending] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [phones, setPhones] = useState<{ label: string; phone: string; chatId?: string }[]>([]);
 
-  const generateAudio = async () => {
+  // Fetch available phones from lead/contact
+  useEffect(() => {
+    const fetchPhones = async () => {
+      const results: { label: string; phone: string; chatId?: string }[] = [];
+
+      if (contactId) {
+        const { data: contact } = await supabase
+          .from('contacts')
+          .select('full_name, phone')
+          .eq('id', contactId)
+          .maybeSingle();
+        if (contact?.phone) {
+          results.push({ label: `${contact.full_name} (${contact.phone})`, phone: contact.phone });
+        }
+      }
+
+      if (leadId) {
+        // Get contacts linked to this lead
+        const { data: linkedContacts } = await supabase
+          .from('contact_leads')
+          .select('contact_id, contacts(full_name, phone)')
+          .eq('lead_id', leadId);
+
+        if (linkedContacts) {
+          for (const lc of linkedContacts) {
+            const c = lc.contacts as any;
+            if (c?.phone && !results.some(r => r.phone === c.phone)) {
+              results.push({ label: `${c.full_name} (${c.phone})`, phone: c.phone });
+            }
+          }
+        }
+
+        // Check if lead has a whatsapp group (chat_id in whatsapp_messages)
+        const { data: lead } = await supabase
+          .from('leads')
+          .select('lead_name')
+          .eq('id', leadId)
+          .maybeSingle();
+
+        // Look for group chats associated with the lead
+        const { data: groupMsgs } = await supabase
+          .from('whatsapp_messages')
+          .select('phone, chat_id')
+          .eq('lead_id', leadId)
+          .not('chat_id', 'is', null)
+          .limit(5);
+
+        if (groupMsgs) {
+          const seenGroups = new Set<string>();
+          for (const msg of groupMsgs) {
+            const chatId = msg.chat_id;
+            if (chatId && chatId.includes('@g.us') && !seenGroups.has(chatId)) {
+              seenGroups.add(chatId);
+              results.push({
+                label: `👥 Grupo ${lead?.lead_name || 'do Lead'} (${chatId.split('@')[0]})`,
+                phone: msg.phone,
+                chatId,
+              });
+            }
+          }
+        }
+      }
+
+      setPhones(results);
+    };
+
+    fetchPhones();
+  }, [leadId, contactId]);
+
+  const generateAudio = async (): Promise<string | null> => {
     if (!messageText.trim()) {
       toast.error('Nenhuma mensagem para gerar áudio');
-      return;
+      return null;
     }
 
     setGenerating(true);
@@ -27,50 +107,127 @@ export function ActivityTTSButton({ messageText }: ActivityTTSButtonProps) {
       if (error) throw error;
       if (data?.audio_url) {
         setAudioUrl(data.audio_url);
-        // Copy audio URL to clipboard
-        await navigator.clipboard.writeText(data.audio_url);
-        toast.success('Áudio gerado! URL copiada para área de transferência. Cole no WhatsApp junto com a mensagem.');
+        return data.audio_url;
       } else {
         throw new Error('Nenhum áudio gerado');
       }
     } catch (e: any) {
       toast.error(e.message || 'Erro ao gerar áudio');
+      return null;
     } finally {
       setGenerating(false);
     }
   };
 
+  const sendAudioToWhatsApp = async (phone: string, chatId?: string) => {
+    setSending(true);
+    try {
+      // Generate audio if not already generated
+      let url = audioUrl;
+      if (!url) {
+        url = await generateAudio();
+        if (!url) return;
+      }
+
+      // Send via send-whatsapp edge function
+      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+        body: {
+          action: 'send_media',
+          phone,
+          chat_id: chatId || phone,
+          media_url: url,
+          media_type: 'audio/mpeg',
+          contact_id: contactId || null,
+          lead_id: leadId || null,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Erro ao enviar');
+
+      // Also send the text message
+      const { error: textError } = await supabase.functions.invoke('send-whatsapp', {
+        body: {
+          phone,
+          chat_id: chatId || phone,
+          message: messageText,
+          contact_id: contactId || null,
+          lead_id: leadId || null,
+        },
+      });
+
+      if (textError) console.error('Erro ao enviar texto:', textError);
+
+      toast.success('Áudio e mensagem enviados via WhatsApp!');
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao enviar áudio');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const isLoading = generating || sending;
+  const hasPhones = phones.length > 0;
+
   return (
     <div className="flex items-center gap-2">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="gap-2"
-        onClick={generateAudio}
-        disabled={generating || !messageText.trim()}
-      >
-        {generating ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Volume2 className="h-4 w-4" />
-        )}
-        {generating ? 'Gerando áudio...' : 'Gerar áudio'}
-      </Button>
+      {hasPhones ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              disabled={isLoading || !messageText.trim()}
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Volume2 className="h-4 w-4" />
+              )}
+              {generating ? 'Gerando...' : sending ? 'Enviando...' : 'Áudio'}
+              <ChevronDown className="h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-72">
+            <DropdownMenuItem onClick={generateAudio} disabled={isLoading}>
+              <Volume2 className="h-4 w-4 mr-2" />
+              Apenas gerar áudio
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {phones.map((p, i) => (
+              <DropdownMenuItem
+                key={i}
+                onClick={() => sendAudioToWhatsApp(p.phone, p.chatId)}
+                disabled={isLoading}
+              >
+                <Send className="h-4 w-4 mr-2" />
+                Enviar para {p.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          onClick={generateAudio}
+          disabled={isLoading || !messageText.trim()}
+        >
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Volume2 className="h-4 w-4" />
+          )}
+          {generating ? 'Gerando...' : 'Gerar áudio'}
+        </Button>
+      )}
       {audioUrl && (
         <div className="flex items-center gap-2">
           <audio controls src={audioUrl} className="h-8" />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              navigator.clipboard.writeText(audioUrl);
-              toast.success('URL do áudio copiada!');
-            }}
-          >
-            Copiar URL
-          </Button>
         </div>
       )}
     </div>
