@@ -595,12 +595,27 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
               </Button>
 
               {followupSteps.length > 0 && (
-                <div className="flex items-center justify-between p-2 rounded-lg border bg-muted/30">
-                  <div className="flex items-center gap-2">
-                    <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-                    <Label className="text-[10px]">Parar follow-up quando humano responder</Label>
+                <div className="p-2 rounded-lg border bg-muted/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                      <Label className="text-[10px]">Pausar follow-up quando humano responder</Label>
+                    </div>
+                    <Switch checked={humanReplyPauseMinutes > 0} onCheckedChange={(v) => setHumanReplyPauseMinutes(v ? 60 : 0)} />
                   </div>
-                  <Switch checked={stopOnHumanReply} onCheckedChange={setStopOnHumanReply} />
+                  {humanReplyPauseMinutes > 0 && (
+                    <div className="flex items-center gap-2 ml-5">
+                      <Label className="text-[10px] text-muted-foreground whitespace-nowrap">Pausar por</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={humanReplyPauseMinutes}
+                        onChange={e => setHumanReplyPauseMinutes(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="h-7 w-20 text-xs"
+                      />
+                      <span className="text-[10px] text-muted-foreground">minutos</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

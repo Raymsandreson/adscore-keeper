@@ -54,28 +54,39 @@ serve(async (req) => {
     let actionsExecuted = 0;
 
     for (const session of sessions) {
-      // Check stop_on_human_reply: if a human sent an outbound message after session was generated, skip
+      // Check human_reply_pause_minutes: if a human replied recently, pause followup
       const { data: shortcutData } = await supabase
         .from("wjia_command_shortcuts")
-        .select("stop_on_human_reply")
+        .select("human_reply_pause_minutes")
         .eq("shortcut_name", session.shortcut_name)
         .maybeSingle();
 
-      if (shortcutData?.stop_on_human_reply !== false) {
-        // Check if there's a human outbound message after session updated_at
+      const pauseMinutes = shortcutData?.human_reply_pause_minutes || 0;
+      if (pauseMinutes > 0) {
+        // Check if there's a human outbound message within the pause window
+        const pauseSince = new Date(Date.now() - pauseMinutes * 60 * 1000).toISOString();
         const { data: humanReply } = await supabase
           .from("whatsapp_messages")
-          .select("id")
+          .select("id, created_at")
           .eq("phone", session.phone)
           .eq("instance_name", session.instance_name)
           .eq("direction", "outbound")
           .not("external_message_id", "like", "wjia_%")
-          .gt("created_at", session.updated_at)
+          .gt("created_at", pauseSince)
+          .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
 
         if (humanReply) {
-          console.log(`Skipping followup for session ${session.id}: human already replied`);
+          // Reschedule for when the pause expires
+          const replyTime = new Date(humanReply.created_at).getTime();
+          const resumeAt = replyTime + pauseMinutes * 60 * 1000;
+          const remainingMinutes = Math.max(1, Math.ceil((resumeAt - Date.now()) / 60000));
+          console.log(`Pausing followup for session ${session.id}: human replied, resuming in ${remainingMinutes}min`);
+          await supabase.rpc("schedule_followup_for_session", {
+            p_session_id: session.id,
+            p_delay_minutes: remainingMinutes,
+          }).catch(e => console.error("Schedule pause error:", e));
           continue;
         }
       }
