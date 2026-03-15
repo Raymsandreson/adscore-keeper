@@ -74,12 +74,11 @@ export function WhatsAppCommandConfig() {
 
   const loadData = async () => {
     setLoading(true);
-    const [configsRes, instancesRes, profilesRes, shortcutsRes, agentsRes] = await Promise.all([
+    const [configsRes, instancesRes, profilesRes, shortcutsRes] = await Promise.all([
       supabase.from('whatsapp_command_config').select('*').order('created_at', { ascending: false }),
       supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true),
       supabase.from('profiles').select('user_id, full_name').order('full_name'),
       supabase.from('wjia_command_shortcuts').select('*').order('display_order') as any,
-      supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
     ]);
     setConfigs((configsRes.data as any[]) || []);
     setInstances(instancesRes.data || []);
