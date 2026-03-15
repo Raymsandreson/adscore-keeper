@@ -138,7 +138,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { phone, instance_name, message_text } = await req.json();
+    const { phone, instance_name, message_text, media_url, media_type, message_type } = await req.json();
     if (!phone || !instance_name) {
       return new Response(JSON.stringify({ error: "phone and instance_name required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
