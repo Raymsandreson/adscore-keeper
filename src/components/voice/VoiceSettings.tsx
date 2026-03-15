@@ -330,7 +330,7 @@ export function VoiceSettings() {
             Clonar Sua Voz
           </CardTitle>
           <CardDescription>
-            Envie amostras de áudio (mínimo 1, recomendado 3+) com sua voz falando naturalmente. Quanto mais amostras, melhor a qualidade.
+            Grave ou envie amostras de áudio com sua voz falando naturalmente. Quanto mais amostras, melhor a qualidade.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -343,8 +343,46 @@ export function VoiceSettings() {
               className="mt-1"
             />
           </div>
+
+          {/* Recorder */}
           <div>
-            <Label>Amostras de áudio (MP3, WAV, M4A)</Label>
+            <Label>Gravar áudio</Label>
+            <div className="mt-1 flex items-center gap-2">
+              {recording ? (
+                <>
+                  <Button variant="destructive" size="sm" onClick={stopRecording} className="gap-2">
+                    <Square className="h-3 w-3" /> Parar ({recordingTime}s)
+                  </Button>
+                  <span className="flex items-center gap-1 text-xs text-destructive animate-pulse">
+                    <Circle className="h-2 w-2 fill-current" /> Gravando...
+                  </span>
+                </>
+              ) : (
+                <Button variant="outline" size="sm" onClick={startRecording} className="gap-2">
+                  <Mic className="h-3 w-3" /> Gravar amostra
+                </Button>
+              )}
+            </div>
+            {recordedBlobs.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {recordedBlobs.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs bg-muted/50 rounded px-2 py-1">
+                    <Mic className="h-3 w-3 text-muted-foreground" />
+                    <span className="flex-1">{r.name}</span>
+                    <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => removeRecording(i)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* File upload */}
+          <div>
+            <Label>Ou envie arquivos (MP3, WAV, M4A)</Label>
             <div className="mt-1 flex items-center gap-2">
               <Input
                 type="file"
@@ -360,7 +398,14 @@ export function VoiceSettings() {
               </p>
             )}
           </div>
-          <Button onClick={handleClone} disabled={cloning || !cloneName.trim() || cloneFiles.length === 0} className="gap-2">
+
+          {allFiles.length > 0 && (
+            <p className="text-xs text-primary font-medium">
+              Total: {allFiles.length} amostra(s) pronta(s)
+            </p>
+          )}
+
+          <Button onClick={handleClone} disabled={cloning || !cloneName.trim() || allFiles.length === 0} className="gap-2">
             {cloning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             {cloning ? 'Clonando...' : 'Clonar Voz'}
           </Button>
