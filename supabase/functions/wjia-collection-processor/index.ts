@@ -999,7 +999,20 @@ REGRAS:
             },
             reply_to_client: {
               type: "string",
-              description: "Mensagem para enviar ao cliente (agradecendo dados e pedindo próximos, ou confirmando que vai gerar o doc)",
+              description: "Mensagem para enviar ao cliente (agradecendo dados e pedindo próximos, ou confirmando que vai gerar o doc). Se houver conflito, pergunte qual dado está correto.",
+            },
+            conflicts: {
+              type: "array",
+              description: "Conflitos detectados entre dados informados agora e dados já coletados anteriormente",
+              items: {
+                type: "object",
+                properties: {
+                  field: { type: "string", description: "Nome do campo com conflito" },
+                  existing_value: { type: "string", description: "Valor já coletado anteriormente" },
+                  new_value: { type: "string", description: "Valor informado agora (divergente)" },
+                },
+                required: ["field", "existing_value", "new_value"],
+              },
             },
           },
           required: ["newly_extracted", "still_missing", "all_collected", "reply_to_client"],
