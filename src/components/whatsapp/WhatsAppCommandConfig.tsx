@@ -535,8 +535,24 @@ function ShortcutsTab({ shortcuts, profiles, agents, onReload }: { shortcuts: Sh
                 className="min-h-[80px] text-xs"
               />
             </div>
+            {/* Agent selector */}
+            <div className="space-y-1">
+              <Label className="text-xs">🤖 Agente IA (usado na coleta de dados)</Label>
+              <Select
+                value={form.agent_id}
+                onValueChange={v => setForm(f => ({ ...f, agent_id: v === '_none' ? '' : v }))}
+              >
+                <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Nenhum agente (padrão)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none" className="text-xs">Nenhum (usar prompt padrão)</SelectItem>
+                  {agents.map(a => (
+                    <SelectItem key={a.id} value={a.id} className="text-xs">🤖 {a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">O agente define a persona e estilo de comunicação durante a coleta.</p>
+            </div>
 
-            {/* Follow-up Steps Section */}
             <div className="border-t pt-3 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
