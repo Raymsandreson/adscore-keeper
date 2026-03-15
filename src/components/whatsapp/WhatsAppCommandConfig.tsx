@@ -604,6 +604,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                       template_token: form.template_token,
                       template_name: form.template_name,
                       prompt_instructions: config.prompt_instructions,
+                      notify_on_signature: form.notify_on_signature,
+                      send_signed_pdf: form.send_signed_pdf,
                     });
                     setFollowupSteps(config.followup_steps || []);
                     setEditingId(s.id);
