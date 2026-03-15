@@ -415,12 +415,87 @@ serve(async (req) => {
       const isMedia = media_url && (message_type === 'image' || message_type === 'document');
 
       if (isMedia) {
-        // Determine which type this doc is for
+        // Use AI to classify the document type
         let assignedType = 'outros';
         const pendingTypes = requestedTypes.filter(t => !receivedDocs.some((d: any) => d.type === t));
+
         if (pendingTypes.length > 0) {
-          // Use AI or heuristic to assign - for simplicity, assign to first pending type
-          assignedType = pendingTypes[0];
+          try {
+            const classifyResult = await geminiChat({
+              model: "google/gemini-2.5-flash",
+              messages: [
+                { role: "system", content: `Você é um classificador de documentos. Analise a imagem e determine qual tipo de documento é.
+
+TIPOS POSSÍVEIS:
+- rg_cnh: Documento de identidade (RG, CNH, carteira de identidade, documento com foto e CPF)
+- comprovante_endereco: Comprovante de endereço (conta de luz, água, telefone, extrato bancário com endereço, contrato de aluguel)
+- comprovante_renda: Comprovante de renda (holerite, contracheque, declaração de IR, extrato bancário de rendimentos, carteira de trabalho com salário)
+- outros: Qualquer documento que não se encaixe nos anteriores
+- invalido: NÃO é um documento válido (selfie, foto de paisagem, meme, print aleatório, etc.)
+
+TIPOS AINDA PENDENTES: ${pendingTypes.join(', ')}
+
+Classifique o documento enviado.` },
+                { role: "user", content: [
+                  { type: "text", text: "Classifique este documento:" },
+                  { type: "image_url", image_url: { url: media_url } },
+                ]},
+              ],
+              tools: [{ type: "function", function: { name: "classify_document", description: "Classifica o tipo do documento", parameters: { type: "object", properties: { document_type: { type: "string", enum: ["rg_cnh", "comprovante_endereco", "comprovante_renda", "outros", "invalido"] }, confidence: { type: "string", enum: ["alta", "media", "baixa"] }, description: { type: "string", description: "Breve descrição do que foi identificado na imagem" } }, required: ["document_type", "confidence", "description"] } } }],
+              tool_choice: { type: "function", function: { name: "classify_document" } },
+              temperature: 0.1,
+            });
+
+            const classifyTc = classifyResult.choices?.[0]?.message?.tool_calls?.[0];
+            if (classifyTc?.function?.arguments) {
+              const classification = JSON.parse(classifyTc.function.arguments);
+              console.log("Document classification:", JSON.stringify(classification));
+
+              // Check if document is invalid
+              if (classification.document_type === 'invalido') {
+                const invalidMsg = `⚠️ *Documento não reconhecido*\n\nO que você enviou não parece ser um documento válido (${classification.description}).\n\nPor favor, envie a foto ou arquivo de: *${pendingTypes.map(t => docTypeLabels[t] || t).join(', ')}*`;
+
+                if (inst?.instance_token) {
+                  const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+                  await fetch(`${baseUrl}/send/text`, { method: "POST", headers: { "Content-Type": "application/json", token: inst.instance_token }, body: JSON.stringify({ number: normalizedPhone, text: invalidMsg }) }).catch(e => console.error(e));
+                  await supabase.from("whatsapp_messages").insert({ phone: normalizedPhone, instance_name, message_text: invalidMsg, message_type: "text", direction: "outbound", contact_id: session.contact_id || null, lead_id: session.lead_id || null, external_message_id: `wjia_invalid_doc_${Date.now()}` });
+                }
+
+                return new Response(JSON.stringify({ active_session: true, processed: true, invalid_document: true, session_id: session.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+              }
+
+              // Check if the classified type matches a pending type
+              if (pendingTypes.includes(classification.document_type)) {
+                assignedType = classification.document_type;
+              } else if (requestedTypes.includes(classification.document_type) && receivedDocs.some((d: any) => d.type === classification.document_type)) {
+                // Already received this type - warn user
+                const alreadyMsg = `⚠️ Parece que você enviou outro *${docTypeLabels[classification.document_type] || classification.document_type}*, mas eu já recebi esse tipo de documento.\n\nAinda preciso de: *${pendingTypes.map(t => docTypeLabels[t] || t).join(', ')}*.\n\nPor favor, envie o documento correto.`;
+
+                if (inst?.instance_token) {
+                  const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+                  await fetch(`${baseUrl}/send/text`, { method: "POST", headers: { "Content-Type": "application/json", token: inst.instance_token }, body: JSON.stringify({ number: normalizedPhone, text: alreadyMsg }) }).catch(e => console.error(e));
+                  await supabase.from("whatsapp_messages").insert({ phone: normalizedPhone, instance_name, message_text: alreadyMsg, message_type: "text", direction: "outbound", contact_id: session.contact_id || null, lead_id: session.lead_id || null, external_message_id: `wjia_dup_doc_${Date.now()}` });
+                }
+
+                return new Response(JSON.stringify({ active_session: true, processed: true, duplicate_document: true, session_id: session.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+              } else {
+                // Type doesn't match any pending - warn but accept as "outros" if pending
+                const wrongTypeMsg = `⚠️ O documento enviado parece ser *${classification.description}*, mas estou esperando: *${pendingTypes.map(t => docTypeLabels[t] || t).join(', ')}*.\n\nPor favor, envie o documento correto. Se este é o documento certo, envie novamente.`;
+
+                if (inst?.instance_token) {
+                  const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+                  await fetch(`${baseUrl}/send/text`, { method: "POST", headers: { "Content-Type": "application/json", token: inst.instance_token }, body: JSON.stringify({ number: normalizedPhone, text: wrongTypeMsg }) }).catch(e => console.error(e));
+                  await supabase.from("whatsapp_messages").insert({ phone: normalizedPhone, instance_name, message_text: wrongTypeMsg, message_type: "text", direction: "outbound", contact_id: session.contact_id || null, lead_id: session.lead_id || null, external_message_id: `wjia_wrong_doc_${Date.now()}` });
+                }
+
+                return new Response(JSON.stringify({ active_session: true, processed: true, wrong_document_type: true, session_id: session.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+              }
+            }
+          } catch (classifyErr) {
+            console.error("Document classification error:", classifyErr);
+            // Fallback: assign to first pending type
+            assignedType = pendingTypes[0];
+          }
         }
 
         receivedDocs.push({
@@ -524,16 +599,37 @@ REGRAS:
                 const extractedData = JSON.parse(visionToolCall.function.arguments);
                 console.log("Vision extraction result:", JSON.stringify(extractedData));
 
-                // Merge extracted fields into collected data
+                // Merge extracted fields into collected data, detecting conflicts
+                const conflicts: { field: string; existing: string; extracted: string }[] = [];
                 for (const field of (extractedData.extracted_fields || [])) {
                   if (!field.de || !field.para) continue;
                   const canonicalVariable = resolveTemplateVariable(field, requiredFieldCatalog) || field.de;
+                  
+                  // Check for conflicts with already-collected data
+                  const existingField = updatedFields.find((f: any) => {
+                    const fKey = normalizeFieldKey((f?.de || f?.field_name || "").toString());
+                    return fKey === normalizeFieldKey(canonicalVariable) && hasFieldValue(f?.para);
+                  });
+                  if (existingField && existingField.para) {
+                    const existingNorm = existingField.para.toString().replace(/\s+/g, ' ').trim().toUpperCase();
+                    const newNorm = field.para.toString().replace(/\s+/g, ' ').trim().toUpperCase();
+                    if (existingNorm !== newNorm && existingNorm.length > 1 && newNorm.length > 1) {
+                      conflicts.push({ field: canonicalVariable.replace(/\{\{|\}\}/g, ''), existing: existingField.para, extracted: field.para });
+                    }
+                  }
+                  
                   upsertCollectedField(updatedFields, canonicalVariable, field.para);
                 }
 
                 // Update signer name if extracted
                 if (extractedData.signer_name) {
                   collectedData.signer_name = extractedData.signer_name;
+                }
+                
+                // Store conflicts for later reporting
+                if (conflicts.length > 0) {
+                  collectedData.conflicts = conflicts;
+                  console.log("Data conflicts detected:", JSON.stringify(conflicts));
                 }
               }
             } catch (visionErr) {
@@ -562,13 +658,17 @@ REGRAS:
             .map((f: any) => `• *${(f.de || '').replace(/\{\{|\}\}/g, '')}*: ${f.para}`)
             .join('\n');
           const docsSummary = receivedDocs.map((d: any) => `• ✅ ${docTypeLabels[d.type] || d.type}`).join('\n');
+          const conflictsList = Array.isArray(collectedData.conflicts) ? collectedData.conflicts : [];
+          const conflictWarning = conflictsList.length > 0
+            ? `\n\n⚠️ *ATENÇÃO - Dados divergentes encontrados:*\n${conflictsList.map((c: any) => `• *${c.field}*: informado anteriormente "${c.existing}", mas no documento consta "${c.extracted}"`).join('\n')}\n\n_Verifique qual informação está correta._`
+            : '';
 
           if (actuallyMissing.length > 0) {
             // Still missing fields → move to "collecting" to ask the rest
             const missingNames = actuallyMissing.map((f: any) => f.friendly_name || f.field_name).join(', ');
             const extractedCount = updatedFields.filter((f: any) => f.para).length;
 
-            const afterExtractMsg = `✅ *Documentos recebidos e analisados!*\n\n📊 Consegui extrair *${extractedCount}* dados dos documentos:\n${filledSummary}\n\nDocumentos anexos:\n${docsSummary}\n\n⚠️ Ainda preciso que informe: *${missingNames}*\n\nPor favor, me envie esses dados.`;
+            const afterExtractMsg = `✅ *Documentos recebidos e analisados!*\n\n📊 Consegui extrair *${extractedCount}* dados dos documentos:\n${filledSummary}\n\nDocumentos anexos:\n${docsSummary}${conflictWarning}\n\n⚠️ Ainda preciso que informe: *${missingNames}*\n\nPor favor, me envie esses dados.`;
 
             await supabase
               .from("wjia_collection_sessions")
@@ -605,7 +705,7 @@ REGRAS:
 
           } else {
             // ALL data extracted from docs → go to confirmation (ready)
-            const summaryMsg = `✅ *Documentos recebidos e dados extraídos com sucesso!*\n\nConfira as informações para o documento *${session.template_name}*:\n\n${filledSummary}\n\nDocumentos anexos:\n${docsSummary}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento ou me diga o que precisa corrigir.`;
+            const summaryMsg = `✅ *Documentos recebidos e dados extraídos com sucesso!*\n\nConfira as informações para o documento *${session.template_name}*:\n\n${filledSummary}\n\nDocumentos anexos:\n${docsSummary}${conflictWarning}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento ou me diga o que precisa corrigir.`;
 
             await supabase
               .from("wjia_collection_sessions")
@@ -856,7 +956,9 @@ REGRAS:
 - Seja educado e natural na conversa
 - Se ainda faltam dados após esta mensagem, peça os próximos de forma natural (não todos de uma vez, máximo 3 por vez)
 - IMPORTANTE: Só marque all_collected como true se ABSOLUTAMENTE TODOS os campos listados acima tiverem valores preenchidos
-- Se TODOS os dados foram coletados, diga que vai preparar o documento`;
+- Se TODOS os dados foram coletados, diga que vai preparar o documento
+- CONFLITOS: Se o cliente informar um dado DIFERENTE de algo já coletado anteriormente (ex: nome diferente, CPF diferente, endereço diferente), SINALIZE a divergência na resposta. Pergunte ao cliente qual informação está correta antes de prosseguir. Inclua o conflito no campo "conflicts" da resposta.
+- Se receber uma informação que contradiz dados extraídos de documentos, sempre priorize esclarecer com o cliente`;
 
     const tools = [{
       type: "function",
@@ -897,7 +999,20 @@ REGRAS:
             },
             reply_to_client: {
               type: "string",
-              description: "Mensagem para enviar ao cliente (agradecendo dados e pedindo próximos, ou confirmando que vai gerar o doc)",
+              description: "Mensagem para enviar ao cliente (agradecendo dados e pedindo próximos, ou confirmando que vai gerar o doc). Se houver conflito, pergunte qual dado está correto.",
+            },
+            conflicts: {
+              type: "array",
+              description: "Conflitos detectados entre dados informados agora e dados já coletados anteriormente",
+              items: {
+                type: "object",
+                properties: {
+                  field: { type: "string", description: "Nome do campo com conflito" },
+                  existing_value: { type: "string", description: "Valor já coletado anteriormente" },
+                  new_value: { type: "string", description: "Valor informado agora (divergente)" },
+                },
+                required: ["field", "existing_value", "new_value"],
+              },
             },
           },
           required: ["newly_extracted", "still_missing", "all_collected", "reply_to_client"],
@@ -934,6 +1049,38 @@ REGRAS:
     }
 
     console.log("Collection result:", JSON.stringify(result));
+
+    // If AI detected conflicts, don't update fields - wait for clarification
+    if (result.conflicts && result.conflicts.length > 0) {
+      console.log("AI detected data conflicts:", JSON.stringify(result.conflicts));
+      // Don't update fields, just send the reply asking for clarification
+      const { data: inst } = await supabase
+        .from("whatsapp_instances")
+        .select("instance_token, base_url")
+        .eq("instance_name", instance_name)
+        .maybeSingle();
+
+      if (inst?.instance_token && result.reply_to_client) {
+        const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+        await fetch(`${baseUrl}/send/text`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", token: inst.instance_token },
+          body: JSON.stringify({ number: normalizedPhone, text: result.reply_to_client }),
+        }).catch(e => console.error("Error sending conflict reply:", e));
+
+        await supabase.from("whatsapp_messages").insert({
+          phone: normalizedPhone, instance_name,
+          message_text: result.reply_to_client, message_type: "text", direction: "outbound",
+          contact_id: session.contact_id || null, lead_id: session.lead_id || null,
+          external_message_id: `wjia_conflict_${Date.now()}`,
+        });
+      }
+
+      return new Response(JSON.stringify({
+        active_session: true, processed: true, has_conflicts: true,
+        conflicts: result.conflicts, session_id: session.id,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     // Update collected data using template-variable normalization
     const updatedFields = [...(collectedData.fields || [])];
