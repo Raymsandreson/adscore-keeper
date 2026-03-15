@@ -471,6 +471,50 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 </div>
               </div>
             )}
+            {/* Solicitar documentos */}
+            {form.template_token && (
+              <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="request_documents"
+                    checked={form.request_documents}
+                    onCheckedChange={(checked) => setForm(f => ({ ...f, request_documents: !!checked }))}
+                  />
+                  <Label htmlFor="request_documents" className="text-xs font-semibold cursor-pointer">
+                    📎 Solicitar documentos do cliente para anexar
+                  </Label>
+                </div>
+                {form.request_documents && (
+                  <div className="ml-6 space-y-2">
+                    <p className="text-[10px] text-muted-foreground">Selecione os tipos de documentos que serão solicitados:</p>
+                    {[
+                      { key: 'rg_cnh', label: 'RG / CNH (identidade)' },
+                      { key: 'comprovante_endereco', label: 'Comprovante de endereço' },
+                      { key: 'comprovante_renda', label: 'Comprovante de renda' },
+                      { key: 'outros', label: 'Outros documentos' },
+                    ].map(docType => (
+                      <div key={docType.key} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`doc_${docType.key}`}
+                          checked={form.document_types.includes(docType.key)}
+                          onCheckedChange={(checked) => {
+                            setForm(f => ({
+                              ...f,
+                              document_types: checked
+                                ? [...f.document_types, docType.key]
+                                : f.document_types.filter(t => t !== docType.key),
+                            }));
+                          }}
+                        />
+                        <Label htmlFor={`doc_${docType.key}`} className="text-xs cursor-pointer">
+                          {docType.label}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="space-y-1">
               <Label className="text-xs">Instruções do Prompt (como o robô deve agir)</Label>
               <Textarea
