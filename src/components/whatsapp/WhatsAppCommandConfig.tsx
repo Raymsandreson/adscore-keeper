@@ -133,6 +133,7 @@ export function WhatsAppCommandConfig() {
           <ShortcutsTab
             shortcuts={shortcuts}
             profiles={profiles}
+            agents={agents}
             onReload={loadData}
           />
         </TabsContent>
