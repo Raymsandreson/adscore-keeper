@@ -241,31 +241,34 @@ serve(async (req) => {
       });
     }
 
-    // ── Audio transcription: convert voice messages to text ──
+    // ── Audio transcription: ElevenLabs Scribe v2 (fallback to Gemini) ──
     const isAudio = message_type === 'audio' || message_type === 'ptt';
     if (isAudio && media_url && !message_text) {
-      console.log('Transcribing audio for command processing:', media_url);
-      try {
-        const transcriptionResult = await geminiChat({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            {
-              role: "system",
-              content: "Transcreva EXATAMENTE o que a pessoa disse no áudio. Retorne APENAS a transcrição literal, sem comentários, sem pontuação extra. Se não conseguir entender, retorne string vazia.",
-            },
-            {
-              role: "user",
-              content: [{ type: "image_url", image_url: { url: media_url } }],
-            },
-          ],
-        });
-        const transcript = transcriptionResult.choices?.[0]?.message?.content?.trim();
-        if (transcript) {
-          console.log('Audio transcribed for command:', transcript.substring(0, 100));
-          message_text = transcript;
+      console.log('Transcribing audio with ElevenLabs Scribe:', media_url);
+      
+      // Try ElevenLabs first
+      let transcript = await transcribeWithElevenLabs(media_url);
+      
+      // Fallback to Gemini if ElevenLabs fails
+      if (!transcript) {
+        console.log('Falling back to Gemini for transcription');
+        try {
+          const transcriptionResult = await geminiChat({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              { role: "system", content: "Transcreva EXATAMENTE o que a pessoa disse no áudio. Retorne APENAS a transcrição literal." },
+              { role: "user", content: [{ type: "image_url", image_url: { url: media_url } }] },
+            ],
+          });
+          transcript = transcriptionResult.choices?.[0]?.message?.content?.trim() || null;
+        } catch (e) {
+          console.error('Gemini transcription fallback error:', e);
         }
-      } catch (e) {
-        console.error('Audio transcription error:', e);
+      }
+
+      if (transcript) {
+        console.log('Audio transcribed:', transcript.substring(0, 100));
+        message_text = transcript;
       }
     }
 
