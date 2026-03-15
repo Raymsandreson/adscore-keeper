@@ -264,6 +264,8 @@ REGRAS:
           triggered_by: command,
           notify_on_signature: notifyOnSignature,
           send_signed_pdf: sendSignedPdf,
+          request_documents: requestDocuments,
+          document_types: documentTypes,
         })
         .select()
         .single();
