@@ -170,8 +170,14 @@ serve(async (req) => {
           });
         }
       } else if (step.action_type === "create_activity") {
-        const assignedTo = step.assigned_to || null;
+        let assignedTo = step.assigned_to || null;
         let assignedName = null;
+        
+        // __self__ means assign to the user who triggered the command
+        if (assignedTo === "__self__") {
+          assignedTo = session.triggered_by || null;
+        }
+        
         if (assignedTo) {
           const { data: profile } = await supabase
             .from("profiles")
