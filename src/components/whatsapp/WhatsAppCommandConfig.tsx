@@ -285,6 +285,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   const resetForm = () => {
     setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] });
     setFollowupSteps([]);
+    setStopOnHumanReply(true);
     setEditingId(null);
     setShowForm(false);
     setAiEditConfig(null);
