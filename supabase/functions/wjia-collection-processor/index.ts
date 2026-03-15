@@ -956,7 +956,9 @@ REGRAS:
 - Seja educado e natural na conversa
 - Se ainda faltam dados após esta mensagem, peça os próximos de forma natural (não todos de uma vez, máximo 3 por vez)
 - IMPORTANTE: Só marque all_collected como true se ABSOLUTAMENTE TODOS os campos listados acima tiverem valores preenchidos
-- Se TODOS os dados foram coletados, diga que vai preparar o documento`;
+- Se TODOS os dados foram coletados, diga que vai preparar o documento
+- CONFLITOS: Se o cliente informar um dado DIFERENTE de algo já coletado anteriormente (ex: nome diferente, CPF diferente, endereço diferente), SINALIZE a divergência na resposta. Pergunte ao cliente qual informação está correta antes de prosseguir. Inclua o conflito no campo "conflicts" da resposta.
+- Se receber uma informação que contradiz dados extraídos de documentos, sempre priorize esclarecer com o cliente`;
 
     const tools = [{
       type: "function",
