@@ -1403,6 +1403,36 @@ Deno.serve(async (req) => {
             await supabase.from('whatsapp_messages').delete().eq('id', message.id)
           }
 
+          // Helper: check for active collection session
+          const { data: activeCollectionSession } = await supabase
+            .from('wjia_collection_sessions')
+            .select('id, status, shortcut_name')
+            .eq('phone', phone)
+            .eq('instance_name', instanceName)
+            .in('status', ['collecting', 'collecting_docs', 'ready'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          // Helper: resolve instance for sending messages
+          const getInstanceCreds = async () => {
+            let rToken = instanceToken
+            let rBaseUrl = baseUrl
+            if (!rToken || !rBaseUrl) {
+              const { data: inst } = await supabase
+                .from('whatsapp_instances')
+                .select('instance_token, base_url')
+                .eq('instance_name', instanceName)
+                .limit(1)
+                .maybeSingle()
+              if (inst) {
+                rToken = rToken || inst.instance_token
+                rBaseUrl = rBaseUrl || inst.base_url
+              }
+            }
+            return { token: rToken, baseUrl: rBaseUrl }
+          }
+
           if (cmdTrimmed === '#parar') {
             // Deactivate agent on this conversation
             const { data: existing } = await supabase
@@ -1412,6 +1442,9 @@ Deno.serve(async (req) => {
               .eq('instance_name', instanceName)
               .maybeSingle()
 
+            let stoppedAgent = false
+            let stoppedCollection = false
+
             if (existing && (existing as any).is_active) {
               await supabase
                 .from('whatsapp_conversation_agents')
@@ -1419,16 +1452,28 @@ Deno.serve(async (req) => {
                 .eq('phone', phone)
                 .eq('instance_name', instanceName)
 
-              // Get agent name for confirmation
               const { data: agentData } = await supabase
                 .from('whatsapp_ai_agents')
                 .select('name')
                 .eq('id', (existing as any).agent_id)
                 .maybeSingle()
 
+              stoppedAgent = true
               console.log(`Agent "${(agentData as any)?.name}" deactivated for ${phone} via #parar command`)
-            } else {
-              console.log(`No active agent to deactivate for ${phone}`)
+            }
+
+            // Also cancel active collection session
+            if (activeCollectionSession) {
+              await supabase
+                .from('wjia_collection_sessions')
+                .update({ status: 'cancelled' } as any)
+                .eq('id', (activeCollectionSession as any).id)
+              stoppedCollection = true
+              console.log(`Collection session ${(activeCollectionSession as any).id} cancelled for ${phone} via #parar`)
+            }
+
+            if (!stoppedAgent && !stoppedCollection) {
+              console.log(`Nothing active to stop for ${phone}`)
             }
           } else if (cmdTrimmed === '#ativar') {
             // Reactivate agent on this conversation
@@ -1459,7 +1504,10 @@ Deno.serve(async (req) => {
               console.log(`Agent already active for ${phone}`)
             }
           } else if (cmdTrimmed === '#status') {
-            // Check agent status - log it (the message was already deleted)
+            // Build status text with both agent and collection info
+            const statusParts: string[] = []
+
+            // Agent status
             const { data: existing } = await supabase
               .from('whatsapp_conversation_agents')
               .select('agent_id, is_active, human_paused_until')
@@ -1467,7 +1515,6 @@ Deno.serve(async (req) => {
               .eq('instance_name', instanceName)
               .maybeSingle()
 
-            let statusText = '🤖 Nenhum agente atribuído a esta conversa.'
             if (existing) {
               const { data: agentData } = await supabase
                 .from('whatsapp_ai_agents')
@@ -1480,39 +1527,35 @@ Deno.serve(async (req) => {
               const pausedUntil = (existing as any).human_paused_until
 
               if (!isActive) {
-                statusText = `🤖 Agente "${agentName}" está *DESATIVADO* nesta conversa.`
+                statusParts.push(`🤖 Agente "${agentName}" está *DESATIVADO*.`)
               } else if (pausedUntil && new Date(pausedUntil) > new Date()) {
-                const pausedDate = new Date(pausedUntil)
-                const timeStr = pausedDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-                statusText = `🤖 Agente "${agentName}" está *PAUSADO* (humano) até ${timeStr}.`
+                const timeStr = new Date(pausedUntil).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                statusParts.push(`🤖 Agente "${agentName}" está *PAUSADO* até ${timeStr}.`)
               } else {
-                statusText = `🤖 Agente "${agentName}" está *ATIVO* nesta conversa.`
+                statusParts.push(`🤖 Agente "${agentName}" está *ATIVO*.`)
               }
+            } else {
+              statusParts.push('🤖 Nenhum agente atribuído.')
             }
 
-            // Send status reply via the instance
-            let resolvedToken = instanceToken
-            let resolvedBaseUrl = baseUrl
-            if (!resolvedToken || !resolvedBaseUrl) {
-              const { data: inst } = await supabase
-                .from('whatsapp_instances')
-                .select('instance_token, base_url')
-                .eq('instance_name', instanceName)
-                .limit(1)
-                .maybeSingle()
-              if (inst) {
-                resolvedToken = resolvedToken || inst.instance_token
-                resolvedBaseUrl = resolvedBaseUrl || inst.base_url
-              }
+            // Collection session status
+            if (activeCollectionSession) {
+              const sessStatus = (activeCollectionSession as any).status
+              const shortcutName = (activeCollectionSession as any).shortcut_name || 'Atalho'
+              const statusLabel = sessStatus === 'ready' ? 'aguardando confirmação' : 'coletando dados'
+              statusParts.push(`📋 Atalho "${shortcutName}" *EM ANDAMENTO* (${statusLabel}).`)
             }
-            if (resolvedToken && resolvedBaseUrl) {
-              // Send to self (owner) - use the phone of the conversation
-              await fetch(`${resolvedBaseUrl}/send/text`, {
+
+            const statusText = statusParts.join('\n')
+
+            const creds = await getInstanceCreds()
+            if (creds.token && creds.baseUrl) {
+              await fetch(`${creds.baseUrl}/send/text`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'token': resolvedToken },
+                headers: { 'Content-Type': 'application/json', 'token': creds.token },
                 body: JSON.stringify({ number: phone, text: statusText }),
               })
-              console.log('Agent status sent to conversation:', phone)
+              console.log('Status sent to conversation:', phone)
             }
           }
 
