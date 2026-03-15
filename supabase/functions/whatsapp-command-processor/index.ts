@@ -118,7 +118,7 @@ async function generateTTSAudio(text: string, voiceId?: string): Promise<string 
     // Use Laura voice (Portuguese-friendly) with multilingual model
     const finalVoiceId = voiceId || "FGY2WhTYpPnrIDTdsKH5"; // Laura default
     const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${finalVoiceId}?output_format=mp3_22050_32`,
       {
         method: "POST",
         headers: {
