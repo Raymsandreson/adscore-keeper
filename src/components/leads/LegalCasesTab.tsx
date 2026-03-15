@@ -946,6 +946,15 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
         </div>
       )}
 
+      {/* Process Monitor Dialog */}
+      <ProcessMonitorDialog
+        open={showMonitorDialog}
+        onOpenChange={setShowMonitorDialog}
+        processId={process.id}
+        processNumber={process.process_number || ''}
+        processTitle={process.title}
+      />
+
       {/* Petition Analysis Dialog */}
       <Dialog open={showPetitionDialog} onOpenChange={setShowPetitionDialog}>
         <DialogContent className="max-w-lg">
