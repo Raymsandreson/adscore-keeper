@@ -705,7 +705,7 @@ REGRAS:
 
           } else {
             // ALL data extracted from docs → go to confirmation (ready)
-            const summaryMsg = `✅ *Documentos recebidos e dados extraídos com sucesso!*\n\nConfira as informações para o documento *${session.template_name}*:\n\n${filledSummary}\n\nDocumentos anexos:\n${docsSummary}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento ou me diga o que precisa corrigir.`;
+            const summaryMsg = `✅ *Documentos recebidos e dados extraídos com sucesso!*\n\nConfira as informações para o documento *${session.template_name}*:\n\n${filledSummary}\n\nDocumentos anexos:\n${docsSummary}${conflictWarning}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento ou me diga o que precisa corrigir.`;
 
             await supabase
               .from("wjia_collection_sessions")
