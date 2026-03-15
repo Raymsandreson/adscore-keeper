@@ -552,6 +552,7 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
   const [showPetitionDialog, setShowPetitionDialog] = useState(false);
   const [petitionText, setPetitionText] = useState('');
   const [analyzingPetition, setAnalyzingPetition] = useState(false);
+  const [showMonitorDialog, setShowMonitorDialog] = useState(false);
 
   useEffect(() => {
     if (showParties) fetchParties();
