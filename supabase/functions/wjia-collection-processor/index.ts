@@ -651,38 +651,87 @@ REGRAS:
         const isSkip = /^(pular|n[aã]o tenho|n[aã]o possuo|depois|skip)/.test(msgLower);
         
         if (isSkip) {
-          // Skip remaining docs, move to ready
-          await supabase
-            .from("wjia_collection_sessions")
-            .update({ status: "ready", updated_at: new Date().toISOString() })
-            .eq("id", session.id);
-
+          // Skip remaining docs — extract from whatever was received, then move to collecting for missing fields
           const collectedData = session.collected_data || { fields: [] };
-          const summaryLines = (collectedData.fields || [])
-            .filter((f: any) => f.para)
-            .map((f: any) => `• *${(f.de || '').replace(/\{\{|\}\}/g, '')}*: ${f.para}`)
-            .join('\n');
+          const updatedFields = [...(collectedData.fields || [])];
+          const requiredFieldCatalog = buildTemplateFieldCatalog(session);
 
-          const docsSummary = receivedDocs.length > 0
-            ? '\n\nDocumentos anexos:\n' + receivedDocs.map((d: any) => `• ✅ ${docTypeLabels[d.type] || d.type}`).join('\n')
-            : '';
+          // Extract from any docs already received
+          const imageUrls = receivedDocs.map((d: any) => d.media_url).filter(Boolean);
+          if (imageUrls.length > 0) {
+            try {
+              const allTemplateFieldNames = requiredFieldCatalog.map((f) => `${f.variable} (${f.label})`);
+              const extractPrompt = `Analise as imagens dos documentos e extraia TODOS os dados pessoais visíveis.\n\nCAMPOS NECESSÁRIOS:\n${allTemplateFieldNames.map((f: string) => `- ${f}`).join('\n')}\n\nREGRAS:\n- Extraia nome, CPF, RG, data de nascimento, endereço, etc.\n- Formate CPF como XXX.XXX.XXX-XX e datas como DD/MM/AAAA\n- Use EXATAMENTE as variáveis do template no campo "de"`;
 
-          const skipMsg = `Ok! Vamos prosseguir sem os documentos pendentes.\n\nDados do documento:\n${summaryLines}${docsSummary}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento.`;
+              const visionResult = await geminiChat({
+                model: "google/gemini-2.5-flash",
+                messages: [
+                  { role: "system", content: extractPrompt },
+                  { role: "user", content: [
+                    { type: "text", text: "Extraia os dados:" },
+                    ...imageUrls.map((url: string) => ({ type: "image_url", image_url: { url } })),
+                  ]},
+                ],
+                tools: [{ type: "function", function: { name: "extracted_document_data", description: "Dados extraídos", parameters: { type: "object", properties: { extracted_fields: { type: "array", items: { type: "object", properties: { de: { type: "string" }, para: { type: "string" } }, required: ["de", "para"] } }, signer_name: { type: "string" } }, required: ["extracted_fields"] } } }],
+                tool_choice: { type: "function", function: { name: "extracted_document_data" } },
+                temperature: 0.1,
+              });
 
-          if (inst?.instance_token) {
-            const baseUrl = inst.base_url || "https://abraci.uazapi.com";
-            await fetch(`${baseUrl}/send/text`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", token: inst.instance_token },
-              body: JSON.stringify({ number: normalizedPhone, text: skipMsg }),
-            }).catch(e => console.error("Error sending skip reply:", e));
+              const tc = visionResult.choices?.[0]?.message?.tool_calls?.[0];
+              if (tc?.function?.arguments) {
+                const extracted = JSON.parse(tc.function.arguments);
+                for (const field of (extracted.extracted_fields || [])) {
+                  if (!field.de || !field.para) continue;
+                  const cv = resolveTemplateVariable(field, requiredFieldCatalog) || field.de;
+                  upsertCollectedField(updatedFields, cv, field.para);
+                }
+                if (extracted.signer_name) collectedData.signer_name = extracted.signer_name;
+              }
+            } catch (e) { console.error("Vision extract on skip:", e); }
+          }
 
-            await supabase.from("whatsapp_messages").insert({
-              phone: normalizedPhone, instance_name,
-              message_text: skipMsg, message_type: "text", direction: "outbound",
-              contact_id: session.contact_id || null, lead_id: session.lead_id || null,
-              external_message_id: `wjia_skip_${Date.now()}`,
-            });
+          // Apply defaults
+          for (const field of updatedFields) {
+            const fn = (field.de || "").replace(/\{\{|\}\}/g, "").toUpperCase().trim();
+            if (fn.includes("EMAIL") && !field.para) field.para = "contato@prudencioadv.com";
+            if (fn.includes("WHATSAPP") && !field.para) field.para = "(86)99447-3226";
+          }
+
+          const actuallyMissing = computeMissingRequiredFields(requiredFieldCatalog, updatedFields, { skipOptional: true });
+          const updatedCollectedData = { ...collectedData, fields: updatedFields };
+
+          if (actuallyMissing.length > 0) {
+            // Still missing → move to collecting
+            const missingNames = actuallyMissing.map((f: any) => f.friendly_name).join(', ');
+            const filledSummary = updatedFields.filter((f: any) => f.para).map((f: any) => `• *${(f.de || '').replace(/\{\{|\}\}/g, '')}*: ${f.para}`).join('\n');
+            const skipMsg = `Ok! ${receivedDocs.length > 0 ? `Extraí dados dos documentos recebidos.\n\n${filledSummary}\n\n` : ''}⚠️ Ainda preciso que informe: *${missingNames}*`;
+
+            await supabase.from("wjia_collection_sessions").update({
+              collected_data: updatedCollectedData, received_documents: receivedDocs,
+              missing_fields: actuallyMissing, status: "collecting", updated_at: new Date().toISOString(),
+            }).eq("id", session.id);
+
+            if (inst?.instance_token) {
+              const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+              await fetch(`${baseUrl}/send/text`, { method: "POST", headers: { "Content-Type": "application/json", token: inst.instance_token }, body: JSON.stringify({ number: normalizedPhone, text: skipMsg }) }).catch(e => console.error(e));
+              await supabase.from("whatsapp_messages").insert({ phone: normalizedPhone, instance_name, message_text: skipMsg, message_type: "text", direction: "outbound", contact_id: session.contact_id || null, lead_id: session.lead_id || null, external_message_id: `wjia_skip_${Date.now()}` });
+            }
+          } else {
+            // All extracted → ready
+            const filledSummary = updatedFields.filter((f: any) => f.para).map((f: any) => `• *${(f.de || '').replace(/\{\{|\}\}/g, '')}*: ${f.para}`).join('\n');
+            const docsSummary = receivedDocs.length > 0 ? '\n\nDocumentos anexos:\n' + receivedDocs.map((d: any) => `• ✅ ${docTypeLabels[d.type] || d.type}`).join('\n') : '';
+            const skipMsg = `✅ *Dados extraídos dos documentos!*\n\n${filledSummary}${docsSummary}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento.`;
+
+            await supabase.from("wjia_collection_sessions").update({
+              collected_data: updatedCollectedData, received_documents: receivedDocs,
+              missing_fields: [], status: "ready", updated_at: new Date().toISOString(),
+            }).eq("id", session.id);
+
+            if (inst?.instance_token) {
+              const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+              await fetch(`${baseUrl}/send/text`, { method: "POST", headers: { "Content-Type": "application/json", token: inst.instance_token }, body: JSON.stringify({ number: normalizedPhone, text: skipMsg }) }).catch(e => console.error(e));
+              await supabase.from("whatsapp_messages").insert({ phone: normalizedPhone, instance_name, message_text: skipMsg, message_type: "text", direction: "outbound", contact_id: session.contact_id || null, lead_id: session.lead_id || null, external_message_id: `wjia_skip_${Date.now()}` });
+            }
           }
 
           return new Response(JSON.stringify({
