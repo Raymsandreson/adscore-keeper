@@ -422,6 +422,8 @@ export function ZapSignDocumentDialog({
           created_by: user?.id || null,
           send_via_whatsapp: false,
           whatsapp_phone: phone,
+          notify_on_signature: notifyOnSignature,
+          send_signed_pdf: sendSignedPdf,
         },
       });
 
