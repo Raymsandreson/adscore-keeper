@@ -4725,6 +4725,114 @@ export type Database = {
         }
         Relationships: []
       }
+      process_movement_monitors: {
+        Row: {
+          contact_id: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          last_checked_at: string | null
+          last_movement_count: number | null
+          last_movement_date: string | null
+          last_notified_at: string | null
+          notify_via_audio: boolean | null
+          phone: string
+          process_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_checked_at?: string | null
+          last_movement_count?: number | null
+          last_movement_date?: string | null
+          last_notified_at?: string | null
+          notify_via_audio?: boolean | null
+          phone: string
+          process_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_checked_at?: string | null
+          last_movement_count?: number | null
+          last_movement_date?: string | null
+          last_notified_at?: string | null
+          notify_via_audio?: boolean | null
+          phone?: string
+          process_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "process_movement_monitors_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "process_movement_monitors_process_id_fkey"
+            columns: ["process_id"]
+            isOneToOne: false
+            referencedRelation: "lead_processes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      process_movement_notifications: {
+        Row: {
+          error_message: string | null
+          id: string
+          monitor_id: string
+          movement_summary: string
+          notification_type: string | null
+          process_id: string
+          sent_at: string | null
+          status: string | null
+        }
+        Insert: {
+          error_message?: string | null
+          id?: string
+          monitor_id: string
+          movement_summary: string
+          notification_type?: string | null
+          process_id: string
+          sent_at?: string | null
+          status?: string | null
+        }
+        Update: {
+          error_message?: string | null
+          id?: string
+          monitor_id?: string
+          movement_summary?: string
+          notification_type?: string | null
+          process_id?: string
+          sent_at?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "process_movement_notifications_monitor_id_fkey"
+            columns: ["monitor_id"]
+            isOneToOne: false
+            referencedRelation: "process_movement_monitors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "process_movement_notifications_process_id_fkey"
+            columns: ["process_id"]
+            isOneToOne: false
+            referencedRelation: "lead_processes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       process_parties: {
         Row: {
           contact_id: string
