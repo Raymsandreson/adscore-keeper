@@ -408,6 +408,7 @@ function ShortcutsTab({ shortcuts, profiles, agents, onReload }: { shortcuts: Sh
               send_signed_pdf: true,
               request_documents: false,
               document_types: [],
+              agent_id: '',
             });
             setFollowupSteps(config.followup_steps || []);
             setShowForm(true);
