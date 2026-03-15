@@ -839,6 +839,16 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
         >
           <Sparkles className="h-2.5 w-2.5 mr-0.5" /> Analisar Petição
         </Button>
+        {process.process_number && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-[10px] px-2 text-emerald-600"
+            onClick={() => setShowMonitorDialog(true)}
+          >
+            <BellRing className="h-2.5 w-2.5 mr-0.5" /> Notificar
+          </Button>
+        )}
         {process.movimentacoes && (process.movimentacoes as any[]).length > 0 && (
           <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2"
             onClick={() => setShowMovimentacoes(!showMovimentacoes)}>
