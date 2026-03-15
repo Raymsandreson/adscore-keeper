@@ -90,7 +90,7 @@ async function transcribeWithElevenLabs(mediaUrl: string): Promise<string | null
   }
 }
 
-async function generateTTSAudio(text: string): Promise<string | null> {
+async function generateTTSAudio(text: string, voiceId?: string): Promise<string | null> {
   const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
