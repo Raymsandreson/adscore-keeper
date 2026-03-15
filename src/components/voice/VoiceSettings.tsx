@@ -178,7 +178,7 @@ export function VoiceSettings() {
     try {
       // Upload files to storage first
       const sampleUrls: string[] = [];
-      for (const file of cloneFiles) {
+      for (const file of allFiles) {
         const fileName = `voice-samples/${Date.now()}-${file.name}`;
         const { error: uploadErr } = await supabase.storage
           .from('whatsapp-media')
@@ -197,6 +197,7 @@ export function VoiceSettings() {
       toast.success('Voz clonada com sucesso!');
       setCloneName('');
       setCloneFiles([]);
+      setRecordedBlobs([]);
       loadVoices();
     } catch (e: any) {
       toast.error(e.message || 'Erro ao clonar voz');
