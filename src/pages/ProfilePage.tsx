@@ -33,6 +33,7 @@ const ProfilePage = () => {
   const [gender, setGender] = useState((profile as any)?.gender || "none");
   const [oabNumber, setOabNumber] = useState((profile as any)?.oab_number || "");
   const [oabUf, setOabUf] = useState((profile as any)?.oab_uf || "");
+  const [phone, setPhone] = useState((profile as any)?.phone || "");
   const [isSaving, setIsSaving] = useState(false);
 
   const getInitials = () => {
