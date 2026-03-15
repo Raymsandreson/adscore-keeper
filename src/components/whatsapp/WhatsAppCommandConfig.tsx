@@ -593,6 +593,16 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
               <Button size="sm" variant="outline" onClick={addStep} className="w-full">
                 <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar Etapa de Follow-up
               </Button>
+
+              {followupSteps.length > 0 && (
+                <div className="flex items-center justify-between p-2 rounded-lg border bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Label className="text-[10px]">Parar follow-up quando humano responder</Label>
+                  </div>
+                  <Switch checked={stopOnHumanReply} onCheckedChange={setStopOnHumanReply} />
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2 justify-end">
