@@ -571,6 +571,30 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
 
     setSaving(true);
     try {
+      // Resolve WhatsApp group link to JID if it's a link
+      let resolvedGroupId = whatsappGroupId || null;
+      if (whatsappGroupId && whatsappGroupId.includes('chat.whatsapp.com')) {
+        try {
+          const { data: resolveData, error: resolveError } = await supabase.functions.invoke('send-whatsapp', {
+            body: { action: 'resolve_group_link', group_link: whatsappGroupId },
+          });
+          if (resolveData?.success && resolveData.group_id) {
+            resolvedGroupId = resolveData.group_id;
+            setWhatsappGroupId(resolvedGroupId);
+            toast.success(`Grupo identificado: ${resolveData.group_name || resolveData.group_id}`);
+          } else {
+            toast.error(resolveData?.error || 'Não foi possível resolver o link do grupo');
+            setSaving(false);
+            return;
+          }
+        } catch (e) {
+          console.error('Error resolving group link:', e);
+          toast.error('Erro ao resolver link do grupo');
+          setSaving(false);
+          return;
+        }
+      }
+
       // Save all fields
       await onSave(lead.id, {
         lead_name: leadName.trim(),
@@ -582,7 +606,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         client_classification: (clientClassification || null) as 'client' | 'non_client' | 'prospect' | null,
         acolhedor: acolhedor || null,
         group_link: groupLink || null,
-        whatsapp_group_id: whatsappGroupId || null,
+        whatsapp_group_id: resolvedGroupId,
         // Accident fields
         victim_name: victimName || null,
         victim_age: victimAge ? parseInt(victimAge) : null,
@@ -882,22 +906,14 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                   </Select>
                 </div>
 
-                <div>
-                  <Label>Link da Notícia</Label>
-                  <Input
-                    value={groupLink}
-                    onChange={(e) => setGroupLink(e.target.value)}
-                    placeholder="https://chat.whatsapp.com/..."
-                  />
-                </div>
-
-                <div>
-                  <Label>Grupo WhatsApp (ID)</Label>
+                <div className="col-span-2">
+                  <Label>Grupo WhatsApp (link ou ID)</Label>
                   <Input
                     value={whatsappGroupId}
                     onChange={(e) => setWhatsappGroupId(e.target.value)}
-                    placeholder="120363xxxxx@g.us"
+                    placeholder="https://chat.whatsapp.com/... ou 120363xxx@g.us"
                   />
+                  <p className="text-xs text-muted-foreground mt-1">Cole o link do grupo. O ID será extraído automaticamente ao salvar.</p>
                 </div>
 
                 <div>

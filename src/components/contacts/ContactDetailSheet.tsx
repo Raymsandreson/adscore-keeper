@@ -258,6 +258,29 @@ export function ContactDetailSheet({
 
     setSaving(true);
     try {
+      // Resolve WhatsApp group link to JID if it's a link
+      let resolvedGroupId = whatsappGroupId || null;
+      if (whatsappGroupId && whatsappGroupId.includes('chat.whatsapp.com')) {
+        try {
+          const { data: resolveData } = await supabase.functions.invoke('send-whatsapp', {
+            body: { action: 'resolve_group_link', group_link: whatsappGroupId },
+          });
+          if (resolveData?.success && resolveData.group_id) {
+            resolvedGroupId = resolveData.group_id;
+            setWhatsappGroupId(resolvedGroupId);
+            toast.success(`Grupo identificado: ${resolveData.group_name || resolveData.group_id}`);
+          } else {
+            toast.error(resolveData?.error || 'Não foi possível resolver o link do grupo');
+            setSaving(false);
+            return;
+          }
+        } catch (e) {
+          toast.error('Erro ao resolver link do grupo');
+          setSaving(false);
+          return;
+        }
+      }
+
       const { error } = await supabase
         .from('contacts')
         .update({
@@ -275,7 +298,7 @@ export function ContactDetailSheet({
           follower_status: followerStatus || 'none',
           profession: profession || null,
           profession_cbo_code: professionCboCode || null,
-          whatsapp_group_id: whatsappGroupId || null,
+          whatsapp_group_id: resolvedGroupId,
         })
         .eq('id', contact.id);
 
@@ -640,15 +663,16 @@ export function ContactDetailSheet({
                       </div>
                     </div>
 
-                    <div>
+                    <div className="col-span-2">
                       <Label className="flex items-center gap-1">
-                        👥 Grupo WhatsApp (ID)
+                        👥 Grupo WhatsApp
                       </Label>
                       <Input
                         value={whatsappGroupId}
                         onChange={(e) => setWhatsappGroupId(e.target.value)}
-                        placeholder="120363xxxxx@g.us"
+                        placeholder="https://chat.whatsapp.com/... ou 120363xxx@g.us"
                       />
+                      <p className="text-xs text-muted-foreground mt-1">Cole o link do grupo. O ID será extraído automaticamente.</p>
                     </div>
 
                     <div>
