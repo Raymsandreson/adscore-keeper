@@ -887,17 +887,10 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
       phone: normalizedPhone, instance_name, role: "assistant", content: responseText, tool_data: toolData,
     });
 
-    // 6) Send response via WhatsApp
-    const { data: inst } = await supabase
-      .from("whatsapp_instances")
-      .select("instance_token, base_url")
-      .eq("instance_name", instance_name)
-      .maybeSingle();
-
-    if (inst?.instance_token) {
-      const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+    // 6) Send response via WhatsApp (inst already fetched above)
+    if (instToken) {
       try {
-        await sendWhatsAppText(baseUrl, inst.instance_token, normalizedPhone, `🤖 *WhatsJUD IA*\n\n${responseText}`);
+        await sendWhatsAppText(baseUrl, instToken, normalizedPhone, `🤖 *WhatsJUD IA*\n\n${responseText}`);
         console.log("Response sent to WhatsApp:", normalizedPhone);
       } catch (e) {
         console.error("Error sending response:", e);
