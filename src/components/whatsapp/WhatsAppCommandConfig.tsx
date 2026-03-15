@@ -40,6 +40,8 @@ interface Shortcut {
   followup_steps: FollowupStep[];
   notify_on_signature: boolean;
   send_signed_pdf: boolean;
+  request_documents: boolean;
+  document_types: string[];
 }
 
 interface FollowupStep {
