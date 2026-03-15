@@ -88,6 +88,8 @@ serve(async (req) => {
     const shortcutInstructions = matchedShortcut?.prompt_instructions || '';
     const notifyOnSignature = matchedShortcut?.notify_on_signature !== false;
     const sendSignedPdf = matchedShortcut?.send_signed_pdf !== false;
+    const requestDocuments = matchedShortcut?.request_documents || false;
+    const documentTypes = matchedShortcut?.document_types || [];
 
     // 2) AI decides what to do — but does NOT generate doc yet if data is missing
     const systemPrompt = `Você é o assistente WJIA, integrado ao WhatsApp de um escritório de advocacia. O atendente digitou um comando @wjia.
