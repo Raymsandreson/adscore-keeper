@@ -509,9 +509,8 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
         phone: normalizedPhone, instance_name, role: "assistant", content: fallbackText, tool_data: { error_status: aiResponse.status },
       });
 
-      const { data: inst } = await supabase.from("whatsapp_instances").select("instance_token, base_url").eq("instance_name", instance_name).maybeSingle();
-      if (inst?.instance_token) {
-        await sendWhatsAppText(inst.base_url || "https://abraci.uazapi.com", inst.instance_token, normalizedPhone, `🤖 *WhatsJUD IA*\n\n${fallbackText}`).catch(e => console.error("Send error:", e));
+      if (instToken) {
+        await sendWhatsAppText(baseUrl, instToken, normalizedPhone, `🤖 *WhatsJUD IA*\n\n${fallbackText}`).catch(e => console.error("Send error:", e));
       }
       return new Response(JSON.stringify({ success: false, error: fallbackText }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
