@@ -55,31 +55,31 @@ export function ActivityTTSButton({ messageText, leadId, contactId }: ActivityTT
           }
         }
 
-        // Check if lead has a whatsapp group (chat_id in whatsapp_messages)
+        // Check if lead has a whatsapp group
         const { data: lead } = await supabase
           .from('leads')
           .select('lead_name')
           .eq('id', leadId)
           .maybeSingle();
 
-        // Look for group chats associated with the lead
+        // Look for group chats associated with the lead (phone containing @g.us)
         const { data: groupMsgs } = await supabase
           .from('whatsapp_messages')
-          .select('phone, chat_id')
+          .select('phone')
           .eq('lead_id', leadId)
-          .not('chat_id', 'is', null)
+          .like('phone', '%@g.us%')
           .limit(5);
 
         if (groupMsgs) {
           const seenGroups = new Set<string>();
           for (const msg of groupMsgs) {
-            const chatId = msg.chat_id;
-            if (chatId && chatId.includes('@g.us') && !seenGroups.has(chatId)) {
-              seenGroups.add(chatId);
+            const groupPhone = msg.phone;
+            if (groupPhone && !seenGroups.has(groupPhone)) {
+              seenGroups.add(groupPhone);
               results.push({
-                label: `👥 Grupo ${lead?.lead_name || 'do Lead'} (${chatId.split('@')[0]})`,
-                phone: msg.phone,
-                chatId,
+                label: `👥 Grupo ${lead?.lead_name || 'do Lead'}`,
+                phone: groupPhone,
+                chatId: groupPhone,
               });
             }
           }
