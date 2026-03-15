@@ -306,6 +306,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       prompt_instructions: s.prompt_instructions || '',
       notify_on_signature: s.notify_on_signature !== false,
       send_signed_pdf: s.send_signed_pdf !== false,
+      request_documents: s.request_documents || false,
+      document_types: s.document_types || [],
     });
     setFollowupSteps(s.followup_steps || []);
     setEditingId(s.id);
