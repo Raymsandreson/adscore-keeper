@@ -42,6 +42,7 @@ interface Shortcut {
   send_signed_pdf: boolean;
   request_documents: boolean;
   document_types: string[];
+  agent_id: string | null;
 }
 
 interface FollowupStep {
@@ -58,6 +59,7 @@ interface FollowupStep {
 interface Instance { id: string; instance_name: string; }
 interface Profile { user_id: string; full_name: string | null; }
 interface ZapSignTemplateOption { token: string; name: string; }
+interface AgentOption { id: string; name: string; }
 
 // ==================== COMPONENT ====================
 export function WhatsAppCommandConfig() {
@@ -66,22 +68,25 @@ export function WhatsAppCommandConfig() {
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [agents, setAgents] = useState<AgentOption[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     setLoading(true);
-    const [configsRes, instancesRes, profilesRes, shortcutsRes] = await Promise.all([
+    const [configsRes, instancesRes, profilesRes, shortcutsRes, agentsRes] = await Promise.all([
       supabase.from('whatsapp_command_config').select('*').order('created_at', { ascending: false }),
       supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true),
       supabase.from('profiles').select('user_id, full_name').order('full_name'),
       supabase.from('wjia_command_shortcuts').select('*').order('display_order') as any,
+      supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
     ]);
     setConfigs((configsRes.data as any[]) || []);
     setInstances(instancesRes.data || []);
     setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
     setShortcuts((shortcutsRes.data || []).map((s: any) => ({ ...s, followup_steps: s.followup_steps || [] })) as Shortcut[]);
+    setAgents((agentsRes.data || []) as AgentOption[]);
     setLoading(false);
   };
 
@@ -128,6 +133,7 @@ export function WhatsAppCommandConfig() {
           <ShortcutsTab
             shortcuts={shortcuts}
             profiles={profiles}
+            agents={agents}
             onReload={loadData}
           />
         </TabsContent>
@@ -245,12 +251,12 @@ function AuthorizedPhonesTab({ configs, instances, profiles, onReload }: {
 }
 
 // ==================== SHORTCUTS TAB (with embedded follow-up) ====================
-function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]; profiles: Profile[]; onReload: () => void }) {
+function ShortcutsTab({ shortcuts, profiles, agents, onReload }: { shortcuts: Shortcut[]; profiles: Profile[]; agents: AgentOption[]; onReload: () => void }) {
   const [showForm, setShowForm] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; followup_steps: FollowupStep[] } | null>(null);
-  const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] as string[] });
+  const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] as string[], agent_id: '' });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
   const [zapsignTemplates, setZapsignTemplates] = useState<ZapSignTemplateOption[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
@@ -278,7 +284,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   }, [showForm, loadZapSignTemplates]);
 
   const resetForm = () => {
-    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] });
+    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [], agent_id: '' });
     setFollowupSteps([]);
     setEditingId(null);
     setShowForm(false);
@@ -308,6 +314,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       send_signed_pdf: s.send_signed_pdf !== false,
       request_documents: s.request_documents || false,
       document_types: s.document_types || [],
+      agent_id: s.agent_id || '',
     });
     setFollowupSteps(s.followup_steps || []);
     setEditingId(s.id);
@@ -339,6 +346,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       send_signed_pdf: form.send_signed_pdf,
       request_documents: form.request_documents,
       document_types: form.document_types,
+      agent_id: form.agent_id || null,
     };
 
     let error;
@@ -400,6 +408,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
               send_signed_pdf: true,
               request_documents: false,
               document_types: [],
+              agent_id: '',
             });
             setFollowupSteps(config.followup_steps || []);
             setShowForm(true);
@@ -526,8 +535,24 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 className="min-h-[80px] text-xs"
               />
             </div>
+            {/* Agent selector */}
+            <div className="space-y-1">
+              <Label className="text-xs">🤖 Agente IA (usado na coleta de dados)</Label>
+              <Select
+                value={form.agent_id}
+                onValueChange={v => setForm(f => ({ ...f, agent_id: v === '_none' ? '' : v }))}
+              >
+                <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Nenhum agente (padrão)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none" className="text-xs">Nenhum (usar prompt padrão)</SelectItem>
+                  {agents.map(a => (
+                    <SelectItem key={a.id} value={a.id} className="text-xs">🤖 {a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">O agente define a persona e estilo de comunicação durante a coleta.</p>
+            </div>
 
-            {/* Follow-up Steps Section */}
             <div className="border-t pt-3 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -607,6 +632,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">@wjia {s.shortcut_name}</span>
                   {s.template_name && <Badge variant="secondary" className="text-[10px]">{s.template_name}</Badge>}
+                  {s.agent_id && <Badge variant="outline" className="text-[10px] gap-1"><Bot className="h-3 w-3" />{agents.find(a => a.id === s.agent_id)?.name || 'Agente'}</Badge>}
                 </div>
                 {s.description && <p className="text-[11px] text-muted-foreground mt-0.5">{s.description}</p>}
                 {s.prompt_instructions && (
@@ -660,6 +686,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                       send_signed_pdf: form.send_signed_pdf,
                       request_documents: form.request_documents,
                       document_types: form.document_types,
+                      agent_id: form.agent_id,
                     });
                     setFollowupSteps(config.followup_steps || []);
                     setEditingId(s.id);

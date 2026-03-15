@@ -1,0 +1,1 @@
+ALTER TABLE public.wjia_collection_sessions ADD COLUMN agent_id uuid REFERENCES public.whatsapp_ai_agents(id) ON DELETE SET NULL;

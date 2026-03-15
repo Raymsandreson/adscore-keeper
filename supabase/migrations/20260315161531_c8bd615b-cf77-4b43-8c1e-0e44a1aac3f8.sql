@@ -1,0 +1,1 @@
+ALTER TABLE public.wjia_command_shortcuts ADD COLUMN agent_id uuid REFERENCES public.whatsapp_ai_agents(id) ON DELETE SET NULL;

@@ -6709,6 +6709,7 @@ export type Database = {
       }
       wjia_collection_sessions: {
         Row: {
+          agent_id: string | null
           collected_data: Json | null
           contact_id: string | null
           created_at: string | null
@@ -6733,6 +6734,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          agent_id?: string | null
           collected_data?: Json | null
           contact_id?: string | null
           created_at?: string | null
@@ -6757,6 +6759,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          agent_id?: string | null
           collected_data?: Json | null
           contact_id?: string | null
           created_at?: string | null
@@ -6780,10 +6783,19 @@ export type Database = {
           triggered_by?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "wjia_collection_sessions_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_agents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       wjia_command_shortcuts: {
         Row: {
+          agent_id: string | null
           created_at: string | null
           description: string | null
           display_order: number | null
@@ -6801,6 +6813,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          agent_id?: string | null
           created_at?: string | null
           description?: string | null
           display_order?: number | null
@@ -6818,6 +6831,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          agent_id?: string | null
           created_at?: string | null
           description?: string | null
           display_order?: number | null
@@ -6834,7 +6848,15 @@ export type Database = {
           template_token?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "wjia_command_shortcuts_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_agents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       wjia_followup_log: {
         Row: {
