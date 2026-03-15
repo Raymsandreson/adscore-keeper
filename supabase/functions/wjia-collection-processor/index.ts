@@ -934,8 +934,9 @@ REGRAS:
             return `• *${label}*: ${f.para}`;
           }).join('\n');
 
-        // Check if we need to collect documents
-        const needsDocs = session.request_documents && Array.isArray(session.document_types) && session.document_types.length > 0;
+        // Check if we need to collect documents (only if not already collected in docs-first flow)
+        const alreadyReceivedDocs = Array.isArray(session.received_documents) && session.received_documents.length > 0;
+        const needsDocs = session.request_documents && Array.isArray(session.document_types) && session.document_types.length > 0 && !alreadyReceivedDocs;
         const docTypeLabels: Record<string, string> = {
           rg_cnh: 'RG / CNH',
           comprovante_endereco: 'Comprovante de endereço',
