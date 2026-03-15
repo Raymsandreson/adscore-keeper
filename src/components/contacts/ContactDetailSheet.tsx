@@ -663,15 +663,16 @@ export function ContactDetailSheet({
                       </div>
                     </div>
 
-                    <div>
+                    <div className="col-span-2">
                       <Label className="flex items-center gap-1">
-                        👥 Grupo WhatsApp (ID)
+                        👥 Grupo WhatsApp
                       </Label>
                       <Input
                         value={whatsappGroupId}
                         onChange={(e) => setWhatsappGroupId(e.target.value)}
-                        placeholder="120363xxxxx@g.us"
+                        placeholder="https://chat.whatsapp.com/... ou 120363xxx@g.us"
                       />
+                      <p className="text-xs text-muted-foreground mt-1">Cole o link do grupo. O ID será extraído automaticamente.</p>
                     </div>
 
                     <div>
