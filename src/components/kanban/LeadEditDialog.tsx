@@ -882,22 +882,14 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                   </Select>
                 </div>
 
-                <div>
-                  <Label>Link da Notícia</Label>
-                  <Input
-                    value={groupLink}
-                    onChange={(e) => setGroupLink(e.target.value)}
-                    placeholder="https://chat.whatsapp.com/..."
-                  />
-                </div>
-
-                <div>
-                  <Label>Grupo WhatsApp (ID)</Label>
+                <div className="col-span-2">
+                  <Label>Grupo WhatsApp (link ou ID)</Label>
                   <Input
                     value={whatsappGroupId}
                     onChange={(e) => setWhatsappGroupId(e.target.value)}
-                    placeholder="120363xxxxx@g.us"
+                    placeholder="https://chat.whatsapp.com/... ou 120363xxx@g.us"
                   />
+                  <p className="text-xs text-muted-foreground mt-1">Cole o link do grupo. O ID será extraído automaticamente ao salvar.</p>
                 </div>
 
                 <div>
