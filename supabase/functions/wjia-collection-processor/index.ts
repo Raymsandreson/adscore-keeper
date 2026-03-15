@@ -152,13 +152,13 @@ serve(async (req) => {
 
     const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
 
-    // Find active collection session for this phone (collecting OR confirming)
+    // Find active collection session for this phone (collecting OR ready-for-confirmation)
     const { data: session } = await supabase
       .from("wjia_collection_sessions")
       .select("*")
       .eq("phone", normalizedPhone)
       .eq("instance_name", instance_name)
-      .in("status", ["collecting", "confirming"])
+      .in("status", ["collecting", "ready"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -172,7 +172,7 @@ serve(async (req) => {
     console.log("Active collection session found:", session.id, "status:", session.status, "missing:", JSON.stringify(session.missing_fields));
 
     // === HANDLE CONFIRMATION STATUS ===
-    if (session.status === 'confirming') {
+    if (session.status === 'ready') {
       const msgLower = (message_text || "").toLowerCase().trim();
       const isConfirmation = /^(sim|confirmo|correto|ok|está certo|tá certo|pode gerar|gerar|isso|exato|confirmar|pode|certo|tudo certo|ta certo|yes|s)/.test(msgLower);
 
@@ -538,7 +538,7 @@ REGRAS:
       const isConfirmation = /^(sim|confirmo|correto|ok|está certo|tá certo|pode gerar|gerar|isso|exato|confirmar|pode|certo|tudo certo|ta certo)/.test(msgLower);
       
       if (session.status === 'collecting') {
-        // First time all data collected → show summary, move to "confirming"
+        // First time all data collected → show summary, move to "ready" (awaiting confirmation)
         const summaryLines = updatedFields
           .filter((f: any) => f.para)
           .map((f: any) => {
@@ -548,16 +548,20 @@ REGRAS:
 
         const summaryMsg = `✅ *Todos os dados foram coletados!*\n\nConfira as informações antes de gerar o documento *${session.template_name}*:\n\n${summaryLines}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento ou me diga o que precisa corrigir.`;
 
-        // Update status to "confirming"
-        await supabase
+        // Update status to "ready" (compatible with DB status check)
+        const { error: setReadyError } = await supabase
           .from("wjia_collection_sessions")
           .update({
             collected_data: updatedCollectedData,
             missing_fields: [],
-            status: "confirming",
+            status: "ready",
             updated_at: new Date().toISOString(),
           })
           .eq("id", session.id);
+
+        if (setReadyError) {
+          console.error("Error setting WJIA session to ready:", setReadyError);
+        }
 
         // Send summary
         if (inst?.instance_token) {
