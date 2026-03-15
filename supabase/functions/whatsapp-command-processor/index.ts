@@ -1032,28 +1032,25 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
       }
     }
 
+    // Determine if we should ask about audio (only for activity/lead creation)
+    const createdSomething = toolData?.activity_created || toolData?.lead_created;
+    const pendingAudioConfirm = createdSomething;
+
     // 5) Save AI response
     await supabase.from("whatsapp_command_history").insert({
-      phone: normalizedPhone, instance_name, role: "assistant", content: responseText, tool_data: toolData,
+      phone: normalizedPhone, instance_name, role: "assistant", content: responseText,
+      tool_data: { ...toolData, ...(pendingAudioConfirm ? { awaiting_audio_confirm: true } : {}) },
     });
 
-    // 6) Send response via WhatsApp (inst already fetched above)
+    // 6) Send response via WhatsApp
     if (instToken) {
       try {
-        // Send text message
-        await sendWhatsAppText(baseUrl, instToken, normalizedPhone, `🤖 *WhatsJUD IA*\n\n${responseText}`);
-        console.log("Response sent to WhatsApp:", normalizedPhone);
-
-        // Generate and send TTS audio of the response
-        try {
-          const audioUrl = await generateTTSAudio(responseText);
-          if (audioUrl) {
-            await sendWhatsAppAudio(baseUrl, instToken, normalizedPhone, audioUrl);
-            console.log("TTS audio sent to WhatsApp:", normalizedPhone);
-          }
-        } catch (ttsErr) {
-          console.error("TTS generation/send error (non-blocking):", ttsErr);
+        let fullMsg = `🤖 *WhatsJUD IA*\n\n${responseText}`;
+        if (pendingAudioConfirm) {
+          fullMsg += `\n\n🔊 Quer que eu envie um *áudio* explicando essa mensagem?\n_Responda *SIM* ou *NÃO*_`;
         }
+        await sendWhatsAppText(baseUrl, instToken, normalizedPhone, fullMsg);
+        console.log("Response sent to WhatsApp:", normalizedPhone);
       } catch (e) {
         console.error("Error sending response:", e);
       }
