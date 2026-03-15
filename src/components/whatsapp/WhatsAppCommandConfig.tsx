@@ -315,6 +315,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       document_types: s.document_types || [],
     });
     setFollowupSteps(s.followup_steps || []);
+    setStopOnHumanReply((s as any).stop_on_human_reply !== false);
     setEditingId(s.id);
     setShowForm(true);
   };
