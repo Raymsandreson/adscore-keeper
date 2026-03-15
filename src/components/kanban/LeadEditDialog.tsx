@@ -571,6 +571,30 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
 
     setSaving(true);
     try {
+      // Resolve WhatsApp group link to JID if it's a link
+      let resolvedGroupId = whatsappGroupId || null;
+      if (whatsappGroupId && whatsappGroupId.includes('chat.whatsapp.com')) {
+        try {
+          const { data: resolveData, error: resolveError } = await supabase.functions.invoke('send-whatsapp', {
+            body: { action: 'resolve_group_link', group_link: whatsappGroupId },
+          });
+          if (resolveData?.success && resolveData.group_id) {
+            resolvedGroupId = resolveData.group_id;
+            setWhatsappGroupId(resolvedGroupId);
+            toast.success(`Grupo identificado: ${resolveData.group_name || resolveData.group_id}`);
+          } else {
+            toast.error(resolveData?.error || 'Não foi possível resolver o link do grupo');
+            setSaving(false);
+            return;
+          }
+        } catch (e) {
+          console.error('Error resolving group link:', e);
+          toast.error('Erro ao resolver link do grupo');
+          setSaving(false);
+          return;
+        }
+      }
+
       // Save all fields
       await onSave(lead.id, {
         lead_name: leadName.trim(),
@@ -582,7 +606,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         client_classification: (clientClassification || null) as 'client' | 'non_client' | 'prospect' | null,
         acolhedor: acolhedor || null,
         group_link: groupLink || null,
-        whatsapp_group_id: whatsappGroupId || null,
+        whatsapp_group_id: resolvedGroupId,
         // Accident fields
         victim_name: victimName || null,
         victim_age: victimAge ? parseInt(victimAge) : null,
