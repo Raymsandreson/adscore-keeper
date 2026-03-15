@@ -152,13 +152,13 @@ serve(async (req) => {
 
     const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
 
-    // Find active collection session for this phone (collecting OR confirming)
+    // Find active collection session for this phone (collecting OR ready-for-confirmation)
     const { data: session } = await supabase
       .from("wjia_collection_sessions")
       .select("*")
       .eq("phone", normalizedPhone)
       .eq("instance_name", instance_name)
-      .in("status", ["collecting", "confirming"])
+      .in("status", ["collecting", "ready"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -172,7 +172,7 @@ serve(async (req) => {
     console.log("Active collection session found:", session.id, "status:", session.status, "missing:", JSON.stringify(session.missing_fields));
 
     // === HANDLE CONFIRMATION STATUS ===
-    if (session.status === 'confirming') {
+    if (session.status === 'ready') {
       const msgLower = (message_text || "").toLowerCase().trim();
       const isConfirmation = /^(sim|confirmo|correto|ok|está certo|tá certo|pode gerar|gerar|isso|exato|confirmar|pode|certo|tudo certo|ta certo|yes|s)/.test(msgLower);
 
