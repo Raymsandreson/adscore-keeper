@@ -477,7 +477,7 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: googleContents.length > 0 ? googleContents : [{ role: "user", parts: [{ text: message_text }] }],
+          contents: googleContents.length > 0 ? googleContents : [{ role: "user", parts: [{ text: message_text_final }] }],
           tools: [{
             functionDeclarations: [{
               name: "execute_command",
