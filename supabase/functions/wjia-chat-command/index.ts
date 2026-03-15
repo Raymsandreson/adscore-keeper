@@ -90,6 +90,14 @@ serve(async (req) => {
     const sendSignedPdf = matchedShortcut?.send_signed_pdf !== false;
     const requestDocuments = matchedShortcut?.request_documents || false;
     const documentTypes = matchedShortcut?.document_types || [];
+    const shortcutAgentId = matchedShortcut?.agent_id || null;
+
+    // Load agent data if shortcut has an agent_id
+    let agentData: any = null;
+    if (shortcutAgentId) {
+      const { data } = await supabase.from("whatsapp_ai_agents").select("name, base_prompt").eq("id", shortcutAgentId).maybeSingle();
+      agentData = data;
+    }
 
     // 2) AI decides what to do — but does NOT generate doc yet if data is missing
     const systemPrompt = `Você é o assistente WJIA, integrado ao WhatsApp de um escritório de advocacia. O atendente digitou um comando @wjia.
