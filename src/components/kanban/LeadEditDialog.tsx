@@ -882,12 +882,21 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                   </Select>
                 </div>
 
-                <div className="col-span-2">
+                <div>
                   <Label>Link da Notícia</Label>
                   <Input
                     value={groupLink}
                     onChange={(e) => setGroupLink(e.target.value)}
                     placeholder="https://chat.whatsapp.com/..."
+                  />
+                </div>
+
+                <div>
+                  <Label>Grupo WhatsApp (ID)</Label>
+                  <Input
+                    value={whatsappGroupId}
+                    onChange={(e) => setWhatsappGroupId(e.target.value)}
+                    placeholder="120363xxxxx@g.us"
                   />
                 </div>
 
