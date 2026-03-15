@@ -40,7 +40,53 @@ export function VoiceSettings() {
   const [cloneName, setCloneName] = useState('');
   const [cloneFiles, setCloneFiles] = useState<File[]>([]);
   const [cloning, setCloning] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordedBlobs, setRecordedBlobs] = useState<{ blob: Blob; name: string }[]>([]);
+  const [recordingTime, setRecordingTime] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const chunks: BlobPart[] = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const name = `gravacao_${recordedBlobs.length + 1}.webm`;
+        setRecordedBlobs(prev => [...prev, { blob, name }]);
+        stream.getTracks().forEach(t => t.stop());
+        setRecordingTime(0);
+      };
+
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
+      setRecording(true);
+      setRecordingTime(0);
+      recordingTimerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
+    } catch {
+      toast.error('Não foi possível acessar o microfone');
+    }
+  }, [recordedBlobs.length]);
+
+  const stopRecording = useCallback(() => {
+    mediaRecorderRef.current?.stop();
+    setRecording(false);
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  }, []);
+
+  const removeRecording = (index: number) => {
+    setRecordedBlobs(prev => prev.filter((_, i) => i !== index));
+  };
 
   useEffect(() => {
     loadVoices();
