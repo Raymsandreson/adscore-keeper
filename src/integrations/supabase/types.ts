@@ -4944,6 +4944,7 @@ export type Database = {
           id: string
           oab_number: string | null
           oab_uf: string | null
+          phone: string | null
           treatment_title: string | null
           updated_at: string
           user_id: string
@@ -4957,6 +4958,7 @@ export type Database = {
           id?: string
           oab_number?: string | null
           oab_uf?: string | null
+          phone?: string | null
           treatment_title?: string | null
           updated_at?: string
           user_id: string
@@ -4970,6 +4972,7 @@ export type Database = {
           id?: string
           oab_number?: string | null
           oab_uf?: string | null
+          phone?: string | null
           treatment_title?: string | null
           updated_at?: string
           user_id?: string
@@ -6680,6 +6683,7 @@ export type Database = {
           notify_weekly_summary: boolean | null
           overdue_threshold_hours: number | null
           recipient_phones: string[] | null
+          recipient_user_ids: string[] | null
           schedule_days: number[] | null
           schedule_times: string[] | null
           updated_at: string | null
@@ -6698,6 +6702,7 @@ export type Database = {
           notify_weekly_summary?: boolean | null
           overdue_threshold_hours?: number | null
           recipient_phones?: string[] | null
+          recipient_user_ids?: string[] | null
           schedule_days?: number[] | null
           schedule_times?: string[] | null
           updated_at?: string | null
@@ -6716,6 +6721,7 @@ export type Database = {
           notify_weekly_summary?: boolean | null
           overdue_threshold_hours?: number | null
           recipient_phones?: string[] | null
+          recipient_user_ids?: string[] | null
           schedule_days?: number[] | null
           schedule_times?: string[] | null
           updated_at?: string | null
