@@ -1338,6 +1338,9 @@ Deno.serve(async (req) => {
               phone,
               instance_name: instanceName,
               message_text: messageText,
+              media_url: storedMediaUrl || null,
+              media_type: mediaType || null,
+              message_type: messageType || 'text',
             }),
           }).catch(err => console.error('Collection processor trigger error:', err))
 
