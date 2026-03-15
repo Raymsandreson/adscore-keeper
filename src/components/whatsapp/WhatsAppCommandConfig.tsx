@@ -613,7 +613,7 @@ function ShortcutsTab({ shortcuts, profiles, agents, onReload }: { shortcuts: Sh
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">@wjia {s.shortcut_name}</span>
                   {s.template_name && <Badge variant="secondary" className="text-[10px]">{s.template_name}</Badge>}
-                  {s.agent_id && <Badge variant="outline" className="text-[10px] gap-1"><Bot className="h-3 w-3" />{agents.find(a => a.id === s.agent_id)?.name || 'Agente'}</Badge>}
+                  
                 </div>
                 {s.description && <p className="text-[11px] text-muted-foreground mt-0.5">{s.description}</p>}
                 {s.prompt_instructions && (
