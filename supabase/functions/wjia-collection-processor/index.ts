@@ -559,6 +559,10 @@ REGRAS:
           })
           .eq("id", session.id);
 
+        if (setReadyError) {
+          console.error("Error setting WJIA session to ready:", setReadyError);
+        }
+
         // Send summary
         if (inst?.instance_token) {
           const baseUrl = inst.base_url || "https://abraci.uazapi.com";
