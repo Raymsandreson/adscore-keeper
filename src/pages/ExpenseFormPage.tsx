@@ -793,7 +793,7 @@ export default function ExpenseFormPage() {
               );
             })}
           </div>
-        </ScrollArea>
+        </div>
 
         {/* Submit */}
         <Card>
