@@ -812,9 +812,67 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
           responseText += "\n\n⚠️ Erro ao criar atividade: " + actErr.message;
         } else {
           toolData.activity_created = newAct;
-          // Append edit link
           responseText += `\n\n✏️ Editar: ${APP_URL}/?openActivity=${newAct?.id}`;
           console.log("Activity created via WhatsApp:", newAct?.id);
+
+          // Auto-attach images/documents from buffered media
+          if (newAct?.id && bufferedMedia.length > 0) {
+            const imageMedia = bufferedMedia.filter(m => m.type === 'image' || m.type === 'document');
+            for (const media of imageMedia) {
+              const fileName = media.type === 'image' ? `whatsapp_image_${Date.now()}.jpg` : `whatsapp_doc_${Date.now()}`;
+              await supabase.from("activity_attachments").insert({
+                activity_id: newAct.id,
+                file_name: fileName,
+                file_url: media.url,
+                file_type: media.type === 'image' ? 'image/jpeg' : 'application/octet-stream',
+                attachment_type: 'file',
+                created_by: config.user_id,
+              });
+            }
+            if (imageMedia.length > 0) {
+              responseText += `\n📎 ${imageMedia.length} anexo(s) vinculado(s) à atividade`;
+            }
+          }
+        }
+      }
+
+      // ── Attach to existing activity ──
+      if (parsed.attach_to_activity) {
+        const att = parsed.attach_to_activity;
+        let query = supabase.from("lead_activities").select("id, title").order("created_at", { ascending: false }).limit(5);
+        if (att.activity_title_search) {
+          query = query.ilike("title", `%${att.activity_title_search}%`);
+        }
+        if (att.lead_name_search) {
+          query = query.ilike("lead_name", `%${att.lead_name_search}%`);
+        }
+        const { data: matchedActs } = await query;
+
+        if (matchedActs && matchedActs.length > 0) {
+          const targetAct = matchedActs[0];
+          const imageMedia = bufferedMedia.filter(m => m.type === 'image' || m.type === 'document');
+          let attachedCount = 0;
+          for (const media of imageMedia) {
+            const fileName = media.type === 'image' ? `whatsapp_image_${Date.now()}.jpg` : `whatsapp_doc_${Date.now()}`;
+            const { error: attErr } = await supabase.from("activity_attachments").insert({
+              activity_id: targetAct.id,
+              file_name: fileName,
+              file_url: media.url,
+              file_type: media.type === 'image' ? 'image/jpeg' : 'application/octet-stream',
+              attachment_type: 'file',
+              created_by: config.user_id,
+            });
+            if (!attErr) attachedCount++;
+          }
+          if (attachedCount > 0) {
+            responseText += `\n\n📎 ${attachedCount} anexo(s) vinculado(s) à atividade *${targetAct.title}*`;
+            responseText += `\n✏️ Ver: ${APP_URL}/?openActivity=${targetAct.id}`;
+          } else {
+            responseText += "\n\n⚠️ Nenhuma imagem/documento encontrado para anexar.";
+          }
+          toolData.attached_to = targetAct;
+        } else {
+          responseText += "\n\n🔍 Nenhuma atividade encontrada com esse nome.";
         }
       }
 
