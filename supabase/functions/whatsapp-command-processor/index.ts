@@ -557,8 +557,9 @@ VOCÊ PODE:
 ASSESSORES CADASTRADOS:
 ${assessorsList}
 
-TIPOS DE ATIVIDADE (USE EXATAMENTE ESTAS KEYS): ${actTypesList}
-IMPORTANTE: Use SEMPRE a key exata (ex: "tarefa", "audiencia"). Nunca invente tipos novos.
+TIPOS DE ATIVIDADE DISPONÍVEIS (USE A KEY EXATA):
+${actTypes.map((t: any) => `  - key: "${t.key}" → ${t.label}`).join("\n")}
+⚠️ OBRIGATÓRIO: Use APENAS as keys listadas acima. Ex: se o assessor diz "gerenciamento de processo" ou "gerenciar caso", use a key que melhor corresponde na lista (como "gerenciamento_processual" ou "tarefa"). NUNCA invente keys novas.
 
 QUADROS KANBAN:
 ${boardsList}
@@ -567,7 +568,7 @@ DATA ATUAL: ${new Date().toISOString().split("T")[0]} (ANO: ${new Date().getFull
 
 REGRAS CRÍTICAS DE COMPORTAMENTO:
 1. DECIDA VOCÊ MESMO todos os campos com base no contexto. NUNCA liste todas as opções pedindo para o usuário escolher.
-2. Para "activity_type": analise o conteúdo do comando e escolha o tipo mais adequado automaticamente. Ex: "ligar para fulano" → tipo ligação; "audiência dia X" → tipo audiência; "reunião com equipe" → tipo reunião. Se não houver tipo claro, use "tarefa".
+2. Para "activity_type": analise o conteúdo do comando e escolha o tipo mais adequado da lista acima. Se o comando menciona audiência → use a key de audiência. Se menciona reunião → use a key de reunião. Se não houver tipo claro, use "tarefa". NUNCA use um valor que não esteja na lista de keys.
 3. Para "priority": infira do contexto (palavras como "urgente", "importante", "quando puder"). Default: "normal".
 4. Para "matrix_quadrant": infira automaticamente (urgente+importante=do_now, importante+não urgente=schedule, etc). Default: "schedule".
 5. Para "assigned_to": se não mencionado, use o próprio assessor que enviou o comando.
@@ -579,6 +580,10 @@ REGRAS CRÍTICAS DE COMPORTAMENTO:
 11. Após criar atividade ou lead, inclua na response_text um resumo do que foi criado com os campos preenchidos.
 12. O assessor que enviou o comando é: "${config.user_name}" (id: ${config.user_id})
 13. Responda em português do Brasil
+
+ANEXAR IMAGENS A ATIVIDADES:
+- Se o assessor enviou uma imagem e pede para "anexar" a uma atividade existente, use "attach_to_activity" com o título ou nome do lead para buscar a atividade.
+- Se imagens foram enviadas junto com um comando de criação de atividade, elas serão anexadas automaticamente.
 
 RELATÓRIOS E PRODUTIVIDADE:
 - Quando pedirem relatório, feedback, desempenho ou produtividade: use productivity_report
