@@ -301,21 +301,27 @@ export function VoiceSettings() {
                 }}
               >
                 <Mic className="h-4 w-4 text-muted-foreground shrink-0" />
-                <div className="flex-1">
+              <div className="flex-1">
                   <span className="text-sm font-medium">{voice.name}</span>
                   <Badge variant={voice.status === 'ready' ? 'default' : voice.status === 'failed' ? 'destructive' : 'secondary'} className="ml-2 text-[10px]">
                     {voice.status === 'ready' ? 'Pronta' : voice.status === 'processing' ? 'Processando...' : voice.status === 'failed' ? 'Falhou' : 'Pendente'}
                   </Badge>
                 </div>
-                {voice.status === 'ready' && voice.elevenlabs_voice_id && (
-                  <div className="flex items-center gap-1">
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
-                      onClick={(e) => { e.stopPropagation(); previewVoice(voice.elevenlabs_voice_id!); }}>
-                      {previewingId === voice.elevenlabs_voice_id ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-                    </Button>
-                    {preference?.voice_id === voice.elevenlabs_voice_id && <Check className="h-4 w-4 text-primary" />}
-                  </div>
-                )}
+                <div className="flex items-center gap-1 shrink-0">
+                  {voice.status === 'ready' && voice.elevenlabs_voice_id && (
+                    <>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                        onClick={(e) => { e.stopPropagation(); previewVoice(voice.elevenlabs_voice_id!); }}>
+                        {previewingId === voice.elevenlabs_voice_id ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                      </Button>
+                      {preference?.voice_id === voice.elevenlabs_voice_id && <Check className="h-4 w-4 text-primary" />}
+                    </>
+                  )}
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                    onClick={(e) => { e.stopPropagation(); deleteVoice(voice.id, voice.elevenlabs_voice_id); }}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
             ))}
           </CardContent>

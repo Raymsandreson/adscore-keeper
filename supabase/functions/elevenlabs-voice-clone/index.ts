@@ -180,6 +180,46 @@ serve(async (req) => {
       });
     }
 
+    // Delete a custom voice
+    if (action === "delete") {
+      const { voice_id, record_id } = body;
+      if (!record_id) throw new Error("record_id required");
+
+      // If there's an ElevenLabs voice, delete it from their API
+      if (voice_id) {
+        try {
+          await fetch(`https://api.elevenlabs.io/v1/voices/${voice_id}`, {
+            method: "DELETE",
+            headers: { "xi-api-key": ELEVENLABS_API_KEY },
+          });
+        } catch (e) {
+          console.error("ElevenLabs delete error (non-fatal):", e);
+        }
+      }
+
+      // Delete from database
+      const { error } = await supabase
+        .from("custom_voices")
+        .delete()
+        .eq("id", record_id)
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+
+      // Clear preference if it was using this voice
+      if (voice_id) {
+        await supabase
+          .from("voice_preferences")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("voice_id", voice_id);
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     throw new Error(`Unknown action: ${action}`);
   } catch (err) {
     console.error("Voice clone error:", err);
