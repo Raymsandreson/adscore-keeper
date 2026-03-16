@@ -422,8 +422,11 @@ serve(async (req) => {
         tool_data: hasMedia ? { media_url, message_type } : null,
       });
 
-      // Ask if there's more
-      const collectMsg = `📥 *Recebido!*\n\nTem mais alguma coisa pra enviar? (áudio, documento, link, foto, ou mais informações)\n\n_Quando terminar, responda *PRONTO* que eu processo tudo de uma vez_ ✅`;
+      // If it's an image/document with no text, ask if it's to attach to an activity
+      const isImageOnly = (message_type === 'image' || message_type === 'document') && !message_text?.trim();
+      const collectMsg = isImageOnly
+        ? `📥 *Imagem recebida!*\n\n📎 Quer *anexar essa imagem a uma atividade existente*? Se sim, me diga qual atividade ou o nome do lead.\n\nOu envie mais informações para criar um novo comando.\n\n_Quando terminar, responda *PRONTO*_ ✅`
+        : `📥 *Recebido!*\n\nTem mais alguma coisa pra enviar? (áudio, documento, link, foto, ou mais informações)\n\n_Quando terminar, responda *PRONTO* que eu processo tudo de uma vez_ ✅`;
       
       await supabase.from("whatsapp_command_history").insert({
         phone: normalizedPhone, instance_name, role: "assistant", content: collectMsg,
@@ -554,8 +557,9 @@ VOCÊ PODE:
 ASSESSORES CADASTRADOS:
 ${assessorsList}
 
-TIPOS DE ATIVIDADE (USE EXATAMENTE ESTAS KEYS): ${actTypesList}
-IMPORTANTE: Use SEMPRE a key exata (ex: "tarefa", "audiencia"). Nunca invente tipos novos.
+TIPOS DE ATIVIDADE DISPONÍVEIS (USE A KEY EXATA):
+${actTypes.map((t: any) => `  - key: "${t.key}" → ${t.label}`).join("\n")}
+⚠️ OBRIGATÓRIO: Use APENAS as keys listadas acima. Ex: se o assessor diz "gerenciamento de processo" ou "gerenciar caso", use a key que melhor corresponde na lista (como "gerenciamento_processual" ou "tarefa"). NUNCA invente keys novas.
 
 QUADROS KANBAN:
 ${boardsList}
@@ -564,7 +568,7 @@ DATA ATUAL: ${new Date().toISOString().split("T")[0]} (ANO: ${new Date().getFull
 
 REGRAS CRÍTICAS DE COMPORTAMENTO:
 1. DECIDA VOCÊ MESMO todos os campos com base no contexto. NUNCA liste todas as opções pedindo para o usuário escolher.
-2. Para "activity_type": analise o conteúdo do comando e escolha o tipo mais adequado automaticamente. Ex: "ligar para fulano" → tipo ligação; "audiência dia X" → tipo audiência; "reunião com equipe" → tipo reunião. Se não houver tipo claro, use "tarefa".
+2. Para "activity_type": analise o conteúdo do comando e escolha o tipo mais adequado da lista acima. Se o comando menciona audiência → use a key de audiência. Se menciona reunião → use a key de reunião. Se não houver tipo claro, use "tarefa". NUNCA use um valor que não esteja na lista de keys.
 3. Para "priority": infira do contexto (palavras como "urgente", "importante", "quando puder"). Default: "normal".
 4. Para "matrix_quadrant": infira automaticamente (urgente+importante=do_now, importante+não urgente=schedule, etc). Default: "schedule".
 5. Para "assigned_to": se não mencionado, use o próprio assessor que enviou o comando.
@@ -576,6 +580,10 @@ REGRAS CRÍTICAS DE COMPORTAMENTO:
 11. Após criar atividade ou lead, inclua na response_text um resumo do que foi criado com os campos preenchidos.
 12. O assessor que enviou o comando é: "${config.user_name}" (id: ${config.user_id})
 13. Responda em português do Brasil
+
+ANEXAR IMAGENS A ATIVIDADES:
+- Se o assessor enviou uma imagem e pede para "anexar" a uma atividade existente, use "attach_to_activity" com o título ou nome do lead para buscar a atividade.
+- Se imagens foram enviadas junto com um comando de criação de atividade, elas serão anexadas automaticamente.
 
 RELATÓRIOS E PRODUTIVIDADE:
 - Quando pedirem relatório, feedback, desempenho ou produtividade: use productivity_report
@@ -645,6 +653,15 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
                   notes: { type: "string" },
                 },
                 required: ["lead_name"],
+              },
+              attach_to_activity: {
+                type: "object",
+                description: "Anexar imagens/mídias enviadas a uma atividade existente. Use quando o assessor enviar uma imagem e pedir para anexar a uma atividade.",
+                properties: {
+                  activity_title_search: { type: "string", description: "Título ou parte do título da atividade para buscar" },
+                  lead_name_search: { type: "string", description: "Nome do lead para filtrar a busca" },
+                },
+                required: ["activity_title_search"],
               },
               search_query: {
                 type: "object",
@@ -761,11 +778,27 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
           if (leads?.[0]) leadId = leads[0].id;
         }
 
-        // Validate activity_type against known keys (case-insensitive match)
+        // Validate activity_type against known keys (case-insensitive + partial match)
         let validatedType = "tarefa";
         if (act.activity_type) {
-          const match = actTypeKeys.find((k: string) => k.toLowerCase() === act.activity_type.toLowerCase());
-          validatedType = match || "tarefa";
+          const inputType = act.activity_type.toLowerCase().replace(/[_\s-]/g, '');
+          // Exact match first
+          const exactMatch = actTypeKeys.find((k: string) => k.toLowerCase() === act.activity_type.toLowerCase());
+          if (exactMatch) {
+            validatedType = exactMatch;
+          } else {
+            // Partial/fuzzy match - check if input contains or is contained in any key
+            const partialMatch = actTypeKeys.find((k: string) => {
+              const normalizedKey = k.toLowerCase().replace(/[_\s-]/g, '');
+              return normalizedKey.includes(inputType) || inputType.includes(normalizedKey);
+            });
+            // Also try matching against labels
+            const labelMatch = !partialMatch ? actTypes.find((t: any) => {
+              const normalizedLabel = t.label.toLowerCase().replace(/[_\s-]/g, '');
+              return normalizedLabel.includes(inputType) || inputType.includes(normalizedLabel);
+            }) : null;
+            validatedType = partialMatch || labelMatch?.key || "tarefa";
+          }
         }
 
         const { data: newAct, error: actErr } = await supabase
@@ -795,9 +828,67 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
           responseText += "\n\n⚠️ Erro ao criar atividade: " + actErr.message;
         } else {
           toolData.activity_created = newAct;
-          // Append edit link
           responseText += `\n\n✏️ Editar: ${APP_URL}/?openActivity=${newAct?.id}`;
           console.log("Activity created via WhatsApp:", newAct?.id);
+
+          // Auto-attach images/documents from buffered media
+          if (newAct?.id && bufferedMedia.length > 0) {
+            const imageMedia = bufferedMedia.filter(m => m.type === 'image' || m.type === 'document');
+            for (const media of imageMedia) {
+              const fileName = media.type === 'image' ? `whatsapp_image_${Date.now()}.jpg` : `whatsapp_doc_${Date.now()}`;
+              await supabase.from("activity_attachments").insert({
+                activity_id: newAct.id,
+                file_name: fileName,
+                file_url: media.url,
+                file_type: media.type === 'image' ? 'image/jpeg' : 'application/octet-stream',
+                attachment_type: 'file',
+                created_by: config.user_id,
+              });
+            }
+            if (imageMedia.length > 0) {
+              responseText += `\n📎 ${imageMedia.length} anexo(s) vinculado(s) à atividade`;
+            }
+          }
+        }
+      }
+
+      // ── Attach to existing activity ──
+      if (parsed.attach_to_activity) {
+        const att = parsed.attach_to_activity;
+        let query = supabase.from("lead_activities").select("id, title").order("created_at", { ascending: false }).limit(5);
+        if (att.activity_title_search) {
+          query = query.ilike("title", `%${att.activity_title_search}%`);
+        }
+        if (att.lead_name_search) {
+          query = query.ilike("lead_name", `%${att.lead_name_search}%`);
+        }
+        const { data: matchedActs } = await query;
+
+        if (matchedActs && matchedActs.length > 0) {
+          const targetAct = matchedActs[0];
+          const imageMedia = bufferedMedia.filter(m => m.type === 'image' || m.type === 'document');
+          let attachedCount = 0;
+          for (const media of imageMedia) {
+            const fileName = media.type === 'image' ? `whatsapp_image_${Date.now()}.jpg` : `whatsapp_doc_${Date.now()}`;
+            const { error: attErr } = await supabase.from("activity_attachments").insert({
+              activity_id: targetAct.id,
+              file_name: fileName,
+              file_url: media.url,
+              file_type: media.type === 'image' ? 'image/jpeg' : 'application/octet-stream',
+              attachment_type: 'file',
+              created_by: config.user_id,
+            });
+            if (!attErr) attachedCount++;
+          }
+          if (attachedCount > 0) {
+            responseText += `\n\n📎 ${attachedCount} anexo(s) vinculado(s) à atividade *${targetAct.title}*`;
+            responseText += `\n✏️ Ver: ${APP_URL}/?openActivity=${targetAct.id}`;
+          } else {
+            responseText += "\n\n⚠️ Nenhuma imagem/documento encontrado para anexar.";
+          }
+          toolData.attached_to = targetAct;
+        } else {
+          responseText += "\n\n🔍 Nenhuma atividade encontrada com esse nome.";
         }
       }
 
