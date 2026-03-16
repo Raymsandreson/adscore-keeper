@@ -526,10 +526,11 @@ serve(async (req) => {
     }
 
     // 4) Fetch system context
-    const [profilesRes, typesRes, boardsRes] = await Promise.all([
+    const [profilesRes, typesRes, boardsRes, timeBlockRes] = await Promise.all([
       supabase.from("profiles").select("user_id, full_name").order("full_name"),
-      supabase.from("activity_types").select("key, label").eq("is_active", true).order("display_order"),
+      supabase.from("activity_types").select("key, label, color").eq("is_active", true).order("display_order"),
       supabase.from("kanban_boards").select("id, name").eq("is_active", true).order("display_order"),
+      supabase.from("user_timeblock_settings").select("activity_type, days, start_hour, start_minute, end_hour, end_minute").eq("user_id", config.user_id),
     ]);
 
     const assessors = (profilesRes.data || []).filter((p: any) => p.full_name);
