@@ -453,7 +453,7 @@ export default function ExpenseFormPage() {
               className="h-7 text-xs pl-7"
             />
           </div>
-          <ScrollArea className="h-[42vh] min-h-[320px] border rounded-md">
+          <div className="border rounded-md md:h-[42vh] md:min-h-[320px] md:overflow-y-auto">
             <div className="p-1 space-y-0.5">
               <button
                 type="button"
@@ -476,7 +476,7 @@ export default function ExpenseFormPage() {
                 </button>
               ))}
             </div>
-          </ScrollArea>
+          </div>
         </TabsContent>
         <TabsContent value="contact" className="mt-2">
           <div className="relative mb-1">
@@ -488,7 +488,7 @@ export default function ExpenseFormPage() {
               className="h-7 text-xs pl-7"
             />
           </div>
-          <ScrollArea className="h-[42vh] min-h-[320px] border rounded-md">
+          <div className="border rounded-md md:h-[42vh] md:min-h-[320px] md:overflow-y-auto">
             <div className="p-1 space-y-0.5">
               <button
                 type="button"
@@ -511,7 +511,7 @@ export default function ExpenseFormPage() {
                 </button>
               ))}
             </div>
-          </ScrollArea>
+          </div>
         </TabsContent>
       </Tabs>
       {leadNameValue && (
