@@ -654,6 +654,15 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
                 },
                 required: ["lead_name"],
               },
+              attach_to_activity: {
+                type: "object",
+                description: "Anexar imagens/mídias enviadas a uma atividade existente. Use quando o assessor enviar uma imagem e pedir para anexar a uma atividade.",
+                properties: {
+                  activity_title_search: { type: "string", description: "Título ou parte do título da atividade para buscar" },
+                  lead_name_search: { type: "string", description: "Nome do lead para filtrar a busca" },
+                },
+                required: ["activity_title_search"],
+              },
               search_query: {
                 type: "object",
                 description: "Buscar informações no sistema",
