@@ -562,7 +562,7 @@ export default function ExpenseFormPage() {
   }
 
   return (
-    <div className="h-screen overflow-y-auto bg-background p-4 pb-8 md:p-8 md:pb-10">
+    <div className="min-h-screen min-h-[100dvh] bg-background p-4 pb-28 md:p-8 md:pb-10">
       <div className="max-w-3xl mx-auto space-y-4">
         {/* Header */}
         <Card>
