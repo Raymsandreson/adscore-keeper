@@ -681,7 +681,7 @@ export default function ExpenseFormPage() {
         )}
 
         {/* Transactions list */}
-        <div className="space-y-2">
+        <div className="space-y-2 pb-20">
             {pendingTransactions.map(tx => {
               const resp = responses[tx.id];
               const isExpanded = expandedTx.has(tx.id);
