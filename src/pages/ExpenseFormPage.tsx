@@ -681,8 +681,7 @@ export default function ExpenseFormPage() {
         )}
 
         {/* Transactions list */}
-        <ScrollArea className="max-h-[60vh]">
-          <div className="space-y-2">
+        <div className="space-y-2">
             {pendingTransactions.map(tx => {
               const resp = responses[tx.id];
               const isExpanded = expandedTx.has(tx.id);
