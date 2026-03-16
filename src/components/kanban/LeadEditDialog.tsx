@@ -485,7 +485,7 @@ DADOS DO CASO:
 - Setor: ${sector || 'Não informado'}
 
 CONTEÚDO DA NOTÍCIA:
-${scrapeData.data?.markdown || scrapeData.data?.content || ''}
+${scrapeData.content || ''}
       `.trim();
 
       // Call AI to analyze viability
