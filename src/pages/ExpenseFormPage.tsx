@@ -562,7 +562,7 @@ export default function ExpenseFormPage() {
   }
 
   return (
-    <div className="h-screen overflow-y-auto bg-background p-4 pb-8 md:p-8">
+    <div className="min-h-dvh bg-background p-4 pb-28 md:p-8 md:pb-10">
       <div className="max-w-3xl mx-auto space-y-4">
         {/* Header */}
         <Card>
@@ -681,7 +681,7 @@ export default function ExpenseFormPage() {
         )}
 
         {/* Transactions list */}
-        <div className="space-y-2">
+        <div className="space-y-2 pb-20">
             {pendingTransactions.map(tx => {
               const resp = responses[tx.id];
               const isExpanded = expandedTx.has(tx.id);
