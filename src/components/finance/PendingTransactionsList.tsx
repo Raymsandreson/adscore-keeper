@@ -653,13 +653,58 @@ export function PendingTransactionsList({
         </div>
       )}
       
-      {/* Select all */}
-      <div className="flex items-center gap-2 mb-2 px-1">
-        <Checkbox
-          checked={selectedIds.size === transactions.length && transactions.length > 0}
-          onCheckedChange={toggleSelectAll}
-        />
-        <span className="text-xs text-muted-foreground">Selecionar todas</span>
+      {/* Select all + per-holder selectors */}
+      <div className="flex items-center gap-2 mb-2 px-1 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={selectedIds.size === transactions.length && transactions.length > 0}
+            onCheckedChange={toggleSelectAll}
+          />
+          <span className="text-xs text-muted-foreground">Selecionar todas</span>
+        </div>
+        {(() => {
+          const holderMap = new Map<string, { name: string; txIds: string[] }>();
+          transactions.forEach(tx => {
+            const digits = tx.card_last_digits || '';
+            if (!digits) return;
+            if (!holderMap.has(digits)) {
+              const assignment = getCardAssignment(digits);
+              const name = assignment?.lead_name || assignment?.card_name || `****${digits}`;
+              holderMap.set(digits, { name, txIds: [] });
+            }
+            holderMap.get(digits)!.txIds.push(tx.id);
+          });
+          if (holderMap.size <= 1) return null;
+          return Array.from(holderMap.entries()).map(([digits, { name, txIds }]) => {
+            const allSelected = txIds.every(id => selectedIds.has(id));
+            return (
+              <button
+                key={digits}
+                type="button"
+                onClick={() => {
+                  setSelectedIds(prev => {
+                    const next = new Set(prev);
+                    if (allSelected) {
+                      txIds.forEach(id => next.delete(id));
+                    } else {
+                      txIds.forEach(id => next.add(id));
+                    }
+                    return next;
+                  });
+                }}
+                className={cn(
+                  "flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border transition-colors",
+                  allSelected
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted/50 text-muted-foreground border-border hover:bg-muted"
+                )}
+              >
+                <User className="h-3 w-3" />
+                {name}
+              </button>
+            );
+          });
+        })()}
       </div>
 
       <ScrollArea className="h-[calc(100vh-400px)]">
