@@ -526,10 +526,11 @@ serve(async (req) => {
     }
 
     // 4) Fetch system context
-    const [profilesRes, typesRes, boardsRes] = await Promise.all([
+    const [profilesRes, typesRes, boardsRes, timeBlockRes] = await Promise.all([
       supabase.from("profiles").select("user_id, full_name").order("full_name"),
-      supabase.from("activity_types").select("key, label").eq("is_active", true).order("display_order"),
+      supabase.from("activity_types").select("key, label, color").eq("is_active", true).order("display_order"),
       supabase.from("kanban_boards").select("id, name").eq("is_active", true).order("display_order"),
+      supabase.from("user_timeblock_settings").select("activity_type, days, start_hour, start_minute, end_hour, end_minute").eq("user_id", config.user_id),
     ]);
 
     const assessors = (profilesRes.data || []).filter((p: any) => p.full_name);
@@ -539,6 +540,27 @@ serve(async (req) => {
     const actTypesList = actTypes.map((t: any) => `"${t.key}" (${t.label})`).join(", ");
     const actTypeKeys = actTypes.map((t: any) => t.key);
     const boardsList = boards.map((b: any) => `- "${b.name}" (id: ${b.id})`).join("\n");
+
+    // Build user routine context from timeblock settings
+    const dayNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+    const timeBlocks = timeBlockRes.data || [];
+    let routineContext = "";
+    if (timeBlocks.length > 0) {
+      const routineLines = timeBlocks
+        .sort((a: any, b: any) => (a.start_hour + (a.start_minute || 0) / 60) - (b.start_hour + (b.start_minute || 0) / 60))
+        .map((tb: any) => {
+          const typeLabel = actTypes.find((t: any) => t.key === tb.activity_type)?.label || tb.activity_type;
+          const days = (tb.days || []).map((d: number) => dayNames[d] || d).join(", ");
+          const start = `${String(tb.start_hour).padStart(2, "0")}:${String(tb.start_minute || 0).padStart(2, "0")}`;
+          const end = `${String(tb.end_hour).padStart(2, "0")}:${String(tb.end_minute || 0).padStart(2, "0")}`;
+          return `  - ${typeLabel} (${tb.activity_type}): ${days} das ${start} às ${end}`;
+        });
+      routineContext = `\nROTINA DO ASSESSOR "${config.user_name}":\n${routineLines.join("\n")}\n`;
+      routineContext += `\n⚠️ USE A ROTINA PARA:\n`;
+      routineContext += `  1. ESCOLHER O TIPO DE ATIVIDADE: Priorize os tipos que o assessor já usa na sua rotina. Se o comando combina com um tipo da rotina, prefira ele.\n`;
+      routineContext += `  2. SUGERIR HORÁRIOS: Agende o deadline e notification_date dentro dos horários que o assessor já dedica àquele tipo de atividade. Ex: se ele faz "audiência" das 13:00-17:00, agende audiências nesse horário.\n`;
+      routineContext += `  3. ESCOLHER O DIA: Se possível, agende nos dias em que o assessor tem aquele bloco configurado.\n`;
+    }
 
     // ── System Prompt ──
     const systemPrompt = `Você é o assistente IA do CRM WhatsJUD, recebendo comandos via WhatsApp do assessor "${config.user_name}".
@@ -563,7 +585,7 @@ ${actTypes.map((t: any) => `  - key: "${t.key}" → ${t.label}`).join("\n")}
 
 QUADROS KANBAN:
 ${boardsList}
-
+${routineContext}
 DATA ATUAL: ${new Date().toISOString().split("T")[0]} (ANO: ${new Date().getFullYear()})
 
 REGRAS CRÍTICAS DE COMPORTAMENTO:
