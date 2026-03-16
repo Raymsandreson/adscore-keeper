@@ -585,7 +585,7 @@ ${actTypes.map((t: any) => `  - key: "${t.key}" → ${t.label}`).join("\n")}
 
 QUADROS KANBAN:
 ${boardsList}
-
+${routineContext}
 DATA ATUAL: ${new Date().toISOString().split("T")[0]} (ANO: ${new Date().getFullYear()})
 
 REGRAS CRÍTICAS DE COMPORTAMENTO:
