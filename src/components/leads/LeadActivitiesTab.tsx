@@ -362,7 +362,10 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs">Tipo</Label>
+                  <Label className="text-xs flex items-center gap-1">
+                    Tipo
+                    {aiSuggestingType && <Sparkles className="h-3 w-3 animate-pulse text-amber-500" />}
+                  </Label>
                   <Select value={editType} onValueChange={setEditType}>
                     <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
