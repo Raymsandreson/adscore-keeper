@@ -1304,7 +1304,7 @@ REGRAS:
       session_id: session.id,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error("Collection processor error:", error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
