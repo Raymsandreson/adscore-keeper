@@ -778,11 +778,27 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
           if (leads?.[0]) leadId = leads[0].id;
         }
 
-        // Validate activity_type against known keys (case-insensitive match)
+        // Validate activity_type against known keys (case-insensitive + partial match)
         let validatedType = "tarefa";
         if (act.activity_type) {
-          const match = actTypeKeys.find((k: string) => k.toLowerCase() === act.activity_type.toLowerCase());
-          validatedType = match || "tarefa";
+          const inputType = act.activity_type.toLowerCase().replace(/[_\s-]/g, '');
+          // Exact match first
+          const exactMatch = actTypeKeys.find((k: string) => k.toLowerCase() === act.activity_type.toLowerCase());
+          if (exactMatch) {
+            validatedType = exactMatch;
+          } else {
+            // Partial/fuzzy match - check if input contains or is contained in any key
+            const partialMatch = actTypeKeys.find((k: string) => {
+              const normalizedKey = k.toLowerCase().replace(/[_\s-]/g, '');
+              return normalizedKey.includes(inputType) || inputType.includes(normalizedKey);
+            });
+            // Also try matching against labels
+            const labelMatch = !partialMatch ? actTypes.find((t: any) => {
+              const normalizedLabel = t.label.toLowerCase().replace(/[_\s-]/g, '');
+              return normalizedLabel.includes(inputType) || inputType.includes(normalizedLabel);
+            }) : null;
+            validatedType = partialMatch || labelMatch?.key || "tarefa";
+          }
         }
 
         const { data: newAct, error: actErr } = await supabase
