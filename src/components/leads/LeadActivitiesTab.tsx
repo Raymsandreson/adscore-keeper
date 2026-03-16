@@ -9,7 +9,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Plus, CheckCircle2, Clock, AlertCircle, Loader2, ListTodo, Save, Trash2, Play, MessageCircle } from 'lucide-react';
+import { Plus, CheckCircle2, Clock, AlertCircle, Loader2, ListTodo, Save, Trash2, Play, MessageCircle, Sparkles } from 'lucide-react';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -58,12 +58,33 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   const [editNextSteps, setEditNextSteps] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
+  const [aiSuggestingType, setAiSuggestingType] = useState(false);
+
   const { types: activityTypes } = useActivityTypes();
   const { configs: timeBlockSettings } = useTimeBlockSettings();
 
   const allowedTypes = timeBlockSettings.length > 0
     ? activityTypes.filter(t => timeBlockSettings.some(c => c.activityType === t.key))
     : activityTypes;
+
+  const suggestActivityType = useCallback(async (title: string) => {
+    if (!title || title.trim().length < 5) return;
+    setAiSuggestingType(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('suggest-activity-type', { body: { title } });
+      if (!error && data?.suggested_type) {
+        const match = activityTypes.find(t => t.key === data.suggested_type);
+        if (match) {
+          const allowed = allowedTypes.length > 0 ? allowedTypes : activityTypes;
+          if (allowed.some(t => t.key === match.key)) {
+            setEditType(match.key);
+            toast.info(`Tipo sugerido pela IA: ${match.label}`, { duration: 2000 });
+          }
+        }
+      }
+    } catch { /* silent */ }
+    setAiSuggestingType(false);
+  }, [activityTypes, allowedTypes]);
 
   const fetchActivities = useCallback(async () => {
     setLoading(true);
@@ -321,7 +342,12 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
             <div className="space-y-3 pb-4">
               <div>
                 <Label className="text-xs">Título *</Label>
-                <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} className="h-8 text-sm" />
+                <Input
+                  value={editTitle}
+                  onChange={e => setEditTitle(e.target.value)}
+                  onBlur={() => suggestActivityType(editTitle)}
+                  className="h-8 text-sm"
+                />
               </div>
               <div>
                 <Label className="text-xs">Status</Label>
@@ -336,7 +362,10 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs">Tipo</Label>
+                  <Label className="text-xs flex items-center gap-1">
+                    Tipo
+                    {aiSuggestingType && <Sparkles className="h-3 w-3 animate-pulse text-amber-500" />}
+                  </Label>
                   <Select value={editType} onValueChange={setEditType}>
                     <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
