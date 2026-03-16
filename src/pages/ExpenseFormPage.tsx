@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   CreditCard, CheckCircle2, AlertCircle, Loader2, Send, 
@@ -453,7 +453,7 @@ export default function ExpenseFormPage() {
               className="h-7 text-xs pl-7"
             />
           </div>
-          <ScrollArea className="h-[42vh] min-h-[320px] border rounded-md">
+          <div className="border rounded-md md:h-[42vh] md:min-h-[320px] md:overflow-y-auto">
             <div className="p-1 space-y-0.5">
               <button
                 type="button"
@@ -476,7 +476,7 @@ export default function ExpenseFormPage() {
                 </button>
               ))}
             </div>
-          </ScrollArea>
+          </div>
         </TabsContent>
         <TabsContent value="contact" className="mt-2">
           <div className="relative mb-1">
@@ -488,7 +488,7 @@ export default function ExpenseFormPage() {
               className="h-7 text-xs pl-7"
             />
           </div>
-          <ScrollArea className="h-[42vh] min-h-[320px] border rounded-md">
+          <div className="border rounded-md md:h-[42vh] md:min-h-[320px] md:overflow-y-auto">
             <div className="p-1 space-y-0.5">
               <button
                 type="button"
@@ -511,7 +511,7 @@ export default function ExpenseFormPage() {
                 </button>
               ))}
             </div>
-          </ScrollArea>
+          </div>
         </TabsContent>
       </Tabs>
       {leadNameValue && (
@@ -562,7 +562,7 @@ export default function ExpenseFormPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-background p-4 pb-28 md:p-8 md:pb-10">
+    <div className="h-screen overflow-y-auto bg-background p-4 pb-8 md:p-8 md:pb-10">
       <div className="max-w-3xl mx-auto space-y-4">
         {/* Header */}
         <Card>
