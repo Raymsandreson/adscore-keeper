@@ -342,7 +342,12 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
             <div className="space-y-3 pb-4">
               <div>
                 <Label className="text-xs">Título *</Label>
-                <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} className="h-8 text-sm" />
+                <Input
+                  value={editTitle}
+                  onChange={e => setEditTitle(e.target.value)}
+                  onBlur={() => suggestActivityType(editTitle)}
+                  className="h-8 text-sm"
+                />
               </div>
               <div>
                 <Label className="text-xs">Status</Label>
