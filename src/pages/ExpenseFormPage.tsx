@@ -453,7 +453,7 @@ export default function ExpenseFormPage() {
               className="h-7 text-xs pl-7"
             />
           </div>
-          <ScrollArea className="h-48 border rounded-md">
+          <ScrollArea className="h-72 border rounded-md">
             <div className="p-1 space-y-0.5">
               <button
                 type="button"
