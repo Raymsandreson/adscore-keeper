@@ -422,8 +422,11 @@ serve(async (req) => {
         tool_data: hasMedia ? { media_url, message_type } : null,
       });
 
-      // Ask if there's more
-      const collectMsg = `📥 *Recebido!*\n\nTem mais alguma coisa pra enviar? (áudio, documento, link, foto, ou mais informações)\n\n_Quando terminar, responda *PRONTO* que eu processo tudo de uma vez_ ✅`;
+      // If it's an image/document with no text, ask if it's to attach to an activity
+      const isImageOnly = (message_type === 'image' || message_type === 'document') && !message_text?.trim();
+      const collectMsg = isImageOnly
+        ? `📥 *Imagem recebida!*\n\n📎 Quer *anexar essa imagem a uma atividade existente*? Se sim, me diga qual atividade ou o nome do lead.\n\nOu envie mais informações para criar um novo comando.\n\n_Quando terminar, responda *PRONTO*_ ✅`
+        : `📥 *Recebido!*\n\nTem mais alguma coisa pra enviar? (áudio, documento, link, foto, ou mais informações)\n\n_Quando terminar, responda *PRONTO* que eu processo tudo de uma vez_ ✅`;
       
       await supabase.from("whatsapp_command_history").insert({
         phone: normalizedPhone, instance_name, role: "assistant", content: collectMsg,
