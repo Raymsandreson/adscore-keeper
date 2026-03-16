@@ -58,12 +58,33 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   const [editNextSteps, setEditNextSteps] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
+  const [aiSuggestingType, setAiSuggestingType] = useState(false);
+
   const { types: activityTypes } = useActivityTypes();
   const { configs: timeBlockSettings } = useTimeBlockSettings();
 
   const allowedTypes = timeBlockSettings.length > 0
     ? activityTypes.filter(t => timeBlockSettings.some(c => c.activityType === t.key))
     : activityTypes;
+
+  const suggestActivityType = useCallback(async (title: string) => {
+    if (!title || title.trim().length < 5) return;
+    setAiSuggestingType(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('suggest-activity-type', { body: { title } });
+      if (!error && data?.suggested_type) {
+        const match = activityTypes.find(t => t.key === data.suggested_type);
+        if (match) {
+          const allowed = allowedTypes.length > 0 ? allowedTypes : activityTypes;
+          if (allowed.some(t => t.key === match.key)) {
+            setEditType(match.key);
+            toast.info(`Tipo sugerido pela IA: ${match.label}`, { duration: 2000 });
+          }
+        }
+      }
+    } catch { /* silent */ }
+    setAiSuggestingType(false);
+  }, [activityTypes, allowedTypes]);
 
   const fetchActivities = useCallback(async () => {
     setLoading(true);
