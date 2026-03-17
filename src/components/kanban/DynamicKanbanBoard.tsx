@@ -735,8 +735,30 @@ export function DynamicKanbanBoard({
                                         </DropdownMenuItem>
                                       </DropdownMenuContent>
                                     </DropdownMenu>
-                                    </div>
-                                  </div>
+                              </div>
+
+                              {/* Lead name + avatar */}
+                              <div className="flex items-start gap-2 pr-20 mb-1">
+                                <Avatar className="h-7 w-7 flex-shrink-0">
+                                  <AvatarFallback className={`text-[10px] ${isStagnant ? 'bg-red-100 text-red-600' : 'bg-primary/10 text-primary'}`}>
+                                    {getInitials(lead.lead_name)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="font-medium text-xs leading-tight break-words cursor-default" onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
+                                        <CopyableText copyValue={lead.lead_name || 'Sem nome'} label="Nome">
+                                          {lead.lead_name || 'Sem nome'}
+                                        </CopyableText>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                      <p>{lead.lead_name || 'Sem nome'}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                              </div>
 
                                   <div className="mt-2 space-y-1">
                                     {lead.lead_phone && (
