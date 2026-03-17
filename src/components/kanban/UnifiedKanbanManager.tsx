@@ -33,6 +33,7 @@ import {
   Search,
   Instagram,
   FileText,
+  ChevronRight,
 } from 'lucide-react';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
