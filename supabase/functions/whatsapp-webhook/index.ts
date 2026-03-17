@@ -1576,6 +1576,77 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ========== MEMBER AI ASSISTANT CHECK ==========
+    // If inbound message is from a registered team member's phone, route to member assistant
+    if (direction === 'inbound' && instanceName && phone && messageText) {
+      try {
+        // Check if member assistant is active
+        const { data: memberConfig } = await supabase
+          .from('member_assistant_config')
+          .select('is_active, instance_name')
+          .limit(1)
+          .maybeSingle()
+
+        if (memberConfig?.is_active) {
+          // Check if this instance is the one configured for member commands (or any if null)
+          const instanceMatch = !memberConfig.instance_name || memberConfig.instance_name === instanceName
+
+          if (instanceMatch) {
+            // Check if sender phone belongs to a team member
+            const senderPhoneNorm = phone.replace(/\D/g, '')
+            const phoneSuffix = senderPhoneNorm.slice(-8)
+
+            const { data: memberProfile } = await supabase
+              .from('profiles')
+              .select('user_id, full_name, phone')
+              .ilike('phone', `%${phoneSuffix}%`)
+              .limit(1)
+              .maybeSingle()
+
+            if (memberProfile) {
+              console.log('Member detected:', memberProfile.full_name, '- routing to member AI assistant')
+
+              const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
+              const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+
+              // Fire-and-forget to member assistant
+              fetch(`${supabaseUrl}/functions/v1/member-ai-assistant`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${supabaseAnonKey}`,
+                },
+                body: JSON.stringify({
+                  phone,
+                  instance_name: instanceName,
+                  message_text: messageText,
+                  member_user_id: memberProfile.user_id,
+                  member_name: memberProfile.full_name,
+                }),
+              }).catch(err => console.error('Member AI assistant trigger error:', err))
+
+              // Skip regular AI agent for team members
+              const respData = {
+                success: true,
+                message_id: message.id,
+                contact_id: contactId,
+                lead_id: leadId,
+                instance_name: instanceName,
+                member_assistant_routed: true,
+              }
+              await logWebhook('member_assistant_routed', respData)
+              return new Response(
+                JSON.stringify(respData),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              )
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Member assistant check error:', e)
+      }
+    }
+
     // ========== AI AGENT AUTO-REPLY ==========
     if (direction === 'inbound' && instanceName && phone) {
       try {

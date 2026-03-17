@@ -15,6 +15,7 @@ import { WhatsAppCommandConfig } from './WhatsAppCommandConfig';
 import { WhatsAppInstanceManager } from './WhatsAppInstanceManager';
 import { WhatsAppNotificationSettings } from './WhatsAppNotificationSettings';
 import { VoiceSettings } from '@/components/voice/VoiceSettings';
+import { MemberAssistantSettings } from './MemberAssistantSettings';
 
 interface Tab {
   id: string;
@@ -220,7 +221,12 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'instances' && <WhatsAppInstanceManager />}
             {activeTab === 'agents' && <WhatsAppAIAgents />}
             {activeTab === 'commands' && <WhatsAppCommandConfig />}
-            {activeTab === 'notifications' && <WhatsAppNotificationSettings />}
+            {activeTab === 'notifications' && (
+              <div className="space-y-6">
+                <MemberAssistantSettings />
+                <WhatsAppNotificationSettings />
+              </div>
+            )}
             {activeTab === 'voice' && <VoiceSettings />}
             {activeTab === 'reports' && <WhatsAppReportSettings />}
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}

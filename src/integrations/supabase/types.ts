@@ -4335,6 +4335,30 @@ export type Database = {
           },
         ]
       }
+      member_assistant_config: {
+        Row: {
+          created_at: string
+          id: string
+          instance_name: string | null
+          is_active: boolean
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          instance_name?: string | null
+          is_active?: boolean
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          instance_name?: string | null
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       member_metric_goals: {
         Row: {
           created_at: string | null
