@@ -284,7 +284,7 @@ export function TeamManagement() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {members.map((member) => (
+              {filteredMembers.map((member) => (
                 <TableRow 
                   key={member.id} 
                   className="cursor-pointer hover:bg-muted/50"
