@@ -406,7 +406,7 @@ export function DynamicKanbanBoard({
           <div style={{ width: `${board.stages.length * 272}px`, height: '1px' }} />
         </div>
 
-        <div ref={bottomScrollRef} onScroll={handleBottomScroll} className="flex gap-2 overflow-x-auto pb-4">
+        <div ref={bottomScrollRef} onScroll={handleBottomScroll} className="flex gap-1.5 overflow-x-auto pb-4">
           {board.stages.map((stage) => {
             const stageFilter = stageFilters[stage.id] || '';
             const allStageLeads = leadsByStage[stage.id] || [];
