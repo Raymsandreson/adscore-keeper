@@ -33,6 +33,7 @@ import {
   Search,
   Instagram,
   FileText,
+  ChevronRight,
 } from 'lucide-react';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
@@ -562,19 +563,26 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         />
       )}
 
-      {/* Analytics: Funnel Chart and Stage Time Metrics */}
+      {/* Analytics: Funnel Chart and Stage Time Metrics - Collapsible */}
       {selectedBoard && boardLeads.length > 0 && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <StageFunnelChart
-            board={selectedBoard}
-            leadsPerStage={leadsPerStage}
-            conversionAlerts={currentConversionAlerts}
-          />
-          <StageTimeMetrics
-            board={selectedBoard}
-            leadIds={boardLeads.map(l => l.id)}
-          />
-        </div>
+        <details className="group">
+          <summary className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground hover:text-foreground transition-colors py-1 px-1 select-none">
+            <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+            <span>Métricas e Funil de Conversão</span>
+            <Badge variant="outline" className="text-[10px] px-1.5">{boardLeads.length} leads</Badge>
+          </summary>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-2">
+            <StageFunnelChart
+              board={selectedBoard}
+              leadsPerStage={leadsPerStage}
+              conversionAlerts={currentConversionAlerts}
+            />
+            <StageTimeMetrics
+              board={selectedBoard}
+              leadIds={boardLeads.map(l => l.id)}
+            />
+          </div>
+        </details>
       )}
 
       {/* Kanban Board */}
