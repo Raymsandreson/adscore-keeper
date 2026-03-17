@@ -48,7 +48,32 @@ export function WhatsAppInstanceManager() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Instance | null>(null);
+
+  const syncPhones = async () => {
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('check-whatsapp-status');
+      if (error) throw error;
+      const results = data as Array<{ id: string; owner_phone: string | null }>;
+      if (results?.length) {
+        // Update local state with synced phones
+        setInstances(prev => prev.map(inst => {
+          const synced = results.find(r => r.id === inst.id);
+          if (synced?.owner_phone && synced.owner_phone !== inst.owner_phone) {
+            return { ...inst, owner_phone: synced.owner_phone };
+          }
+          return inst;
+        }));
+        toast.success('Números sincronizados da API!');
+      }
+    } catch (e: any) {
+      toast.error('Erro ao sincronizar: ' + (e?.message || 'erro desconhecido'));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const fetchInstances = useCallback(async () => {
     const { data, error } = await supabase
