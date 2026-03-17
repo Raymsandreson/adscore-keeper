@@ -18,7 +18,7 @@ serve(async (req) => {
 
     const { data: instances, error } = await supabase
       .from("whatsapp_instances")
-      .select("id, instance_name, instance_token, base_url, is_active")
+      .select("id, instance_name, instance_token, base_url, is_active, owner_phone")
       .eq("is_active", true);
 
     if (error) throw error;
@@ -27,7 +27,7 @@ serve(async (req) => {
     const rawResults = await Promise.all(
       (instances || []).map(async (inst) => {
         if (!inst.instance_token) {
-          return { id: inst.id, instance_name: inst.instance_name, checked_name: null, checked_status: null };
+          return { id: inst.id, instance_name: inst.instance_name, checked_name: null, checked_status: null, owner_phone: inst.owner_phone };
         }
         try {
           const baseUrl = inst.base_url || "https://abraci.uazapi.com";
@@ -36,36 +36,58 @@ serve(async (req) => {
             signal: AbortSignal.timeout(5000),
           });
           if (!resp.ok) {
-            return { id: inst.id, instance_name: inst.instance_name, checked_name: null, checked_status: null };
+            return { id: inst.id, instance_name: inst.instance_name, checked_name: null, checked_status: null, owner_phone: inst.owner_phone };
           }
           const data = await resp.json();
           const ci = data?.status?.checked_instance || data?.checked_instance;
+          
+          // Extract owner phone from the status response
+          // UazAPI returns owner/phone in various formats
+          const ownerPhone = ci?.owner || data?.owner || data?.status?.owner || null;
+          
+          // Auto-save owner_phone if we got one and it's different from stored
+          if (ownerPhone && ownerPhone !== inst.owner_phone) {
+            const cleanPhone = ownerPhone.replace(/\D/g, '');
+            if (cleanPhone.length >= 10) {
+              await supabase
+                .from("whatsapp_instances")
+                .update({ owner_phone: cleanPhone })
+                .eq("id", inst.id);
+              console.log(`Auto-saved owner_phone ${cleanPhone} for ${inst.instance_name}`);
+            }
+          }
+
           return {
             id: inst.id,
             instance_name: inst.instance_name,
             checked_name: ci?.name || null,
             checked_status: ci?.connection_status?.toLowerCase() || null,
+            owner_phone: ownerPhone?.replace(/\D/g, '') || inst.owner_phone,
           };
         } catch {
-          return { id: inst.id, instance_name: inst.instance_name, checked_name: null, checked_status: null };
+          return { id: inst.id, instance_name: inst.instance_name, checked_name: null, checked_status: null, owner_phone: inst.owner_phone };
         }
       })
     );
 
-    const statusMap: Record<string, string> = {};
+    const statusMap: Record<string, { status: string; owner_phone: string | null }> = {};
     for (const r of rawResults) {
       if (r.checked_name && r.checked_status) {
-        statusMap[r.checked_name.toLowerCase()] = r.checked_status;
+        statusMap[r.checked_name.toLowerCase()] = { 
+          status: r.checked_status,
+          owner_phone: r.owner_phone,
+        };
       }
     }
 
     const results = (instances || []).map(inst => {
-      const status = statusMap[inst.instance_name.toLowerCase()];
+      const entry = statusMap[inst.instance_name.toLowerCase()];
       return {
         id: inst.id,
         instance_name: inst.instance_name,
-        connected: status === "connected",
-        status_raw: status || "unknown",
+        connected: entry?.status === "connected",
+        status_raw: entry?.status || "unknown",
+        owner_phone: entry?.owner_phone || inst.owner_phone || null,
       };
     });
 
