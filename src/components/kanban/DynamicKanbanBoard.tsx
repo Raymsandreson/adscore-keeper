@@ -403,10 +403,10 @@ export function DynamicKanbanBoard({
           className="overflow-x-auto"
           style={{ height: '12px' }}
         >
-          <div style={{ width: `${board.stages.length * 280}px`, height: '1px' }} />
+          <div style={{ width: `calc(${board.stages.length} * max(240px, calc((100vw - ${board.stages.length * 6 + 64}px) / ${board.stages.length})) + ${(board.stages.length - 1) * 6}px)`, height: '1px' }} />
         </div>
 
-        <div ref={bottomScrollRef} onScroll={handleBottomScroll} className="flex gap-2 overflow-x-auto pb-4">
+        <div ref={bottomScrollRef} onScroll={handleBottomScroll} className="flex gap-1.5 overflow-x-auto pb-4">
           {board.stages.map((stage) => {
             const stageFilter = stageFilters[stage.id] || '';
             const allStageLeads = leadsByStage[stage.id] || [];
@@ -421,9 +421,10 @@ export function DynamicKanbanBoard({
             return (
               <div
                 key={stage.id}
-                className={`flex-shrink-0 w-64 rounded-lg border transition-all ${
+                className={`flex-shrink-0 rounded-lg border transition-all ${
                   isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''
                 }`}
+                style={{ width: `max(240px, calc((100vw - ${board.stages.length * 6 + 64}px) / ${board.stages.length}))` }}
                 onDragOver={(e) => handleDragOver(e, stage.id)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, stage.id)}
