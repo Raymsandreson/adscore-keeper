@@ -146,8 +146,36 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     }
   };
 
+  const normalizePhone = (raw: string): string => {
+    let digits = raw.replace(/\D/g, '');
+    if (!digits) return '';
+    // Remove leading + if someone typed it
+    // Ensure country code 55
+    if (digits.length >= 10 && !digits.startsWith('55')) {
+      digits = '55' + digits;
+    }
+    // Brazilian mobile: 55 + DDD(2) + 9 + number(8) = 13 digits
+    // If 12 digits (missing the 9), auto-add it
+    if (digits.length === 12 && digits.startsWith('55')) {
+      const ddd = digits.slice(2, 4);
+      const number = digits.slice(4);
+      if (!number.startsWith('9')) {
+        digits = '55' + ddd + '9' + number;
+        toast.info('O dígito 9 foi adicionado automaticamente ao número.');
+      }
+    }
+    return digits;
+  };
+
   const handleSaveProfile = async () => {
     if (!member) return;
+
+    const normalizedPhone = normalizePhone(phone);
+    
+    if (normalizedPhone && normalizedPhone.length !== 13) {
+      toast.error('Número inválido. O formato esperado é: 55 + DDD + 9 + número (13 dígitos).');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -156,7 +184,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
         .update({
           full_name: fullName.trim(),
           email: email.trim(),
-          phone: phone.replace(/\D/g, '').trim() || null,
+          phone: normalizedPhone || null,
           default_instance_id: defaultInstanceId && defaultInstanceId !== 'none' ? defaultInstanceId : null,
         })
         .eq('user_id', member.user_id);
