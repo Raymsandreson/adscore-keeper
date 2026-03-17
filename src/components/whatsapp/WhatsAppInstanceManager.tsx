@@ -206,11 +206,19 @@ export function WhatsAppInstanceManager() {
                       )}
                     </div>
                     <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      {inst.owner_phone && (
-                        <span className="flex items-center gap-1">
-                          <Phone className="h-3 w-3" /> {inst.owner_phone}
-                        </span>
-                      )}
+                      <span className="flex items-center gap-1">
+                        <Phone className="h-3 w-3" />
+                        {inst.owner_phone ? (
+                          <span className="font-medium text-foreground">{inst.owner_phone.replace(/^(\d{2})(\d{2})(\d{4,5})(\d{4})$/, '+$1 ($2) $3-$4')}</span>
+                        ) : (
+                          <button
+                            onClick={() => openEdit(inst)}
+                            className="text-primary hover:underline italic"
+                          >
+                            Definir telefone
+                          </button>
+                        )}
+                      </span>
                       <span className="flex items-center gap-1">
                         <Globe className="h-3 w-3" /> {inst.base_url || 'https://abraci.uazapi.com'}
                       </span>
