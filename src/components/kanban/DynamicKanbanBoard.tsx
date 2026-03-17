@@ -528,27 +528,6 @@ export function DynamicKanbanBoard({
                                       <p>Ver detalhes</p>
                                     </TooltipContent>
                                   </Tooltip>
-                                  <span onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
-                                    <ShareMenu entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Sem nome'} size="icon" variant="ghost" className="h-6 w-6" />
-                                  </span>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button 
-                                        variant="ghost" 
-                                        size="icon" 
-                                        className="h-6 w-6"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          onEditLead?.(lead);
-                                        }}
-                                      >
-                                        <Eye className="h-3 w-3 text-muted-foreground hover:text-primary" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top">
-                                      <p>Ver detalhes</p>
-                                    </TooltipContent>
-                                  </Tooltip>
                                       
                                       <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
