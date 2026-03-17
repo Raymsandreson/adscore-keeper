@@ -295,6 +295,45 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
               />
             </div>
 
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Phone className="h-3.5 w-3.5" />
+                Telefone / WhatsApp
+              </Label>
+              <Input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="5511999999999"
+              />
+              <p className="text-xs text-muted-foreground">
+                Usado para receber notificações via WhatsApp
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Smartphone className="h-3.5 w-3.5" />
+                Instância WhatsApp
+              </Label>
+              <Select value={defaultInstanceId} onValueChange={setDefaultInstanceId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma instância" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Nenhuma</SelectItem>
+                  {instances.map((inst) => (
+                    <SelectItem key={inst.id} value={inst.id}>
+                      {inst.instance_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Instância padrão para envio de mensagens
+              </p>
+            </div>
+
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" />
