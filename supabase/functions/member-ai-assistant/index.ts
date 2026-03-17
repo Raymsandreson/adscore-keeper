@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { phone, instance_name, message_text, member_user_id, member_name } = await req.json()
+    const { phone, instance_name, message_text, member_user_id, member_name, external_message_id } = await req.json()
     if (!phone || !instance_name || !message_text) {
       return new Response(JSON.stringify({ error: 'Missing fields' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
