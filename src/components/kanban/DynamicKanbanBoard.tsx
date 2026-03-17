@@ -503,47 +503,54 @@ export function DynamicKanbanBoard({
                             draggable
                             onDragStart={(e) => handleDragStart(e, lead)}
                           >
-                            <CardContent className="p-3">
-                              <div className="flex items-start gap-3">
-                                <div className="flex items-center gap-1">
-                                  <GripVertical className="h-4 w-4 text-muted-foreground/50" />
-                                  <Avatar className="h-8 w-8">
-                                    <AvatarFallback className={`text-xs ${isStagnant ? 'bg-red-100 text-red-600' : 'bg-primary/10 text-primary'}`}>
+                            <CardContent className="p-2.5">
+                              {/* Top row: avatar + name + actions */}
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  <GripVertical className="h-3.5 w-3.5 text-muted-foreground/50" />
+                                  <Avatar className="h-7 w-7">
+                                    <AvatarFallback className={`text-[10px] ${isStagnant ? 'bg-red-100 text-red-600' : 'bg-primary/10 text-primary'}`}>
                                       {getInitials(lead.lead_name)}
                                     </AvatarFallback>
                                   </Avatar>
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="min-w-0 flex-1">
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <div className="font-medium text-sm break-words cursor-default" onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
-                                            <CopyableText copyValue={lead.lead_name || 'Sem nome'} label="Nome">
-                                              {lead.lead_name || 'Sem nome'}
-                                            </CopyableText>
-                                          </div>
-                                        </TooltipTrigger>
-                                        <TooltipContent side="top" className="max-w-xs">
-                                          <p>{lead.lead_name || 'Sem nome'}</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                      
-                                      {/* Days in stage indicator - enhanced for stagnant leads */}
-                                      {(daysInStage > 3 || isStagnant) && (
-                                        <Badge 
-                                          variant="outline" 
-                                          className={`text-xs mt-1 ${
-                                            isStagnant 
-                                              ? 'text-red-600 border-red-400 bg-red-100 dark:bg-red-950' 
-                                              : 'text-amber-600 border-amber-300'
-                                          }`}
-                                        >
-                                          <Clock className="h-3 w-3 mr-1" />
-                                          {daysInStage}d {isStagnant && '⚠️'}
-                                        </Badge>
-                                      )}
-                                    </div>
+                                <div className="min-w-0 flex-1">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="font-medium text-xs leading-tight break-words cursor-default" onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
+                                        <CopyableText copyValue={lead.lead_name || 'Sem nome'} label="Nome">
+                                          {lead.lead_name || 'Sem nome'}
+                                        </CopyableText>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                      <p>{lead.lead_name || 'Sem nome'}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                                {/* Action buttons - always visible, never overlapped */}
+                                <div className="flex items-center gap-0 flex-shrink-0">
+                                  <span onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
+                                    <ShareMenu entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Sem nome'} size="icon" variant="ghost" className="h-6 w-6" />
+                                  </span>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button 
+                                        variant="ghost" 
+                                        size="icon" 
+                                        className="h-6 w-6"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          onEditLead?.(lead);
+                                        }}
+                                      >
+                                        <Eye className="h-3 w-3 text-muted-foreground hover:text-primary" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top">
+                                      <p>Ver detalhes</p>
+                                    </TooltipContent>
+                                  </Tooltip>
                                     
                                     <div className="flex items-center gap-0.5 flex-shrink-0">
                                       {/* Share button */}
