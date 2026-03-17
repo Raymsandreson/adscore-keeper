@@ -1314,7 +1314,7 @@ Deno.serve(async (req) => {
 
     // ========== WJIA COLLECTION SESSION CHECK ==========
     // If there's an active data collection session, route to collection processor instead of AI agent
-    if (direction === 'inbound' && instanceName && phone && messageText) {
+    if (direction === 'inbound' && instanceName && phone && (messageText || storedMediaUrl || mediaUrl || messageType !== 'text')) {
       try {
         const { data: activeSession } = await supabase
           .from('wjia_collection_sessions')
