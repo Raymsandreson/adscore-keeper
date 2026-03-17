@@ -1618,19 +1618,19 @@ Deno.serve(async (req) => {
                 .limit(1)
                 .maybeSingle()
 
-              // Also check command history to prevent duplicate processing
-              const { data: recentCommand } = await supabase
+              // Also check recent inbound from same member to prevent duplicate webhook processing
+              const { data: recentInbound } = await supabase
                 .from('whatsapp_command_history')
                 .select('id')
                 .eq('phone', phone)
-                .eq('command_type', 'member_assistant')
+                .eq('role', 'member_lock')
                 .gte('created_at', new Date(Date.now() - 30_000).toISOString())
                 .limit(1)
                 .maybeSingle()
 
-              if (recentOutbound || recentCommand) {
+              if (recentOutbound || recentInbound) {
                 console.log('Anti-loop: skipping member assistant for', phone, 
-                  recentOutbound ? '(recent outbound)' : '(recent command)')
+                  recentOutbound ? '(recent outbound)' : '(recent lock)')
               } else {
                 console.log('Member detected:', memberProfile.full_name, '- routing to member AI assistant')
 
