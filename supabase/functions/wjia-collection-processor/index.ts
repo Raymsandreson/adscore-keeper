@@ -186,7 +186,7 @@ serve(async (req) => {
               role: "user",
               content: [
                 { type: "text", text: "Transcreva este áudio:" },
-                { type: "image_url", image_url: { url: media_url } },
+                { type: "image_url", image_url: { url: await urlToBase64DataUri(media_url) } },
               ],
             },
           ],
