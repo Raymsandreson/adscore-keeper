@@ -23,6 +23,7 @@ export async function executeToolCall(
     case 'get_leads_by_location': return getLeadsByLocation(supabase, args)
     case 'get_lead_details': return getLeadDetails(supabase, args)
     case 'get_lead_contacts_summary': return getLeadContactsSummary(supabase, args)
+    case 'manage_conversation_agent': return manageConversationAgent(supabase, args)
     default: return { error: 'Ferramenta desconhecida: ' + fnName }
   }
 }
@@ -582,4 +583,154 @@ async function getLeadContactsSummary(supabase: any, args: any) {
       date: a.created_at, assigned_to: a.assigned_to_name,
     })),
   }
+}
+
+// ========== AGENT MANAGEMENT TOOL ==========
+
+async function manageConversationAgent(supabase: any, args: any) {
+  let phone = args.phone
+  let contactNameFound: string | null = null
+
+  // If contact_name provided, search for their phone
+  if (!phone && args.contact_name) {
+    const search = args.contact_name
+    // Search in contacts
+    const { data: contacts } = await supabase
+      .from('contacts')
+      .select('id, full_name, phone')
+      .ilike('full_name', `%${search}%`)
+      .not('phone', 'is', null)
+      .limit(5)
+
+    // Also search in whatsapp_messages for contact_name
+    const { data: messages } = await supabase
+      .from('whatsapp_messages')
+      .select('phone, contact_name')
+      .ilike('contact_name', `%${search}%`)
+      .not('phone', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(5)
+
+    if (contacts?.length > 0) {
+      phone = contacts[0].phone?.replace(/\D/g, '')
+      contactNameFound = contacts[0].full_name
+    } else if (messages?.length > 0) {
+      phone = messages[0].phone
+      contactNameFound = messages[0].contact_name
+    }
+
+    if (!phone) {
+      return { error: `Contato "${search}" não encontrado. Tente informar o número de telefone diretamente.` }
+    }
+  }
+
+  if (!phone) {
+    return { error: 'Informe o nome do contato ou o número de telefone da conversa.' }
+  }
+
+  // Normalize phone
+  phone = phone.replace(/\D/g, '').replace(/^0+/, '')
+
+  // Find the conversation agent assignment
+  let agentQuery = supabase
+    .from('whatsapp_conversation_agents')
+    .select('id, phone, instance_name, agent_id, is_active, human_paused_until')
+    .eq('phone', phone)
+
+  if (args.instance_name) {
+    agentQuery = agentQuery.eq('instance_name', args.instance_name)
+  }
+
+  const { data: assignments } = await agentQuery.limit(5)
+
+  if (!assignments || assignments.length === 0) {
+    // Try with phone variants
+    const variants = []
+    if (phone.startsWith('55')) variants.push(phone.slice(2))
+    const local = phone.startsWith('55') ? phone.slice(2) : phone
+    if (local.length === 10) variants.push(`${local.slice(0, 2)}9${local.slice(2)}`)
+    if (local.length === 11 && local[2] === '9') variants.push(`${local.slice(0, 2)}${local.slice(3)}`)
+
+    for (const variant of variants) {
+      let vQuery = supabase
+        .from('whatsapp_conversation_agents')
+        .select('id, phone, instance_name, agent_id, is_active, human_paused_until')
+        .eq('phone', variant)
+      if (args.instance_name) vQuery = vQuery.eq('instance_name', args.instance_name)
+      const { data: vAssignments } = await vQuery.limit(5)
+      if (vAssignments?.length) {
+        return await processAgentAction(supabase, args.action, vAssignments, contactNameFound)
+      }
+    }
+
+    return { error: `Nenhum agente de IA atribuído à conversa com ${contactNameFound || phone}.` }
+  }
+
+  return await processAgentAction(supabase, args.action, assignments, contactNameFound)
+}
+
+async function processAgentAction(supabase: any, action: string, assignments: any[], contactName: string | null) {
+  const results: any[] = []
+
+  for (const assignment of assignments) {
+    // Get agent name
+    const { data: agent } = await supabase
+      .from('whatsapp_ai_agents')
+      .select('name')
+      .eq('id', assignment.agent_id)
+      .maybeSingle()
+
+    const agentName = agent?.name || 'Agente'
+
+    if (action === 'status') {
+      const isPaused = assignment.human_paused_until && new Date(assignment.human_paused_until) > new Date()
+      results.push({
+        instance: assignment.instance_name,
+        agent: agentName,
+        active: assignment.is_active,
+        paused: isPaused,
+        paused_until: isPaused ? assignment.human_paused_until : null,
+        phone: assignment.phone,
+        contact: contactName,
+      })
+    } else if (action === 'deactivate') {
+      const { error } = await supabase
+        .from('whatsapp_conversation_agents')
+        .update({ is_active: false })
+        .eq('id', assignment.id)
+
+      if (error) {
+        results.push({ error: error.message, instance: assignment.instance_name })
+      } else {
+        results.push({
+          success: true,
+          action: 'desativado',
+          agent: agentName,
+          instance: assignment.instance_name,
+          phone: assignment.phone,
+          contact: contactName,
+        })
+      }
+    } else if (action === 'activate') {
+      const { error } = await supabase
+        .from('whatsapp_conversation_agents')
+        .update({ is_active: true, human_paused_until: null })
+        .eq('id', assignment.id)
+
+      if (error) {
+        results.push({ error: error.message, instance: assignment.instance_name })
+      } else {
+        results.push({
+          success: true,
+          action: 'ativado',
+          agent: agentName,
+          instance: assignment.instance_name,
+          phone: assignment.phone,
+          contact: contactName,
+        })
+      }
+    }
+  }
+
+  return { total: results.length, results }
 }

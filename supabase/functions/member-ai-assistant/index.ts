@@ -75,6 +75,7 @@ Você pode:
 - *Buscar leads por localização* (cidade/estado) — encontrar leads próximos
 - *Ver detalhes completos* de um lead (campos customizados, valor, etapa, etc.)
 - *Resumo de contatos* vinculados a um lead (relacionamento, ligações, atividades)
+- *Gerenciar agentes de IA* em conversas WhatsApp (ativar, desativar, verificar status)
 
 Regras:
 - Responda de forma concisa e direta, formatado para WhatsApp (use *negrito* e listas com •)
@@ -86,7 +87,9 @@ Regras:
 - Ao criar leads, pergunte pelo menos o nome e o quadro/funil se não informados
 - Ao mover lead de etapa, primeiro busque o lead e as etapas disponíveis se necessário
 - Inclua emojis relevantes nas respostas para melhor legibilidade
-- Quando o membro pedir para criar contato e vincular a lead, execute ambas ferramentas em sequência`
+- Quando o membro pedir para criar contato e vincular a lead, execute ambas ferramentas em sequência
+- Para gerenciar agentes: quando o membro pedir "desativar assistente na conversa com X", use manage_conversation_agent com action=deactivate e contact_name=X
+- Sempre busque o contato pelo nome quando o membro não informar o telefone diretamente`
 
     // First AI call with tools
     const aiMessages = [
