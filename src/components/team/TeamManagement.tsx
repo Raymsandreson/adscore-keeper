@@ -260,10 +260,18 @@ export function TeamManagement() {
       {/* Team Members */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Equipe ({members.length})
-          </CardTitle>
+          <div className="flex items-center justify-between gap-4">
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Equipe ({members.length})
+            </CardTitle>
+            <Input
+              placeholder="Buscar membro..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="max-w-xs"
+            />
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
