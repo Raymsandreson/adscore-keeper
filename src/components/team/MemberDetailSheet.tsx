@@ -157,10 +157,8 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     if (digits.length === 12 && digits.startsWith('55')) {
       const ddd = digits.slice(2, 4);
       const number = digits.slice(4);
-      if (!number.startsWith('9')) {
-        digits = '55' + ddd + '9' + number;
-        wasFixed = true;
-      }
+      digits = '55' + ddd + '9' + number;
+      wasFixed = true;
     }
     return { digits, wasFixed };
   };
