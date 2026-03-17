@@ -479,7 +479,7 @@ TIPOS AINDA PENDENTES: ${pendingTypes.join(', ')}
 Classifique o documento enviado.` },
                 { role: "user", content: [
                   { type: "text", text: "Classifique este documento:" },
-                  { type: "image_url", image_url: { url: media_url } },
+                  { type: "image_url", image_url: { url: await urlToBase64DataUri(media_url) } },
                 ]},
               ],
               tools: [{ type: "function", function: { name: "classify_document", description: "Classifica o tipo do documento", parameters: { type: "object", properties: { document_type: { type: "string", enum: ["rg_cnh", "comprovante_endereco", "comprovante_renda", "outros", "invalido"] }, confidence: { type: "string", enum: ["alta", "media", "baixa"] }, description: { type: "string", description: "Breve descrição do que foi identificado na imagem" } }, required: ["document_type", "confidence", "description"] } } }],
