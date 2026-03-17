@@ -157,7 +157,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
           full_name: fullName.trim(),
           email: email.trim(),
           phone: phone.trim() || null,
-          default_instance_id: defaultInstanceId || null,
+          default_instance_id: defaultInstanceId && defaultInstanceId !== 'none' ? defaultInstanceId : null,
         })
         .eq('user_id', member.user_id);
 
@@ -321,7 +321,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
                   <SelectValue placeholder="Selecione uma instância" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Nenhuma</SelectItem>
+                  <SelectItem value="none">Nenhuma</SelectItem>
                   {instances.map((inst) => (
                     <SelectItem key={inst.id} value={inst.id}>
                       {inst.instance_name}
