@@ -1636,6 +1636,7 @@ Deno.serve(async (req) => {
                     message_text: messageText,
                     member_user_id: memberProfile.user_id,
                     member_name: memberProfile.full_name,
+                    external_message_id: externalMessageId,
                   }),
                 }).catch(err => console.error('Member AI assistant trigger error:', err))
               }

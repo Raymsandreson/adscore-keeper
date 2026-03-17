@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { phone, instance_name, message_text, member_user_id, member_name } = await req.json()
+    const { phone, instance_name, message_text, member_user_id, member_name, external_message_id } = await req.json()
     if (!phone || !instance_name || !message_text) {
       return new Response(JSON.stringify({ error: 'Missing fields' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -107,6 +107,10 @@ Regras:
     let assistantMessage = response.choices?.[0]?.message
     let finalText = assistantMessage?.content || ''
 
+    // Admin tools that should result in ephemeral (auto-delete) responses
+    const ADMIN_TOOLS = new Set(['manage_conversation_agent'])
+    let usedAdminTool = false
+
     // Process tool calls if any (support multi-turn)
     let iterations = 0
     while (assistantMessage?.tool_calls && assistantMessage.tool_calls.length > 0 && iterations < 5) {
@@ -117,6 +121,8 @@ Regras:
         const fnName = toolCall.function?.name
         const fnArgs = JSON.parse(toolCall.function?.arguments || '{}')
         console.log('Executing tool:', fnName, 'with args:', fnArgs)
+
+        if (ADMIN_TOOLS.has(fnName)) usedAdminTool = true
 
         let result: any = null
         try {
@@ -157,10 +163,44 @@ Regras:
     })
 
     const sendResult = await sendResp.json().catch(() => ({}))
-    console.log('Member assistant reply sent:', sendResp.status, 'to:', phone)
+    console.log('Member assistant reply sent:', sendResp.status, 'to:', phone, 'ephemeral:', usedAdminTool)
+
+    // For admin tool responses, auto-delete the reply and original command after a delay
+    if (usedAdminTool && sendResp.ok) {
+      // Wait 8 seconds so the member can read the notification pop-up
+      setTimeout(async () => {
+        try {
+          // Delete the AI reply message
+          const replyMsgId = sendResult?.key?.id || sendResult?.id || sendResult?.messageId
+          if (replyMsgId) {
+            await fetch(`${inst.base_url}/message/delete`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': inst.instance_token },
+              body: JSON.stringify({ id: replyMsgId }),
+            })
+            console.log('Ephemeral reply deleted:', replyMsgId)
+          }
+          // Delete the original command message from member
+          if (external_message_id) {
+            await fetch(`${inst.base_url}/message/delete`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': inst.instance_token },
+              body: JSON.stringify({ id: external_message_id }),
+            })
+            console.log('Original command deleted:', external_message_id)
+          }
+          // Also clean up from DB
+          if (external_message_id) {
+            await supabase.from('whatsapp_messages').delete().eq('external_message_id', external_message_id)
+          }
+        } catch (e) {
+          console.error('Error deleting ephemeral messages:', e)
+        }
+      }, 8000)
+    }
 
     return new Response(
-      JSON.stringify({ success: true, reply_sent: sendResp.ok }),
+      JSON.stringify({ success: true, reply_sent: sendResp.ok, ephemeral: usedAdminTool }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (error) {
