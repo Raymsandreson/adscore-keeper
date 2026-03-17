@@ -403,7 +403,7 @@ export function DynamicKanbanBoard({
           className="overflow-x-auto"
           style={{ height: '12px' }}
         >
-          <div style={{ width: `${board.stages.length * 272}px`, height: '1px' }} />
+          <div style={{ width: `calc(${board.stages.length} * max(240px, calc((100vw - ${board.stages.length * 6 + 64}px) / ${board.stages.length})) + ${(board.stages.length - 1) * 6}px)`, height: '1px' }} />
         </div>
 
         <div ref={bottomScrollRef} onScroll={handleBottomScroll} className="flex gap-1.5 overflow-x-auto pb-4">
