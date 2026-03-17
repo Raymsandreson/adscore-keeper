@@ -99,12 +99,14 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   const [manualState, setManualState] = useState('');
   const [showManualLocation, setShowManualLocation] = useState(false);
 
-  // Filter transactions that don't have a lead or contact linked AND haven't been acknowledged
+  // Filter transactions that don't have a category, lead/contact linked, or haven't been acknowledged
   const pendingTransactions = useMemo(() => {
     return transactions.filter(t => {
       const override = getTransactionOverride(t.id);
       // If no override exists, it's pending
       if (!override) return true;
+      // If has a category assigned, not pending
+      if (override.category_id) return false;
       // If link_acknowledged is true, it means user explicitly chose "no link" - NOT pending
       if (override.link_acknowledged) return false;
       // If has lead or contact, not pending
