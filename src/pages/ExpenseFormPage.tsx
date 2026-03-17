@@ -712,6 +712,7 @@ export default function ExpenseFormPage() {
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-xs text-muted-foreground">
                             {format(new Date(tx.transaction_date + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR })}
+                            {tx.transaction_time && ` • ${tx.transaction_time.substring(0, 5)}`}
                           </span>
                           {tx.merchant_city && (
                             <span className="text-xs text-muted-foreground">
