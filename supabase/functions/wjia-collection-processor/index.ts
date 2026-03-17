@@ -210,8 +210,6 @@ serve(async (req) => {
         .maybeSingle();
       if (agentData) {
         agentPersona = `\nPERSONA DO AGENTE (use este tom, estilo e forma de falar):\nNome: ${agentData.name}\n${agentData.base_prompt || ''}\n`;
-      }
-    }
     }
 
     console.log("Active collection session found:", session.id, "status:", session.status, "missing:", JSON.stringify(session.missing_fields));
