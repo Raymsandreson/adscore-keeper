@@ -1604,26 +1604,41 @@ Deno.serve(async (req) => {
               .maybeSingle()
 
             if (memberProfile) {
-              console.log('Member detected:', memberProfile.full_name, '- routing to member AI assistant')
+              // Anti-loop: check if we already sent a reply to this phone in the last 60 seconds
+              const { data: recentReply } = await supabase
+                .from('whatsapp_messages')
+                .select('id')
+                .eq('phone', phone)
+                .eq('instance_name', instanceName)
+                .eq('direction', 'outbound')
+                .gte('created_at', new Date(Date.now() - 60_000).toISOString())
+                .limit(1)
+                .maybeSingle()
 
-              const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-              const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+              if (recentReply) {
+                console.log('Anti-loop: skipping member assistant - recent outbound reply exists for', phone)
+              } else {
+                console.log('Member detected:', memberProfile.full_name, '- routing to member AI assistant')
 
-              // Fire-and-forget to member assistant
-              fetch(`${supabaseUrl}/functions/v1/member-ai-assistant`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${supabaseAnonKey}`,
-                },
-                body: JSON.stringify({
-                  phone,
-                  instance_name: instanceName,
-                  message_text: messageText,
-                  member_user_id: memberProfile.user_id,
-                  member_name: memberProfile.full_name,
-                }),
-              }).catch(err => console.error('Member AI assistant trigger error:', err))
+                const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
+                const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+
+                // Fire-and-forget to member assistant
+                fetch(`${supabaseUrl}/functions/v1/member-ai-assistant`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseAnonKey}`,
+                  },
+                  body: JSON.stringify({
+                    phone,
+                    instance_name: instanceName,
+                    message_text: messageText,
+                    member_user_id: memberProfile.user_id,
+                    member_name: memberProfile.full_name,
+                  }),
+                }).catch(err => console.error('Member AI assistant trigger error:', err))
+              }
 
               // Skip regular AI agent for team members
               const respData = {
