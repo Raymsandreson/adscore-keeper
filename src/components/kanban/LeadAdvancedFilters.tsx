@@ -158,6 +158,27 @@ export function LeadAdvancedFilters({
           />
         </div>
 
+        <div className="flex items-center gap-1.5">
+          <Label className="text-xs text-muted-foreground whitespace-nowrap">Acidente:</Label>
+          <Input
+            type="date"
+            className="h-8 w-[130px] text-xs"
+            value={filters.accidentDateFrom}
+            onChange={e => update('accidentDateFrom', e.target.value)}
+            placeholder="De"
+            title="Data do acidente (de)"
+          />
+          <span className="text-xs text-muted-foreground">até</span>
+          <Input
+            type="date"
+            className="h-8 w-[130px] text-xs"
+            value={filters.accidentDateTo}
+            onChange={e => update('accidentDateTo', e.target.value)}
+            placeholder="Até"
+            title="Data do acidente (até)"
+          />
+        </div>
+
         <CollapsibleTrigger asChild>
           <Button variant="outline" size="sm" className="gap-2">
             <Filter className="h-4 w-4" />
