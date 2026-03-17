@@ -39,6 +39,7 @@ export function CategorizedTransactionsView({ transactions }: CategorizedTransac
     return transactions.filter(t => {
       const override = getTransactionOverride(t.id);
       if (!override) return false;
+      if (override.category_id) return true;
       if (override.link_acknowledged) return true;
       if (override.lead_id || override.contact_id) return true;
       return false;
