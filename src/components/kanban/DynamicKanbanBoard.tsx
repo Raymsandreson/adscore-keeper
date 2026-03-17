@@ -503,33 +503,9 @@ export function DynamicKanbanBoard({
                             draggable
                             onDragStart={(e) => handleDragStart(e, lead)}
                           >
-                            <CardContent className="p-2.5">
-                              {/* Top row: avatar + name + actions */}
-                              <div className="flex items-center gap-2 mb-1">
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                  <GripVertical className="h-3.5 w-3.5 text-muted-foreground/50" />
-                                  <Avatar className="h-7 w-7">
-                                    <AvatarFallback className={`text-[10px] ${isStagnant ? 'bg-red-100 text-red-600' : 'bg-primary/10 text-primary'}`}>
-                                      {getInitials(lead.lead_name)}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className="font-medium text-xs leading-tight break-words cursor-default" onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
-                                        <CopyableText copyValue={lead.lead_name || 'Sem nome'} label="Nome">
-                                          {lead.lead_name || 'Sem nome'}
-                                        </CopyableText>
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top" className="max-w-xs">
-                                      <p>{lead.lead_name || 'Sem nome'}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </div>
-                                {/* Action buttons - always visible, never overlapped */}
-                                <div className="flex items-center gap-0 flex-shrink-0">
+                            <CardContent className="p-2.5 relative">
+                              {/* Action buttons - top right corner */}
+                              <div className="absolute top-1.5 right-1 flex items-center gap-0 z-10">
                                   <span onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
                                     <ShareMenu entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Sem nome'} size="icon" variant="ghost" className="h-6 w-6" />
                                   </span>
@@ -737,8 +713,30 @@ export function DynamicKanbanBoard({
                                         </DropdownMenuItem>
                                       </DropdownMenuContent>
                                     </DropdownMenu>
-                                    </div>
-                                  </div>
+                              </div>
+
+                              {/* Lead name + avatar */}
+                              <div className="flex items-start gap-2 pr-20 mb-1">
+                                <Avatar className="h-7 w-7 flex-shrink-0">
+                                  <AvatarFallback className={`text-[10px] ${isStagnant ? 'bg-red-100 text-red-600' : 'bg-primary/10 text-primary'}`}>
+                                    {getInitials(lead.lead_name)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="font-medium text-xs leading-tight break-words cursor-default" onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
+                                        <CopyableText copyValue={lead.lead_name || 'Sem nome'} label="Nome">
+                                          {lead.lead_name || 'Sem nome'}
+                                        </CopyableText>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                      <p>{lead.lead_name || 'Sem nome'}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                              </div>
 
                                   <div className="mt-2 space-y-1">
                                     {lead.lead_phone && (
