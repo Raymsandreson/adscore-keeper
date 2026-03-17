@@ -352,6 +352,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
+                onBlur={handlePhoneBlur}
                 placeholder="+55 86 98805-4381"
               />
               <p className="text-xs text-muted-foreground">
