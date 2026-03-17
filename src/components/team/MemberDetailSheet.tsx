@@ -13,6 +13,13 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   User,
   Activity,
   Clock,
@@ -25,6 +32,8 @@ import {
   FileText,
   MessageSquare,
   UserPlus,
+  Phone,
+  Smartphone,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
