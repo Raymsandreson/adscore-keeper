@@ -150,8 +150,25 @@ export function WhatsAppNotificationSettings() {
       setSaving(false);
     }
   };
+  const handleSendNow = async () => {
+    setSending(true);
+    try {
+      // Save first if needed
+      const { data, error } = await supabase.functions.invoke('trigger-whatsapp-notifications');
+      if (error) throw error;
+      if (data?.success) {
+        toast.success(`Notificação enviada para ${data.sent}/${data.total} destinatários`);
+      } else {
+        toast.error(data?.error || 'Erro ao enviar notificação');
+      }
+    } catch (e: any) {
+      toast.error('Erro ao enviar: ' + e.message);
+    } finally {
+      setSending(false);
+    }
+  };
 
-  const addUser = () => {
+
     if (selectedUserId && !config.recipient_user_ids.includes(selectedUserId)) {
       setConfig(prev => ({ ...prev, recipient_user_ids: [...prev.recipient_user_ids, selectedUserId] }));
       setSelectedUserId('');
