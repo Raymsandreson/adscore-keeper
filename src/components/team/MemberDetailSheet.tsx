@@ -74,18 +74,46 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   const [activeTab, setActiveTab] = useState('profile');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [defaultInstanceId, setDefaultInstanceId] = useState('');
+  const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [loadingData, setLoadingData] = useState(false);
 
   useEffect(() => {
+    // Fetch WhatsApp instances once
+    const fetchInstances = async () => {
+      const { data } = await supabase
+        .from('whatsapp_instances')
+        .select('id, instance_name')
+        .eq('is_active', true)
+        .order('instance_name');
+      setInstances(data || []);
+    };
+    fetchInstances();
+  }, []);
+
+  useEffect(() => {
     if (member) {
       setFullName(member.full_name || '');
       setEmail(member.email || '');
+      fetchProfileExtras();
       fetchMemberData();
     }
   }, [member]);
+
+  const fetchProfileExtras = async () => {
+    if (!member) return;
+    const { data } = await supabase
+      .from('profiles')
+      .select('phone, default_instance_id')
+      .eq('user_id', member.user_id)
+      .single();
+    setPhone(data?.phone || '');
+    setDefaultInstanceId(data?.default_instance_id || '');
+  };
 
   const fetchMemberData = async () => {
     if (!member) return;
