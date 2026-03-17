@@ -68,6 +68,16 @@ export function TeamManagement() {
   const [inviting, setInviting] = useState(false);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredMembers = members.filter((member) => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      member.full_name?.toLowerCase().includes(term) ||
+      member.email?.toLowerCase().includes(term)
+    );
+  });
 
   if (roleLoading || loading) {
     return (
@@ -250,10 +260,18 @@ export function TeamManagement() {
       {/* Team Members */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Equipe ({members.length})
-          </CardTitle>
+          <div className="flex items-center justify-between gap-4">
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Equipe ({members.length})
+            </CardTitle>
+            <Input
+              placeholder="Buscar membro..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="max-w-xs"
+            />
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -266,7 +284,7 @@ export function TeamManagement() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {members.map((member) => (
+              {filteredMembers.map((member) => (
                 <TableRow 
                   key={member.id} 
                   className="cursor-pointer hover:bg-muted/50"
