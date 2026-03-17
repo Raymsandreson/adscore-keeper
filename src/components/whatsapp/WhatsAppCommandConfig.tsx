@@ -16,6 +16,7 @@ import {
   Zap, Phone, FileText, Bell, Pencil, Wand2
 } from 'lucide-react';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
+import { MemberAssistantSettings } from './MemberAssistantSettings';
 
 // ==================== TYPES ====================
 interface CommandConfig {
