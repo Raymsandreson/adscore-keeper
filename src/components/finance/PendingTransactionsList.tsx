@@ -674,7 +674,7 @@ export function PendingTransactionsList({
             }
             holderMap.get(digits)!.txIds.push(tx.id);
           });
-          if (holderMap.size <= 1) return null;
+          if (holderMap.size === 0) return null;
           return Array.from(holderMap.entries()).map(([digits, { name, txIds }]) => {
             const allSelected = txIds.every(id => selectedIds.has(id));
             return (
