@@ -1634,13 +1634,12 @@ Deno.serve(async (req) => {
               } else {
                 console.log('Member detected:', memberProfile.full_name, '- routing to member AI assistant')
 
-                // Record processing lock immediately
+                // Record processing lock immediately (using existing table columns)
                 await supabase.from('whatsapp_command_history').insert({
                   phone,
                   instance_name: instanceName,
-                  command_type: 'member_assistant',
-                  command_text: messageText?.substring(0, 200),
-                  user_id: memberProfile.user_id,
+                  role: 'member_lock',
+                  content: messageText?.substring(0, 200) || 'member_assistant',
                 })
 
                 const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
