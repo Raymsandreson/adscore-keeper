@@ -168,7 +168,7 @@ export function WhatsAppNotificationSettings() {
     }
   };
 
-
+  const addUser = () => {
     if (selectedUserId && !config.recipient_user_ids.includes(selectedUserId)) {
       setConfig(prev => ({ ...prev, recipient_user_ids: [...prev.recipient_user_ids, selectedUserId] }));
       setSelectedUserId('');
