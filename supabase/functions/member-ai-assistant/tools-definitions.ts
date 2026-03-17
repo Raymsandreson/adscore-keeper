@@ -266,4 +266,21 @@ export const toolDefinitions = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "manage_conversation_agent",
+      description: "Ativa ou desativa o agente de IA em uma conversa WhatsApp. Use quando o membro pedir para parar, desativar, ativar ou pausar o assistente/agente em uma conversa específica. Busque o contato pelo nome para encontrar o telefone.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["activate", "deactivate", "status"], description: "Ação: activate (ativar), deactivate (desativar), status (verificar status)" },
+          contact_name: { type: "string", description: "Nome do contato/conversa para buscar o telefone" },
+          phone: { type: "string", description: "Telefone da conversa (alternativa ao nome)" },
+          instance_name: { type: "string", description: "Nome da instância WhatsApp (opcional, busca automaticamente se não informado)" },
+        },
+        required: ["action"],
+      },
+    },
+  },
 ]

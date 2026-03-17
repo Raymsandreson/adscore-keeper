@@ -23,6 +23,7 @@ export async function executeToolCall(
     case 'get_leads_by_location': return getLeadsByLocation(supabase, args)
     case 'get_lead_details': return getLeadDetails(supabase, args)
     case 'get_lead_contacts_summary': return getLeadContactsSummary(supabase, args)
+    case 'manage_conversation_agent': return manageConversationAgent(supabase, args)
     default: return { error: 'Ferramenta desconhecida: ' + fnName }
   }
 }
