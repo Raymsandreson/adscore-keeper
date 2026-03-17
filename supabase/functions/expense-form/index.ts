@@ -47,7 +47,7 @@ serve(async (req) => {
       // Fetch transactions for this card/period
       let query = supabase
         .from("credit_card_transactions")
-        .select("id, pluggy_transaction_id, description, amount, transaction_date, merchant_name, merchant_city, merchant_state, card_last_digits, category");
+        .select("id, pluggy_transaction_id, description, amount, transaction_date, transaction_time, merchant_name, merchant_city, merchant_state, card_last_digits, category");
 
       // If specific transaction IDs exist, use them directly (supports multi-card)
       if (tokenData.transaction_ids && tokenData.transaction_ids.length > 0) {
