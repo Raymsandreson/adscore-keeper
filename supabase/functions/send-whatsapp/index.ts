@@ -5,6 +5,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+/** Normalize Brazilian phone: strip non-digits, add DDI 55 if missing */
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '')
+  // Already has DDI 55 (13 digits for mobile, 12 for landline)
+  if (digits.startsWith('55') && digits.length >= 12) return digits
+  // Has DDD + number (10-11 digits) — add 55
+  if (digits.length >= 10 && digits.length <= 11) return '55' + digits
+  // Fallback: return as-is
+  return digits
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -16,6 +27,10 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     const body = await req.json()
+    // Normalize phone in body if present
+    if (body.phone && typeof body.phone === 'string') {
+      body.phone = normalizePhone(body.phone)
+    }
     const { action } = body
 
     // ========================
