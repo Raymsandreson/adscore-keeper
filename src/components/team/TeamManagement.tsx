@@ -149,6 +149,25 @@ export function TeamManagement() {
     }
   };
 
+  const handleSendNotification = async (userId: string, memberName: string) => {
+    setSendingNotifUserId(userId);
+    try {
+      const { data, error } = await supabase.functions.invoke('trigger-whatsapp-notifications', {
+        body: { target_user_id: userId },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast.success(`Notificação enviada para ${memberName}`);
+      } else {
+        toast.error(data?.error || 'Erro ao enviar notificação');
+      }
+    } catch (e: any) {
+      toast.error('Erro ao enviar: ' + e.message);
+    } finally {
+      setSendingNotifUserId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Invite Form */}
