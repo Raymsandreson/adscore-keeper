@@ -505,8 +505,7 @@ export function DynamicKanbanBoard({
                           >
                             <CardContent className="p-2.5 relative">
                               {/* Action buttons - top right corner */}
-                              <div className="absolute top-1.5 right-1 flex items-center gap-0">
-                                <GripVertical className="h-3.5 w-3.5 text-muted-foreground/50" />
+                              <div className="absolute top-1.5 right-1 flex items-center gap-0 z-10">
                                   <span onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
                                     <ShareMenu entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Sem nome'} size="icon" variant="ghost" className="h-6 w-6" />
                                   </span>
