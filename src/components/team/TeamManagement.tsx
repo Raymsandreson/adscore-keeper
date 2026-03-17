@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -42,6 +43,7 @@ import {
   Crown,
   Send,
   Eye,
+  MessageSquare,
 } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -69,6 +71,7 @@ export function TeamManagement() {
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sendingNotifUserId, setSendingNotifUserId] = useState<string | null>(null);
 
   const filteredMembers = members.filter((member) => {
     if (!searchTerm.trim()) return true;
@@ -143,6 +146,25 @@ export function TeamManagement() {
       toast.success('Convite cancelado!');
     } catch (error: any) {
       toast.error(error.message || 'Erro ao cancelar convite');
+    }
+  };
+
+  const handleSendNotification = async (userId: string, memberName: string) => {
+    setSendingNotifUserId(userId);
+    try {
+      const { data, error } = await supabase.functions.invoke('trigger-whatsapp-notifications', {
+        body: { target_user_id: userId },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast.success(`Notificação enviada para ${memberName}`);
+      } else {
+        toast.error(data?.error || 'Erro ao enviar notificação');
+      }
+    } catch (e: any) {
+      toast.error('Erro ao enviar: ' + e.message);
+    } finally {
+      setSendingNotifUserId(null);
     }
   };
 
@@ -323,6 +345,19 @@ export function TeamManagement() {
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Enviar notificação"
+                        disabled={sendingNotifUserId === member.user_id}
+                        onClick={() => handleSendNotification(member.user_id, member.full_name || member.email || 'Membro')}
+                      >
+                        {sendingNotifUserId === member.user_id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <MessageSquare className="h-4 w-4" />
+                        )}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"

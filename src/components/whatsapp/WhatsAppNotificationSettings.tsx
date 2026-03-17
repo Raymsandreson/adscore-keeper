@@ -70,6 +70,7 @@ export function WhatsAppNotificationSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendingUserId, setSendingUserId] = useState<string | null>(null);
   const [newTime, setNewTime] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
 
@@ -150,14 +151,21 @@ export function WhatsAppNotificationSettings() {
       setSaving(false);
     }
   };
-  const handleSendNow = async () => {
-    setSending(true);
+  const handleSendNow = async (targetUserId?: string) => {
+    if (targetUserId) {
+      setSendingUserId(targetUserId);
+    } else {
+      setSending(true);
+    }
     try {
-      // Save first if needed
-      const { data, error } = await supabase.functions.invoke('trigger-whatsapp-notifications');
+      const { data, error } = await supabase.functions.invoke('trigger-whatsapp-notifications', {
+        body: targetUserId ? { target_user_id: targetUserId } : {},
+      });
       if (error) throw error;
       if (data?.success) {
-        toast.success(`Notificação enviada para ${data.sent}/${data.total} destinatários`);
+        const profile = targetUserId ? getProfileByUserId(targetUserId) : null;
+        const label = profile ? profile.full_name || profile.email || 'Usuário' : `${data.sent}/${data.total} destinatários`;
+        toast.success(`Notificação enviada para ${label}`);
       } else {
         toast.error(data?.error || 'Erro ao enviar notificação');
       }
@@ -165,6 +173,7 @@ export function WhatsAppNotificationSettings() {
       toast.error('Erro ao enviar: ' + e.message);
     } finally {
       setSending(false);
+      setSendingUserId(null);
     }
   };
 
@@ -278,7 +287,7 @@ export function WhatsAppNotificationSettings() {
               {config.recipient_user_ids.map((userId) => {
                 const profile = getProfileByUserId(userId);
                 return (
-                  <Badge key={userId} variant="secondary" className="gap-1 py-1">
+                  <Badge key={userId} variant="secondary" className="gap-1 py-1 pr-1">
                     <User className="h-3 w-3" />
                     {profile?.full_name || profile?.email || 'Usuário'}
                     {profile?.phone ? (
@@ -286,7 +295,13 @@ export function WhatsAppNotificationSettings() {
                     ) : (
                       <span className="text-[10px] text-destructive ml-0.5">(sem tel.)</span>
                     )}
-                    <X className="h-3 w-3 cursor-pointer ml-1" onClick={() => removeUser(userId)} />
+                    {profile?.phone && (
+                      <Send
+                        className={`h-3 w-3 cursor-pointer ml-1 ${sendingUserId === userId ? 'animate-spin' : 'hover:text-primary'}`}
+                        onClick={(e) => { e.stopPropagation(); handleSendNow(userId); }}
+                      />
+                    )}
+                    <X className="h-3 w-3 cursor-pointer ml-0.5" onClick={() => removeUser(userId)} />
                   </Badge>
                 );
               })}
@@ -415,12 +430,12 @@ export function WhatsAppNotificationSettings() {
       <div className="flex justify-between gap-3">
         <Button
           variant="outline"
-          onClick={handleSendNow}
+          onClick={() => handleSendNow()}
           disabled={sending || !config.is_active || !config.recipient_user_ids.length}
           className="gap-2"
         >
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          Enviar notificação agora
+          Enviar para todos agora
         </Button>
         <Button onClick={handleSave} disabled={saving} className="gap-2">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
