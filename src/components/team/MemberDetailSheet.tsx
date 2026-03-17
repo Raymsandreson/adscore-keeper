@@ -314,16 +314,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
               <Input
                 type="tel"
                 value={phone}
-                onChange={(e) => {
-                  const raw = e.target.value.replace(/\D/g, '').slice(0, 13);
-                  let formatted = raw;
-                  if (raw.length > 2) formatted = `+${raw.slice(0, 2)} ${raw.slice(2)}`;
-                  if (raw.length > 4) formatted = `+${raw.slice(0, 2)} ${raw.slice(2, 4)} ${raw.slice(4)}`;
-                  if (raw.length > 9) formatted = `+${raw.slice(0, 2)} ${raw.slice(2, 4)} ${raw.slice(4, 9)}-${raw.slice(9)}`;
-                  else if (raw.length > 4) formatted = `+${raw.slice(0, 2)} ${raw.slice(2, 4)} ${raw.slice(4)}`;
-                  if (raw.length <= 2 && raw.length > 0) formatted = `+${raw}`;
-                  setPhone(formatted);
-                }}
+                onChange={(e) => setPhone(e.target.value)}
                 placeholder="+55 86 98805-4381"
               />
               <p className="text-xs text-muted-foreground">
