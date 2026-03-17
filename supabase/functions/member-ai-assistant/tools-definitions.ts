@@ -220,4 +220,50 @@ export const toolDefinitions = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "get_leads_by_location",
+      description: "Busca leads próximos por cidade e/ou estado. Use quando o membro informar uma localização ou pedir leads próximos.",
+      parameters: {
+        type: "object",
+        properties: {
+          city: { type: "string", description: "Nome da cidade para filtrar" },
+          state: { type: "string", description: "Sigla do estado (UF) para filtrar" },
+          limit: { type: "number", description: "Máximo de resultados (padrão 10)" },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_lead_details",
+      description: "Retorna detalhes completos de um lead específico incluindo campos customizados, valor, etapa, responsável e informações de contato",
+      parameters: {
+        type: "object",
+        properties: {
+          lead_id: { type: "string", description: "ID do lead" },
+          lead_name: { type: "string", description: "Nome do lead para buscar (alternativa ao ID)" },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_lead_contacts_summary",
+      description: "Retorna um resumo dos contatos vinculados a um lead, incluindo histórico de relacionamento e informações de cada contato",
+      parameters: {
+        type: "object",
+        properties: {
+          lead_id: { type: "string", description: "ID do lead" },
+          lead_name: { type: "string", description: "Nome do lead para buscar (alternativa ao ID)" },
+        },
+        required: [],
+      },
+    },
+  },
 ]

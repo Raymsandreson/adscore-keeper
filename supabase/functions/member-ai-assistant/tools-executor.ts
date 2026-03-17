@@ -20,6 +20,9 @@ export async function executeToolCall(
     case 'link_contact_to_lead': return linkContactToLead(supabase, args)
     case 'search_contacts': return searchContacts(supabase, args)
     case 'list_team_members': return listTeamMembers(supabase)
+    case 'get_leads_by_location': return getLeadsByLocation(supabase, args)
+    case 'get_lead_details': return getLeadDetails(supabase, args)
+    case 'get_lead_contacts_summary': return getLeadContactsSummary(supabase, args)
     default: return { error: 'Ferramenta desconhecida: ' + fnName }
   }
 }
@@ -359,6 +362,224 @@ async function listTeamMembers(supabase: any) {
   return {
     members: (data || []).map((p: any) => ({
       user_id: p.user_id, name: p.full_name, email: p.email,
+    })),
+  }
+}
+
+// ========== LOCATION & DETAIL TOOLS ==========
+
+async function getLeadsByLocation(supabase: any, args: any) {
+  const limit = args.limit || 10
+
+  // Search contacts linked to leads by city/state, then return leads
+  let contactQuery = supabase
+    .from('contacts')
+    .select('id, full_name, city, state, lead_id, phone')
+    .not('lead_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(limit * 2)
+
+  if (args.city) contactQuery = contactQuery.ilike('city', `%${args.city}%`)
+  if (args.state) contactQuery = contactQuery.ilike('state', `%${args.state}%`)
+
+  const { data: contacts, error: cErr } = await contactQuery
+  if (cErr) return { error: cErr.message }
+
+  // Also search leads directly via contact_leads table
+  let clQuery = supabase
+    .from('contact_leads')
+    .select('lead_id, contact_id, contacts(full_name, city, state, phone)')
+    .limit(limit * 2)
+
+  const { data: contactLeads } = await clQuery
+
+  // Collect unique lead IDs from both sources
+  const leadIds = new Set<string>()
+  const locationMap: Record<string, any> = {}
+
+  for (const c of (contacts || [])) {
+    if (c.lead_id) {
+      leadIds.add(c.lead_id)
+      locationMap[c.lead_id] = { city: c.city, state: c.state, contact_name: c.full_name }
+    }
+  }
+
+  // Filter contactLeads by city/state
+  for (const cl of (contactLeads || [])) {
+    const contact = cl.contacts as any
+    if (!contact) continue
+    const cityMatch = !args.city || (contact.city || '').toLowerCase().includes(args.city.toLowerCase())
+    const stateMatch = !args.state || (contact.state || '').toLowerCase().includes(args.state.toLowerCase())
+    if (cityMatch && stateMatch) {
+      leadIds.add(cl.lead_id)
+      if (!locationMap[cl.lead_id]) {
+        locationMap[cl.lead_id] = { city: contact.city, state: contact.state, contact_name: contact.full_name }
+      }
+    }
+  }
+
+  if (leadIds.size === 0) {
+    return { total: 0, leads: [], message: `Nenhum lead encontrado na localização ${args.city || ''} ${args.state || ''}` }
+  }
+
+  const { data: leads, error: lErr } = await supabase
+    .from('leads')
+    .select('id, lead_name, current_stage, lead_value, board_id, created_at')
+    .in('id', Array.from(leadIds).slice(0, limit))
+
+  if (lErr) return { error: lErr.message }
+
+  return {
+    total: leads?.length || 0,
+    location_filter: { city: args.city || null, state: args.state || null },
+    leads: (leads || []).map((l: any) => ({
+      id: l.id, name: l.lead_name, stage: l.current_stage,
+      value: l.lead_value, board_id: l.board_id,
+      location: locationMap[l.id] || null,
+    })),
+  }
+}
+
+async function getLeadDetails(supabase: any, args: any) {
+  let lead: any = null
+
+  if (args.lead_id) {
+    const { data, error } = await supabase
+      .from('leads')
+      .select('*')
+      .eq('id', args.lead_id)
+      .single()
+    if (error) return { error: error.message }
+    lead = data
+  } else if (args.lead_name) {
+    const { data, error } = await supabase
+      .from('leads')
+      .select('*')
+      .ilike('lead_name', `%${args.lead_name}%`)
+      .limit(1)
+      .single()
+    if (error) return { error: 'Lead não encontrado com esse nome' }
+    lead = data
+  } else {
+    return { error: 'Informe lead_id ou lead_name' }
+  }
+
+  // Get board/stage name
+  let stageName = lead.current_stage
+  if (lead.board_id) {
+    const { data: board } = await supabase
+      .from('kanban_boards')
+      .select('name, stages')
+      .eq('id', lead.board_id)
+      .single()
+    if (board?.stages) {
+      const stages = typeof board.stages === 'string' ? JSON.parse(board.stages) : board.stages
+      const found = (stages || []).find((s: any) => s.id === lead.current_stage)
+      if (found) stageName = found.name
+    }
+  }
+
+  // Get assigned user name
+  let assignedName = null
+  if (lead.assigned_to) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('user_id', lead.assigned_to)
+      .single()
+    assignedName = profile?.full_name
+  }
+
+  // Get custom fields
+  const { data: customFields } = await supabase
+    .from('lead_custom_field_values')
+    .select('field_id, value, lead_custom_field_definitions(field_name, field_type)')
+    .eq('lead_id', lead.id)
+
+  return {
+    id: lead.id,
+    name: lead.lead_name,
+    stage: stageName,
+    value: lead.lead_value,
+    phone: lead.phone,
+    email: lead.email,
+    notes: lead.notes,
+    assigned_to: assignedName,
+    board_id: lead.board_id,
+    created_at: lead.created_at,
+    updated_at: lead.updated_at,
+    followup_count: lead.followup_count,
+    last_followup_at: lead.last_followup_at,
+    custom_fields: (customFields || []).map((cf: any) => ({
+      field: cf.lead_custom_field_definitions?.field_name,
+      type: cf.lead_custom_field_definitions?.field_type,
+      value: cf.value,
+    })),
+  }
+}
+
+async function getLeadContactsSummary(supabase: any, args: any) {
+  let leadId = args.lead_id
+
+  // Find lead by name if needed
+  if (!leadId && args.lead_name) {
+    const { data } = await supabase
+      .from('leads')
+      .select('id')
+      .ilike('lead_name', `%${args.lead_name}%`)
+      .limit(1)
+      .single()
+    if (!data) return { error: 'Lead não encontrado' }
+    leadId = data.id
+  }
+
+  if (!leadId) return { error: 'Informe lead_id ou lead_name' }
+
+  // Get linked contacts
+  const { data: links, error } = await supabase
+    .from('contact_leads')
+    .select('relationship_to_victim, notes, contacts(id, full_name, phone, email, city, state, classification, notes, profession)')
+    .eq('lead_id', leadId)
+
+  if (error) return { error: error.message }
+
+  // Get call records for this lead
+  const { data: calls } = await supabase
+    .from('call_records')
+    .select('contact_name, call_type, call_result, created_at, duration_seconds, ai_summary')
+    .eq('lead_id', leadId)
+    .order('created_at', { ascending: false })
+    .limit(10)
+
+  // Get recent activities
+  const { data: activities } = await supabase
+    .from('lead_activities')
+    .select('title, status, activity_type, created_at, assigned_to_name')
+    .eq('lead_id', leadId)
+    .order('created_at', { ascending: false })
+    .limit(5)
+
+  return {
+    lead_id: leadId,
+    total_contacts: links?.length || 0,
+    contacts: (links || []).map((l: any) => ({
+      name: l.contacts?.full_name,
+      phone: l.contacts?.phone,
+      email: l.contacts?.email,
+      city: l.contacts?.city,
+      state: l.contacts?.state,
+      classification: l.contacts?.classification,
+      profession: l.contacts?.profession,
+      relationship: l.relationship_to_victim,
+      notes: l.notes || l.contacts?.notes,
+    })),
+    recent_calls: (calls || []).map((c: any) => ({
+      contact: c.contact_name, type: c.call_type, result: c.call_result,
+      date: c.created_at, duration: c.duration_seconds, summary: c.ai_summary,
+    })),
+    recent_activities: (activities || []).map((a: any) => ({
+      title: a.title, status: a.status, type: a.activity_type,
+      date: a.created_at, assigned_to: a.assigned_to_name,
     })),
   }
 }
