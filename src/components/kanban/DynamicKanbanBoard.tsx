@@ -421,7 +421,7 @@ export function DynamicKanbanBoard({
             return (
               <div
                 key={stage.id}
-                className={`flex-shrink-0 w-80 rounded-lg border transition-all ${
+                className={`flex-shrink-0 w-64 rounded-lg border transition-all ${
                   isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''
                 }`}
                 onDragOver={(e) => handleDragOver(e, stage.id)}
