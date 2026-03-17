@@ -20,6 +20,9 @@ export async function executeToolCall(
     case 'link_contact_to_lead': return linkContactToLead(supabase, args)
     case 'search_contacts': return searchContacts(supabase, args)
     case 'list_team_members': return listTeamMembers(supabase)
+    case 'get_leads_by_location': return getLeadsByLocation(supabase, args)
+    case 'get_lead_details': return getLeadDetails(supabase, args)
+    case 'get_lead_contacts_summary': return getLeadContactsSummary(supabase, args)
     default: return { error: 'Ferramenta desconhecida: ' + fnName }
   }
 }
