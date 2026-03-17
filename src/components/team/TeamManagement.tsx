@@ -71,6 +71,7 @@ export function TeamManagement() {
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sendingNotifUserId, setSendingNotifUserId] = useState<string | null>(null);
 
   const filteredMembers = members.filter((member) => {
     if (!searchTerm.trim()) return true;
