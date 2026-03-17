@@ -287,7 +287,7 @@ export function WhatsAppNotificationSettings() {
               {config.recipient_user_ids.map((userId) => {
                 const profile = getProfileByUserId(userId);
                 return (
-                  <Badge key={userId} variant="secondary" className="gap-1 py-1">
+                  <Badge key={userId} variant="secondary" className="gap-1 py-1 pr-1">
                     <User className="h-3 w-3" />
                     {profile?.full_name || profile?.email || 'Usuário'}
                     {profile?.phone ? (
@@ -295,7 +295,13 @@ export function WhatsAppNotificationSettings() {
                     ) : (
                       <span className="text-[10px] text-destructive ml-0.5">(sem tel.)</span>
                     )}
-                    <X className="h-3 w-3 cursor-pointer ml-1" onClick={() => removeUser(userId)} />
+                    {profile?.phone && (
+                      <Send
+                        className={`h-3 w-3 cursor-pointer ml-1 ${sendingUserId === userId ? 'animate-spin' : 'hover:text-primary'}`}
+                        onClick={(e) => { e.stopPropagation(); handleSendNow(userId); }}
+                      />
+                    )}
+                    <X className="h-3 w-3 cursor-pointer ml-0.5" onClick={() => removeUser(userId)} />
                   </Badge>
                 );
               })}
