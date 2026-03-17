@@ -111,7 +111,18 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
       .select('phone, default_instance_id')
       .eq('user_id', member.user_id)
       .single();
-    setPhone(data?.phone || '');
+    const rawPhone = data?.phone || '';
+    if (rawPhone) {
+      const d = rawPhone.replace(/\D/g, '');
+      let f = d;
+      if (d.length > 9) f = `+${d.slice(0, 2)} ${d.slice(2, 4)} ${d.slice(4, 9)}-${d.slice(9)}`;
+      else if (d.length > 4) f = `+${d.slice(0, 2)} ${d.slice(2, 4)} ${d.slice(4)}`;
+      else if (d.length > 2) f = `+${d.slice(0, 2)} ${d.slice(2)}`;
+      else if (d.length > 0) f = `+${d}`;
+      setPhone(f);
+    } else {
+      setPhone('');
+    }
     setDefaultInstanceId(data?.default_instance_id || '');
   };
 
