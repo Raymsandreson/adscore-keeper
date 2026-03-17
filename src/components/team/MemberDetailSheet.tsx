@@ -156,6 +156,8 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
         .update({
           full_name: fullName.trim(),
           email: email.trim(),
+          phone: phone.trim() || null,
+          default_instance_id: defaultInstanceId || null,
         })
         .eq('user_id', member.user_id);
 
