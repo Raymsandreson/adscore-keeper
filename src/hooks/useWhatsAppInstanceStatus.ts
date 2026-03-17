@@ -16,13 +16,35 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
   const disconnectedTimestamps = useRef<Record<string, Date>>({});
   const notifiedInstances = useRef<Set<string>>(new Set());
 
+  const sendWhatsAppAlert = useCallback(async (message: string) => {
+    try {
+      const { data: raymInst } = await supabase
+        .from('whatsapp_instances')
+        .select('id, instance_name, instance_token, owner_phone')
+        .ilike('instance_name', '%raym%')
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+
+      if (!raymInst?.id || !raymInst?.owner_phone) return;
+
+      await supabase.functions.invoke('send-whatsapp', {
+        body: {
+          phone: raymInst.owner_phone,
+          message,
+          instance_id: raymInst.id,
+        },
+      });
+    } catch (err) {
+      console.error('Error sending WhatsApp alert:', err);
+    }
+  }, []);
+
   const notifyOfflineViaWhatsApp = useCallback(async (offlineInstances: InstanceStatus[]) => {
-    // Only notify for newly detected offline instances
     const newOffline = offlineInstances.filter(i => !notifiedInstances.current.has(i.id));
     if (newOffline.length === 0) return;
 
     try {
-      // Find raymsandreson instance
       const { data: raymInst } = await supabase
         .from('whatsapp_instances')
         .select('id, instance_name, instance_token, owner_phone')
@@ -33,7 +55,6 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
 
       if (!raymInst?.id) return;
 
-      // Get owner phones for offline instances
       const offlineIds = newOffline.map(i => i.id);
       const { data: offlineInsts } = await supabase
         .from('whatsapp_instances')
@@ -43,10 +64,8 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
       if (!offlineInsts) return;
 
       const now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const offlineNames = newOffline.map(i => i.instance_name).join(', ');
       const message = `⚠️ *Alerta de Desconexão* ⚠️\n\nAs seguintes instâncias estão *offline* desde ${now}:\n\n${newOffline.map(i => `❌ ${i.instance_name}`).join('\n')}\n\nAcesse o sistema para reconectar via QR Code.\n🔗 https://adscore-keeper.lovable.app/whatsapp`;
 
-      // Send to each owner phone
       const phonesNotified = new Set<string>();
       for (const inst of offlineInsts) {
         if (inst.owner_phone && !phonesNotified.has(inst.owner_phone)) {
@@ -61,7 +80,6 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
         }
       }
 
-      // Mark as notified
       for (const inst of newOffline) {
         notifiedInstances.current.add(inst.id);
       }
@@ -69,6 +87,13 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
       console.error('Error notifying offline instances:', err);
     }
   }, []);
+
+  const notifyReconnectedViaWhatsApp = useCallback(async (reconnectedInstances: InstanceStatus[]) => {
+    if (reconnectedInstances.length === 0) return;
+    const now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const message = `✅ *Instâncias Reconectadas* ✅\n\nAs seguintes instâncias voltaram a ficar *online* às ${now}:\n\n${reconnectedInstances.map(i => `🟢 ${i.instance_name}`).join('\n')}\n\nTudo funcionando normalmente! 🚀`;
+    await sendWhatsAppAlert(message);
+  }, [sendWhatsAppAlert]);
 
   const checkStatus = useCallback(async () => {
     if (!enabled) return;
