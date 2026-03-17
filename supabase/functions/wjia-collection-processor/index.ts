@@ -134,6 +134,34 @@ function computeMissingRequiredFields(
     .map((f) => ({ field_name: f.variable, friendly_name: f.label || f.variable }));
 }
 
+/**
+ * Download an external URL and convert to base64 data URI.
+ * Critical: the Gemini shared helper converts external URLs to plain text,
+ * so the model never sees the actual image without this conversion.
+ */
+async function urlToBase64DataUri(url: string): Promise<string> {
+  if (url.startsWith("data:")) return url;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      console.error("Failed to download image for base64:", resp.status, url);
+      return url;
+    }
+    const buffer = await resp.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+    const contentType = resp.headers.get("content-type") || "image/jpeg";
+    return `data:${contentType};base64,${base64}`;
+  } catch (e) {
+    console.error("Error converting URL to base64:", e);
+    return url;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -158,7 +186,7 @@ serve(async (req) => {
               role: "user",
               content: [
                 { type: "text", text: "Transcreva este áudio:" },
-                { type: "image_url", image_url: { url: media_url } },
+                { type: "image_url", image_url: { url: await urlToBase64DataUri(media_url) } },
               ],
             },
           ],
@@ -451,7 +479,7 @@ TIPOS AINDA PENDENTES: ${pendingTypes.join(', ')}
 Classifique o documento enviado.` },
                 { role: "user", content: [
                   { type: "text", text: "Classifique este documento:" },
-                  { type: "image_url", image_url: { url: media_url } },
+                  { type: "image_url", image_url: { url: await urlToBase64DataUri(media_url) } },
                 ]},
               ],
               tools: [{ type: "function", function: { name: "classify_document", description: "Classifica o tipo do documento", parameters: { type: "object", properties: { document_type: { type: "string", enum: ["rg_cnh", "comprovante_endereco", "comprovante_renda", "outros", "invalido"] }, confidence: { type: "string", enum: ["alta", "media", "baixa"] }, description: { type: "string", description: "Breve descrição do que foi identificado na imagem" } }, required: ["document_type", "confidence", "description"] } } }],
@@ -529,8 +557,9 @@ Classifique o documento enviado.` },
           const requiredFieldCatalog = buildTemplateFieldCatalog(session);
           const missingFields = session.missing_fields || [];
 
-          // Build image parts for Gemini vision
-          const imageUrls = receivedDocs.map((d: any) => d.media_url).filter(Boolean);
+          // Build image parts for Gemini vision - download and convert to base64
+          const rawImageUrls = receivedDocs.map((d: any) => d.media_url).filter(Boolean);
+          const imageUrls = await Promise.all(rawImageUrls.map((u: string) => urlToBase64DataUri(u)));
 
           if (imageUrls.length > 0) {
             try {
@@ -801,7 +830,7 @@ REGRAS:
           const requiredFieldCatalog = buildTemplateFieldCatalog(session);
 
           // Extract from any docs already received
-          const imageUrls = receivedDocs.map((d: any) => d.media_url).filter(Boolean);
+          const imageUrls = await Promise.all(receivedDocs.map((d: any) => d.media_url).filter(Boolean).map((u: string) => urlToBase64DataUri(u)));
           if (imageUrls.length > 0) {
             try {
               const allTemplateFieldNames = requiredFieldCatalog.map((f) => `${f.variable} (${f.label})`);
