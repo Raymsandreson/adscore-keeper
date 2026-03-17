@@ -348,6 +348,19 @@ export function TeamManagement() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        title="Enviar notificação"
+                        disabled={sendingNotifUserId === member.user_id}
+                        onClick={() => handleSendNotification(member.user_id, member.full_name || member.email || 'Membro')}
+                      >
+                        {sendingNotifUserId === member.user_id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <MessageSquare className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => {
                           setSelectedMember(member);
                           setDetailOpen(true);
