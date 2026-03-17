@@ -830,7 +830,7 @@ REGRAS:
           const requiredFieldCatalog = buildTemplateFieldCatalog(session);
 
           // Extract from any docs already received
-          const imageUrls = receivedDocs.map((d: any) => d.media_url).filter(Boolean);
+          const imageUrls = await Promise.all(receivedDocs.map((d: any) => d.media_url).filter(Boolean).map((u: string) => urlToBase64DataUri(u)));
           if (imageUrls.length > 0) {
             try {
               const allTemplateFieldNames = requiredFieldCatalog.map((f) => `${f.variable} (${f.label})`);
