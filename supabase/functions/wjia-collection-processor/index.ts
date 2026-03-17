@@ -808,7 +808,7 @@ REGRAS:
               const extractPrompt = `Analise as imagens dos documentos e extraia TODOS os dados pessoais visíveis.\n\nCAMPOS NECESSÁRIOS:\n${allTemplateFieldNames.map((f: string) => `- ${f}`).join('\n')}\n\nREGRAS:\n- Extraia nome, CPF, RG, data de nascimento, endereço, etc.\n- Formate CPF como XXX.XXX.XXX-XX e datas como DD/MM/AAAA\n- Use EXATAMENTE as variáveis do template no campo "de"`;
 
               const visionResult = await geminiChat({
-                model: "google/gemini-2.5-flash",
+                model: "google/gemini-2.5-pro",
                 messages: [
                   { role: "system", content: extractPrompt },
                   { role: "user", content: [
