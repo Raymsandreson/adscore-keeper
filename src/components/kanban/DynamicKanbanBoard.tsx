@@ -424,7 +424,7 @@ export function DynamicKanbanBoard({
                 className={`flex-shrink-0 rounded-lg border transition-all ${
                   isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''
                 }`}
-                style={{ width: `max(240px, calc((100vw - ${board.stages.length * 6 + 64}px) / ${board.stages.length}))` }}
+                style={{ width: `max(220px, calc((100vw - ${board.stages.length * 4 + 24}px) / ${board.stages.length}))` }}
                 onDragOver={(e) => handleDragOver(e, stage.id)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, stage.id)}
