@@ -475,7 +475,7 @@ export function DynamicKanbanBoard({
                 </div>
 
                 {/* Column Content */}
-                <div className="h-[calc(100vh-450px)] min-h-[250px] overflow-y-auto">
+                <div className="h-[calc(100vh-380px)] min-h-[300px] overflow-y-auto">
                   <div className="p-2 space-y-2">
                     {stageLeads.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-8 text-center">
