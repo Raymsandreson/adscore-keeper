@@ -187,10 +187,16 @@ export function WhatsAppInstanceManager() {
             Gerencie suas instâncias WhatsApp (UazAPI). Cada instância representa um número conectado.
           </p>
         </div>
-        <Button onClick={openCreate} size="sm" className="gap-1.5 shrink-0">
-          <Plus className="h-4 w-4" />
-          Nova Instância
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={syncPhones} variant="outline" size="sm" className="gap-1.5 shrink-0" disabled={syncing}>
+            <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Sincronizando...' : 'Sincronizar Números'}
+          </Button>
+          <Button onClick={openCreate} size="sm" className="gap-1.5 shrink-0">
+            <Plus className="h-4 w-4" />
+            Nova Instância
+          </Button>
+        </div>
       </div>
 
       {instances.length === 0 ? (
