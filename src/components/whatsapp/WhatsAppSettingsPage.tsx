@@ -223,7 +223,6 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'commands' && <WhatsAppCommandConfig />}
             {activeTab === 'notifications' && (
               <div className="space-y-6">
-                <MemberAssistantSettings />
                 <WhatsAppNotificationSettings />
               </div>
             )}

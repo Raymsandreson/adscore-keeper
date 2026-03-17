@@ -139,6 +139,10 @@ export function WhatsAppCommandConfig() {
             onReload={loadData}
           />
         </TabsContent>
+
+        <TabsContent value="member">
+          <MemberAssistantSettings />
+        </TabsContent>
       </Tabs>
     </div>
   );
