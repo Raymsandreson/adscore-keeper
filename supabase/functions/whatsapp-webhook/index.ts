@@ -1604,21 +1604,44 @@ Deno.serve(async (req) => {
               .maybeSingle()
 
             if (memberProfile) {
-              // Anti-loop: check if we already sent a reply to this phone in the last 60 seconds
-              const { data: recentReply } = await supabase
+              // Anti-loop: check if we already processed or are processing for this phone recently
+              // Check both outbound replies AND recent inbound from same phone (duplicate webhook)
+              const twoMinAgo = new Date(Date.now() - 120_000).toISOString()
+              
+              const { data: recentOutbound } = await supabase
                 .from('whatsapp_messages')
                 .select('id')
                 .eq('phone', phone)
                 .eq('instance_name', instanceName)
                 .eq('direction', 'outbound')
-                .gte('created_at', new Date(Date.now() - 60_000).toISOString())
+                .gte('created_at', twoMinAgo)
                 .limit(1)
                 .maybeSingle()
 
-              if (recentReply) {
-                console.log('Anti-loop: skipping member assistant - recent outbound reply exists for', phone)
+              // Also check command history to prevent duplicate processing
+              const { data: recentCommand } = await supabase
+                .from('whatsapp_command_history')
+                .select('id')
+                .eq('phone', phone)
+                .eq('command_type', 'member_assistant')
+                .gte('created_at', new Date(Date.now() - 30_000).toISOString())
+                .limit(1)
+                .maybeSingle()
+
+              if (recentOutbound || recentCommand) {
+                console.log('Anti-loop: skipping member assistant for', phone, 
+                  recentOutbound ? '(recent outbound)' : '(recent command)')
               } else {
                 console.log('Member detected:', memberProfile.full_name, '- routing to member AI assistant')
+
+                // Record processing lock immediately
+                await supabase.from('whatsapp_command_history').insert({
+                  phone,
+                  instance_name: instanceName,
+                  command_type: 'member_assistant',
+                  command_text: messageText?.substring(0, 200),
+                  user_id: memberProfile.user_id,
+                })
 
                 const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
                 const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
