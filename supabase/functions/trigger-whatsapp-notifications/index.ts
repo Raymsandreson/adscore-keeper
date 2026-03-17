@@ -15,6 +15,15 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    // Parse optional target_user_id for per-user sending
+    let targetUserId: string | null = null
+    try {
+      const body = await req.json()
+      targetUserId = body?.target_user_id || null
+    } catch {
+      // No body or invalid JSON — send to all
+    }
+
     // Load notification config
     const { data: config, error: configErr } = await supabase
       .from('whatsapp_notification_config')
@@ -30,7 +39,30 @@ Deno.serve(async (req) => {
       )
     }
 
-    const phones: string[] = config.recipient_phones || []
+    // Determine target phones
+    let phones: string[] = []
+    let targetName = ''
+
+    if (targetUserId) {
+      // Send only to this specific user
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('phone, full_name')
+        .eq('user_id', targetUserId)
+        .single()
+
+      if (!profile?.phone) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Usuário não possui telefone cadastrado no perfil' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      phones = [profile.phone]
+      targetName = profile.full_name || ''
+    } else {
+      phones = config.recipient_phones || []
+    }
+
     if (!phones.length) {
       return new Response(
         JSON.stringify({ success: false, error: 'Nenhum destinatário configurado' }),
@@ -71,6 +103,9 @@ Deno.serve(async (req) => {
 
     const sections: string[] = []
     sections.push(`📊 *Relatório de Notificações*`)
+    if (targetName) {
+      sections.push(`👤 Para: ${targetName}`)
+    }
     sections.push(`📅 ${brDate} às ${brTime}\n`)
 
     // ── Overdue Tasks ──
@@ -78,14 +113,21 @@ Deno.serve(async (req) => {
       const thresholdHours = config.overdue_threshold_hours || 24
       const cutoff = new Date(now.getTime() - thresholdHours * 60 * 60 * 1000).toISOString()
       
-      const { data: overdue } = await supabase
+      let query = supabase
         .from('lead_activities')
-        .select('title, deadline, assigned_to_name')
+        .select('title, deadline, assigned_to_name, assigned_to')
         .eq('status', 'pending')
         .lt('deadline', now.toISOString())
         .lt('deadline', cutoff)
         .order('deadline', { ascending: true })
         .limit(20)
+
+      // If targeting a specific user, filter their tasks
+      if (targetUserId) {
+        query = query.eq('assigned_to', targetUserId)
+      }
+
+      const { data: overdue } = await query
 
       sections.push(`⚠️ *Tarefas Atrasadas: ${overdue?.length || 0}*`)
       if (overdue && overdue.length > 0) {
@@ -102,13 +144,17 @@ Deno.serve(async (req) => {
 
     // ── Goal Progress ──
     if (config.notify_goal_progress) {
-      const alertPercent = config.goal_alert_percent || 50
-      
-      const { data: goals } = await supabase
+      let goalQuery = supabase
         .from('commission_goals')
-        .select('metric_key, target_value, period, period_start, period_end')
+        .select('metric_key, target_value, period, period_start, period_end, user_id')
         .eq('is_active', true)
         .limit(10)
+
+      if (targetUserId) {
+        goalQuery = goalQuery.eq('user_id', targetUserId)
+      }
+
+      const { data: goals } = await goalQuery
 
       if (goals && goals.length > 0) {
         sections.push(`🎯 *Metas Ativas: ${goals.length}*`)
@@ -126,16 +172,24 @@ Deno.serve(async (req) => {
       const todayStart = new Date(now)
       todayStart.setHours(0, 0, 0, 0)
 
-      const { count: activitiesCreated } = await supabase
+      let actCreatedQ = supabase
         .from('lead_activities')
         .select('id', { count: 'exact', head: true })
         .gte('created_at', todayStart.toISOString())
 
-      const { count: activitiesCompleted } = await supabase
+      let actCompletedQ = supabase
         .from('lead_activities')
         .select('id', { count: 'exact', head: true })
         .eq('status', 'completed')
         .gte('updated_at', todayStart.toISOString())
+
+      if (targetUserId) {
+        actCreatedQ = actCreatedQ.eq('assigned_to', targetUserId)
+        actCompletedQ = actCompletedQ.eq('assigned_to', targetUserId)
+      }
+
+      const { count: activitiesCreated } = await actCreatedQ
+      const { count: activitiesCompleted } = await actCompletedQ
 
       const { count: leadsCreated } = await supabase
         .from('leads')
@@ -151,7 +205,7 @@ Deno.serve(async (req) => {
 
     const message = sections.join('\n').trim()
 
-    // Send to all recipients
+    // Send to all target phones
     const results: any[] = []
     for (const phone of phones) {
       try {

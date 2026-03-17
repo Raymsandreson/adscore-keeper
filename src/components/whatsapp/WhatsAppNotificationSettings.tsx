@@ -151,14 +151,21 @@ export function WhatsAppNotificationSettings() {
       setSaving(false);
     }
   };
-  const handleSendNow = async () => {
-    setSending(true);
+  const handleSendNow = async (targetUserId?: string) => {
+    if (targetUserId) {
+      setSendingUserId(targetUserId);
+    } else {
+      setSending(true);
+    }
     try {
-      // Save first if needed
-      const { data, error } = await supabase.functions.invoke('trigger-whatsapp-notifications');
+      const { data, error } = await supabase.functions.invoke('trigger-whatsapp-notifications', {
+        body: targetUserId ? { target_user_id: targetUserId } : {},
+      });
       if (error) throw error;
       if (data?.success) {
-        toast.success(`Notificação enviada para ${data.sent}/${data.total} destinatários`);
+        const profile = targetUserId ? getProfileByUserId(targetUserId) : null;
+        const label = profile ? profile.full_name || profile.email || 'Usuário' : `${data.sent}/${data.total} destinatários`;
+        toast.success(`Notificação enviada para ${label}`);
       } else {
         toast.error(data?.error || 'Erro ao enviar notificação');
       }
@@ -166,6 +173,7 @@ export function WhatsAppNotificationSettings() {
       toast.error('Erro ao enviar: ' + e.message);
     } finally {
       setSending(false);
+      setSendingUserId(null);
     }
   };
 
