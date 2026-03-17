@@ -43,6 +43,7 @@ import {
   Crown,
   Send,
   Eye,
+  MessageSquare,
 } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useUserRole } from '@/hooks/useUserRole';
