@@ -68,6 +68,16 @@ export function TeamManagement() {
   const [inviting, setInviting] = useState(false);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredMembers = members.filter((member) => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      member.full_name?.toLowerCase().includes(term) ||
+      member.email?.toLowerCase().includes(term)
+    );
+  });
 
   if (roleLoading || loading) {
     return (
