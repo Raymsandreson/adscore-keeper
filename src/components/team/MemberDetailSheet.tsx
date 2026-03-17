@@ -13,6 +13,13 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   User,
   Activity,
   Clock,
@@ -25,6 +32,8 @@ import {
   FileText,
   MessageSquare,
   UserPlus,
+  Phone,
+  Smartphone,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -65,18 +74,46 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   const [activeTab, setActiveTab] = useState('profile');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [defaultInstanceId, setDefaultInstanceId] = useState('');
+  const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [loadingData, setLoadingData] = useState(false);
 
   useEffect(() => {
+    // Fetch WhatsApp instances once
+    const fetchInstances = async () => {
+      const { data } = await supabase
+        .from('whatsapp_instances')
+        .select('id, instance_name')
+        .eq('is_active', true)
+        .order('instance_name');
+      setInstances(data || []);
+    };
+    fetchInstances();
+  }, []);
+
+  useEffect(() => {
     if (member) {
       setFullName(member.full_name || '');
       setEmail(member.email || '');
+      fetchProfileExtras();
       fetchMemberData();
     }
   }, [member]);
+
+  const fetchProfileExtras = async () => {
+    if (!member) return;
+    const { data } = await supabase
+      .from('profiles')
+      .select('phone, default_instance_id')
+      .eq('user_id', member.user_id)
+      .single();
+    setPhone(data?.phone || '');
+    setDefaultInstanceId(data?.default_instance_id || '');
+  };
 
   const fetchMemberData = async () => {
     if (!member) return;
@@ -119,6 +156,8 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
         .update({
           full_name: fullName.trim(),
           email: email.trim(),
+          phone: phone.trim() || null,
+          default_instance_id: defaultInstanceId || null,
         })
         .eq('user_id', member.user_id);
 
@@ -254,6 +293,45 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="email@exemplo.com"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Phone className="h-3.5 w-3.5" />
+                Telefone / WhatsApp
+              </Label>
+              <Input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="5511999999999"
+              />
+              <p className="text-xs text-muted-foreground">
+                Usado para receber notificações via WhatsApp
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Smartphone className="h-3.5 w-3.5" />
+                Instância WhatsApp
+              </Label>
+              <Select value={defaultInstanceId} onValueChange={setDefaultInstanceId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma instância" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Nenhuma</SelectItem>
+                  {instances.map((inst) => (
+                    <SelectItem key={inst.id} value={inst.id}>
+                      {inst.instance_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Instância padrão para envio de mensagens
+              </p>
             </div>
 
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
