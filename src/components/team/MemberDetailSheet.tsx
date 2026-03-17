@@ -321,7 +321,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
                   <SelectValue placeholder="Selecione uma instância" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Nenhuma</SelectItem>
+                  <SelectItem value="none">Nenhuma</SelectItem>
                   {instances.map((inst) => (
                     <SelectItem key={inst.id} value={inst.id}>
                       {inst.instance_name}
