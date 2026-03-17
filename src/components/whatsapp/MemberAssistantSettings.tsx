@@ -86,7 +86,7 @@ export function MemberAssistantSettings() {
             <MessageSquare className="h-4 w-4 mt-0.5 text-muted-foreground" />
             <div className="text-xs text-muted-foreground space-y-1">
               <p>Quando ativo, o sistema identifica automaticamente mensagens recebidas de números cadastrados nos perfis dos membros da equipe.</p>
-              <p>O membro pode pedir: <strong>resumo do dia</strong>, <strong>tarefas atrasadas</strong>, <strong>criar atividade</strong>, <strong>consultar leads</strong>, <strong>metas</strong> e conversar livremente com o assistente.</p>
+              <p>O membro pode: <strong>resumo do dia</strong>, <strong>tarefas atrasadas</strong>, <strong>criar/editar leads</strong>, <strong>mudar etapa do funil</strong>, <strong>criar contatos</strong>, <strong>vincular contatos a leads</strong>, <strong>criar atividades</strong>, <strong>consultar metas</strong> e conversar livremente.</p>
               <p>⚠️ Certifique-se de que os membros têm o número de WhatsApp cadastrado no perfil.</p>
             </div>
           </div>
