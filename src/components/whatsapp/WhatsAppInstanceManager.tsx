@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Pencil, Trash2, Smartphone, Wifi, WifiOff, Phone, Globe, Key, CheckCircle2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Smartphone, Wifi, WifiOff, Phone, Globe, Key, CheckCircle2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Instance {
@@ -48,7 +48,32 @@ export function WhatsAppInstanceManager() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Instance | null>(null);
+
+  const syncPhones = async () => {
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('check-whatsapp-status');
+      if (error) throw error;
+      const results = data as Array<{ id: string; owner_phone: string | null }>;
+      if (results?.length) {
+        // Update local state with synced phones
+        setInstances(prev => prev.map(inst => {
+          const synced = results.find(r => r.id === inst.id);
+          if (synced?.owner_phone && synced.owner_phone !== inst.owner_phone) {
+            return { ...inst, owner_phone: synced.owner_phone };
+          }
+          return inst;
+        }));
+        toast.success('Números sincronizados da API!');
+      }
+    } catch (e: any) {
+      toast.error('Erro ao sincronizar: ' + (e?.message || 'erro desconhecido'));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const fetchInstances = useCallback(async () => {
     const { data, error } = await supabase
@@ -162,10 +187,16 @@ export function WhatsAppInstanceManager() {
             Gerencie suas instâncias WhatsApp (UazAPI). Cada instância representa um número conectado.
           </p>
         </div>
-        <Button onClick={openCreate} size="sm" className="gap-1.5 shrink-0">
-          <Plus className="h-4 w-4" />
-          Nova Instância
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={syncPhones} variant="outline" size="sm" className="gap-1.5 shrink-0" disabled={syncing}>
+            <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Sincronizando...' : 'Sincronizar Números'}
+          </Button>
+          <Button onClick={openCreate} size="sm" className="gap-1.5 shrink-0">
+            <Plus className="h-4 w-4" />
+            Nova Instância
+          </Button>
+        </div>
       </div>
 
       {instances.length === 0 ? (
