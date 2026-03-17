@@ -107,6 +107,10 @@ Regras:
     let assistantMessage = response.choices?.[0]?.message
     let finalText = assistantMessage?.content || ''
 
+    // Admin tools that should result in ephemeral (auto-delete) responses
+    const ADMIN_TOOLS = new Set(['manage_conversation_agent'])
+    let usedAdminTool = false
+
     // Process tool calls if any (support multi-turn)
     let iterations = 0
     while (assistantMessage?.tool_calls && assistantMessage.tool_calls.length > 0 && iterations < 5) {
@@ -117,6 +121,8 @@ Regras:
         const fnName = toolCall.function?.name
         const fnArgs = JSON.parse(toolCall.function?.arguments || '{}')
         console.log('Executing tool:', fnName, 'with args:', fnArgs)
+
+        if (ADMIN_TOOLS.has(fnName)) usedAdminTool = true
 
         let result: any = null
         try {
