@@ -190,10 +190,10 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   const handleSaveProfile = async () => {
     if (!member) return;
 
-    const normalizedPhone = normalizePhone(phone);
+    const { digits: normalizedPhone } = normalizePhone(phone);
     
     if (normalizedPhone && normalizedPhone.length !== 13) {
-      toast.error('Número inválido. O formato esperado é: 55 + DDD + 9 + número (13 dígitos).');
+      toast.error('Número inválido. Formato esperado: +55 DDD 9XXXX-XXXX');
       return;
     }
 
