@@ -394,8 +394,17 @@ export function WhatsAppNotificationSettings() {
         </CardContent>
       </Card>
 
-      {/* Save button */}
-      <div className="flex justify-end">
+      {/* Action buttons */}
+      <div className="flex justify-between gap-3">
+        <Button
+          variant="outline"
+          onClick={handleSendNow}
+          disabled={sending || !config.is_active || !config.recipient_user_ids.length}
+          className="gap-2"
+        >
+          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          Enviar notificação agora
+        </Button>
         <Button onClick={handleSave} disabled={saving} className="gap-2">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Salvar Configurações
