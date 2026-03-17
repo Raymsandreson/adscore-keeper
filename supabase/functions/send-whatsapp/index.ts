@@ -27,6 +27,10 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     const body = await req.json()
+    // Normalize phone in body if present
+    if (body.phone && typeof body.phone === 'string') {
+      body.phone = normalizePhone(body.phone)
+    }
     const { action } = body
 
     // ========================
