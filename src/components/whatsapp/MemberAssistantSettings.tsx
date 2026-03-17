@@ -94,12 +94,12 @@ export function MemberAssistantSettings() {
 
         <div className="space-y-2">
           <Label>Instância que responde aos membros</Label>
-          <Select value={instanceName} onValueChange={setInstanceName}>
+          <Select value={instanceName || '__any__'} onValueChange={(v) => setInstanceName(v === '__any__' ? '' : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Qualquer instância ativa..." />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Qualquer instância</SelectItem>
+              <SelectItem value="__any__">Qualquer instância</SelectItem>
               {instances.map((inst) => (
                 <SelectItem key={inst.instance_name} value={inst.instance_name}>
                   {inst.instance_name}
