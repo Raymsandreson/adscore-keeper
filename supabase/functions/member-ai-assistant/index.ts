@@ -163,10 +163,44 @@ Regras:
     })
 
     const sendResult = await sendResp.json().catch(() => ({}))
-    console.log('Member assistant reply sent:', sendResp.status, 'to:', phone)
+    console.log('Member assistant reply sent:', sendResp.status, 'to:', phone, 'ephemeral:', usedAdminTool)
+
+    // For admin tool responses, auto-delete the reply and original command after a delay
+    if (usedAdminTool && sendResp.ok) {
+      // Wait 8 seconds so the member can read the notification pop-up
+      setTimeout(async () => {
+        try {
+          // Delete the AI reply message
+          const replyMsgId = sendResult?.key?.id || sendResult?.id || sendResult?.messageId
+          if (replyMsgId) {
+            await fetch(`${inst.base_url}/message/delete`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': inst.instance_token },
+              body: JSON.stringify({ id: replyMsgId }),
+            })
+            console.log('Ephemeral reply deleted:', replyMsgId)
+          }
+          // Delete the original command message from member
+          if (external_message_id) {
+            await fetch(`${inst.base_url}/message/delete`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': inst.instance_token },
+              body: JSON.stringify({ id: external_message_id }),
+            })
+            console.log('Original command deleted:', external_message_id)
+          }
+          // Also clean up from DB
+          if (external_message_id) {
+            await supabase.from('whatsapp_messages').delete().eq('external_message_id', external_message_id)
+          }
+        } catch (e) {
+          console.error('Error deleting ephemeral messages:', e)
+        }
+      }, 8000)
+    }
 
     return new Response(
-      JSON.stringify({ success: true, reply_sent: sendResp.ok }),
+      JSON.stringify({ success: true, reply_sent: sendResp.ok, ephemeral: usedAdminTool }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (error) {
