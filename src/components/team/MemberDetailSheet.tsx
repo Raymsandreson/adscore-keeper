@@ -111,18 +111,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
       .select('phone, default_instance_id')
       .eq('user_id', member.user_id)
       .single();
-    const rawPhone = data?.phone || '';
-    if (rawPhone) {
-      const d = rawPhone.replace(/\D/g, '');
-      let f = d;
-      if (d.length > 9) f = `+${d.slice(0, 2)} ${d.slice(2, 4)} ${d.slice(4, 9)}-${d.slice(9)}`;
-      else if (d.length > 4) f = `+${d.slice(0, 2)} ${d.slice(2, 4)} ${d.slice(4)}`;
-      else if (d.length > 2) f = `+${d.slice(0, 2)} ${d.slice(2)}`;
-      else if (d.length > 0) f = `+${d}`;
-      setPhone(f);
-    } else {
-      setPhone('');
-    }
+    setPhone(data?.phone || '');
     setDefaultInstanceId(data?.default_instance_id || '');
   };
 
@@ -314,16 +303,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
               <Input
                 type="tel"
                 value={phone}
-                onChange={(e) => {
-                  const raw = e.target.value.replace(/\D/g, '').slice(0, 13);
-                  let formatted = raw;
-                  if (raw.length > 2) formatted = `+${raw.slice(0, 2)} ${raw.slice(2)}`;
-                  if (raw.length > 4) formatted = `+${raw.slice(0, 2)} ${raw.slice(2, 4)} ${raw.slice(4)}`;
-                  if (raw.length > 9) formatted = `+${raw.slice(0, 2)} ${raw.slice(2, 4)} ${raw.slice(4, 9)}-${raw.slice(9)}`;
-                  else if (raw.length > 4) formatted = `+${raw.slice(0, 2)} ${raw.slice(2, 4)} ${raw.slice(4)}`;
-                  if (raw.length <= 2 && raw.length > 0) formatted = `+${raw}`;
-                  setPhone(formatted);
-                }}
+                onChange={(e) => setPhone(e.target.value)}
                 placeholder="+55 86 98805-4381"
               />
               <p className="text-xs text-muted-foreground">
