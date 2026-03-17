@@ -134,6 +134,34 @@ function computeMissingRequiredFields(
     .map((f) => ({ field_name: f.variable, friendly_name: f.label || f.variable }));
 }
 
+/**
+ * Download an external URL and convert to base64 data URI.
+ * Critical: the Gemini shared helper converts external URLs to plain text,
+ * so the model never sees the actual image without this conversion.
+ */
+async function urlToBase64DataUri(url: string): Promise<string> {
+  if (url.startsWith("data:")) return url;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      console.error("Failed to download image for base64:", resp.status, url);
+      return url;
+    }
+    const buffer = await resp.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+    const contentType = resp.headers.get("content-type") || "image/jpeg";
+    return `data:${contentType};base64,${base64}`;
+  } catch (e) {
+    console.error("Error converting URL to base64:", e);
+    return url;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
