@@ -403,10 +403,10 @@ export function DynamicKanbanBoard({
           className="overflow-x-auto"
           style={{ height: '12px' }}
         >
-          <div style={{ width: `${board.stages.length * 340}px`, height: '1px' }} />
+          <div style={{ width: `${board.stages.length * 280}px`, height: '1px' }} />
         </div>
 
-        <div ref={bottomScrollRef} onScroll={handleBottomScroll} className="flex gap-4 overflow-x-auto pb-4">
+        <div ref={bottomScrollRef} onScroll={handleBottomScroll} className="flex gap-2 overflow-x-auto pb-4">
           {board.stages.map((stage) => {
             const stageFilter = stageFilters[stage.id] || '';
             const allStageLeads = leadsByStage[stage.id] || [];
@@ -421,7 +421,7 @@ export function DynamicKanbanBoard({
             return (
               <div
                 key={stage.id}
-                className={`flex-shrink-0 w-80 rounded-lg border transition-all ${
+                className={`flex-shrink-0 w-64 rounded-lg border transition-all ${
                   isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''
                 }`}
                 onDragOver={(e) => handleDragOver(e, stage.id)}
@@ -475,7 +475,7 @@ export function DynamicKanbanBoard({
                 </div>
 
                 {/* Column Content */}
-                <div className="h-[calc(100vh-450px)] min-h-[250px] overflow-y-auto">
+                <div className="h-[calc(100vh-380px)] min-h-[300px] overflow-y-auto">
                   <div className="p-2 space-y-2">
                     {stageLeads.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-8 text-center">
