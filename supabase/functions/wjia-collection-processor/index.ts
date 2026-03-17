@@ -557,8 +557,9 @@ Classifique o documento enviado.` },
           const requiredFieldCatalog = buildTemplateFieldCatalog(session);
           const missingFields = session.missing_fields || [];
 
-          // Build image parts for Gemini vision
-          const imageUrls = receivedDocs.map((d: any) => d.media_url).filter(Boolean);
+          // Build image parts for Gemini vision - download and convert to base64
+          const rawImageUrls = receivedDocs.map((d: any) => d.media_url).filter(Boolean);
+          const imageUrls = await Promise.all(rawImageUrls.map((u: string) => urlToBase64DataUri(u)));
 
           if (imageUrls.length > 0) {
             try {
