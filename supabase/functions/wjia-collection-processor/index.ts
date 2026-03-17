@@ -600,7 +600,7 @@ REGRAS:
               }];
 
               const visionResult = await geminiChat({
-                model: "google/gemini-2.5-flash",
+                model: "google/gemini-2.5-pro",
                 messages: visionMessages,
                 tools: extractTools,
                 tool_choice: { type: "function", function: { name: "extracted_document_data" } },
