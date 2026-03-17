@@ -16,6 +16,7 @@ import {
   Zap, Phone, FileText, Bell, Pencil, Wand2
 } from 'lucide-react';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
+import { MemberAssistantSettings } from './MemberAssistantSettings';
 
 // ==================== TYPES ====================
 interface CommandConfig {
@@ -99,9 +100,9 @@ export function WhatsAppCommandConfig() {
           <div className="flex items-start gap-3">
             <Sparkles className="h-5 w-5 text-primary mt-0.5 shrink-0" />
             <div className="space-y-1">
-              <p className="text-sm font-medium">Assistente IA @wjia</p>
+              <p className="text-sm font-medium">Central de Assistentes IA</p>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Configure números autorizados e assistentes IA com regras de follow-up integradas.
+                Configure assistentes para <strong>contatos/clientes</strong> (@wjia) e para <strong>membros da equipe</strong> (CRM via WhatsApp).
               </p>
             </div>
           </div>
@@ -109,12 +110,15 @@ export function WhatsAppCommandConfig() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="auth" className="text-xs gap-1">
             <Shield className="h-3.5 w-3.5" /> Autorizados
           </TabsTrigger>
           <TabsTrigger value="shortcuts" className="text-xs gap-1">
-            <Zap className="h-3.5 w-3.5" /> Assistentes & Follow-up
+            <Zap className="h-3.5 w-3.5" /> @wjia
+          </TabsTrigger>
+          <TabsTrigger value="member" className="text-xs gap-1">
+            <Bot className="h-3.5 w-3.5" /> Equipe
           </TabsTrigger>
         </TabsList>
 
@@ -134,6 +138,10 @@ export function WhatsAppCommandConfig() {
             
             onReload={loadData}
           />
+        </TabsContent>
+
+        <TabsContent value="member">
+          <MemberAssistantSettings />
         </TabsContent>
       </Tabs>
     </div>
