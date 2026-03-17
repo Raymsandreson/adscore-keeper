@@ -102,6 +102,7 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
       const { data, error } = await supabase.functions.invoke('check-whatsapp-status');
       if (error) throw error;
       const now = new Date();
+      const reconnected: InstanceStatus[] = [];
       const enriched: InstanceStatus[] = (data || []).map((s: any) => {
         if (!s.connected) {
           if (!disconnectedTimestamps.current[s.id]) {
@@ -109,9 +110,12 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
           }
           return { ...s, disconnected_since: disconnectedTimestamps.current[s.id] };
         } else {
+          // Detect reconnection: was disconnected and notified, now connected
+          if (notifiedInstances.current.has(s.id)) {
+            reconnected.push(s);
+            notifiedInstances.current.delete(s.id);
+          }
           delete disconnectedTimestamps.current[s.id];
-          // Clear notification flag when reconnected
-          notifiedInstances.current.delete(s.id);
           return { ...s, disconnected_since: null };
         }
       });
@@ -122,6 +126,11 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
       const offline = enriched.filter(s => !s.connected);
       if (offline.length > 0) {
         notifyOfflineViaWhatsApp(offline);
+      }
+
+      // Notify reconnected instances
+      if (reconnected.length > 0) {
+        notifyReconnectedViaWhatsApp(reconnected);
       }
     } catch (err) {
       console.error('Error checking WhatsApp status:', err);
