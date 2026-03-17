@@ -26,6 +26,7 @@ interface Transaction {
   description: string;
   amount: number;
   transaction_date: string;
+  transaction_time: string | null;
   merchant_name: string | null;
   merchant_city: string | null;
   merchant_state: string | null;
