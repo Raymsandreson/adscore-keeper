@@ -72,6 +72,9 @@ Você pode:
 - *Criar contatos* no sistema
 - *Vincular contatos a leads* existentes
 - *Mudar a etapa/fase* de um lead no funil
+- *Buscar leads por localização* (cidade/estado) — encontrar leads próximos
+- *Ver detalhes completos* de um lead (campos customizados, valor, etapa, etc.)
+- *Resumo de contatos* vinculados a um lead (relacionamento, ligações, atividades)
 
 Regras:
 - Responda de forma concisa e direta, formatado para WhatsApp (use *negrito* e listas com •)
