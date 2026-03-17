@@ -146,25 +146,45 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     }
   };
 
-  const normalizePhone = (raw: string): string => {
+  const normalizePhone = (raw: string): { digits: string; wasFixed: boolean } => {
     let digits = raw.replace(/\D/g, '');
-    if (!digits) return '';
-    // Remove leading + if someone typed it
-    // Ensure country code 55
+    if (!digits) return { digits: '', wasFixed: false };
+    let wasFixed = false;
     if (digits.length >= 10 && !digits.startsWith('55')) {
       digits = '55' + digits;
+      wasFixed = true;
     }
-    // Brazilian mobile: 55 + DDD(2) + 9 + number(8) = 13 digits
-    // If 12 digits (missing the 9), auto-add it
     if (digits.length === 12 && digits.startsWith('55')) {
       const ddd = digits.slice(2, 4);
       const number = digits.slice(4);
       if (!number.startsWith('9')) {
         digits = '55' + ddd + '9' + number;
-        toast.info('O dígito 9 foi adicionado automaticamente ao número.');
+        wasFixed = true;
       }
     }
+    return { digits, wasFixed };
+  };
+
+  const formatPhoneDisplay = (digits: string): string => {
+    if (!digits) return '';
+    if (digits.length === 13) {
+      return `+${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 9)}-${digits.slice(9)}`;
+    }
     return digits;
+  };
+
+  const handlePhoneBlur = () => {
+    const raw = phone.replace(/\D/g, '');
+    if (!raw) return;
+    const { digits, wasFixed } = normalizePhone(raw);
+    const formatted = formatPhoneDisplay(digits);
+    setPhone(formatted);
+    if (wasFixed) {
+      toast.info('Número corrigido automaticamente (código 55 ou dígito 9 adicionado).');
+    }
+    if (digits.length > 0 && digits.length !== 13) {
+      toast.warning('Número parece incompleto. Formato esperado: +55 XX 9XXXX-XXXX');
+    }
   };
 
   const handleSaveProfile = async () => {
