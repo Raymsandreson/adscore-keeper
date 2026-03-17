@@ -70,6 +70,7 @@ export function WhatsAppNotificationSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendingUserId, setSendingUserId] = useState<string | null>(null);
   const [newTime, setNewTime] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
 
