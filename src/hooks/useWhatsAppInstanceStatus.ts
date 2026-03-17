@@ -137,7 +137,7 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
     } finally {
       setLoading(false);
     }
-  }, [enabled, notifyOfflineViaWhatsApp]);
+  }, [enabled, notifyOfflineViaWhatsApp, notifyReconnectedViaWhatsApp]);
 
   useEffect(() => {
     if (enabled) {
