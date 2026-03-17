@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Save, Plus, X, Bell, Clock, Target, AlertTriangle, CalendarDays, UserPlus, User } from 'lucide-react';
+import { Loader2, Save, Plus, X, Bell, Clock, Target, AlertTriangle, CalendarDays, UserPlus, User, Send } from 'lucide-react';
 
 const DAYS_OF_WEEK = [
   { value: 0, label: 'Dom' },
@@ -69,6 +69,7 @@ export function WhatsAppNotificationSettings() {
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
   const [newTime, setNewTime] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
 
@@ -147,6 +148,23 @@ export function WhatsAppNotificationSettings() {
       toast.error('Erro ao salvar: ' + e.message);
     } finally {
       setSaving(false);
+    }
+  };
+  const handleSendNow = async () => {
+    setSending(true);
+    try {
+      // Save first if needed
+      const { data, error } = await supabase.functions.invoke('trigger-whatsapp-notifications');
+      if (error) throw error;
+      if (data?.success) {
+        toast.success(`Notificação enviada para ${data.sent}/${data.total} destinatários`);
+      } else {
+        toast.error(data?.error || 'Erro ao enviar notificação');
+      }
+    } catch (e: any) {
+      toast.error('Erro ao enviar: ' + e.message);
+    } finally {
+      setSending(false);
     }
   };
 
@@ -393,8 +411,17 @@ export function WhatsAppNotificationSettings() {
         </CardContent>
       </Card>
 
-      {/* Save button */}
-      <div className="flex justify-end">
+      {/* Action buttons */}
+      <div className="flex justify-between gap-3">
+        <Button
+          variant="outline"
+          onClick={handleSendNow}
+          disabled={sending || !config.is_active || !config.recipient_user_ids.length}
+          className="gap-2"
+        >
+          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          Enviar notificação agora
+        </Button>
         <Button onClick={handleSave} disabled={saving} className="gap-2">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Salvar Configurações
