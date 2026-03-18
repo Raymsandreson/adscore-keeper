@@ -99,40 +99,96 @@ Retorne a configuração COMPLETA atualizada (não apenas as mudanças), mantend
 
     const rawContent = result.choices?.[0]?.message?.content || "";
 
-    const extractJsonFromAiResponse = (content: string) => {
-      let text = content.trim().replace(/^\uFEFF/, "");
-
-      // Remove surrounding code fences if present (case-insensitive and CRLF-safe)
-      text = text
-        .replace(/^\s*```\s*json\s*/i, "")
-        .replace(/^\s*```\s*/i, "")
+    const stripCodeFences = (value: string) =>
+      value
+        .trim()
+        .replace(/^\uFEFF/, "")
+        .replace(/^\s*```(?:\w+)?\s*/i, "")
         .replace(/\s*```\s*$/i, "")
         .trim();
 
-      // Handle nested/inline markdown blocks
-      const fencedMatch = text.match(/```\s*json\s*([\s\S]*?)\s*```/i) ?? text.match(/```([\s\S]*?)```/i);
-      if (fencedMatch?.[1]) {
-        text = fencedMatch[1].trim();
+    const autoCloseJson = (value: string) => {
+      let inString = false;
+      let escaped = false;
+      const stack: string[] = [];
+
+      for (const ch of value) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+
+        if (ch === "\\") {
+          escaped = true;
+          continue;
+        }
+
+        if (ch === '"') {
+          inString = !inString;
+          continue;
+        }
+
+        if (inString) continue;
+
+        if (ch === "{" || ch === "[") {
+          stack.push(ch);
+          continue;
+        }
+
+        if (ch === "}" && stack[stack.length - 1] === "{") {
+          stack.pop();
+          continue;
+        }
+
+        if (ch === "]" && stack[stack.length - 1] === "[") {
+          stack.pop();
+        }
       }
 
-      const firstBrace = text.indexOf("{");
-      const lastBrace = text.lastIndexOf("}");
-
-      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-        return text.slice(firstBrace, lastBrace + 1);
+      let closed = value;
+      for (let i = stack.length - 1; i >= 0; i--) {
+        closed += stack[i] === "{" ? "}" : "]";
       }
 
-      throw new Error("A IA retornou JSON incompleto ou inválido");
+      return closed;
     };
 
-    const jsonStr = extractJsonFromAiResponse(rawContent);
+    const parseAiJson = (content: string) => {
+      const normalized = content.trim().replace(/^\uFEFF/, "").replace(/\r/g, "");
+      const fenced = normalized.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1];
+      const firstBrace = normalized.indexOf("{");
 
-    let parsed: any;
-    try {
-      parsed = JSON.parse(jsonStr);
-    } catch {
-      throw new Error("A IA retornou um formato inválido. Tente novamente.");
-    }
+      const candidates = [
+        fenced,
+        stripCodeFences(normalized),
+        normalized,
+        firstBrace !== -1 ? normalized.slice(firstBrace) : "",
+      ].filter(Boolean) as string[];
+
+      for (const candidate of candidates) {
+        const base = candidate.trim();
+        if (!base) continue;
+
+        const variants = [
+          base,
+          base.replace(/,\s*([}\]])/g, "$1"),
+          autoCloseJson(base),
+          autoCloseJson(base).replace(/,\s*([}\]])/g, "$1"),
+        ];
+
+        for (const variant of variants) {
+          try {
+            return JSON.parse(variant);
+          } catch {
+            // try next variant
+          }
+        }
+      }
+
+      throw new Error("A IA retornou JSON inválido. Tente novamente.");
+    };
+
+    const parsed = parseAiJson(rawContent);
 
     // Validate structure
     if (!parsed.shortcut_name || !parsed.prompt_instructions) {
