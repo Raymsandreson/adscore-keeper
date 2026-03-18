@@ -860,7 +860,20 @@ REGRAS DE FORMATAÇÃO:
           if (imageUrls.length > 0) {
             try {
               const allTemplateFieldNames = requiredFieldCatalog.map((f) => `${f.variable} (${f.label})`);
-              const extractPrompt = `Analise as imagens dos documentos e extraia TODOS os dados pessoais visíveis.\n\nCAMPOS NECESSÁRIOS:\n${allTemplateFieldNames.map((f: string) => `- ${f}`).join('\n')}\n\nREGRAS:\n- Extraia nome, CPF, RG, data de nascimento, endereço, etc.\n- Formate CPF como XXX.XXX.XXX-XX e datas como DD/MM/AAAA\n- Use EXATAMENTE as variáveis do template no campo "de"`;
+              
+              const defaultSkipExtractionPrompt = `Você é um especialista em OCR de documentos brasileiros. Analise CUIDADOSAMENTE as imagens dos documentos enviados e extraia os dados do TITULAR do documento.
+
+ATENÇÃO - REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
+1. Em um RG (Carteira de Identidade):
+   - O NOME DO TITULAR está no campo "NOME" em letras VERMELHAS/GRANDES no centro do documento
+   - O campo "FILIAÇÃO" contém os nomes dos PAIS (pai e mãe) - NÃO confunda com o nome do titular
+   - No verso do RG, o nome que aparece junto a "DIRETORA/DIRETOR" é do funcionário do órgão emissor, NÃO do titular
+   - O CPF do titular aparece no verso do RG
+2. Em uma CNH:
+   - O NOME DO TITULAR está no campo "NOME" ou "Nome"
+   - FILIAÇÃO são os pais`;
+
+              const extractPrompt = `${customExtractionPrompt || defaultSkipExtractionPrompt}\n\nCAMPOS NECESSÁRIOS:\n${allTemplateFieldNames.map((f: string) => `- ${f}`).join('\n')}\n\nREGRAS:\n- Extraia nome, CPF, RG, data de nascimento, endereço, etc.\n- Formate CPF como XXX.XXX.XXX-XX e datas como DD/MM/AAAA\n- Use EXATAMENTE as variáveis do template no campo "de"`;
 
               const visionResult = await geminiChat({
                 model: "google/gemini-2.5-pro",
