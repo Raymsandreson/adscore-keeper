@@ -79,6 +79,7 @@ Responda APENAS com JSON válido no formato:
 - Nome: ${existing_config.shortcut_name}
 - Descrição: ${existing_config.description || '(sem descrição)'}
 - Prompt: ${existing_config.prompt_instructions || '(sem prompt)'}
+- Prompt de extração de mídia: ${existing_config.media_extraction_prompt || '(sem prompt de extração)'}
 - Follow-up: ${JSON.stringify(existing_config.followup_steps || [])}
 
 O usuário quer as seguintes mudanças: ${description.trim()}
