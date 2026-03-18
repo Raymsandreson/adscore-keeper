@@ -557,6 +557,17 @@ Classifique o documento enviado.` },
           const requiredFieldCatalog = buildTemplateFieldCatalog(session);
           const missingFields = session.missing_fields || [];
 
+          // Load custom media extraction prompt from shortcut config
+          let customExtractionPrompt: string | null = null;
+          if (session.shortcut_name) {
+            const { data: shortcutConfig } = await supabase
+              .from("wjia_command_shortcuts")
+              .select("media_extraction_prompt")
+              .eq("shortcut_name", session.shortcut_name)
+              .maybeSingle();
+            customExtractionPrompt = shortcutConfig?.media_extraction_prompt || null;
+          }
+
           // Build image parts for Gemini vision - download and convert to base64
           const rawImageUrls = receivedDocs.map((d: any) => d.media_url).filter(Boolean);
           const imageUrls = await Promise.all(rawImageUrls.map((u: string) => urlToBase64DataUri(u)));
@@ -572,7 +583,7 @@ Classifique o documento enviado.` },
                 .map((f: any) => `${f.de}: ${f.para}`)
                 .join('\n');
 
-              const extractPrompt = `Você é um especialista em OCR de documentos brasileiros. Analise CUIDADOSAMENTE as imagens dos documentos enviados e extraia os dados do TITULAR do documento.
+              const defaultExtractionPrompt = `Você é um especialista em OCR de documentos brasileiros. Analise CUIDADOSAMENTE as imagens dos documentos enviados e extraia os dados do TITULAR do documento.
 
 ATENÇÃO - REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
 1. Em um RG (Carteira de Identidade):
@@ -584,7 +595,9 @@ ATENÇÃO - REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
 2. Em uma CNH:
    - O NOME DO TITULAR está no campo "NOME" ou "Nome"
    - FILIAÇÃO são os pais
-3. O OUTORGANTE/SIGNATÁRIO é SEMPRE o TITULAR do documento (cujo NOME aparece em destaque)
+3. O OUTORGANTE/SIGNATÁRIO é SEMPRE o TITULAR do documento (cujo NOME aparece em destaque)`;
+
+              const extractPrompt = `${customExtractionPrompt || defaultExtractionPrompt}
 
 CAMPOS QUE PRECISO PREENCHER:
 ${allTemplateFieldNames.map((f: string) => `- ${f}`).join('\n')}
