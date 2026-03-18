@@ -527,9 +527,21 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                       ) : (
                         <Select
                           value={form.template_token}
-                          onValueChange={v => {
+                          onValueChange={async (v) => {
                             const tmpl = zapsignTemplates.find(t => t.token === v);
                             setForm(f => ({ ...f, template_token: v, template_name: tmpl?.name || '' }));
+                            // Fetch template fields
+                            setTemplateFields([]);
+                            setLoadingFields(true);
+                            try {
+                              const { data, error } = await supabase.functions.invoke('zapsign-api', {
+                                body: { action: 'get_template', template_token: v }
+                              });
+                              if (!error && data?.success && data.fields) {
+                                setTemplateFields(data.fields);
+                              }
+                            } catch (e) { console.error('Error fetching template fields:', e); }
+                            setLoadingFields(false);
                           }}
                         >
                           <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Selecione um modelo..." /></SelectTrigger>
