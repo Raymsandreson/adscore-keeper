@@ -90,15 +90,21 @@ serve(async (req) => {
     const sendSignedPdf = matchedShortcut?.send_signed_pdf !== false;
     const requestDocuments = matchedShortcut?.request_documents || false;
     const documentTypes = matchedShortcut?.document_types || [];
+    const assistantType = matchedShortcut?.assistant_type || 'document';
+    const shortcutModel = matchedShortcut?.model || 'google/gemini-2.5-flash';
+    const shortcutTemperature = matchedShortcut?.temperature ?? 0.1;
+    const shortcutBasePrompt = matchedShortcut?.base_prompt || '';
 
-    // 2) AI decides what to do — but does NOT generate doc yet if data is missing
+    // 2) AI decides what to do
+    const basePromptSection = shortcutBasePrompt ? `\nPERSONA/REGRAS BASE DO ASSISTENTE:\n${shortcutBasePrompt}\n` : '';
+    
     const systemPrompt = `Você é o assistente WJIA, integrado ao WhatsApp de um escritório de advocacia. O atendente digitou um comando @wjia.
-
-IMPORTANTE: NÃO gere o documento agora. Seu trabalho é:
+${basePromptSection}
+${assistantType === 'assistant' ? `MODO: Assistente conversacional. Responda ao comando do atendente usando o contexto disponível. NÃO tente gerar documentos.` : `IMPORTANTE: NÃO gere o documento agora. Seu trabalho é:
 1. Identificar qual template ZapSign usar
 2. Analisar TODOS os dados disponíveis (conversa + CRM)
 3. Identificar quais campos obrigatórios estão FALTANDO
-4. Se houver dados faltantes, o robô vai assumir a conversa para coletá-los antes de gerar
+4. Se houver dados faltantes, o robô vai assumir a conversa para coletá-los antes de gerar`}
 
 ${forceTemplate ? `⚠️ TEMPLATE OBRIGATÓRIO: Use EXATAMENTE o template "${forceTemplateName}" (token: ${forceTemplate}). NÃO escolha outro template.` : ''}
 
@@ -179,18 +185,35 @@ REGRAS:
     ];
 
     const aiResult = await geminiChat({
-      model: "google/gemini-2.5-flash",
+      model: shortcutModel,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: `Comando do atendente: ${command}` },
       ],
-      tools,
-      tool_choice: { type: "function", function: { name: "analyze_wjia_command" } },
-      temperature: 0.1,
+      tools: assistantType === 'assistant' ? undefined : tools,
+      tool_choice: assistantType === 'assistant' ? undefined : { type: "function", function: { name: "analyze_wjia_command" } },
+      temperature: shortcutTemperature,
     });
+
+    // For assistant-only mode, return the text response directly
+    if (assistantType === 'assistant') {
+      const textResponse = aiResult.choices?.[0]?.message?.content || 'Sem resposta.';
+      return new Response(JSON.stringify({
+        success: true,
+        action: "assistant_response",
+        message: textResponse,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall?.function?.arguments) {
+      // Fallback: if no tool call but has text content (hybrid mode)
+      const fallbackText = aiResult.choices?.[0]?.message?.content;
+      if (fallbackText) {
+        return new Response(JSON.stringify({
+          success: true, action: "assistant_response", message: fallbackText,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
       return errorResponse("Não foi possível processar o comando. Tente ser mais específico.");
     }
 

@@ -10,10 +10,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
 import { 
   Bot, Plus, Trash2, Smartphone, Shield, MessageSquare, Sparkles, 
-  Zap, Phone, FileText, Bell, Pencil, Wand2
+  Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2
 } from 'lucide-react';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { MemberAssistantSettings } from './MemberAssistantSettings';
@@ -36,6 +37,7 @@ interface Shortcut {
   template_token: string | null;
   template_name: string | null;
   prompt_instructions: string | null;
+  media_extraction_prompt: string | null;
   is_active: boolean;
   display_order: number;
   followup_steps: FollowupStep[];
@@ -43,6 +45,15 @@ interface Shortcut {
   send_signed_pdf: boolean;
   request_documents: boolean;
   document_types: string[];
+  // Agent fields
+  assistant_type: string;
+  base_prompt: string | null;
+  model: string;
+  temperature: number;
+  response_delay_seconds: number;
+  split_messages: boolean;
+  split_delay_seconds: number;
+  human_reply_pause_minutes: number;
 }
 
 interface FollowupStep {
@@ -54,12 +65,23 @@ interface FollowupStep {
   priority?: string;
 }
 
-// FollowupRule type removed - steps are now embedded in Shortcut
-
 interface Instance { id: string; instance_name: string; }
 interface Profile { user_id: string; full_name: string | null; }
 interface ZapSignTemplateOption { token: string; name: string; }
 
+const MODELS = [
+  { value: 'google/gemini-3-flash-preview', label: 'Gemini 3 Flash (rápido)' },
+  { value: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+  { value: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro (avançado)' },
+  { value: 'openai/gpt-5-mini', label: 'GPT-5 Mini' },
+  { value: 'openai/gpt-5', label: 'GPT-5 (avançado)' },
+];
+
+const ASSISTANT_TYPES = [
+  { value: 'document', label: '📄 Gerador de Documentos', desc: 'Coleta dados e gera documentos ZapSign' },
+  { value: 'assistant', label: '🤖 Assistente IA', desc: 'Responde e interage com clientes/leads' },
+  { value: 'hybrid', label: '🔄 Híbrido', desc: 'Assistente que também gera documentos' },
+];
 
 // ==================== COMPONENT ====================
 export function WhatsAppCommandConfig() {
@@ -84,7 +106,17 @@ export function WhatsAppCommandConfig() {
     setConfigs((configsRes.data as any[]) || []);
     setInstances(instancesRes.data || []);
     setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
-    setShortcuts((shortcutsRes.data || []).map((s: any) => ({ ...s, followup_steps: s.followup_steps || [] })) as Shortcut[]);
+    setShortcuts((shortcutsRes.data || []).map((s: any) => ({
+      ...s,
+      followup_steps: s.followup_steps || [],
+      assistant_type: s.assistant_type || 'document',
+      model: s.model || 'google/gemini-2.5-flash',
+      temperature: s.temperature ?? 0.7,
+      response_delay_seconds: s.response_delay_seconds ?? 2,
+      split_messages: s.split_messages ?? false,
+      split_delay_seconds: s.split_delay_seconds ?? 3,
+      human_reply_pause_minutes: s.human_reply_pause_minutes ?? 0,
+    })) as Shortcut[]);
     
     setLoading(false);
   };
@@ -135,7 +167,6 @@ export function WhatsAppCommandConfig() {
           <ShortcutsTab
             shortcuts={shortcuts}
             profiles={profiles}
-            
             onReload={loadData}
           />
         </TabsContent>
@@ -256,17 +287,31 @@ function AuthorizedPhonesTab({ configs, instances, profiles, onReload }: {
   );
 }
 
-// ==================== SHORTCUTS TAB (with embedded follow-up) ====================
+// ==================== SHORTCUTS TAB (UNIFIED ASSISTANT + DOCUMENT) ====================
 function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]; profiles: Profile[]; onReload: () => void }) {
   const [showForm, setShowForm] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; media_extraction_prompt?: string; followup_steps: FollowupStep[] } | null>(null);
-  const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', media_extraction_prompt: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] as string[] });
+  const [form, setForm] = useState({
+    shortcut_name: '', description: '', template_token: '', template_name: '',
+    prompt_instructions: '', media_extraction_prompt: '',
+    notify_on_signature: true, send_signed_pdf: true,
+    request_documents: false, document_types: [] as string[],
+    // Agent fields
+    assistant_type: 'document',
+    base_prompt: '',
+    model: 'google/gemini-2.5-flash',
+    temperature: 0.7,
+    response_delay_seconds: 2,
+    split_messages: false,
+    split_delay_seconds: 3,
+  });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
   const [humanReplyPauseMinutes, setHumanReplyPauseMinutes] = useState(0);
   const [zapsignTemplates, setZapsignTemplates] = useState<ZapSignTemplateOption[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [formSection, setFormSection] = useState<'general' | 'ai' | 'document' | 'followup'>('general');
 
   const loadZapSignTemplates = useCallback(async () => {
     if (zapsignTemplates.length > 0) return;
@@ -287,16 +332,30 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   }, [zapsignTemplates.length]);
 
   useEffect(() => {
-    if (showForm) loadZapSignTemplates();
-  }, [showForm, loadZapSignTemplates]);
+    if (showForm && (form.assistant_type === 'document' || form.assistant_type === 'hybrid')) {
+      loadZapSignTemplates();
+    }
+  }, [showForm, form.assistant_type, loadZapSignTemplates]);
+
+  const showDocumentFields = form.assistant_type === 'document' || form.assistant_type === 'hybrid';
+  const showAssistantFields = form.assistant_type === 'assistant' || form.assistant_type === 'hybrid';
 
   const resetForm = () => {
-    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', media_extraction_prompt: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] });
+    setForm({
+      shortcut_name: '', description: '', template_token: '', template_name: '',
+      prompt_instructions: '', media_extraction_prompt: '',
+      notify_on_signature: true, send_signed_pdf: true,
+      request_documents: false, document_types: [],
+      assistant_type: 'document', base_prompt: '',
+      model: 'google/gemini-2.5-flash', temperature: 0.7,
+      response_delay_seconds: 2, split_messages: false, split_delay_seconds: 3,
+    });
     setFollowupSteps([]);
     setHumanReplyPauseMinutes(0);
     setEditingId(null);
     setShowForm(false);
     setAiEditConfig(null);
+    setFormSection('general');
   };
 
   const startAIEdit = (s: Shortcut) => {
@@ -304,7 +363,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       shortcut_name: s.shortcut_name,
       description: s.description || '',
       prompt_instructions: s.prompt_instructions || '',
-      media_extraction_prompt: (s as any).media_extraction_prompt || '',
+      media_extraction_prompt: s.media_extraction_prompt || '',
       followup_steps: s.followup_steps || [],
     });
     setEditingId(s.id);
@@ -319,16 +378,24 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       template_token: s.template_token || '',
       template_name: s.template_name || '',
       prompt_instructions: s.prompt_instructions || '',
-      media_extraction_prompt: (s as any).media_extraction_prompt || '',
+      media_extraction_prompt: s.media_extraction_prompt || '',
       notify_on_signature: s.notify_on_signature !== false,
       send_signed_pdf: s.send_signed_pdf !== false,
       request_documents: s.request_documents || false,
       document_types: s.document_types || [],
+      assistant_type: s.assistant_type || 'document',
+      base_prompt: s.base_prompt || '',
+      model: s.model || 'google/gemini-2.5-flash',
+      temperature: s.temperature ?? 0.7,
+      response_delay_seconds: s.response_delay_seconds ?? 2,
+      split_messages: s.split_messages ?? false,
+      split_delay_seconds: s.split_delay_seconds ?? 3,
     });
     setFollowupSteps(s.followup_steps || []);
-    setHumanReplyPauseMinutes((s as any).human_reply_pause_minutes ?? 0);
+    setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
     setEditingId(s.id);
     setShowForm(true);
+    setFormSection('general');
   };
 
   const addStep = () => {
@@ -344,12 +411,12 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   };
 
   const handleSave = async () => {
-    if (!form.shortcut_name.trim()) { toast.error('Nome do atalho é obrigatório'); return; }
+    if (!form.shortcut_name.trim()) { toast.error('Nome do assistente é obrigatório'); return; }
     const payload = {
       shortcut_name: form.shortcut_name.trim(),
       description: form.description || null,
-      template_token: form.template_token || null,
-      template_name: form.template_name || null,
+      template_token: showDocumentFields ? (form.template_token || null) : null,
+      template_name: showDocumentFields ? (form.template_name || null) : null,
       prompt_instructions: form.prompt_instructions || null,
       media_extraction_prompt: form.media_extraction_prompt || null,
       followup_steps: followupSteps,
@@ -358,6 +425,13 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       send_signed_pdf: form.send_signed_pdf,
       request_documents: form.request_documents,
       document_types: form.document_types,
+      assistant_type: form.assistant_type,
+      base_prompt: form.base_prompt || null,
+      model: form.model,
+      temperature: form.temperature,
+      response_delay_seconds: form.response_delay_seconds,
+      split_messages: form.split_messages,
+      split_delay_seconds: form.split_delay_seconds,
     };
 
     let error;
@@ -367,7 +441,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       ({ error } = await (supabase.from('wjia_command_shortcuts') as any).insert({ ...payload, display_order: shortcuts.length }));
     }
     if (error) { toast.error(error.message); return; }
-    toast.success(editingId ? 'Atalho atualizado!' : 'Atalho criado!');
+    toast.success(editingId ? 'Assistente atualizado!' : 'Assistente criado!');
     resetForm();
     onReload();
   };
@@ -375,7 +449,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   const handleDelete = async (id: string) => {
     await (supabase.from('wjia_command_shortcuts') as any).delete().eq('id', id);
     onReload();
-    toast.success('Atalho removido');
+    toast.success('Assistente removido');
   };
 
   const handleToggle = async (id: string, isActive: boolean) => {
@@ -389,11 +463,17 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
     create_activity: { label: 'Criar Atividade', icon: FileText, color: 'text-orange-500' },
   };
 
+  const typeIcons: Record<string, string> = {
+    document: '📄',
+    assistant: '🤖',
+    hybrid: '🔄',
+  };
+
   return (
     <div className="space-y-4 mt-4">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
-          Atalhos @wjia com regras de follow-up integradas para cada documento.
+          Assistentes @wjia — cada um com IA, documentos e follow-up integrados.
         </p>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => { setAiEditConfig(null); setEditingId(null); setShowAI(!showAI); setShowForm(false); }} className="gap-1">
@@ -409,18 +489,13 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
         <AIShortcutGenerator
           existingConfig={null}
           onApply={(config) => {
-             setForm({
+            setForm(f => ({
+              ...f,
               shortcut_name: config.shortcut_name,
               description: config.description || '',
-              template_token: '',
-              template_name: '',
               prompt_instructions: config.prompt_instructions,
               media_extraction_prompt: config.media_extraction_prompt || '',
-              notify_on_signature: true,
-              send_signed_pdf: true,
-              request_documents: false,
-              document_types: [],
-            });
+            }));
             setFollowupSteps(config.followup_steps || []);
             setShowForm(true);
             setShowAI(false);
@@ -431,222 +506,324 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
 
       {showForm && (
         <Card className="border-primary/30">
-          <CardContent className="p-4 space-y-3">
-            <p className="text-xs font-medium text-primary">{editingId ? '✏️ Editando atalho' : '➕ Novo atalho'}</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Nome do Atalho *</Label>
-                <Input placeholder="procuração" value={form.shortcut_name} onChange={e => setForm(f => ({ ...f, shortcut_name: e.target.value }))} className="h-9" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Descrição</Label>
-                <Input placeholder="Gera procuração ad judicia" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="h-9" />
+          <CardContent className="p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-primary">{editingId ? '✏️ Editando assistente' : '➕ Novo assistente'}</p>
+              <div className="flex gap-1">
+                {(['general', 'ai', 'document', 'followup'] as const).map(sec => (
+                  <Button
+                    key={sec}
+                    size="sm"
+                    variant={formSection === sec ? 'default' : 'ghost'}
+                    className="h-7 text-[10px] px-2"
+                    onClick={() => setFormSection(sec)}
+                  >
+                    {sec === 'general' && '⚙️ Geral'}
+                    {sec === 'ai' && '🧠 IA'}
+                    {sec === 'document' && '📄 Documento'}
+                    {sec === 'followup' && '🔔 Follow-up'}
+                  </Button>
+                ))}
               </div>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Modelo ZapSign</Label>
-              {loadingTemplates ? (
-                <div className="h-9 flex items-center text-xs text-muted-foreground">Carregando modelos...</div>
-              ) : (
-                <Select
-                  value={form.template_token}
-                  onValueChange={v => {
-                    const tmpl = zapsignTemplates.find(t => t.token === v);
-                    setForm(f => ({ ...f, template_token: v, template_name: tmpl?.name || '' }));
-                  }}
-                >
-                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Selecione um modelo..." /></SelectTrigger>
-                  <SelectContent>
-                    {zapsignTemplates.map(t => (
-                      <SelectItem key={t.token} value={t.token} className="text-xs">{t.name}</SelectItem>
+
+            {/* GENERAL SECTION */}
+            {formSection === 'general' && (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Tipo de Assistente *</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {ASSISTANT_TYPES.map(t => (
+                      <button
+                        key={t.value}
+                        onClick={() => setForm(f => ({ ...f, assistant_type: t.value }))}
+                        className={`p-2 rounded-lg border text-left transition-all ${form.assistant_type === t.value ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border hover:border-primary/50'}`}
+                      >
+                        <p className="text-xs font-medium">{t.label}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{t.desc}</p>
+                      </button>
                     ))}
-                  </SelectContent>
-                </Select>
-              )}
-              {form.template_name && (
-                <p className="text-[10px] text-muted-foreground">✅ {form.template_name}</p>
-              )}
-            </div>
-            {/* Opções pós-assinatura */}
-            {form.template_token && (
-              <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
-                <Label className="text-xs font-semibold">📋 Após assinatura do documento</Label>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="notify_on_signature"
-                    checked={form.notify_on_signature}
-                    onCheckedChange={(checked) => setForm(f => ({ ...f, notify_on_signature: !!checked }))}
-                  />
-                  <Label htmlFor="notify_on_signature" className="text-xs cursor-pointer">
-                    Avisar quando o documento for assinado
-                  </Label>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="send_signed_pdf"
-                    checked={form.send_signed_pdf}
-                    onCheckedChange={(checked) => setForm(f => ({ ...f, send_signed_pdf: !!checked }))}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Nome do Assistente *</Label>
+                    <Input placeholder="procuração" value={form.shortcut_name} onChange={e => setForm(f => ({ ...f, shortcut_name: e.target.value }))} className="h-9" />
+                    <p className="text-[10px] text-muted-foreground">Acionado por <strong>#nome</strong> no WhatsApp</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Descrição</Label>
+                    <Input placeholder="Gera procuração ad judicia" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="h-9" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Instruções do Prompt (como o robô deve agir com o cliente)</Label>
+                  <Textarea
+                    placeholder="Ao interagir com o cliente, pergunte nome completo, CPF, RG, endereço completo..."
+                    value={form.prompt_instructions}
+                    onChange={e => setForm(f => ({ ...f, prompt_instructions: e.target.value }))}
+                    className="min-h-[80px] text-xs"
                   />
-                  <Label htmlFor="send_signed_pdf" className="text-xs cursor-pointer">
-                    Enviar o PDF assinado via WhatsApp
-                  </Label>
                 </div>
               </div>
             )}
-            {/* Solicitar documentos */}
-            {form.template_token && (
-              <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="request_documents"
-                    checked={form.request_documents}
-                    onCheckedChange={(checked) => setForm(f => ({ ...f, request_documents: !!checked }))}
+
+            {/* AI SECTION */}
+            {formSection === 'ai' && (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">🧠 Prompt Base (Persona do Assistente)</Label>
+                  <p className="text-[10px] text-muted-foreground">Define a personalidade, tom e regras gerais do assistente.</p>
+                  <Textarea
+                    placeholder="Você é um assistente jurídico profissional e atencioso. Fale de forma clara e objetiva..."
+                    value={form.base_prompt}
+                    onChange={e => setForm(f => ({ ...f, base_prompt: e.target.value }))}
+                    className="min-h-[120px] text-xs"
                   />
-                  <Label htmlFor="request_documents" className="text-xs font-semibold cursor-pointer">
-                    📎 Solicitar documentos do cliente para anexar
-                  </Label>
                 </div>
-                {form.request_documents && (
-                  <div className="ml-6 space-y-2">
-                    <p className="text-[10px] text-muted-foreground">Selecione os tipos de documentos que serão solicitados:</p>
-                    {[
-                      { key: 'rg_cnh', label: 'RG / CNH (identidade)' },
-                      { key: 'comprovante_endereco', label: 'Comprovante de endereço' },
-                      { key: 'comprovante_renda', label: 'Comprovante de renda' },
-                      { key: 'outros', label: 'Outros documentos' },
-                    ].map(docType => (
-                      <div key={docType.key} className="flex items-center gap-2">
-                        <Checkbox
-                          id={`doc_${docType.key}`}
-                          checked={form.document_types.includes(docType.key)}
-                          onCheckedChange={(checked) => {
-                            setForm(f => ({
-                              ...f,
-                              document_types: checked
-                                ? [...f.document_types, docType.key]
-                                : f.document_types.filter(t => t !== docType.key),
-                            }));
-                          }}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Modelo de IA</Label>
+                    <Select value={form.model} onValueChange={v => setForm(f => ({ ...f, model: v }))}>
+                      <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {MODELS.map(m => <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Temperatura: {form.temperature.toFixed(1)}</Label>
+                    <Slider
+                      value={[form.temperature]}
+                      onValueChange={([v]) => setForm(f => ({ ...f, temperature: v }))}
+                      min={0} max={1} step={0.1}
+                      className="mt-2"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      {form.temperature <= 0.3 ? 'Preciso e determinístico' : form.temperature >= 0.8 ? 'Criativo e variado' : 'Balanceado'}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Delay de resposta (seg)</Label>
+                    <Input
+                      type="number" min={0} max={30}
+                      value={form.response_delay_seconds}
+                      onChange={e => setForm(f => ({ ...f, response_delay_seconds: parseInt(e.target.value) || 0 }))}
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Dividir mensagens longas</Label>
+                      <Switch checked={form.split_messages} onCheckedChange={v => setForm(f => ({ ...f, split_messages: v }))} />
+                    </div>
+                    {form.split_messages && (
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Delay entre partes (seg)</Label>
+                        <Input
+                          type="number" min={1} max={10}
+                          value={form.split_delay_seconds}
+                          onChange={e => setForm(f => ({ ...f, split_delay_seconds: parseInt(e.target.value) || 3 }))}
+                          className="h-8 text-xs"
                         />
-                        <Label htmlFor={`doc_${docType.key}`} className="text-xs cursor-pointer">
-                          {docType.label}
-                        </Label>
                       </div>
-                    ))}
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs">🔍 Prompt de Extração de Mídia</Label>
+                    <Badge variant="outline" className="text-[9px] h-4">OCR</Badge>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Instruções de como a IA deve interpretar documentos (RG, CNH, comprovantes).
+                  </p>
+                  <Textarea
+                    placeholder="Ex: O NOME DO TITULAR está em letras vermelhas no campo 'NOME'. O campo 'FILIAÇÃO' são os pais..."
+                    value={form.media_extraction_prompt}
+                    onChange={e => setForm(f => ({ ...f, media_extraction_prompt: e.target.value }))}
+                    className="min-h-[80px] text-xs font-mono"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* DOCUMENT SECTION */}
+            {formSection === 'document' && (
+              <div className="space-y-3">
+                {!showDocumentFields ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">
+                    <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                    <p>Seção de documentos disponível para assistentes do tipo</p>
+                    <p className="font-medium">📄 Gerador de Documentos ou 🔄 Híbrido</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Modelo ZapSign</Label>
+                      {loadingTemplates ? (
+                        <div className="h-9 flex items-center text-xs text-muted-foreground">Carregando modelos...</div>
+                      ) : (
+                        <Select
+                          value={form.template_token}
+                          onValueChange={v => {
+                            const tmpl = zapsignTemplates.find(t => t.token === v);
+                            setForm(f => ({ ...f, template_token: v, template_name: tmpl?.name || '' }));
+                          }}
+                        >
+                          <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Selecione um modelo..." /></SelectTrigger>
+                          <SelectContent>
+                            {zapsignTemplates.map(t => (
+                              <SelectItem key={t.token} value={t.token} className="text-xs">{t.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      {form.template_name && (
+                        <p className="text-[10px] text-muted-foreground">✅ {form.template_name}</p>
+                      )}
+                    </div>
+                    {form.template_token && (
+                      <>
+                        <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
+                          <Label className="text-xs font-semibold">📋 Após assinatura do documento</Label>
+                          <div className="flex items-center gap-2">
+                            <Checkbox id="notify_on_signature" checked={form.notify_on_signature} onCheckedChange={(checked) => setForm(f => ({ ...f, notify_on_signature: !!checked }))} />
+                            <Label htmlFor="notify_on_signature" className="text-xs cursor-pointer">Avisar quando o documento for assinado</Label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Checkbox id="send_signed_pdf" checked={form.send_signed_pdf} onCheckedChange={(checked) => setForm(f => ({ ...f, send_signed_pdf: !!checked }))} />
+                            <Label htmlFor="send_signed_pdf" className="text-xs cursor-pointer">Enviar o PDF assinado via WhatsApp</Label>
+                          </div>
+                        </div>
+                        <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
+                          <div className="flex items-center gap-2">
+                            <Checkbox id="request_documents" checked={form.request_documents} onCheckedChange={(checked) => setForm(f => ({ ...f, request_documents: !!checked }))} />
+                            <Label htmlFor="request_documents" className="text-xs font-semibold cursor-pointer">📎 Solicitar documentos do cliente</Label>
+                          </div>
+                          {form.request_documents && (
+                            <div className="ml-6 space-y-2">
+                              <p className="text-[10px] text-muted-foreground">Selecione os tipos:</p>
+                              {[
+                                { key: 'rg_cnh', label: 'RG / CNH (identidade)' },
+                                { key: 'comprovante_endereco', label: 'Comprovante de endereço' },
+                                { key: 'comprovante_renda', label: 'Comprovante de renda' },
+                                { key: 'outros', label: 'Outros documentos' },
+                              ].map(docType => (
+                                <div key={docType.key} className="flex items-center gap-2">
+                                  <Checkbox
+                                    id={`doc_${docType.key}`}
+                                    checked={form.document_types.includes(docType.key)}
+                                    onCheckedChange={(checked) => {
+                                      setForm(f => ({
+                                        ...f,
+                                        document_types: checked
+                                          ? [...f.document_types, docType.key]
+                                          : f.document_types.filter(t => t !== docType.key),
+                                      }));
+                                    }}
+                                  />
+                                  <Label htmlFor={`doc_${docType.key}`} className="text-xs cursor-pointer">{docType.label}</Label>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* FOLLOWUP SECTION */}
+            {formSection === 'followup' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Bell className="h-4 w-4 text-primary" />
+                    <Label className="text-xs font-semibold">Follow-up Automático</Label>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Cobranças quando o cliente não responde/assina</p>
+                </div>
+
+                {followupSteps.map((step, idx) => (
+                  <div key={idx} className="flex items-start gap-2 p-3 rounded-lg border bg-muted/30">
+                    <Badge variant="secondary" className="text-[10px] h-5 w-5 p-0 flex items-center justify-center mt-1">{idx + 1}</Badge>
+                    <div className="flex-1 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-[10px]">Ação</Label>
+                          <Select value={step.action_type} onValueChange={v => updateStep(idx, 'action_type', v)}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="whatsapp_message">📱 Mensagem WhatsApp</SelectItem>
+                              <SelectItem value="call">📞 Ligação</SelectItem>
+                              <SelectItem value="create_activity">📋 Criar Atividade</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px]">Aguardar (minutos)</Label>
+                          <Input
+                            type="number" min={5}
+                            value={step.delay_minutes}
+                            onChange={e => updateStep(idx, 'delay_minutes', parseInt(e.target.value) || 60)}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      </div>
+                      {step.action_type === 'create_activity' && (
+                        <div className="space-y-1">
+                          <Label className="text-[10px]">Atribuir a</Label>
+                          <Select value={step.assigned_to || ''} onValueChange={v => updateStep(idx, 'assigned_to', v)}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__self__">👤 Próprio usuário</SelectItem>
+                              {profiles.map(p => <SelectItem key={p.user_id} value={p.user_id}>{p.full_name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => removeStep(idx)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+                <Button size="sm" variant="outline" onClick={addStep} className="w-full">
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar Etapa de Follow-up
+                </Button>
+
+                {followupSteps.length > 0 && (
+                  <div className="p-2 rounded-lg border bg-muted/30 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                        <Label className="text-[10px]">Pausar follow-up quando humano responder</Label>
+                      </div>
+                      <Switch checked={humanReplyPauseMinutes > 0} onCheckedChange={(v) => setHumanReplyPauseMinutes(v ? 60 : 0)} />
+                    </div>
+                    {humanReplyPauseMinutes > 0 && (
+                      <div className="flex items-center gap-2 ml-5">
+                        <Label className="text-[10px] text-muted-foreground whitespace-nowrap">Pausar por</Label>
+                        <Input
+                          type="number" min={1}
+                          value={humanReplyPauseMinutes}
+                          onChange={e => setHumanReplyPauseMinutes(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="h-7 w-20 text-xs"
+                        />
+                        <span className="text-[10px] text-muted-foreground">minutos</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
-            <div className="space-y-1">
-              <Label className="text-xs">Instruções do Prompt (como o robô deve agir)</Label>
-              <Textarea
-                placeholder="Ao coletar dados para esta procuração, pergunte nome completo, CPF, RG, endereço completo, estado civil, nacionalidade..."
-                value={form.prompt_instructions}
-                onChange={e => setForm(f => ({ ...f, prompt_instructions: e.target.value }))}
-                className="min-h-[80px] text-xs"
-              />
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <Label className="text-xs">🔍 Prompt de Extração de Mídia</Label>
-                <Badge variant="outline" className="text-[9px] h-4">OCR</Badge>
-              </div>
-              <p className="text-[10px] text-muted-foreground">
-                Instruções de como a IA deve interpretar documentos (RG, CNH, comprovantes). Deixe vazio para usar o padrão.
-              </p>
-              <Textarea
-                placeholder="Ex: O NOME DO TITULAR está em letras vermelhas no campo 'NOME'. O campo 'FILIAÇÃO' são os pais, não confundir. No verso, ignore nomes de diretores..."
-                value={form.media_extraction_prompt}
-                onChange={e => setForm(f => ({ ...f, media_extraction_prompt: e.target.value }))}
-                className="min-h-[80px] text-xs font-mono"
-              />
-            </div>
 
-
-            <div className="border-t pt-3 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Bell className="h-4 w-4 text-primary" />
-                  <Label className="text-xs font-semibold">Follow-up Automático</Label>
-                </div>
-                <p className="text-[10px] text-muted-foreground">Cobranças quando o cliente não assina</p>
-              </div>
-
-              {followupSteps.map((step, idx) => (
-                <div key={idx} className="flex items-start gap-2 p-3 rounded-lg border bg-muted/30">
-                  <Badge variant="secondary" className="text-[10px] h-5 w-5 p-0 flex items-center justify-center mt-1">{idx + 1}</Badge>
-                  <div className="flex-1 space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="space-y-1">
-                        <Label className="text-[10px]">Ação</Label>
-                        <Select value={step.action_type} onValueChange={v => updateStep(idx, 'action_type', v)}>
-                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="whatsapp_message">📱 Mensagem WhatsApp</SelectItem>
-                            <SelectItem value="call">📞 Ligação</SelectItem>
-                            <SelectItem value="create_activity">📋 Criar Atividade</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-[10px]">Aguardar (minutos)</Label>
-                        <Input
-                          type="number" min={5}
-                          value={step.delay_minutes}
-                          onChange={e => updateStep(idx, 'delay_minutes', parseInt(e.target.value) || 60)}
-                          className="h-8 text-xs"
-                        />
-                      </div>
-                    </div>
-                    {step.action_type === 'create_activity' && (
-                      <div className="space-y-1">
-                        <Label className="text-[10px]">Atribuir a</Label>
-                        <Select value={step.assigned_to || ''} onValueChange={v => updateStep(idx, 'assigned_to', v)}>
-                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__self__">👤 Próprio usuário (quem disparou)</SelectItem>
-                            {profiles.map(p => <SelectItem key={p.user_id} value={p.user_id}>{p.full_name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                  </div>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => removeStep(idx)}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
-              <Button size="sm" variant="outline" onClick={addStep} className="w-full">
-                <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar Etapa de Follow-up
-              </Button>
-
-              {followupSteps.length > 0 && (
-                <div className="p-2 rounded-lg border bg-muted/30 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-                      <Label className="text-[10px]">Pausar follow-up quando humano responder</Label>
-                    </div>
-                    <Switch checked={humanReplyPauseMinutes > 0} onCheckedChange={(v) => setHumanReplyPauseMinutes(v ? 60 : 0)} />
-                  </div>
-                  {humanReplyPauseMinutes > 0 && (
-                    <div className="flex items-center gap-2 ml-5">
-                      <Label className="text-[10px] text-muted-foreground whitespace-nowrap">Pausar por</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        value={humanReplyPauseMinutes}
-                        onChange={e => setHumanReplyPauseMinutes(Math.max(1, parseInt(e.target.value) || 1))}
-                        className="h-7 w-20 text-xs"
-                      />
-                      <span className="text-[10px] text-muted-foreground">minutos</span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2 justify-end">
+            <div className="flex gap-2 justify-end border-t pt-3">
               <Button size="sm" variant="ghost" onClick={resetForm}>Cancelar</Button>
               <Button size="sm" onClick={handleSave}>{editingId ? 'Atualizar' : 'Salvar'}</Button>
             </div>
@@ -657,28 +834,30 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       {shortcuts.length === 0 ? (
         <Card><CardContent className="py-6 text-center text-sm text-muted-foreground">
           <Zap className="h-6 w-6 mx-auto mb-2 text-muted-foreground/40" />
-          Nenhum atalho configurado
+          Nenhum assistente configurado
         </CardContent></Card>
       ) : shortcuts.map(s => (
         <Card key={s.id} className={!s.is_active ? 'opacity-50' : ''}>
           <CardContent className="p-3">
             <div className="flex items-center gap-3">
-              <Zap className="h-4 w-4 text-primary shrink-0" />
+              <span className="text-lg shrink-0">{typeIcons[s.assistant_type] || '📄'}</span>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">@wjia {s.shortcut_name}</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium">#{s.shortcut_name}</span>
                   {s.template_name && <Badge variant="secondary" className="text-[10px]">{s.template_name}</Badge>}
-                  
+                  <Badge variant="outline" className="text-[10px]">
+                    {MODELS.find(m => m.value === s.model)?.label || s.model}
+                  </Badge>
                 </div>
                 {s.description && <p className="text-[11px] text-muted-foreground mt-0.5">{s.description}</p>}
-                {s.prompt_instructions && (
+                {s.base_prompt && (
                   <p className="text-[10px] text-muted-foreground/70 mt-0.5 truncate max-w-[300px]">
-                    💡 {s.prompt_instructions}
+                    🧠 {s.base_prompt.slice(0, 80)}...
                   </p>
                 )}
-                {(s as any).media_extraction_prompt && (
+                {s.prompt_instructions && (
                   <p className="text-[10px] text-muted-foreground/70 mt-0.5 truncate max-w-[300px]">
-                    🔍 Prompt de extração personalizado
+                    💡 {s.prompt_instructions.slice(0, 80)}
                   </p>
                 )}
               </div>
@@ -711,25 +890,19 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 })}
               </div>
             )}
-            {/* Inline AI editor for this shortcut */}
+            {/* Inline AI editor */}
             {showAI && aiEditConfig?.shortcut_name === s.shortcut_name && (
               <div className="mt-3">
                 <AIShortcutGenerator
                   existingConfig={aiEditConfig}
                   onApply={(config) => {
-                     setForm({
+                    setForm(f => ({
+                      ...f,
                       shortcut_name: config.shortcut_name,
                       description: config.description || '',
-                      template_token: form.template_token,
-                      template_name: form.template_name,
                       prompt_instructions: config.prompt_instructions,
-                      media_extraction_prompt: config.media_extraction_prompt || form.media_extraction_prompt,
-                      notify_on_signature: form.notify_on_signature,
-                      send_signed_pdf: form.send_signed_pdf,
-                      request_documents: form.request_documents,
-                      document_types: form.document_types,
-                      
-                    });
+                      media_extraction_prompt: config.media_extraction_prompt || f.media_extraction_prompt,
+                    }));
                     setFollowupSteps(config.followup_steps || []);
                     setEditingId(s.id);
                     setShowForm(true);

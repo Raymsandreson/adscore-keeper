@@ -6922,6 +6922,8 @@ export type Database = {
       }
       wjia_command_shortcuts: {
         Row: {
+          assistant_type: string
+          base_prompt: string | null
           created_at: string | null
           description: string | null
           display_order: number | null
@@ -6931,16 +6933,23 @@ export type Database = {
           id: string
           is_active: boolean | null
           media_extraction_prompt: string | null
+          model: string | null
           notify_on_signature: boolean
           prompt_instructions: string | null
           request_documents: boolean | null
+          response_delay_seconds: number | null
           send_signed_pdf: boolean
           shortcut_name: string
+          split_delay_seconds: number | null
+          split_messages: boolean | null
+          temperature: number | null
           template_name: string | null
           template_token: string | null
           updated_at: string | null
         }
         Insert: {
+          assistant_type?: string
+          base_prompt?: string | null
           created_at?: string | null
           description?: string | null
           display_order?: number | null
@@ -6950,16 +6959,23 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           media_extraction_prompt?: string | null
+          model?: string | null
           notify_on_signature?: boolean
           prompt_instructions?: string | null
           request_documents?: boolean | null
+          response_delay_seconds?: number | null
           send_signed_pdf?: boolean
           shortcut_name: string
+          split_delay_seconds?: number | null
+          split_messages?: boolean | null
+          temperature?: number | null
           template_name?: string | null
           template_token?: string | null
           updated_at?: string | null
         }
         Update: {
+          assistant_type?: string
+          base_prompt?: string | null
           created_at?: string | null
           description?: string | null
           display_order?: number | null
@@ -6969,11 +6985,16 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           media_extraction_prompt?: string | null
+          model?: string | null
           notify_on_signature?: boolean
           prompt_instructions?: string | null
           request_documents?: boolean | null
+          response_delay_seconds?: number | null
           send_signed_pdf?: boolean
           shortcut_name?: string
+          split_delay_seconds?: number | null
+          split_messages?: boolean | null
+          temperature?: number | null
           template_name?: string | null
           template_token?: string | null
           updated_at?: string | null
