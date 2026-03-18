@@ -462,8 +462,8 @@ serve(async (req) => {
 
         if (pendingTypes.length > 0) {
           try {
-            const classifyResult = await geminiChat({
-              model: "google/gemini-2.5-flash",
+             const classifyResult = await geminiChat({
+              model: "google/gemini-2.5-pro",
               messages: [
                 { role: "system", content: `Você é um classificador de documentos. Analise a imagem e determine qual tipo de documento é.
 
