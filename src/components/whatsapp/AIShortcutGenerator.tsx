@@ -127,7 +127,7 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
             <Textarea
               placeholder={existingConfig
                 ? "Ex: Mude o tom para mais formal, adicione ligação após 2 dias..."
-                : "Ex: Atalho para procuração ad judicia. Coletar nome, CPF, RG, endereço. Tom profissional. Follow-up automático."}
+                : "Ex: Agente para procuração ad judicia. Coletar nome, CPF, RG, endereço. Tom profissional. Follow-up automático."}
               value={description}
               onChange={e => setDescription(e.target.value)}
               className="min-h-[70px] text-xs flex-1"
