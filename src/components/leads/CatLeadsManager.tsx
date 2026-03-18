@@ -154,6 +154,25 @@ export function CatLeadsManager() {
           </SelectContent>
         </Select>
 
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground whitespace-nowrap">Acidente:</span>
+          <Input
+            type="date"
+            className="h-9 w-[140px] text-xs"
+            value={accidentDateFrom}
+            onChange={e => setAccidentDateFrom(e.target.value)}
+            title="Data do acidente (de)"
+          />
+          <span className="text-xs text-muted-foreground">até</span>
+          <Input
+            type="date"
+            className="h-9 w-[140px] text-xs"
+            value={accidentDateTo}
+            onChange={e => setAccidentDateTo(e.target.value)}
+            title="Data do acidente (até)"
+          />
+        </div>
+
         <Button onClick={() => setImportOpen(true)} className="gap-2">
           <Upload className="h-4 w-4" />
           Importar XLSX
