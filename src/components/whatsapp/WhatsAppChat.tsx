@@ -114,6 +114,8 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
   const [pastedCaption, setPastedCaption] = useState('');
+  const [inputMode, setInputMode] = useState<'message' | 'note'>('message');
+  const { notes, addNote, deleteNote } = useWhatsAppInternalNotes(conversation.phone);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
