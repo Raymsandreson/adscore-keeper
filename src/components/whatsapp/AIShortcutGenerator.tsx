@@ -39,7 +39,7 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
 
   const handleGenerate = async () => {
     if (!description.trim()) {
-      toast.error('Descreva o que o atalho deve fazer');
+      toast.error('Descreva o que o agente deve fazer');
       return;
     }
 
