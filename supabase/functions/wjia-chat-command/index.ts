@@ -107,9 +107,6 @@ ${assistantType === 'assistant' ? `MODO: Assistente conversacional. Responda ao 
 
 ${forceTemplate ? `⚠️ TEMPLATE OBRIGATÓRIO: Use EXATAMENTE o template "${forceTemplateName}" (token: ${forceTemplate}). NÃO escolha outro template.` : ''}
 
-ATALHOS CONFIGURADOS:
-${shortcutList || "(nenhum atalho)"}
-
 TEMPLATES ZAPSIGN DISPONÍVEIS:
 ${templateList || "(nenhum template)"}
 
