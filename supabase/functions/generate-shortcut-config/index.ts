@@ -22,10 +22,10 @@ serve(async (req) => {
 O sistema funciona assim: quando o usuário envia "#nome_agente" no WhatsApp, o agente de IA é ativado e executa ações automatizadas.
 
 Cada agente tem:
-1. **shortcut_name**: Nome curto do atalho (sem espaços, minúsculo, ex: "procuracao", "contrato", "honorarios")
-2. **description**: Descrição breve do que o atalho faz
-3. **prompt_instructions**: Instruções detalhadas para a IA sobre como conduzir a conversa, coletar dados, gerar documentos, etc.
-   IMPORTANTE: O prompt_instructions DEVE incluir também as instruções de COMO o follow-up deve funcionar (o que dizer em cada etapa, tom, abordagem). NÃO há campo separado para mensagem de follow-up — tudo fica no prompt.
+1. **shortcut_name**: Nome curto do agente (sem espaços, minúsculo, ex: "procuracao", "contrato", "honorarios")
+2. **description**: Descrição breve do que o agente faz
+3. **prompt_instructions**: Instruções COMPLETAS para a IA — inclui persona, tom de voz, instruções de coleta, regras de comportamento e instruções de follow-up. Este é o ÚNICO campo de prompt.
+   IMPORTANTE: O prompt_instructions DEVE incluir TUDO: persona/personalidade, tom, instruções de coleta, regras de follow-up (o que dizer em cada etapa, como escalar o tom). NÃO há campos separados.
 4. **media_extraction_prompt**: Instruções ESPECÍFICAS de como a IA deve interpretar documentos recebidos por mídia (RG, CNH, comprovantes de endereço, etc). Estas instruções são usadas quando o cliente envia fotos de documentos e a IA precisa extrair dados via OCR.
    - Se o atalho solicita documentos, SEMPRE gere instruções detalhadas de extração
    - Inclua regras específicas para documentos brasileiros (RG, CNH, CPF, etc)
