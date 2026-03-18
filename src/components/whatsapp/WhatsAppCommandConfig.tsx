@@ -85,7 +85,7 @@ const ASSISTANT_TYPES = [
 
 // ==================== COMPONENT ====================
 export function WhatsAppCommandConfig() {
-  const [activeTab, setActiveTab] = useState('auth');
+  const [activeTab, setActiveTab] = useState('shortcuts');
   const [configs, setConfigs] = useState<CommandConfig[]>([]);
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
