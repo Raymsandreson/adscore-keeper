@@ -35,6 +35,8 @@ export function CatLeadsManager() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [obitoFilter, setObitoFilter] = useState('all');
+  const [accidentDateFrom, setAccidentDateFrom] = useState('');
+  const [accidentDateTo, setAccidentDateTo] = useState('');
 
   const filtered = useMemo(() => {
     return catLeads.filter(l => {
@@ -46,9 +48,11 @@ export function CatLeadsManager() {
       const matchesObito = obitoFilter === 'all' ||
         (obitoFilter === 'yes' && l.indica_obito) ||
         (obitoFilter === 'no' && !l.indica_obito);
-      return matchesSearch && matchesStatus && matchesObito;
+      const matchesDateFrom = !accidentDateFrom || (l.data_acidente && l.data_acidente >= accidentDateFrom);
+      const matchesDateTo = !accidentDateTo || (l.data_acidente && l.data_acidente <= accidentDateTo);
+      return matchesSearch && matchesStatus && matchesObito && matchesDateFrom && matchesDateTo;
     });
-  }, [catLeads, search, statusFilter, obitoFilter]);
+  }, [catLeads, search, statusFilter, obitoFilter, accidentDateFrom, accidentDateTo]);
 
   const stats = useMemo(() => ({
     total: catLeads.length,
@@ -149,6 +153,25 @@ export function CatLeadsManager() {
             <SelectItem value="no">Sem óbito</SelectItem>
           </SelectContent>
         </Select>
+
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground whitespace-nowrap">Acidente:</span>
+          <Input
+            type="date"
+            className="h-9 w-[140px] text-xs"
+            value={accidentDateFrom}
+            onChange={e => setAccidentDateFrom(e.target.value)}
+            title="Data do acidente (de)"
+          />
+          <span className="text-xs text-muted-foreground">até</span>
+          <Input
+            type="date"
+            className="h-9 w-[140px] text-xs"
+            value={accidentDateTo}
+            onChange={e => setAccidentDateTo(e.target.value)}
+            title="Data do acidente (até)"
+          />
+        </div>
 
         <Button onClick={() => setImportOpen(true)} className="gap-2">
           <Upload className="h-4 w-4" />
