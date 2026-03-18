@@ -261,8 +261,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   const [showForm, setShowForm] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; followup_steps: FollowupStep[] } | null>(null);
-  const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] as string[] });
+  const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; media_extraction_prompt?: string; followup_steps: FollowupStep[] } | null>(null);
+  const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', media_extraction_prompt: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] as string[] });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
   const [humanReplyPauseMinutes, setHumanReplyPauseMinutes] = useState(0);
   const [zapsignTemplates, setZapsignTemplates] = useState<ZapSignTemplateOption[]>([]);
@@ -291,7 +291,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   }, [showForm, loadZapSignTemplates]);
 
   const resetForm = () => {
-    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] });
+    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', media_extraction_prompt: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] });
     setFollowupSteps([]);
     setHumanReplyPauseMinutes(0);
     setEditingId(null);
@@ -304,6 +304,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       shortcut_name: s.shortcut_name,
       description: s.description || '',
       prompt_instructions: s.prompt_instructions || '',
+      media_extraction_prompt: (s as any).media_extraction_prompt || '',
       followup_steps: s.followup_steps || [],
     });
     setEditingId(s.id);
@@ -318,6 +319,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       template_token: s.template_token || '',
       template_name: s.template_name || '',
       prompt_instructions: s.prompt_instructions || '',
+      media_extraction_prompt: (s as any).media_extraction_prompt || '',
       notify_on_signature: s.notify_on_signature !== false,
       send_signed_pdf: s.send_signed_pdf !== false,
       request_documents: s.request_documents || false,
@@ -349,6 +351,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       template_token: form.template_token || null,
       template_name: form.template_name || null,
       prompt_instructions: form.prompt_instructions || null,
+      media_extraction_prompt: form.media_extraction_prompt || null,
       followup_steps: followupSteps,
       human_reply_pause_minutes: humanReplyPauseMinutes,
       notify_on_signature: form.notify_on_signature,
@@ -412,6 +415,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
               template_token: '',
               template_name: '',
               prompt_instructions: config.prompt_instructions,
+              media_extraction_prompt: config.media_extraction_prompt || '',
               notify_on_signature: true,
               send_signed_pdf: true,
               request_documents: false,
@@ -542,7 +546,21 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 className="min-h-[80px] text-xs"
               />
             </div>
-
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs">🔍 Prompt de Extração de Mídia</Label>
+                <Badge variant="outline" className="text-[9px] h-4">OCR</Badge>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Instruções de como a IA deve interpretar documentos (RG, CNH, comprovantes). Deixe vazio para usar o padrão.
+              </p>
+              <Textarea
+                placeholder="Ex: O NOME DO TITULAR está em letras vermelhas no campo 'NOME'. O campo 'FILIAÇÃO' são os pais, não confundir. No verso, ignore nomes de diretores..."
+                value={form.media_extraction_prompt}
+                onChange={e => setForm(f => ({ ...f, media_extraction_prompt: e.target.value }))}
+                className="min-h-[80px] text-xs font-mono"
+              />
+            </div>
 
 
             <div className="border-t pt-3 space-y-3">
@@ -658,6 +676,11 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                     💡 {s.prompt_instructions}
                   </p>
                 )}
+                {(s as any).media_extraction_prompt && (
+                  <p className="text-[10px] text-muted-foreground/70 mt-0.5 truncate max-w-[300px]">
+                    🔍 Prompt de extração personalizado
+                  </p>
+                )}
               </div>
               <Switch checked={s.is_active} onCheckedChange={() => handleToggle(s.id, s.is_active)} />
               <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" onClick={() => startAIEdit(s)} title="Editar com IA">
@@ -700,6 +723,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                       template_token: form.template_token,
                       template_name: form.template_name,
                       prompt_instructions: config.prompt_instructions,
+                      media_extraction_prompt: config.media_extraction_prompt || form.media_extraction_prompt,
                       notify_on_signature: form.notify_on_signature,
                       send_signed_pdf: form.send_signed_pdf,
                       request_documents: form.request_documents,

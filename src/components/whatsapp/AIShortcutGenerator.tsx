@@ -19,6 +19,7 @@ interface ShortcutConfig {
   shortcut_name: string;
   description: string;
   prompt_instructions: string;
+  media_extraction_prompt?: string;
   followup_steps: FollowupStep[];
 }
 

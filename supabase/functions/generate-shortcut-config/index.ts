@@ -26,7 +26,13 @@ Cada atalho tem:
 2. **description**: Descrição breve do que o atalho faz
 3. **prompt_instructions**: Instruções detalhadas para a IA sobre como conduzir a conversa, coletar dados, gerar documentos, etc.
    IMPORTANTE: O prompt_instructions DEVE incluir também as instruções de COMO o follow-up deve funcionar (o que dizer em cada etapa, tom, abordagem). NÃO há campo separado para mensagem de follow-up — tudo fica no prompt.
-4. **followup_steps**: Array de etapas de follow-up automático — define apenas TIPO de ação e TEMPO de espera. O conteúdo/abordagem de cada etapa deve estar descrito no prompt_instructions.
+4. **media_extraction_prompt**: Instruções ESPECÍFICAS de como a IA deve interpretar documentos recebidos por mídia (RG, CNH, comprovantes de endereço, etc). Estas instruções são usadas quando o cliente envia fotos de documentos e a IA precisa extrair dados via OCR.
+   - Se o atalho solicita documentos, SEMPRE gere instruções detalhadas de extração
+   - Inclua regras específicas para documentos brasileiros (RG, CNH, CPF, etc)
+   - Explique onde encontrar cada dado no documento (ex: "O NOME está em letras grandes/vermelhas")
+   - Inclua armadilhas comuns (ex: não confundir FILIAÇÃO com o nome do titular, ignorar nomes de diretores/funcionários no verso)
+   - Se o atalho NÃO envolve documentos, deixe este campo vazio
+5. **followup_steps**: Array de etapas de follow-up automático — define apenas TIPO de ação e TEMPO de espera.
 
 Tipos de ações para followup_steps:
 - "whatsapp_message": Envia mensagem WhatsApp (o prompt define o que dizer)
@@ -56,6 +62,7 @@ Responda APENAS com JSON válido no formato:
   "shortcut_name": "string",
   "description": "string",
   "prompt_instructions": "string",
+  "media_extraction_prompt": "string (instruções OCR, ou string vazia se não aplicável)",
   "followup_steps": [
     {
       "action_type": "whatsapp_message" | "call" | "create_activity",
@@ -72,6 +79,7 @@ Responda APENAS com JSON válido no formato:
 - Nome: ${existing_config.shortcut_name}
 - Descrição: ${existing_config.description || '(sem descrição)'}
 - Prompt: ${existing_config.prompt_instructions || '(sem prompt)'}
+- Prompt de extração de mídia: ${existing_config.media_extraction_prompt || '(sem prompt de extração)'}
 - Follow-up: ${JSON.stringify(existing_config.followup_steps || [])}
 
 O usuário quer as seguintes mudanças: ${description.trim()}
