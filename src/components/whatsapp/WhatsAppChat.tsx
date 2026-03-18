@@ -949,6 +949,37 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
               </div>
             </div>
           ) : null;
+          if (item.type === 'note') {
+            const note = item.data;
+            return (
+              <div key={`note-${note.id}`}>
+                {dateSeparator}
+                <div className="flex justify-center">
+                  <div className="max-w-[85%] rounded-xl px-4 py-2 text-xs border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 group">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <StickyNote className="h-3 w-3 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span className="font-semibold text-amber-700 dark:text-amber-300">Nota Interna</span>
+                      <span className="text-amber-600/60 dark:text-amber-400/60">•</span>
+                      <span className="text-amber-600/80 dark:text-amber-400/80">{note.sender_name || 'Equipe'}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                        onClick={() => deleteNote(note.id)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <p className="whitespace-pre-wrap text-amber-900 dark:text-amber-100 text-[13px]">{note.content}</p>
+                    <p className="text-[10px] text-amber-600/60 dark:text-amber-400/60 mt-1">
+                      {format(new Date(note.created_at), "HH:mm", { locale: ptBR })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
           if (item.type === 'call') {
             const call = item.data;
             const isOutbound = call.call_type === 'outbound' || call.call_type === 'realizada';
