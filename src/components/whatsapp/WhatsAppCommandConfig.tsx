@@ -130,10 +130,10 @@ export function WhatsAppCommandConfig() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="shortcuts" className="text-xs gap-1">
-            <Zap className="h-3.5 w-3.5" /> @wjia
+            <Zap className="h-3.5 w-3.5" /> Agentes IA
           </TabsTrigger>
           <TabsTrigger value="member" className="text-xs gap-1">
-            <Bot className="h-3.5 w-3.5" /> Equipe
+            <Bot className="h-3.5 w-3.5" /> IA Interna
           </TabsTrigger>
         </TabsList>
 
