@@ -1292,51 +1292,66 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           </div>
         ) : !pastedImage && (
           <div className="flex gap-1 items-end">
-            {/* Attach menu */}
-            <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-muted-foreground">
-                  {uploadingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-44">
-                <DropdownMenuItem onClick={() => { mediaInputRef.current?.click(); }} className="gap-2">
-                  <Image className="h-4 w-4" /> Foto / Vídeo
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { 
-                  const input = document.createElement('input');
-                  input.type = 'file';
-                  input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip';
-                  input.onchange = (e: any) => handleMediaUpload(e);
-                  input.click();
-                }} className="gap-2">
-                  <FileUp className="h-4 w-4" /> Documento
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { setShowLocationDialog(true); setShowAttachMenu(false); }} className="gap-2">
-                  <MapPin className="h-4 w-4" /> Localização
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
+            {/* Attach menu - only in message mode */}
+            {inputMode === 'message' && (
+              <>
+                <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-muted-foreground">
+                      {uploadingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-44">
+                    <DropdownMenuItem onClick={() => { mediaInputRef.current?.click(); }} className="gap-2">
+                      <Image className="h-4 w-4" /> Foto / Vídeo
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { 
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip';
+                      input.onchange = (e: any) => handleMediaUpload(e);
+                      input.click();
+                    }} className="gap-2">
+                      <FileUp className="h-4 w-4" /> Documento
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setShowLocationDialog(true); setShowAttachMenu(false); }} className="gap-2">
+                      <MapPin className="h-4 w-4" /> Localização
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
+              </>
+            )}
+            {inputMode === 'note' && (
+              <div className="h-10 w-10 shrink-0 flex items-center justify-center">
+                <StickyNote className="h-4 w-4 text-amber-500" />
+              </div>
+            )}
             <Textarea
-              placeholder="Digite uma mensagem..."
+              placeholder={inputMode === 'note' ? "Nota interna (não será enviada ao contato)..." : "Digite uma mensagem..."}
               value={newMessage}
               onChange={e => setNewMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              className="min-h-[44px] max-h-[120px] resize-none text-sm flex-1"
+              onPaste={inputMode === 'message' ? handlePaste : undefined}
+              className={cn(
+                "min-h-[44px] max-h-[120px] resize-none text-sm flex-1",
+                inputMode === 'note' && "border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20"
+              )}
               rows={1}
             />
             {newMessage.trim() ? (
               <Button
                 size="icon"
-                className="h-10 w-10 shrink-0 bg-green-600 hover:bg-green-700"
+                className={cn(
+                  "h-10 w-10 shrink-0",
+                  inputMode === 'note' ? "bg-amber-500 hover:bg-amber-600" : "bg-green-600 hover:bg-green-700"
+                )}
                 onClick={handleSend}
                 disabled={sending}
               >
                 {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
-            ) : (
+            ) : inputMode === 'message' ? (
               <Button
                 size="icon"
                 variant="ghost"
@@ -1346,7 +1361,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
               >
                 <Mic className="h-4 w-4" />
               </Button>
-            )}
+            ) : null}
           </div>
         )}
         {/* Location Dialog */}
