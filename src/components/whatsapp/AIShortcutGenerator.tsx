@@ -118,7 +118,7 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
       <p className="text-[11px] text-muted-foreground">
         {existingConfig
           ? 'Descreva as mudanças desejadas — a IA atualiza prompt, follow-up e tempos.'
-          : 'Descreva o que o atalho deve fazer — a IA cria tudo: nome, prompt, sequência de follow-up com tempos ideais.'}
+          : 'Descreva o que o agente deve fazer — a IA cria tudo: nome, prompt, sequência de follow-up com tempos ideais.'}
       </p>
 
       {!result && (
