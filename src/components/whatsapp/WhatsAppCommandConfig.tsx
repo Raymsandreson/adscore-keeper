@@ -691,7 +691,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       {shortcuts.length === 0 ? (
         <Card><CardContent className="py-6 text-center text-sm text-muted-foreground">
           <Zap className="h-6 w-6 mx-auto mb-2 text-muted-foreground/40" />
-          Nenhum assistente configurado
+          Nenhum agente configurado
         </CardContent></Card>
       ) : shortcuts.map(s => (
         <Card key={s.id} className={!s.is_active ? 'opacity-50' : ''}>
