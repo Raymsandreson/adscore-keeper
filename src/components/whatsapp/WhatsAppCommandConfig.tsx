@@ -307,7 +307,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       ({ error } = await (supabase.from('wjia_command_shortcuts') as any).insert({ ...payload, display_order: shortcuts.length }));
     }
     if (error) { toast.error(error.message); return; }
-    toast.success(editingId ? 'Assistente atualizado!' : 'Assistente criado!');
+    toast.success(editingId ? 'Agente atualizado!' : 'Agente criado!');
     resetForm();
     onReload();
   };
