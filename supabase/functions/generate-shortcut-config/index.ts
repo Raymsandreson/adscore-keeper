@@ -98,38 +98,41 @@ Retorne a configuração COMPLETA atualizada (não apenas as mudanças), mantend
     });
 
     const rawContent = result.choices?.[0]?.message?.content || "";
-    
-    // Extract JSON from response (may be wrapped in markdown code blocks)
-    let jsonStr = rawContent.trim();
-    
-    // Try multiple regex patterns for code blocks
-    const patterns = [
-      /```json\s*\n([\s\S]*?)\n\s*```/,
-      /```json\s*([\s\S]*?)```/,
-      /```\s*\n([\s\S]*?)\n\s*```/,
-      /```([\s\S]*?)```/,
-    ];
-    
-    let extracted = false;
-    for (const pattern of patterns) {
-      const match = jsonStr.match(pattern);
-      if (match) {
-        jsonStr = match[1].trim();
-        extracted = true;
-        break;
+
+    const extractJsonFromAiResponse = (content: string) => {
+      let text = content.trim().replace(/^\uFEFF/, "");
+
+      // Remove surrounding code fences if present (case-insensitive and CRLF-safe)
+      text = text
+        .replace(/^\s*```\s*json\s*/i, "")
+        .replace(/^\s*```\s*/i, "")
+        .replace(/\s*```\s*$/i, "")
+        .trim();
+
+      // Handle nested/inline markdown blocks
+      const fencedMatch = text.match(/```\s*json\s*([\s\S]*?)\s*```/i) ?? text.match(/```([\s\S]*?)```/i);
+      if (fencedMatch?.[1]) {
+        text = fencedMatch[1].trim();
       }
-    }
-    
-    if (!extracted) {
-      // Try to find raw JSON object by braces
-      const firstBrace = jsonStr.indexOf('{');
-      const lastBrace = jsonStr.lastIndexOf('}');
-      if (firstBrace !== -1 && lastBrace > firstBrace) {
-        jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
+
+      const firstBrace = text.indexOf("{");
+      const lastBrace = text.lastIndexOf("}");
+
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        return text.slice(firstBrace, lastBrace + 1);
       }
+
+      throw new Error("A IA retornou JSON incompleto ou inválido");
+    };
+
+    const jsonStr = extractJsonFromAiResponse(rawContent);
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      throw new Error("A IA retornou um formato inválido. Tente novamente.");
     }
-    
-    const parsed = JSON.parse(jsonStr);
 
     // Validate structure
     if (!parsed.shortcut_name || !parsed.prompt_instructions) {
