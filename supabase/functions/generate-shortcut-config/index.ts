@@ -17,7 +17,7 @@ serve(async (req) => {
       });
     }
 
-    const systemPrompt = `Você é um especialista em configurar atalhos de automação para um sistema de CRM jurídico via WhatsApp.
+    const systemPrompt = `Você é um especialista em configurar agentes de IA para um sistema de CRM jurídico via WhatsApp.
 
 O sistema funciona assim: quando o usuário envia "@wjia <nome_atalho>" no WhatsApp, o robô executa ações automatizadas.
 
