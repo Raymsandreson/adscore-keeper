@@ -10,11 +10,26 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { description, existing_config } = await req.json();
+    const { description, existing_config, template_fields, template_name } = await req.json();
     if (!description?.trim()) {
       return new Response(JSON.stringify({ error: "Descrição é obrigatória" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Build template fields context for the AI
+    let templateContext = "";
+    if (template_fields?.length) {
+      const fieldsList = template_fields.map((f: any) => 
+        `- ${f.variable} (${f.label || 'sem label'})${f.required ? ' [OBRIGATÓRIO]' : ''}`
+      ).join("\n");
+      templateContext = `
+MODELO ZAPSIGN VINCULADO: "${template_name || 'Sem nome'}"
+CAMPOS QUE O DOCUMENTO EXIGE (a IA DEVE coletar estes dados do cliente):
+${fieldsList}
+
+IMPORTANTE: O prompt_instructions DEVE incluir instruções para coletar TODOS os campos obrigatórios listados acima. O agente precisa perguntar ao cliente ou extrair de documentos enviados cada um desses dados para preencher o documento.
+`;
     }
 
     const systemPrompt = `Você é um especialista em configurar agentes de IA para um sistema de CRM jurídico via WhatsApp.
@@ -81,10 +96,10 @@ Responda APENAS com JSON válido no formato:
 - Follow-up: ${JSON.stringify(existing_config.followup_steps || [])}
 
 O usuário quer as seguintes mudanças: ${description.trim()}
-
+${templateContext ? `\n${templateContext}` : ''}
 Retorne a configuração COMPLETA atualizada (não apenas as mudanças), mantendo o que não foi pedido para alterar.`;
     } else {
-      userMessage = `Crie um agente completo para: ${description.trim()}`;
+      userMessage = `Crie um agente completo para: ${description.trim()}${templateContext ? `\n\n${templateContext}` : ''}`;
     }
 
     const result = await geminiChat({

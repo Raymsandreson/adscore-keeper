@@ -27,11 +27,13 @@ interface Props {
   onApply: (config: ShortcutConfig) => void;
   onClose: () => void;
   existingConfig?: ShortcutConfig | null;
+  templateFields?: { variable: string; label: string; required: boolean }[];
+  templateName?: string;
 }
 
 const GENERATE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-shortcut-config`;
 
-export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props) {
+export function AIShortcutGenerator({ onApply, onClose, existingConfig, templateFields, templateName }: Props) {
   const [description, setDescription] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<ShortcutConfig | null>(null);
@@ -50,6 +52,10 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
       const payload: any = { description: description.trim() };
       if (existingConfig) {
         payload.existing_config = existingConfig;
+      }
+      if (templateFields?.length) {
+        payload.template_fields = templateFields;
+        payload.template_name = templateName;
       }
 
       const resp = await fetch(GENERATE_URL, {

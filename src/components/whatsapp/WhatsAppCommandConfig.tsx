@@ -176,6 +176,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
   const [humanReplyPauseMinutes, setHumanReplyPauseMinutes] = useState(0);
   const [zapsignTemplates, setZapsignTemplates] = useState<ZapSignTemplateOption[]>([]);
+  const [templateFields, setTemplateFields] = useState<{ variable: string; label: string; required: boolean }[]>([]);
+  const [loadingFields, setLoadingFields] = useState(false);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [formSection, setFormSection] = useState<'general' | 'ai' | 'document' | 'followup'>('general');
 
@@ -354,6 +356,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       {showAI && !aiEditConfig && (
         <AIShortcutGenerator
           existingConfig={null}
+          templateFields={templateFields}
+          templateName={form.template_name || undefined}
           onApply={(config) => {
             setForm(f => ({
               ...f,
@@ -525,9 +529,21 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                       ) : (
                         <Select
                           value={form.template_token}
-                          onValueChange={v => {
+                          onValueChange={async (v) => {
                             const tmpl = zapsignTemplates.find(t => t.token === v);
                             setForm(f => ({ ...f, template_token: v, template_name: tmpl?.name || '' }));
+                            // Fetch template fields
+                            setTemplateFields([]);
+                            setLoadingFields(true);
+                            try {
+                              const { data, error } = await supabase.functions.invoke('zapsign-api', {
+                                body: { action: 'get_template', template_token: v }
+                              });
+                              if (!error && data?.success && data.fields) {
+                                setTemplateFields(data.fields);
+                              }
+                            } catch (e) { console.error('Error fetching template fields:', e); }
+                            setLoadingFields(false);
                           }}
                         >
                           <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Selecione um modelo..." /></SelectTrigger>
@@ -540,6 +556,22 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                       )}
                       {form.template_name && (
                         <p className="text-[10px] text-muted-foreground">✅ {form.template_name}</p>
+                      )}
+                      {loadingFields && (
+                        <p className="text-[10px] text-muted-foreground animate-pulse">Carregando campos do modelo...</p>
+                      )}
+                      {templateFields.length > 0 && (
+                        <div className="border rounded-lg p-2 bg-muted/20 space-y-1">
+                          <p className="text-[10px] font-medium text-muted-foreground">📋 Campos do modelo ({templateFields.length}):</p>
+                          <div className="flex flex-wrap gap-1">
+                            {templateFields.map((f, i) => (
+                              <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                                {f.variable.replace(/\{\{|\}\}/g, '')}
+                                {f.required && <span className="text-destructive ml-0.5">*</span>}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </div>
                     {form.template_token && (
@@ -747,6 +779,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
               <div className="mt-3">
                 <AIShortcutGenerator
                   existingConfig={aiEditConfig}
+                  templateFields={templateFields}
+                  templateName={form.template_name || s.template_name || undefined}
                   onApply={(config) => {
                     setForm(f => ({
                       ...f,
