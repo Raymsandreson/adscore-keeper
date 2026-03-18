@@ -210,7 +210,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             </div>
 
             {activeTab === 'instances' && <WhatsAppInstanceManager />}
-            {activeTab === 'agents' && <WhatsAppAIAgents />}
+            
             {activeTab === 'commands' && <WhatsAppCommandConfig />}
             {activeTab === 'notifications' && (
               <div className="space-y-6">
