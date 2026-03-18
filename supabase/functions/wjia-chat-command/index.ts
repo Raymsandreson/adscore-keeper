@@ -90,6 +90,10 @@ serve(async (req) => {
     const sendSignedPdf = matchedShortcut?.send_signed_pdf !== false;
     const requestDocuments = matchedShortcut?.request_documents || false;
     const documentTypes = matchedShortcut?.document_types || [];
+    const assistantType = matchedShortcut?.assistant_type || 'document';
+    const shortcutModel = matchedShortcut?.model || 'google/gemini-2.5-flash';
+    const shortcutTemperature = matchedShortcut?.temperature ?? 0.1;
+    const shortcutBasePrompt = matchedShortcut?.base_prompt || '';
 
     // 2) AI decides what to do — but does NOT generate doc yet if data is missing
     const systemPrompt = `Você é o assistente WJIA, integrado ao WhatsApp de um escritório de advocacia. O atendente digitou um comando @wjia.
