@@ -27,6 +27,8 @@ interface Props {
   onApply: (config: ShortcutConfig) => void;
   onClose: () => void;
   existingConfig?: ShortcutConfig | null;
+  templateFields?: { variable: string; label: string; required: boolean }[];
+  templateName?: string;
 }
 
 const GENERATE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-shortcut-config`;
