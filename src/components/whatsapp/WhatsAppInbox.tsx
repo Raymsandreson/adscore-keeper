@@ -578,11 +578,11 @@ export function WhatsAppInbox() {
     refetch();
   };
 
-  if (showSetup || showAgents) {
+  if (showSetup) {
     return (
       <WhatsAppSettingsPage 
-        onBack={() => { setShowSetup(false); setShowAgents(false); }} 
-        initialTab={showAgents ? 'agents' : settingsTab}
+        onBack={() => setShowSetup(false)} 
+        initialTab={settingsTab}
       />
     );
   }
