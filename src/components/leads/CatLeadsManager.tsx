@@ -48,9 +48,11 @@ export function CatLeadsManager() {
       const matchesObito = obitoFilter === 'all' ||
         (obitoFilter === 'yes' && l.indica_obito) ||
         (obitoFilter === 'no' && !l.indica_obito);
-      return matchesSearch && matchesStatus && matchesObito;
+      const matchesDateFrom = !accidentDateFrom || (l.data_acidente && l.data_acidente >= accidentDateFrom);
+      const matchesDateTo = !accidentDateTo || (l.data_acidente && l.data_acidente <= accidentDateTo);
+      return matchesSearch && matchesStatus && matchesObito && matchesDateFrom && matchesDateTo;
     });
-  }, [catLeads, search, statusFilter, obitoFilter]);
+  }, [catLeads, search, statusFilter, obitoFilter, accidentDateFrom, accidentDateTo]);
 
   const stats = useMemo(() => ({
     total: catLeads.length,
