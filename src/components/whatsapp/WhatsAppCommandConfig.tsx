@@ -374,7 +374,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
         <Card className="border-primary/30">
           <CardContent className="p-4 space-y-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-primary">{editingId ? '✏️ Editando assistente' : '➕ Novo assistente'}</p>
+              <p className="text-xs font-medium text-primary">{editingId ? '✏️ Editando agente' : '➕ Novo agente'}</p>
               <div className="flex gap-1">
                 {(['general', 'ai', 'document', 'followup'] as const).map(sec => (
                   <Button
