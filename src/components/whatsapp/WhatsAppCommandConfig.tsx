@@ -318,6 +318,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       template_token: s.template_token || '',
       template_name: s.template_name || '',
       prompt_instructions: s.prompt_instructions || '',
+      media_extraction_prompt: (s as any).media_extraction_prompt || '',
       notify_on_signature: s.notify_on_signature !== false,
       send_signed_pdf: s.send_signed_pdf !== false,
       request_documents: s.request_documents || false,
