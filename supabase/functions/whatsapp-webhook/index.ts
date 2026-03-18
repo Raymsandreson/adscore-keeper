@@ -941,7 +941,19 @@ Deno.serve(async (req) => {
         }
       }
 
-      direction = (body.message?.fromMe === true || body.chat?.fromMe === true) ? 'outbound' : 'inbound'
+      // Determine direction: use fromMe flag, but VALIDATE against owner phone
+      // UazAPI sometimes incorrectly sets fromMe=true for inbound media (using @lid IDs)
+      const fromMeFlag = body.message?.fromMe === true || body.chat?.fromMe === true
+      const ownerPhone = (body.chat?.owner || body.owner || '').replace(/\D/g, '').replace(/^0+/, '')
+      const senderPhone = rawPhone.replace(/\D/g, '').replace(/^0+/, '')
+      
+      if (fromMeFlag && ownerPhone && senderPhone !== ownerPhone) {
+        // Provider says fromMe but sender phone doesn't match instance owner = actually inbound
+        console.log(`Direction correction: fromMe=true but sender ${senderPhone} != owner ${ownerPhone}, forcing inbound`)
+        direction = 'inbound'
+      } else {
+        direction = fromMeFlag ? 'outbound' : 'inbound'
+      }
       externalMessageId = body.message?.id || body.message?.messageid || body.chat?.id_message || null
     } else {
       rawPhone = body.phone || body.from || body.sender || body.remoteJid || ''
@@ -1314,11 +1326,10 @@ Deno.serve(async (req) => {
 
     // ========== WJIA COLLECTION SESSION CHECK ==========
     // If there's an active data collection session, route to collection processor instead of AI agent.
-    // Some WhatsApp providers may flag inbound media as outbound; in those cases we still route media.
-    const hasPotentialClientMedia = !!(storedMediaUrl || mediaUrl || (messageType && messageType !== 'text'))
-    const shouldRouteCollection = direction === 'inbound' || hasPotentialClientMedia
+    // Direction is already corrected above by comparing sender vs owner phone.
+    const hasMedia = !!(storedMediaUrl || mediaUrl || (messageType && messageType !== 'text'))
 
-    if (shouldRouteCollection && instanceName && phone && (messageText || hasPotentialClientMedia)) {
+    if (direction === 'inbound' && instanceName && phone && (messageText || hasMedia)) {
       try {
         const { data: activeSession } = await supabase
           .from('wjia_collection_sessions')
