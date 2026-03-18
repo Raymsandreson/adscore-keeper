@@ -415,7 +415,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
               template_token: '',
               template_name: '',
               prompt_instructions: config.prompt_instructions,
-              media_extraction_prompt: '',
+              media_extraction_prompt: config.media_extraction_prompt || '',
               notify_on_signature: true,
               send_signed_pdf: true,
               request_documents: false,
