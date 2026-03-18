@@ -107,7 +107,7 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
         <div className="flex items-center gap-2">
           <Wand2 className="h-4 w-4 text-primary" />
           <span className="text-xs font-medium">
-            {existingConfig ? `Editar "${existingConfig.shortcut_name}" com IA` : 'Criar Atalho com IA'}
+            {existingConfig ? `Editar "${existingConfig.shortcut_name}" com IA` : 'Criar Agente com IA'}
           </span>
         </div>
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
