@@ -277,7 +277,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   };
 
   const handleSave = async () => {
-    if (!form.shortcut_name.trim()) { toast.error('Nome do assistente é obrigatório'); return; }
+    if (!form.shortcut_name.trim()) { toast.error('Nome do agente é obrigatório'); return; }
     const payload = {
       shortcut_name: form.shortcut_name.trim(),
       description: form.description || null,
