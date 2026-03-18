@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Bot, Users, List, Contact2 } from 'lucide-react';
+import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Users, List, Contact2 } from 'lucide-react';
 
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
@@ -137,8 +137,7 @@ export function WhatsAppInbox() {
   const [showSetup, setShowSetup] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showGooglePanel, setShowGooglePanel] = useState(false);
-  const [showAgents, setShowAgents] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<string>('agents');
+  const [settingsTab, setSettingsTab] = useState<string>('instances');
   // Side panel state
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadPanel, setShowLeadPanel] = useState(false);
@@ -579,11 +578,11 @@ export function WhatsAppInbox() {
     refetch();
   };
 
-  if (showSetup || showAgents) {
+  if (showSetup) {
     return (
       <WhatsAppSettingsPage 
-        onBack={() => { setShowSetup(false); setShowAgents(false); }} 
-        initialTab={showAgents ? 'agents' : settingsTab}
+        onBack={() => setShowSetup(false)} 
+        initialTab={settingsTab}
       />
     );
   }
@@ -748,9 +747,6 @@ export function WhatsAppInbox() {
             disabled={loading}
           >
             <RefreshCw className={"h-4 w-4" + (loading ? " animate-spin" : "")} />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => setShowAgents(true)} title="Agentes IA">
-            <Bot className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="icon" onClick={() => { setSettingsTab('integration'); setShowSetup(true); }} title="Configuração">
             <Settings className="h-4 w-4" />
