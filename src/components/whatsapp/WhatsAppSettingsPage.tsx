@@ -3,13 +3,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
-  Webhook, BarChart3, Megaphone, Bot, ArrowLeft, 
+  Webhook, BarChart3, Megaphone, ArrowLeft, 
   ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2
 } from 'lucide-react';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
 import { WhatsAppAdLinkSettings } from './WhatsAppAdLinkSettings';
-import { WhatsAppAIAgents } from './WhatsAppAIAgents';
+
 import { WebhookLogsViewer } from './WebhookLogsViewer';
 import { WhatsAppCommandConfig } from './WhatsAppCommandConfig';
 import { WhatsAppInstanceManager } from './WhatsAppInstanceManager';
@@ -36,15 +36,6 @@ const tabs: Tab[] = [
     badge: '🆕 Novo',
     badgeVariant: 'default',
     accentColor: 'text-green-500',
-  },
-  {
-    id: 'agents',
-    label: 'Agentes IA',
-    icon: <Bot className="h-5 w-5" />,
-    description: 'Configure assistentes inteligentes',
-    badge: '✨ Popular',
-    badgeVariant: 'default',
-    accentColor: 'text-violet-500',
   },
   {
     id: 'commands',
@@ -219,7 +210,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             </div>
 
             {activeTab === 'instances' && <WhatsAppInstanceManager />}
-            {activeTab === 'agents' && <WhatsAppAIAgents />}
+            
             {activeTab === 'commands' && <WhatsAppCommandConfig />}
             {activeTab === 'notifications' && (
               <div className="space-y-6">
