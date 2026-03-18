@@ -350,6 +350,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       template_token: form.template_token || null,
       template_name: form.template_name || null,
       prompt_instructions: form.prompt_instructions || null,
+      media_extraction_prompt: form.media_extraction_prompt || null,
       followup_steps: followupSteps,
       human_reply_pause_minutes: humanReplyPauseMinutes,
       notify_on_signature: form.notify_on_signature,
