@@ -33,7 +33,7 @@ interface Props {
 
 const GENERATE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-shortcut-config`;
 
-export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props) {
+export function AIShortcutGenerator({ onApply, onClose, existingConfig, templateFields, templateName }: Props) {
   const [description, setDescription] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<ShortcutConfig | null>(null);
