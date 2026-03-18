@@ -94,12 +94,21 @@ Retorne a configuração COMPLETA atualizada (não apenas as mudanças), mantend
     const rawContent = result.choices?.[0]?.message?.content || "";
     
     // Extract JSON from response (may be wrapped in markdown code blocks)
-    let jsonStr = rawContent;
-    const jsonMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) jsonStr = jsonMatch[1];
+    let jsonStr = rawContent.trim();
+    // Try multiple patterns to extract JSON
+    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (codeBlockMatch) {
+      jsonStr = codeBlockMatch[1].trim();
+    } else {
+      // Try to find raw JSON object
+      const firstBrace = jsonStr.indexOf('{');
+      const lastBrace = jsonStr.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
+      }
+    }
     
-    // Try to parse
-    const parsed = JSON.parse(jsonStr.trim());
+    const parsed = JSON.parse(jsonStr);
 
     // Validate structure
     if (!parsed.shortcut_name || !parsed.prompt_instructions) {
