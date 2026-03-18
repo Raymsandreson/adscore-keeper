@@ -429,12 +429,12 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
             {formSection === 'ai' && (
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">🧠 Prompt Base (Persona do Assistente)</Label>
-                  <p className="text-[10px] text-muted-foreground">Define a personalidade, tom e regras gerais do assistente.</p>
+                  <Label className="text-xs">🧠 Prompt do Agente</Label>
+                  <p className="text-[10px] text-muted-foreground">Define a personalidade, tom, instruções de coleta e regras de comportamento do agente.</p>
                   <Textarea
-                    placeholder="Você é um assistente jurídico profissional e atencioso. Fale de forma clara e objetiva..."
-                    value={form.base_prompt}
-                    onChange={e => setForm(f => ({ ...f, base_prompt: e.target.value }))}
+                    placeholder="Você é um assistente jurídico profissional. Ao interagir com o cliente, colete nome completo, CPF, RG, endereço..."
+                    value={form.prompt_instructions}
+                    onChange={e => setForm(f => ({ ...f, prompt_instructions: e.target.value }))}
                     className="min-h-[120px] text-xs"
                   />
                 </div>
