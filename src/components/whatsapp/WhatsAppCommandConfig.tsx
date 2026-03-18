@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
 import { 
-  Bot, Plus, Trash2, Smartphone, Shield, MessageSquare, Sparkles, 
+  Bot, Plus, Trash2, MessageSquare, Sparkles, 
   Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2
 } from 'lucide-react';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
