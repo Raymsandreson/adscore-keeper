@@ -572,21 +572,34 @@ Classifique o documento enviado.` },
                 .map((f: any) => `${f.de}: ${f.para}`)
                 .join('\n');
 
-              const extractPrompt = `Analise as imagens dos documentos enviados (RG, CNH, comprovante de endereço, comprovante de renda, etc.) e extraia TODOS os dados pessoais visíveis.
+              const extractPrompt = `Você é um especialista em OCR de documentos brasileiros. Analise CUIDADOSAMENTE as imagens dos documentos enviados e extraia os dados do TITULAR do documento.
 
-CAMPOS QUE PRECISO PREENCHER NO DOCUMENTO:
+ATENÇÃO - REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
+1. Em um RG (Carteira de Identidade):
+   - O NOME DO TITULAR está no campo "NOME" em letras VERMELHAS/GRANDES no centro do documento
+   - O campo "FILIAÇÃO" contém os nomes dos PAIS (pai e mãe) - NÃO confunda com o nome do titular
+   - O nome no rodapé "ASSINATURA DO TITULAR" é a assinatura manuscrita do próprio titular
+   - No verso do RG, o nome que aparece junto a "DIRETORA/DIRETOR" é do funcionário do órgão emissor, NÃO do titular
+   - O CPF do titular aparece no verso do RG
+2. Em uma CNH:
+   - O NOME DO TITULAR está no campo "NOME" ou "Nome"
+   - FILIAÇÃO são os pais
+3. O OUTORGANTE/SIGNATÁRIO é SEMPRE o TITULAR do documento (cujo NOME aparece em destaque)
+
+CAMPOS QUE PRECISO PREENCHER:
 ${allTemplateFieldNames.map((f: string) => `- ${f}`).join('\n')}
 
-DADOS JÁ COLETADOS (não sobrescreva a menos que esteja errado):
+DADOS JÁ COLETADOS (não sobrescreva a menos que esteja claramente errado):
 ${alreadyFilledSummary || '(nenhum)'}
 
-REGRAS:
-- Extraia: nome completo, CPF, RG, data de nascimento, endereço, CEP, cidade, estado, bairro, rua/logradouro, profissão, nacionalidade, estado civil, etc.
+REGRAS DE FORMATAÇÃO:
+- NOME COMPLETO: Use o nome do TITULAR do documento (campo "NOME"), NUNCA os nomes da filiação
 - Para NACIONALIDADE: se tem CPF brasileiro, use "brasileiro(a)"
 - Formate datas como DD/MM/AAAA
 - Formate CPF como XXX.XXX.XXX-XX
 - No campo "de", use EXATAMENTE a variável do template (ex: {{NOME_COMPLETO}}, {{CPF}})
-- Extraia TUDO que for visível nos documentos`;
+- Leia CADA CARACTERE com cuidado - documentos antigos podem ter texto desgastado
+- Se não conseguir ler com certeza, NÃO invente - deixe em branco`;
 
               const visionMessages: any[] = [
                 { role: "system", content: extractPrompt },
