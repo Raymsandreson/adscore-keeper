@@ -225,11 +225,50 @@ Retorne a configuração COMPLETA atualizada (não apenas as mudanças), mantend
       throw new Error("A IA retornou JSON inválido. Tente novamente.");
     };
 
-    const parsed = toolArgs
-      ? typeof toolArgs === "string"
-        ? JSON.parse(toolArgs)
-        : toolArgs
-      : parseAiJson(rawContent);
+    const buildFallbackConfig = () => {
+      const normalizeShortcut = (text: string) =>
+        text
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, " ")
+          .trim()
+          .split(/\s+/)
+          .slice(0, 2)
+          .join("_") || "agente";
+
+      return {
+        shortcut_name: existing_config?.shortcut_name || normalizeShortcut(description),
+        description: description.trim(),
+        prompt_instructions:
+          existing_config?.prompt_instructions ||
+          `Você é um agente de atendimento jurídico no WhatsApp.\nObjetivo: ${description.trim()}\n\nFluxo obrigatório:\n1) Saudação curta e profissional\n2) Coleta de dados essenciais\n3) Confirmação dos dados\n4) Orientação do próximo passo\n\nRegras:\n- Respostas curtas, claras e educadas\n- Nunca inventar dados\n- Quando faltar informação, pedir objetivamente\n- Se receber documentos, explicar o que foi identificado e o que ainda falta`,
+        media_extraction_prompt:
+          existing_config?.media_extraction_prompt ||
+          "Ao receber imagem/PDF, extraia nome completo, CPF, RG, data de nascimento e endereço quando disponíveis. Se houver dúvida de leitura, sinalize claramente o campo como incerto.",
+        followup_steps:
+          existing_config?.followup_steps?.length
+            ? existing_config.followup_steps
+            : [
+                { action_type: "whatsapp_message", delay_minutes: 90 },
+                { action_type: "whatsapp_message", delay_minutes: 1440 },
+                { action_type: "create_activity", delay_minutes: 2880, activity_type: "tarefa", assigned_to: "" },
+                { action_type: "call", delay_minutes: 4320, assigned_to: "" },
+              ],
+      };
+    };
+
+    let parsed: any;
+    try {
+      parsed = toolArgs
+        ? typeof toolArgs === "string"
+          ? JSON.parse(toolArgs)
+          : toolArgs
+        : parseAiJson(rawContent);
+    } catch (parseError) {
+      console.warn("Falha ao interpretar saída da IA, usando fallback:", parseError);
+      parsed = buildFallbackConfig();
+    }
 
     // Validate structure
     if (!parsed.shortcut_name || !parsed.prompt_instructions) {
