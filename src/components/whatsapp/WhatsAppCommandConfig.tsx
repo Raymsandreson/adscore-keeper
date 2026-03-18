@@ -545,7 +545,21 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 className="min-h-[80px] text-xs"
               />
             </div>
-
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs">🔍 Prompt de Extração de Mídia</Label>
+                <Badge variant="outline" className="text-[9px] h-4">OCR</Badge>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Instruções de como a IA deve interpretar documentos (RG, CNH, comprovantes). Deixe vazio para usar o padrão.
+              </p>
+              <Textarea
+                placeholder="Ex: O NOME DO TITULAR está em letras vermelhas no campo 'NOME'. O campo 'FILIAÇÃO' são os pais, não confundir. No verso, ignore nomes de diretores..."
+                value={form.media_extraction_prompt}
+                onChange={e => setForm(f => ({ ...f, media_extraction_prompt: e.target.value }))}
+                className="min-h-[80px] text-xs font-mono"
+              />
+            </div>
 
 
             <div className="border-t pt-3 space-y-3">
