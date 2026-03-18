@@ -39,7 +39,7 @@ const tabs: Tab[] = [
   },
   {
     id: 'commands',
-    label: 'Assistente IA',
+    label: 'Agentes IA',
     icon: <Sparkles className="h-5 w-5" />,
     description: 'Agentes IA e IA Interna',
     badge: '✨ IA',
