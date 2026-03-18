@@ -6617,6 +6617,42 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_internal_notes: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          instance_name: string | null
+          note_type: string
+          phone: string
+          sender_id: string | null
+          sender_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          instance_name?: string | null
+          note_type?: string
+          phone: string
+          sender_id?: string | null
+          sender_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          instance_name?: string | null
+          note_type?: string
+          phone?: string
+          sender_id?: string | null
+          sender_name?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       whatsapp_messages: {
         Row: {
           contact_id: string | null
