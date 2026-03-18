@@ -152,7 +152,7 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
             ) : (
               <>
                 <Sparkles className="h-3.5 w-3.5 mr-1" />
-                {existingConfig ? 'Gerar Edição' : 'Gerar Atalho'}
+                {existingConfig ? 'Gerar Edição' : 'Gerar Agente'}
               </>
             )}
           </Button>
