@@ -70,8 +70,8 @@ const MODELS = [
 
 const ASSISTANT_TYPES = [
   { value: 'document', label: '📄 Gerador de Documentos', desc: 'Coleta dados e gera documentos ZapSign' },
-  { value: 'assistant', label: '🤖 Assistente IA', desc: 'Responde e interage com clientes/leads' },
-  { value: 'hybrid', label: '🔄 Híbrido', desc: 'Assistente que também gera documentos' },
+  { value: 'assistant', label: '🤖 Agente IA', desc: 'Responde e interage com clientes/leads' },
+  { value: 'hybrid', label: '🔄 Híbrido', desc: 'Agente que também gera documentos' },
 ];
 
 // ==================== COMPONENT ====================
