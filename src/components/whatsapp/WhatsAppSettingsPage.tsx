@@ -41,7 +41,7 @@ const tabs: Tab[] = [
     id: 'commands',
     label: 'Assistente IA',
     icon: <Sparkles className="h-5 w-5" />,
-    description: 'Atalhos inteligentes @wjia',
+    description: 'Agentes IA e IA Interna',
     badge: '✨ IA',
     badgeVariant: 'default',
     accentColor: 'text-pink-500',

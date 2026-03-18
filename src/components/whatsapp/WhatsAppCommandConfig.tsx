@@ -120,7 +120,7 @@ export function WhatsAppCommandConfig() {
             <div className="space-y-1">
               <p className="text-sm font-medium">Central de Assistentes IA</p>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Configure assistentes para <strong>contatos/clientes</strong> (@wjia) e para <strong>membros da equipe</strong> (CRM via WhatsApp).
+                Configure <strong>Agentes IA</strong> para contatos/clientes e a <strong>IA Interna</strong> para membros da equipe (CRM via WhatsApp).
               </p>
             </div>
           </div>
@@ -130,10 +130,10 @@ export function WhatsAppCommandConfig() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="shortcuts" className="text-xs gap-1">
-            <Zap className="h-3.5 w-3.5" /> @wjia
+            <Zap className="h-3.5 w-3.5" /> Agentes IA
           </TabsTrigger>
           <TabsTrigger value="member" className="text-xs gap-1">
-            <Bot className="h-3.5 w-3.5" /> Equipe
+            <Bot className="h-3.5 w-3.5" /> IA Interna
           </TabsTrigger>
         </TabsList>
 
@@ -339,7 +339,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
     <div className="space-y-4 mt-4">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
-          Assistentes @wjia — cada um com IA, documentos e follow-up integrados.
+          Agentes IA — cada um com IA, documentos e follow-up integrados.
         </p>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => { setAiEditConfig(null); setEditingId(null); setShowAI(!showAI); setShowForm(false); }} className="gap-1">
