@@ -1134,9 +1134,28 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
       </div>
 
       {/* Input */}
-      <div className="p-3 border-t bg-card shrink-0 space-y-2">
+      <div className={cn("p-3 border-t shrink-0 space-y-2", inputMode === 'note' ? "bg-amber-50/80 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800" : "bg-card")}>
+        {/* Mode toggle */}
+        <div className="flex items-center gap-1 mb-1">
+          <Button
+            variant={inputMode === 'message' ? 'default' : 'ghost'}
+            size="sm"
+            className={cn("h-7 text-xs gap-1.5", inputMode === 'message' && "bg-green-600 hover:bg-green-700")}
+            onClick={() => setInputMode('message')}
+          >
+            <MessageSquare className="h-3 w-3" /> Mensagem
+          </Button>
+          <Button
+            variant={inputMode === 'note' ? 'default' : 'ghost'}
+            size="sm"
+            className={cn("h-7 text-xs gap-1.5", inputMode === 'note' && "bg-amber-500 hover:bg-amber-600 text-white")}
+            onClick={() => setInputMode('note')}
+          >
+            <StickyNote className="h-3 w-3" /> Nota Interna
+          </Button>
+        </div>
         <div className="flex items-center justify-end gap-2 flex-wrap">
-          {identifySender && (
+          {inputMode === 'message' && identifySender && (
             <>
               <Select value={nameFormat} onValueChange={handleNameFormatChange}>
                 <SelectTrigger className="h-7 w-[130px] text-xs">
