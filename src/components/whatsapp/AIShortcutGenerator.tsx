@@ -86,7 +86,7 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
     if (!result) return;
     onApply(result);
     onClose();
-    toast.success('Atalho configurado pela IA!');
+    toast.success('Agente configurado pela IA!');
   };
 
   const formatDelay = (mins: number) => {
