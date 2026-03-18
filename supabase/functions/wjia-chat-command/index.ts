@@ -185,14 +185,14 @@ REGRAS:
     ];
 
     const aiResult = await geminiChat({
-      model: "google/gemini-2.5-flash",
+      model: shortcutModel,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: `Comando do atendente: ${command}` },
       ],
-      tools,
-      tool_choice: { type: "function", function: { name: "analyze_wjia_command" } },
-      temperature: 0.1,
+      tools: assistantType === 'assistant' ? undefined : tools,
+      tool_choice: assistantType === 'assistant' ? undefined : { type: "function", function: { name: "analyze_wjia_command" } },
+      temperature: shortcutTemperature,
     });
 
     const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
