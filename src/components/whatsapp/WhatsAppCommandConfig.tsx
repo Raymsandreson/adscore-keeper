@@ -315,7 +315,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   const handleDelete = async (id: string) => {
     await (supabase.from('wjia_command_shortcuts') as any).delete().eq('id', id);
     onReload();
-    toast.success('Assistente removido');
+    toast.success('Agente removido');
   };
 
   const handleToggle = async (id: string, isActive: boolean) => {
