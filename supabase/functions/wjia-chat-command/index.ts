@@ -63,9 +63,7 @@ serve(async (req) => {
     const templateList = templates.map((t: any, i: number) => `${i + 1}. "${t.name}" (token: ${t.token})`).join("\n");
 
     // Build shortcuts list for AI
-    const shortcutList = shortcuts.map((s: any) => 
-      `- "${s.shortcut_name}": ${s.description || s.template_name || ''} (template: ${s.template_token || 'auto'})`
-    ).join("\n");
+    // Shortcut list is NOT included in AI prompt — matching is done programmatically by #name
 
     // Build conversation text
     const conversationText = messages
