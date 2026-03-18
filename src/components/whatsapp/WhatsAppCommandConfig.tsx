@@ -13,22 +13,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
 import { 
-  Bot, Plus, Trash2, Smartphone, Shield, MessageSquare, Sparkles, 
+  Bot, Plus, Trash2, MessageSquare, Sparkles, 
   Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2
 } from 'lucide-react';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { MemberAssistantSettings } from './MemberAssistantSettings';
 
 // ==================== TYPES ====================
-interface CommandConfig {
-  id: string;
-  instance_name: string;
-  authorized_phone: string;
-  user_id: string;
-  user_name: string | null;
-  is_active: boolean;
-  created_at: string;
-}
 
 interface Shortcut {
   id: string;
@@ -65,7 +56,7 @@ interface FollowupStep {
   priority?: string;
 }
 
-interface Instance { id: string; instance_name: string; }
+
 interface Profile { user_id: string; full_name: string | null; }
 interface ZapSignTemplateOption { token: string; name: string; }
 
@@ -85,10 +76,8 @@ const ASSISTANT_TYPES = [
 
 // ==================== COMPONENT ====================
 export function WhatsAppCommandConfig() {
-  const [activeTab, setActiveTab] = useState('auth');
-  const [configs, setConfigs] = useState<CommandConfig[]>([]);
+  const [activeTab, setActiveTab] = useState('shortcuts');
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
-  const [instances, setInstances] = useState<Instance[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   
   const [loading, setLoading] = useState(true);
@@ -97,14 +86,11 @@ export function WhatsAppCommandConfig() {
 
   const loadData = async () => {
     setLoading(true);
-    const [configsRes, instancesRes, profilesRes, shortcutsRes] = await Promise.all([
-      supabase.from('whatsapp_command_config').select('*').order('created_at', { ascending: false }),
-      supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true),
+    const [profilesRes, shortcutsRes] = await Promise.all([
       supabase.from('profiles').select('user_id, full_name').order('full_name'),
       supabase.from('wjia_command_shortcuts').select('*').order('display_order') as any,
     ]);
-    setConfigs((configsRes.data as any[]) || []);
-    setInstances(instancesRes.data || []);
+    setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
     setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
     setShortcuts((shortcutsRes.data || []).map((s: any) => ({
       ...s,
@@ -142,10 +128,7 @@ export function WhatsAppCommandConfig() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="auth" className="text-xs gap-1">
-            <Shield className="h-3.5 w-3.5" /> Autorizados
-          </TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="shortcuts" className="text-xs gap-1">
             <Zap className="h-3.5 w-3.5" /> @wjia
           </TabsTrigger>
@@ -153,15 +136,6 @@ export function WhatsAppCommandConfig() {
             <Bot className="h-3.5 w-3.5" /> Equipe
           </TabsTrigger>
         </TabsList>
-
-        <TabsContent value="auth">
-          <AuthorizedPhonesTab
-            configs={configs}
-            instances={instances}
-            profiles={profiles}
-            onReload={loadData}
-          />
-        </TabsContent>
 
         <TabsContent value="shortcuts">
           <ShortcutsTab
@@ -175,114 +149,6 @@ export function WhatsAppCommandConfig() {
           <MemberAssistantSettings />
         </TabsContent>
       </Tabs>
-    </div>
-  );
-}
-
-// ==================== AUTH TAB ====================
-function AuthorizedPhonesTab({ configs, instances, profiles, onReload }: {
-  configs: CommandConfig[]; instances: Instance[]; profiles: Profile[]; onReload: () => void;
-}) {
-  const [adding, setAdding] = useState(false);
-  const [selectedInstance, setSelectedInstance] = useState('');
-  const [selectedUser, setSelectedUser] = useState('');
-  const [phone, setPhone] = useState('');
-
-  const handleAdd = async () => {
-    if (!selectedInstance || !selectedUser || !phone.trim()) {
-      toast.error('Preencha todos os campos');
-      return;
-    }
-    const normalizedPhone = phone.replace(/\D/g, '').replace(/^0+/, '');
-    if (normalizedPhone.length < 10) { toast.error('Telefone inválido'); return; }
-
-    const profile = profiles.find(p => p.user_id === selectedUser);
-    setAdding(true);
-    const { error } = await supabase.from('whatsapp_command_config').insert({
-      instance_name: selectedInstance, authorized_phone: normalizedPhone,
-      user_id: selectedUser, user_name: profile?.full_name || null,
-    } as any);
-    setAdding(false);
-
-    if (error) {
-      toast.error(error.code === '23505' ? 'Já configurado' : error.message);
-      return;
-    }
-    toast.success('Adicionado!');
-    setPhone(''); setSelectedInstance(''); setSelectedUser('');
-    onReload();
-  };
-
-  const handleToggle = async (id: string, isActive: boolean) => {
-    await supabase.from('whatsapp_command_config').update({ is_active: !isActive } as any).eq('id', id);
-    onReload();
-  };
-
-  const handleDelete = async (id: string) => {
-    await supabase.from('whatsapp_command_config').delete().eq('id', id);
-    onReload();
-    toast.success('Removido');
-  };
-
-  return (
-    <div className="space-y-4 mt-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2"><Plus className="h-4 w-4" /> Adicionar Número</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Instância</Label>
-              <Select value={selectedInstance} onValueChange={setSelectedInstance}>
-                <SelectTrigger className="h-9"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  {instances.map(i => <SelectItem key={i.id} value={i.instance_name}>{i.instance_name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Usuário</Label>
-              <Select value={selectedUser} onValueChange={setSelectedUser}>
-                <SelectTrigger className="h-9"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  {profiles.map(p => <SelectItem key={p.user_id} value={p.user_id}>{p.full_name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Telefone</Label>
-              <div className="flex gap-2">
-                <Input placeholder="5511999999999" value={phone} onChange={e => setPhone(e.target.value)} className="h-9" />
-                <Button onClick={handleAdd} disabled={adding} size="sm"><Plus className="h-4 w-4" /></Button>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="space-y-2">
-        {configs.length === 0 ? (
-          <Card><CardContent className="py-6 text-center text-sm text-muted-foreground">Nenhum número configurado</CardContent></Card>
-        ) : configs.map(c => (
-          <Card key={c.id} className={!c.is_active ? 'opacity-50' : ''}>
-            <CardContent className="p-3 flex items-center gap-3">
-              <Bot className="h-5 w-5 text-primary shrink-0" />
-              <div className="flex-1 min-w-0">
-                <span className="text-sm font-medium">{c.user_name || 'Usuário'}</span>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <Badge variant="outline" className="text-[10px] h-5"><Smartphone className="h-3 w-3 mr-1" />{c.authorized_phone}</Badge>
-                  <span className="text-[10px] text-muted-foreground">{c.instance_name}</span>
-                </div>
-              </div>
-              <Switch checked={c.is_active} onCheckedChange={() => handleToggle(c.id, c.is_active)} />
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(c.id)}>
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
     </div>
   );
 }
