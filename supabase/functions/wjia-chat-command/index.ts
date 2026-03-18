@@ -95,14 +95,16 @@ serve(async (req) => {
     const shortcutTemperature = matchedShortcut?.temperature ?? 0.1;
     const shortcutBasePrompt = matchedShortcut?.base_prompt || '';
 
-    // 2) AI decides what to do — but does NOT generate doc yet if data is missing
+    // 2) AI decides what to do
+    const basePromptSection = shortcutBasePrompt ? `\nPERSONA/REGRAS BASE DO ASSISTENTE:\n${shortcutBasePrompt}\n` : '';
+    
     const systemPrompt = `Você é o assistente WJIA, integrado ao WhatsApp de um escritório de advocacia. O atendente digitou um comando @wjia.
-
-IMPORTANTE: NÃO gere o documento agora. Seu trabalho é:
+${basePromptSection}
+${assistantType === 'assistant' ? `MODO: Assistente conversacional. Responda ao comando do atendente usando o contexto disponível. NÃO tente gerar documentos.` : `IMPORTANTE: NÃO gere o documento agora. Seu trabalho é:
 1. Identificar qual template ZapSign usar
 2. Analisar TODOS os dados disponíveis (conversa + CRM)
 3. Identificar quais campos obrigatórios estão FALTANDO
-4. Se houver dados faltantes, o robô vai assumir a conversa para coletá-los antes de gerar
+4. Se houver dados faltantes, o robô vai assumir a conversa para coletá-los antes de gerar`}
 
 ${forceTemplate ? `⚠️ TEMPLATE OBRIGATÓRIO: Use EXATAMENTE o template "${forceTemplateName}" (token: ${forceTemplate}). NÃO escolha outro template.` : ''}
 
