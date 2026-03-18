@@ -39,7 +39,7 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
 
   const handleGenerate = async () => {
     if (!description.trim()) {
-      toast.error('Descreva o que o atalho deve fazer');
+      toast.error('Descreva o que o agente deve fazer');
       return;
     }
 
@@ -86,7 +86,7 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
     if (!result) return;
     onApply(result);
     onClose();
-    toast.success('Atalho configurado pela IA!');
+    toast.success('Agente configurado pela IA!');
   };
 
   const formatDelay = (mins: number) => {
@@ -107,7 +107,7 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
         <div className="flex items-center gap-2">
           <Wand2 className="h-4 w-4 text-primary" />
           <span className="text-xs font-medium">
-            {existingConfig ? `Editar "${existingConfig.shortcut_name}" com IA` : 'Criar Atalho com IA'}
+            {existingConfig ? `Editar "${existingConfig.shortcut_name}" com IA` : 'Criar Agente com IA'}
           </span>
         </div>
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
@@ -118,7 +118,7 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
       <p className="text-[11px] text-muted-foreground">
         {existingConfig
           ? 'Descreva as mudanças desejadas — a IA atualiza prompt, follow-up e tempos.'
-          : 'Descreva o que o atalho deve fazer — a IA cria tudo: nome, prompt, sequência de follow-up com tempos ideais.'}
+          : 'Descreva o que o agente deve fazer — a IA cria tudo: nome, prompt, sequência de follow-up com tempos ideais.'}
       </p>
 
       {!result && (
@@ -127,7 +127,7 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
             <Textarea
               placeholder={existingConfig
                 ? "Ex: Mude o tom para mais formal, adicione ligação após 2 dias..."
-                : "Ex: Atalho para procuração ad judicia. Coletar nome, CPF, RG, endereço. Tom profissional. Follow-up automático."}
+                : "Ex: Agente para procuração ad judicia. Coletar nome, CPF, RG, endereço. Tom profissional. Follow-up automático."}
               value={description}
               onChange={e => setDescription(e.target.value)}
               className="min-h-[70px] text-xs flex-1"
@@ -152,7 +152,7 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
             ) : (
               <>
                 <Sparkles className="h-3.5 w-3.5 mr-1" />
-                {existingConfig ? 'Gerar Edição' : 'Gerar Atalho'}
+                {existingConfig ? 'Gerar Edição' : 'Gerar Agente'}
               </>
             )}
           </Button>
@@ -163,7 +163,7 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
         <div className="space-y-3">
           <div className="space-y-2 p-3 rounded-lg border bg-background">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-primary">@wjia {result.shortcut_name}</span>
+              <span className="text-xs font-semibold text-primary">#{result.shortcut_name}</span>
             </div>
             {result.description && (
               <p className="text-[11px] text-muted-foreground">{result.description}</p>

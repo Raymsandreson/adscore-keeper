@@ -70,8 +70,8 @@ const MODELS = [
 
 const ASSISTANT_TYPES = [
   { value: 'document', label: '📄 Gerador de Documentos', desc: 'Coleta dados e gera documentos ZapSign' },
-  { value: 'assistant', label: '🤖 Assistente IA', desc: 'Responde e interage com clientes/leads' },
-  { value: 'hybrid', label: '🔄 Híbrido', desc: 'Assistente que também gera documentos' },
+  { value: 'assistant', label: '🤖 Agente IA', desc: 'Responde e interage com clientes/leads' },
+  { value: 'hybrid', label: '🔄 Híbrido', desc: 'Agente que também gera documentos' },
 ];
 
 // ==================== COMPONENT ====================
@@ -118,7 +118,7 @@ export function WhatsAppCommandConfig() {
           <div className="flex items-start gap-3">
             <Sparkles className="h-5 w-5 text-primary mt-0.5 shrink-0" />
             <div className="space-y-1">
-              <p className="text-sm font-medium">Central de Assistentes IA</p>
+              <p className="text-sm font-medium">Central de Agentes IA</p>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Configure <strong>Agentes IA</strong> para contatos/clientes e a <strong>IA Interna</strong> para membros da equipe (CRM via WhatsApp).
               </p>
@@ -277,7 +277,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   };
 
   const handleSave = async () => {
-    if (!form.shortcut_name.trim()) { toast.error('Nome do assistente é obrigatório'); return; }
+    if (!form.shortcut_name.trim()) { toast.error('Nome do agente é obrigatório'); return; }
     const payload = {
       shortcut_name: form.shortcut_name.trim(),
       description: form.description || null,
@@ -307,7 +307,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       ({ error } = await (supabase.from('wjia_command_shortcuts') as any).insert({ ...payload, display_order: shortcuts.length }));
     }
     if (error) { toast.error(error.message); return; }
-    toast.success(editingId ? 'Assistente atualizado!' : 'Assistente criado!');
+    toast.success(editingId ? 'Agente atualizado!' : 'Agente criado!');
     resetForm();
     onReload();
   };
@@ -315,7 +315,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   const handleDelete = async (id: string) => {
     await (supabase.from('wjia_command_shortcuts') as any).delete().eq('id', id);
     onReload();
-    toast.success('Assistente removido');
+    toast.success('Agente removido');
   };
 
   const handleToggle = async (id: string, isActive: boolean) => {
@@ -374,7 +374,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
         <Card className="border-primary/30">
           <CardContent className="p-4 space-y-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-primary">{editingId ? '✏️ Editando assistente' : '➕ Novo assistente'}</p>
+              <p className="text-xs font-medium text-primary">{editingId ? '✏️ Editando agente' : '➕ Novo agente'}</p>
               <div className="flex gap-1">
                 {(['general', 'ai', 'document', 'followup'] as const).map(sec => (
                   <Button
@@ -413,7 +413,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Nome do Assistente *</Label>
+                    <Label className="text-xs">Nome do Agente *</Label>
                     <Input placeholder="procuracao" value={form.shortcut_name} onChange={e => setForm(f => ({ ...f, shortcut_name: e.target.value.replace(/\s/g, '').toLowerCase() }))} className="h-9" />
                     <p className="text-[10px] text-muted-foreground">Acionado por <strong>#nome</strong> no WhatsApp</p>
                   </div>
@@ -422,15 +422,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                     <Input placeholder="Gera procuração ad judicia" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="h-9" />
                   </div>
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Instruções do Prompt (como o robô deve agir com o cliente)</Label>
-                  <Textarea
-                    placeholder="Ao interagir com o cliente, pergunte nome completo, CPF, RG, endereço completo..."
-                    value={form.prompt_instructions}
-                    onChange={e => setForm(f => ({ ...f, prompt_instructions: e.target.value }))}
-                    className="min-h-[80px] text-xs"
-                  />
-                </div>
               </div>
             )}
 
@@ -438,12 +429,12 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
             {formSection === 'ai' && (
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">🧠 Prompt Base (Persona do Assistente)</Label>
-                  <p className="text-[10px] text-muted-foreground">Define a personalidade, tom e regras gerais do assistente.</p>
+                  <Label className="text-xs">🧠 Prompt do Agente</Label>
+                  <p className="text-[10px] text-muted-foreground">Define a personalidade, tom, instruções de coleta e regras de comportamento do agente.</p>
                   <Textarea
-                    placeholder="Você é um assistente jurídico profissional e atencioso. Fale de forma clara e objetiva..."
-                    value={form.base_prompt}
-                    onChange={e => setForm(f => ({ ...f, base_prompt: e.target.value }))}
+                    placeholder="Você é um assistente jurídico profissional. Ao interagir com o cliente, colete nome completo, CPF, RG, endereço..."
+                    value={form.prompt_instructions}
+                    onChange={e => setForm(f => ({ ...f, prompt_instructions: e.target.value }))}
                     className="min-h-[120px] text-xs"
                   />
                 </div>
@@ -700,7 +691,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       {shortcuts.length === 0 ? (
         <Card><CardContent className="py-6 text-center text-sm text-muted-foreground">
           <Zap className="h-6 w-6 mx-auto mb-2 text-muted-foreground/40" />
-          Nenhum assistente configurado
+          Nenhum agente configurado
         </CardContent></Card>
       ) : shortcuts.map(s => (
         <Card key={s.id} className={!s.is_active ? 'opacity-50' : ''}>
@@ -716,11 +707,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                   </Badge>
                 </div>
                 {s.description && <p className="text-[11px] text-muted-foreground mt-0.5">{s.description}</p>}
-                {s.base_prompt && (
-                  <p className="text-[10px] text-muted-foreground/70 mt-0.5 truncate max-w-[300px]">
-                    🧠 {s.base_prompt.slice(0, 80)}...
-                  </p>
-                )}
                 {s.prompt_instructions && (
                   <p className="text-[10px] text-muted-foreground/70 mt-0.5 truncate max-w-[300px]">
                     💡 {s.prompt_instructions.slice(0, 80)}

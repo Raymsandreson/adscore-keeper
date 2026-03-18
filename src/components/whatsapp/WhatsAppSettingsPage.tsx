@@ -39,7 +39,7 @@ const tabs: Tab[] = [
   },
   {
     id: 'commands',
-    label: 'Assistente IA',
+    label: 'Agentes IA',
     icon: <Sparkles className="h-5 w-5" />,
     description: 'Agentes IA e IA Interna',
     badge: '✨ IA',
@@ -170,7 +170,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
               <span className="text-[11px] font-semibold text-primary">Dica Pro</span>
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Configure o Assistente IA para responder leads automaticamente e aumente em até 3x sua taxa de conversão.
+              Configure Agentes IA para responder leads automaticamente e aumente em até 3x sua taxa de conversão.
             </p>
           </div>
         </aside>
