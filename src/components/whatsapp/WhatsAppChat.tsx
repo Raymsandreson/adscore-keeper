@@ -370,6 +370,15 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
 
+    // If in note mode, save as internal note instead of sending
+    if (inputMode === 'note') {
+      setSending(true);
+      await addNote(newMessage.trim());
+      setNewMessage('');
+      setSending(false);
+      return;
+    }
+
     // Intercept @wjia commands - don't send to client
     if (newMessage.trim().toLowerCase().startsWith('@wjia')) {
       await handleWjiaCommand(newMessage.trim());
