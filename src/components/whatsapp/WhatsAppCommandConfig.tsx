@@ -707,11 +707,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                   </Badge>
                 </div>
                 {s.description && <p className="text-[11px] text-muted-foreground mt-0.5">{s.description}</p>}
-                {s.base_prompt && (
-                  <p className="text-[10px] text-muted-foreground/70 mt-0.5 truncate max-w-[300px]">
-                    🧠 {s.base_prompt.slice(0, 80)}...
-                  </p>
-                )}
                 {s.prompt_instructions && (
                   <p className="text-[10px] text-muted-foreground/70 mt-0.5 truncate max-w-[300px]">
                     💡 {s.prompt_instructions.slice(0, 80)}

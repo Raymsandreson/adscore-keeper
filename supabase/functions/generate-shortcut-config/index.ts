@@ -84,7 +84,7 @@ O usuário quer as seguintes mudanças: ${description.trim()}
 
 Retorne a configuração COMPLETA atualizada (não apenas as mudanças), mantendo o que não foi pedido para alterar.`;
     } else {
-      userMessage = `Crie um atalho completo para: ${description.trim()}`;
+      userMessage = `Crie um agente completo para: ${description.trim()}`;
     }
 
     const result = await geminiChat({

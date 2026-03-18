@@ -163,7 +163,7 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
         <div className="space-y-3">
           <div className="space-y-2 p-3 rounded-lg border bg-background">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-primary">@wjia {result.shortcut_name}</span>
+              <span className="text-xs font-semibold text-primary">#{result.shortcut_name}</span>
             </div>
             {result.description && (
               <p className="text-[11px] text-muted-foreground">{result.description}</p>
