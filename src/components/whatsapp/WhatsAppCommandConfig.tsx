@@ -703,6 +703,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                       template_token: form.template_token,
                       template_name: form.template_name,
                       prompt_instructions: config.prompt_instructions,
+                      media_extraction_prompt: form.media_extraction_prompt,
                       notify_on_signature: form.notify_on_signature,
                       send_signed_pdf: form.send_signed_pdf,
                       request_documents: form.request_documents,
