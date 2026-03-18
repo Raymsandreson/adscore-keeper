@@ -35,6 +35,8 @@ export function CatLeadsManager() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [obitoFilter, setObitoFilter] = useState('all');
+  const [accidentDateFrom, setAccidentDateFrom] = useState('');
+  const [accidentDateTo, setAccidentDateTo] = useState('');
 
   const filtered = useMemo(() => {
     return catLeads.filter(l => {
