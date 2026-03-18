@@ -1313,8 +1313,12 @@ Deno.serve(async (req) => {
     }
 
     // ========== WJIA COLLECTION SESSION CHECK ==========
-    // If there's an active data collection session, route to collection processor instead of AI agent
-    if (direction === 'inbound' && instanceName && phone && (messageText || storedMediaUrl || mediaUrl || messageType !== 'text')) {
+    // If there's an active data collection session, route to collection processor instead of AI agent.
+    // Some WhatsApp providers may flag inbound media as outbound; in those cases we still route media.
+    const hasPotentialClientMedia = !!(storedMediaUrl || mediaUrl || (messageType && messageType !== 'text'))
+    const shouldRouteCollection = direction === 'inbound' || hasPotentialClientMedia
+
+    if (shouldRouteCollection && instanceName && phone && (messageText || hasPotentialClientMedia)) {
       try {
         const { data: activeSession } = await supabase
           .from('wjia_collection_sessions')
@@ -1327,7 +1331,7 @@ Deno.serve(async (req) => {
           .maybeSingle()
 
         if (activeSession) {
-          console.log('Active WJIA collection session found, routing to collection processor:', activeSession.id)
+          console.log('Active WJIA collection session found, routing to collection processor:', activeSession.id, 'direction:', direction, 'message_type:', messageType)
           const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
           const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
           fetch(`${supabaseUrl}/functions/v1/wjia-collection-processor`, {
