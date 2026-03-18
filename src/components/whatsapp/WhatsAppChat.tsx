@@ -274,14 +274,17 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
     return () => { supabase.removeChannel(channel); };
   }, [conversation.phone]);
 
-  // Merge messages and call records into a unified timeline
+  // Merge messages, call records and internal notes into a unified timeline
   const timelineItems = (() => {
-    const items: Array<{ type: 'message' | 'call'; data: any; timestamp: string }> = [];
+    const items: Array<{ type: 'message' | 'call' | 'note'; data: any; timestamp: string }> = [];
     for (const msg of messages) {
       items.push({ type: 'message', data: msg, timestamp: msg.created_at });
     }
     for (const call of callRecords) {
       items.push({ type: 'call', data: call, timestamp: call.created_at });
+    }
+    for (const note of notes) {
+      items.push({ type: 'note', data: note, timestamp: note.created_at });
     }
     items.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     return items;
