@@ -63,9 +63,7 @@ serve(async (req) => {
     const templateList = templates.map((t: any, i: number) => `${i + 1}. "${t.name}" (token: ${t.token})`).join("\n");
 
     // Build shortcuts list for AI
-    const shortcutList = shortcuts.map((s: any) => 
-      `- "${s.shortcut_name}": ${s.description || s.template_name || ''} (template: ${s.template_token || 'auto'})`
-    ).join("\n");
+    // Shortcut list is NOT included in AI prompt — matching is done programmatically by #name
 
     // Build conversation text
     const conversationText = messages
@@ -77,10 +75,11 @@ serve(async (req) => {
     const crmContext = buildCrmContext(contactData, leadData, normalizedPhone);
 
     // Check if command matches a specific shortcut with a fixed template
-    const commandLower = command.replace(/^@wjia\s*/i, '').trim().toLowerCase();
+    // Match by #shortcutname — extract the name after # and match exactly
+    const hashMatch = command.match(/#(\S+)/i);
+    const commandLower = hashMatch ? hashMatch[1].toLowerCase() : command.replace(/^@wjia\s*/i, '').trim().toLowerCase();
     const matchedShortcut = shortcuts.find((s: any) => 
-      commandLower.includes(s.shortcut_name.toLowerCase()) || 
-      s.shortcut_name.toLowerCase().includes(commandLower)
+      s.shortcut_name.toLowerCase() === commandLower
     );
 
     const forceTemplate = matchedShortcut?.template_token || null;
@@ -107,9 +106,6 @@ ${assistantType === 'assistant' ? `MODO: Assistente conversacional. Responda ao 
 4. Se houver dados faltantes, o robô vai assumir a conversa para coletá-los antes de gerar`}
 
 ${forceTemplate ? `⚠️ TEMPLATE OBRIGATÓRIO: Use EXATAMENTE o template "${forceTemplateName}" (token: ${forceTemplate}). NÃO escolha outro template.` : ''}
-
-ATALHOS CONFIGURADOS:
-${shortcutList || "(nenhum atalho)"}
 
 TEMPLATES ZAPSIGN DISPONÍVEIS:
 ${templateList || "(nenhum template)"}
