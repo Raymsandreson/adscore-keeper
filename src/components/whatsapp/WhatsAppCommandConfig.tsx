@@ -339,7 +339,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
     <div className="space-y-4 mt-4">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
-          Assistentes @wjia — cada um com IA, documentos e follow-up integrados.
+          Agentes IA — cada um com IA, documentos e follow-up integrados.
         </p>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => { setAiEditConfig(null); setEditingId(null); setShowAI(!showAI); setShowForm(false); }} className="gap-1">
