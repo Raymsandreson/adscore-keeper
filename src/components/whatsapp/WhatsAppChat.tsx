@@ -1232,19 +1232,23 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
               )}
             </>
           )}
-          <Label htmlFor="identify-sender" className="text-xs text-muted-foreground cursor-pointer">
-            Identificar remetente
-          </Label>
-          {shareInfo ? (
-            <Badge variant={shareInfo.identify_sender ? 'default' : 'secondary'} className="text-[9px]">
-              {shareInfo.identify_sender ? 'Identificado' : 'Anônimo'}
-            </Badge>
-          ) : (
-            <Switch
-              id="identify-sender"
-              checked={identifySender}
-              onCheckedChange={handleToggleIdentifySender}
-            />
+          {inputMode === 'message' && (
+            <>
+              <Label htmlFor="identify-sender" className="text-xs text-muted-foreground cursor-pointer">
+                Identificar remetente
+              </Label>
+              {shareInfo ? (
+                <Badge variant={shareInfo.identify_sender ? 'default' : 'secondary'} className="text-[9px]">
+                  {shareInfo.identify_sender ? 'Identificado' : 'Anônimo'}
+                </Badge>
+              ) : (
+                <Switch
+                  id="identify-sender"
+                  checked={identifySender}
+                  onCheckedChange={handleToggleIdentifySender}
+                />
+              )}
+            </>
           )}
         </div>
         {/* Pasted image preview */}
