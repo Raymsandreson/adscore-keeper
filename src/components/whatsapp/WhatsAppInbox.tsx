@@ -137,8 +137,7 @@ export function WhatsAppInbox() {
   const [showSetup, setShowSetup] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showGooglePanel, setShowGooglePanel] = useState(false);
-  const [showAgents, setShowAgents] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<string>('agents');
+  const [settingsTab, setSettingsTab] = useState<string>('instances');
   // Side panel state
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadPanel, setShowLeadPanel] = useState(false);
