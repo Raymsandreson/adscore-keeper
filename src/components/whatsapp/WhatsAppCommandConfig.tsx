@@ -413,7 +413,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Nome do Assistente *</Label>
+                    <Label className="text-xs">Nome do Agente *</Label>
                     <Input placeholder="procuracao" value={form.shortcut_name} onChange={e => setForm(f => ({ ...f, shortcut_name: e.target.value.replace(/\s/g, '').toLowerCase() }))} className="h-9" />
                     <p className="text-[10px] text-muted-foreground">Acionado por <strong>#nome</strong> no WhatsApp</p>
                   </div>
@@ -421,15 +421,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                     <Label className="text-xs">Descrição</Label>
                     <Input placeholder="Gera procuração ad judicia" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="h-9" />
                   </div>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Instruções do Prompt (como o robô deve agir com o cliente)</Label>
-                  <Textarea
-                    placeholder="Ao interagir com o cliente, pergunte nome completo, CPF, RG, endereço completo..."
-                    value={form.prompt_instructions}
-                    onChange={e => setForm(f => ({ ...f, prompt_instructions: e.target.value }))}
-                    className="min-h-[80px] text-xs"
-                  />
                 </div>
               </div>
             )}
