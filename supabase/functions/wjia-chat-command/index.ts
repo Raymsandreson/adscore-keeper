@@ -195,8 +195,25 @@ REGRAS:
       temperature: shortcutTemperature,
     });
 
+    // For assistant-only mode, return the text response directly
+    if (assistantType === 'assistant') {
+      const textResponse = aiResult.choices?.[0]?.message?.content || 'Sem resposta.';
+      return new Response(JSON.stringify({
+        success: true,
+        action: "assistant_response",
+        message: textResponse,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall?.function?.arguments) {
+      // Fallback: if no tool call but has text content (hybrid mode)
+      const fallbackText = aiResult.choices?.[0]?.message?.content;
+      if (fallbackText) {
+        return new Response(JSON.stringify({
+          success: true, action: "assistant_response", message: fallbackText,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
       return errorResponse("Não foi possível processar o comando. Tente ser mais específico.");
     }
 
