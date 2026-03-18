@@ -356,6 +356,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       {showAI && !aiEditConfig && (
         <AIShortcutGenerator
           existingConfig={null}
+          templateFields={templateFields}
+          templateName={form.template_name || undefined}
           onApply={(config) => {
             setForm(f => ({
               ...f,

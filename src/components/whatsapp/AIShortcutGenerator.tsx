@@ -53,6 +53,10 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig, template
       if (existingConfig) {
         payload.existing_config = existingConfig;
       }
+      if (templateFields?.length) {
+        payload.template_fields = templateFields;
+        payload.template_name = templateName;
+      }
 
       const resp = await fetch(GENERATE_URL, {
         method: 'POST',
