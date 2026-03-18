@@ -170,7 +170,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
               <span className="text-[11px] font-semibold text-primary">Dica Pro</span>
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Configure um Agente IA para responder leads automaticamente e aumente em até 3x sua taxa de conversão.
+              Configure o Assistente IA para responder leads automaticamente e aumente em até 3x sua taxa de conversão.
             </p>
           </div>
         </aside>

@@ -731,9 +731,6 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {conversation.instance_name && (
-            <WhatsAppAgentToggle phone={conversation.phone} instanceName={conversation.instance_name} />
-          )}
           {isPrivate && <Lock className="h-4 w-4 text-amber-500" />}
           {conversation.lead_id && <Badge variant="outline" className="text-[10px] gap-1 text-blue-600 px-1.5 py-0"><Link2 className="h-3 w-3" /> Lead</Badge>}
           <DropdownMenu>
