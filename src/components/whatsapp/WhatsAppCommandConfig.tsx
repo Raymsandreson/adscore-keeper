@@ -118,7 +118,7 @@ export function WhatsAppCommandConfig() {
           <div className="flex items-start gap-3">
             <Sparkles className="h-5 w-5 text-primary mt-0.5 shrink-0" />
             <div className="space-y-1">
-              <p className="text-sm font-medium">Central de Assistentes IA</p>
+              <p className="text-sm font-medium">Central de Agentes IA</p>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Configure <strong>Agentes IA</strong> para contatos/clientes e a <strong>IA Interna</strong> para membros da equipe (CRM via WhatsApp).
               </p>
