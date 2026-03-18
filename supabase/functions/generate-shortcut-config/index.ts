@@ -103,12 +103,27 @@ Retorne a configuração COMPLETA atualizada (não apenas as mudanças), mantend
     
     // Extract JSON from response (may be wrapped in markdown code blocks)
     let jsonStr = rawContent.trim();
-    // Try multiple patterns to extract JSON
-    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    if (codeBlockMatch) {
-      jsonStr = codeBlockMatch[1].trim();
-    } else {
-      // Try to find raw JSON object
+    
+    // Try multiple regex patterns for code blocks
+    const patterns = [
+      /```json\s*\n([\s\S]*?)\n\s*```/,
+      /```json\s*([\s\S]*?)```/,
+      /```\s*\n([\s\S]*?)\n\s*```/,
+      /```([\s\S]*?)```/,
+    ];
+    
+    let extracted = false;
+    for (const pattern of patterns) {
+      const match = jsonStr.match(pattern);
+      if (match) {
+        jsonStr = match[1].trim();
+        extracted = true;
+        break;
+      }
+    }
+    
+    if (!extracted) {
+      // Try to find raw JSON object by braces
       const firstBrace = jsonStr.indexOf('{');
       const lastBrace = jsonStr.lastIndexOf('}');
       if (firstBrace !== -1 && lastBrace > firstBrace) {
