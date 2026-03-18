@@ -6930,6 +6930,7 @@ export type Database = {
           human_reply_pause_minutes: number | null
           id: string
           is_active: boolean | null
+          media_extraction_prompt: string | null
           notify_on_signature: boolean
           prompt_instructions: string | null
           request_documents: boolean | null
@@ -6948,6 +6949,7 @@ export type Database = {
           human_reply_pause_minutes?: number | null
           id?: string
           is_active?: boolean | null
+          media_extraction_prompt?: string | null
           notify_on_signature?: boolean
           prompt_instructions?: string | null
           request_documents?: boolean | null
@@ -6966,6 +6968,7 @@ export type Database = {
           human_reply_pause_minutes?: number | null
           id?: string
           is_active?: boolean | null
+          media_extraction_prompt?: string | null
           notify_on_signature?: boolean
           prompt_instructions?: string | null
           request_documents?: boolean | null
