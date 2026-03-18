@@ -26,12 +26,10 @@ Cada agente tem:
 2. **description**: Descrição breve do que o agente faz
 3. **prompt_instructions**: Instruções COMPLETAS para a IA — inclui persona, tom de voz, instruções de coleta, regras de comportamento e instruções de follow-up. Este é o ÚNICO campo de prompt.
    IMPORTANTE: O prompt_instructions DEVE incluir TUDO: persona/personalidade, tom, instruções de coleta, regras de follow-up (o que dizer em cada etapa, como escalar o tom). NÃO há campos separados.
-4. **media_extraction_prompt**: Instruções ESPECÍFICAS de como a IA deve interpretar documentos recebidos por mídia (RG, CNH, comprovantes de endereço, etc). Estas instruções são usadas quando o cliente envia fotos de documentos e a IA precisa extrair dados via OCR.
-   - Se o atalho solicita documentos, SEMPRE gere instruções detalhadas de extração
+4. **media_extraction_prompt**: Instruções ESPECÍFICAS de como a IA deve interpretar documentos recebidos por mídia (RG, CNH, comprovantes de endereço, etc).
+   - Se o agente solicita documentos, SEMPRE gere instruções detalhadas de extração
    - Inclua regras específicas para documentos brasileiros (RG, CNH, CPF, etc)
-   - Explique onde encontrar cada dado no documento (ex: "O NOME está em letras grandes/vermelhas")
-   - Inclua armadilhas comuns (ex: não confundir FILIAÇÃO com o nome do titular, ignorar nomes de diretores/funcionários no verso)
-   - Se o atalho NÃO envolve documentos, deixe este campo vazio
+   - Se o agente NÃO envolve documentos, deixe este campo vazio
 5. **followup_steps**: Array de etapas de follow-up automático — define apenas TIPO de ação e TEMPO de espera.
 
 Tipos de ações para followup_steps:
