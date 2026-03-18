@@ -555,6 +555,22 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                       {form.template_name && (
                         <p className="text-[10px] text-muted-foreground">✅ {form.template_name}</p>
                       )}
+                      {loadingFields && (
+                        <p className="text-[10px] text-muted-foreground animate-pulse">Carregando campos do modelo...</p>
+                      )}
+                      {templateFields.length > 0 && (
+                        <div className="border rounded-lg p-2 bg-muted/20 space-y-1">
+                          <p className="text-[10px] font-medium text-muted-foreground">📋 Campos do modelo ({templateFields.length}):</p>
+                          <div className="flex flex-wrap gap-1">
+                            {templateFields.map((f, i) => (
+                              <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                                {f.variable.replace(/\{\{|\}\}/g, '')}
+                                {f.required && <span className="text-destructive ml-0.5">*</span>}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     {form.template_token && (
                       <>
