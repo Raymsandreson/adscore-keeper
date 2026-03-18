@@ -779,6 +779,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
               <div className="mt-3">
                 <AIShortcutGenerator
                   existingConfig={aiEditConfig}
+                  templateFields={templateFields}
+                  templateName={form.template_name || s.template_name || undefined}
                   onApply={(config) => {
                     setForm(f => ({
                       ...f,
