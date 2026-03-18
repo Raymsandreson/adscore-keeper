@@ -304,6 +304,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       shortcut_name: s.shortcut_name,
       description: s.description || '',
       prompt_instructions: s.prompt_instructions || '',
+      media_extraction_prompt: (s as any).media_extraction_prompt || '',
       followup_steps: s.followup_steps || [],
     });
     setEditingId(s.id);
