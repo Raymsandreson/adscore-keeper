@@ -225,7 +225,11 @@ Retorne a configuração COMPLETA atualizada (não apenas as mudanças), mantend
       throw new Error("A IA retornou JSON inválido. Tente novamente.");
     };
 
-    const parsed = parseAiJson(rawContent);
+    const parsed = toolArgs
+      ? typeof toolArgs === "string"
+        ? JSON.parse(toolArgs)
+        : toolArgs
+      : parseAiJson(rawContent);
 
     // Validate structure
     if (!parsed.shortcut_name || !parsed.prompt_instructions) {
