@@ -9,7 +9,7 @@ import {
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
 import { WhatsAppAdLinkSettings } from './WhatsAppAdLinkSettings';
-import { WhatsAppAIAgents } from './WhatsAppAIAgents';
+
 import { WebhookLogsViewer } from './WebhookLogsViewer';
 import { WhatsAppCommandConfig } from './WhatsAppCommandConfig';
 import { WhatsAppInstanceManager } from './WhatsAppInstanceManager';
