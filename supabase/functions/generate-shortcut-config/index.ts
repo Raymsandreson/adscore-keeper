@@ -96,7 +96,7 @@ Responda APENAS com JSON válido no formato:
 - Follow-up: ${JSON.stringify(existing_config.followup_steps || [])}
 
 O usuário quer as seguintes mudanças: ${description.trim()}
-
+${templateContext ? `\n${templateContext}` : ''}
 Retorne a configuração COMPLETA atualizada (não apenas as mudanças), mantendo o que não foi pedido para alterar.`;
     } else {
       userMessage = `Crie um agente completo para: ${description.trim()}${templateContext ? `\n\n${templateContext}` : ''}`;
