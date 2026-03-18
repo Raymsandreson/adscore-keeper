@@ -75,10 +75,11 @@ serve(async (req) => {
     const crmContext = buildCrmContext(contactData, leadData, normalizedPhone);
 
     // Check if command matches a specific shortcut with a fixed template
-    const commandLower = command.replace(/^@wjia\s*/i, '').trim().toLowerCase();
+    // Match by #shortcutname — extract the name after # and match exactly
+    const hashMatch = command.match(/#(\S+)/i);
+    const commandLower = hashMatch ? hashMatch[1].toLowerCase() : command.replace(/^@wjia\s*/i, '').trim().toLowerCase();
     const matchedShortcut = shortcuts.find((s: any) => 
-      commandLower.includes(s.shortcut_name.toLowerCase()) || 
-      s.shortcut_name.toLowerCase().includes(commandLower)
+      s.shortcut_name.toLowerCase() === commandLower
     );
 
     const forceTemplate = matchedShortcut?.template_token || null;
