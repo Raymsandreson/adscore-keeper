@@ -120,7 +120,7 @@ export function WhatsAppCommandConfig() {
             <div className="space-y-1">
               <p className="text-sm font-medium">Central de Assistentes IA</p>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Configure assistentes para <strong>contatos/clientes</strong> (@wjia) e para <strong>membros da equipe</strong> (CRM via WhatsApp).
+                Configure <strong>Agentes IA</strong> para contatos/clientes e a <strong>IA Interna</strong> para membros da equipe (CRM via WhatsApp).
               </p>
             </div>
           </div>
