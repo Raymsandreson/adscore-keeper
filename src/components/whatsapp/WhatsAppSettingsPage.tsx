@@ -38,15 +38,6 @@ const tabs: Tab[] = [
     accentColor: 'text-green-500',
   },
   {
-    id: 'agents',
-    label: 'Agentes IA',
-    icon: <Bot className="h-5 w-5" />,
-    description: 'Configure assistentes inteligentes',
-    badge: '✨ Popular',
-    badgeVariant: 'default',
-    accentColor: 'text-violet-500',
-  },
-  {
     id: 'commands',
     label: 'Assistente IA',
     icon: <Sparkles className="h-5 w-5" />,
