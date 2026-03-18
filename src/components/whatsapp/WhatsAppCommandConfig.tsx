@@ -20,15 +20,6 @@ import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { MemberAssistantSettings } from './MemberAssistantSettings';
 
 // ==================== TYPES ====================
-interface CommandConfig {
-  id: string;
-  instance_name: string;
-  authorized_phone: string;
-  user_id: string;
-  user_name: string | null;
-  is_active: boolean;
-  created_at: string;
-}
 
 interface Shortcut {
   id: string;
