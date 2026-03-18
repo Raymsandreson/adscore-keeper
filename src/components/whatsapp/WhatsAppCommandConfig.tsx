@@ -676,6 +676,11 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                     💡 {s.prompt_instructions}
                   </p>
                 )}
+                {(s as any).media_extraction_prompt && (
+                  <p className="text-[10px] text-muted-foreground/70 mt-0.5 truncate max-w-[300px]">
+                    🔍 Prompt de extração personalizado
+                  </p>
+                )}
               </div>
               <Switch checked={s.is_active} onCheckedChange={() => handleToggle(s.id, s.is_active)} />
               <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" onClick={() => startAIEdit(s)} title="Editar com IA">
