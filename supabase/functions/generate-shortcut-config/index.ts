@@ -19,9 +19,9 @@ serve(async (req) => {
 
     const systemPrompt = `Você é um especialista em configurar agentes de IA para um sistema de CRM jurídico via WhatsApp.
 
-O sistema funciona assim: quando o usuário envia "@wjia <nome_atalho>" no WhatsApp, o robô executa ações automatizadas.
+O sistema funciona assim: quando o usuário envia "#nome_agente" no WhatsApp, o agente de IA é ativado e executa ações automatizadas.
 
-Cada atalho tem:
+Cada agente tem:
 1. **shortcut_name**: Nome curto do atalho (sem espaços, minúsculo, ex: "procuracao", "contrato", "honorarios")
 2. **description**: Descrição breve do que o atalho faz
 3. **prompt_instructions**: Instruções detalhadas para a IA sobre como conduzir a conversa, coletar dados, gerar documentos, etc.
