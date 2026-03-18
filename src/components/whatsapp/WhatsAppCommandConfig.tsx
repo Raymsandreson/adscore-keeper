@@ -86,9 +86,7 @@ const ASSISTANT_TYPES = [
 // ==================== COMPONENT ====================
 export function WhatsAppCommandConfig() {
   const [activeTab, setActiveTab] = useState('shortcuts');
-  const [configs, setConfigs] = useState<CommandConfig[]>([]);
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
-  const [instances, setInstances] = useState<Instance[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   
   const [loading, setLoading] = useState(true);
@@ -97,14 +95,11 @@ export function WhatsAppCommandConfig() {
 
   const loadData = async () => {
     setLoading(true);
-    const [configsRes, instancesRes, profilesRes, shortcutsRes] = await Promise.all([
-      supabase.from('whatsapp_command_config').select('*').order('created_at', { ascending: false }),
-      supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true),
+    const [profilesRes, shortcutsRes] = await Promise.all([
       supabase.from('profiles').select('user_id, full_name').order('full_name'),
       supabase.from('wjia_command_shortcuts').select('*').order('display_order') as any,
     ]);
-    setConfigs((configsRes.data as any[]) || []);
-    setInstances(instancesRes.data || []);
+    setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
     setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
     setShortcuts((shortcutsRes.data || []).map((s: any) => ({
       ...s,
