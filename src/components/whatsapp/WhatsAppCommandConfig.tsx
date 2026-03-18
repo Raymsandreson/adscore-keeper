@@ -142,10 +142,7 @@ export function WhatsAppCommandConfig() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="auth" className="text-xs gap-1">
-            <Shield className="h-3.5 w-3.5" /> Autorizados
-          </TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="shortcuts" className="text-xs gap-1">
             <Zap className="h-3.5 w-3.5" /> @wjia
           </TabsTrigger>
@@ -153,15 +150,6 @@ export function WhatsAppCommandConfig() {
             <Bot className="h-3.5 w-3.5" /> Equipe
           </TabsTrigger>
         </TabsList>
-
-        <TabsContent value="auth">
-          <AuthorizedPhonesTab
-            configs={configs}
-            instances={instances}
-            profiles={profiles}
-            onReload={loadData}
-          />
-        </TabsContent>
 
         <TabsContent value="shortcuts">
           <ShortcutsTab
