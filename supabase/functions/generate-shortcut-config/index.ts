@@ -93,10 +93,47 @@ Retorne a configuração COMPLETA atualizada (não apenas as mudanças), mantend
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
       ],
-      temperature: 0.7,
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "set_agent_config",
+            description: "Retorna a configuração completa do agente",
+            parameters: {
+              type: "object",
+              properties: {
+                shortcut_name: { type: "string" },
+                description: { type: "string" },
+                prompt_instructions: { type: "string" },
+                media_extraction_prompt: { type: "string" },
+                followup_steps: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      action_type: {
+                        type: "string",
+                        enum: ["whatsapp_message", "call", "create_activity"],
+                      },
+                      delay_minutes: { type: "number" },
+                      assigned_to: { type: "string" },
+                      activity_type: { type: "string" },
+                    },
+                    required: ["action_type", "delay_minutes"],
+                  },
+                },
+              },
+              required: ["shortcut_name", "prompt_instructions", "followup_steps"],
+            },
+          },
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "set_agent_config" } },
+      temperature: 0.4,
       max_tokens: 4000,
     });
 
+    const toolArgs = result.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
     const rawContent = result.choices?.[0]?.message?.content || "";
 
     const stripCodeFences = (value: string) =>
