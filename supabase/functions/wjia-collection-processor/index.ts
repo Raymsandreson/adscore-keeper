@@ -666,10 +666,14 @@ ATENÇÃO - REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
    - O nome no rodapé "ASSINATURA DO TITULAR" é a assinatura manuscrita do próprio titular
    - No verso do RG, o nome que aparece junto a "DIRETORA/DIRETOR" é do funcionário do órgão emissor, NÃO do titular
    - O CPF do titular aparece no verso do RG
+   - O campo "NATURALIDADE" indica a cidade/estado onde a pessoa nasceu - extraia para campos de naturalidade
+   - O campo "DATA DE NASCIMENTO" ou "NASCIMENTO" contém a data de nascimento
 2. Em uma CNH:
    - O NOME DO TITULAR está no campo "NOME" ou "Nome"
    - FILIAÇÃO são os pais
-3. O OUTORGANTE/SIGNATÁRIO é SEMPRE o TITULAR do documento (cujo NOME aparece em destaque)`;
+   - O campo "LOCAL DE NASCIMENTO" indica a naturalidade
+3. O OUTORGANTE/SIGNATÁRIO é SEMPRE o TITULAR do documento (cujo NOME aparece em destaque)
+4. NATURALIDADE: Extraia o local de nascimento do documento e preencha campos de NATURALIDADE com esse dado`;
 
               const extractPrompt = `${customExtractionPrompt || defaultExtractionPrompt}
 
@@ -682,6 +686,7 @@ ${alreadyFilledSummary || '(nenhum)'}
 REGRAS DE FORMATAÇÃO:
 - NOME COMPLETO: Use o nome do TITULAR do documento (campo "NOME"), NUNCA os nomes da filiação
 - Para NACIONALIDADE: se tem CPF brasileiro, use "brasileiro(a)"
+- Para NATURALIDADE: use o local de nascimento que aparece no documento (cidade/UF)
 - Formate datas como DD/MM/AAAA
 - Formate CPF como XXX.XXX.XXX-XX
 - No campo "de", use EXATAMENTE a variável do template (ex: {{NOME_COMPLETO}}, {{CPF}})
