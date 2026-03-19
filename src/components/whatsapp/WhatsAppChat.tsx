@@ -380,10 +380,14 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
 
-    // If in note mode, save as internal note instead of sending
-    if (inputMode === 'note') {
+    // If in note or chat mode, save as internal note instead of sending
+    if (inputMode === 'note' || inputMode === 'chat') {
       setSending(true);
-      await addNote(newMessage.trim());
+      const noteType = inputMode === 'chat' ? 'chat' : 'note';
+      const content = inputMode === 'chat' && mentionUserName
+        ? `@${mentionUserName} ${newMessage.trim()}`
+        : newMessage.trim();
+      await addNote(content, noteType);
       setNewMessage('');
       setSending(false);
       return;
