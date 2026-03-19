@@ -180,8 +180,6 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating,
                 size="sm"
                 className="flex-1 gap-1.5"
                 onClick={() => {
-                  onAcknowledgeAll?.();
-                  localStorage.setItem('app_last_seen_version', versions[0]?.version || '');
                   onApplyUpdate();
                 }}
                 disabled={updating || forceRefreshing}
