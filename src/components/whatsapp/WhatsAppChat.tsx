@@ -965,16 +965,28 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           ) : null;
           if (item.type === 'note') {
             const note = item.data;
+            const isChat = note.note_type === 'chat';
             return (
               <div key={`note-${note.id}`}>
                 {dateSeparator}
                 <div className="flex justify-center">
-                  <div className="max-w-[85%] rounded-xl px-4 py-2 text-xs border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 group">
+                  <div className={cn(
+                    "max-w-[85%] rounded-xl px-4 py-2 text-xs border group",
+                    isChat
+                      ? "border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-700"
+                      : "border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700"
+                  )}>
                     <div className="flex items-center gap-1.5 mb-1">
-                      <StickyNote className="h-3 w-3 text-amber-600 dark:text-amber-400 shrink-0" />
-                      <span className="font-semibold text-amber-700 dark:text-amber-300">Nota Interna</span>
-                      <span className="text-amber-600/60 dark:text-amber-400/60">•</span>
-                      <span className="text-amber-600/80 dark:text-amber-400/80">{note.sender_name || 'Equipe'}</span>
+                      {isChat ? (
+                        <MessageCircle className="h-3 w-3 text-blue-600 dark:text-blue-400 shrink-0" />
+                      ) : (
+                        <StickyNote className="h-3 w-3 text-amber-600 dark:text-amber-400 shrink-0" />
+                      )}
+                      <span className={cn("font-semibold", isChat ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300")}>
+                        {isChat ? 'Chat Interno' : 'Nota Interna'}
+                      </span>
+                      <span className={cn(isChat ? "text-blue-600/60 dark:text-blue-400/60" : "text-amber-600/60 dark:text-amber-400/60")}>•</span>
+                      <span className={cn(isChat ? "text-blue-600/80 dark:text-blue-400/80" : "text-amber-600/80 dark:text-amber-400/80")}>{note.sender_name || 'Equipe'}</span>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -984,8 +996,8 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
-                    <p className="whitespace-pre-wrap text-amber-900 dark:text-amber-100 text-[13px]">{note.content}</p>
-                    <p className="text-[10px] text-amber-600/60 dark:text-amber-400/60 mt-1">
+                    <p className={cn("whitespace-pre-wrap text-[13px]", isChat ? "text-blue-900 dark:text-blue-100" : "text-amber-900 dark:text-amber-100")}>{note.content}</p>
+                    <p className={cn("text-[10px] mt-1", isChat ? "text-blue-600/60 dark:text-blue-400/60" : "text-amber-600/60 dark:text-amber-400/60")}>
                       {format(new Date(note.created_at), "HH:mm", { locale: ptBR })}
                     </p>
                   </div>
