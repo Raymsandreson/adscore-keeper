@@ -776,7 +776,7 @@ REGRAS DE FORMATAÇÃO:
               .from("wjia_collection_sessions")
               .update({
                 collected_data: updatedCollectedData,
-                received_documents: receivedDocs,
+                received_documents: allReceivedDocs,
                 missing_fields: actuallyMissing,
                 status: "collecting",
                 updated_at: new Date().toISOString(),
