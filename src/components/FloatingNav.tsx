@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { onUpdateAvailable, applyUpdate, checkForUpdates, forceHardRefresh } from "@/lib/pwaUpdater";
 import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
+import { changelog } from "@/components/updates/changelogData";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
