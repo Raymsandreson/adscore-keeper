@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle } from 'lucide-react';
+import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList } from 'lucide-react';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { ZapSignDocumentDialog } from './ZapSignDocumentDialog';
 import { GroupMembersDialog } from './GroupMembersDialog';
@@ -1386,6 +1386,18 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                 <DropdownMenuItem onClick={() => { setInputMode('chat'); setShowMentionPicker(true); setShowAttachMenu(false); }} className="gap-2 text-blue-600 dark:text-blue-400">
                   <AtSign className="h-4 w-4" /> Chat Interno
                 </DropdownMenuItem>
+                {onCreateActivity && (
+                  <DropdownMenuItem onClick={() => {
+                    setShowAttachMenu(false);
+                    if (conversation.lead_id) {
+                      onCreateActivity(conversation.lead_id, conversation.contact_name || conversation.phone, conversation.contact_id || undefined, conversation.contact_name || undefined);
+                    } else {
+                      onCreateActivity('', conversation.contact_name || conversation.phone, conversation.contact_id || undefined, conversation.contact_name || undefined);
+                    }
+                  }} className="gap-2 text-green-600 dark:text-green-400">
+                    <ClipboardList className="h-4 w-4" /> Criar Atividade
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
             <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
