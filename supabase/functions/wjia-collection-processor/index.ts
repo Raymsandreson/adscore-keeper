@@ -1300,16 +1300,21 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
 
       // PROTEÇÃO DE NOME COMPLETO: Se o campo é NOME e já existe um nome mais longo, não sobrescrever com nome parcial
       const targetKey = normalizeFieldKey(targetVariable.toString());
-      if (targetKey.includes("NOME") && targetKey.includes("COMPLET")) {
+      if (targetKey.includes("NOME")) {
         const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(targetVariable.toString()));
         if (existing && hasFieldValue(existing.para)) {
           const existingName = (existing.para || "").toString().trim();
           const newName = (newField.para || "").toString().trim();
-          // Se o nome existente tem mais palavras que o novo, manter o existente (é mais completo)
           const existingWords = existingName.split(/\s+/).length;
           const newWords = newName.split(/\s+/).length;
-          if (existingWords > newWords) {
+          // Protect: keep existing if it has more words OR if new name is just 1 word (likely a confirmation)
+          if (existingWords > newWords || (newWords === 1 && existingWords >= 2)) {
             console.log(`NOME PROTEGIDO: mantendo "${existingName}" em vez de "${newName}"`);
+            continue;
+          }
+          // Also protect if new name is contained within existing name (partial confirmation)
+          if (existingName.toUpperCase().includes(newName.toUpperCase()) && existingWords >= 2) {
+            console.log(`NOME PROTEGIDO (parcial): mantendo "${existingName}" em vez de "${newName}"`);
             continue;
           }
         }
