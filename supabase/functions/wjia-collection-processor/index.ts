@@ -603,7 +603,7 @@ Classifique o documento enviado.` },
           }
 
           // Build image parts for Gemini vision - download and convert to base64
-          const rawImageUrls = receivedDocs.map((d: any) => d.media_url).filter(Boolean);
+          const rawImageUrls = allReceivedDocs.map((d: any) => d.media_url).filter(Boolean);
           const imageUrls = await Promise.all(rawImageUrls.map((u: string) => urlToBase64DataUri(u)));
 
           if (imageUrls.length > 0) {
