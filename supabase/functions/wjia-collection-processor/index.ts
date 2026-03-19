@@ -1291,6 +1291,23 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
         if (targetKey === valueKey) continue;
       }
 
+      // PROTEÇÃO DE NOME COMPLETO: Se o campo é NOME e já existe um nome mais longo, não sobrescrever com nome parcial
+      const targetKey = normalizeFieldKey(targetVariable.toString());
+      if (targetKey.includes("NOME") && targetKey.includes("COMPLET")) {
+        const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(targetVariable.toString()));
+        if (existing && hasFieldValue(existing.para)) {
+          const existingName = (existing.para || "").toString().trim();
+          const newName = (newField.para || "").toString().trim();
+          // Se o nome existente tem mais palavras que o novo, manter o existente (é mais completo)
+          const existingWords = existingName.split(/\s+/).length;
+          const newWords = newName.split(/\s+/).length;
+          if (existingWords > newWords) {
+            console.log(`NOME PROTEGIDO: mantendo "${existingName}" em vez de "${newName}"`);
+            continue;
+          }
+        }
+      }
+
       upsertCollectedField(updatedFields, targetVariable.toString(), newField.para);
     }
 
