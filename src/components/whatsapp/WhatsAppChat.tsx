@@ -1386,6 +1386,18 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                 <DropdownMenuItem onClick={() => { setInputMode('chat'); setShowMentionPicker(true); setShowAttachMenu(false); }} className="gap-2 text-blue-600 dark:text-blue-400">
                   <AtSign className="h-4 w-4" /> Chat Interno
                 </DropdownMenuItem>
+                {onCreateActivity && (
+                  <DropdownMenuItem onClick={() => {
+                    setShowAttachMenu(false);
+                    if (conversation.lead_id) {
+                      onCreateActivity(conversation.lead_id, conversation.lead_name || conversation.contact_name || conversation.phone, conversation.contact_id || undefined, conversation.contact_name || undefined);
+                    } else {
+                      onCreateActivity('', conversation.contact_name || conversation.phone, conversation.contact_id || undefined, conversation.contact_name || undefined);
+                    }
+                  }} className="gap-2 text-green-600 dark:text-green-400">
+                    <ClipboardList className="h-4 w-4" /> Criar Atividade
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
             <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
