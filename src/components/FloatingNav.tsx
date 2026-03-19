@@ -142,20 +142,16 @@ export function FloatingNav() {
 
   // Check for version-based updates (works without PWA)
   useEffect(() => {
-    const latestVersion = changelog[0]?.version;
-    if (latestVersion) {
-      const seenVersion = localStorage.getItem('app_last_seen_version');
-      if (seenVersion !== latestVersion) {
-        setHasUpdate(true);
-        // Auto-show changelog after a short delay
-        const timer = setTimeout(() => setUpdateNotesOpen(true), 2000);
-        return () => clearTimeout(timer);
-      }
+    if (unseenCount > 0) {
+      setHasUpdate(true);
+      // Auto-show changelog after a short delay
+      const timer = setTimeout(() => setUpdateNotesOpen(true), 2000);
+      return () => clearTimeout(timer);
     }
     // Also listen for PWA updates
     const unsub = onUpdateAvailable(() => setHasUpdate(true));
     return unsub;
-  }, []);
+  }, [unseenCount]);
 
   const hiddenRoutes = ['/login', '/reset-password', '/privacy', '/expense-form', '/install'];
   const isHidden = !user || hiddenRoutes.some(r => location.pathname.startsWith(r));
