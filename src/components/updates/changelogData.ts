@@ -18,6 +18,50 @@ export interface ChangelogEntry {
  */
 export const changelog: ChangelogEntry[] = [
   {
+    version: "3.1.0",
+    date: "2026-03-19",
+    title: "WhatsApp: Atividades e Notas no Chat",
+    features: [
+      {
+        title: "Criar atividade direto do WhatsApp",
+        description: "Agora você pode criar atividades do CRM sem sair da conversa do WhatsApp.",
+        icon: "📋",
+        howToUse: "Na conversa do WhatsApp, clique no ícone de anexo (📎) → 'Criar Atividade'. A atividade criada aparecerá como registro verde na timeline do chat.",
+      },
+      {
+        title: "Chat Interno na conversa",
+        description: "Converse com a equipe dentro da conversa do WhatsApp, sem que o cliente veja.",
+        icon: "💬",
+        howToUse: "Na conversa, clique em 'Chat Interno' no menu de anexo. Mencione colegas com @nome para notificá-los.",
+      },
+      {
+        title: "Notas internas no WhatsApp",
+        description: "Adicione notas privadas na timeline da conversa, visíveis apenas para a equipe.",
+        icon: "📝",
+        howToUse: "Clique no ícone de anexo → 'Nota Interna'. A nota aparecerá em amarelo na timeline.",
+      },
+      {
+        title: "Menu flutuante arrastável",
+        description: "O menu minimizado agora pode ser reposicionado arrastando-o pela tela.",
+        icon: "✋",
+        howToUse: "Quando o menu estiver minimizado, segure e arraste pela alça (⠿) para mover. Toque duplo para resetar a posição.",
+      },
+    ],
+  },
+  {
+    version: "3.0.0",
+    date: "2026-03-15",
+    title: "Notas de atualização automáticas",
+    features: [
+      {
+        title: "Sistema de changelog automático",
+        description: "Agora você será notificado sempre que houver novidades no sistema, com instruções de como usar cada recurso.",
+        icon: "🆕",
+        howToUse: "Quando o botão 🔄 ficar verde, clique nele. Ou acesse as novidades a qualquer momento pelo menu.",
+      },
+    ],
+  },
+  {
     version: "2.9.0",
     date: "2026-03-10",
     title: "Menções em tempo real",
