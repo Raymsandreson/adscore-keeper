@@ -11,7 +11,7 @@ const corsHeaders = {
 const ZAPSIGN_API_URL = "https://api.zapsign.com.br/api/v1";
 
 // CEP lookup via ViaCEP API
-async function lookupCEP(cep: string): Promise<{ logradouro?: string; bairro?: string; localidade?: string; uf?: string } | null> {
+async function lookupCEP(cep: string): Promise<{ logradouro?: string; bairro?: string; localidade?: string; uf?: string; cep?: string } | null> {
   const cleanCep = cep.replace(/\D/g, "");
   if (cleanCep.length !== 8) return null;
   try {
@@ -19,11 +19,35 @@ async function lookupCEP(cep: string): Promise<{ logradouro?: string; bairro?: s
     if (!res.ok) return null;
     const data = await res.json();
     if (data.erro) return null;
-    return { logradouro: data.logradouro, bairro: data.bairro, localidade: data.localidade, uf: data.uf };
+    return { logradouro: data.logradouro, bairro: data.bairro, localidade: data.localidade, uf: data.uf, cep: data.cep };
   } catch (e) {
     console.error("CEP lookup error:", e);
     return null;
   }
+}
+
+// Reverse CEP lookup - search by address
+async function reverseLookupCEP(state: string, city: string, street: string): Promise<Array<{ cep: string; logradouro: string; bairro: string; localidade: string; uf: string }>> {
+  try {
+    const encodedState = encodeURIComponent(state.trim());
+    const encodedCity = encodeURIComponent(city.trim());
+    const encodedStreet = encodeURIComponent(street.trim());
+    const res = await fetch(`https://viacep.com.br/ws/${encodedState}/${encodedCity}/${encodedStreet}/json/`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data.slice(0, 3);
+  } catch (e) {
+    console.error("Reverse CEP lookup error:", e);
+    return [];
+  }
+}
+
+// Extract CEP from a text message
+function extractCEPFromMessage(text: string): string | null {
+  if (!text) return null;
+  const match = text.match(/\b(\d{5})-?(\d{3})\b/);
+  return match ? `${match[1]}${match[2]}` : null;
 }
 
 type TemplateFieldRef = {
@@ -1062,6 +1086,56 @@ ATENÇÃO - REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
       .map((f: any) => resolveTemplateVariable(f, requiredFieldCatalog) || f.de)
       .filter(Boolean);
 
+    // === PRE-AI CEP LOOKUP ===
+    // Detect CEP in client's message and lookup address before AI processes
+    let cepLookupContext = "";
+    const detectedCEP = extractCEPFromMessage(message_text || "");
+    if (detectedCEP) {
+      const cepData = await lookupCEP(detectedCEP);
+      if (cepData) {
+        console.log("Pre-AI CEP lookup result:", JSON.stringify(cepData));
+        cepLookupContext = `\n\n🔍 RESULTADO DA BUSCA DE CEP (${detectedCEP}):
+- Rua/Logradouro: ${cepData.logradouro || "(não encontrado)"}
+- Bairro: ${cepData.bairro || "(não encontrado)"}
+- Cidade: ${cepData.localidade || "(não encontrado)"}
+- Estado: ${cepData.uf || "(não encontrado)"}
+INSTRUÇÃO: Apresente este endereço ao cliente e PERGUNTE SE ESTÁ CORRETO antes de prosseguir. Exemplo: "Achei seu endereço pelo CEP: [rua], [bairro], [cidade]-[UF]. Tá certinho? Só preciso do número e complemento."
+Se o cliente CONFIRMAR, extraia todos os campos de endereço nos newly_extracted. Se NEGAR, peça o endereço correto.`;
+      } else {
+        cepLookupContext = `\n\n⚠️ CEP ${detectedCEP} não foi encontrado na base de dados. Informe ao cliente que o CEP não foi localizado e peça para verificar ou informar o endereço completo manualmente.`;
+      }
+    }
+
+    // Check if client is saying they don't know their CEP - try reverse lookup from collected data
+    const msgLowerCheck = (message_text || "").toLowerCase();
+    const dontKnowCEP = msgLowerCheck.match(/n[aã]o\s+sei\s+(o\s+)?(meu\s+)?cep|n[aã]o\s+lembro\s+(o\s+)?(meu\s+)?cep|qual\s+(é\s+)?(o\s+)?meu\s+cep|n[aã]o\s+tenho\s+cep/);
+    if (dontKnowCEP && !detectedCEP) {
+      // Check if we have city/state/street in collected data to do reverse lookup
+      const collectedFields = collectedData.fields || [];
+      let collectedCity = "";
+      let collectedState = "";
+      let collectedStreet = "";
+      for (const f of collectedFields) {
+        const key = normalizeFieldKey(f.de || f.field_name || "");
+        if (key.includes("CIDADE") || key.includes("MUNICIPIO")) collectedCity = f.para || "";
+        if (key.includes("ESTADO") || key === "UF") collectedState = f.para || "";
+        if (key.includes("RUA") || key.includes("LOGRADOURO") || key.includes("ENDERECO")) collectedStreet = f.para || "";
+      }
+      
+      if (collectedState && collectedCity && collectedStreet) {
+        const reverseResults = await reverseLookupCEP(collectedState, collectedCity, collectedStreet);
+        if (reverseResults.length > 0) {
+          const resultLines = reverseResults.map(r => `  CEP ${r.cep}: ${r.logradouro}, ${r.bairro}`).join("\n");
+          cepLookupContext = `\n\n🔍 BUSCA REVERSA DE CEP (pela rua "${collectedStreet}" em ${collectedCity}/${collectedState}):
+${resultLines}
+INSTRUÇÃO: Apresente os CEPs encontrados ao cliente de forma natural e pergunte qual é o dele. Ex: "Achei alguns CEPs pra sua rua: [lista]. Qual desses é o seu?"`;
+          console.log("Reverse CEP lookup results:", JSON.stringify(reverseResults));
+        }
+      } else {
+        cepLookupContext = `\n\n📍 O cliente não sabe o CEP. Pergunte a rua, cidade e estado para que possamos buscar o CEP. Ex: "Sem problema! Me passa a rua, cidade e estado que eu procuro pra você."`;
+      }
+    }
+
     const systemPrompt = `Você é um assistente de coleta de dados para um escritório de advocacia. Está coletando informações do cliente para preencher um documento "${session.template_name}".
 ${agentPersona}
 
@@ -1078,6 +1152,7 @@ CONVERSA RECENTE:
 ${conversationText}
 
 MENSAGEM ATUAL DO CLIENTE: "${message_text || ""}"
+${cepLookupContext}
 
 REGRAS:
 - Analise a mensagem atual E a conversa recente para extrair QUALQUER dado que corresponda aos campos faltantes
@@ -1096,8 +1171,9 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
 - DATA DE ASSINATURA / DATA DA PROCURAÇÃO / DATA ATUAL: SEMPRE preencha com a data de HOJE (${new Date().toLocaleDateString('pt-BR')}). NUNCA pergunte ao cliente.
 - CIDADE/LOCAL DE ASSINATURA / CIDADE DA PROCURAÇÃO: É SEMPRE a mesma cidade do endereço do cliente. NUNCA pergunte separadamente.
 - ESTADO DE ASSINATURA / UF DA PROCURAÇÃO: É SEMPRE o mesmo estado do endereço do cliente. NUNCA pergunte separadamente.
-- Se o cliente informar o CEP, NÃO pergunte rua, bairro, cidade ou estado — o sistema vai buscar automaticamente pelo CEP. Apenas peça o número e complemento se necessário.
-- Quando o cliente informar CEP, extraia-o imediatamente e aguarde o preenchimento automático dos campos de endereço.`;
+- Quando o cliente informar o CEP, o sistema JÁ BUSCOU o endereço (veja acima). APRESENTE ao cliente e peça confirmação + número/complemento. SÓ extraia os campos de endereço se o cliente CONFIRMAR.
+- Se o cliente não souber o CEP, peça rua, cidade e estado para buscar. Se já tiver esses dados coletados, o sistema já fez a busca reversa (veja acima).
+- Quando o cliente confirmar o endereço do CEP, extraia TODOS os campos de endereço (rua, bairro, cidade, estado, CEP) nos newly_extracted de uma vez.`;
 
     const tools = [{
       type: "function",
@@ -1296,6 +1372,39 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
         if (!existing || !hasFieldValue(existing.para)) {
           upsertCollectedField(updatedFields, templateField.variable, today);
           console.log(`Auto-filled date: ${templateField.variable} = ${today}`);
+        }
+      }
+    }
+
+    // === AUTO-FILL: signing city/state = client address city/state ===
+    const clientCity = updatedFields.find((f: any) => {
+      const k = normalizeFieldKey(f.de || "");
+      return (k.includes("CIDADE") || k.includes("MUNICIPIO")) && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && hasFieldValue(f.para);
+    });
+    const clientState = updatedFields.find((f: any) => {
+      const k = normalizeFieldKey(f.de || "");
+      return (k.includes("ESTADO") || k === "UF") && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && hasFieldValue(f.para);
+    });
+
+    if (clientCity || clientState) {
+      for (const templateField of requiredFieldCatalog) {
+        const normKey = templateField.normalized;
+        const isSigningCity = (normKey.includes("CIDADE") || normKey.includes("LOCAL") || normKey.includes("MUNICIPIO")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO"));
+        const isSigningState = (normKey.includes("ESTADO") || normKey.includes("UF")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO"));
+
+        if (isSigningCity && clientCity) {
+          const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
+          if (!existing || !hasFieldValue(existing.para)) {
+            upsertCollectedField(updatedFields, templateField.variable, clientCity.para);
+            console.log(`Auto-filled signing city: ${templateField.variable} = ${clientCity.para}`);
+          }
+        }
+        if (isSigningState && clientState) {
+          const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
+          if (!existing || !hasFieldValue(existing.para)) {
+            upsertCollectedField(updatedFields, templateField.variable, clientState.para);
+            console.log(`Auto-filled signing state: ${templateField.variable} = ${clientState.para}`);
+          }
         }
       }
     }

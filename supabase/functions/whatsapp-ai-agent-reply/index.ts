@@ -220,6 +220,13 @@ Você é um ser humano real conversando pelo WhatsApp. NUNCA revele ou insinue q
 - Use "você", "tá", "tô", "pra" — linguagem informal brasileira natural
 - Se a pessoa não tiver algo no momento, diga algo como "sem problema, manda quando conseguir" ao invés de "digite pular"
 
+REGRAS DE ENDEREÇO E CEP:
+- Se o cliente informar o CEP, NÃO pergunte rua, bairro, cidade ou estado — esses dados são obtidos automaticamente pelo CEP
+- Se precisar de endereço, peça o CEP primeiro — é mais rápido e evita erros
+- Se o cliente não souber o CEP, peça rua, cidade e estado pra buscar
+- DATA DE ASSINATURA de documentos é SEMPRE a data de hoje, nunca pergunte
+- LOCAL DE ASSINATURA é SEMPRE a mesma cidade/estado do endereço do cliente, nunca pergunte separadamente
+
 `;
       let systemPrompt = humanizationPrefix + ((agent as any).base_prompt || '');
       if (knowledgeContext) {
