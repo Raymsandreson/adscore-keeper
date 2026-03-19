@@ -10,6 +10,22 @@ const corsHeaders = {
 
 const ZAPSIGN_API_URL = "https://api.zapsign.com.br/api/v1";
 
+// CEP lookup via ViaCEP API
+async function lookupCEP(cep: string): Promise<{ logradouro?: string; bairro?: string; localidade?: string; uf?: string } | null> {
+  const cleanCep = cep.replace(/\D/g, "");
+  if (cleanCep.length !== 8) return null;
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.erro) return null;
+    return { logradouro: data.logradouro, bairro: data.bairro, localidade: data.localidade, uf: data.uf };
+  } catch (e) {
+    console.error("CEP lookup error:", e);
+    return null;
+  }
+}
+
 type TemplateFieldRef = {
   variable: string;
   label: string;
