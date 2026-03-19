@@ -10,6 +10,22 @@ const corsHeaders = {
 
 const ZAPSIGN_API_URL = "https://api.zapsign.com.br/api/v1";
 
+// CEP lookup via ViaCEP API
+async function lookupCEP(cep: string): Promise<{ logradouro?: string; bairro?: string; localidade?: string; uf?: string } | null> {
+  const cleanCep = cep.replace(/\D/g, "");
+  if (cleanCep.length !== 8) return null;
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.erro) return null;
+    return { logradouro: data.logradouro, bairro: data.bairro, localidade: data.localidade, uf: data.uf };
+  } catch (e) {
+    console.error("CEP lookup error:", e);
+    return null;
+  }
+}
+
 type TemplateFieldRef = {
   variable: string;
   label: string;
@@ -1074,7 +1090,14 @@ REGRAS:
 - IMPORTANTE: Só marque all_collected como true se ABSOLUTAMENTE TODOS os campos listados acima tiverem valores preenchidos
 - Se TODOS os dados foram coletados, diga que vai preparar o documento
 - CONFLITOS: Se o cliente informar um dado DIFERENTE de algo já coletado anteriormente (ex: nome diferente, CPF diferente, endereço diferente), SINALIZE a divergência na resposta. Pergunte ao cliente qual informação está correta antes de prosseguir. Inclua o conflito no campo "conflicts" da resposta.
-- Se receber uma informação que contradiz dados extraídos de documentos, sempre priorize esclarecer com o cliente`;
+- Se receber uma informação que contradiz dados extraídos de documentos, sempre priorize esclarecer com o cliente
+
+REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
+- DATA DE ASSINATURA / DATA DA PROCURAÇÃO / DATA ATUAL: SEMPRE preencha com a data de HOJE (${new Date().toLocaleDateString('pt-BR')}). NUNCA pergunte ao cliente.
+- CIDADE/LOCAL DE ASSINATURA / CIDADE DA PROCURAÇÃO: É SEMPRE a mesma cidade do endereço do cliente. NUNCA pergunte separadamente.
+- ESTADO DE ASSINATURA / UF DA PROCURAÇÃO: É SEMPRE o mesmo estado do endereço do cliente. NUNCA pergunte separadamente.
+- Se o cliente informar o CEP, NÃO pergunte rua, bairro, cidade ou estado — o sistema vai buscar automaticamente pelo CEP. Apenas peça o número e complemento se necessário.
+- Quando o cliente informar CEP, extraia-o imediatamente e aguarde o preenchimento automático dos campos de endereço.`;
 
     const tools = [{
       type: "function",
@@ -1226,6 +1249,55 @@ REGRAS:
       }
 
       upsertCollectedField(updatedFields, targetVariable.toString(), newField.para);
+    }
+
+    // === CEP AUTO-LOOKUP: auto-fill address fields from CEP ===
+    const cepField = updatedFields.find((f: any) => {
+      const key = normalizeFieldKey(f.de || f.field_name || "");
+      return key.includes("CEP") && hasFieldValue(f.para);
+    });
+
+    if (cepField) {
+      const cepData = await lookupCEP(cepField.para);
+      if (cepData) {
+        console.log("CEP lookup result:", JSON.stringify(cepData));
+        
+        const addressMappings = [
+          { patterns: ["RUA", "LOGRADOURO", "ENDERECO", "ENDERECOCOMPLETODARESIDENCIA"], value: cepData.logradouro },
+          { patterns: ["BAIRRO"], value: cepData.bairro },
+          { patterns: ["CIDADE", "MUNICIPIO", "CIDADERESIDENCIA", "CIDADEDAPROCURACAO", "CIDADEASSINATURA", "LOCAL"], value: cepData.localidade },
+          { patterns: ["ESTADO", "UF", "ESTADORESIDENCIA", "ESTADODAPROCURACAO", "UFASSINATURA"], value: cepData.uf },
+        ];
+
+        for (const mapping of addressMappings) {
+          if (!mapping.value) continue;
+          for (const templateField of requiredFieldCatalog) {
+            const normKey = templateField.normalized;
+            if (mapping.patterns.some(p => normKey.includes(p) || normKey === p)) {
+              // Only fill if not already filled
+              const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
+              if (!existing || !hasFieldValue(existing.para)) {
+                upsertCollectedField(updatedFields, templateField.variable, mapping.value);
+                console.log(`CEP auto-filled: ${templateField.variable} = ${mapping.value}`);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // === AUTO-FILL: signing date = today ===
+    const today = new Date().toLocaleDateString('pt-BR');
+    for (const templateField of requiredFieldCatalog) {
+      const normKey = templateField.normalized;
+      const isDateField = (normKey.includes("DATA") && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO") || normKey.includes("ATUAL") || normKey.includes("HOJE")));
+      if (isDateField) {
+        const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
+        if (!existing || !hasFieldValue(existing.para)) {
+          upsertCollectedField(updatedFields, templateField.variable, today);
+          console.log(`Auto-filled date: ${templateField.variable} = ${today}`);
+        }
+      }
     }
 
     const updatedCollectedData = {
