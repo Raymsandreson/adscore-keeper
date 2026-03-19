@@ -1166,8 +1166,8 @@ REGRAS:
 - Formate datas como DD/MM/AAAA
 - No campo "de", use EXATAMENTE a variável do template (ex: {{CEP}}, {{E-mail}}). NUNCA use o valor do cliente no campo "de"
 - Seja educado e natural na conversa
-- CONFLITOS: Se o cliente informar um dado DIFERENTE de algo já coletado anteriormente (ex: nome diferente, CPF diferente, endereço diferente), SINALIZE a divergência na resposta. Pergunte ao cliente qual informação está correta antes de prosseguir. Inclua o conflito no campo "conflicts" da resposta.
-- Se receber uma informação que contradiz dados extraídos de documentos, sempre priorize esclarecer com o cliente
+- CONFLITOS: Se o cliente informar um dado DIFERENTE de algo já coletado E a conversa NÃO contém uma mensagem anterior sobre "divergências", sinalize o conflito. Mas se JÁ HOUVE uma pergunta sobre divergências na conversa, trate a resposta do cliente como a RESOLUÇÃO DEFINITIVA — atualize o campo com o novo valor nos newly_extracted e NÃO re-sinalize como conflito.
+- Se receber uma informação que contradiz dados extraídos de documentos e já houve pergunta de confirmação, aceite a resposta do cliente como correta.
 
 REGRA CRÍTICA - NUNCA RE-PERGUNTE DADOS JÁ COLETADOS:
 - Se um dado JÁ ESTÁ nos "DADOS JÁ COLETADOS" acima (ex: NOME_COMPLETO, CPF), NUNCA pergunte novamente ao cliente.
@@ -1280,10 +1280,13 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
 
     console.log("Collection result:", JSON.stringify(result));
 
-    // If AI detected conflicts, don't update fields - wait for clarification
-    if (result.conflicts && result.conflicts.length > 0) {
-      console.log("AI detected data conflicts:", JSON.stringify(result.conflicts));
-      // Don't update fields, just send the reply asking for clarification
+    // If AI detected conflicts, check if this is a RESPONSE to a previous conflict
+    // (i.e., the conversation already contains a conflict message from the bot)
+    const hasRecentConflictMessage = conversationText.includes("divergência") || conversationText.includes("Detectei algumas divergências");
+    
+    if (result.conflicts && result.conflicts.length > 0 && !hasRecentConflictMessage) {
+      console.log("AI detected NEW data conflicts:", JSON.stringify(result.conflicts));
+      // First time conflict — don't update fields, ask for clarification
       const { data: inst } = await supabase
         .from("whatsapp_instances")
         .select("instance_token, base_url")
@@ -1311,6 +1314,9 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
         conflicts: result.conflicts, session_id: session.id,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+    
+    // If there were conflicts before but client is now responding, treat new data as the CORRECT resolution
+    // (don't block again — accept the newly_extracted values as authoritative)
 
     // Update collected data using template-variable normalization
     const updatedFields = [...(collectedData.fields || [])];
