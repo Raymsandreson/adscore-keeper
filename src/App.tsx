@@ -27,6 +27,12 @@ function lazyRetry<T extends ComponentType<any>>(
 
     try {
       const module = await factory();
+
+      // Guard against stale/corrupted chunks that resolve without a default export
+      if (!module || typeof module.default !== 'function') {
+        throw new Error(`Module "${retryKey}" loaded but has no valid default export`);
+      }
+
       sessionStorage.removeItem(storageKey);
       return module;
     } catch (error) {
@@ -43,6 +49,40 @@ function lazyRetry<T extends ComponentType<any>>(
       throw error;
     }
   });
+}
+
+// Error boundary to prevent blank screens
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center h-screen gap-4 p-4 text-center">
+          <p className="text-lg font-semibold">Algo deu errado</p>
+          <p className="text-sm text-muted-foreground">Tente recarregar a página.</p>
+          <button
+            onClick={() => {
+              sessionStorage.clear();
+              window.location.reload();
+            }}
+            className="px-4 py-2 rounded bg-primary text-primary-foreground text-sm"
+          >
+            Recarregar
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 // Lazy-loaded pages (with retry for stale chunks)
