@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { ActivityChatSheet } from "@/components/activities/ActivityChatSheet";
 import { MentionsPanel } from "@/components/chat/MentionsPanel";
 import { useUnreadMentionsCount } from "@/hooks/useTeamChat";
+import { useChangelogAcknowledgments } from "@/hooks/useChangelogAcknowledgments";
 
 interface NavItem {
   id: string;
@@ -121,6 +122,7 @@ export function FloatingNav() {
   });
   const containerRef = useRef<HTMLDivElement>(null);
   const unreadMentions = useUnreadMentionsCount();
+  const { unseenCount, acknowledgedVersions, acknowledge, acknowledgeAll } = useChangelogAcknowledgments();
   const [hasUpdate, setHasUpdate] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -140,20 +142,16 @@ export function FloatingNav() {
 
   // Check for version-based updates (works without PWA)
   useEffect(() => {
-    const latestVersion = changelog[0]?.version;
-    if (latestVersion) {
-      const seenVersion = localStorage.getItem('app_last_seen_version');
-      if (seenVersion !== latestVersion) {
-        setHasUpdate(true);
-        // Auto-show changelog after a short delay
-        const timer = setTimeout(() => setUpdateNotesOpen(true), 2000);
-        return () => clearTimeout(timer);
-      }
+    if (unseenCount > 0) {
+      setHasUpdate(true);
+      // Auto-show changelog after a short delay
+      const timer = setTimeout(() => setUpdateNotesOpen(true), 2000);
+      return () => clearTimeout(timer);
     }
     // Also listen for PWA updates
     const unsub = onUpdateAvailable(() => setHasUpdate(true));
     return unsub;
-  }, []);
+  }, [unseenCount]);
 
   const hiddenRoutes = ['/login', '/reset-password', '/privacy', '/expense-form', '/install'];
   const isHidden = !user || hiddenRoutes.some(r => location.pathname.startsWith(r));
@@ -492,7 +490,11 @@ export function FloatingNav() {
               )}
             >
               <RefreshCw className={cn("h-4 w-4 sm:h-5 sm:w-5", (updating || checking) && "animate-spin")} />
-              {hasUpdate && <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-destructive" />}
+              {(hasUpdate || unseenCount > 0) && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold flex items-center justify-center">
+                  {unseenCount > 0 ? (unseenCount > 9 ? '9+' : unseenCount) : '!'}
+                </span>
+              )}
             </button>
 
             {/* Settings button */}
@@ -548,6 +550,9 @@ export function FloatingNav() {
           setTimeout(() => window.location.reload(), 3000);
         }}
         updating={updating}
+        acknowledgedVersions={acknowledgedVersions}
+        onAcknowledge={acknowledge}
+        onAcknowledgeAll={acknowledgeAll}
       />
     </>
   );
