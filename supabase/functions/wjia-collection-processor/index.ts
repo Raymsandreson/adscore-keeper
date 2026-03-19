@@ -1376,6 +1376,39 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
       }
     }
 
+    // === AUTO-FILL: signing city/state = client address city/state ===
+    const clientCity = updatedFields.find((f: any) => {
+      const k = normalizeFieldKey(f.de || "");
+      return (k.includes("CIDADE") || k.includes("MUNICIPIO")) && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && hasFieldValue(f.para);
+    });
+    const clientState = updatedFields.find((f: any) => {
+      const k = normalizeFieldKey(f.de || "");
+      return (k.includes("ESTADO") || k === "UF") && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && hasFieldValue(f.para);
+    });
+
+    if (clientCity || clientState) {
+      for (const templateField of requiredFieldCatalog) {
+        const normKey = templateField.normalized;
+        const isSigningCity = (normKey.includes("CIDADE") || normKey.includes("LOCAL") || normKey.includes("MUNICIPIO")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO"));
+        const isSigningState = (normKey.includes("ESTADO") || normKey.includes("UF")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO"));
+
+        if (isSigningCity && clientCity) {
+          const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
+          if (!existing || !hasFieldValue(existing.para)) {
+            upsertCollectedField(updatedFields, templateField.variable, clientCity.para);
+            console.log(`Auto-filled signing city: ${templateField.variable} = ${clientCity.para}`);
+          }
+        }
+        if (isSigningState && clientState) {
+          const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
+          if (!existing || !hasFieldValue(existing.para)) {
+            upsertCollectedField(updatedFields, templateField.variable, clientState.para);
+            console.log(`Auto-filled signing state: ${templateField.variable} = ${clientState.para}`);
+          }
+        }
+      }
+    }
+
     const updatedCollectedData = {
       ...collectedData,
       fields: updatedFields,
