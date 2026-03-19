@@ -746,37 +746,16 @@ REGRAS DE FORMATAÇÃO:
                 const extractedData = JSON.parse(visionToolCall.function.arguments);
                 console.log("Vision extraction result:", JSON.stringify(extractedData));
 
-                // Merge extracted fields into collected data, detecting conflicts
-                const conflicts: { field: string; existing: string; extracted: string }[] = [];
+                // Merge extracted fields into collected data — always overwrite with document data
                 for (const field of (extractedData.extracted_fields || [])) {
                   if (!field.de || !field.para) continue;
                   const canonicalVariable = resolveTemplateVariable(field, requiredFieldCatalog) || field.de;
-                  
-                  // Check for conflicts with already-collected data
-                  const existingField = updatedFields.find((f: any) => {
-                    const fKey = normalizeFieldKey((f?.de || f?.field_name || "").toString());
-                    return fKey === normalizeFieldKey(canonicalVariable) && hasFieldValue(f?.para);
-                  });
-                  if (existingField && existingField.para) {
-                    const existingNorm = existingField.para.toString().replace(/\s+/g, ' ').trim().toUpperCase();
-                    const newNorm = field.para.toString().replace(/\s+/g, ' ').trim().toUpperCase();
-                    if (existingNorm !== newNorm && existingNorm.length > 1 && newNorm.length > 1) {
-                      conflicts.push({ field: canonicalVariable.replace(/\{\{|\}\}/g, ''), existing: existingField.para, extracted: field.para });
-                    }
-                  }
-                  
                   upsertCollectedField(updatedFields, canonicalVariable, field.para);
                 }
 
                 // Update signer name if extracted
                 if (extractedData.signer_name) {
                   collectedData.signer_name = extractedData.signer_name;
-                }
-                
-                // Store conflicts for later reporting
-                if (conflicts.length > 0) {
-                  collectedData.conflicts = conflicts;
-                  console.log("Data conflicts detected:", JSON.stringify(conflicts));
                 }
               }
             } catch (visionErr) {
@@ -805,10 +784,7 @@ REGRAS DE FORMATAÇÃO:
             .map((f: any) => `• *${(f.de || '').replace(/\{\{|\}\}/g, '')}*: ${f.para}`)
             .join('\n');
           const docsSummary = allReceivedDocs.map((d: any) => `• ✅ ${docTypeLabels[d.type] || d.type}`).join('\n');
-          const conflictsList = Array.isArray(collectedData.conflicts) ? collectedData.conflicts : [];
-          const conflictWarning = conflictsList.length > 0
-            ? `\n\n⚠️ *ATENÇÃO - Dados divergentes encontrados:*\n${conflictsList.map((c: any) => `• *${c.field}*: informado anteriormente "${c.existing}", mas no documento consta "${c.extracted}"`).join('\n')}\n\n_Verifique qual informação está correta._`
-            : '';
+          const conflictWarning = '';
 
           if (actuallyMissing.length > 0) {
             // Still missing fields → move to "collecting" to ask the rest
@@ -1166,18 +1142,31 @@ REGRAS:
 - Formate datas como DD/MM/AAAA
 - No campo "de", use EXATAMENTE a variável do template (ex: {{CEP}}, {{E-mail}}). NUNCA use o valor do cliente no campo "de"
 - Seja educado e natural na conversa
-- CONFLITOS: Se o cliente informar um dado DIFERENTE de algo já coletado E a conversa NÃO contém uma mensagem anterior sobre "divergências", sinalize o conflito. Mas se JÁ HOUVE uma pergunta sobre divergências na conversa, trate a resposta do cliente como a RESOLUÇÃO DEFINITIVA — atualize o campo com o novo valor nos newly_extracted e NÃO re-sinalize como conflito.
-- Se receber uma informação que contradiz dados extraídos de documentos e já houve pergunta de confirmação, aceite a resposta do cliente como correta.
+- Se o cliente informar um dado diferente de algo já coletado, simplesmente ATUALIZE com o novo valor sem questionar. O cliente sempre tem razão.
+- NUNCA questione ou sinalize divergências/conflitos de dados. Aceite o que o cliente diz como verdade.
 
 REGRA CRÍTICA - NUNCA RE-PERGUNTE DADOS JÁ COLETADOS:
 - Se um dado JÁ ESTÁ nos "DADOS JÁ COLETADOS" acima (ex: NOME_COMPLETO, CPF), NUNCA pergunte novamente ao cliente.
 - Dados extraídos de documentos (RG, CNH) são CONFIÁVEIS. Não peça confirmação de nome/CPF se já foram extraídos.
 - Foque APENAS nos campos que REALMENTE faltam na lista "DADOS QUE AINDA FALTAM".
 
-REGRA CRÍTICA - PEÇA TODOS OS DADOS FALTANTES DE UMA VEZ:
-- Quando precisar pedir dados ao cliente, liste TODOS os campos faltantes em uma ÚNICA mensagem.
+REGRA CRÍTICA - PEÇA TODOS OS DADOS FALTANTES DE UMA VEZ COM RESUMO:
+- Quando precisar pedir dados ao cliente, faça um RESUMO mostrando o que já tem e o que falta.
+- Formate assim de forma NATURAL (sem parecer robô):
+  "Até agora tenho:
+  ✅ Nome: João da Silva
+  ✅ CPF: 123.456.789-00
+  ✅ RG: 12345678
+  
+  Ainda preciso de:
+  ❌ Estado civil
+  ❌ Profissão
+  ❌ Endereço completo com CEP
+  ❌ Número da identidade
+  
+  Me manda tudo que puder de uma vez!"
+- Use esse formato SEMPRE que pedir dados faltantes. Isso ajuda o cliente a ver o progresso.
 - NÃO peça um dado por vez. Isso é lento e frustrante para o cliente.
-- Exemplo: "Preciso dos seguintes dados pra completar: estado civil, profissão, endereço completo com CEP e número da identidade."
 - Só marque all_collected como true se ABSOLUTAMENTE TODOS os campos listados acima tiverem valores preenchidos
 - Se TODOS os dados foram coletados, diga que vai preparar o documento
 
@@ -1229,20 +1218,7 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
             },
             reply_to_client: {
               type: "string",
-              description: "Mensagem para enviar ao cliente (agradecendo dados e pedindo próximos, ou confirmando que vai gerar o doc). Se houver conflito, pergunte qual dado está correto.",
-            },
-            conflicts: {
-              type: "array",
-              description: "Conflitos detectados entre dados informados agora e dados já coletados anteriormente",
-              items: {
-                type: "object",
-                properties: {
-                  field: { type: "string", description: "Nome do campo com conflito" },
-                  existing_value: { type: "string", description: "Valor já coletado anteriormente" },
-                  new_value: { type: "string", description: "Valor informado agora (divergente)" },
-                },
-                required: ["field", "existing_value", "new_value"],
-              },
+              description: "Mensagem para enviar ao cliente. Quando pedir dados faltantes, SEMPRE liste o que já tem (✅) e o que falta (❌) de forma natural e humana.",
             },
           },
           required: ["newly_extracted", "still_missing", "all_collected", "reply_to_client"],
@@ -1280,43 +1256,7 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
 
     console.log("Collection result:", JSON.stringify(result));
 
-    // If AI detected conflicts, check if this is a RESPONSE to a previous conflict
-    // (i.e., the conversation already contains a conflict message from the bot)
-    const hasRecentConflictMessage = conversationText.includes("divergência") || conversationText.includes("Detectei algumas divergências");
-    
-    if (result.conflicts && result.conflicts.length > 0 && !hasRecentConflictMessage) {
-      console.log("AI detected NEW data conflicts:", JSON.stringify(result.conflicts));
-      // First time conflict — don't update fields, ask for clarification
-      const { data: inst } = await supabase
-        .from("whatsapp_instances")
-        .select("instance_token, base_url")
-        .eq("instance_name", instance_name)
-        .maybeSingle();
-
-      if (inst?.instance_token && result.reply_to_client) {
-        const baseUrl = inst.base_url || "https://abraci.uazapi.com";
-        await fetch(`${baseUrl}/send/text`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", token: inst.instance_token },
-          body: JSON.stringify({ number: normalizedPhone, text: result.reply_to_client }),
-        }).catch(e => console.error("Error sending conflict reply:", e));
-
-        await supabase.from("whatsapp_messages").insert({
-          phone: normalizedPhone, instance_name,
-          message_text: result.reply_to_client, message_type: "text", direction: "outbound",
-          contact_id: session.contact_id || null, lead_id: session.lead_id || null,
-          external_message_id: `wjia_conflict_${Date.now()}`,
-        });
-      }
-
-      return new Response(JSON.stringify({
-        active_session: true, processed: true, has_conflicts: true,
-        conflicts: result.conflicts, session_id: session.id,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-    
-    // If there were conflicts before but client is now responding, treat new data as the CORRECT resolution
-    // (don't block again — accept the newly_extracted values as authoritative)
+    // Always accept client data as authoritative — no conflict detection
 
     // Update collected data using template-variable normalization
     const updatedFields = [...(collectedData.fields || [])];
@@ -1459,7 +1399,6 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
 
     const missingNames = actuallyMissing
       .map((f: any) => f.friendly_name || f.field_name)
-      .slice(0, 4)
       .join(", ");
     const correctionMsg = `Ainda preciso de alguns dados para completar o documento: ${missingNames}. Poderia me informar?`;
 
