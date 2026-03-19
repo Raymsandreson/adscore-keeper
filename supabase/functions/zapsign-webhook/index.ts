@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
     // ====================================================
     // FULLY SIGNED: Save attachment + send PDF via WhatsApp
     // ====================================================
-    if (isDocFullySigned && signedFileUrl && localDoc.lead_id) {
+    if (isDocFullySigned && signedFileUrl) {
       // Save signed document as activity attachment
       try {
         const { data: activity } = await supabase
