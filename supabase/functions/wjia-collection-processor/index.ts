@@ -1280,10 +1280,13 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
 
     console.log("Collection result:", JSON.stringify(result));
 
-    // If AI detected conflicts, don't update fields - wait for clarification
-    if (result.conflicts && result.conflicts.length > 0) {
-      console.log("AI detected data conflicts:", JSON.stringify(result.conflicts));
-      // Don't update fields, just send the reply asking for clarification
+    // If AI detected conflicts, check if this is a RESPONSE to a previous conflict
+    // (i.e., the conversation already contains a conflict message from the bot)
+    const hasRecentConflictMessage = conversationText.includes("divergência") || conversationText.includes("Detectei algumas divergências");
+    
+    if (result.conflicts && result.conflicts.length > 0 && !hasRecentConflictMessage) {
+      console.log("AI detected NEW data conflicts:", JSON.stringify(result.conflicts));
+      // First time conflict — don't update fields, ask for clarification
       const { data: inst } = await supabase
         .from("whatsapp_instances")
         .select("instance_token, base_url")
@@ -1311,6 +1314,9 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
         conflicts: result.conflicts, session_id: session.id,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+    
+    // If there were conflicts before but client is now responding, treat new data as the CORRECT resolution
+    // (don't block again — accept the newly_extracted values as authoritative)
 
     // Update collected data using template-variable normalization
     const updatedFields = [...(collectedData.fields || [])];
