@@ -5,6 +5,36 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+async function fetchDocWithRetry(docToken: string, zapsignToken: string, retries = 3, delayMs = 3000): Promise<any> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const res = await fetch(`https://api.zapsign.com.br/api/v1/docs/${docToken}/`, {
+      headers: {
+        'Authorization': `Bearer ${zapsignToken}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    if (!res.ok) {
+      console.error(`ZapSign API attempt ${attempt} failed: ${res.status}`)
+      if (attempt === retries) return null
+      await new Promise(r => setTimeout(r, delayMs))
+      continue
+    }
+
+    const data = await res.json()
+    
+    // If doc is signed but signed_file not ready yet, retry
+    if (data.status === 'signed' && !data.signed_file && attempt < retries) {
+      console.log(`Doc signed but signed_file not ready, retrying in ${delayMs}ms (attempt ${attempt}/${retries})`)
+      await new Promise(r => setTimeout(r, delayMs))
+      continue
+    }
+
+    return data
+  }
+  return null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -23,27 +53,21 @@ Deno.serve(async (req) => {
     const docToken = body.doc?.token || body.token || body.doc_token
     const signerToken = body.signer?.token || body.signer_token
 
+    console.log(`Webhook details - event: ${eventType}, docToken: ${docToken}, signerToken: ${signerToken || 'NONE'}`)
+
     if (!docToken) {
       console.log('No doc token in webhook, ignoring')
       return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // Fetch latest document info from ZapSign API
-    const zapsignHeaders = {
-      'Authorization': `Bearer ${zapsignToken}`,
-      'Content-Type': 'application/json',
-    }
+    // Fetch latest document info from ZapSign API (with retry for signed_file)
+    const docData = await fetchDocWithRetry(docToken, zapsignToken)
 
-    const docResponse = await fetch(`https://api.zapsign.com.br/api/v1/docs/${docToken}/`, {
-      headers: zapsignHeaders,
-    })
-
-    if (!docResponse.ok) {
-      console.error('Failed to fetch doc from ZapSign:', docResponse.status)
+    if (!docData) {
+      console.error('Failed to fetch doc from ZapSign after retries')
       return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    const docData = await docResponse.json()
     const allSigners = docData.signers || []
     const totalSigners = allSigners.length
     const signedSigners = allSigners.filter((s: any) => s.status === 'signed')
@@ -51,14 +75,23 @@ Deno.serve(async (req) => {
     const signedFileUrl = docData.signed_file || null
     const isDocFullySigned = docData.status === 'signed'
 
-    console.log(`ZapSign doc status: ${docData.status}, signers: ${signedCount}/${totalSigners}, signed_file: ${signedFileUrl ? 'yes' : 'no'}`)
+    console.log(`ZapSign doc status: ${docData.status}, signers: ${signedCount}/${totalSigners}, signed_file: ${signedFileUrl || 'NOT AVAILABLE'}`)
 
-    // Find the signer that triggered this webhook (the one who just signed)
-    const triggeringSigner = signerToken 
+    // Find the signer that triggered this webhook
+    // Try by token first, then find the most recently signed signer
+    let triggeringSigner = signerToken 
       ? allSigners.find((s: any) => s.token === signerToken) 
       : null
 
-    // Update local database with first signer info (legacy compat)
+    // Fallback: if no signerToken in webhook, pick the last signer who signed
+    if (!triggeringSigner && signedSigners.length > 0) {
+      triggeringSigner = signedSigners.sort((a: any, b: any) => 
+        new Date(b.signed_at || 0).getTime() - new Date(a.signed_at || 0).getTime()
+      )[0]
+      console.log(`No signerToken in webhook, using most recent signer: ${triggeringSigner?.name}`)
+    }
+
+    // Update local database
     const firstSigner = allSigners[0]
     const { data: localDoc } = await supabase
       .from('zapsign_documents')
@@ -72,7 +105,7 @@ Deno.serve(async (req) => {
       .select('*')
       .single()
 
-    console.log('Updated local doc:', localDoc?.id, 'status:', docData.status)
+    console.log('Updated local doc:', localDoc?.id, 'status:', docData.status, 'whatsapp_phone:', localDoc?.whatsapp_phone || 'NONE')
 
     if (!localDoc) {
       console.log('No local doc found for token:', docToken)
@@ -98,7 +131,6 @@ Deno.serve(async (req) => {
           const signerName = justSignedSigner.name || 'Signatário'
           const docName = localDoc.document_name || 'Documento'
 
-          // Build progress message
           let statusEmoji = '✍️'
           let statusText = `*${signerName}* assinou o documento.`
           let progressText = `📊 Progresso: ${signedCount}/${totalSigners} assinaturas`
@@ -111,8 +143,7 @@ Deno.serve(async (req) => {
 
           const notificationMessage = `${statusEmoji} *Assinatura recebida!*\n\n📄 *${docName}*\n${statusText}\n${progressText}`
 
-          // Send notification
-          await fetch(`${baseUrl}/send/text`, {
+          const notifyRes = await fetch(`${baseUrl}/send/text`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
             body: JSON.stringify({
@@ -121,7 +152,8 @@ Deno.serve(async (req) => {
             }),
           })
 
-          // Save notification message to DB
+          console.log(`Notification send result: ${notifyRes.status} ${notifyRes.ok ? 'OK' : await notifyRes.text()}`)
+
           await supabase.from('whatsapp_messages').insert({
             phone: localDoc.whatsapp_phone,
             message_text: notificationMessage,
@@ -135,10 +167,14 @@ Deno.serve(async (req) => {
           })
 
           console.log(`Notification sent for signer: ${signerName} (${signedCount}/${totalSigners})`)
+        } else {
+          console.error('No active WhatsApp instance found for notification')
         }
       } catch (notifyErr) {
         console.error('Error sending signer notification:', notifyErr)
       }
+    } else {
+      console.log(`Notification skipped - justSignedSigner: ${!!justSignedSigner}, phone: ${localDoc.whatsapp_phone || 'NONE'}, notify_on_signature: ${localDoc.notify_on_signature}`)
     }
 
     // ====================================================
@@ -170,9 +206,11 @@ Deno.serve(async (req) => {
     // ====================================================
     // FULLY SIGNED: Save attachment + send PDF via WhatsApp
     // ====================================================
-    if (isDocFullySigned && signedFileUrl) {
+    if (isDocFullySigned) {
+      console.log(`=== FULLY SIGNED BLOCK === signedFileUrl: ${signedFileUrl || 'NONE'}, whatsapp_phone: ${localDoc.whatsapp_phone || 'NONE'}, send_signed_pdf: ${localDoc.send_signed_pdf}`)
+
       // Save signed document as activity attachment (only if lead exists)
-      if (localDoc.lead_id) {
+      if (localDoc.lead_id && signedFileUrl) {
         try {
           const { data: activity } = await supabase
             .from('lead_activities')
@@ -209,66 +247,71 @@ Deno.serve(async (req) => {
 
       // Send signed PDF via WhatsApp
       if (localDoc.whatsapp_phone && localDoc.send_signed_pdf !== false) {
-        console.log('All signatures collected! Sending signed PDF via WhatsApp to:', localDoc.whatsapp_phone)
+        if (signedFileUrl) {
+          console.log('Sending signed PDF via WhatsApp to:', localDoc.whatsapp_phone, 'URL:', signedFileUrl)
 
-        try {
-          const { data: instance } = await supabase
-            .from('whatsapp_instances')
-            .select('*')
-            .eq('is_active', true)
-            .limit(1)
-            .single()
+          try {
+            const { data: instance } = await supabase
+              .from('whatsapp_instances')
+              .select('*')
+              .eq('is_active', true)
+              .limit(1)
+              .single()
 
-          if (instance) {
-            const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
-            const docName = localDoc.document_name || 'Documento'
+            if (instance) {
+              const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
+              const docName = localDoc.document_name || 'Documento'
 
-            // Send the signed PDF as a document via /send/media
-            const sendDocUrl = `${baseUrl}/send/media`
-            const uazResponse = await fetch(sendDocUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
-              body: JSON.stringify({
-                number: localDoc.whatsapp_phone,
-                file: signedFileUrl,
-                type: 'document',
-                caption: `📎 ${docName} - Assinado por todos os signatários`,
-              }),
-            })
-
-            if (uazResponse.ok) {
-              console.log('Signed PDF sent via WhatsApp successfully')
-
-              await supabase.from('whatsapp_messages').insert({
-                phone: localDoc.whatsapp_phone,
-                message_text: `📎 ${docName} - PDF assinado enviado`,
-                message_type: 'document',
-                direction: 'outbound',
-                status: 'sent',
-                contact_id: localDoc.contact_id || null,
-                lead_id: localDoc.lead_id || null,
-                instance_name: instance.instance_name,
-                instance_token: instance.instance_token,
-                media_url: signedFileUrl,
-                media_type: 'application/pdf',
+              const sendDocUrl = `${baseUrl}/send/media`
+              console.log(`Sending PDF to ${sendDocUrl} with file: ${signedFileUrl}`)
+              
+              const uazResponse = await fetch(sendDocUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
+                body: JSON.stringify({
+                  number: localDoc.whatsapp_phone,
+                  file: signedFileUrl,
+                  type: 'document',
+                  caption: `📎 ${docName} - Assinado por todos os signatários`,
+                }),
               })
+
+              const uazResponseText = await uazResponse.text()
+              console.log(`WhatsApp PDF send response: status=${uazResponse.status}, body=${uazResponseText}`)
+
+              if (uazResponse.ok) {
+                console.log('Signed PDF sent via WhatsApp successfully')
+
+                await supabase.from('whatsapp_messages').insert({
+                  phone: localDoc.whatsapp_phone,
+                  message_text: `📎 ${docName} - PDF assinado enviado`,
+                  message_type: 'document',
+                  direction: 'outbound',
+                  status: 'sent',
+                  contact_id: localDoc.contact_id || null,
+                  lead_id: localDoc.lead_id || null,
+                  instance_name: instance.instance_name,
+                  instance_token: instance.instance_token,
+                  media_url: signedFileUrl,
+                  media_type: 'application/pdf',
+                })
+              } else {
+                console.error('Failed to send signed PDF via WhatsApp:', uazResponseText)
+              }
             } else {
-              const errText = await uazResponse.text()
-              console.error('Failed to send signed PDF via WhatsApp:', errText)
+              console.error('No active WhatsApp instance found to send signed PDF')
             }
-          } else {
-            console.error('No active WhatsApp instance found to send signed PDF')
+          } catch (whatsappErr) {
+            console.error('Error sending PDF via WhatsApp:', whatsappErr)
           }
-        } catch (whatsappErr) {
-          console.error('Error sending PDF via WhatsApp:', whatsappErr)
+        } else {
+          console.error('SIGNED FILE URL IS NULL - ZapSign has not generated the PDF yet despite doc being signed')
         }
 
         // ====================================================
         // SEND MEETING SCHEDULING SLOTS via WhatsApp
         // ====================================================
         try {
-          // Get available slots from Google Calendar
-          const supabaseUrl = Deno.env.get('SUPABASE_URL')!
           const slotsRes = await fetch(`${supabaseUrl}/functions/v1/get-available-slots`, {
             method: 'POST',
             headers: {
@@ -288,7 +331,6 @@ Deno.serve(async (req) => {
             const docName = localDoc.document_name || 'Procuração'
             const signerName = localDoc.signer_name || 'Cliente'
 
-            // Group slots by date
             const slotsByDate: Record<string, string[]> = {}
             for (const slot of slotsData.slots) {
               if (!slotsByDate[slot.date]) slotsByDate[slot.date] = []
@@ -340,6 +382,8 @@ Deno.serve(async (req) => {
         } catch (meetingErr) {
           console.error('Error sending meeting scheduling message:', meetingErr)
         }
+      } else {
+        console.log(`PDF sending skipped - phone: ${localDoc.whatsapp_phone || 'NONE'}, send_signed_pdf: ${localDoc.send_signed_pdf}`)
       }
     }
 
