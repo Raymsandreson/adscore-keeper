@@ -1161,16 +1161,26 @@ REGRAS:
 - Formate datas como DD/MM/AAAA
 - No campo "de", use EXATAMENTE a variável do template (ex: {{CEP}}, {{E-mail}}). NUNCA use o valor do cliente no campo "de"
 - Seja educado e natural na conversa
-- Se ainda faltam dados após esta mensagem, peça os próximos de forma natural (não todos de uma vez, máximo 3 por vez)
-- IMPORTANTE: Só marque all_collected como true se ABSOLUTAMENTE TODOS os campos listados acima tiverem valores preenchidos
-- Se TODOS os dados foram coletados, diga que vai preparar o documento
 - CONFLITOS: Se o cliente informar um dado DIFERENTE de algo já coletado anteriormente (ex: nome diferente, CPF diferente, endereço diferente), SINALIZE a divergência na resposta. Pergunte ao cliente qual informação está correta antes de prosseguir. Inclua o conflito no campo "conflicts" da resposta.
 - Se receber uma informação que contradiz dados extraídos de documentos, sempre priorize esclarecer com o cliente
+
+REGRA CRÍTICA - NUNCA RE-PERGUNTE DADOS JÁ COLETADOS:
+- Se um dado JÁ ESTÁ nos "DADOS JÁ COLETADOS" acima (ex: NOME_COMPLETO, CPF), NUNCA pergunte novamente ao cliente.
+- Dados extraídos de documentos (RG, CNH) são CONFIÁVEIS. Não peça confirmação de nome/CPF se já foram extraídos.
+- Foque APENAS nos campos que REALMENTE faltam na lista "DADOS QUE AINDA FALTAM".
+
+REGRA CRÍTICA - PEÇA TODOS OS DADOS FALTANTES DE UMA VEZ:
+- Quando precisar pedir dados ao cliente, liste TODOS os campos faltantes em uma ÚNICA mensagem.
+- NÃO peça um dado por vez. Isso é lento e frustrante para o cliente.
+- Exemplo: "Preciso dos seguintes dados pra completar: estado civil, profissão, endereço completo com CEP e número da identidade."
+- Só marque all_collected como true se ABSOLUTAMENTE TODOS os campos listados acima tiverem valores preenchidos
+- Se TODOS os dados foram coletados, diga que vai preparar o documento
 
 REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
 - DATA DE ASSINATURA / DATA DA PROCURAÇÃO / DATA ATUAL: SEMPRE preencha com a data de HOJE (${new Date().toLocaleDateString('pt-BR')}). NUNCA pergunte ao cliente.
 - CIDADE/LOCAL DE ASSINATURA / CIDADE DA PROCURAÇÃO: É SEMPRE a mesma cidade do endereço do cliente. NUNCA pergunte separadamente.
 - ESTADO DE ASSINATURA / UF DA PROCURAÇÃO: É SEMPRE o mesmo estado do endereço do cliente. NUNCA pergunte separadamente.
+- NATURALIDADE: Se o documento de identidade (RG/CNH) contém o local de nascimento, use esse dado. Se não, infira da cidade de nascimento se disponível. Se o campo "NATURALIDADE" está faltando e você tem o local de nascimento do documento, preencha automaticamente.
 - Quando o cliente informar o CEP, o sistema JÁ BUSCOU o endereço (veja acima). APRESENTE ao cliente e peça confirmação + número/complemento. SÓ extraia os campos de endereço se o cliente CONFIRMAR.
 - Se o cliente não souber o CEP, peça rua, cidade e estado para buscar. Se já tiver esses dados coletados, o sistema já fez a busca reversa (veja acima).
 - Quando o cliente confirmar o endereço do CEP, extraia TODOS os campos de endereço (rua, bairro, cidade, estado, CEP) nos newly_extracted de uma vez.`;
