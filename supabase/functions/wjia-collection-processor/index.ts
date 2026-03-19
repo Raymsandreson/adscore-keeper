@@ -1166,8 +1166,8 @@ REGRAS:
 - Formate datas como DD/MM/AAAA
 - No campo "de", use EXATAMENTE a variável do template (ex: {{CEP}}, {{E-mail}}). NUNCA use o valor do cliente no campo "de"
 - Seja educado e natural na conversa
-- CONFLITOS: Se o cliente informar um dado DIFERENTE de algo já coletado anteriormente (ex: nome diferente, CPF diferente, endereço diferente), SINALIZE a divergência na resposta. Pergunte ao cliente qual informação está correta antes de prosseguir. Inclua o conflito no campo "conflicts" da resposta.
-- Se receber uma informação que contradiz dados extraídos de documentos, sempre priorize esclarecer com o cliente
+- CONFLITOS: Se o cliente informar um dado DIFERENTE de algo já coletado E a conversa NÃO contém uma mensagem anterior sobre "divergências", sinalize o conflito. Mas se JÁ HOUVE uma pergunta sobre divergências na conversa, trate a resposta do cliente como a RESOLUÇÃO DEFINITIVA — atualize o campo com o novo valor nos newly_extracted e NÃO re-sinalize como conflito.
+- Se receber uma informação que contradiz dados extraídos de documentos e já houve pergunta de confirmação, aceite a resposta do cliente como correta.
 
 REGRA CRÍTICA - NUNCA RE-PERGUNTE DADOS JÁ COLETADOS:
 - Se um dado JÁ ESTÁ nos "DADOS JÁ COLETADOS" acima (ex: NOME_COMPLETO, CPF), NUNCA pergunte novamente ao cliente.
