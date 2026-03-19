@@ -539,8 +539,8 @@ export function WhatsAppInbox() {
       instance_name: selectedConversation.instance_name || '',
       content,
       note_type: 'activity',
-      created_by: currentUser?.id || null,
-      created_by_name: senderName,
+      sender_id: currentUser?.id || null,
+      sender_name: senderName,
     });
   };
 
