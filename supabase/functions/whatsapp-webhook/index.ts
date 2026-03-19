@@ -1442,7 +1442,7 @@ Deno.serve(async (req) => {
           .select('id')
           .eq('phone', phone)
           .eq('instance_name', instanceName)
-          .in('status', ['collecting', 'collecting_docs', 'ready'])
+          .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready'])
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle()
