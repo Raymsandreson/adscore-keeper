@@ -186,6 +186,12 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
     return senderColors[Math.abs(hash) % senderColors.length];
   };
 
+  // Fetch team members for @mention picker
+  useEffect(() => {
+    supabase.from('profiles').select('user_id, full_name').order('full_name').then(({ data }) => {
+      setTeamMembers((data || []).filter((p: any) => p.full_name));
+    });
+  }, []);
 
 
   useEffect(() => {
