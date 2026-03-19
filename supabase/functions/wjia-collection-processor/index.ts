@@ -1280,43 +1280,7 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
 
     console.log("Collection result:", JSON.stringify(result));
 
-    // If AI detected conflicts, check if this is a RESPONSE to a previous conflict
-    // (i.e., the conversation already contains a conflict message from the bot)
-    const hasRecentConflictMessage = conversationText.includes("divergência") || conversationText.includes("Detectei algumas divergências");
-    
-    if (result.conflicts && result.conflicts.length > 0 && !hasRecentConflictMessage) {
-      console.log("AI detected NEW data conflicts:", JSON.stringify(result.conflicts));
-      // First time conflict — don't update fields, ask for clarification
-      const { data: inst } = await supabase
-        .from("whatsapp_instances")
-        .select("instance_token, base_url")
-        .eq("instance_name", instance_name)
-        .maybeSingle();
-
-      if (inst?.instance_token && result.reply_to_client) {
-        const baseUrl = inst.base_url || "https://abraci.uazapi.com";
-        await fetch(`${baseUrl}/send/text`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", token: inst.instance_token },
-          body: JSON.stringify({ number: normalizedPhone, text: result.reply_to_client }),
-        }).catch(e => console.error("Error sending conflict reply:", e));
-
-        await supabase.from("whatsapp_messages").insert({
-          phone: normalizedPhone, instance_name,
-          message_text: result.reply_to_client, message_type: "text", direction: "outbound",
-          contact_id: session.contact_id || null, lead_id: session.lead_id || null,
-          external_message_id: `wjia_conflict_${Date.now()}`,
-        });
-      }
-
-      return new Response(JSON.stringify({
-        active_session: true, processed: true, has_conflicts: true,
-        conflicts: result.conflicts, session_id: session.id,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-    
-    // If there were conflicts before but client is now responding, treat new data as the CORRECT resolution
-    // (don't block again — accept the newly_extracted values as authoritative)
+    // Always accept client data as authoritative — no conflict detection
 
     // Update collected data using template-variable normalization
     const updatedFields = [...(collectedData.fields || [])];
