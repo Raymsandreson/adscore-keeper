@@ -1427,17 +1427,8 @@ Deno.serve(async (req) => {
         }
       }
     }
-          }
-          await logWebhook('hash_command_routed', respData)
-          return new Response(
-            JSON.stringify(respData),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
-        } catch (e) {
-          console.error('#name command processing error:', e)
-        }
-      }
-    }
+
+
 
     // ========== WJIA COLLECTION SESSION CHECK ==========
     // If there's an active data collection session, route to collection processor instead of AI agent.
