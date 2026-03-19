@@ -1423,7 +1423,6 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
 
     const missingNames = actuallyMissing
       .map((f: any) => f.friendly_name || f.field_name)
-      .slice(0, 4)
       .join(", ");
     const correctionMsg = `Ainda preciso de alguns dados para completar o documento: ${missingNames}. Poderia me informar?`;
 
