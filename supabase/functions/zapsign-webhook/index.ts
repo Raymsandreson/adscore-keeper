@@ -170,39 +170,41 @@ Deno.serve(async (req) => {
     // ====================================================
     // FULLY SIGNED: Save attachment + send PDF via WhatsApp
     // ====================================================
-    if (isDocFullySigned && signedFileUrl && localDoc.lead_id) {
-      // Save signed document as activity attachment
-      try {
-        const { data: activity } = await supabase
-          .from('lead_activities')
-          .insert({
-            lead_id: localDoc.lead_id,
-            lead_name: localDoc.signer_name || 'Documento',
-            title: `✅ Procuração assinada: ${localDoc.document_name || 'Documento'}`,
-            description: `Documento "${localDoc.document_name}" totalmente assinado por ${totalSigners} signatário(s) em ${new Date().toLocaleDateString('pt-BR')}.`,
-            activity_type: 'documento',
-            status: 'concluida',
-            priority: 'normal',
-            created_by: localDoc.created_by || null,
-            deadline: new Date().toISOString().slice(0, 10),
-            completed_at: new Date().toISOString(),
-          })
-          .select('id')
-          .single()
+    if (isDocFullySigned && signedFileUrl) {
+      // Save signed document as activity attachment (only if lead exists)
+      if (localDoc.lead_id) {
+        try {
+          const { data: activity } = await supabase
+            .from('lead_activities')
+            .insert({
+              lead_id: localDoc.lead_id,
+              lead_name: localDoc.signer_name || 'Documento',
+              title: `✅ Procuração assinada: ${localDoc.document_name || 'Documento'}`,
+              description: `Documento "${localDoc.document_name}" totalmente assinado por ${totalSigners} signatário(s) em ${new Date().toLocaleDateString('pt-BR')}.`,
+              activity_type: 'documento',
+              status: 'concluida',
+              priority: 'normal',
+              created_by: localDoc.created_by || null,
+              deadline: new Date().toISOString().slice(0, 10),
+              completed_at: new Date().toISOString(),
+            })
+            .select('id')
+            .single()
 
-        if (activity?.id) {
-          await supabase.from('activity_attachments').insert({
-            activity_id: activity.id,
-            file_name: `${localDoc.document_name || 'Documento'}_assinado.pdf`,
-            file_type: 'application/pdf',
-            file_url: signedFileUrl,
-            attachment_type: 'file',
-            created_by: localDoc.created_by || null,
-          })
-          console.log('Signed document saved as activity attachment for lead:', localDoc.lead_id)
+          if (activity?.id) {
+            await supabase.from('activity_attachments').insert({
+              activity_id: activity.id,
+              file_name: `${localDoc.document_name || 'Documento'}_assinado.pdf`,
+              file_type: 'application/pdf',
+              file_url: signedFileUrl,
+              attachment_type: 'file',
+              created_by: localDoc.created_by || null,
+            })
+            console.log('Signed document saved as activity attachment for lead:', localDoc.lead_id)
+          }
+        } catch (attachErr) {
+          console.error('Error saving signed doc as attachment:', attachErr)
         }
-      } catch (attachErr) {
-        console.error('Error saving signed doc as attachment:', attachErr)
       }
 
       // Send signed PDF via WhatsApp
