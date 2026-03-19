@@ -27,7 +27,7 @@ export const featureTourMap: Record<string, TourStep[]> = {
   ],
   "Chat Interno na conversa": [
     {
-      selector: '[title="WhatsApp"], [data-tour="whatsapp-btn"]',
+      selector: '[data-tour="whatsapp-dock-btn"]',
       title: "1. Abra uma conversa",
       description: "Abra qualquer conversa no WhatsApp pelo dock flutuante.",
       position: "top",
