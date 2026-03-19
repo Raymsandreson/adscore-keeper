@@ -1147,9 +1147,16 @@ REGRAS:
 
 REGRA CRÍTICA - NOME COMPLETO:
 - Se o documento (RG/CNH) já extraiu o NOME COMPLETO, USE SEMPRE O NOME COMPLETO do documento.
-- Se o cliente responder apenas com o primeiro nome (ex: "Kemly"), isso é uma CONFIRMAÇÃO, NÃO uma correção. Mantenha o nome completo já extraído do documento.
-- Só substitua o nome se o cliente EXPLICITAMENTE corrigir com um nome completo diferente (ex: "Na verdade meu nome é Maria Kemly Santos").
-- Exemplo: documento extraiu "KEMLY RAYANE DA SILVA" e cliente disse "Kemly" → use "KEMLY RAYANE DA SILVA", NÃO "Kemly".
+- Se o cliente responder apenas com o primeiro nome (ex: "Kemly"), isso é uma CONFIRMAÇÃO, NÃO uma correção. NÃO extraia esse nome parcial nos newly_extracted.
+- Só extraia um novo NOME_COMPLETO se o cliente EXPLICITAMENTE corrigir com um nome completo diferente e MAIS LONGO que o atual.
+- Exemplo: documento extraiu "KEMLY RAYANE DA SILVA" e cliente disse "Kemly" → NÃO extraia NOME_COMPLETO. O nome completo já está correto.
+- Exemplo: cliente disse "meu nome é Maria Kemly Santos" → extraia "Maria Kemly Santos" pois é uma correção explícita.
+
+REGRA CRÍTICA - ENDEREÇO E CEP:
+- Quando o sistema fornecer resultado de busca de CEP (logradouro, bairro, cidade, UF), use EXATAMENTE esses dados do resultado.
+- NÃO invente ou modifique o endereço. Se a busca retornou "Rua dos Andradas" use "Rua dos Andradas", não "Avenida João 23".
+- O campo ENDERECO_COMPLETO deve conter APENAS o logradouro retornado pelo CEP + número/complemento informado pelo cliente.
+- Se o cliente ainda não informou número, NÃO adicione "sem número". Pergunte o número.
 
 REGRA CRÍTICA - NUNCA RE-PERGUNTE DADOS JÁ COLETADOS:
 - Se um dado JÁ ESTÁ nos "DADOS JÁ COLETADOS" acima (ex: NOME_COMPLETO, CPF), NUNCA pergunte novamente ao cliente.
@@ -1291,6 +1298,23 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
         if (targetKey === valueKey) continue;
       }
 
+      // PROTEÇÃO DE NOME COMPLETO: Se o campo é NOME e já existe um nome mais longo, não sobrescrever com nome parcial
+      const targetKey = normalizeFieldKey(targetVariable.toString());
+      if (targetKey.includes("NOME") && targetKey.includes("COMPLET")) {
+        const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(targetVariable.toString()));
+        if (existing && hasFieldValue(existing.para)) {
+          const existingName = (existing.para || "").toString().trim();
+          const newName = (newField.para || "").toString().trim();
+          // Se o nome existente tem mais palavras que o novo, manter o existente (é mais completo)
+          const existingWords = existingName.split(/\s+/).length;
+          const newWords = newName.split(/\s+/).length;
+          if (existingWords > newWords) {
+            console.log(`NOME PROTEGIDO: mantendo "${existingName}" em vez de "${newName}"`);
+            continue;
+          }
+        }
+      }
+
       upsertCollectedField(updatedFields, targetVariable.toString(), newField.para);
     }
 
@@ -1305,8 +1329,13 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
       if (cepData) {
         console.log("CEP lookup result:", JSON.stringify(cepData));
         
+        // Build full address string for ENDERECO_COMPLETO fields
+        const fullAddressFromCEP = [cepData.logradouro, cepData.bairro, cepData.localidade, cepData.uf ? `${cepData.localidade}-${cepData.uf}` : null]
+          .filter(Boolean).join(", ");
+
         const addressMappings = [
-          { patterns: ["RUA", "LOGRADOURO", "ENDERECO", "ENDERECOCOMPLETODARESIDENCIA"], value: cepData.logradouro },
+          { patterns: ["ENDERECOCOMPLETO", "ENDERECOCOMPLETODARESIDENCIA"], value: cepData.logradouro },
+          { patterns: ["RUA", "LOGRADOURO"], value: cepData.logradouro },
           { patterns: ["BAIRRO"], value: cepData.bairro },
           { patterns: ["CIDADE", "MUNICIPIO", "CIDADERESIDENCIA", "CIDADEDAPROCURACAO", "CIDADEASSINATURA", "LOCAL"], value: cepData.localidade },
           { patterns: ["ESTADO", "UF", "ESTADORESIDENCIA", "ESTADODAPROCURACAO", "UFASSINATURA"], value: cepData.uf },
