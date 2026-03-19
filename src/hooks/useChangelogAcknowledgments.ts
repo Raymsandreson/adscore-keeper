@@ -3,12 +3,20 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { changelog } from "@/components/updates/changelogData";
 
+interface AckRecord {
+  version: string;
+  feature_title: string;
+}
+
 export function useChangelogAcknowledgments() {
   const { user } = useAuthContext();
-  const [acknowledgedVersions, setAcknowledgedVersions] = useState<string[]>([]);
+  const [acknowledged, setAcknowledged] = useState<AckRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const allVersions = changelog.map(c => c.version);
+  // All features across all versions
+  const allFeatures: AckRecord[] = changelog.flatMap(entry =>
+    entry.features.map(f => ({ version: entry.version, feature_title: f.title }))
+  );
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
@@ -16,48 +24,50 @@ export function useChangelogAcknowledgments() {
     const fetchAcks = async () => {
       const { data } = await supabase
         .from("changelog_acknowledgments")
-        .select("version")
+        .select("version, feature_title")
         .eq("user_id", user.id);
-      
-      setAcknowledgedVersions((data || []).map(d => d.version));
+
+      setAcknowledged((data || []).map(d => ({ version: d.version, feature_title: d.feature_title })));
       setLoading(false);
     };
 
     fetchAcks();
   }, [user]);
 
-  const unseenVersions = allVersions.filter(v => !acknowledgedVersions.includes(v));
-  const unseenCount = unseenVersions.length;
+  const isFeatureAcked = useCallback((version: string, featureTitle: string) => {
+    return acknowledged.some(a => a.version === version && a.feature_title === featureTitle);
+  }, [acknowledged]);
 
-  const acknowledge = useCallback(async (version: string) => {
-    if (!user || acknowledgedVersions.includes(version)) return;
+  const unseenCount = allFeatures.filter(f => !isFeatureAcked(f.version, f.feature_title)).length;
+
+  const acknowledgeFeature = useCallback(async (version: string, featureTitle: string) => {
+    if (!user || isFeatureAcked(version, featureTitle)) return;
 
     const { error } = await supabase
       .from("changelog_acknowledgments")
-      .insert({ user_id: user.id, version });
+      .insert({ user_id: user.id, version, feature_title: featureTitle });
 
     if (!error) {
-      setAcknowledgedVersions(prev => [...prev, version]);
-      // Also sync localStorage for backwards compat
-      localStorage.setItem('app_last_seen_version', changelog[0]?.version || version);
+      setAcknowledged(prev => [...prev, { version, feature_title: featureTitle }]);
     }
-  }, [user, acknowledgedVersions]);
+  }, [user, isFeatureAcked]);
 
   const acknowledgeAll = useCallback(async () => {
     if (!user) return;
 
-    const toInsert = unseenVersions.map(v => ({ user_id: user.id, version: v }));
-    if (toInsert.length === 0) return;
+    const unseen = allFeatures.filter(f => !isFeatureAcked(f.version, f.feature_title));
+    if (unseen.length === 0) return;
+
+    const toInsert = unseen.map(f => ({ user_id: user.id, version: f.version, feature_title: f.feature_title }));
 
     const { error } = await supabase
       .from("changelog_acknowledgments")
-      .upsert(toInsert, { onConflict: "user_id,version" });
+      .upsert(toInsert, { onConflict: "user_id,version,feature_title" });
 
     if (!error) {
-      setAcknowledgedVersions(allVersions);
-      localStorage.setItem('app_last_seen_version', changelog[0]?.version || '');
+      setAcknowledged(allFeatures);
     }
-  }, [user, unseenVersions, allVersions]);
+  }, [user, allFeatures, isFeatureAcked]);
 
-  return { acknowledgedVersions, unseenCount, unseenVersions, loading, acknowledge, acknowledgeAll };
+  return { acknowledged, unseenCount, loading, isFeatureAcked, acknowledgeFeature, acknowledgeAll };
 }
