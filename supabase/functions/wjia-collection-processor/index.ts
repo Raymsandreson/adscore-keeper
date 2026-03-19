@@ -513,6 +513,40 @@ serve(async (req) => {
       };
       const requestedTypes: string[] = Array.isArray(session.document_types) ? session.document_types : [];
 
+      // === RECOVERY: If all docs already received but session stuck, jump to processing ===
+      const alreadyReceivedTypes = receivedDocs.map((d: any) => d.type);
+      const stillPendingRecovery = requestedTypes.filter(t => !alreadyReceivedTypes.includes(t));
+      
+      if (stillPendingRecovery.length === 0 && receivedDocs.length > 0 && !media_url) {
+        console.log("Recovery: All docs already received but session stuck in collecting_docs. Attempting extraction...");
+        // Jump directly to extraction flow
+        const { data: lockResult } = await supabase
+          .from("wjia_collection_sessions")
+          .update({ status: "processing_docs", updated_at: new Date().toISOString() })
+          .eq("id", session.id)
+          .eq("status", "collecting_docs")
+          .select("id");
+
+        if (lockResult && lockResult.length > 0) {
+          // Got the lock - proceed with extraction (reuse the extraction logic below)
+          return await processDocExtraction(supabase, session, receivedDocs, inst, normalizedPhone, instance_name, docTypeLabels, zapsignToken || null);
+        } else {
+          console.log("Recovery: Could not acquire lock, another process may be handling it");
+          // Inform user that processing is ongoing
+          if (inst?.instance_token) {
+            const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+            await fetch(`${baseUrl}/send/text`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", token: inst.instance_token },
+              body: JSON.stringify({ number: normalizedPhone, text: "⏳ Estou processando seus documentos, um momento por favor..." }),
+            }).catch(e => console.error(e));
+          }
+          return new Response(JSON.stringify({ active_session: true, processed: false, recovery_pending: true }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+
       // Check if client sent an image/document
       const isMedia = media_url && (message_type === 'image' || message_type === 'document');
 
