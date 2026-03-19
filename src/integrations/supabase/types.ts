@@ -1272,6 +1272,27 @@ export type Database = {
         }
         Relationships: []
       }
+      changelog_acknowledgments: {
+        Row: {
+          acknowledged_at: string
+          id: string
+          user_id: string
+          version: string
+        }
+        Insert: {
+          acknowledged_at?: string
+          id?: string
+          user_id: string
+          version: string
+        }
+        Update: {
+          acknowledged_at?: string
+          id?: string
+          user_id?: string
+          version?: string
+        }
+        Relationships: []
+      }
       checklist_stage_links: {
         Row: {
           board_id: string
