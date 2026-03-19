@@ -759,7 +759,7 @@ REGRAS DE FORMATAÇÃO:
             .filter((f: any) => f.para)
             .map((f: any) => `• *${(f.de || '').replace(/\{\{|\}\}/g, '')}*: ${f.para}`)
             .join('\n');
-          const docsSummary = receivedDocs.map((d: any) => `• ✅ ${docTypeLabels[d.type] || d.type}`).join('\n');
+          const docsSummary = allReceivedDocs.map((d: any) => `• ✅ ${docTypeLabels[d.type] || d.type}`).join('\n');
           const conflictsList = Array.isArray(collectedData.conflicts) ? collectedData.conflicts : [];
           const conflictWarning = conflictsList.length > 0
             ? `\n\n⚠️ *ATENÇÃO - Dados divergentes encontrados:*\n${conflictsList.map((c: any) => `• *${c.field}*: informado anteriormente "${c.existing}", mas no documento consta "${c.extracted}"`).join('\n')}\n\n_Verifique qual informação está correta._`
