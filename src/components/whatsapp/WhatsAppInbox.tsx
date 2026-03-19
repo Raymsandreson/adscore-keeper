@@ -1060,6 +1060,7 @@ export function WhatsAppInbox() {
         defaultLeadName={activityDefaults.leadName}
         defaultContactId={activityDefaults.contactId}
         defaultContactName={activityDefaults.contactName}
+        onActivityCreated={handleActivityCreated}
       />
 
       {/* Board Picker Dialog */}
