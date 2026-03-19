@@ -1145,6 +1145,12 @@ REGRAS:
 - Se o cliente informar um dado diferente de algo já coletado, simplesmente ATUALIZE com o novo valor sem questionar. O cliente sempre tem razão.
 - NUNCA questione ou sinalize divergências/conflitos de dados. Aceite o que o cliente diz como verdade.
 
+REGRA CRÍTICA - NOME COMPLETO:
+- Se o documento (RG/CNH) já extraiu o NOME COMPLETO, USE SEMPRE O NOME COMPLETO do documento.
+- Se o cliente responder apenas com o primeiro nome (ex: "Kemly"), isso é uma CONFIRMAÇÃO, NÃO uma correção. Mantenha o nome completo já extraído do documento.
+- Só substitua o nome se o cliente EXPLICITAMENTE corrigir com um nome completo diferente (ex: "Na verdade meu nome é Maria Kemly Santos").
+- Exemplo: documento extraiu "KEMLY RAYANE DA SILVA" e cliente disse "Kemly" → use "KEMLY RAYANE DA SILVA", NÃO "Kemly".
+
 REGRA CRÍTICA - NUNCA RE-PERGUNTE DADOS JÁ COLETADOS:
 - Se um dado JÁ ESTÁ nos "DADOS JÁ COLETADOS" acima (ex: NOME_COMPLETO, CPF), NUNCA pergunte novamente ao cliente.
 - Dados extraídos de documentos (RG, CNH) são CONFIÁVEIS. Não peça confirmação de nome/CPF se já foram extraídos.
@@ -1227,7 +1233,7 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
     }];
 
     const aiResult = await geminiChat({
-      model: "google/gemini-2.5-flash",
+      model: "google/gemini-2.5-pro",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: message_text || "(mensagem vazia)" },
