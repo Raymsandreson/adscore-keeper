@@ -550,6 +550,9 @@ export function FloatingNav() {
           setTimeout(() => window.location.reload(), 3000);
         }}
         updating={updating}
+        acknowledgedVersions={acknowledgedVersions}
+        onAcknowledge={acknowledge}
+        onAcknowledgeAll={acknowledgeAll}
       />
     </>
   );
