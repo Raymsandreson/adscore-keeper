@@ -252,7 +252,7 @@ serve(async (req) => {
     const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
 
     // Find active collection session for this phone
-    const { data: session } = await supabase
+    const { data: sessionRaw } = await supabase
       .from("wjia_collection_sessions")
       .select("*")
       .eq("phone", normalizedPhone)
@@ -262,10 +262,31 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    if (!session) {
+    if (!sessionRaw) {
       return new Response(JSON.stringify({ active_session: false }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // === RECOVERY: Unstick processing_docs sessions older than 3 minutes ===
+    let session = sessionRaw;
+    if (session.status === 'processing_docs') {
+      const updatedAt = new Date(session.updated_at || session.created_at).getTime();
+      const stuckMinutes = (Date.now() - updatedAt) / 60000;
+      if (stuckMinutes > 3) {
+        console.log(`Recovery: Session ${session.id} stuck in processing_docs for ${stuckMinutes.toFixed(1)}min, resetting to collecting_docs`);
+        await supabase
+          .from("wjia_collection_sessions")
+          .update({ status: "collecting_docs", updated_at: new Date().toISOString() })
+          .eq("id", session.id);
+        // Re-read session
+        const { data: refreshed } = await supabase
+          .from("wjia_collection_sessions")
+          .select("*")
+          .eq("id", session.id)
+          .single();
+        if (refreshed) session = refreshed;
+      }
     }
 
     // Load agent persona if session has agent_id
