@@ -97,13 +97,7 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating,
 
   return (
     <>
-      <Dialog open={open} onOpenChange={(val) => {
-        if (!val) {
-          onAcknowledgeAll?.();
-          localStorage.setItem('app_last_seen_version', versions[0]?.version || '');
-        }
-        onOpenChange(val);
-      }}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-md p-0 gap-0 overflow-hidden">
           {/* Header */}
           <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent px-6 pt-6 pb-4">
