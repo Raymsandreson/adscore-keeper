@@ -1147,9 +1147,16 @@ REGRAS:
 
 REGRA CRÍTICA - NOME COMPLETO:
 - Se o documento (RG/CNH) já extraiu o NOME COMPLETO, USE SEMPRE O NOME COMPLETO do documento.
-- Se o cliente responder apenas com o primeiro nome (ex: "Kemly"), isso é uma CONFIRMAÇÃO, NÃO uma correção. Mantenha o nome completo já extraído do documento.
-- Só substitua o nome se o cliente EXPLICITAMENTE corrigir com um nome completo diferente (ex: "Na verdade meu nome é Maria Kemly Santos").
-- Exemplo: documento extraiu "KEMLY RAYANE DA SILVA" e cliente disse "Kemly" → use "KEMLY RAYANE DA SILVA", NÃO "Kemly".
+- Se o cliente responder apenas com o primeiro nome (ex: "Kemly"), isso é uma CONFIRMAÇÃO, NÃO uma correção. NÃO extraia esse nome parcial nos newly_extracted.
+- Só extraia um novo NOME_COMPLETO se o cliente EXPLICITAMENTE corrigir com um nome completo diferente e MAIS LONGO que o atual.
+- Exemplo: documento extraiu "KEMLY RAYANE DA SILVA" e cliente disse "Kemly" → NÃO extraia NOME_COMPLETO. O nome completo já está correto.
+- Exemplo: cliente disse "meu nome é Maria Kemly Santos" → extraia "Maria Kemly Santos" pois é uma correção explícita.
+
+REGRA CRÍTICA - ENDEREÇO E CEP:
+- Quando o sistema fornecer resultado de busca de CEP (logradouro, bairro, cidade, UF), use EXATAMENTE esses dados do resultado.
+- NÃO invente ou modifique o endereço. Se a busca retornou "Rua dos Andradas" use "Rua dos Andradas", não "Avenida João 23".
+- O campo ENDERECO_COMPLETO deve conter APENAS o logradouro retornado pelo CEP + número/complemento informado pelo cliente.
+- Se o cliente ainda não informou número, NÃO adicione "sem número". Pergunte o número.
 
 REGRA CRÍTICA - NUNCA RE-PERGUNTE DADOS JÁ COLETADOS:
 - Se um dado JÁ ESTÁ nos "DADOS JÁ COLETADOS" acima (ex: NOME_COMPLETO, CPF), NUNCA pergunte novamente ao cliente.
