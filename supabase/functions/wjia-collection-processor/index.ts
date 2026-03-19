@@ -1090,7 +1090,14 @@ REGRAS:
 - IMPORTANTE: Só marque all_collected como true se ABSOLUTAMENTE TODOS os campos listados acima tiverem valores preenchidos
 - Se TODOS os dados foram coletados, diga que vai preparar o documento
 - CONFLITOS: Se o cliente informar um dado DIFERENTE de algo já coletado anteriormente (ex: nome diferente, CPF diferente, endereço diferente), SINALIZE a divergência na resposta. Pergunte ao cliente qual informação está correta antes de prosseguir. Inclua o conflito no campo "conflicts" da resposta.
-- Se receber uma informação que contradiz dados extraídos de documentos, sempre priorize esclarecer com o cliente`;
+- Se receber uma informação que contradiz dados extraídos de documentos, sempre priorize esclarecer com o cliente
+
+REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
+- DATA DE ASSINATURA / DATA DA PROCURAÇÃO / DATA ATUAL: SEMPRE preencha com a data de HOJE (${new Date().toLocaleDateString('pt-BR')}). NUNCA pergunte ao cliente.
+- CIDADE/LOCAL DE ASSINATURA / CIDADE DA PROCURAÇÃO: É SEMPRE a mesma cidade do endereço do cliente. NUNCA pergunte separadamente.
+- ESTADO DE ASSINATURA / UF DA PROCURAÇÃO: É SEMPRE o mesmo estado do endereço do cliente. NUNCA pergunte separadamente.
+- Se o cliente informar o CEP, NÃO pergunte rua, bairro, cidade ou estado — o sistema vai buscar automaticamente pelo CEP. Apenas peça o número e complemento se necessário.
+- Quando o cliente informar CEP, extraia-o imediatamente e aguarde o preenchimento automático dos campos de endereço.`;
 
     const tools = [{
       type: "function",
