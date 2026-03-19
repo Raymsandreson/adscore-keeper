@@ -15,24 +15,46 @@ interface UpdateNotesDialogProps {
   onOpenChange: (open: boolean) => void;
   onApplyUpdate: () => void;
   updating: boolean;
-  acknowledgedVersions?: string[];
-  onAcknowledge?: (version: string) => void;
-  onAcknowledgeAll?: () => void;
+  isFeatureAcked?: (version: string, featureTitle: string) => boolean;
+  onAcknowledgeFeature?: (version: string, featureTitle: string) => void;
 }
 
-function FeatureCard({ feature, index, onStartTour }: { feature: ChangelogFeature; index: number; onStartTour?: (steps: TourStep[]) => void }) {
+function FeatureCard({
+  feature,
+  index,
+  version,
+  isAcked,
+  onAck,
+  onStartTour,
+}: {
+  feature: ChangelogFeature;
+  index: number;
+  version: string;
+  isAcked: boolean;
+  onAck?: () => void;
+  onStartTour?: (steps: TourStep[]) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const tourSteps = featureTourMap[feature.title];
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 space-y-2 animate-in fade-in slide-in-from-bottom-2" style={{ animationDelay: `${index * 80}ms` }}>
+    <div
+      className={cn(
+        "rounded-xl border p-4 space-y-2 animate-in fade-in slide-in-from-bottom-2",
+        isAcked ? "border-border bg-card/60 opacity-75" : "border-primary/20 bg-card"
+      )}
+      style={{ animationDelay: `${index * 80}ms` }}
+    >
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-start gap-3 text-left"
       >
         <span className="text-2xl shrink-0">{feature.icon}</span>
         <div className="flex-1 min-w-0">
-          <h4 className="font-semibold text-sm text-foreground">{feature.title}</h4>
+          <h4 className="font-semibold text-sm text-foreground flex items-center gap-2">
+            {feature.title}
+            {isAcked && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />}
+          </h4>
           <p className="text-xs text-muted-foreground mt-0.5">{feature.description}</p>
         </div>
         {(feature.howToUse || tourSteps) && (
@@ -42,7 +64,7 @@ function FeatureCard({ feature, index, onStartTour }: { feature: ChangelogFeatur
         )}
       </button>
 
-      {expanded && (feature.howToUse || tourSteps) && (
+      {expanded && (
         <div className="ml-9 mt-2 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
           {feature.howToUse && (
             <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
@@ -53,45 +75,75 @@ function FeatureCard({ feature, index, onStartTour }: { feature: ChangelogFeatur
               <p className="text-xs text-muted-foreground leading-relaxed">{feature.howToUse}</p>
             </div>
           )}
-          {tourSteps && onStartTour && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full gap-2 text-xs border-primary/30 text-primary hover:bg-primary/5"
-              onClick={(e) => {
-                e.stopPropagation();
-                onStartTour(tourSteps);
-              }}
-            >
-              <Play className="h-3.5 w-3.5" />
-              Ver demonstração passo a passo
-            </Button>
-          )}
+
+          <div className="flex gap-2">
+            {tourSteps && onStartTour && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 gap-2 text-xs border-primary/30 text-primary hover:bg-primary/5"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStartTour(tourSteps);
+                }}
+              >
+                <Play className="h-3.5 w-3.5" />
+                Demonstração
+              </Button>
+            )}
+
+            {!isAcked && onAck ? (
+              <Button
+                size="sm"
+                className="flex-1 gap-1.5 text-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAck();
+                }}
+              >
+                <Check className="h-3.5 w-3.5" />
+                Entendi
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex-1 gap-1.5 text-xs text-emerald-600"
+                disabled
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Ciência dada
+              </Button>
+            )}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating, acknowledgedVersions = [], onAcknowledge, onAcknowledgeAll }: UpdateNotesDialogProps) {
+export function UpdateNotesDialog({
+  open,
+  onOpenChange,
+  onApplyUpdate,
+  updating,
+  isFeatureAcked,
+  onAcknowledgeFeature,
+}: UpdateNotesDialogProps) {
   const [forceRefreshing, setForceRefreshing] = useState(false);
   const [tourSteps, setTourSteps] = useState<TourStep[] | null>(null);
   const [selectedVersionIdx, setSelectedVersionIdx] = useState(0);
 
-  // Show all versions, not just the latest
   const versions = changelog;
   const selected = versions[selectedVersionIdx];
   if (!selected) return null;
 
-  const isAcknowledged = acknowledgedVersions.includes(selected.version);
-
-  const handleDismiss = () => {
-    onOpenChange(false);
-  };
+  const ackedCount = selected.features.filter(f => isFeatureAcked?.(selected.version, f.title)).length;
+  const totalCount = selected.features.length;
+  const allAcked = ackedCount === totalCount;
 
   const handleStartTour = (steps: TourStep[]) => {
     onOpenChange(false);
-    // Small delay to let dialog close
     setTimeout(() => setTourSteps(steps), 300);
   };
 
@@ -108,6 +160,10 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating,
               </div>
               <DialogDescription className="text-xs">
                 Versão {selected.version} · {new Date(selected.date).toLocaleDateString("pt-BR")}
+                {" · "}
+                <span className={cn(allAcked ? "text-emerald-600" : "text-destructive")}>
+                  {ackedCount}/{totalCount} confirmados
+                </span>
               </DialogDescription>
             </DialogHeader>
 
@@ -115,7 +171,9 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating,
             {versions.length > 1 && (
               <div className="flex gap-1.5 mt-3 overflow-x-auto pb-1">
                 {versions.map((v, i) => {
-                  const acked = acknowledgedVersions.includes(v.version);
+                  const vAcked = v.features.filter(f => isFeatureAcked?.(v.version, f.title)).length;
+                  const vTotal = v.features.length;
+                  const vAllAcked = vAcked === vTotal;
                   return (
                     <button
                       key={v.version}
@@ -124,13 +182,14 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating,
                         "shrink-0 px-2.5 py-1 rounded-full text-[10px] font-medium transition-all flex items-center gap-1",
                         i === selectedVersionIdx
                           ? "bg-primary text-primary-foreground"
-                          : acked
+                          : vAllAcked
                             ? "bg-muted text-muted-foreground"
                             : "bg-destructive/10 text-destructive border border-destructive/20"
                       )}
                     >
-                      {acked && <CheckCircle2 className="h-3 w-3" />}
+                      {vAllAcked && <CheckCircle2 className="h-3 w-3" />}
                       v{v.version}
+                      {!vAllAcked && <span className="ml-0.5">({vAcked}/{vTotal})</span>}
                     </button>
                   );
                 })}
@@ -142,10 +201,18 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating,
           <ScrollArea className="max-h-[50vh] px-4 py-3">
             <div className="space-y-3 pb-2">
               <p className="text-xs text-muted-foreground px-1">
-                Clique em cada item para ver <strong>como usar</strong> ou iniciar uma <strong>demonstração</strong>:
+                Expanda cada item e clique <strong>Entendi</strong> para dar ciência:
               </p>
               {selected.features.map((feature, i) => (
-                <FeatureCard key={i} feature={feature} index={i} onStartTour={handleStartTour} />
+                <FeatureCard
+                  key={i}
+                  feature={feature}
+                  index={i}
+                  version={selected.version}
+                  isAcked={isFeatureAcked?.(selected.version, feature.title) ?? false}
+                  onAck={() => onAcknowledgeFeature?.(selected.version, feature.title)}
+                  onStartTour={handleStartTour}
+                />
               ))}
             </div>
           </ScrollArea>
@@ -153,35 +220,18 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating,
           {/* Footer */}
           <div className="border-t border-border px-4 py-3 space-y-2">
             <div className="flex gap-2">
-              {!isAcknowledged && onAcknowledge ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 gap-1.5"
-                  onClick={() => {
-                    onAcknowledge(selected.version);
-                  }}
-                >
-                  <Check className="h-4 w-4" />
-                  Entendi esta versão
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 gap-1.5 text-emerald-600"
-                  disabled
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  Ciência dada
-                </Button>
-              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() => onOpenChange(false)}
+              >
+                Fechar
+              </Button>
               <Button
                 size="sm"
                 className="flex-1 gap-1.5"
-                onClick={() => {
-                  onApplyUpdate();
-                }}
+                onClick={() => onApplyUpdate()}
                 disabled={updating || forceRefreshing}
               >
                 {updating ? (
@@ -211,7 +261,6 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating,
         </DialogContent>
       </Dialog>
 
-      {/* Feature Tour overlay */}
       <FeatureTour
         steps={tourSteps || []}
         open={!!tourSteps}

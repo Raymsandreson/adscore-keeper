@@ -1275,18 +1275,21 @@ export type Database = {
       changelog_acknowledgments: {
         Row: {
           acknowledged_at: string
+          feature_title: string
           id: string
           user_id: string
           version: string
         }
         Insert: {
           acknowledged_at?: string
+          feature_title: string
           id?: string
           user_id: string
           version: string
         }
         Update: {
           acknowledged_at?: string
+          feature_title?: string
           id?: string
           user_id?: string
           version?: string

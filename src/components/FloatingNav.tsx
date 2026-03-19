@@ -122,7 +122,7 @@ export function FloatingNav() {
   });
   const containerRef = useRef<HTMLDivElement>(null);
   const unreadMentions = useUnreadMentionsCount();
-  const { unseenCount, acknowledgedVersions, acknowledge, acknowledgeAll } = useChangelogAcknowledgments();
+  const { unseenCount, isFeatureAcked, acknowledgeFeature, acknowledgeAll } = useChangelogAcknowledgments();
   const [hasUpdate, setHasUpdate] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -556,9 +556,8 @@ export function FloatingNav() {
           setTimeout(() => window.location.reload(), 3000);
         }}
         updating={updating}
-        acknowledgedVersions={acknowledgedVersions}
-        onAcknowledge={acknowledge}
-        onAcknowledgeAll={acknowledgeAll}
+        isFeatureAcked={isFeatureAcked}
+        onAcknowledgeFeature={acknowledgeFeature}
       />
     </>
   );
