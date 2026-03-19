@@ -949,15 +949,16 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Determine direction: use fromMe flag, but VALIDATE against owner phone
-      // UazAPI sometimes incorrectly sets fromMe=true for inbound media (using @lid IDs)
+      // Determine direction: use fromMe flag
+      // UazAPI sometimes incorrectly sets fromMe=true for inbound media using @lid IDs
+      // Only apply correction when chatid contains @lid (known problematic case)
       const fromMeFlag = body.message?.fromMe === true || body.chat?.fromMe === true
-      const ownerPhone = (body.chat?.owner || body.owner || '').replace(/\D/g, '').replace(/^0+/, '')
-      const senderPhone = rawPhone.replace(/\D/g, '').replace(/^0+/, '')
+      const chatIdRaw = body.chat?.wa_chatid || body.message?.chatid || ''
+      const isLidChat = chatIdRaw.includes('@lid')
       
-      if (fromMeFlag && ownerPhone && senderPhone !== ownerPhone) {
-        // Provider says fromMe but sender phone doesn't match instance owner = actually inbound
-        console.log(`Direction correction: fromMe=true but sender ${senderPhone} != owner ${ownerPhone}, forcing inbound`)
+      if (fromMeFlag && isLidChat) {
+        // @lid chats with fromMe=true are often actually inbound — correct direction
+        console.log(`Direction correction: fromMe=true but @lid chat detected, forcing inbound`)
         direction = 'inbound'
       } else {
         direction = fromMeFlag ? 'outbound' : 'inbound'
@@ -1332,8 +1333,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ========== #NAME AGENT COMMAND DETECTION (outbound messages triggering agents/shortcuts) ==========
-    // Handles commands like #procuracao_maternidade — routes to wjia-chat-command
+    // ========== #NAME AGENT/SHORTCUT COMMAND DETECTION ==========
+    // Handles commands like #procuracao_maternidade — validates against wjia_command_shortcuts table
+    // Works for both outbound (fromMe) messages. Uses the shortcuts table as single source of truth.
     if (direction === 'outbound' && instanceName && phone && messageText) {
       const trimmedCmd = (messageText || '').trim()
       const hashNameMatch = trimmedCmd.match(/^#([a-z0-9_]+)$/i)
@@ -1341,74 +1343,92 @@ Deno.serve(async (req) => {
       const controlCommands = ['parar', 'ativar', 'status']
       
       if (hashNameMatch && !controlCommands.includes(hashNameMatch[1].toLowerCase())) {
-        const agentName = hashNameMatch[1]
-        console.log('#name agent command detected:', agentName, 'phone:', phone, 'instance:', instanceName)
-        try {
-          // Delete the #command message from WhatsApp so contact doesn't see it (ghost command)
-          if (externalMessageId) {
-            let resolvedToken = instanceToken
-            let resolvedBaseUrl = baseUrl
-            if (!resolvedToken || !resolvedBaseUrl) {
-              const { data: inst } = await supabase
-                .from('whatsapp_instances')
-                .select('instance_token, base_url')
-                .eq('instance_name', instanceName)
-                .limit(1)
-                .maybeSingle()
-              if (inst) {
-                resolvedToken = resolvedToken || inst.instance_token
-                resolvedBaseUrl = resolvedBaseUrl || inst.base_url
+        const shortcutName = hashNameMatch[1].toLowerCase()
+        console.log('#name command detected:', shortcutName, 'phone:', phone, 'instance:', instanceName)
+        
+        // Validate against wjia_command_shortcuts table — single source of truth
+        const { data: shortcutConfig } = await supabase
+          .from('wjia_command_shortcuts')
+          .select('id, shortcut_name, assistant_type, is_active')
+          .eq('shortcut_name', shortcutName)
+          .eq('is_active', true)
+          .maybeSingle()
+
+        if (shortcutConfig) {
+          console.log('Shortcut found in table:', shortcutConfig.shortcut_name, 'type:', shortcutConfig.assistant_type)
+          
+          try {
+            // Delete the #command message from WhatsApp so contact doesn't see it (ghost command)
+            if (externalMessageId) {
+              let resolvedToken = instanceToken
+              let resolvedBaseUrl = baseUrl
+              if (!resolvedToken || !resolvedBaseUrl) {
+                const { data: inst } = await supabase
+                  .from('whatsapp_instances')
+                  .select('instance_token, base_url')
+                  .eq('instance_name', instanceName)
+                  .limit(1)
+                  .maybeSingle()
+                if (inst) {
+                  resolvedToken = resolvedToken || inst.instance_token
+                  resolvedBaseUrl = resolvedBaseUrl || inst.base_url
+                }
+              }
+              if (resolvedToken && resolvedBaseUrl) {
+                fetch(`${resolvedBaseUrl}/message/delete`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'token': resolvedToken },
+                  body: JSON.stringify({ id: externalMessageId }),
+                }).catch(e => console.error('Error deleting #name command message:', e))
               }
             }
-            if (resolvedToken && resolvedBaseUrl) {
-              fetch(`${resolvedBaseUrl}/message/delete`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'token': resolvedToken },
-                body: JSON.stringify({ id: externalMessageId }),
-              }).catch(e => console.error('Error deleting #name command message:', e))
+
+            // Delete from DB so it doesn't show in inbox
+            if (message?.id) {
+              await supabase.from('whatsapp_messages').delete().eq('id', message.id)
             }
-          }
 
-          // Delete from DB so it doesn't show in inbox
-          if (message?.id) {
-            await supabase.from('whatsapp_messages').delete().eq('id', message.id)
-          }
+            const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
+            const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
 
-          const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-          const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+            // Route to wjia-chat-command with the #name as command
+            fetch(`${supabaseUrl}/functions/v1/wjia-chat-command`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseAnonKey}`,
+              },
+              body: JSON.stringify({
+                phone,
+                instance_name: instanceName,
+                command: trimmedCmd,
+                contact_id: contactId,
+                lead_id: leadId,
+              }),
+            }).catch(err => console.error('#name command trigger error:', err))
 
-          // Fire-and-forget: call wjia-chat-command with the #name as command
-          fetch(`${supabaseUrl}/functions/v1/wjia-chat-command`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseAnonKey}`,
-            },
-            body: JSON.stringify({
-              phone,
+            const respData = {
+              success: true,
+              message_id: message.id,
+              hash_command: shortcutName,
+              shortcut_type: shortcutConfig.assistant_type,
               instance_name: instanceName,
-              command: trimmedCmd,
-              contact_id: contactId,
-              lead_id: leadId,
-            }),
-          }).catch(err => console.error('#name command trigger error:', err))
-
-          const respData = {
-            success: true,
-            message_id: message.id,
-            hash_command: agentName,
-            instance_name: instanceName,
+            }
+            await logWebhook('hash_command_routed', respData)
+            return new Response(
+              JSON.stringify(respData),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          } catch (e) {
+            console.error('#name command processing error:', e)
           }
-          await logWebhook('hash_command_routed', respData)
-          return new Response(
-            JSON.stringify(respData),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
-        } catch (e) {
-          console.error('#name command processing error:', e)
+        } else {
+          console.log('No active shortcut found for:', shortcutName, '- treating as normal message')
         }
       }
     }
+
+
 
     // ========== WJIA COLLECTION SESSION CHECK ==========
     // If there's an active data collection session, route to collection processor instead of AI agent.
