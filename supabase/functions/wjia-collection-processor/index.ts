@@ -11,7 +11,7 @@ const corsHeaders = {
 const ZAPSIGN_API_URL = "https://api.zapsign.com.br/api/v1";
 
 // CEP lookup via ViaCEP API
-async function lookupCEP(cep: string): Promise<{ logradouro?: string; bairro?: string; localidade?: string; uf?: string } | null> {
+async function lookupCEP(cep: string): Promise<{ logradouro?: string; bairro?: string; localidade?: string; uf?: string; cep?: string } | null> {
   const cleanCep = cep.replace(/\D/g, "");
   if (cleanCep.length !== 8) return null;
   try {
@@ -19,11 +19,35 @@ async function lookupCEP(cep: string): Promise<{ logradouro?: string; bairro?: s
     if (!res.ok) return null;
     const data = await res.json();
     if (data.erro) return null;
-    return { logradouro: data.logradouro, bairro: data.bairro, localidade: data.localidade, uf: data.uf };
+    return { logradouro: data.logradouro, bairro: data.bairro, localidade: data.localidade, uf: data.uf, cep: data.cep };
   } catch (e) {
     console.error("CEP lookup error:", e);
     return null;
   }
+}
+
+// Reverse CEP lookup - search by address
+async function reverseLookupCEP(state: string, city: string, street: string): Promise<Array<{ cep: string; logradouro: string; bairro: string; localidade: string; uf: string }>> {
+  try {
+    const encodedState = encodeURIComponent(state.trim());
+    const encodedCity = encodeURIComponent(city.trim());
+    const encodedStreet = encodeURIComponent(street.trim());
+    const res = await fetch(`https://viacep.com.br/ws/${encodedState}/${encodedCity}/${encodedStreet}/json/`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data.slice(0, 3);
+  } catch (e) {
+    console.error("Reverse CEP lookup error:", e);
+    return [];
+  }
+}
+
+// Extract CEP from a text message
+function extractCEPFromMessage(text: string): string | null {
+  if (!text) return null;
+  const match = text.match(/\b(\d{5})-?(\d{3})\b/);
+  return match ? `${match[1]}${match[2]}` : null;
 }
 
 type TemplateFieldRef = {
