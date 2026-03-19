@@ -490,7 +490,11 @@ export function FloatingNav() {
               )}
             >
               <RefreshCw className={cn("h-4 w-4 sm:h-5 sm:w-5", (updating || checking) && "animate-spin")} />
-              {hasUpdate && <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-destructive" />}
+              {(hasUpdate || unseenCount > 0) && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold flex items-center justify-center">
+                  {unseenCount > 0 ? (unseenCount > 9 ? '9+' : unseenCount) : '!'}
+                </span>
+              )}
             </button>
 
             {/* Settings button */}
