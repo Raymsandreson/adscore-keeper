@@ -7,7 +7,7 @@ import { type TourStep } from "./FeatureTour";
 export const featureTourMap: Record<string, TourStep[]> = {
   "Criar atividade direto do WhatsApp": [
     {
-      selector: '[title="WhatsApp"], [data-tour="whatsapp-btn"]',
+      selector: '[data-tour="whatsapp-dock-btn"]',
       title: "1. Abra o WhatsApp",
       description: "Clique no botão verde do WhatsApp no dock flutuante para abrir a lista de conversas.",
       position: "top",

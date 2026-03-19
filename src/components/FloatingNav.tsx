@@ -411,6 +411,7 @@ export function FloatingNav() {
 
             {/* WhatsApp button */}
             <button
+              data-tour="whatsapp-dock-btn"
               onClick={() => {
                 setWhatsAppOpen(v => !v);
                 setMenuOpen(false);
