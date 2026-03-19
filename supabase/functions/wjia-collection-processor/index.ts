@@ -1166,18 +1166,31 @@ REGRAS:
 - Formate datas como DD/MM/AAAA
 - No campo "de", use EXATAMENTE a variável do template (ex: {{CEP}}, {{E-mail}}). NUNCA use o valor do cliente no campo "de"
 - Seja educado e natural na conversa
-- CONFLITOS: Se o cliente informar um dado DIFERENTE de algo já coletado E a conversa NÃO contém uma mensagem anterior sobre "divergências", sinalize o conflito. Mas se JÁ HOUVE uma pergunta sobre divergências na conversa, trate a resposta do cliente como a RESOLUÇÃO DEFINITIVA — atualize o campo com o novo valor nos newly_extracted e NÃO re-sinalize como conflito.
-- Se receber uma informação que contradiz dados extraídos de documentos e já houve pergunta de confirmação, aceite a resposta do cliente como correta.
+- Se o cliente informar um dado diferente de algo já coletado, simplesmente ATUALIZE com o novo valor sem questionar. O cliente sempre tem razão.
+- NUNCA questione ou sinalize divergências/conflitos de dados. Aceite o que o cliente diz como verdade.
 
 REGRA CRÍTICA - NUNCA RE-PERGUNTE DADOS JÁ COLETADOS:
 - Se um dado JÁ ESTÁ nos "DADOS JÁ COLETADOS" acima (ex: NOME_COMPLETO, CPF), NUNCA pergunte novamente ao cliente.
 - Dados extraídos de documentos (RG, CNH) são CONFIÁVEIS. Não peça confirmação de nome/CPF se já foram extraídos.
 - Foque APENAS nos campos que REALMENTE faltam na lista "DADOS QUE AINDA FALTAM".
 
-REGRA CRÍTICA - PEÇA TODOS OS DADOS FALTANTES DE UMA VEZ:
-- Quando precisar pedir dados ao cliente, liste TODOS os campos faltantes em uma ÚNICA mensagem.
+REGRA CRÍTICA - PEÇA TODOS OS DADOS FALTANTES DE UMA VEZ COM RESUMO:
+- Quando precisar pedir dados ao cliente, faça um RESUMO mostrando o que já tem e o que falta.
+- Formate assim de forma NATURAL (sem parecer robô):
+  "Até agora tenho:
+  ✅ Nome: João da Silva
+  ✅ CPF: 123.456.789-00
+  ✅ RG: 12345678
+  
+  Ainda preciso de:
+  ❌ Estado civil
+  ❌ Profissão
+  ❌ Endereço completo com CEP
+  ❌ Número da identidade
+  
+  Me manda tudo que puder de uma vez!"
+- Use esse formato SEMPRE que pedir dados faltantes. Isso ajuda o cliente a ver o progresso.
 - NÃO peça um dado por vez. Isso é lento e frustrante para o cliente.
-- Exemplo: "Preciso dos seguintes dados pra completar: estado civil, profissão, endereço completo com CEP e número da identidade."
 - Só marque all_collected como true se ABSOLUTAMENTE TODOS os campos listados acima tiverem valores preenchidos
 - Se TODOS os dados foram coletados, diga que vai preparar o documento
 
