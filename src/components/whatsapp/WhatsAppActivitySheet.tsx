@@ -34,6 +34,7 @@ interface WhatsAppActivitySheetProps {
   defaultLeadName?: string;
   defaultContactId?: string;
   defaultContactName?: string;
+  onActivityCreated?: (title: string, type: string, leadName?: string) => void;
 }
 
 interface LeadOption {
@@ -53,6 +54,7 @@ export function WhatsAppActivitySheet({
   defaultLeadName,
   defaultContactId,
   defaultContactName,
+  onActivityCreated,
 }: WhatsAppActivitySheetProps) {
   const { createActivity } = useLeadActivities();
 
@@ -295,6 +297,7 @@ export function WhatsAppActivitySheet({
         next_steps: formNextSteps || null,
         notes: formNotes || null,
       });
+      onActivityCreated?.(formTitle, formType, formLeadName || undefined);
       onOpenChange(false);
     } catch {
       // error handled in hook

@@ -966,27 +966,33 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           if (item.type === 'note') {
             const note = item.data;
             const isChat = note.note_type === 'chat';
+            const isActivity = note.note_type === 'activity';
+            const noteIcon = isActivity
+              ? <ClipboardList className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />
+              : isChat
+                ? <MessageCircle className="h-3 w-3 text-blue-600 dark:text-blue-400 shrink-0" />
+                : <StickyNote className="h-3 w-3 text-amber-600 dark:text-amber-400 shrink-0" />;
+            const noteLabel = isActivity ? 'Atividade Criada' : isChat ? 'Chat Interno' : 'Nota Interna';
+            const colorClasses = isActivity
+              ? { border: "border-green-300 bg-green-50 dark:bg-green-950/30 dark:border-green-700", title: "text-green-700 dark:text-green-300", dot: "text-green-600/60 dark:text-green-400/60", sender: "text-green-600/80 dark:text-green-400/80", body: "text-green-900 dark:text-green-100", time: "text-green-600/60 dark:text-green-400/60" }
+              : isChat
+                ? { border: "border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-700", title: "text-blue-700 dark:text-blue-300", dot: "text-blue-600/60 dark:text-blue-400/60", sender: "text-blue-600/80 dark:text-blue-400/80", body: "text-blue-900 dark:text-blue-100", time: "text-blue-600/60 dark:text-blue-400/60" }
+                : { border: "border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700", title: "text-amber-700 dark:text-amber-300", dot: "text-amber-600/60 dark:text-amber-400/60", sender: "text-amber-600/80 dark:text-amber-400/80", body: "text-amber-900 dark:text-amber-100", time: "text-amber-600/60 dark:text-amber-400/60" };
             return (
               <div key={`note-${note.id}`}>
                 {dateSeparator}
                 <div className="flex justify-center">
                   <div className={cn(
                     "max-w-[85%] rounded-xl px-4 py-2 text-xs border group",
-                    isChat
-                      ? "border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-700"
-                      : "border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700"
+                    colorClasses.border
                   )}>
                     <div className="flex items-center gap-1.5 mb-1">
-                      {isChat ? (
-                        <MessageCircle className="h-3 w-3 text-blue-600 dark:text-blue-400 shrink-0" />
-                      ) : (
-                        <StickyNote className="h-3 w-3 text-amber-600 dark:text-amber-400 shrink-0" />
-                      )}
-                      <span className={cn("font-semibold", isChat ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300")}>
-                        {isChat ? 'Chat Interno' : 'Nota Interna'}
+                      {noteIcon}
+                      <span className={cn("font-semibold", colorClasses.title)}>
+                        {noteLabel}
                       </span>
-                      <span className={cn(isChat ? "text-blue-600/60 dark:text-blue-400/60" : "text-amber-600/60 dark:text-amber-400/60")}>•</span>
-                      <span className={cn(isChat ? "text-blue-600/80 dark:text-blue-400/80" : "text-amber-600/80 dark:text-amber-400/80")}>{note.sender_name || 'Equipe'}</span>
+                      <span className={colorClasses.dot}>•</span>
+                      <span className={colorClasses.sender}>{note.sender_name || 'Equipe'}</span>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -996,8 +1002,8 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
-                    <p className={cn("whitespace-pre-wrap text-[13px]", isChat ? "text-blue-900 dark:text-blue-100" : "text-amber-900 dark:text-amber-100")}>{note.content}</p>
-                    <p className={cn("text-[10px] mt-1", isChat ? "text-blue-600/60 dark:text-blue-400/60" : "text-amber-600/60 dark:text-amber-400/60")}>
+                    <p className={cn("whitespace-pre-wrap text-[13px]", colorClasses.body)}>{note.content}</p>
+                    <p className={cn("text-[10px] mt-1", colorClasses.time)}>
                       {format(new Date(note.created_at), "HH:mm", { locale: ptBR })}
                     </p>
                   </div>

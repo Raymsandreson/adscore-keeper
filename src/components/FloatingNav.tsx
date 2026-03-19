@@ -343,18 +343,28 @@ export function FloatingNav() {
             </div>
           </div>
         )}
-        {/* Collapsed state - small pill to expand */}
+        {/* Collapsed state - small pill to expand, also draggable */}
         {dockCollapsed ? (
-          <button
-            onClick={() => { setDockCollapsed(false); try { localStorage.setItem('dock_collapsed', '0'); } catch {} }}
-            className="flex items-center gap-1.5 bg-card/80 backdrop-blur-xl border border-border/60 rounded-full px-4 py-2.5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95"
-          >
-            <ChevronUp className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground font-medium">Menu</span>
-            {(unreadMentions > 0 || hasUpdate) && (
-              <span className="w-2 h-2 rounded-full bg-destructive" />
-            )}
-          </button>
+          <div className="flex items-center gap-0.5">
+            <div
+              data-drag-handle
+              onDoubleClick={() => resetPosition()}
+              title="Arraste para mover · Duplo clique para resetar"
+              className="h-9 w-5 rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground transition-colors bg-card/80 backdrop-blur-xl border border-border/60 border-r-0 rounded-r-none"
+            >
+              <GripVertical className="h-3.5 w-3.5" />
+            </div>
+            <button
+              onClick={() => { if (!isDragging()) { setDockCollapsed(false); try { localStorage.setItem('dock_collapsed', '0'); } catch {} } }}
+              className="flex items-center gap-1.5 bg-card/80 backdrop-blur-xl border border-border/60 rounded-full rounded-l-none px-3 py-2.5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95"
+            >
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground font-medium">Menu</span>
+              {(unreadMentions > 0 || hasUpdate) && (
+                <span className="w-2 h-2 rounded-full bg-destructive" />
+              )}
+            </button>
+          </div>
         ) : (
           /* Dock Bar */
           <div className="flex items-center gap-1 sm:gap-1.5 bg-card/90 backdrop-blur-xl border border-border/60 rounded-full px-1.5 sm:px-2.5 py-1.5 sm:py-2 shadow-2xl animate-in slide-in-from-bottom-2 fade-in duration-200">

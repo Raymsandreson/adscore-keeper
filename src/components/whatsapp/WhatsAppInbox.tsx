@@ -526,6 +526,24 @@ export function WhatsAppInbox() {
     setShowActivitySheet(true);
   };
 
+  const handleActivityCreated = async (title: string, type: string, leadName?: string) => {
+    if (!selectedConversation) return;
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    const { data: profile } = currentUser ? await supabase.from('profiles').select('full_name').eq('user_id', currentUser.id).single() : { data: null };
+    const senderName = profile?.full_name || 'Sistema';
+    const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
+    const content = `📋 Atividade criada: "${title}" (${typeLabel})${leadName ? ` — Lead: ${leadName}` : ''}`;
+    
+    await supabase.from('whatsapp_internal_notes').insert({
+      phone: selectedConversation.phone,
+      instance_name: selectedConversation.instance_name || '',
+      content,
+      note_type: 'activity',
+      sender_id: currentUser?.id || null,
+      sender_name: senderName,
+    });
+  };
+
   const handleNavigateToLead = async (leadId: string) => {
     const { data } = await supabase.from('leads').select('*').eq('id', leadId).single();
     if (data) {
@@ -1042,6 +1060,7 @@ export function WhatsAppInbox() {
         defaultLeadName={activityDefaults.leadName}
         defaultContactId={activityDefaults.contactId}
         defaultContactName={activityDefaults.contactName}
+        onActivityCreated={handleActivityCreated}
       />
 
       {/* Board Picker Dialog */}
