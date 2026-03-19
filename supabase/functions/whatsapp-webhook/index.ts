@@ -949,15 +949,16 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Determine direction: use fromMe flag, but VALIDATE against owner phone
-      // UazAPI sometimes incorrectly sets fromMe=true for inbound media (using @lid IDs)
+      // Determine direction: use fromMe flag
+      // UazAPI sometimes incorrectly sets fromMe=true for inbound media using @lid IDs
+      // Only apply correction when chatid contains @lid (known problematic case)
       const fromMeFlag = body.message?.fromMe === true || body.chat?.fromMe === true
-      const ownerPhone = (body.chat?.owner || body.owner || '').replace(/\D/g, '').replace(/^0+/, '')
-      const senderPhone = rawPhone.replace(/\D/g, '').replace(/^0+/, '')
+      const chatIdRaw = body.chat?.wa_chatid || body.message?.chatid || ''
+      const isLidChat = chatIdRaw.includes('@lid')
       
-      if (fromMeFlag && ownerPhone && senderPhone !== ownerPhone) {
-        // Provider says fromMe but sender phone doesn't match instance owner = actually inbound
-        console.log(`Direction correction: fromMe=true but sender ${senderPhone} != owner ${ownerPhone}, forcing inbound`)
+      if (fromMeFlag && isLidChat) {
+        // @lid chats with fromMe=true are often actually inbound — correct direction
+        console.log(`Direction correction: fromMe=true but @lid chat detected, forcing inbound`)
         direction = 'inbound'
       } else {
         direction = fromMeFlag ? 'outbound' : 'inbound'
