@@ -145,6 +145,9 @@ export function FloatingNav() {
       const seenVersion = localStorage.getItem('app_last_seen_version');
       if (seenVersion !== latestVersion) {
         setHasUpdate(true);
+        // Auto-show changelog after a short delay
+        const timer = setTimeout(() => setUpdateNotesOpen(true), 2000);
+        return () => clearTimeout(timer);
       }
     }
     // Also listen for PWA updates
