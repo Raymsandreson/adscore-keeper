@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { ActivityChatSheet } from "@/components/activities/ActivityChatSheet";
 import { MentionsPanel } from "@/components/chat/MentionsPanel";
 import { useUnreadMentionsCount } from "@/hooks/useTeamChat";
+import { useChangelogAcknowledgments } from "@/hooks/useChangelogAcknowledgments";
 
 interface NavItem {
   id: string;
