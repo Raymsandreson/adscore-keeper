@@ -1334,11 +1334,11 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
           .filter(Boolean).join(", ");
 
         const addressMappings = [
-          { patterns: ["ENDERECOCOMPLETO", "ENDERECOCOMPLETODARESIDENCIA"], value: cepData.logradouro },
-          { patterns: ["RUA", "LOGRADOURO"], value: cepData.logradouro },
-          { patterns: ["BAIRRO"], value: cepData.bairro },
-          { patterns: ["CIDADE", "MUNICIPIO", "CIDADERESIDENCIA", "CIDADEDAPROCURACAO", "CIDADEASSINATURA", "LOCAL"], value: cepData.localidade },
-          { patterns: ["ESTADO", "UF", "ESTADORESIDENCIA", "ESTADODAPROCURACAO", "UFASSINATURA"], value: cepData.uf },
+          { patterns: ["ENDERECOCOMPLETO", "ENDERECOCOMPLETODARESIDENCIA"], value: cepData.logradouro, forceOverwrite: true },
+          { patterns: ["RUA", "LOGRADOURO"], value: cepData.logradouro, forceOverwrite: true },
+          { patterns: ["BAIRRO"], value: cepData.bairro, forceOverwrite: true },
+          { patterns: ["CIDADE", "MUNICIPIO", "CIDADERESIDENCIA", "CIDADEDAPROCURACAO", "CIDADEASSINATURA", "LOCAL"], value: cepData.localidade, forceOverwrite: true },
+          { patterns: ["ESTADO", "UF", "ESTADORESIDENCIA", "ESTADODAPROCURACAO", "UFASSINATURA"], value: cepData.uf, forceOverwrite: true },
         ];
 
         for (const mapping of addressMappings) {
@@ -1346,12 +1346,9 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
           for (const templateField of requiredFieldCatalog) {
             const normKey = templateField.normalized;
             if (mapping.patterns.some(p => normKey.includes(p) || normKey === p)) {
-              // Only fill if not already filled
-              const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
-              if (!existing || !hasFieldValue(existing.para)) {
-                upsertCollectedField(updatedFields, templateField.variable, mapping.value);
-                console.log(`CEP auto-filled: ${templateField.variable} = ${mapping.value}`);
-              }
+              // ALWAYS overwrite address fields with CEP data — CEP API is authoritative
+              upsertCollectedField(updatedFields, templateField.variable, mapping.value);
+              console.log(`CEP auto-filled (overwrite): ${templateField.variable} = ${mapping.value}`);
             }
           }
         }
