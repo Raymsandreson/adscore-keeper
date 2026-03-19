@@ -297,6 +297,7 @@ export function WhatsAppActivitySheet({
         next_steps: formNextSteps || null,
         notes: formNotes || null,
       });
+      onActivityCreated?.(formTitle, formType, formLeadName || undefined);
       onOpenChange(false);
     } catch {
       // error handled in hook
