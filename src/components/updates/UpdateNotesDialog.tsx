@@ -86,9 +86,6 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating,
   const isAcknowledged = acknowledgedVersions.includes(selected.version);
 
   const handleDismiss = () => {
-    // Acknowledge all versions
-    onAcknowledgeAll?.();
-    localStorage.setItem('app_last_seen_version', versions[0]?.version || '');
     onOpenChange(false);
   };
 
@@ -100,13 +97,7 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating,
 
   return (
     <>
-      <Dialog open={open} onOpenChange={(val) => {
-        if (!val) {
-          onAcknowledgeAll?.();
-          localStorage.setItem('app_last_seen_version', versions[0]?.version || '');
-        }
-        onOpenChange(val);
-      }}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-md p-0 gap-0 overflow-hidden">
           {/* Header */}
           <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent px-6 pt-6 pb-4">
@@ -189,8 +180,6 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating,
                 size="sm"
                 className="flex-1 gap-1.5"
                 onClick={() => {
-                  onAcknowledgeAll?.();
-                  localStorage.setItem('app_last_seen_version', versions[0]?.version || '');
                   onApplyUpdate();
                 }}
                 disabled={updating || forceRefreshing}
@@ -211,8 +200,6 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating,
               className="w-full text-xs text-muted-foreground gap-1.5"
               onClick={() => {
                 setForceRefreshing(true);
-                onAcknowledgeAll?.();
-                localStorage.setItem('app_last_seen_version', versions[0]?.version || '');
                 forceHardRefresh();
               }}
               disabled={updating || forceRefreshing}

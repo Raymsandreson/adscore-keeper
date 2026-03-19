@@ -147,11 +147,16 @@ export function FloatingNav() {
       // Auto-show changelog after a short delay
       const timer = setTimeout(() => setUpdateNotesOpen(true), 2000);
       return () => clearTimeout(timer);
+    } else {
+      setHasUpdate(false);
     }
-    // Also listen for PWA updates
+  }, [unseenCount]);
+
+  // Also listen for PWA updates
+  useEffect(() => {
     const unsub = onUpdateAvailable(() => setHasUpdate(true));
     return unsub;
-  }, [unseenCount]);
+  }, []);
 
   const hiddenRoutes = ['/login', '/reset-password', '/privacy', '/expense-form', '/install'];
   const isHidden = !user || hiddenRoutes.some(r => location.pathname.startsWith(r));
