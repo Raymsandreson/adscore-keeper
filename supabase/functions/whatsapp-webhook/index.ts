@@ -745,7 +745,15 @@ Deno.serve(async (req) => {
     // 2) Skip group messages (high-volume) unless it is a call event
     const chatId = body.chat?.wa_chatid || body.message?.chatid || ''
     const isGroup = body.chat?.wa_isGroup === true || chatId.includes('@g.us')
-    if (isGroup && !isCallEvent) {
+    
+    // For groups: allow outbound #name commands (agent triggers) and @wjia commands through
+    const groupMessageText = body.message?.text || body.message?.content?.text || body.message?.content || ''
+    const groupMsgStr = typeof groupMessageText === 'string' ? groupMessageText.trim() : ''
+    const isFromMe = body.message?.fromMe === true || body.chat?.fromMe === true
+    const isGroupAgentCommand = isFromMe && groupMsgStr.match(/^#[a-z0-9_]+$/i)
+    const isGroupWjiaCommand = isFromMe && groupMsgStr.toLowerCase().startsWith('@wjia')
+    
+    if (isGroup && !isCallEvent && !isGroupAgentCommand && !isGroupWjiaCommand) {
       return new Response(
         JSON.stringify({ success: true, skipped: true, reason: 'group_message_filtered' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
