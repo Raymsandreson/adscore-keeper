@@ -1233,7 +1233,7 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
     }];
 
     const aiResult = await geminiChat({
-      model: "google/gemini-2.5-flash",
+      model: "google/gemini-2.5-pro",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: message_text || "(mensagem vazia)" },
