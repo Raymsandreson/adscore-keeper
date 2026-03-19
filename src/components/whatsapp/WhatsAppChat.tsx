@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare } from 'lucide-react';
+import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle } from 'lucide-react';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { ZapSignDocumentDialog } from './ZapSignDocumentDialog';
 import { GroupMembersDialog } from './GroupMembersDialog';
@@ -114,7 +114,11 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
   const [pastedCaption, setPastedCaption] = useState('');
-  const [inputMode, setInputMode] = useState<'message' | 'note'>('message');
+  const [inputMode, setInputMode] = useState<'message' | 'note' | 'chat'>('message');
+  const [mentionUserId, setMentionUserId] = useState<string | null>(null);
+  const [mentionUserName, setMentionUserName] = useState<string | null>(null);
+  const [teamMembers, setTeamMembers] = useState<Array<{ user_id: string; full_name: string | null }>>([]);
+  const [showMentionPicker, setShowMentionPicker] = useState(false);
   const { notes, addNote, deleteNote } = useWhatsAppInternalNotes(conversation.phone);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -182,6 +186,12 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
     return senderColors[Math.abs(hash) % senderColors.length];
   };
 
+  // Fetch team members for @mention picker
+  useEffect(() => {
+    supabase.from('profiles').select('user_id, full_name').order('full_name').then(({ data }) => {
+      setTeamMembers((data || []).filter((p: any) => p.full_name));
+    });
+  }, []);
 
 
   useEffect(() => {
@@ -370,10 +380,14 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
 
-    // If in note mode, save as internal note instead of sending
-    if (inputMode === 'note') {
+    // If in note or chat mode, save as internal note instead of sending
+    if (inputMode === 'note' || inputMode === 'chat') {
       setSending(true);
-      await addNote(newMessage.trim());
+      const noteType = inputMode === 'chat' ? 'chat' : 'note';
+      const content = inputMode === 'chat' && mentionUserName
+        ? `@${mentionUserName} ${newMessage.trim()}`
+        : newMessage.trim();
+      await addNote(content, noteType);
       setNewMessage('');
       setSending(false);
       return;
@@ -951,16 +965,28 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           ) : null;
           if (item.type === 'note') {
             const note = item.data;
+            const isChat = note.note_type === 'chat';
             return (
               <div key={`note-${note.id}`}>
                 {dateSeparator}
                 <div className="flex justify-center">
-                  <div className="max-w-[85%] rounded-xl px-4 py-2 text-xs border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 group">
+                  <div className={cn(
+                    "max-w-[85%] rounded-xl px-4 py-2 text-xs border group",
+                    isChat
+                      ? "border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-700"
+                      : "border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700"
+                  )}>
                     <div className="flex items-center gap-1.5 mb-1">
-                      <StickyNote className="h-3 w-3 text-amber-600 dark:text-amber-400 shrink-0" />
-                      <span className="font-semibold text-amber-700 dark:text-amber-300">Nota Interna</span>
-                      <span className="text-amber-600/60 dark:text-amber-400/60">•</span>
-                      <span className="text-amber-600/80 dark:text-amber-400/80">{note.sender_name || 'Equipe'}</span>
+                      {isChat ? (
+                        <MessageCircle className="h-3 w-3 text-blue-600 dark:text-blue-400 shrink-0" />
+                      ) : (
+                        <StickyNote className="h-3 w-3 text-amber-600 dark:text-amber-400 shrink-0" />
+                      )}
+                      <span className={cn("font-semibold", isChat ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300")}>
+                        {isChat ? 'Chat Interno' : 'Nota Interna'}
+                      </span>
+                      <span className={cn(isChat ? "text-blue-600/60 dark:text-blue-400/60" : "text-amber-600/60 dark:text-amber-400/60")}>•</span>
+                      <span className={cn(isChat ? "text-blue-600/80 dark:text-blue-400/80" : "text-amber-600/80 dark:text-amber-400/80")}>{note.sender_name || 'Equipe'}</span>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -970,8 +996,8 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
-                    <p className="whitespace-pre-wrap text-amber-900 dark:text-amber-100 text-[13px]">{note.content}</p>
-                    <p className="text-[10px] text-amber-600/60 dark:text-amber-400/60 mt-1">
+                    <p className={cn("whitespace-pre-wrap text-[13px]", isChat ? "text-blue-900 dark:text-blue-100" : "text-amber-900 dark:text-amber-100")}>{note.content}</p>
+                    <p className={cn("text-[10px] mt-1", isChat ? "text-blue-600/60 dark:text-blue-400/60" : "text-amber-600/60 dark:text-amber-400/60")}>
                       {format(new Date(note.created_at), "HH:mm", { locale: ptBR })}
                     </p>
                   </div>
@@ -1134,26 +1160,60 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
       </div>
 
       {/* Input */}
-      <div className={cn("p-3 border-t shrink-0 space-y-2", inputMode === 'note' ? "bg-amber-50/80 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800" : "bg-card")}>
-        {/* Mode toggle */}
-        <div className="flex items-center gap-1 mb-1">
-          <Button
-            variant={inputMode === 'message' ? 'default' : 'ghost'}
-            size="sm"
-            className={cn("h-7 text-xs gap-1.5", inputMode === 'message' && "bg-green-600 hover:bg-green-700")}
-            onClick={() => setInputMode('message')}
-          >
-            <MessageSquare className="h-3 w-3" /> Mensagem
-          </Button>
-          <Button
-            variant={inputMode === 'note' ? 'default' : 'ghost'}
-            size="sm"
-            className={cn("h-7 text-xs gap-1.5", inputMode === 'note' && "bg-amber-500 hover:bg-amber-600 text-white")}
-            onClick={() => setInputMode('note')}
-          >
-            <StickyNote className="h-3 w-3" /> Nota Interna
-          </Button>
-        </div>
+      <div className={cn(
+        "p-3 border-t shrink-0 space-y-2",
+        inputMode === 'note' ? "bg-amber-50/80 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800"
+          : inputMode === 'chat' ? "bg-blue-50/80 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800"
+          : "bg-card"
+      )}>
+        {/* Internal mode banner */}
+        {(inputMode === 'note' || inputMode === 'chat') && (
+          <div className={cn(
+            "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs",
+            inputMode === 'chat' ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300" : "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+          )}>
+            {inputMode === 'chat' ? <MessageCircle className="h-3.5 w-3.5 shrink-0" /> : <StickyNote className="h-3.5 w-3.5 shrink-0" />}
+            <span className="flex-1 font-medium">
+              {inputMode === 'chat'
+                ? (mentionUserName ? `Chat interno → @${mentionUserName}` : 'Chat interno — selecione um membro')
+                : 'Nota interna — não será enviada ao contato'
+              }
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 text-current hover:text-destructive"
+              onClick={() => { setInputMode('message'); setMentionUserId(null); setMentionUserName(null); setShowMentionPicker(false); }}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+        {/* Mention picker for chat mode */}
+        {showMentionPicker && (
+          <div className="border rounded-lg bg-card p-2 space-y-1 max-h-[200px] overflow-y-auto">
+            <p className="text-xs font-medium text-muted-foreground px-1 mb-1">Selecione o membro da equipe:</p>
+            {teamMembers.map(member => (
+              <button
+                key={member.user_id}
+                className={cn(
+                  "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors hover:bg-blue-50 dark:hover:bg-blue-950/30",
+                  mentionUserId === member.user_id && "bg-blue-100 dark:bg-blue-900/40"
+                )}
+                onClick={() => {
+                  setMentionUserId(member.user_id);
+                  setMentionUserName(member.full_name);
+                  setShowMentionPicker(false);
+                }}
+              >
+                <div className="h-6 w-6 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center text-xs font-medium text-blue-700 dark:text-blue-300 shrink-0">
+                  {(member.full_name || '?')[0].toUpperCase()}
+                </div>
+                <span className="truncate">{member.full_name}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex items-center justify-end gap-2 flex-wrap">
           {inputMode === 'message' && identifySender && (
             <>
@@ -1292,50 +1352,57 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           </div>
         ) : !pastedImage && (
           <div className="flex gap-1 items-end">
-            {/* Attach menu - only in message mode */}
-            {inputMode === 'message' && (
-              <>
-                <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-muted-foreground">
-                      {uploadingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-44">
-                    <DropdownMenuItem onClick={() => { mediaInputRef.current?.click(); }} className="gap-2">
-                      <Image className="h-4 w-4" /> Foto / Vídeo
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => { 
-                      const input = document.createElement('input');
-                      input.type = 'file';
-                      input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip';
-                      input.onchange = (e: any) => handleMediaUpload(e);
-                      input.click();
-                    }} className="gap-2">
-                      <FileUp className="h-4 w-4" /> Documento
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => { setShowLocationDialog(true); setShowAttachMenu(false); }} className="gap-2">
-                      <MapPin className="h-4 w-4" /> Localização
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
-              </>
-            )}
-            {inputMode === 'note' && (
-              <div className="h-10 w-10 shrink-0 flex items-center justify-center">
-                <StickyNote className="h-4 w-4 text-amber-500" />
-              </div>
-            )}
+            {/* Attach menu with internal options */}
+            <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-muted-foreground">
+                  {uploadingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                {inputMode !== 'message' && (
+                  <DropdownMenuItem onClick={() => { setInputMode('message'); setMentionUserId(null); setMentionUserName(null); setShowMentionPicker(false); setShowAttachMenu(false); }} className="gap-2">
+                    <MessageSquare className="h-4 w-4" /> Mensagem
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => { mediaInputRef.current?.click(); }} className="gap-2">
+                  <Image className="h-4 w-4" /> Foto / Vídeo
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { 
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip';
+                  input.onchange = (e: any) => handleMediaUpload(e);
+                  input.click();
+                }} className="gap-2">
+                  <FileUp className="h-4 w-4" /> Documento
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setShowLocationDialog(true); setShowAttachMenu(false); }} className="gap-2">
+                  <MapPin className="h-4 w-4" /> Localização
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setInputMode('note'); setMentionUserId(null); setMentionUserName(null); setShowMentionPicker(false); setShowAttachMenu(false); }} className="gap-2 text-amber-600 dark:text-amber-400">
+                  <StickyNote className="h-4 w-4" /> Nota Interna
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setInputMode('chat'); setShowMentionPicker(true); setShowAttachMenu(false); }} className="gap-2 text-blue-600 dark:text-blue-400">
+                  <AtSign className="h-4 w-4" /> Chat Interno
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
             <Textarea
-              placeholder={inputMode === 'note' ? "Nota interna (não será enviada ao contato)..." : "Digite uma mensagem..."}
+              placeholder={
+                inputMode === 'note' ? "Nota interna (não será enviada ao contato)..."
+                  : inputMode === 'chat' ? (mentionUserName ? `Mensagem para @${mentionUserName}...` : "Selecione um membro acima...")
+                  : "Digite uma mensagem..."
+              }
               value={newMessage}
               onChange={e => setNewMessage(e.target.value)}
               onKeyDown={handleKeyDown}
               onPaste={inputMode === 'message' ? handlePaste : undefined}
               className={cn(
                 "min-h-[44px] max-h-[120px] resize-none text-sm flex-1",
-                inputMode === 'note' && "border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20"
+                inputMode === 'note' && "border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20",
+                inputMode === 'chat' && "border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20"
               )}
               rows={1}
             />
@@ -1344,7 +1411,9 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                 size="icon"
                 className={cn(
                   "h-10 w-10 shrink-0",
-                  inputMode === 'note' ? "bg-amber-500 hover:bg-amber-600" : "bg-green-600 hover:bg-green-700"
+                  inputMode === 'note' ? "bg-amber-500 hover:bg-amber-600"
+                    : inputMode === 'chat' ? "bg-blue-600 hover:bg-blue-700"
+                    : "bg-green-600 hover:bg-green-700"
                 )}
                 onClick={handleSend}
                 disabled={sending}
