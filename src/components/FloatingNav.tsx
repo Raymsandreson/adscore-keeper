@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { onUpdateAvailable, applyUpdate, checkForUpdates, forceHardRefresh } from "@/lib/pwaUpdater";
 import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
+import { changelog } from "@/components/updates/changelogData";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -137,8 +138,19 @@ export function FloatingNav() {
     }
   };
 
-  // Listen for PWA updates
+  // Check for version-based updates (works without PWA)
   useEffect(() => {
+    const latestVersion = changelog[0]?.version;
+    if (latestVersion) {
+      const seenVersion = localStorage.getItem('app_last_seen_version');
+      if (seenVersion !== latestVersion) {
+        setHasUpdate(true);
+        // Auto-show changelog after a short delay
+        const timer = setTimeout(() => setUpdateNotesOpen(true), 2000);
+        return () => clearTimeout(timer);
+      }
+    }
+    // Also listen for PWA updates
     const unsub = onUpdateAvailable(() => setHasUpdate(true));
     return unsub;
   }, []);
