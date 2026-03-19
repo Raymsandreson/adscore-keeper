@@ -571,11 +571,11 @@ ${scrapeData.content || ''}
 
     setSaving(true);
     try {
-      // Resolve WhatsApp group link to JID if it's a link
+      // Resolve WhatsApp group link to JID if it's a link (non-blocking)
       let resolvedGroupId = whatsappGroupId || null;
       if (whatsappGroupId && whatsappGroupId.includes('chat.whatsapp.com')) {
         try {
-          const { data: resolveData, error: resolveError } = await supabase.functions.invoke('send-whatsapp', {
+          const { data: resolveData } = await supabase.functions.invoke('send-whatsapp', {
             body: { action: 'resolve_group_link', group_link: whatsappGroupId },
           });
           if (resolveData?.success && resolveData.group_id) {
@@ -583,15 +583,12 @@ ${scrapeData.content || ''}
             setWhatsappGroupId(resolvedGroupId);
             toast.success(`Grupo identificado: ${resolveData.group_name || resolveData.group_id}`);
           } else {
-            toast.error(resolveData?.error || 'Não foi possível resolver o link do grupo');
-            setSaving(false);
-            return;
+            console.warn('Could not resolve group link:', resolveData?.error);
+            toast.warning('Link do grupo não pôde ser resolvido, mas o lead será salvo mesmo assim.');
           }
         } catch (e) {
-          console.error('Error resolving group link:', e);
-          toast.error('Erro ao resolver link do grupo');
-          setSaving(false);
-          return;
+          console.warn('Error resolving group link (non-blocking):', e);
+          toast.warning('Falha ao resolver link do grupo. Lead salvo sem vinculação ao grupo.');
         }
       }
 
