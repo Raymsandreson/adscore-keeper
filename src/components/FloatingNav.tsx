@@ -140,12 +140,7 @@ export function FloatingNav() {
 
   // Check for version-based updates (works without PWA)
   useEffect(() => {
-    const latestVersion = (() => {
-      try {
-        const { changelog } = require('@/components/updates/changelogData');
-        return changelog[0]?.version;
-      } catch { return null; }
-    })();
+    const latestVersion = changelog[0]?.version;
     if (latestVersion) {
       const seenVersion = localStorage.getItem('app_last_seen_version');
       if (seenVersion !== latestVersion) {
