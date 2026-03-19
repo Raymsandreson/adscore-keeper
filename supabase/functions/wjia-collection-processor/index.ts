@@ -1300,16 +1300,21 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
 
       // PROTEÇÃO DE NOME COMPLETO: Se o campo é NOME e já existe um nome mais longo, não sobrescrever com nome parcial
       const targetKey = normalizeFieldKey(targetVariable.toString());
-      if (targetKey.includes("NOME") && targetKey.includes("COMPLET")) {
+      if (targetKey.includes("NOME")) {
         const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(targetVariable.toString()));
         if (existing && hasFieldValue(existing.para)) {
           const existingName = (existing.para || "").toString().trim();
           const newName = (newField.para || "").toString().trim();
-          // Se o nome existente tem mais palavras que o novo, manter o existente (é mais completo)
           const existingWords = existingName.split(/\s+/).length;
           const newWords = newName.split(/\s+/).length;
-          if (existingWords > newWords) {
+          // Protect: keep existing if it has more words OR if new name is just 1 word (likely a confirmation)
+          if (existingWords > newWords || (newWords === 1 && existingWords >= 2)) {
             console.log(`NOME PROTEGIDO: mantendo "${existingName}" em vez de "${newName}"`);
+            continue;
+          }
+          // Also protect if new name is contained within existing name (partial confirmation)
+          if (existingName.toUpperCase().includes(newName.toUpperCase()) && existingWords >= 2) {
+            console.log(`NOME PROTEGIDO (parcial): mantendo "${existingName}" em vez de "${newName}"`);
             continue;
           }
         }
@@ -1334,11 +1339,11 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
           .filter(Boolean).join(", ");
 
         const addressMappings = [
-          { patterns: ["ENDERECOCOMPLETO", "ENDERECOCOMPLETODARESIDENCIA"], value: cepData.logradouro },
-          { patterns: ["RUA", "LOGRADOURO"], value: cepData.logradouro },
-          { patterns: ["BAIRRO"], value: cepData.bairro },
-          { patterns: ["CIDADE", "MUNICIPIO", "CIDADERESIDENCIA", "CIDADEDAPROCURACAO", "CIDADEASSINATURA", "LOCAL"], value: cepData.localidade },
-          { patterns: ["ESTADO", "UF", "ESTADORESIDENCIA", "ESTADODAPROCURACAO", "UFASSINATURA"], value: cepData.uf },
+          { patterns: ["ENDERECOCOMPLETO", "ENDERECOCOMPLETODARESIDENCIA"], value: cepData.logradouro, forceOverwrite: true },
+          { patterns: ["RUA", "LOGRADOURO"], value: cepData.logradouro, forceOverwrite: true },
+          { patterns: ["BAIRRO"], value: cepData.bairro, forceOverwrite: true },
+          { patterns: ["CIDADE", "MUNICIPIO", "CIDADERESIDENCIA", "CIDADEDAPROCURACAO", "CIDADEASSINATURA", "LOCAL"], value: cepData.localidade, forceOverwrite: true },
+          { patterns: ["ESTADO", "UF", "ESTADORESIDENCIA", "ESTADODAPROCURACAO", "UFASSINATURA"], value: cepData.uf, forceOverwrite: true },
         ];
 
         for (const mapping of addressMappings) {
@@ -1346,12 +1351,9 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
           for (const templateField of requiredFieldCatalog) {
             const normKey = templateField.normalized;
             if (mapping.patterns.some(p => normKey.includes(p) || normKey === p)) {
-              // Only fill if not already filled
-              const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
-              if (!existing || !hasFieldValue(existing.para)) {
-                upsertCollectedField(updatedFields, templateField.variable, mapping.value);
-                console.log(`CEP auto-filled: ${templateField.variable} = ${mapping.value}`);
-              }
+              // ALWAYS overwrite address fields with CEP data — CEP API is authoritative
+              upsertCollectedField(updatedFields, templateField.variable, mapping.value);
+              console.log(`CEP auto-filled (overwrite): ${templateField.variable} = ${mapping.value}`);
             }
           }
         }
@@ -1501,7 +1503,16 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
         }
 
         // No docs needed → go straight to confirmation (ready)
-        const summaryMsg = `✅ *Todos os dados foram coletados!*\n\nConfira as informações antes de gerar o documento *${session.template_name}*:\n\n${summaryLines}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento ou me diga o que precisa corrigir.`;
+        // Include received documents summary if any
+        const receivedDocsForSummary = Array.isArray(session.received_documents) ? session.received_documents : [];
+        const docTypeLabelsForSummary: Record<string, string> = {
+          rg_cnh: 'RG / CNH', comprovante_endereco: 'Comprovante de endereço',
+          comprovante_renda: 'Comprovante de renda', outros: 'Outros documentos',
+        };
+        const docsSection = receivedDocsForSummary.length > 0
+          ? `\n\n📎 *Documentos anexados:*\n${receivedDocsForSummary.map((d: any) => `• ✅ ${docTypeLabelsForSummary[d.type] || d.type}`).join('\n')}`
+          : '';
+        const summaryMsg = `✅ *Todos os dados foram coletados!*\n\nConfira as informações antes de gerar o documento *${session.template_name}*:\n\n${summaryLines}${docsSection}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento ou me diga o que precisa corrigir.`;
 
         const { error: setReadyError } = await supabase
           .from("wjia_collection_sessions")
