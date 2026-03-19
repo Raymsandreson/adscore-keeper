@@ -246,11 +246,32 @@ Você é um ser humano real conversando pelo WhatsApp. NUNCA revele ou insinue q
         const msgText = (m as any).message_text;
 
         if (msgType === "audio" && mediaUrl) {
-          // Transcribe audio using Lovable AI
+          // Transcribe audio by downloading and sending as inline base64
           try {
+            // Download audio file first
+            const audioRes = await fetch(mediaUrl);
+            if (!audioRes.ok) throw new Error(`Failed to download audio: ${audioRes.status}`);
+            const audioBuffer = await audioRes.arrayBuffer();
+            const audioBytes = new Uint8Array(audioBuffer);
+            
+            // Convert to base64
+            let base64Audio = "";
+            const chunkSize = 8192;
+            for (let i = 0; i < audioBytes.length; i += chunkSize) {
+              base64Audio += String.fromCharCode(...audioBytes.slice(i, i + chunkSize));
+            }
+            base64Audio = btoa(base64Audio);
+            
+            // Detect mime type from URL
+            const lowerUrl = mediaUrl.toLowerCase();
+            let audioMime = "audio/ogg";
+            if (lowerUrl.includes(".mp3")) audioMime = "audio/mp3";
+            else if (lowerUrl.includes(".mp4") || lowerUrl.includes(".m4a")) audioMime = "audio/mp4";
+            else if (lowerUrl.includes(".wav")) audioMime = "audio/wav";
+            else if (lowerUrl.includes(".webm")) audioMime = "audio/webm";
+
             let transcribeRes: Response;
             if (useGoogleDirect) {
-              // Google Generative Language API format
               const googleModel = "gemini-2.5-flash-lite";
               transcribeRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${googleModel}:generateContent?key=${GOOGLE_AI_API_KEY}`, {
                 method: "POST",
@@ -258,7 +279,7 @@ Você é um ser humano real conversando pelo WhatsApp. NUNCA revele ou insinue q
                 body: JSON.stringify({
                   contents: [{ role: "user", parts: [
                     { text: "Transcreva esta mensagem de voz fielmente em português. Retorne APENAS o texto falado, sem explicações, marcações ou formatação. Se não conseguir transcrever, retorne '[áudio inaudível]'." },
-                    { fileData: { mimeType: "audio/ogg", fileUri: mediaUrl } }
+                    { inlineData: { mimeType: audioMime, data: base64Audio } }
                   ]}],
                   generationConfig: { maxOutputTokens: 500, temperature: 0.1 },
                 }),
@@ -275,7 +296,7 @@ Você é um ser humano real conversando pelo WhatsApp. NUNCA revele ou insinue q
                   messages: [
                     { role: "user", content: [
                       { type: "text", text: "Transcreva esta mensagem de voz fielmente em português. Retorne APENAS o texto falado, sem explicações, marcações ou formatação. Se não conseguir transcrever, retorne '[áudio inaudível]'." },
-                      { type: "image_url", image_url: { url: mediaUrl } }
+                      { type: "input_audio", input_audio: { format: audioMime.split("/")[1], data: base64Audio } }
                     ]}
                   ],
                   max_tokens: 500,
@@ -291,12 +312,13 @@ Você é um ser humano real conversando pelo WhatsApp. NUNCA revele ou insinue q
                 : transcribeData.choices?.[0]?.message?.content?.trim();
               if (transcription && transcription !== "[áudio inaudível]") {
                 contextMessages.push({ role, content: `[Mensagem de voz]: ${transcription}` });
-                console.log(`Transcribed audio: ${transcription.substring(0, 50)}...`);
+                console.log(`Transcribed audio: ${transcription.substring(0, 100)}...`);
               } else {
                 contextMessages.push({ role, content: msgText || "[Mensagem de voz não transcrita]" });
               }
             } else {
-              console.error("Audio transcription failed:", transcribeRes.status);
+              const errText = await transcribeRes.text();
+              console.error("Audio transcription failed:", transcribeRes.status, errText);
               contextMessages.push({ role, content: msgText || "[Mensagem de voz]" });
             }
           } catch (e) {
