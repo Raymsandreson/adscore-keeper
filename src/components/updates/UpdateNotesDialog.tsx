@@ -200,8 +200,6 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating,
               className="w-full text-xs text-muted-foreground gap-1.5"
               onClick={() => {
                 setForceRefreshing(true);
-                onAcknowledgeAll?.();
-                localStorage.setItem('app_last_seen_version', versions[0]?.version || '');
                 forceHardRefresh();
               }}
               disabled={updating || forceRefreshing}
