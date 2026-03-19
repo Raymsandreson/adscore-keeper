@@ -86,9 +86,6 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating,
   const isAcknowledged = acknowledgedVersions.includes(selected.version);
 
   const handleDismiss = () => {
-    // Acknowledge all versions
-    onAcknowledgeAll?.();
-    localStorage.setItem('app_last_seen_version', versions[0]?.version || '');
     onOpenChange(false);
   };
 
