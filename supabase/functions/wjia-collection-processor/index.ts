@@ -217,7 +217,7 @@ serve(async (req) => {
       .select("*")
       .eq("phone", normalizedPhone)
       .eq("instance_name", instance_name)
-      .in("status", ["collecting", "collecting_docs", "ready"])
+      .in("status", ["collecting", "collecting_docs", "processing_docs", "ready"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -546,11 +546,45 @@ Classifique o documento enviado.` },
           received_at: new Date().toISOString(),
         });
 
+        // Always save received doc immediately
+        await supabase
+          .from("wjia_collection_sessions")
+          .update({
+            received_documents: receivedDocs,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", session.id);
+
         const stillPending = requestedTypes.filter(t => !receivedDocs.some((d: any) => d.type === t));
 
         if (stillPending.length === 0) {
-          // ALL DOCS RECEIVED → Extract data from documents using AI vision
-          console.log("All docs received, extracting data with AI vision...");
+          // ALL DOCS RECEIVED — use optimistic lock to prevent duplicate processing.
+          // Only proceed if status is still 'collecting_docs' (atomic CAS).
+          const { data: lockResult } = await supabase
+            .from("wjia_collection_sessions")
+            .update({ status: "processing_docs", updated_at: new Date().toISOString() })
+            .eq("id", session.id)
+            .eq("status", "collecting_docs")
+            .select("id");
+
+          if (!lockResult || lockResult.length === 0) {
+            // Another concurrent call already started processing — skip
+            console.log("Skipping duplicate doc processing — another call already handling session:", session.id);
+            return new Response(JSON.stringify({
+              active_session: true, processed: false, skipped_duplicate: true, session_id: session.id,
+            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
+
+          // Re-read session to get ALL received docs (including from concurrent calls)
+          const { data: freshSession } = await supabase
+            .from("wjia_collection_sessions")
+            .select("*")
+            .eq("id", session.id)
+            .single();
+
+          const allReceivedDocs = Array.isArray(freshSession?.received_documents) ? freshSession.received_documents : receivedDocs;
+
+          console.log("All docs received, extracting data with AI vision... Total docs:", allReceivedDocs.length);
 
           const collectedData = session.collected_data || { fields: [] };
           const updatedFields = [...(collectedData.fields || [])];
@@ -569,7 +603,7 @@ Classifique o documento enviado.` },
           }
 
           // Build image parts for Gemini vision - download and convert to base64
-          const rawImageUrls = receivedDocs.map((d: any) => d.media_url).filter(Boolean);
+          const rawImageUrls = allReceivedDocs.map((d: any) => d.media_url).filter(Boolean);
           const imageUrls = await Promise.all(rawImageUrls.map((u: string) => urlToBase64DataUri(u)));
 
           if (imageUrls.length > 0) {
@@ -725,7 +759,7 @@ REGRAS DE FORMATAÇÃO:
             .filter((f: any) => f.para)
             .map((f: any) => `• *${(f.de || '').replace(/\{\{|\}\}/g, '')}*: ${f.para}`)
             .join('\n');
-          const docsSummary = receivedDocs.map((d: any) => `• ✅ ${docTypeLabels[d.type] || d.type}`).join('\n');
+          const docsSummary = allReceivedDocs.map((d: any) => `• ✅ ${docTypeLabels[d.type] || d.type}`).join('\n');
           const conflictsList = Array.isArray(collectedData.conflicts) ? collectedData.conflicts : [];
           const conflictWarning = conflictsList.length > 0
             ? `\n\n⚠️ *ATENÇÃO - Dados divergentes encontrados:*\n${conflictsList.map((c: any) => `• *${c.field}*: informado anteriormente "${c.existing}", mas no documento consta "${c.extracted}"`).join('\n')}\n\n_Verifique qual informação está correta._`
@@ -742,7 +776,7 @@ REGRAS DE FORMATAÇÃO:
               .from("wjia_collection_sessions")
               .update({
                 collected_data: updatedCollectedData,
-                received_documents: receivedDocs,
+                received_documents: allReceivedDocs,
                 missing_fields: actuallyMissing,
                 status: "collecting",
                 updated_at: new Date().toISOString(),
@@ -779,7 +813,7 @@ REGRAS DE FORMATAÇÃO:
               .from("wjia_collection_sessions")
               .update({
                 collected_data: updatedCollectedData,
-                received_documents: receivedDocs,
+                received_documents: allReceivedDocs,
                 missing_fields: [],
                 status: "ready",
                 updated_at: new Date().toISOString(),
