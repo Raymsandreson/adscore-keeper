@@ -1503,7 +1503,16 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
         }
 
         // No docs needed → go straight to confirmation (ready)
-        const summaryMsg = `✅ *Todos os dados foram coletados!*\n\nConfira as informações antes de gerar o documento *${session.template_name}*:\n\n${summaryLines}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento ou me diga o que precisa corrigir.`;
+        // Include received documents summary if any
+        const receivedDocsForSummary = Array.isArray(session.received_documents) ? session.received_documents : [];
+        const docTypeLabelsForSummary: Record<string, string> = {
+          rg_cnh: 'RG / CNH', comprovante_endereco: 'Comprovante de endereço',
+          comprovante_renda: 'Comprovante de renda', outros: 'Outros documentos',
+        };
+        const docsSection = receivedDocsForSummary.length > 0
+          ? `\n\n📎 *Documentos anexados:*\n${receivedDocsForSummary.map((d: any) => `• ✅ ${docTypeLabelsForSummary[d.type] || d.type}`).join('\n')}`
+          : '';
+        const summaryMsg = `✅ *Todos os dados foram coletados!*\n\nConfira as informações antes de gerar o documento *${session.template_name}*:\n\n${summaryLines}${docsSection}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento ou me diga o que precisa corrigir.`;
 
         const { error: setReadyError } = await supabase
           .from("wjia_collection_sessions")
