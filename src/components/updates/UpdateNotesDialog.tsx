@@ -53,8 +53,19 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating 
   const latest = changelog[0];
   if (!latest) return null;
 
+  const handleDismiss = () => {
+    // Mark this version as seen
+    localStorage.setItem('app_last_seen_version', latest.version);
+    onOpenChange(false);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(val) => {
+      if (!val) {
+        localStorage.setItem('app_last_seen_version', latest.version);
+      }
+      onOpenChange(val);
+    }}>
       <DialogContent className="max-w-md p-0 gap-0 overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent px-6 pt-6 pb-4">
@@ -88,14 +99,17 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating 
               variant="outline"
               size="sm"
               className="flex-1"
-              onClick={() => onOpenChange(false)}
+              onClick={handleDismiss}
             >
-              Depois
+              Entendi
             </Button>
             <Button
               size="sm"
               className="flex-1 gap-1.5"
-              onClick={onApplyUpdate}
+              onClick={() => {
+                localStorage.setItem('app_last_seen_version', latest.version);
+                onApplyUpdate();
+              }}
               disabled={updating || forceRefreshing}
             >
               {updating ? (
@@ -114,6 +128,7 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating 
             className="w-full text-xs text-muted-foreground gap-1.5"
             onClick={() => {
               setForceRefreshing(true);
+              localStorage.setItem('app_last_seen_version', latest.version);
               forceHardRefresh();
             }}
             disabled={updating || forceRefreshing}
