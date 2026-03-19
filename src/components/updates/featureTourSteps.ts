@@ -47,7 +47,7 @@ export const featureTourMap: Record<string, TourStep[]> = {
   ],
   "Notas internas no WhatsApp": [
     {
-      selector: '[title="WhatsApp"], [data-tour="whatsapp-btn"]',
+      selector: '[data-tour="whatsapp-dock-btn"]',
       title: "1. Abra uma conversa",
       description: "Abra qualquer conversa no WhatsApp.",
       position: "top",
