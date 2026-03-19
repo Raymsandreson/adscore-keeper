@@ -140,16 +140,9 @@ export function FloatingNav() {
     }
   };
 
-  // Check for version-based updates (works without PWA)
+  // Update indicator based on unseen features from latest release
   useEffect(() => {
-    if (unseenCount > 0) {
-      setHasUpdate(true);
-      // Auto-show changelog after a short delay
-      const timer = setTimeout(() => setUpdateNotesOpen(true), 2000);
-      return () => clearTimeout(timer);
-    } else {
-      setHasUpdate(false);
-    }
+    setHasUpdate(unseenCount > 0);
   }, [unseenCount]);
 
   // Also listen for PWA updates
