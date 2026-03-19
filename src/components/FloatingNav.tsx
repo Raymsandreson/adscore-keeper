@@ -122,6 +122,7 @@ export function FloatingNav() {
   });
   const containerRef = useRef<HTMLDivElement>(null);
   const unreadMentions = useUnreadMentionsCount();
+  const { unseenCount, acknowledgedVersions, acknowledge, acknowledgeAll } = useChangelogAcknowledgments();
   const [hasUpdate, setHasUpdate] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [checking, setChecking] = useState(false);
