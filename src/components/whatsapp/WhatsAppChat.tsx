@@ -1390,7 +1390,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                   <DropdownMenuItem onClick={() => {
                     setShowAttachMenu(false);
                     if (conversation.lead_id) {
-                      onCreateActivity(conversation.lead_id, conversation.lead_name || conversation.contact_name || conversation.phone, conversation.contact_id || undefined, conversation.contact_name || undefined);
+                      onCreateActivity(conversation.lead_id, conversation.contact_name || conversation.phone, conversation.contact_id || undefined, conversation.contact_name || undefined);
                     } else {
                       onCreateActivity('', conversation.contact_name || conversation.phone, conversation.contact_id || undefined, conversation.contact_name || undefined);
                     }
