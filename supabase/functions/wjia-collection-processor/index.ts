@@ -1322,8 +1322,13 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
       if (cepData) {
         console.log("CEP lookup result:", JSON.stringify(cepData));
         
+        // Build full address string for ENDERECO_COMPLETO fields
+        const fullAddressFromCEP = [cepData.logradouro, cepData.bairro, cepData.localidade, cepData.uf ? `${cepData.localidade}-${cepData.uf}` : null]
+          .filter(Boolean).join(", ");
+
         const addressMappings = [
-          { patterns: ["RUA", "LOGRADOURO", "ENDERECO", "ENDERECOCOMPLETODARESIDENCIA"], value: cepData.logradouro },
+          { patterns: ["ENDERECOCOMPLETO", "ENDERECOCOMPLETODARESIDENCIA"], value: cepData.logradouro },
+          { patterns: ["RUA", "LOGRADOURO"], value: cepData.logradouro },
           { patterns: ["BAIRRO"], value: cepData.bairro },
           { patterns: ["CIDADE", "MUNICIPIO", "CIDADERESIDENCIA", "CIDADEDAPROCURACAO", "CIDADEASSINATURA", "LOCAL"], value: cepData.localidade },
           { patterns: ["ESTADO", "UF", "ESTADORESIDENCIA", "ESTADODAPROCURACAO", "UFASSINATURA"], value: cepData.uf },
