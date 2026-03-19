@@ -1251,6 +1251,55 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
       upsertCollectedField(updatedFields, targetVariable.toString(), newField.para);
     }
 
+    // === CEP AUTO-LOOKUP: auto-fill address fields from CEP ===
+    const cepField = updatedFields.find((f: any) => {
+      const key = normalizeFieldKey(f.de || f.field_name || "");
+      return key.includes("CEP") && hasFieldValue(f.para);
+    });
+
+    if (cepField) {
+      const cepData = await lookupCEP(cepField.para);
+      if (cepData) {
+        console.log("CEP lookup result:", JSON.stringify(cepData));
+        
+        const addressMappings = [
+          { patterns: ["RUA", "LOGRADOURO", "ENDERECO", "ENDERECOCOMPLETODARESIDENCIA"], value: cepData.logradouro },
+          { patterns: ["BAIRRO"], value: cepData.bairro },
+          { patterns: ["CIDADE", "MUNICIPIO", "CIDADERESIDENCIA", "CIDADEDAPROCURACAO", "CIDADEASSINATURA", "LOCAL"], value: cepData.localidade },
+          { patterns: ["ESTADO", "UF", "ESTADORESIDENCIA", "ESTADODAPROCURACAO", "UFASSINATURA"], value: cepData.uf },
+        ];
+
+        for (const mapping of addressMappings) {
+          if (!mapping.value) continue;
+          for (const templateField of requiredFieldCatalog) {
+            const normKey = templateField.normalized;
+            if (mapping.patterns.some(p => normKey.includes(p) || normKey === p)) {
+              // Only fill if not already filled
+              const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
+              if (!existing || !hasFieldValue(existing.para)) {
+                upsertCollectedField(updatedFields, templateField.variable, mapping.value);
+                console.log(`CEP auto-filled: ${templateField.variable} = ${mapping.value}`);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // === AUTO-FILL: signing date = today ===
+    const today = new Date().toLocaleDateString('pt-BR');
+    for (const templateField of requiredFieldCatalog) {
+      const normKey = templateField.normalized;
+      const isDateField = (normKey.includes("DATA") && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO") || normKey.includes("ATUAL") || normKey.includes("HOJE")));
+      if (isDateField) {
+        const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
+        if (!existing || !hasFieldValue(existing.para)) {
+          upsertCollectedField(updatedFields, templateField.variable, today);
+          console.log(`Auto-filled date: ${templateField.variable} = ${today}`);
+        }
+      }
+    }
+
     const updatedCollectedData = {
       ...collectedData,
       fields: updatedFields,
