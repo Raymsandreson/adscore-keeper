@@ -55,7 +55,7 @@ export default function CasesPage() {
     try {
       let query = supabase
         .from('legal_cases')
-        .select('*, specialized_nuclei(name, prefix, color)')
+        .select('*, specialized_nuclei(name, prefix, color), leads(lead_name)')
         .order('created_at', { ascending: false });
 
       if (statusFilter !== 'all') {
@@ -73,6 +73,7 @@ export default function CasesPage() {
         nucleus_name: c.specialized_nuclei?.name,
         nucleus_prefix: c.specialized_nuclei?.prefix,
         nucleus_color: c.specialized_nuclei?.color,
+        lead_name: c.leads?.lead_name || null,
       }));
 
       if (search.trim()) {
@@ -80,7 +81,8 @@ export default function CasesPage() {
         filtered = filtered.filter((c: any) =>
           c.title?.toLowerCase().includes(q) ||
           c.case_number?.toLowerCase().includes(q) ||
-          c.description?.toLowerCase().includes(q)
+          c.description?.toLowerCase().includes(q) ||
+          c.lead_name?.toLowerCase().includes(q)
         );
       }
 
