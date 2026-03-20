@@ -700,6 +700,50 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
                   notes: { type: "string" },
                 },
                 required: ["lead_name"],
+               },
+              new_case: {
+                type: "object",
+                description: "Criar caso jurídico completo. Cria automaticamente: lead (como fechado), caso jurídico, processos e partes. Use quando o assessor pedir para criar caso, processo jurídico, etc. Extraia TODOS os dados da conversa do grupo se disponível.",
+                properties: {
+                  title: { type: "string", description: "Título do caso (ex: Acidente de trabalho - João Silva)" },
+                  nucleus_id: { type: "string", description: "ID do núcleo especializado. Escolha o mais adequado baseado no tipo do caso." },
+                  description: { type: "string", description: "Descrição do caso com dados extraídos: vítima, empresa, dano, data do acidente, endereço, etc." },
+                  notes: { type: "string", description: "Observações adicionais" },
+                  board_id: { type: "string", description: "ID do quadro Kanban para o lead. Use o padrão se não especificado." },
+                  victim_name: { type: "string", description: "Nome da vítima" },
+                  lead_phone: { type: "string", description: "Telefone do lead" },
+                  city: { type: "string" },
+                  state: { type: "string" },
+                  processes: {
+                    type: "array",
+                    description: "Processos judiciais encontrados na conversa. Extraia TODOS os números de processo mencionados.",
+                    items: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string" },
+                        process_number: { type: "string", description: "Número do processo (ex: 0001234-56.2024.8.26.0100)" },
+                        process_type: { type: "string", enum: ["judicial", "administrativo"] },
+                        description: { type: "string" },
+                      },
+                      required: ["title"],
+                    },
+                  },
+                  parties: {
+                    type: "array",
+                    description: "Partes envolvidas identificadas na conversa (nomes de pessoas mencionadas como autor, réu, testemunha, advogado, etc.)",
+                    items: {
+                      type: "object",
+                      properties: {
+                        name: { type: "string", description: "Nome completo da parte" },
+                        role: { type: "string", enum: ["autor", "reu", "testemunha", "advogado", "dependente", "perito", "outro"] },
+                        phone: { type: "string", description: "Telefone se mencionado" },
+                      },
+                      required: ["name", "role"],
+                    },
+                  },
+                  whatsapp_group_link: { type: "string", description: "Link do grupo de WhatsApp se identificado como conversa de grupo (formato chat.whatsapp.com/...)" },
+                },
+                required: ["title"],
               },
               attach_to_activity: {
                 type: "object",
