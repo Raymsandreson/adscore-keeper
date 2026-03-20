@@ -244,7 +244,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { phone, instance_name, media_url, message_type } = body;
+    const { phone, instance_name, media_url, message_type, is_group, group_id } = body;
     let message_text = body.message_text;
 
     if (!phone || !instance_name) {
