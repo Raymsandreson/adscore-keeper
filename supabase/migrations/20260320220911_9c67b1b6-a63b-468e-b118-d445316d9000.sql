@@ -1,0 +1,1 @@
+ALTER TABLE public.legal_cases ADD CONSTRAINT legal_cases_case_number_unique UNIQUE (case_number);
