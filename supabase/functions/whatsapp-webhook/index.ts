@@ -1822,8 +1822,23 @@ Deno.serve(async (req) => {
           .maybeSingle()
 
         if (memberConfig?.is_active) {
-          // Check if this instance is the one configured for member commands (or any if null)
-          const instanceMatch = !memberConfig.instance_name || memberConfig.instance_name === instanceName
+          // Check if this instance matches the configured one (or any if null)
+          // Compare by name AND by token to handle alias drift (e.g. "Site ABRACI" vs "WHATSJUD IA")
+          let instanceMatch = !memberConfig.instance_name || memberConfig.instance_name === instanceName
+          
+          if (!instanceMatch && memberConfig.instance_name && instanceToken) {
+            // Fallback: check if the configured instance has the same token as the current webhook
+            const { data: configuredInst } = await supabase
+              .from('whatsapp_instances')
+              .select('instance_token')
+              .eq('instance_name', memberConfig.instance_name)
+              .limit(1)
+              .maybeSingle()
+            if (configuredInst?.instance_token === instanceToken) {
+              console.log('Member assistant: token-based match found. Config:', memberConfig.instance_name, 'Webhook:', instanceName)
+              instanceMatch = true
+            }
+          }
 
           if (instanceMatch) {
             // Check if sender phone belongs to a team member
