@@ -1292,7 +1292,17 @@ Deno.serve(async (req) => {
           return Array.from(variants)
         }
 
-        const cmdPhoneVariants = buildPhoneVariants(phone)
+        // For groups, use the actual sender's phone instead of the group ID
+        const senderPnRaw = normalizePhone(body?.message?.sender_pn || body?.sender_pn || body?.message?.sender || '')
+        const cmdLookupPhone = isGroup && senderPnRaw ? senderPnRaw : phone
+        const cmdPhoneVariants = buildPhoneVariants(cmdLookupPhone)
+        
+        // Also try owner phone as fallback for self-chat / fromMe scenarios
+        const ownerPhoneCmd = normalizePhone(body?.message?.owner || body?.chat?.owner || body?.owner || '')
+        if (isGroup && ownerPhoneCmd) {
+          buildPhoneVariants(ownerPhoneCmd).forEach(v => { if (!cmdPhoneVariants.includes(v)) cmdPhoneVariants.push(v) })
+        }
+        
         let cmdConfig: any = null
         for (const variant of cmdPhoneVariants) {
           const { data } = await supabase
@@ -1306,10 +1316,10 @@ Deno.serve(async (req) => {
         }
 
         if (cmdConfig) {
-          console.log('Authorized command phone detected, routing to command processor:', phone)
+          console.log('Authorized command phone detected, routing to command processor:', cmdLookupPhone, isGroup ? `(group: ${phone})` : '')
           const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
           const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
-          // Fire-and-forget
+          // Fire-and-forget — pass the actual sender phone and group context
           fetch(`${supabaseUrl}/functions/v1/whatsapp-command-processor`, {
             method: 'POST',
             headers: {
@@ -1317,11 +1327,13 @@ Deno.serve(async (req) => {
               'Authorization': `Bearer ${supabaseAnonKey}`,
             },
             body: JSON.stringify({
-              phone,
+              phone: cmdLookupPhone,
               instance_name: instanceName,
               message_text: messageText || '',
               media_url: storedMediaUrl || mediaUrl || null,
               message_type: messageType || 'text',
+              is_group: isGroup,
+              group_id: isGroup ? phone : null,
             }),
           }).catch(err => console.error('Command processor trigger error:', err))
 
