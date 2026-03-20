@@ -60,6 +60,7 @@ export default function CasesPage() {
   const [nucleusFilter, setNucleusFilter] = useState('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { nuclei } = useSpecializedNuclei();
+  const navigate = useNavigate();
 
   const fetchCases = useCallback(async () => {
     setLoading(true);
