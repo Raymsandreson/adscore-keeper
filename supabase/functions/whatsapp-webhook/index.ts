@@ -818,23 +818,17 @@ Deno.serve(async (req) => {
       keys: Object.keys(body).join(','),
     })
 
-    // 2) Skip group messages (high-volume) unless it is a call event
+    // 2) Detect group messages — save them to DB but skip AI agent processing later
     const chatId = body.chat?.wa_chatid || body.message?.chatid || ''
     const isGroup = body.chat?.wa_isGroup === true || chatId.includes('@g.us')
     
-    // For groups: allow outbound #name commands (agent triggers) and @wjia commands through
+    // For groups: detect special commands
     const groupMessageText = body.message?.text || body.message?.content?.text || body.message?.content || ''
     const groupMsgStr = typeof groupMessageText === 'string' ? groupMessageText.trim() : ''
     const isFromMe = body.message?.fromMe === true || body.chat?.fromMe === true
     const isGroupAgentCommand = isFromMe && groupMsgStr.match(/^#[a-z0-9_]+$/i)
     const isGroupWjiaCommand = isFromMe && groupMsgStr.toLowerCase().startsWith('@wjia')
-    
-    if (isGroup && !isCallEvent && !isGroupAgentCommand && !isGroupWjiaCommand) {
-      return new Response(
-        JSON.stringify({ success: true, skipped: true, reason: 'group_message_filtered' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+    // Note: group messages are NO LONGER filtered out — they are saved to DB for inbox visibility
 
     // 3) Skip reaction messages (emoji reactions on existing messages)
     const msgType = (body.message?.messageType || body.chat?.wa_lastMessageType || '').toLowerCase()
