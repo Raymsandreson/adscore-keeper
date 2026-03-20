@@ -20,12 +20,23 @@ import {
 import {
   Briefcase, Search, Scale, ChevronDown, ChevronRight,
   Gavel, FileText, Users, ArrowLeft, ExternalLink, Plus,
+  Edit3, CheckCircle, Archive, Trash2, XCircle,
 } from 'lucide-react';
 import { LegalCase } from '@/hooks/useLegalCases';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { useNavigate } from 'react-router-dom';
 
 const statusColors: Record<string, string> = {
   aberto: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
@@ -49,6 +60,7 @@ export default function CasesPage() {
   const [nucleusFilter, setNucleusFilter] = useState('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { nuclei } = useSpecializedNuclei();
+  const navigate = useNavigate();
 
   const fetchCases = useCallback(async () => {
     setLoading(true);
@@ -161,24 +173,32 @@ export default function CasesPage() {
           </div>
         )}
 
-        {cases.map(c => (
-          <CaseListItem
-            key={c.id}
-            legalCase={c}
-            expanded={expandedId === c.id}
-            onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
-          />
+          {cases.map(c => (
+            <CaseListItem
+              key={c.id}
+              legalCase={c}
+              expanded={expandedId === c.id}
+              onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
+              onCaseUpdated={fetchCases}
+              onOpenLead={(leadId) => navigate(`/leads?openLead=${leadId}`)}
+            />
         ))}
       </div>
     </div>
   );
 }
 
-function CaseListItem({ legalCase, expanded, onToggle }: { legalCase: any; expanded: boolean; onToggle: () => void }) {
+function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead }: { 
+  legalCase: any; expanded: boolean; onToggle: () => void; onCaseUpdated: () => void; onOpenLead: (leadId: string) => void;
+}) {
   const [processes, setProcesses] = useState<any[]>([]);
   const [leadInfo, setLeadInfo] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showAddProcess, setShowAddProcess] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editTitle, setEditTitle] = useState(legalCase.title || '');
+  const [editDescription, setEditDescription] = useState(legalCase.description || '');
+  const [editNotes, setEditNotes] = useState(legalCase.notes || '');
 
   const loadDetails = useCallback(() => {
     if (!expanded) return;
@@ -198,114 +218,220 @@ function CaseListItem({ legalCase, expanded, onToggle }: { legalCase: any; expan
     loadDetails();
   }, [loadDetails]);
 
+  const handleStatusChange = async (newStatus: string) => {
+    try {
+      const updates: any = { status: newStatus };
+      if (newStatus === 'encerrado') {
+        updates.outcome_date = new Date().toISOString().slice(0, 10);
+      }
+      const { error } = await supabase.from('legal_cases').update(updates).eq('id', legalCase.id);
+      if (error) throw error;
+      toast.success(`Status alterado para ${statusLabels[newStatus]}`);
+      onCaseUpdated();
+    } catch {
+      toast.error('Erro ao alterar status');
+    }
+  };
+
+  const handleEdit = async () => {
+    try {
+      const { error } = await supabase.from('legal_cases').update({
+        title: editTitle.trim(),
+        description: editDescription || null,
+        notes: editNotes || null,
+      }).eq('id', legalCase.id);
+      if (error) throw error;
+      toast.success('Caso atualizado');
+      setShowEditDialog(false);
+      onCaseUpdated();
+    } catch {
+      toast.error('Erro ao atualizar caso');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('Tem certeza que deseja excluir este caso?')) return;
+    try {
+      const { error } = await supabase.from('legal_cases').delete().eq('id', legalCase.id);
+      if (error) throw error;
+      toast.success('Caso excluído');
+      onCaseUpdated();
+    } catch {
+      toast.error('Erro ao excluir caso');
+    }
+  };
+
   return (
-    <Card className="overflow-hidden">
-      <Collapsible open={expanded} onOpenChange={onToggle}>
-        <CollapsibleTrigger asChild>
-          <div className="p-3 flex items-center justify-between cursor-pointer hover:bg-muted/50 transition-colors">
-            <div className="flex items-center gap-2 flex-1 min-w-0">
-              {expanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
-              {legalCase.nucleus_color && (
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: legalCase.nucleus_color }} />
-              )}
-              <div className="min-w-0">
-                <p className="text-sm font-medium truncate">
-                  <CopyableText copyValue={legalCase.case_number} label="Número do caso" showIcon={false}>{legalCase.case_number}</CopyableText>
-                  {' — '}
-                  <CopyableText copyValue={legalCase.title} label="Título" showIcon={false}>{legalCase.title}</CopyableText>
-                </p>
-                {legalCase.nucleus_name && (
-                  <CopyableText as="p" copyValue={legalCase.nucleus_name} label="Núcleo" showIcon={false} className="text-xs text-muted-foreground">{legalCase.nucleus_name}</CopyableText>
+    <>
+      <Card className="overflow-hidden">
+        <Collapsible open={expanded} onOpenChange={onToggle}>
+          <CollapsibleTrigger asChild>
+            <div className="p-3 flex items-center justify-between cursor-pointer hover:bg-muted/50 transition-colors">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                {expanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                {legalCase.nucleus_color && (
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: legalCase.nucleus_color }} />
                 )}
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    <CopyableText copyValue={legalCase.case_number} label="Número do caso" showIcon={false}>{legalCase.case_number}</CopyableText>
+                    {' — '}
+                    <CopyableText copyValue={legalCase.title} label="Título" showIcon={false}>{legalCase.title}</CopyableText>
+                  </p>
+                  {legalCase.nucleus_name && (
+                    <CopyableText as="p" copyValue={legalCase.nucleus_name} label="Núcleo" showIcon={false} className="text-xs text-muted-foreground">{legalCase.nucleus_name}</CopyableText>
+                  )}
+                </div>
               </div>
+              <Badge variant="secondary" className={`text-xs shrink-0 ${statusColors[legalCase.status]}`}>
+                {statusLabels[legalCase.status]}
+              </Badge>
             </div>
-            <Badge variant="secondary" className={`text-xs shrink-0 ${statusColors[legalCase.status]}`}>
-              {statusLabels[legalCase.status]}
-            </Badge>
-          </div>
-        </CollapsibleTrigger>
+          </CollapsibleTrigger>
 
-        <CollapsibleContent>
-          <div className="px-3 pb-3 border-t pt-3 space-y-4">
-            {loadingDetails && <p className="text-xs text-muted-foreground">Carregando...</p>}
+          <CollapsibleContent>
+            <div className="px-3 pb-3 border-t pt-3 space-y-4">
+              {loadingDetails && <p className="text-xs text-muted-foreground">Carregando...</p>}
 
-            {legalCase.description && (
-              <CopyableText as="p" copyValue={legalCase.description} label="Descrição" showIcon={false} className="text-xs text-muted-foreground whitespace-pre-line">{legalCase.description}</CopyableText>
-            )}
+              {legalCase.description && (
+                <CopyableText as="p" copyValue={legalCase.description} label="Descrição" showIcon={false} className="text-xs text-muted-foreground whitespace-pre-line">{legalCase.description}</CopyableText>
+              )}
 
-            {/* Lead tab */}
-            {leadInfo && (
-              <div className="border rounded-lg p-3 space-y-1 bg-muted/30">
-                <h4 className="text-xs font-semibold flex items-center gap-1.5">
-                  <ExternalLink className="h-3 w-3" /> Lead Vinculado
-                </h4>
-                <CopyableText as="p" copyValue={leadInfo.lead_name} label="Nome do lead" showIcon={false} className="text-sm font-medium">{leadInfo.lead_name}</CopyableText>
-                {leadInfo.lead_phone && <CopyableText as="p" copyValue={leadInfo.lead_phone} label="Telefone" className="text-xs text-muted-foreground">{leadInfo.lead_phone}</CopyableText>}
-                {leadInfo.became_client_date && (
-                  <CopyableText as="p" copyValue={leadInfo.became_client_date} label="Data" showIcon={false} className="text-xs text-muted-foreground">Fechado em: {leadInfo.became_client_date}</CopyableText>
-                )}
-              </div>
-            )}
-
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-xs font-semibold flex items-center gap-1.5">
-                  <Scale className="h-3.5 w-3.5" /> Processos ({processes.length})
-                </h4>
-                {legalCase.lead_id && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-6 text-[10px] gap-1"
-                    onClick={(e) => { e.stopPropagation(); setShowAddProcess(true); }}
-                  >
-                    <Plus className="h-3 w-3" /> Cadastrar Processo
+              {/* Case actions */}
+              <div className="flex items-center gap-1 flex-wrap">
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => {
+                  setEditTitle(legalCase.title || '');
+                  setEditDescription(legalCase.description || '');
+                  setEditNotes(legalCase.notes || '');
+                  setShowEditDialog(true);
+                }}>
+                  <Edit3 className="h-3 w-3 mr-1" /> Editar
+                </Button>
+                {legalCase.status !== 'encerrado' && (
+                  <Button variant="ghost" size="sm" className="h-7 text-xs text-green-600" onClick={() => handleStatusChange('encerrado')}>
+                    <CheckCircle className="h-3 w-3 mr-1" /> Encerrar
                   </Button>
                 )}
+                {legalCase.status !== 'em_andamento' && legalCase.status !== 'encerrado' && (
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleStatusChange('em_andamento')}>
+                    Em Andamento
+                  </Button>
+                )}
+                {legalCase.status !== 'arquivado' && (
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleStatusChange('arquivado')}>
+                    <Archive className="h-3 w-3 mr-1" /> Arquivar
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive" onClick={handleDelete}>
+                  <Trash2 className="h-3 w-3 mr-1" /> Excluir
+                </Button>
               </div>
-              {processes.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-2">Nenhum processo neste caso.</p>
-              )}
-              <div className="space-y-2">
-                {processes.map(p => (
-                  <div key={p.id} className="border rounded-lg p-2.5 bg-card space-y-1">
-                    <div className="flex items-center gap-2">
-                      {p.process_type === 'judicial' ? (
-                        <Gavel className="h-3.5 w-3.5 text-orange-500" />
-                      ) : (
-                        <FileText className="h-3.5 w-3.5 text-blue-500" />
-                      )}
-                      <CopyableText copyValue={p.title} label="Processo" showIcon={false} className="text-xs font-medium">{p.title}</CopyableText>
-                      <Badge variant="secondary" className="text-[10px] ml-auto">
-                        {p.status === 'em_andamento' ? 'Em Andamento' : p.status === 'concluido' ? 'Concluído' : 'Arquivado'}
-                      </Badge>
-                    </div>
-                    {p.process_number && (
-                      <CopyableText as="p" copyValue={p.process_number} label="Nº Processo" className="text-[10px] text-muted-foreground">Nº {p.process_number}</CopyableText>
-                    )}
-                    {p.fee_percentage != null && (
-                      <CopyableText as="p" copyValue={`${p.fee_percentage}%`} label="Honorários" showIcon={false} className="text-[10px] text-muted-foreground">Honorários: {p.fee_percentage}%</CopyableText>
-                    )}
-                    {p.workflow_name && (
-                      <CopyableText as="p" copyValue={p.workflow_name} label="Fluxo" showIcon={false} className="text-[10px] text-muted-foreground">Fluxo de Trabalho: {p.workflow_name}</CopyableText>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
 
-            {legalCase.lead_id && (
-              <AddProcessDialog
-                open={showAddProcess}
-                onOpenChange={setShowAddProcess}
-                caseId={legalCase.id}
-                leadId={legalCase.lead_id}
-                onProcessAdded={loadDetails}
-              />
-            )}
+              {/* Lead vinculado - clicável */}
+              {leadInfo && (
+                <div
+                  className="border rounded-lg p-3 space-y-1 bg-muted/30 cursor-pointer hover:bg-muted/60 transition-colors"
+                  onClick={() => onOpenLead(leadInfo.id)}
+                >
+                  <h4 className="text-xs font-semibold flex items-center gap-1.5">
+                    <ExternalLink className="h-3 w-3" /> Lead Vinculado
+                    <span className="text-[10px] font-normal text-muted-foreground ml-auto">Clique para abrir →</span>
+                  </h4>
+                  <p className="text-sm font-medium">{leadInfo.lead_name}</p>
+                  {leadInfo.lead_phone && <p className="text-xs text-muted-foreground">{leadInfo.lead_phone}</p>}
+                  {leadInfo.became_client_date && (
+                    <p className="text-xs text-muted-foreground">Fechado em: {leadInfo.became_client_date}</p>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-semibold flex items-center gap-1.5">
+                    <Scale className="h-3.5 w-3.5" /> Processos ({processes.length})
+                  </h4>
+                  {legalCase.lead_id && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[10px] gap-1"
+                      onClick={(e) => { e.stopPropagation(); setShowAddProcess(true); }}
+                    >
+                      <Plus className="h-3 w-3" /> Cadastrar Processo
+                    </Button>
+                  )}
+                </div>
+                {processes.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-2">Nenhum processo neste caso.</p>
+                )}
+                <div className="space-y-2">
+                  {processes.map(p => (
+                    <div key={p.id} className="border rounded-lg p-2.5 bg-card space-y-1">
+                      <div className="flex items-center gap-2">
+                        {p.process_type === 'judicial' ? (
+                          <Gavel className="h-3.5 w-3.5 text-orange-500" />
+                        ) : (
+                          <FileText className="h-3.5 w-3.5 text-blue-500" />
+                        )}
+                        <CopyableText copyValue={p.title} label="Processo" showIcon={false} className="text-xs font-medium">{p.title}</CopyableText>
+                        <Badge variant="secondary" className="text-[10px] ml-auto">
+                          {p.status === 'em_andamento' ? 'Em Andamento' : p.status === 'concluido' ? 'Concluído' : 'Arquivado'}
+                        </Badge>
+                      </div>
+                      {p.process_number && (
+                        <CopyableText as="p" copyValue={p.process_number} label="Nº Processo" className="text-[10px] text-muted-foreground">Nº {p.process_number}</CopyableText>
+                      )}
+                      {p.fee_percentage != null && (
+                        <CopyableText as="p" copyValue={`${p.fee_percentage}%`} label="Honorários" showIcon={false} className="text-[10px] text-muted-foreground">Honorários: {p.fee_percentage}%</CopyableText>
+                      )}
+                      {p.workflow_name && (
+                        <CopyableText as="p" copyValue={p.workflow_name} label="Fluxo" showIcon={false} className="text-[10px] text-muted-foreground">Fluxo de Trabalho: {p.workflow_name}</CopyableText>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {legalCase.lead_id && (
+                <AddProcessDialog
+                  open={showAddProcess}
+                  onOpenChange={setShowAddProcess}
+                  caseId={legalCase.id}
+                  leadId={legalCase.lead_id}
+                  onProcessAdded={loadDetails}
+                />
+              )}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      </Card>
+
+      {/* Edit Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Caso — {legalCase.case_number}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Título *</Label>
+              <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} />
+            </div>
+            <div>
+              <Label>Descrição</Label>
+              <Textarea value={editDescription} onChange={e => setEditDescription(e.target.value)} rows={3} />
+            </div>
+            <div>
+              <Label>Observações</Label>
+              <Textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={2} />
+            </div>
           </div>
-        </CollapsibleContent>
-      </Collapsible>
-    </Card>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>Cancelar</Button>
+            <Button onClick={handleEdit} disabled={!editTitle.trim()}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
