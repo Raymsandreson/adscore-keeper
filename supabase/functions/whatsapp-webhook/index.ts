@@ -1014,7 +1014,7 @@ Deno.serve(async (req) => {
           supabase,
           externalMessageId,
           instanceName || 'unknown',
-          mediaUrl,
+          mediaUrl || '',
           mediaType || 'application/octet-stream',
           messageType,
           resolvedBaseUrl,
