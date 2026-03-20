@@ -45,6 +45,7 @@ interface Shortcut {
   split_messages: boolean;
   split_delay_seconds: number;
   human_reply_pause_minutes: number;
+  command_scope: string;
 }
 
 interface FollowupStep {
