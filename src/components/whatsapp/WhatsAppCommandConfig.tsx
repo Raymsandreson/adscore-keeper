@@ -91,7 +91,6 @@ export function WhatsAppCommandConfig() {
       supabase.from('wjia_command_shortcuts').select('*').order('display_order') as any,
     ]);
     setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
-    setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
     setShortcuts((shortcutsRes.data || []).map((s: any) => ({
       ...s,
       followup_steps: s.followup_steps || [],
@@ -102,6 +101,7 @@ export function WhatsAppCommandConfig() {
       split_messages: s.split_messages ?? false,
       split_delay_seconds: s.split_delay_seconds ?? 3,
       human_reply_pause_minutes: s.human_reply_pause_minutes ?? 0,
+      command_scope: s.command_scope || 'client',
     })) as Shortcut[]);
     
     setLoading(false);
