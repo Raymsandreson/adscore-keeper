@@ -526,20 +526,41 @@ serve(async (req) => {
     }
 
     // 4) Fetch system context
-    const [profilesRes, typesRes, boardsRes, timeBlockRes] = await Promise.all([
+    const [profilesRes, typesRes, boardsRes, timeBlockRes, nucleiRes] = await Promise.all([
       supabase.from("profiles").select("user_id, full_name").order("full_name"),
       supabase.from("activity_types").select("key, label, color").eq("is_active", true).order("display_order"),
-      supabase.from("kanban_boards").select("id, name").eq("is_active", true).order("display_order"),
+      supabase.from("kanban_boards").select("id, name, is_default, stages:kanban_stages(id, display_order)").eq("is_active", true).order("display_order"),
       supabase.from("user_timeblock_settings").select("activity_type, days, start_hour, start_minute, end_hour, end_minute").eq("user_id", config.user_id),
+      supabase.from("specialized_nuclei").select("id, name, prefix, color").eq("is_active", true).order("display_order"),
     ]);
 
     const assessors = (profilesRes.data || []).filter((p: any) => p.full_name);
     const actTypes = typesRes.data || [];
     const boards = boardsRes.data || [];
+    const nuclei = nucleiRes.data || [];
     const assessorsList = assessors.map((a: any) => `- "${a.full_name}" (id: ${a.user_id})`).join("\n");
     const actTypesList = actTypes.map((t: any) => `"${t.key}" (${t.label})`).join(", ");
     const actTypeKeys = actTypes.map((t: any) => t.key);
-    const boardsList = boards.map((b: any) => `- "${b.name}" (id: ${b.id})`).join("\n");
+    const boardsList = boards.map((b: any) => `- "${b.name}" (id: ${b.id})${b.is_default ? ' [PADRÃO]' : ''}`).join("\n");
+    const nucleiList = nuclei.map((n: any) => `- "${n.name}" (prefix: ${n.prefix}, id: ${n.id})`).join("\n");
+
+    // Fetch group conversation if is_group and group_id
+    let groupConversationContext = "";
+    if (is_group && group_id) {
+      const { data: groupMsgs } = await supabase
+        .from("whatsapp_messages")
+        .select("direction, message_text, sender_name, created_at")
+        .eq("phone", group_id)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (groupMsgs && groupMsgs.length > 0) {
+        const lines = groupMsgs.reverse().map((m: any) => {
+          const sender = m.sender_name || (m.direction === 'outbound' ? 'Atendente' : 'Participante');
+          return `[${sender}]: ${m.message_text || ''}`;
+        });
+        groupConversationContext = `\n\nCONTEXTO DA CONVERSA DO GRUPO (últimas ${groupMsgs.length} mensagens):\n${lines.join("\n")}`;
+      }
+    }
 
     // Build user routine context from timeblock settings
     const dayNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
