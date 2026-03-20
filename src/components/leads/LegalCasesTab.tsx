@@ -53,6 +53,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   const [showCaseDialog, setShowCaseDialog] = useState(false);
   const [editingCase, setEditingCase] = useState<LegalCase | null>(null);
   const [caseTitle, setCaseTitle] = useState('');
+  const [caseCaseNumber, setCaseCaseNumber] = useState('');
   const [caseDescription, setCaseDescription] = useState('');
   const [caseNucleusId, setCaseNucleusId] = useState('');
   const [caseNotes, setCaseNotes] = useState('');
@@ -64,6 +65,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
 
   const resetCaseForm = () => {
     setCaseTitle('');
+    setCaseCaseNumber('');
     setCaseDescription('');
     setCaseNucleusId('');
     setCaseNotes('');
