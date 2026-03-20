@@ -10,7 +10,7 @@ import { Loader2, Save, Bot, MessageSquare } from 'lucide-react';
 
 export function MemberAssistantSettings() {
   const [isActive, setIsActive] = useState(true);
-  const [instanceName, setInstanceName] = useState('');
+  const [instanceId, setInstanceId] = useState<string | null>(null);
   const [configId, setConfigId] = useState<string | null>(null);
   const [instances, setInstances] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,13 +24,13 @@ export function MemberAssistantSettings() {
     setLoading(true);
     const [configRes, instRes] = await Promise.all([
       supabase.from('member_assistant_config').select('*').limit(1).maybeSingle(),
-      supabase.from('whatsapp_instances').select('instance_name').order('instance_name'),
+      supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
     ]);
     setInstances(instRes.data || []);
     if (configRes.data) {
       setConfigId(configRes.data.id);
       setIsActive(configRes.data.is_active ?? true);
-      setInstanceName(configRes.data.instance_name || '');
+      setInstanceId((configRes.data as any).instance_id || null);
     }
     setLoading(false);
   };
@@ -38,9 +38,12 @@ export function MemberAssistantSettings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const payload = {
+      // Also resolve instance_name for backward compat
+      const selectedInst = instances.find((i: any) => i.id === instanceId);
+      const payload: any = {
         is_active: isActive,
-        instance_name: instanceName || null,
+        instance_id: instanceId || null,
+        instance_name: selectedInst?.instance_name || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -94,14 +97,14 @@ export function MemberAssistantSettings() {
 
         <div className="space-y-2">
           <Label>Instância que responde aos membros</Label>
-          <Select value={instanceName || '__any__'} onValueChange={(v) => setInstanceName(v === '__any__' ? '' : v)}>
+          <Select value={instanceId || '__any__'} onValueChange={(v) => setInstanceId(v === '__any__' ? null : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Qualquer instância ativa..." />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__any__">Qualquer instância</SelectItem>
-              {instances.map((inst) => (
-                <SelectItem key={inst.instance_name} value={inst.instance_name}>
+              {instances.map((inst: any) => (
+                <SelectItem key={inst.id} value={inst.id}>
                   {inst.instance_name}
                 </SelectItem>
               ))}
