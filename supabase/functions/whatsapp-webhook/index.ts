@@ -1498,13 +1498,18 @@ Deno.serve(async (req) => {
     }
 
     // ========== AGENT CONTROL COMMANDS (#parar, #ativar, #status) ==========
-    if (direction === 'outbound' && instanceName && phone && messageText) {
+    if (instanceName && phone && messageText) {
       const cmdTrimmed = (messageText || '').trim().toLowerCase()
       const isAgentCommand = ['#parar', '#ativar', '#status'].includes(cmdTrimmed)
 
       if (isAgentCommand) {
-        console.log('Agent control command detected:', cmdTrimmed, 'phone:', phone, 'instance:', instanceName)
+        console.log('Agent control command detected:', cmdTrimmed, 'phone:', phone, 'instance:', instanceName, 'direction:', direction)
         try {
+          // Build candidate phones to support mirrored webhooks between linked instances
+          const ownerPhone = normalizePhone(body?.message?.owner || body?.chat?.owner || body?.owner || '')
+          const senderPhone = normalizePhone(body?.message?.sender_pn || body?.sender_pn || body?.message?.sender || '')
+          const phoneCandidates = Array.from(new Set([phone, ownerPhone, senderPhone].filter(Boolean)))
+
           // Delete the command message from WhatsApp so contact doesn't see it
           if (externalMessageId) {
             let resolvedToken = instanceToken
@@ -1535,7 +1540,7 @@ Deno.serve(async (req) => {
             await supabase.from('whatsapp_messages').delete().eq('id', message.id)
           }
 
-          // Helper: check for active collection session
+          // Helper: check for active collection session (same chat scope for #status)
           const { data: activeCollectionSession } = await supabase
             .from('wjia_collection_sessions')
             .select('id, status, shortcut_name')
@@ -1566,46 +1571,47 @@ Deno.serve(async (req) => {
           }
 
           if (cmdTrimmed === '#parar') {
-            // Deactivate agent on this conversation
-            const { data: existing } = await supabase
-              .from('whatsapp_conversation_agents')
-              .select('agent_id, is_active')
-              .eq('phone', phone)
-              .eq('instance_name', instanceName)
-              .maybeSingle()
-
             let stoppedAgent = false
             let stoppedCollection = false
 
-            if (existing && (existing as any).is_active) {
+            // Deactivate active agents for all mirrored phone candidates
+            const { data: activeAgents } = await supabase
+              .from('whatsapp_conversation_agents')
+              .select('id, agent_id, phone, instance_name')
+              .in('phone', phoneCandidates as string[])
+              .eq('is_active', true)
+
+            if (activeAgents && activeAgents.length > 0) {
+              const activeAgentRows = activeAgents as any[]
+              const agentRowIds = activeAgentRows.map((a) => a.id)
               await supabase
                 .from('whatsapp_conversation_agents')
-                .update({ is_active: false } as any)
-                .eq('phone', phone)
-                .eq('instance_name', instanceName)
-
-              const { data: agentData } = await supabase
-                .from('whatsapp_ai_agents')
-                .select('name')
-                .eq('id', (existing as any).agent_id)
-                .maybeSingle()
+                .update({ is_active: false, human_paused_until: null } as any)
+                .in('id', agentRowIds)
 
               stoppedAgent = true
-              console.log(`Agent "${(agentData as any)?.name}" deactivated for ${phone} via #parar command`)
+              console.log(`Deactivated ${activeAgentRows.length} agent assignment(s) via #parar for phones: ${phoneCandidates.join(', ')}`)
             }
 
-            // Also cancel active collection session
-            if (activeCollectionSession) {
+            // Cancel active collection sessions for all mirrored phone candidates
+            const { data: sessionsToCancel } = await supabase
+              .from('wjia_collection_sessions')
+              .select('id')
+              .in('phone', phoneCandidates as string[])
+              .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready'])
+
+            if (sessionsToCancel && sessionsToCancel.length > 0) {
+              const sessionRows = sessionsToCancel as any[]
               await supabase
                 .from('wjia_collection_sessions')
                 .update({ status: 'cancelled' } as any)
-                .eq('id', (activeCollectionSession as any).id)
+                .in('id', sessionRows.map((s) => s.id))
               stoppedCollection = true
-              console.log(`Collection session ${(activeCollectionSession as any).id} cancelled for ${phone} via #parar`)
+              console.log(`Cancelled ${sessionRows.length} collection session(s) via #parar for phones: ${phoneCandidates.join(', ')}`)
             }
 
             if (!stoppedAgent && !stoppedCollection) {
-              console.log(`Nothing active to stop for ${phone}`)
+              console.log(`Nothing active to stop for ${phone}. Candidates: ${phoneCandidates.join(', ')}`)
             }
           } else if (cmdTrimmed === '#ativar') {
             // Reactivate agent on this conversation
