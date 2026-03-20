@@ -180,6 +180,10 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
           </DialogHeader>
           <div className="space-y-4">
             <div>
+              <Label>Número do Caso</Label>
+              <Input value={caseCaseNumber} onChange={e => setCaseCaseNumber(e.target.value)} placeholder="Ex: CASO-0001 (deixe vazio para gerar automaticamente)" />
+            </div>
+            <div>
               <Label>Título *</Label>
               <Input value={caseTitle} onChange={e => setCaseTitle(e.target.value)} placeholder="Ex: Acidente de trabalho - João Silva" />
             </div>
