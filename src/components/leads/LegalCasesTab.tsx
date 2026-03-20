@@ -99,6 +99,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   const openEditCase = (c: LegalCase) => {
     setEditingCase(c);
     setCaseTitle(c.title);
+    setCaseCaseNumber(c.case_number || '');
     setCaseDescription(c.description || '');
     setCaseNucleusId(c.nucleus_id || '');
     setCaseNotes(c.notes || '');
