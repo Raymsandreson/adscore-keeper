@@ -282,6 +282,10 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
 
         <div className="space-y-4 py-2">
           <div>
+            <Label>Número do Caso</Label>
+            <Input value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder="Ex: CASO-0001 (vazio = automático)" className="mt-1" />
+          </div>
+          <div>
             <Label>Título *</Label>
             <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Ex: Acidente de trabalho - João" className="mt-1" />
           </div>
