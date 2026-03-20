@@ -88,6 +88,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
         title: caseTitle.trim(),
         description: caseDescription,
         notes: caseNotes,
+        case_number: caseCaseNumber || undefined,
       });
       setExpandedCaseId(newCase.id);
     }
