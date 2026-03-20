@@ -589,13 +589,14 @@ serve(async (req) => {
 VOCÊ PODE:
 1. Criar atividades/tarefas (new_activity)
 2. Criar leads (new_lead)
-3. Buscar informações sobre leads, atividades e contatos (search_info)
-4. Atualizar status de atividades (update_activity)
-5. Gerar relatórios de produtividade (productivity_report)
-6. Consultar metas e progresso de cada trabalhador
-7. Dar feedback sobre desempenho individual ou da equipe
-8. Informar tarefas atrasadas, tempo no sistema, pontos de melhoria
-9. Responder perguntas sobre o sistema
+3. Criar casos jurídicos completos (new_case) - com lead, processos, partes e link de grupo
+4. Buscar informações sobre leads, atividades e contatos (search_info)
+5. Atualizar status de atividades (update_activity)
+6. Gerar relatórios de produtividade (productivity_report)
+7. Consultar metas e progresso de cada trabalhador
+8. Dar feedback sobre desempenho individual ou da equipe
+9. Informar tarefas atrasadas, tempo no sistema, pontos de melhoria
+10. Responder perguntas sobre o sistema
 
 ASSESSORES CADASTRADOS:
 ${assessorsList}
@@ -606,7 +607,10 @@ ${actTypes.map((t: any) => `  - key: "${t.key}" → ${t.label}`).join("\n")}
 
 QUADROS KANBAN:
 ${boardsList}
-${routineContext}
+
+NÚCLEOS ESPECIALIZADOS (para casos jurídicos):
+${nucleiList || "Nenhum núcleo cadastrado"}
+${routineContext}${groupConversationContext}
 DATA ATUAL: ${new Date().toISOString().split("T")[0]} (ANO: ${new Date().getFullYear()})
 
 REGRAS CRÍTICAS DE COMPORTAMENTO:
