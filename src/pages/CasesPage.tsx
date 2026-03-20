@@ -236,7 +236,26 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
 
   const handleEdit = async () => {
     try {
+      const trimmedNumber = editCaseNumber.trim();
+      if (!trimmedNumber) {
+        toast.error('Número do caso é obrigatório');
+        return;
+      }
+      // Check uniqueness if changed
+      if (trimmedNumber !== legalCase.case_number) {
+        const { data: existing } = await supabase
+          .from('legal_cases')
+          .select('id')
+          .eq('case_number', trimmedNumber)
+          .neq('id', legalCase.id)
+          .maybeSingle();
+        if (existing) {
+          toast.error(`Já existe um caso com o número "${trimmedNumber}"`);
+          return;
+        }
+      }
       const { error } = await supabase.from('legal_cases').update({
+        case_number: trimmedNumber,
         title: editTitle.trim(),
         description: editDescription || null,
         notes: editNotes || null,
