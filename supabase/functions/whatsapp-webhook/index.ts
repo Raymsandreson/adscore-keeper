@@ -137,6 +137,47 @@ async function downloadAndStoreMedia(
 
     console.log('Downloaded media:', fileBuffer.byteLength, 'bytes, type:', contentType);
 
+    // Fallback STT: when UazAPI doesn't return transcription for audio, transcribe with Gemini
+    if (messageType === 'audio' && (!transcription || !transcription.trim())) {
+      try {
+        const bytes = new Uint8Array(fileBuffer)
+        let binary = ''
+        const chunkSize = 0x8000
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          const chunk = bytes.subarray(i, i + chunkSize)
+          binary += String.fromCharCode(...chunk)
+        }
+        const base64Audio = btoa(binary)
+        const format = (contentType || 'audio/ogg').split('/')[1]?.split(';')[0]?.trim() || 'ogg'
+
+        const stt = await geminiChat({
+          model: 'google/gemini-2.5-flash-lite',
+          messages: [
+            {
+              role: 'system',
+              content: 'Você é um transcritor de áudio. Retorne apenas a transcrição literal em português brasileiro, sem explicações e sem formatação adicional.'
+            },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Transcreva este áudio integralmente.' },
+                { type: 'input_audio', input_audio: { data: base64Audio, format } },
+              ],
+            },
+          ],
+          temperature: 0,
+        })
+
+        const sttText = stt?.choices?.[0]?.message?.content?.trim()
+        if (sttText) {
+          transcription = sttText
+          console.log('Audio transcription generated via Gemini fallback:', sttText.substring(0, 120))
+        }
+      } catch (sttError) {
+        console.error('Gemini fallback STT failed:', sttError)
+      }
+    }
+
     // Determine file extension
     const ext = getFileExtension(contentType, messageType);
     const timestamp = Date.now();
@@ -855,6 +896,25 @@ Deno.serve(async (req) => {
       instanceName = body.instanceName || body.chat?.instanceName || null
       instanceToken = body.token || body.chat?.token || null
       baseUrl = body.BaseUrl || null
+
+      // Canonicalize instance by token to avoid alias-name drift (e.g. webhook says "Site ABRACI" while DB uses "WHATSJUD IA")
+      if (instanceToken) {
+        const { data: canonicalInstance } = await supabase
+          .from('whatsapp_instances')
+          .select('instance_name, base_url')
+          .eq('instance_token', instanceToken)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle()
+
+        if (canonicalInstance) {
+          if (instanceName && instanceName !== canonicalInstance.instance_name) {
+            console.log('Instance alias mismatch detected. Payload:', instanceName, 'Canonical:', canonicalInstance.instance_name)
+          }
+          instanceName = canonicalInstance.instance_name
+          baseUrl = baseUrl || canonicalInstance.base_url
+        }
+      }
       
       console.log('Instance:', instanceName, 'Token:', instanceToken?.substring(0, 8), 'BaseUrl:', baseUrl)
 
