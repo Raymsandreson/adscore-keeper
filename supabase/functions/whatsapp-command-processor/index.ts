@@ -1019,7 +1019,159 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
         }
       }
 
-      // ── Search ──
+      // ── Create Case (Caso Jurídico) ──
+      if (parsed.new_case) {
+        const cs = parsed.new_case;
+        try {
+          // 1) Determine board and closed stage
+          const targetBoardId = cs.board_id || boards.find((b: any) => b.is_default)?.id || boards[0]?.id;
+          const board = boards.find((b: any) => b.id === targetBoardId);
+          const sortedStages = (board?.stages || []).sort((a: any, b: any) => a.display_order - b.display_order);
+          const CLOSED_IDS = ['closed', 'fechado', 'done'];
+          const closedStageId = sortedStages.find((s: any) => CLOSED_IDS.includes(s.id))?.id || 'closed';
+
+          // 2) Create lead as "fechado"
+          const closingDate = new Date().toISOString().split("T")[0];
+          const { data: newLead, error: leadErr } = await supabase
+            .from("leads")
+            .insert({
+              lead_name: cs.title,
+              lead_phone: cs.lead_phone || null,
+              victim_name: cs.victim_name || null,
+              city: cs.city || null,
+              state: cs.state || null,
+              board_id: targetBoardId,
+              status: closedStageId,
+              became_client_date: closingDate,
+              whatsapp_group_id: is_group ? (group_id || null) : null,
+              notes: cs.notes || null,
+              created_by: config.user_id,
+              source: "whatsapp",
+            })
+            .select("id, lead_name")
+            .single();
+          if (leadErr) throw leadErr;
+
+          // 3) Generate case number and create case
+          const { data: caseNumber } = await supabase.rpc("generate_case_number", { p_nucleus_id: cs.nucleus_id || null });
+          const { data: newCase, error: caseErr } = await supabase
+            .from("legal_cases")
+            .insert({
+              lead_id: newLead.id,
+              nucleus_id: cs.nucleus_id || null,
+              case_number: caseNumber || `CASO-${Date.now()}`,
+              title: cs.title,
+              description: cs.description || null,
+              notes: cs.notes || null,
+              created_by: config.user_id,
+            })
+            .select("id, case_number, title")
+            .single();
+          if (caseErr) throw caseErr;
+
+          let summaryParts: string[] = [];
+          summaryParts.push(`⚖️ Caso *${newCase.case_number}* criado!`);
+          summaryParts.push(`📋 ${cs.title}`);
+
+          // 4) Create processes
+          if (cs.processes && Array.isArray(cs.processes) && cs.processes.length > 0) {
+            let procCount = 0;
+            for (const proc of cs.processes) {
+              const { error: procErr } = await supabase.from("lead_processes").insert({
+                case_id: newCase.id,
+                lead_id: newLead.id,
+                title: proc.title || `Processo ${procCount + 1}`,
+                process_number: proc.process_number || null,
+                process_type: proc.process_type || "judicial",
+                description: proc.description || null,
+                status: "em_andamento",
+                created_by: config.user_id,
+              });
+              if (!procErr) procCount++;
+            }
+            if (procCount > 0) summaryParts.push(`📑 ${procCount} processo(s) vinculado(s)`);
+          }
+
+          // 5) Create parties (contacts + process_parties)
+          if (cs.parties && Array.isArray(cs.parties) && cs.parties.length > 0) {
+            let partyCount = 0;
+            for (const party of cs.parties) {
+              if (!party.name) continue;
+              // Find or create contact
+              let contactId: string | null = null;
+              const { data: existingContact } = await supabase
+                .from("contacts")
+                .select("id")
+                .ilike("full_name", party.name)
+                .limit(1)
+                .maybeSingle();
+              if (existingContact) {
+                contactId = existingContact.id;
+              } else {
+                const { data: newContact } = await supabase
+                  .from("contacts")
+                  .insert({
+                    full_name: party.name,
+                    phone: party.phone || null,
+                    source: "whatsapp",
+                    created_by: config.user_id,
+                  })
+                  .select("id")
+                  .single();
+                contactId = newContact?.id || null;
+              }
+
+              // Link contact to lead
+              if (contactId) {
+                await supabase.from("contact_leads").insert({
+                  contact_id: contactId,
+                  lead_id: newLead.id,
+                  relationship_to_victim: party.role === "autor" ? "Vítima" : party.role,
+                }).select().maybeSingle();
+
+                // Link to first process if exists
+                if (cs.processes?.length > 0) {
+                  const { data: firstProc } = await supabase
+                    .from("lead_processes")
+                    .select("id")
+                    .eq("case_id", newCase.id)
+                    .order("created_at")
+                    .limit(1)
+                    .maybeSingle();
+                  if (firstProc) {
+                    await supabase.from("process_parties").insert({
+                      process_id: firstProc.id,
+                      contact_id: contactId,
+                      role: party.role || "outro",
+                    }).select().maybeSingle();
+                  }
+                }
+                partyCount++;
+              }
+            }
+            if (partyCount > 0) summaryParts.push(`👥 ${partyCount} parte(s) cadastrada(s)`);
+          }
+
+          // 6) Group link info
+          if (is_group && group_id) {
+            summaryParts.push(`💬 Grupo de WhatsApp vinculado ao lead`);
+          }
+
+          if (cs.whatsapp_group_link) {
+            summaryParts.push(`🔗 Link do grupo: ${cs.whatsapp_group_link}`);
+          }
+
+          toolData.case_created = newCase;
+          toolData.lead_created = newLead;
+          responseText = summaryParts.join("\n");
+          responseText += `\n\n✏️ Ver caso: ${APP_URL}/leads?openLead=${newLead.id}`;
+          console.log("Case created via WhatsApp:", newCase.id, "Lead:", newLead.id);
+        } catch (caseError: any) {
+          console.error("Error creating case:", caseError);
+          responseText += `\n\n⚠️ Erro ao criar caso: ${caseError.message}`;
+        }
+      }
+
       if (parsed.search_query) {
         const sq = parsed.search_query;
         let results: any[] = [];
