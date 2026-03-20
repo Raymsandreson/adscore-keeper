@@ -1428,7 +1428,7 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
     }
 
     // Determine if we should ask about audio (only for activity/lead creation)
-    const createdSomething = toolData?.activity_created || toolData?.lead_created;
+    const createdSomething = toolData?.activity_created || toolData?.lead_created || toolData?.case_created;
     const pendingAudioConfirm = createdSomething;
 
     // 5) Save AI response
