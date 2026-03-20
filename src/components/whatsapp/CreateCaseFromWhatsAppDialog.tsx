@@ -55,6 +55,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
   useEffect(() => {
     if (open) {
       setTitle(leadName || contactName || '');
+      setCaseNumber('');
       setNucleusId('none');
       setDescription('');
       setNotes('');
