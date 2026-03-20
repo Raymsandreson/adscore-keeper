@@ -1436,7 +1436,9 @@ Deno.serve(async (req) => {
     // Direction is already corrected above by comparing sender vs owner phone.
     const hasMedia = !!(storedMediaUrl || mediaUrl || (messageType && messageType !== 'text'))
 
-    if (direction === 'inbound' && instanceName && phone && (messageText || hasMedia)) {
+    // Skip collection routing for ghost control commands (#parar, #ativar, #status)
+    const isControlCommand = direction === 'outbound' && ['#parar', '#ativar', '#status'].includes((messageText || '').trim().toLowerCase())
+    if (!isControlCommand && direction === 'inbound' && instanceName && phone && (messageText || hasMedia)) {
       try {
         const { data: activeSession } = await supabase
           .from('wjia_collection_sessions')
