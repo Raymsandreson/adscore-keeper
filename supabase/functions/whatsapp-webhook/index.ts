@@ -15,12 +15,13 @@ async function downloadAndStoreMedia(
   messageType: string,
   baseUrl: string,
   instanceToken: string,
-): Promise<string | null> {
+): Promise<{ publicUrl: string | null; transcription: string | null }> {
   try {
     console.log('Downloading media via UazAPI for message:', messageId, 'type:', messageType);
 
     let fileBuffer: ArrayBuffer | null = null;
     let contentType = mediaType || 'application/octet-stream';
+    let transcription: string | null = null;
 
     // UazAPI v2 endpoint: POST /message/download with { id: messageId, return_link: true, generate_mp3: true }
     const downloadUrl = `${baseUrl}/message/download`;
@@ -47,6 +48,9 @@ async function downloadAndStoreMedia(
           if (mediaResp.ok) {
             fileBuffer = await mediaResp.arrayBuffer();
             contentType = jsonData.mimetype || mediaResp.headers.get('content-type') || contentType;
+          }
+          if (typeof jsonData.transcription === 'string' && jsonData.transcription.trim()) {
+            transcription = jsonData.transcription.trim();
           }
         } else if (jsonData.base64Data) {
           const binaryStr = atob(jsonData.base64Data);
@@ -98,6 +102,9 @@ async function downloadAndStoreMedia(
         if (fallbackResp.ok) {
           const fallbackData = await fallbackResp.json();
           console.log('Fallback response keys:', Object.keys(fallbackData));
+          if (typeof fallbackData.transcription === 'string' && fallbackData.transcription.trim()) {
+            transcription = fallbackData.transcription.trim();
+          }
           const resolvedUrl = fallbackData.fileURL || fallbackData.url;
           if (resolvedUrl && typeof resolvedUrl === 'string' && resolvedUrl.startsWith('http')) {
             const dlResp = await fetch(resolvedUrl);
@@ -125,7 +132,7 @@ async function downloadAndStoreMedia(
 
     if (!fileBuffer || fileBuffer.byteLength < 50) {
       console.log('Could not download media, buffer empty or too small, size:', fileBuffer?.byteLength || 0);
-      return null;
+      return { publicUrl: null, transcription };
     }
 
     console.log('Downloaded media:', fileBuffer.byteLength, 'bytes, type:', contentType);
@@ -145,7 +152,7 @@ async function downloadAndStoreMedia(
 
     if (uploadError) {
       console.error('Storage upload error:', uploadError);
-      return null;
+      return { publicUrl: null, transcription };
     }
 
     // Get public URL
@@ -154,11 +161,39 @@ async function downloadAndStoreMedia(
       .getPublicUrl(filePath);
 
     console.log('Media uploaded successfully:', urlData.publicUrl);
-    return urlData.publicUrl;
+    return { publicUrl: urlData.publicUrl, transcription };
   } catch (e) {
     console.error('Media download/upload error:', e);
-    return null;
+    return { publicUrl: null, transcription: null };
   }
+}
+
+function normalizeVoiceCommandText(value: string): string {
+  return (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9#\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function resolveAgentControlCommand(text: string | null, messageType: string): '#parar' | '#ativar' | '#status' | null {
+  const raw = (text || '').trim().toLowerCase();
+  if (!raw) return null;
+
+  if (raw === '#parar' || raw === '#ativar' || raw === '#status') {
+    return raw as '#parar' | '#ativar' | '#status';
+  }
+
+  if (messageType !== 'audio') return null;
+
+  const cleaned = normalizeVoiceCommandText(raw);
+  if (/^#?\s*(parar|pare|desativar|desative)\b/.test(cleaned)) return '#parar';
+  if (/^#?\s*(ativar|ative|retomar|retome)\b/.test(cleaned)) return '#ativar';
+  if (/^#?\s*(status|situacao|situa[çc][aã]o|como\s+esta)\b/.test(cleaned)) return '#status';
+
+  return null;
 }
 
 function getFileExtension(contentType: string, messageType: string): string {
@@ -990,6 +1025,7 @@ Deno.serve(async (req) => {
 
     // ========== DOWNLOAD AND STORE MEDIA ==========
     let storedMediaUrl = mediaUrl;
+    let mediaTranscription: string | null = null;
     const isMediaMessage = messageType === 'image' || messageType === 'audio' || messageType === 'video' || messageType === 'document';
     if ((mediaUrl || isMediaMessage) && messageType !== 'text' && externalMessageId) {
       // Look up instance token from DB if not in payload
@@ -1010,7 +1046,7 @@ Deno.serve(async (req) => {
       }
 
       if (resolvedToken && resolvedBaseUrl) {
-        const publicUrl = await downloadAndStoreMedia(
+        const mediaDownload = await downloadAndStoreMedia(
           supabase,
           externalMessageId,
           instanceName || 'unknown',
@@ -1020,15 +1056,21 @@ Deno.serve(async (req) => {
           resolvedBaseUrl,
           resolvedToken,
         );
-        if (publicUrl) {
-          storedMediaUrl = publicUrl;
-          console.log('Media stored at:', publicUrl);
+        mediaTranscription = mediaDownload.transcription;
+        if (mediaDownload.publicUrl) {
+          storedMediaUrl = mediaDownload.publicUrl;
+          console.log('Media stored at:', mediaDownload.publicUrl);
         } else {
           console.log('Media download failed, keeping original URL');
         }
       } else {
         console.log('No instance token/baseUrl for media download');
       }
+    }
+
+    if (messageType === 'audio' && !messageText && mediaTranscription) {
+      messageText = mediaTranscription;
+      console.log('Using audio transcription as message_text:', messageText.substring(0, 120));
     }
 
     // ========== FIND CONTACT/LEAD ==========
@@ -1499,11 +1541,11 @@ Deno.serve(async (req) => {
 
     // ========== AGENT CONTROL COMMANDS (#parar, #ativar, #status) ==========
     if (instanceName && phone && messageText) {
-      const cmdTrimmed = (messageText || '').trim().toLowerCase()
-      const isAgentCommand = ['#parar', '#ativar', '#status'].includes(cmdTrimmed)
+      const resolvedControlCommand = resolveAgentControlCommand(messageText, messageType)
+      const isAgentCommand = !!resolvedControlCommand
 
       if (isAgentCommand) {
-        console.log('Agent control command detected:', cmdTrimmed, 'phone:', phone, 'instance:', instanceName, 'direction:', direction)
+        console.log('Agent control command detected:', resolvedControlCommand, 'phone:', phone, 'instance:', instanceName, 'direction:', direction)
         try {
           // Build candidate phones to support mirrored webhooks between linked instances
           const ownerPhone = normalizePhone(body?.message?.owner || body?.chat?.owner || body?.owner || '')
@@ -1570,7 +1612,7 @@ Deno.serve(async (req) => {
             return { token: rToken, baseUrl: rBaseUrl }
           }
 
-          if (cmdTrimmed === '#parar') {
+          if (resolvedControlCommand === '#parar') {
             let stoppedAgent = false
             let stoppedCollection = false
 
@@ -1613,7 +1655,7 @@ Deno.serve(async (req) => {
             if (!stoppedAgent && !stoppedCollection) {
               console.log(`Nothing active to stop for ${phone}. Candidates: ${phoneCandidates.join(', ')}`)
             }
-          } else if (cmdTrimmed === '#ativar') {
+          } else if (resolvedControlCommand === '#ativar') {
             // Reactivate agent on this conversation
             const { data: existing } = await supabase
               .from('whatsapp_conversation_agents')
@@ -1641,7 +1683,7 @@ Deno.serve(async (req) => {
             } else {
               console.log(`Agent already active for ${phone}`)
             }
-          } else if (cmdTrimmed === '#status') {
+          } else if (resolvedControlCommand === '#status') {
             // Build status text with both agent and collection info
             const statusParts: string[] = []
 
