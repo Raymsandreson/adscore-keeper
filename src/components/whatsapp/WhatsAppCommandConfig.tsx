@@ -140,14 +140,19 @@ export function WhatsAppCommandConfig() {
 
         <TabsContent value="shortcuts">
           <ShortcutsTab
-            shortcuts={shortcuts}
+            shortcuts={shortcuts.filter(s => s.command_scope === 'client')}
             profiles={profiles}
             onReload={loadData}
+            commandScope="client"
           />
         </TabsContent>
 
         <TabsContent value="member">
-          <MemberAssistantSettings />
+          <MemberAssistantSettings
+            shortcuts={shortcuts.filter(s => s.command_scope === 'internal')}
+            profiles={profiles}
+            onReload={loadData}
+          />
         </TabsContent>
       </Tabs>
     </div>
