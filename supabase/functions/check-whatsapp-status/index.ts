@@ -24,10 +24,11 @@ serve(async (req) => {
     if (error) throw error;
 
     // Check status with a short timeout per instance
-    const rawResults = await Promise.all(
+    const results = await Promise.all(
       (instances || []).map(async (inst) => {
         if (!inst.instance_token) {
-          return { id: inst.id, instance_name: inst.instance_name, checked_name: null, checked_status: null, owner_phone: inst.owner_phone };
+          console.log(`[${inst.instance_name}] No token, skipping`);
+          return { id: inst.id, instance_name: inst.instance_name, connected: false, status_raw: "no_token", owner_phone: inst.owner_phone || null };
         }
         try {
           const baseUrl = inst.base_url || "https://abraci.uazapi.com";
@@ -36,16 +37,17 @@ serve(async (req) => {
             signal: AbortSignal.timeout(5000),
           });
           if (!resp.ok) {
-            return { id: inst.id, instance_name: inst.instance_name, checked_name: null, checked_status: null, owner_phone: inst.owner_phone };
+            console.log(`[${inst.instance_name}] API returned ${resp.status}`);
+            return { id: inst.id, instance_name: inst.instance_name, connected: false, status_raw: "api_error", owner_phone: inst.owner_phone || null };
           }
           const data = await resp.json();
           const ci = data?.status?.checked_instance || data?.checked_instance;
+          const connectionStatus = ci?.connection_status?.toLowerCase() || "unknown";
           
-          // Extract owner phone from the status response
-          // UazAPI returns owner/phone in various formats
+          console.log(`[${inst.instance_name}] API name="${ci?.name}" status="${connectionStatus}"`);
+
+          // Extract and auto-save owner phone
           const ownerPhone = ci?.owner || data?.owner || data?.status?.owner || null;
-          
-          // Auto-save owner_phone if we got one and it's different from stored
           if (ownerPhone && ownerPhone !== inst.owner_phone) {
             const cleanPhone = ownerPhone.replace(/\D/g, '');
             if (cleanPhone.length >= 10) {
@@ -60,36 +62,16 @@ serve(async (req) => {
           return {
             id: inst.id,
             instance_name: inst.instance_name,
-            checked_name: ci?.name || null,
-            checked_status: ci?.connection_status?.toLowerCase() || null,
-            owner_phone: ownerPhone?.replace(/\D/g, '') || inst.owner_phone,
+            connected: connectionStatus === "connected",
+            status_raw: connectionStatus,
+            owner_phone: ownerPhone?.replace(/\D/g, '') || inst.owner_phone || null,
           };
-        } catch {
-          return { id: inst.id, instance_name: inst.instance_name, checked_name: null, checked_status: null, owner_phone: inst.owner_phone };
+        } catch (err) {
+          console.log(`[${inst.instance_name}] Error: ${err?.message || err}`);
+          return { id: inst.id, instance_name: inst.instance_name, connected: false, status_raw: "error", owner_phone: inst.owner_phone || null };
         }
       })
     );
-
-    const statusMap: Record<string, { status: string; owner_phone: string | null }> = {};
-    for (const r of rawResults) {
-      if (r.checked_name && r.checked_status) {
-        statusMap[r.checked_name.toLowerCase()] = { 
-          status: r.checked_status,
-          owner_phone: r.owner_phone,
-        };
-      }
-    }
-
-    const results = (instances || []).map(inst => {
-      const entry = statusMap[inst.instance_name.toLowerCase()];
-      return {
-        id: inst.id,
-        instance_name: inst.instance_name,
-        connected: entry?.status === "connected",
-        status_raw: entry?.status || "unknown",
-        owner_phone: entry?.owner_phone || inst.owner_phone || null,
-      };
-    });
 
     return new Response(JSON.stringify(results), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
