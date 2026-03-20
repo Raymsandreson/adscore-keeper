@@ -44,6 +44,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
   const [extracting, setExtracting] = useState(false);
 
   const [title, setTitle] = useState('');
+  const [caseNumber, setCaseNumber] = useState('');
   const [nucleusId, setNucleusId] = useState<string>('none');
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
