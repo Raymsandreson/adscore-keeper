@@ -990,7 +990,8 @@ Deno.serve(async (req) => {
 
     // ========== DOWNLOAD AND STORE MEDIA ==========
     let storedMediaUrl = mediaUrl;
-    if (mediaUrl && messageType !== 'text' && externalMessageId) {
+    const isMediaMessage = messageType === 'image' || messageType === 'audio' || messageType === 'video' || messageType === 'document';
+    if ((mediaUrl || isMediaMessage) && messageType !== 'text' && externalMessageId) {
       // Look up instance token from DB if not in payload
       let resolvedToken = instanceToken;
       let resolvedBaseUrl = baseUrl;
