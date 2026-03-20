@@ -306,6 +306,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       response_delay_seconds: form.response_delay_seconds,
       split_messages: form.split_messages,
       split_delay_seconds: form.split_delay_seconds,
+      command_scope: commandScope,
     };
 
     let error;
