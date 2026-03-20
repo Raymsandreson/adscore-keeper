@@ -320,6 +320,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               {/* Case actions */}
               <div className="flex items-center gap-1 flex-wrap">
                 <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => {
+                  setEditCaseNumber(legalCase.case_number || '');
                   setEditTitle(legalCase.title || '');
                   setEditDescription(legalCase.description || '');
                   setEditNotes(legalCase.notes || '');
