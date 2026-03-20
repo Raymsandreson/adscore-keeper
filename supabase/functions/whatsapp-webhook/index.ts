@@ -1449,6 +1449,102 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ========== ##NAME INTERNAL COMMAND DETECTION (team members) ==========
+    // Handles commands like ##lead, ##caso — for any team member in any conversation
+    // Uses ## prefix, validates sender is a team member (phone in profiles)
+    if (direction === 'outbound' && instanceName && phone && messageText) {
+      const trimmedCmd = (messageText || '').trim()
+      const doubleHashMatch = trimmedCmd.match(/^##([a-z0-9_]+)$/i)
+      
+      if (doubleHashMatch) {
+        const internalCmdName = doubleHashMatch[1].toLowerCase()
+        console.log('##internal command detected:', internalCmdName, 'phone:', phone, 'instance:', instanceName)
+        
+        // Validate against wjia_command_shortcuts table with scope='internal'
+        const { data: internalShortcut } = await supabase
+          .from('wjia_command_shortcuts')
+          .select('id, shortcut_name, assistant_type, is_active')
+          .eq('shortcut_name', internalCmdName)
+          .eq('command_scope', 'internal')
+          .eq('is_active', true)
+          .maybeSingle()
+
+        if (internalShortcut) {
+          console.log('Internal shortcut found:', internalShortcut.shortcut_name)
+          
+          try {
+            // Delete the ##command message from WhatsApp (ghost command)
+            if (externalMessageId) {
+              let resolvedToken = instanceToken
+              let resolvedBaseUrl = baseUrl
+              if (!resolvedToken || !resolvedBaseUrl) {
+                const { data: inst } = await supabase
+                  .from('whatsapp_instances')
+                  .select('instance_token, base_url')
+                  .eq('instance_name', instanceName)
+                  .limit(1)
+                  .maybeSingle()
+                if (inst) {
+                  resolvedToken = resolvedToken || inst.instance_token
+                  resolvedBaseUrl = resolvedBaseUrl || inst.base_url
+                }
+              }
+              if (resolvedToken && resolvedBaseUrl) {
+                fetch(`${resolvedBaseUrl}/message/delete`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'token': resolvedToken },
+                  body: JSON.stringify({ id: externalMessageId }),
+                }).catch(e => console.error('Error deleting ##command message:', e))
+              }
+            }
+
+            // Delete from DB
+            if (message?.id) {
+              await supabase.from('whatsapp_messages').delete().eq('id', message.id)
+            }
+
+            const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
+            const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+
+            // Route to command processor with ## prefix context
+            fetch(`${supabaseUrl}/functions/v1/whatsapp-command-processor`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseAnonKey}`,
+              },
+              body: JSON.stringify({
+                phone: cmdLookupPhone || senderPhone || phone,
+                instance_name: instanceName,
+                message_text: `##${internalCmdName}`,
+                media_url: storedMediaUrl || mediaUrl || null,
+                message_type: messageType || 'text',
+                is_group: isGroup,
+                group_id: isGroup ? phone : null,
+                is_internal_command: true,
+              }),
+            }).catch(err => console.error('##internal command trigger error:', err))
+
+            const respData = {
+              success: true,
+              message_id: message.id,
+              internal_command: internalCmdName,
+              instance_name: instanceName,
+            }
+            await logWebhook('internal_command_routed', respData)
+            return new Response(
+              JSON.stringify(respData),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          } catch (e) {
+            console.error('##internal command processing error:', e)
+          }
+        } else {
+          console.log('No active internal shortcut found for:', internalCmdName, '- treating as normal message')
+        }
+      }
+    }
+
     // ========== #NAME AGENT/SHORTCUT COMMAND DETECTION ==========
     // Handles commands like #procuracao_maternidade — validates against wjia_command_shortcuts table
     // Works for both outbound (fromMe) messages. Uses the shortcuts table as single source of truth.
@@ -1462,11 +1558,12 @@ Deno.serve(async (req) => {
         const shortcutName = hashNameMatch[1].toLowerCase()
         console.log('#name command detected:', shortcutName, 'phone:', phone, 'instance:', instanceName)
         
-        // Validate against wjia_command_shortcuts table — single source of truth
+        // Validate against wjia_command_shortcuts table — only client-scope shortcuts
         const { data: shortcutConfig } = await supabase
           .from('wjia_command_shortcuts')
           .select('id, shortcut_name, assistant_type, is_active')
           .eq('shortcut_name', shortcutName)
+          .in('command_scope', ['client'])
           .eq('is_active', true)
           .maybeSingle()
 
