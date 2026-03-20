@@ -173,13 +173,15 @@ export default function CasesPage() {
           </div>
         )}
 
-        {cases.map(c => (
-          <CaseListItem
-            key={c.id}
-            legalCase={c}
-            expanded={expandedId === c.id}
-            onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
-          />
+          {cases.map(c => (
+            <CaseListItem
+              key={c.id}
+              legalCase={c}
+              expanded={expandedId === c.id}
+              onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
+              onCaseUpdated={fetchCases}
+              onOpenLead={(leadId) => navigate(`/leads?openLead=${leadId}`)}
+            />
         ))}
       </div>
     </div>
