@@ -196,6 +196,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showAddProcess, setShowAddProcess] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editCaseNumber, setEditCaseNumber] = useState(legalCase.case_number || '');
   const [editTitle, setEditTitle] = useState(legalCase.title || '');
   const [editDescription, setEditDescription] = useState(legalCase.description || '');
   const [editNotes, setEditNotes] = useState(legalCase.notes || '');
@@ -235,7 +236,26 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
 
   const handleEdit = async () => {
     try {
+      const trimmedNumber = editCaseNumber.trim();
+      if (!trimmedNumber) {
+        toast.error('Número do caso é obrigatório');
+        return;
+      }
+      // Check uniqueness if changed
+      if (trimmedNumber !== legalCase.case_number) {
+        const { data: existing } = await supabase
+          .from('legal_cases')
+          .select('id')
+          .eq('case_number', trimmedNumber)
+          .neq('id', legalCase.id)
+          .maybeSingle();
+        if (existing) {
+          toast.error(`Já existe um caso com o número "${trimmedNumber}"`);
+          return;
+        }
+      }
       const { error } = await supabase.from('legal_cases').update({
+        case_number: trimmedNumber,
         title: editTitle.trim(),
         description: editDescription || null,
         notes: editNotes || null,
@@ -300,6 +320,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               {/* Case actions */}
               <div className="flex items-center gap-1 flex-wrap">
                 <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => {
+                  setEditCaseNumber(legalCase.case_number || '');
                   setEditTitle(legalCase.title || '');
                   setEditDescription(legalCase.description || '');
                   setEditNotes(legalCase.notes || '');
@@ -413,6 +434,10 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
             <DialogTitle>Editar Caso — {legalCase.case_number}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            <div>
+              <Label>Número do Caso *</Label>
+              <Input value={editCaseNumber} onChange={e => setEditCaseNumber(e.target.value)} placeholder="Ex: 0001-2025" />
+            </div>
             <div>
               <Label>Título *</Label>
               <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} />
