@@ -103,9 +103,20 @@ function useDraggable() {
     try { localStorage.removeItem('dock_position'); } catch {}
   }, []);
 
+  const setPositionAndPersist = useCallback((next: { x: number; y: number } | null) => {
+    setPosition(next);
+    try {
+      if (next) {
+        localStorage.setItem('dock_position', JSON.stringify(next));
+      } else {
+        localStorage.removeItem('dock_position');
+      }
+    } catch {}
+  }, []);
+
   const isDragging = () => hasMoved.current && dragging.current;
 
-  return { position, onPointerDown, onPointerMove, onPointerUp, resetPosition, isDragging };
+  return { position, onPointerDown, onPointerMove, onPointerUp, resetPosition, isDragging, setPositionAndPersist };
 }
 
 export function FloatingNav() {
@@ -127,7 +138,7 @@ export function FloatingNav() {
   const [updating, setUpdating] = useState(false);
   const [checking, setChecking] = useState(false);
   const [updateNotesOpen, setUpdateNotesOpen] = useState(false);
-  const { position, onPointerDown, onPointerMove, onPointerUp, resetPosition, isDragging } = useDraggable();
+  const { position, onPointerDown, onPointerMove, onPointerUp, resetPosition, isDragging, setPositionAndPersist } = useDraggable();
 
   const noop = useCallback(() => {}, []);
 
@@ -150,6 +161,38 @@ export function FloatingNav() {
     const unsub = onUpdateAvailable(() => setHasUpdate(true));
     return unsub;
   }, []);
+
+  const clampDockPosition = useCallback(() => {
+    if (!position || !containerRef.current) return;
+    const padding = 8;
+    const rect = containerRef.current.getBoundingClientRect();
+    let dx = 0;
+    let dy = 0;
+
+    if (rect.left < padding) dx = padding - rect.left;
+    if (rect.right > window.innerWidth - padding) dx = (window.innerWidth - padding) - rect.right;
+    if (rect.top < padding) dy = padding - rect.top;
+    if (rect.bottom > window.innerHeight - padding) dy = (window.innerHeight - padding) - rect.bottom;
+
+    if (dx !== 0 || dy !== 0) {
+      setPositionAndPersist({ x: position.x + dx, y: position.y + dy });
+    }
+  }, [position, setPositionAndPersist]);
+
+  useEffect(() => {
+    clampDockPosition();
+  }, [clampDockPosition, dockCollapsed, menuOpen]);
+
+  useEffect(() => {
+    if (!position) return;
+    const onResize = () => clampDockPosition();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, [position, clampDockPosition]);
 
   const hiddenRoutes = ['/login', '/reset-password', '/privacy', '/expense-form', '/install'];
   const isHidden = !user || hiddenRoutes.some(r => location.pathname.startsWith(r));
