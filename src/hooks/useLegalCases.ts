@@ -54,14 +54,30 @@ export function useLegalCases(leadId?: string) {
     }
   }, [leadId]);
 
-  const createCase = useCallback(async (caseData: { lead_id?: string | null; nucleus_id?: string | null; title: string; description?: string; notes?: string }) => {
+  const createCase = useCallback(async (caseData: { lead_id?: string | null; nucleus_id?: string | null; title: string; description?: string; notes?: string; case_number?: string }) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Generate case number via DB function
-      const { data: caseNumber, error: numError } = await supabase
-        .rpc('generate_case_number', { p_nucleus_id: caseData.nucleus_id || null });
-      if (numError) throw numError;
+      let caseNumber = caseData.case_number?.trim();
+      
+      // If user provided a case_number, check uniqueness
+      if (caseNumber) {
+        const { data: existing } = await supabase
+          .from('legal_cases')
+          .select('id')
+          .eq('case_number', caseNumber)
+          .maybeSingle();
+        if (existing) {
+          toast.error(`Já existe um caso com o número "${caseNumber}"`);
+          throw new Error('Número de caso duplicado');
+        }
+      } else {
+        // Auto-generate if not provided
+        const { data: generated, error: numError } = await supabase
+          .rpc('generate_case_number', { p_nucleus_id: caseData.nucleus_id || null });
+        if (numError) throw numError;
+        caseNumber = generated;
+      }
 
       const { data, error } = await supabase
         .from('legal_cases')

@@ -53,6 +53,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   const [showCaseDialog, setShowCaseDialog] = useState(false);
   const [editingCase, setEditingCase] = useState<LegalCase | null>(null);
   const [caseTitle, setCaseTitle] = useState('');
+  const [caseCaseNumber, setCaseCaseNumber] = useState('');
   const [caseDescription, setCaseDescription] = useState('');
   const [caseNucleusId, setCaseNucleusId] = useState('');
   const [caseNotes, setCaseNotes] = useState('');
@@ -64,6 +65,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
 
   const resetCaseForm = () => {
     setCaseTitle('');
+    setCaseCaseNumber('');
     setCaseDescription('');
     setCaseNucleusId('');
     setCaseNotes('');
@@ -86,6 +88,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
         title: caseTitle.trim(),
         description: caseDescription,
         notes: caseNotes,
+        case_number: caseCaseNumber || undefined,
       });
       setExpandedCaseId(newCase.id);
     }
@@ -96,6 +99,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   const openEditCase = (c: LegalCase) => {
     setEditingCase(c);
     setCaseTitle(c.title);
+    setCaseCaseNumber(c.case_number || '');
     setCaseDescription(c.description || '');
     setCaseNucleusId(c.nucleus_id || '');
     setCaseNotes(c.notes || '');
@@ -175,6 +179,10 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
             <DialogTitle>{editingCase ? 'Editar Caso' : 'Novo Caso'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            <div>
+              <Label>Número do Caso</Label>
+              <Input value={caseCaseNumber} onChange={e => setCaseCaseNumber(e.target.value)} placeholder="Ex: CASO-0001 (deixe vazio para gerar automaticamente)" />
+            </div>
             <div>
               <Label>Título *</Label>
               <Input value={caseTitle} onChange={e => setCaseTitle(e.target.value)} placeholder="Ex: Acidente de trabalho - João Silva" />

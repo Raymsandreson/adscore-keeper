@@ -44,6 +44,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
   const [extracting, setExtracting] = useState(false);
 
   const [title, setTitle] = useState('');
+  const [caseNumber, setCaseNumber] = useState('');
   const [nucleusId, setNucleusId] = useState<string>('none');
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
@@ -54,6 +55,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
   useEffect(() => {
     if (open) {
       setTitle(leadName || contactName || '');
+      setCaseNumber('');
       setNucleusId('none');
       setDescription('');
       setNotes('');
@@ -218,6 +220,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         title: title.trim(),
         description: description.trim() || undefined,
         notes: notes.trim() || undefined,
+        case_number: caseNumber.trim() || undefined,
       });
 
       // Create extracted processes
@@ -279,6 +282,10 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         ) : null}
 
         <div className="space-y-4 py-2">
+          <div>
+            <Label>Número do Caso</Label>
+            <Input value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder="Ex: CASO-0001 (vazio = automático)" className="mt-1" />
+          </div>
           <div>
             <Label>Título *</Label>
             <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Ex: Acidente de trabalho - João" className="mt-1" />
