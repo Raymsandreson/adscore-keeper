@@ -244,7 +244,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { phone, instance_name, media_url, message_type } = body;
+    const { phone, instance_name, media_url, message_type, is_group, group_id } = body;
     let message_text = body.message_text;
 
     if (!phone || !instance_name) {
@@ -526,20 +526,41 @@ serve(async (req) => {
     }
 
     // 4) Fetch system context
-    const [profilesRes, typesRes, boardsRes, timeBlockRes] = await Promise.all([
+    const [profilesRes, typesRes, boardsRes, timeBlockRes, nucleiRes] = await Promise.all([
       supabase.from("profiles").select("user_id, full_name").order("full_name"),
       supabase.from("activity_types").select("key, label, color").eq("is_active", true).order("display_order"),
-      supabase.from("kanban_boards").select("id, name").eq("is_active", true).order("display_order"),
+      supabase.from("kanban_boards").select("id, name, is_default, stages:kanban_stages(id, display_order)").eq("is_active", true).order("display_order"),
       supabase.from("user_timeblock_settings").select("activity_type, days, start_hour, start_minute, end_hour, end_minute").eq("user_id", config.user_id),
+      supabase.from("specialized_nuclei").select("id, name, prefix, color").eq("is_active", true).order("display_order"),
     ]);
 
     const assessors = (profilesRes.data || []).filter((p: any) => p.full_name);
     const actTypes = typesRes.data || [];
     const boards = boardsRes.data || [];
+    const nuclei = nucleiRes.data || [];
     const assessorsList = assessors.map((a: any) => `- "${a.full_name}" (id: ${a.user_id})`).join("\n");
     const actTypesList = actTypes.map((t: any) => `"${t.key}" (${t.label})`).join(", ");
     const actTypeKeys = actTypes.map((t: any) => t.key);
-    const boardsList = boards.map((b: any) => `- "${b.name}" (id: ${b.id})`).join("\n");
+    const boardsList = boards.map((b: any) => `- "${b.name}" (id: ${b.id})${b.is_default ? ' [PADRÃO]' : ''}`).join("\n");
+    const nucleiList = nuclei.map((n: any) => `- "${n.name}" (prefix: ${n.prefix}, id: ${n.id})`).join("\n");
+
+    // Fetch group conversation if is_group and group_id
+    let groupConversationContext = "";
+    if (is_group && group_id) {
+      const { data: groupMsgs } = await supabase
+        .from("whatsapp_messages")
+        .select("direction, message_text, sender_name, created_at")
+        .eq("phone", group_id)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (groupMsgs && groupMsgs.length > 0) {
+        const lines = groupMsgs.reverse().map((m: any) => {
+          const sender = m.sender_name || (m.direction === 'outbound' ? 'Atendente' : 'Participante');
+          return `[${sender}]: ${m.message_text || ''}`;
+        });
+        groupConversationContext = `\n\nCONTEXTO DA CONVERSA DO GRUPO (últimas ${groupMsgs.length} mensagens):\n${lines.join("\n")}`;
+      }
+    }
 
     // Build user routine context from timeblock settings
     const dayNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -568,13 +589,14 @@ serve(async (req) => {
 VOCÊ PODE:
 1. Criar atividades/tarefas (new_activity)
 2. Criar leads (new_lead)
-3. Buscar informações sobre leads, atividades e contatos (search_info)
-4. Atualizar status de atividades (update_activity)
-5. Gerar relatórios de produtividade (productivity_report)
-6. Consultar metas e progresso de cada trabalhador
-7. Dar feedback sobre desempenho individual ou da equipe
-8. Informar tarefas atrasadas, tempo no sistema, pontos de melhoria
-9. Responder perguntas sobre o sistema
+3. Criar casos jurídicos completos (new_case) - com lead, processos, partes e link de grupo
+4. Buscar informações sobre leads, atividades e contatos (search_info)
+5. Atualizar status de atividades (update_activity)
+6. Gerar relatórios de produtividade (productivity_report)
+7. Consultar metas e progresso de cada trabalhador
+8. Dar feedback sobre desempenho individual ou da equipe
+9. Informar tarefas atrasadas, tempo no sistema, pontos de melhoria
+10. Responder perguntas sobre o sistema
 
 ASSESSORES CADASTRADOS:
 ${assessorsList}
@@ -585,7 +607,10 @@ ${actTypes.map((t: any) => `  - key: "${t.key}" → ${t.label}`).join("\n")}
 
 QUADROS KANBAN:
 ${boardsList}
-${routineContext}
+
+NÚCLEOS ESPECIALIZADOS (para casos jurídicos):
+${nucleiList || "Nenhum núcleo cadastrado"}
+${routineContext}${groupConversationContext}
 DATA ATUAL: ${new Date().toISOString().split("T")[0]} (ANO: ${new Date().getFullYear()})
 
 REGRAS CRÍTICAS DE COMPORTAMENTO:
@@ -607,7 +632,17 @@ ANEXAR IMAGENS A ATIVIDADES:
 - Se o assessor enviou uma imagem e pede para "anexar" a uma atividade existente, use "attach_to_activity" com o título ou nome do lead para buscar a atividade.
 - Se imagens foram enviadas junto com um comando de criação de atividade, elas serão anexadas automaticamente.
 
-RELATÓRIOS E PRODUTIVIDADE:
+CRIAR CASO JURÍDICO (new_case):
+- Quando o assessor pedir para "criar caso", "criar processo", "caso jurídico", use new_case
+- Extraia TODOS os dados da conversa do grupo (se disponível no CONTEXTO DA CONVERSA DO GRUPO)
+- Identifique TODOS os números de processo mencionados (formato: 0001234-56.2024.8.26.0100 ou similar)
+- Identifique TODAS as partes mencionadas (nomes de pessoas como autor, réu, advogado, testemunha, etc.)
+- Se a conversa é de um grupo de WhatsApp, o link do grupo será vinculado automaticamente
+- Escolha o núcleo especializado mais adequado baseado no tipo do caso
+- Preencha a descrição com TODOS os dados relevantes encontrados (vítima, empresa, dano, data, local, etc.)
+- O lead será criado automaticamente como "fechado"
+
+
 - Quando pedirem relatório, feedback, desempenho ou produtividade: use productivity_report
 - Você pode consultar: tarefas atrasadas, metas definidas vs atingidas, tempo online, ranking da equipe
 - Se perguntarem sobre "mim" ou "eu", use o user_id do assessor atual
@@ -675,6 +710,50 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
                   notes: { type: "string" },
                 },
                 required: ["lead_name"],
+               },
+              new_case: {
+                type: "object",
+                description: "Criar caso jurídico completo. Cria automaticamente: lead (como fechado), caso jurídico, processos e partes. Use quando o assessor pedir para criar caso, processo jurídico, etc. Extraia TODOS os dados da conversa do grupo se disponível.",
+                properties: {
+                  title: { type: "string", description: "Título do caso (ex: Acidente de trabalho - João Silva)" },
+                  nucleus_id: { type: "string", description: "ID do núcleo especializado. Escolha o mais adequado baseado no tipo do caso." },
+                  description: { type: "string", description: "Descrição do caso com dados extraídos: vítima, empresa, dano, data do acidente, endereço, etc." },
+                  notes: { type: "string", description: "Observações adicionais" },
+                  board_id: { type: "string", description: "ID do quadro Kanban para o lead. Use o padrão se não especificado." },
+                  victim_name: { type: "string", description: "Nome da vítima" },
+                  lead_phone: { type: "string", description: "Telefone do lead" },
+                  city: { type: "string" },
+                  state: { type: "string" },
+                  processes: {
+                    type: "array",
+                    description: "Processos judiciais encontrados na conversa. Extraia TODOS os números de processo mencionados.",
+                    items: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string" },
+                        process_number: { type: "string", description: "Número do processo (ex: 0001234-56.2024.8.26.0100)" },
+                        process_type: { type: "string", enum: ["judicial", "administrativo"] },
+                        description: { type: "string" },
+                      },
+                      required: ["title"],
+                    },
+                  },
+                  parties: {
+                    type: "array",
+                    description: "Partes envolvidas identificadas na conversa (nomes de pessoas mencionadas como autor, réu, testemunha, advogado, etc.)",
+                    items: {
+                      type: "object",
+                      properties: {
+                        name: { type: "string", description: "Nome completo da parte" },
+                        role: { type: "string", enum: ["autor", "reu", "testemunha", "advogado", "dependente", "perito", "outro"] },
+                        phone: { type: "string", description: "Telefone se mencionado" },
+                      },
+                      required: ["name", "role"],
+                    },
+                  },
+                  whatsapp_group_link: { type: "string", description: "Link do grupo de WhatsApp se identificado como conversa de grupo (formato chat.whatsapp.com/...)" },
+                },
+                required: ["title"],
               },
               attach_to_activity: {
                 type: "object",
@@ -950,7 +1029,159 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
         }
       }
 
-      // ── Search ──
+      // ── Create Case (Caso Jurídico) ──
+      if (parsed.new_case) {
+        const cs = parsed.new_case;
+        try {
+          // 1) Determine board and closed stage
+          const targetBoardId = cs.board_id || boards.find((b: any) => b.is_default)?.id || boards[0]?.id;
+          const board = boards.find((b: any) => b.id === targetBoardId);
+          const sortedStages = (board?.stages || []).sort((a: any, b: any) => a.display_order - b.display_order);
+          const CLOSED_IDS = ['closed', 'fechado', 'done'];
+          const closedStageId = sortedStages.find((s: any) => CLOSED_IDS.includes(s.id))?.id || 'closed';
+
+          // 2) Create lead as "fechado"
+          const closingDate = new Date().toISOString().split("T")[0];
+          const { data: newLead, error: leadErr } = await supabase
+            .from("leads")
+            .insert({
+              lead_name: cs.title,
+              lead_phone: cs.lead_phone || null,
+              victim_name: cs.victim_name || null,
+              city: cs.city || null,
+              state: cs.state || null,
+              board_id: targetBoardId,
+              status: closedStageId,
+              became_client_date: closingDate,
+              whatsapp_group_id: is_group ? (group_id || null) : null,
+              notes: cs.notes || null,
+              created_by: config.user_id,
+              source: "whatsapp",
+            })
+            .select("id, lead_name")
+            .single();
+          if (leadErr) throw leadErr;
+
+          // 3) Generate case number and create case
+          const { data: caseNumber } = await supabase.rpc("generate_case_number", { p_nucleus_id: cs.nucleus_id || null });
+          const { data: newCase, error: caseErr } = await supabase
+            .from("legal_cases")
+            .insert({
+              lead_id: newLead.id,
+              nucleus_id: cs.nucleus_id || null,
+              case_number: caseNumber || `CASO-${Date.now()}`,
+              title: cs.title,
+              description: cs.description || null,
+              notes: cs.notes || null,
+              created_by: config.user_id,
+            })
+            .select("id, case_number, title")
+            .single();
+          if (caseErr) throw caseErr;
+
+          let summaryParts: string[] = [];
+          summaryParts.push(`⚖️ Caso *${newCase.case_number}* criado!`);
+          summaryParts.push(`📋 ${cs.title}`);
+
+          // 4) Create processes
+          if (cs.processes && Array.isArray(cs.processes) && cs.processes.length > 0) {
+            let procCount = 0;
+            for (const proc of cs.processes) {
+              const { error: procErr } = await supabase.from("lead_processes").insert({
+                case_id: newCase.id,
+                lead_id: newLead.id,
+                title: proc.title || `Processo ${procCount + 1}`,
+                process_number: proc.process_number || null,
+                process_type: proc.process_type || "judicial",
+                description: proc.description || null,
+                status: "em_andamento",
+                created_by: config.user_id,
+              });
+              if (!procErr) procCount++;
+            }
+            if (procCount > 0) summaryParts.push(`📑 ${procCount} processo(s) vinculado(s)`);
+          }
+
+          // 5) Create parties (contacts + process_parties)
+          if (cs.parties && Array.isArray(cs.parties) && cs.parties.length > 0) {
+            let partyCount = 0;
+            for (const party of cs.parties) {
+              if (!party.name) continue;
+              // Find or create contact
+              let contactId: string | null = null;
+              const { data: existingContact } = await supabase
+                .from("contacts")
+                .select("id")
+                .ilike("full_name", party.name)
+                .limit(1)
+                .maybeSingle();
+              if (existingContact) {
+                contactId = existingContact.id;
+              } else {
+                const { data: newContact } = await supabase
+                  .from("contacts")
+                  .insert({
+                    full_name: party.name,
+                    phone: party.phone || null,
+                    source: "whatsapp",
+                    created_by: config.user_id,
+                  })
+                  .select("id")
+                  .single();
+                contactId = newContact?.id || null;
+              }
+
+              // Link contact to lead
+              if (contactId) {
+                await supabase.from("contact_leads").insert({
+                  contact_id: contactId,
+                  lead_id: newLead.id,
+                  relationship_to_victim: party.role === "autor" ? "Vítima" : party.role,
+                }).select().maybeSingle();
+
+                // Link to first process if exists
+                if (cs.processes?.length > 0) {
+                  const { data: firstProc } = await supabase
+                    .from("lead_processes")
+                    .select("id")
+                    .eq("case_id", newCase.id)
+                    .order("created_at")
+                    .limit(1)
+                    .maybeSingle();
+                  if (firstProc) {
+                    await supabase.from("process_parties").insert({
+                      process_id: firstProc.id,
+                      contact_id: contactId,
+                      role: party.role || "outro",
+                    }).select().maybeSingle();
+                  }
+                }
+                partyCount++;
+              }
+            }
+            if (partyCount > 0) summaryParts.push(`👥 ${partyCount} parte(s) cadastrada(s)`);
+          }
+
+          // 6) Group link info
+          if (is_group && group_id) {
+            summaryParts.push(`💬 Grupo de WhatsApp vinculado ao lead`);
+          }
+
+          if (cs.whatsapp_group_link) {
+            summaryParts.push(`🔗 Link do grupo: ${cs.whatsapp_group_link}`);
+          }
+
+          toolData.case_created = newCase;
+          toolData.lead_created = newLead;
+          responseText = summaryParts.join("\n");
+          responseText += `\n\n✏️ Ver caso: ${APP_URL}/leads?openLead=${newLead.id}`;
+          console.log("Case created via WhatsApp:", newCase.id, "Lead:", newLead.id);
+        } catch (caseError: any) {
+          console.error("Error creating case:", caseError);
+          responseText += `\n\n⚠️ Erro ao criar caso: ${caseError.message}`;
+        }
+      }
+
       if (parsed.search_query) {
         const sq = parsed.search_query;
         let results: any[] = [];
@@ -1207,7 +1438,7 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
     }
 
     // Determine if we should ask about audio (only for activity/lead creation)
-    const createdSomething = toolData?.activity_created || toolData?.lead_created;
+    const createdSomething = toolData?.activity_created || toolData?.lead_created || toolData?.case_created;
     const pendingAudioConfirm = createdSomething;
 
     // 5) Save AI response
