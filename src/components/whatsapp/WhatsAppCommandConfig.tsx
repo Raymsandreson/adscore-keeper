@@ -45,6 +45,7 @@ interface Shortcut {
   split_messages: boolean;
   split_delay_seconds: number;
   human_reply_pause_minutes: number;
+  command_scope: string;
 }
 
 interface FollowupStep {
@@ -91,7 +92,6 @@ export function WhatsAppCommandConfig() {
       supabase.from('wjia_command_shortcuts').select('*').order('display_order') as any,
     ]);
     setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
-    setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
     setShortcuts((shortcutsRes.data || []).map((s: any) => ({
       ...s,
       followup_steps: s.followup_steps || [],
@@ -102,6 +102,7 @@ export function WhatsAppCommandConfig() {
       split_messages: s.split_messages ?? false,
       split_delay_seconds: s.split_delay_seconds ?? 3,
       human_reply_pause_minutes: s.human_reply_pause_minutes ?? 0,
+      command_scope: s.command_scope || 'client',
     })) as Shortcut[]);
     
     setLoading(false);
@@ -139,14 +140,19 @@ export function WhatsAppCommandConfig() {
 
         <TabsContent value="shortcuts">
           <ShortcutsTab
-            shortcuts={shortcuts}
+            shortcuts={shortcuts.filter(s => s.command_scope === 'client')}
             profiles={profiles}
             onReload={loadData}
+            commandScope="client"
           />
         </TabsContent>
 
         <TabsContent value="member">
-          <MemberAssistantSettings />
+          <MemberAssistantSettings
+            shortcuts={shortcuts.filter(s => s.command_scope === 'internal')}
+            profiles={profiles}
+            onReload={loadData}
+          />
         </TabsContent>
       </Tabs>
     </div>
@@ -154,7 +160,7 @@ export function WhatsAppCommandConfig() {
 }
 
 // ==================== SHORTCUTS TAB (UNIFIED ASSISTANT + DOCUMENT) ====================
-function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]; profiles: Profile[]; onReload: () => void }) {
+function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }: { shortcuts: Shortcut[]; profiles: Profile[]; onReload: () => void; commandScope?: string }) {
   const [showForm, setShowForm] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -300,6 +306,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       response_delay_seconds: form.response_delay_seconds,
       split_messages: form.split_messages,
       split_delay_seconds: form.split_delay_seconds,
+      command_scope: commandScope,
     };
 
     let error;

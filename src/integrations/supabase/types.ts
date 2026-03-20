@@ -6995,6 +6995,7 @@ export type Database = {
         Row: {
           assistant_type: string
           base_prompt: string | null
+          command_scope: string
           created_at: string | null
           description: string | null
           display_order: number | null
@@ -7021,6 +7022,7 @@ export type Database = {
         Insert: {
           assistant_type?: string
           base_prompt?: string | null
+          command_scope?: string
           created_at?: string | null
           description?: string | null
           display_order?: number | null
@@ -7047,6 +7049,7 @@ export type Database = {
         Update: {
           assistant_type?: string
           base_prompt?: string | null
+          command_scope?: string
           created_at?: string | null
           description?: string | null
           display_order?: number | null
