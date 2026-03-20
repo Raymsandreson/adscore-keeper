@@ -1934,8 +1934,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ========== AI AGENT AUTO-REPLY ==========
-    if (direction === 'inbound' && instanceName && phone) {
+    // ========== AI AGENT AUTO-REPLY (skip for group messages unless it's a command) ==========
+    if (direction === 'inbound' && instanceName && phone && !isGroup) {
       try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
         const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
