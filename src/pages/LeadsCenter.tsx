@@ -209,38 +209,38 @@ const LeadsCenter = () => {
 
           {/* Tabs for Lead Management and Analytics */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-8 mb-4">
-              <TabsTrigger value="kanban" className="flex items-center gap-2">
-                <LayoutGrid className="h-4 w-4" />
-                Kanbans
+            <TabsList className="flex flex-wrap w-full gap-1 h-auto p-1 mb-4">
+              <TabsTrigger value="kanban" className="text-xs px-2 py-1.5 gap-1">
+                <LayoutGrid className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Kanbans</span>
               </TabsTrigger>
-              <TabsTrigger value="leads" className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" />
-                Leads WhatsApp
+              <TabsTrigger value="leads" className="text-xs px-2 py-1.5 gap-1">
+                <MessageSquare className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">WhatsApp</span>
               </TabsTrigger>
-              <TabsTrigger value="cats" className="flex items-center gap-2">
-                <FileSpreadsheet className="h-4 w-4" />
-                CATs
+              <TabsTrigger value="cats" className="text-xs px-2 py-1.5 gap-1">
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">CATs</span>
               </TabsTrigger>
-              <TabsTrigger value="contacts" className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Contatos
+              <TabsTrigger value="contacts" className="text-xs px-2 py-1.5 gap-1">
+                <Users className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Contatos</span>
               </TabsTrigger>
-              <TabsTrigger value="geographic" className="flex items-center gap-2">
-                <MapPin className="h-4 w-4" />
-                Capilaridade
+              <TabsTrigger value="geographic" className="text-xs px-2 py-1.5 gap-1">
+                <MapPin className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Capilaridade</span>
               </TabsTrigger>
-              <TabsTrigger value="instagram" className="flex items-center gap-2">
-                <Instagram className="h-4 w-4" />
-                Contas Instagram
+              <TabsTrigger value="instagram" className="text-xs px-2 py-1.5 gap-1">
+                <Instagram className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Instagram</span>
               </TabsTrigger>
-              <TabsTrigger value="analytics" className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4" />
-                Análises
+              <TabsTrigger value="analytics" className="text-xs px-2 py-1.5 gap-1">
+                <TrendingUp className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Análises</span>
               </TabsTrigger>
-              <TabsTrigger value="facebook" className="flex items-center gap-2">
-                <ExternalLink className="h-4 w-4" />
-                Integrar Facebook
+              <TabsTrigger value="facebook" className="text-xs px-2 py-1.5 gap-1">
+                <ExternalLink className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Facebook</span>
               </TabsTrigger>
             </TabsList>
 
