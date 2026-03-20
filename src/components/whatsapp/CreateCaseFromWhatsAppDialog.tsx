@@ -219,6 +219,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         title: title.trim(),
         description: description.trim() || undefined,
         notes: notes.trim() || undefined,
+        case_number: caseNumber.trim() || undefined,
       });
 
       // Create extracted processes
