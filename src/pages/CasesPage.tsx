@@ -435,6 +435,10 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
           </DialogHeader>
           <div className="space-y-4">
             <div>
+              <Label>Número do Caso *</Label>
+              <Input value={editCaseNumber} onChange={e => setEditCaseNumber(e.target.value)} placeholder="Ex: 0001-2025" />
+            </div>
+            <div>
               <Label>Título *</Label>
               <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} />
             </div>
