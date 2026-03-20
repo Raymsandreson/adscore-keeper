@@ -160,7 +160,7 @@ export function WhatsAppCommandConfig() {
 }
 
 // ==================== SHORTCUTS TAB (UNIFIED ASSISTANT + DOCUMENT) ====================
-function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]; profiles: Profile[]; onReload: () => void }) {
+function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }: { shortcuts: Shortcut[]; profiles: Profile[]; onReload: () => void; commandScope?: string }) {
   const [showForm, setShowForm] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
