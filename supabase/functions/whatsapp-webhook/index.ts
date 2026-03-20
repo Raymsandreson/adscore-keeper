@@ -1068,15 +1068,22 @@ Deno.serve(async (req) => {
 
     // ========== DEDUPLICATION ==========
     if (externalMessageId) {
-      const { data: existing } = await supabase
+      const dedupeQuery = supabase
         .from('whatsapp_messages')
-        .select('id')
+        .select('id, instance_name')
         .eq('external_message_id', externalMessageId)
         .limit(1)
-        .maybeSingle();
-      
+
+      // Same external message ID can appear in different instances.
+      // Deduplicate per instance to avoid dropping valid commands on mirrored webhooks.
+      const scopedQuery = instanceName
+        ? dedupeQuery.eq('instance_name', instanceName)
+        : dedupeQuery
+
+      const { data: existing } = await scopedQuery.maybeSingle();
+
       if (existing) {
-        console.log('Duplicate message detected, skipping:', externalMessageId);
+        console.log('Duplicate message detected, skipping:', externalMessageId, 'instance:', instanceName || '(unknown)');
         return new Response(
           JSON.stringify({ success: true, skipped: true, reason: 'duplicate', existing_id: existing.id }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
