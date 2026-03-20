@@ -209,7 +209,7 @@ const LeadsCenter = () => {
 
           {/* Tabs for Lead Management and Analytics */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-8 mb-4">
+            <TabsList className="flex flex-wrap w-full gap-1 h-auto p-1 mb-4">
               <TabsTrigger value="kanban" className="flex items-center gap-2">
                 <LayoutGrid className="h-4 w-4" />
                 Kanbans

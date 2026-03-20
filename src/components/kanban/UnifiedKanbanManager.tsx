@@ -437,14 +437,14 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="relative">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[150px] max-w-[250px]">
             <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Buscar leads..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 w-[200px]"
+              className="pl-8 w-full"
             />
           </div>
           
@@ -454,16 +454,11 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
 
           {selectedBoard && (
             <Button variant="outline" onClick={() => setShowReport(true)}>
-              <FileText className="h-4 w-4 mr-2" />
-              Relatório
+              <FileText className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Relatório</span>
             </Button>
           )}
           
-          <Button variant="outline" onClick={() => setShowImportInstagram(true)}>
-            <Instagram className="h-4 w-4 mr-2" />
-            Importar Instagram
-          </Button>
-
           {selectedBoard && (
             <ChecklistFilter
               boardId={selectedBoardId}
@@ -472,9 +467,9 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
             />
           )}
           
-          <Button onClick={() => setShowAddLeadDialog(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Adicionar Lead
+          <Button onClick={() => setShowAddLeadDialog(true)} size="sm">
+            <Plus className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Adicionar Lead</span>
           </Button>
         </div>
       </div>
