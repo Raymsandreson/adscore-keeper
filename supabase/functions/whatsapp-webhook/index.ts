@@ -1812,7 +1812,7 @@ Deno.serve(async (req) => {
 
     // ========== MEMBER AI ASSISTANT CHECK ==========
     // If inbound message is from a registered team member's phone, route to member assistant
-    if (direction === 'inbound' && instanceName && phone && messageText) {
+    if (direction === 'inbound' && instanceName && phone && messageText && !isGroup) {
       try {
         // Check if member assistant is active
         const { data: memberConfig } = await supabase
