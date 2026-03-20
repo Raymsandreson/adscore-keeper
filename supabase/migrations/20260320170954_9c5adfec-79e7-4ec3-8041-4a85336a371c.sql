@@ -1,0 +1,1 @@
+UPDATE whatsapp_messages SET instance_name = 'WHATSJUD IA' WHERE instance_name = 'Site ABRACI' AND instance_token = '67e192b3-d869-49c2-90a8-7caf694a4ba9';

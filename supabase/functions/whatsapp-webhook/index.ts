@@ -818,23 +818,17 @@ Deno.serve(async (req) => {
       keys: Object.keys(body).join(','),
     })
 
-    // 2) Skip group messages (high-volume) unless it is a call event
+    // 2) Detect group messages — save them to DB but skip AI agent processing later
     const chatId = body.chat?.wa_chatid || body.message?.chatid || ''
     const isGroup = body.chat?.wa_isGroup === true || chatId.includes('@g.us')
     
-    // For groups: allow outbound #name commands (agent triggers) and @wjia commands through
+    // For groups: detect special commands
     const groupMessageText = body.message?.text || body.message?.content?.text || body.message?.content || ''
     const groupMsgStr = typeof groupMessageText === 'string' ? groupMessageText.trim() : ''
     const isFromMe = body.message?.fromMe === true || body.chat?.fromMe === true
     const isGroupAgentCommand = isFromMe && groupMsgStr.match(/^#[a-z0-9_]+$/i)
     const isGroupWjiaCommand = isFromMe && groupMsgStr.toLowerCase().startsWith('@wjia')
-    
-    if (isGroup && !isCallEvent && !isGroupAgentCommand && !isGroupWjiaCommand) {
-      return new Response(
-        JSON.stringify({ success: true, skipped: true, reason: 'group_message_filtered' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+    // Note: group messages are NO LONGER filtered out — they are saved to DB for inbox visibility
 
     // 3) Skip reaction messages (emoji reactions on existing messages)
     const msgType = (body.message?.messageType || body.chat?.wa_lastMessageType || '').toLowerCase()
@@ -1818,7 +1812,7 @@ Deno.serve(async (req) => {
 
     // ========== MEMBER AI ASSISTANT CHECK ==========
     // If inbound message is from a registered team member's phone, route to member assistant
-    if (direction === 'inbound' && instanceName && phone && messageText) {
+    if (direction === 'inbound' && instanceName && phone && messageText && !isGroup) {
       try {
         // Check if member assistant is active
         const { data: memberConfig } = await supabase
@@ -1828,8 +1822,23 @@ Deno.serve(async (req) => {
           .maybeSingle()
 
         if (memberConfig?.is_active) {
-          // Check if this instance is the one configured for member commands (or any if null)
-          const instanceMatch = !memberConfig.instance_name || memberConfig.instance_name === instanceName
+          // Check if this instance matches the configured one (or any if null)
+          // Compare by name AND by token to handle alias drift (e.g. "Site ABRACI" vs "WHATSJUD IA")
+          let instanceMatch = !memberConfig.instance_name || memberConfig.instance_name === instanceName
+          
+          if (!instanceMatch && memberConfig.instance_name && instanceToken) {
+            // Fallback: check if the configured instance has the same token as the current webhook
+            const { data: configuredInst } = await supabase
+              .from('whatsapp_instances')
+              .select('instance_token')
+              .eq('instance_name', memberConfig.instance_name)
+              .limit(1)
+              .maybeSingle()
+            if (configuredInst?.instance_token === instanceToken) {
+              console.log('Member assistant: token-based match found. Config:', memberConfig.instance_name, 'Webhook:', instanceName)
+              instanceMatch = true
+            }
+          }
 
           if (instanceMatch) {
             // Check if sender phone belongs to a team member
@@ -1925,8 +1934,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ========== AI AGENT AUTO-REPLY ==========
-    if (direction === 'inbound' && instanceName && phone) {
+    // ========== AI AGENT AUTO-REPLY (skip for group messages unless it's a command) ==========
+    if (direction === 'inbound' && instanceName && phone && !isGroup) {
       try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
         const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
