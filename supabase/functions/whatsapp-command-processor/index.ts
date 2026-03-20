@@ -632,7 +632,17 @@ ANEXAR IMAGENS A ATIVIDADES:
 - Se o assessor enviou uma imagem e pede para "anexar" a uma atividade existente, use "attach_to_activity" com o título ou nome do lead para buscar a atividade.
 - Se imagens foram enviadas junto com um comando de criação de atividade, elas serão anexadas automaticamente.
 
-RELATÓRIOS E PRODUTIVIDADE:
+CRIAR CASO JURÍDICO (new_case):
+- Quando o assessor pedir para "criar caso", "criar processo", "caso jurídico", use new_case
+- Extraia TODOS os dados da conversa do grupo (se disponível no CONTEXTO DA CONVERSA DO GRUPO)
+- Identifique TODOS os números de processo mencionados (formato: 0001234-56.2024.8.26.0100 ou similar)
+- Identifique TODAS as partes mencionadas (nomes de pessoas como autor, réu, advogado, testemunha, etc.)
+- Se a conversa é de um grupo de WhatsApp, o link do grupo será vinculado automaticamente
+- Escolha o núcleo especializado mais adequado baseado no tipo do caso
+- Preencha a descrição com TODOS os dados relevantes encontrados (vítima, empresa, dano, data, local, etc.)
+- O lead será criado automaticamente como "fechado"
+
+
 - Quando pedirem relatório, feedback, desempenho ou produtividade: use productivity_report
 - Você pode consultar: tarefas atrasadas, metas definidas vs atingidas, tempo online, ranking da equipe
 - Se perguntarem sobre "mim" ou "eu", use o user_id do assessor atual
