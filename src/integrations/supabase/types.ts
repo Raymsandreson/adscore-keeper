@@ -4363,6 +4363,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          instance_id: string | null
           instance_name: string | null
           is_active: boolean
           updated_at: string
@@ -4370,6 +4371,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          instance_id?: string | null
           instance_name?: string | null
           is_active?: boolean
           updated_at?: string
@@ -4377,11 +4379,20 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          instance_id?: string | null
           instance_name?: string | null
           is_active?: boolean
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "member_assistant_config_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       member_metric_goals: {
         Row: {

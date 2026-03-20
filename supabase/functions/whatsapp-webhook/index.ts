@@ -1817,26 +1817,34 @@ Deno.serve(async (req) => {
         // Check if member assistant is active
         const { data: memberConfig } = await supabase
           .from('member_assistant_config')
-          .select('is_active, instance_name')
+          .select('is_active, instance_id')
           .limit(1)
           .maybeSingle()
 
         if (memberConfig?.is_active) {
-          // Check if this instance matches the configured one (or any if null)
-          // Compare by name AND by token to handle alias drift (e.g. "Site ABRACI" vs "WHATSJUD IA")
-          let instanceMatch = !memberConfig.instance_name || memberConfig.instance_name === instanceName
+          // Match by instance_id (immutable) — resolve current webhook's instance ID
+          let instanceMatch = !memberConfig.instance_id // null = any instance
           
-          if (!instanceMatch && memberConfig.instance_name && instanceToken) {
-            // Fallback: check if the configured instance has the same token as the current webhook
-            const { data: configuredInst } = await supabase
+          if (!instanceMatch && memberConfig.instance_id) {
+            const { data: currentInst } = await supabase
               .from('whatsapp_instances')
-              .select('instance_token')
-              .eq('instance_name', memberConfig.instance_name)
+              .select('id')
+              .eq('instance_name', instanceName)
+              .eq('is_active', true)
               .limit(1)
               .maybeSingle()
-            if (configuredInst?.instance_token === instanceToken) {
-              console.log('Member assistant: token-based match found. Config:', memberConfig.instance_name, 'Webhook:', instanceName)
-              instanceMatch = true
+            instanceMatch = currentInst?.id === memberConfig.instance_id
+            
+            // Also try matching by token if name lookup didn't work
+            if (!instanceMatch && instanceToken) {
+              const { data: tokenInst } = await supabase
+                .from('whatsapp_instances')
+                .select('id')
+                .eq('instance_token', instanceToken)
+                .eq('is_active', true)
+                .limit(1)
+                .maybeSingle()
+              instanceMatch = tokenInst?.id === memberConfig.instance_id
             }
           }
 
@@ -1934,8 +1942,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ========== AI AGENT AUTO-REPLY (skip for group messages unless it's a command) ==========
-    if (direction === 'inbound' && instanceName && phone && !isGroup) {
+    // ========== AI AGENT AUTO-REPLY ==========
+    if (direction === 'inbound' && instanceName && phone) {
       try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
         const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
