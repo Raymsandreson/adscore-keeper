@@ -1444,7 +1444,8 @@ Deno.serve(async (req) => {
     const hasMedia = !!(storedMediaUrl || mediaUrl || (messageType && messageType !== 'text'))
 
     // Skip collection routing for ghost control commands (#parar, #ativar, #status)
-    const isControlCommand = direction === 'outbound' && ['#parar', '#ativar', '#status'].includes((messageText || '').trim().toLowerCase())
+    const normalizedMessageText = (messageText || '').trim().toLowerCase()
+    const isControlCommand = ['#parar', '#ativar', '#status'].includes(normalizedMessageText)
     if (!isControlCommand && direction === 'inbound' && instanceName && phone && (messageText || hasMedia)) {
       try {
         const { data: activeSession } = await supabase
