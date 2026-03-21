@@ -1,0 +1,1 @@
+UPDATE public.wjia_collection_sessions SET status = 'cancelled', updated_at = now() WHERE id = '57317406-bfdc-4850-b446-49f20bc79ac1' AND status = 'collecting_docs';
