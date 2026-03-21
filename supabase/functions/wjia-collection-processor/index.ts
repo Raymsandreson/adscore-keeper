@@ -115,6 +115,61 @@ function resolveTemplateVariable(field: any, catalog: TemplateFieldRef[]): strin
   return null;
 }
 
+function looksLikeTemplateVariable(candidate: string, catalog: TemplateFieldRef[]): boolean {
+  const raw = (candidate || "").toString().trim();
+  if (!raw) return false;
+
+  const normalized = normalizeFieldKey(raw);
+  if (!normalized) return false;
+
+  if (raw.includes("{{") && raw.includes("}}")) return true;
+
+  return catalog.some(
+    (f) =>
+      f.normalized === normalized ||
+      f.normalized.includes(normalized) ||
+      normalized.includes(f.normalized),
+  );
+}
+
+function normalizeIncomingExtractedField(
+  field: any,
+  catalog: TemplateFieldRef[],
+): { variable: string; value: string; swapped: boolean } | null {
+  const deRaw = (field?.de || field?.field_name || "").toString().trim();
+  const paraRaw = (field?.para || "").toString().trim();
+
+  if (!deRaw || !paraRaw) return null;
+
+  const deLooksLikeVariable = looksLikeTemplateVariable(deRaw, catalog);
+  const paraLooksLikeVariable = looksLikeTemplateVariable(paraRaw, catalog);
+
+  let variableCandidate = deRaw;
+  let valueCandidate = paraRaw;
+  let swapped = false;
+
+  // Defensive fix for model outputs that invert de/para
+  if (!deLooksLikeVariable && paraLooksLikeVariable) {
+    variableCandidate = paraRaw;
+    valueCandidate = deRaw;
+    swapped = true;
+  }
+
+  const canonicalVariable =
+    resolveTemplateVariable(
+      { field_name: variableCandidate, de: variableCandidate, friendly_name: variableCandidate },
+      catalog,
+    ) || variableCandidate;
+
+  if (!canonicalVariable || !hasFieldValue(valueCandidate)) return null;
+
+  return {
+    variable: canonicalVariable,
+    value: valueCandidate,
+    swapped,
+  };
+}
+
 function inferVariableFromValue(value: any, catalog: TemplateFieldRef[]): string | null {
   const raw = (value || "").toString().trim();
   if (!raw) return null;
@@ -369,19 +424,24 @@ REGRAS DE FORMATAÇÃO:
           ]);
 
           for (const field of (extractedData.extracted_fields || [])) {
-            if (!field.de || !field.para) continue;
-            
-            const fieldKeyNorm = normalizeFieldKey(field.de);
-            const canonicalVariable = resolveTemplateVariable(field, requiredFieldCatalog) || field.de;
+            const normalizedField = normalizeIncomingExtractedField(field, requiredFieldCatalog);
+            if (!normalizedField) continue;
+
+            const fieldKeyNorm = normalizeFieldKey(normalizedField.variable);
+            const canonicalVariable = normalizedField.variable;
             const canonicalKeyNorm = normalizeFieldKey(canonicalVariable);
             
             // Only block if ALL documents are identity docs (RG/CNH)
             if (hasOnlyIdentityDocs && (BLOCKED_FROM_IDENTITY_DOCS.has(fieldKeyNorm) || BLOCKED_FROM_IDENTITY_DOCS.has(canonicalKeyNorm))) {
-              console.log(`BLOCKED hallucinated field from identity doc OCR: ${field.de} = ${field.para}`);
+              console.log(`BLOCKED hallucinated field from identity doc OCR: ${canonicalVariable} = ${normalizedField.value}`);
               continue;
             }
+
+            if (normalizedField.swapped) {
+              console.log(`Normalized swapped OCR pair: de="${field.de}" para="${field.para}" => ${canonicalVariable}="${normalizedField.value}"`);
+            }
             
-            upsertCollectedField(updatedFields, canonicalVariable, field.para);
+            upsertCollectedField(updatedFields, canonicalVariable, normalizedField.value);
           }
 
           if (extractedData.signer_name) {
@@ -1063,9 +1123,14 @@ ATENÇÃO - REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
               if (tc?.function?.arguments) {
                 const extracted = JSON.parse(tc.function.arguments);
                 for (const field of (extracted.extracted_fields || [])) {
-                  if (!field.de || !field.para) continue;
-                  const cv = resolveTemplateVariable(field, requiredFieldCatalog) || field.de;
-                  upsertCollectedField(updatedFields, cv, field.para);
+                  const normalizedField = normalizeIncomingExtractedField(field, requiredFieldCatalog);
+                  if (!normalizedField) continue;
+
+                  if (normalizedField.swapped) {
+                    console.log(`Normalized swapped OCR pair on skip flow: de="${field.de}" para="${field.para}" => ${normalizedField.variable}="${normalizedField.value}"`);
+                  }
+
+                  upsertCollectedField(updatedFields, normalizedField.variable, normalizedField.value);
                 }
                 if (extracted.signer_name) collectedData.signer_name = extracted.signer_name;
               }
@@ -1400,16 +1465,22 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
     }
 
     for (const newField of (result.newly_extracted || [])) {
-      const canonicalVariable =
-        resolveTemplateVariable(newField, requiredFieldCatalog) ||
-        inferVariableFromValue(newField?.para, requiredFieldCatalog);
+      const normalizedField = normalizeIncomingExtractedField(newField, requiredFieldCatalog);
+      if (!normalizedField) continue;
 
-      const targetVariable = canonicalVariable || newField?.de || newField?.field_name;
-      if (!targetVariable || !hasFieldValue(newField?.para)) continue;
+      const canonicalVariable =
+        resolveTemplateVariable(
+          { de: normalizedField.variable, field_name: normalizedField.variable },
+          requiredFieldCatalog,
+        ) ||
+        inferVariableFromValue(normalizedField.value, requiredFieldCatalog);
+
+      const targetVariable = canonicalVariable || normalizedField.variable;
+      if (!targetVariable || !hasFieldValue(normalizedField.value)) continue;
 
       if (!canonicalVariable) {
         const targetKey = normalizeFieldKey(targetVariable.toString());
-        const valueKey = normalizeFieldKey(newField.para.toString());
+        const valueKey = normalizeFieldKey(normalizedField.value.toString());
         if (targetKey === valueKey) continue;
       }
 
@@ -1419,7 +1490,7 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
         const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(targetVariable.toString()));
         if (existing && hasFieldValue(existing.para)) {
           const existingName = (existing.para || "").toString().trim();
-          const newName = (newField.para || "").toString().trim();
+          const newName = (normalizedField.value || "").toString().trim();
           const existingWords = existingName.split(/\s+/).length;
           const newWords = newName.split(/\s+/).length;
           // Protect: keep existing if it has more words OR if new name is just 1 word (likely a confirmation)
@@ -1435,7 +1506,7 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
         }
       }
 
-      upsertCollectedField(updatedFields, targetVariable.toString(), newField.para);
+      upsertCollectedField(updatedFields, targetVariable.toString(), normalizedField.value);
     }
 
     // === CEP AUTO-LOOKUP: auto-fill address fields from CEP ===
