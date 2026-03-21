@@ -350,9 +350,39 @@ REGRAS DE FORMATAÇÃO:
           const extractedData = JSON.parse(visionToolCall.function.arguments);
           console.log("Vision extraction result:", JSON.stringify(extractedData));
 
+          // POST-EXTRACTION FILTER: Block fields that CANNOT come from identity documents (RG/CNH)
+          // These are hallucinated by the model despite prompt instructions
+          const BLOCKED_FROM_DOCS = new Set([
+            'ESTADO_CIVIL', 'ESTADOCIVIL',
+            'PROFISSAO', 'PROFISSÃO',
+            'ENDERECO_COMPLETO', 'ENDERECOCOMPLETO', 'ENDERECO',
+            'CEP',
+            'CIDADE', 'MUNICIPIO',
+            'UF', 'ESTADO',
+            'BAIRRO', 'RUA', 'LOGRADOURO', 'NUMERO', 'COMPLEMENTO',
+            'DATA_ASSINATURA', 'DATAASSINATURA',
+            'LOCAL_ASSINATURA', 'LOCALASSINATURA',
+          ]);
+
           for (const field of (extractedData.extracted_fields || [])) {
             if (!field.de || !field.para) continue;
+            
+            // Check if this field is in the blocklist
+            const fieldKeyNorm = normalizeFieldKey(field.de);
+            if (BLOCKED_FROM_DOCS.has(fieldKeyNorm)) {
+              console.log(`BLOCKED hallucinated field from doc OCR: ${field.de} = ${field.para}`);
+              continue; // Skip - do NOT save this field
+            }
+            
             const canonicalVariable = resolveTemplateVariable(field, requiredFieldCatalog) || field.de;
+            
+            // Double-check canonical variable against blocklist too
+            const canonicalKeyNorm = normalizeFieldKey(canonicalVariable);
+            if (BLOCKED_FROM_DOCS.has(canonicalKeyNorm)) {
+              console.log(`BLOCKED hallucinated field (canonical) from doc OCR: ${canonicalVariable} = ${field.para}`);
+              continue;
+            }
+            
             upsertCollectedField(updatedFields, canonicalVariable, field.para);
           }
 
