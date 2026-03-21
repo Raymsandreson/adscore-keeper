@@ -182,18 +182,18 @@ function computeMissingRequiredFields(
 async function urlToBase64DataUri(url: string): Promise<string> {
   if (url.startsWith("data:")) return url;
   try {
-    const resp = await fetch(url);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+    const resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
     if (!resp.ok) {
       console.error("Failed to download image for base64:", resp.status, url);
       return url;
     }
     const buffer = await resp.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    let binary = "";
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const base64 = btoa(binary);
+    // Use Deno's built-in base64 encoding (much faster than byte-by-byte loop)
+    const { encode } = await import("https://deno.land/std@0.168.0/encoding/base64.ts");
+    const base64 = encode(buffer);
     const contentType = resp.headers.get("content-type") || "image/jpeg";
     return `data:${contentType};base64,${base64}`;
   } catch (e) {
