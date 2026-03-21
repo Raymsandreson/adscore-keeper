@@ -1,0 +1,1 @@
+UPDATE public.wjia_collection_sessions SET status = 'cancelled', updated_at = now() WHERE id IN ('c7457cd2-5693-4f99-a93a-84d645717935', 'df664e7b-c170-49ba-9f3d-1e4fc1cdfc78') AND status NOT IN ('generated', 'signed');
