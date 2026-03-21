@@ -267,7 +267,9 @@ ATENÇÃO - REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
    - FILIAÇÃO são os pais
    - O campo "LOCAL DE NASCIMENTO" indica a naturalidade
 3. O OUTORGANTE/SIGNATÁRIO é SEMPRE o TITULAR do documento (cujo NOME aparece em destaque)
-4. NATURALIDADE: Extraia o local de nascimento do documento e preencha campos de NATURALIDADE com esse dado`;
+4. NATURALIDADE: Extraia o local de nascimento do documento e preencha campos de NATURALIDADE com esse dado
+5. ENDEREÇO: RG e CNH NÃO contêm endereço residencial. NUNCA invente ou alucinhe dados de endereço, CEP, rua, bairro, cidade de residência ou UF de residência a partir de documentos de identidade. Esses campos devem ser deixados EM BRANCO.
+6. DADOS INEXISTENTES: Se um campo solicitado NÃO aparece no documento, NÃO preencha. Deixe em branco. NUNCA invente dados como estado civil, profissão, data de assinatura ou endereço a partir de RG/CNH.`;
 
         const extractPrompt = `${customExtractionPrompt || defaultExtractionPrompt}
 
@@ -276,6 +278,13 @@ ${allTemplateFieldNames.map((f: string) => `- ${f}`).join('\n')}
 
 DADOS JÁ COLETADOS (não sobrescreva a menos que esteja claramente errado):
 ${alreadyFilledSummary || '(nenhum)'}
+
+REGRAS CRÍTICAS:
+- NUNCA invente dados que não estão EXPLICITAMENTE escritos no documento
+- Campos de ENDEREÇO (rua, bairro, cidade de residência, UF de residência, CEP, ENDERECO_COMPLETO) NÃO existem em RG/CNH - deixe em branco
+- Campos de ESTADO_CIVIL e PROFISSÃO NÃO existem em RG/CNH - deixe em branco
+- Campos de DATA_ASSINATURA NÃO existem em RG/CNH - deixe em branco
+- CIDADE e UF do documento se referem ao LOCAL DE NASCIMENTO (naturalidade), NÃO ao endereço de residência
 
 REGRAS DE FORMATAÇÃO:
 - NOME COMPLETO: Use o nome do TITULAR do documento (campo "NOME"), NUNCA os nomes da filiação
@@ -1003,9 +1012,10 @@ ATENÇÃO - REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
    - O CPF do titular aparece no verso do RG
 2. Em uma CNH:
    - O NOME DO TITULAR está no campo "NOME" ou "Nome"
-   - FILIAÇÃO são os pais`;
+   - FILIAÇÃO são os pais
+3. NUNCA invente dados que não estão no documento. Campos de endereço, estado civil, profissão e data de assinatura NÃO existem em RG/CNH.`;
 
-              const extractPrompt = `${customExtractionPrompt || defaultSkipExtractionPrompt}\n\nCAMPOS NECESSÁRIOS:\n${allTemplateFieldNames.map((f: string) => `- ${f}`).join('\n')}\n\nREGRAS:\n- Extraia nome, CPF, RG, data de nascimento, endereço, etc.\n- Formate CPF como XXX.XXX.XXX-XX e datas como DD/MM/AAAA\n- Use EXATAMENTE as variáveis do template no campo "de"`;
+              const extractPrompt = `${customExtractionPrompt || defaultSkipExtractionPrompt}\n\nCAMPOS NECESSÁRIOS:\n${allTemplateFieldNames.map((f: string) => `- ${f}`).join('\n')}\n\nREGRAS:\n- Extraia SOMENTE dados que estão EXPLICITAMENTE escritos no documento\n- NUNCA invente endereço, CEP, estado civil, profissão ou data de assinatura a partir de RG/CNH\n- Formate CPF como XXX.XXX.XXX-XX e datas como DD/MM/AAAA\n- Use EXATAMENTE as variáveis do template no campo "de"`;
 
               const visionResult = await geminiChat({
                 model: "google/gemini-2.5-flash",
