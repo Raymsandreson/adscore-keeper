@@ -351,35 +351,33 @@ REGRAS DE FORMATAÇÃO:
           console.log("Vision extraction result:", JSON.stringify(extractedData));
 
           // POST-EXTRACTION FILTER: Block fields that CANNOT come from identity documents (RG/CNH)
-          // These are hallucinated by the model despite prompt instructions
-          const BLOCKED_FROM_DOCS = new Set([
-            'ESTADO_CIVIL', 'ESTADOCIVIL',
-            'PROFISSAO', 'PROFISSÃO',
-            'ENDERECO_COMPLETO', 'ENDERECOCOMPLETO', 'ENDERECO',
+          // But ALLOW them if the documents include proof of address or other non-ID docs
+          const docTypes = allReceivedDocs.map((d: any) => d.type).filter(Boolean);
+          const hasOnlyIdentityDocs = docTypes.every((t: string) => t === 'rg_cnh');
+          
+          // Fields that identity documents (RG/CNH) NEVER contain - block only when all docs are identity
+          const BLOCKED_FROM_IDENTITY_DOCS = new Set([
+            'ESTADOCIVIL',
+            'PROFISSAO',
+            'ENDERECOCOMPLETO', 'ENDERECO',
             'CEP',
             'CIDADE', 'MUNICIPIO',
             'UF', 'ESTADO',
             'BAIRRO', 'RUA', 'LOGRADOURO', 'NUMERO', 'COMPLEMENTO',
-            'DATA_ASSINATURA', 'DATAASSINATURA',
-            'LOCAL_ASSINATURA', 'LOCALASSINATURA',
+            'DATAASSINATURA',
+            'LOCALASSINATURA',
           ]);
 
           for (const field of (extractedData.extracted_fields || [])) {
             if (!field.de || !field.para) continue;
             
-            // Check if this field is in the blocklist
             const fieldKeyNorm = normalizeFieldKey(field.de);
-            if (BLOCKED_FROM_DOCS.has(fieldKeyNorm)) {
-              console.log(`BLOCKED hallucinated field from doc OCR: ${field.de} = ${field.para}`);
-              continue; // Skip - do NOT save this field
-            }
-            
             const canonicalVariable = resolveTemplateVariable(field, requiredFieldCatalog) || field.de;
-            
-            // Double-check canonical variable against blocklist too
             const canonicalKeyNorm = normalizeFieldKey(canonicalVariable);
-            if (BLOCKED_FROM_DOCS.has(canonicalKeyNorm)) {
-              console.log(`BLOCKED hallucinated field (canonical) from doc OCR: ${canonicalVariable} = ${field.para}`);
+            
+            // Only block if ALL documents are identity docs (RG/CNH)
+            if (hasOnlyIdentityDocs && (BLOCKED_FROM_IDENTITY_DOCS.has(fieldKeyNorm) || BLOCKED_FROM_IDENTITY_DOCS.has(canonicalKeyNorm))) {
+              console.log(`BLOCKED hallucinated field from identity doc OCR: ${field.de} = ${field.para}`);
               continue;
             }
             
