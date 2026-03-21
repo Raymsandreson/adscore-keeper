@@ -820,9 +820,14 @@ serve(async (req) => {
         const pendingTypes = requestedTypes.filter(t => !receivedDocs.some((d: any) => d.type === t));
 
         if (pendingTypes.length > 0) {
+          // OPTIMIZATION: If only one type pending, skip AI classification entirely
+          if (pendingTypes.length === 1) {
+            assignedType = pendingTypes[0];
+            console.log("Single pending doc type, auto-assigning:", assignedType);
+          } else {
           try {
              const classifyResult = await geminiChat({
-              model: "google/gemini-2.5-pro",
+              model: "google/gemini-2.5-flash",
               messages: [
                 { role: "system", content: `Você é um classificador de documentos. Analise a imagem e determine qual tipo de documento é.
 
@@ -895,6 +900,7 @@ Classifique o documento enviado.` },
             console.error("Document classification error:", classifyErr);
             // Fallback: assign to first pending type
             assignedType = pendingTypes[0];
+          }
           }
         }
 
