@@ -787,7 +787,15 @@ serve(async (req) => {
                 const fileResp = await fetch(doc.media_url);
                 if (!fileResp.ok) { console.error("Failed to download doc:", doc.media_url); continue; }
                 const fileBuffer = await fileResp.arrayBuffer();
-                const base64 = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
+                // Use chunked encoding to avoid stack overflow on large files
+                const bytes = new Uint8Array(fileBuffer);
+                let binaryStr = '';
+                const chunkSize = 8192;
+                for (let i = 0; i < bytes.length; i += chunkSize) {
+                  const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+                  binaryStr += String.fromCharCode(...chunk);
+                }
+                const base64 = btoa(binaryStr);
                 
                 const docTypeLabels: Record<string, string> = {
                   rg_cnh: 'RG_CNH', comprovante_endereco: 'Comprovante_Endereco',
