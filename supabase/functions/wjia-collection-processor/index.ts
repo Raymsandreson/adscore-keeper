@@ -1236,8 +1236,71 @@ ATENÇÃO - REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
       .join("\n");
 
     const collectedData = session.collected_data || { fields: [] };
-    const missingFields = session.missing_fields || [];
+    let missingFields = session.missing_fields || [];
     const requiredFieldCatalog = buildTemplateFieldCatalog(session);
+
+    // === PRE-AI AUTO-FILL: date, signing city/state ===
+    // Fill these BEFORE AI so it never asks for them
+    const todayFormatted = new Date().toLocaleDateString('pt-BR');
+    const preFilledFields = new Set<string>();
+    const currentFields = [...(collectedData.fields || [])];
+    
+    for (const templateField of requiredFieldCatalog) {
+      const normKey = templateField.normalized;
+      
+      // Auto-fill DATA_ASSINATURA / DATA_PROCURACAO / DATA_ATUAL
+      const isDateField = normKey.includes("DATA") && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO") || normKey.includes("ATUAL") || normKey.includes("HOJE"));
+      if (isDateField) {
+        const existing = currentFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
+        if (!existing || !hasFieldValue(existing.para)) {
+          upsertCollectedField(currentFields, templateField.variable, todayFormatted);
+          console.log(`Pre-AI auto-filled date: ${templateField.variable} = ${todayFormatted}`);
+        }
+        preFilledFields.add(normKey);
+      }
+      
+      // Auto-fill cidade_outorgante / estado_outorgante from client address
+      const isSigningCity = (normKey.includes("CIDADE") || normKey.includes("LOCAL") || normKey.includes("MUNICIPIO")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO") || normKey.includes("OUTORGANTE"));
+      const isSigningState = (normKey.includes("ESTADO") || normKey.includes("UF")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO") || normKey.includes("OUTORGANTE"));
+      
+      if (isSigningCity) {
+        const clientCityField = currentFields.find((f: any) => {
+          const k = normalizeFieldKey(f.de || "");
+          return (k.includes("CIDADE") || k.includes("MUNICIPIO")) && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && !k.includes("OUTORGANTE") && hasFieldValue(f.para);
+        });
+        if (clientCityField) {
+          const existing = currentFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
+          if (!existing || !hasFieldValue(existing.para)) {
+            upsertCollectedField(currentFields, templateField.variable, clientCityField.para);
+            console.log(`Pre-AI auto-filled signing city: ${templateField.variable} = ${clientCityField.para}`);
+          }
+          preFilledFields.add(normKey);
+        }
+      }
+      if (isSigningState) {
+        const clientStateField = currentFields.find((f: any) => {
+          const k = normalizeFieldKey(f.de || "");
+          return (k.includes("ESTADO") || k === "UF") && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && !k.includes("OUTORGANTE") && hasFieldValue(f.para);
+        });
+        if (clientStateField) {
+          const existing = currentFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
+          if (!existing || !hasFieldValue(existing.para)) {
+            upsertCollectedField(currentFields, templateField.variable, clientStateField.para);
+            console.log(`Pre-AI auto-filled signing state: ${templateField.variable} = ${clientStateField.para}`);
+          }
+          preFilledFields.add(normKey);
+        }
+      }
+    }
+    
+    // Update collected data with pre-filled fields
+    collectedData.fields = currentFields;
+    
+    // Remove pre-filled fields from missing fields list so AI never asks for them
+    missingFields = missingFields.filter((f: any) => {
+      const fieldKey = normalizeFieldKey(f?.field_name || f?.friendly_name || "");
+      return !preFilledFields.has(fieldKey);
+    });
 
     // Use AI to extract data from the client's message
     const allTemplateFields = requiredFieldCatalog.length > 0
