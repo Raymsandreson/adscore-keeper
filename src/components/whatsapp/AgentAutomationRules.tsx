@@ -73,9 +73,9 @@ export function AgentAutomationRules({ agentId }: Props) {
   const fetchAll = async () => {
     setLoading(true);
     const [rulesRes, boardsRes, nucleiRes] = await Promise.all([
-      supabase.from('agent_automation_rules').select('*').eq('agent_id', agentId),
+      supabase.from('agent_automation_rules' as any).select('*').eq('agent_id', agentId),
       supabase.from('kanban_boards').select('id, name').eq('is_active', true).order('display_order'),
-      supabase.from('specialized_nuclei').select('id, name, prefix').eq('is_active', true).order('name'),
+      supabase.from('specialized_nuclei' as any).select('id, name, prefix').eq('is_active', true).order('name'),
     ]);
 
     const rulesMap: Record<string, any> = {};
@@ -92,13 +92,13 @@ export function AgentAutomationRules({ agentId }: Props) {
     // Fetch stages for all boards
     const boardIds = (boardsRes.data as any[])?.map((b: any) => b.id) || [];
     if (boardIds.length > 0) {
-      const { data: stagesData } = await supabase
+      const { data: stagesData } = await (supabase as any)
         .from('kanban_stages')
         .select('id, name, board_id')
         .in('board_id', boardIds)
         .order('display_order');
       const grouped: Record<string, Stage[]> = {};
-      (stagesData as any[] || []).forEach((s: any) => {
+      ((stagesData as any[]) || []).forEach((s: any) => {
         if (!grouped[s.board_id]) grouped[s.board_id] = [];
         grouped[s.board_id].push(s);
       });
