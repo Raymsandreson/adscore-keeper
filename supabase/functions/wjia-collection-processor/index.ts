@@ -504,7 +504,7 @@ REGRAS DE FORMATAÇÃO:
 
     const filledSummary = updatedFields
       .filter((f: any) => f.para)
-      .map((f: any) => `• *${(f.de || '').replace(/\{\{|\}\}/g, '')}*: ${f.para}`)
+      .map((f: any) => `• *${getFieldLabel(f, requiredFieldCatalog)}*: ${f.para}`)
       .join('\n');
     const docsSummary = allReceivedDocs.map((d: any) => `• ✅ ${docTypeLabels[d.type] || d.type}`).join('\n');
 
