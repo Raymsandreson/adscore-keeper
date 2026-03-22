@@ -1627,8 +1627,8 @@ REGRAS DE AUTO-PREENCHIMENTO (JÁ APLICADAS AUTOMATICAMENTE - NÃO pergunte):
               items: {
                 type: "object",
                 properties: {
-                  field_name: { type: "string" },
-                  friendly_name: { type: "string" },
+                  field_name: { type: "string", description: "Variável EXATA do template. COPIE da lista de campos fornecida." },
+                  friendly_name: { type: "string", description: "Label EXATO do campo como está na lista de campos do template. NÃO invente nomes." },
                 },
                 required: ["field_name", "friendly_name"],
               },
