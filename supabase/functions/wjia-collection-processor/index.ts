@@ -1253,7 +1253,7 @@ ATENÇÃO - REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
           if (actuallyMissing.length > 0) {
             // Still missing → move to collecting
             const missingNames = actuallyMissing.map((f: any) => f.friendly_name).join(', ');
-            const filledSummary = updatedFields.filter((f: any) => f.para).map((f: any) => `• *${(f.de || '').replace(/\{\{|\}\}/g, '')}*: ${f.para}`).join('\n');
+            const filledSummary = updatedFields.filter((f: any) => f.para).map((f: any) => `• *${getFieldLabel(f, requiredFieldCatalog)}*: ${f.para}`).join('\n');
             const skipMsg = `Ok! ${receivedDocs.length > 0 ? `Extraí dados dos documentos recebidos.\n\n${filledSummary}\n\n` : ''}⚠️ Ainda preciso que informe: *${missingNames}*`;
 
             await supabase.from("wjia_collection_sessions").update({
