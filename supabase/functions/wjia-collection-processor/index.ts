@@ -1050,15 +1050,9 @@ serve(async (req) => {
           .update({ status: "collecting", updated_at: new Date().toISOString() })
           .eq("id", session.id);
 
-        // Don't send a static reply — let the message flow through to the collecting handler
-        // which will use AI to understand and apply the correction
-        return new Response(JSON.stringify({
-          active_session: true,
-          processed: false,
-          correction_mode: true,
-          reprocess: true,
-          session_id: session.id,
-        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        // Update session status in-memory so the collecting handler below processes this message
+        session.status = "collecting";
+        // Fall through to the collecting handler below — DO NOT return here
       }
     }
 
