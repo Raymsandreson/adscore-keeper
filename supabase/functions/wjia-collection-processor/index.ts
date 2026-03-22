@@ -1609,7 +1609,7 @@ REGRAS DE AUTO-PREENCHIMENTO (JÁ APLICADAS AUTOMATICAMENTE - NÃO pergunte):
         if (targetKey === valueKey) continue;
       }
 
-      // PROTEÇÃO DE NOME COMPLETO: Se o campo é NOME e já existe um nome mais longo, não sobrescrever com nome parcial
+      // PROTEÇÃO DE NOME: Se o campo contém NOME e já existe um nome mais longo, não sobrescrever com nome parcial
       const targetKey = normalizeFieldKey(targetVariable.toString());
       if (targetKey.includes("NOME")) {
         const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(targetVariable.toString()));
@@ -1626,6 +1626,18 @@ REGRAS DE AUTO-PREENCHIMENTO (JÁ APLICADAS AUTOMATICAMENTE - NÃO pergunte):
           // Also protect if new name is contained within existing name (partial confirmation)
           if (existingName.toUpperCase().includes(newName.toUpperCase()) && existingWords >= 2) {
             console.log(`NOME PROTEGIDO (parcial): mantendo "${existingName}" em vez de "${newName}"`);
+            continue;
+          }
+          // Protect against cross-field contamination: if the new value is identical to ANOTHER name field, skip
+          const otherNameFields = updatedFields.filter((f: any) => {
+            const k = normalizeFieldKey(f.de || "");
+            return k.includes("NOME") && k !== targetKey && hasFieldValue(f.para);
+          });
+          const isFromAnotherField = otherNameFields.some((f: any) =>
+            (f.para || "").toString().trim().toUpperCase() === newName.toUpperCase()
+          );
+          if (isFromAnotherField && existingName.toUpperCase() !== newName.toUpperCase()) {
+            console.log(`NOME PROTEGIDO (cross-field): mantendo "${existingName}", rejeitando "${newName}" que veio de outro campo de nome`);
             continue;
           }
         }
