@@ -1899,10 +1899,10 @@ Deno.serve(async (req) => {
               }
             }
 
-            // Collection session status
-            if (sessionFound) {
-              const sessStatus = (sessionFound as any).status
-              const shortcutName = (sessionFound as any).shortcut_name || 'Atalho'
+            // Collection session status — only this conversation
+            if (activeCollectionSession) {
+              const sessStatus = (activeCollectionSession as any).status
+              const shortcutName = (activeCollectionSession as any).shortcut_name || 'Atalho'
               const statusLabels: Record<string, string> = {
                 collecting: 'coletando dados',
                 collecting_docs: 'coletando documentos',
