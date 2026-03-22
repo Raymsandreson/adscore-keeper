@@ -1601,6 +1601,21 @@ Deno.serve(async (req) => {
               await supabase.from('whatsapp_messages').delete().eq('id', message.id)
             }
 
+            // Hard reset de memória por conversa ao iniciar um novo #atalho
+            await Promise.all([
+              supabase
+                .from('wjia_collection_sessions')
+                .update({ status: 'cancelled', updated_at: new Date().toISOString() } as any)
+                .eq('phone', phone)
+                .eq('instance_name', instanceName)
+                .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready']),
+              supabase
+                .from('whatsapp_command_history')
+                .delete()
+                .eq('phone', phone)
+                .eq('instance_name', instanceName),
+            ])
+
             const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
             const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
 
@@ -1617,6 +1632,7 @@ Deno.serve(async (req) => {
                 command: trimmedCmd,
                 contact_id: contactId,
                 lead_id: leadId,
+                reset_memory: true,
               }),
             }).catch(err => console.error('#name command trigger error:', err))
 
