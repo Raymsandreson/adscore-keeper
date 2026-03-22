@@ -1443,8 +1443,10 @@ REGRA CRÍTICA - NOME COMPLETO:
 REGRA CRÍTICA - ENDEREÇO E CEP:
 - Quando o sistema fornecer resultado de busca de CEP (logradouro, bairro, cidade, UF), use EXATAMENTE esses dados do resultado.
 - NÃO invente ou modifique o endereço. Se a busca retornou "Rua dos Andradas" use "Rua dos Andradas", não "Avenida João 23".
-- O campo ENDERECO_COMPLETO deve conter APENAS o logradouro retornado pelo CEP + número/complemento informado pelo cliente.
-- Se o cliente ainda não informou número, NÃO adicione "sem número". Pergunte o número.
+- O campo ENDERECO_COMPLETO deve conter o logradouro + número + complemento informados pelo cliente. Ex: "Avenida João XXIII, 2195, Cond Terras Alphaville".
+- Se o cliente informar endereço COM número e complemento, CAPTURE TUDO no ENDERECO_COMPLETO. Não perca número/complemento.
+- Se o cliente ainda não informou número, pergunte o número e complemento.
+- Quando o cliente enviar um endereço (com rua/avenida), o sistema pode já ter buscado o CEP automaticamente (veja acima). Use os dados encontrados.
 
 REGRA CRÍTICA - NUNCA RE-PERGUNTE DADOS JÁ COLETADOS:
 - Se um dado JÁ ESTÁ nos "DADOS JÁ COLETADOS" acima (ex: NOME_COMPLETO, CPF), NUNCA pergunte novamente ao cliente.
@@ -1471,11 +1473,10 @@ REGRA CRÍTICA - PEÇA TODOS OS DADOS FALTANTES DE UMA VEZ COM RESUMO:
 - Só marque all_collected como true se ABSOLUTAMENTE TODOS os campos listados acima tiverem valores preenchidos
 - Se TODOS os dados foram coletados, diga que vai preparar o documento
 
-REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
-- DATA DE ASSINATURA / DATA DA PROCURAÇÃO / DATA ATUAL: SEMPRE preencha com a data de HOJE (${new Date().toLocaleDateString('pt-BR')}). NUNCA pergunte ao cliente.
-- CIDADE/LOCAL DE ASSINATURA / CIDADE DA PROCURAÇÃO: É SEMPRE a mesma cidade do endereço do cliente. NUNCA pergunte separadamente.
-- ESTADO DE ASSINATURA / UF DA PROCURAÇÃO: É SEMPRE o mesmo estado do endereço do cliente. NUNCA pergunte separadamente.
-- NATURALIDADE: Se o documento de identidade (RG/CNH) contém o local de nascimento, use esse dado. Se não, infira da cidade de nascimento se disponível. Se o campo "NATURALIDADE" está faltando e você tem o local de nascimento do documento, preencha automaticamente.
+REGRAS DE AUTO-PREENCHIMENTO (JÁ APLICADAS AUTOMATICAMENTE - NÃO pergunte):
+- DATA DE ASSINATURA / DATA DA PROCURAÇÃO: Já preenchido automaticamente. NÃO pergunte ao cliente. NÃO inclua nos still_missing.
+- CIDADE/ESTADO DE ASSINATURA / OUTORGANTE: Já preenchido automaticamente quando o endereço é conhecido. NÃO pergunte separadamente.
+- NATURALIDADE: Se o documento de identidade (RG/CNH) contém o local de nascimento, use esse dado.
 - Quando o cliente informar o CEP, o sistema JÁ BUSCOU o endereço (veja acima). APRESENTE ao cliente e peça confirmação + número/complemento. SÓ extraia os campos de endereço se o cliente CONFIRMAR.
 - Se o cliente não souber o CEP, peça rua, cidade e estado para buscar. Se já tiver esses dados coletados, o sistema já fez a busca reversa (veja acima).
 - Quando o cliente confirmar o endereço do CEP, extraia TODOS os campos de endereço (rua, bairro, cidade, estado, CEP) nos newly_extracted de uma vez.`;
