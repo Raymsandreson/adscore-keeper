@@ -1360,8 +1360,51 @@ INSTRUÇÃO: Apresente os CEPs encontrados ao cliente de forma natural e pergunt
         cepLookupContext = `\n\n📍 O cliente não sabe o CEP. Pergunte a rua, cidade e estado para que possamos buscar o CEP. Ex: "Sem problema! Me passa a rua, cidade e estado que eu procuro pra você."`;
       }
     }
+    
+    // === PROACTIVE REVERSE CEP LOOKUP ===
+    // When client sends address-like text without CEP, try to find the CEP automatically
+    if (!detectedCEP && !dontKnowCEP && !cepLookupContext) {
+      const cepFieldMissing = missingFields.some((f: any) => {
+        const k = normalizeFieldKey(f?.field_name || f?.friendly_name || "");
+        return k.includes("CEP");
+      });
+      if (cepFieldMissing && message_text && message_text.length > 10) {
+        // Check if message looks like an address (contains street keywords or number patterns)
+        const msgLower = (message_text || "").toLowerCase();
+        const addressKeywords = /\b(rua|avenida|av\.|travessa|alameda|rodovia|estrada|quadra|qd|lote|lot|condomínio|cond|bloco|conjunto|setor)\b/i;
+        const hasNumber = /\d{1,5}/.test(message_text);
+        
+        if (addressKeywords.test(msgLower) || (hasNumber && msgLower.length > 15)) {
+          // Try to find city/state from already collected data
+          const collectedFields = collectedData.fields || [];
+          let collectedCity = "";
+          let collectedState = "";
+          for (const f of collectedFields) {
+            const key = normalizeFieldKey(f.de || f.field_name || "");
+            if ((key.includes("CIDADE") || key.includes("MUNICIPIO")) && !key.includes("ASSINATURA") && !key.includes("OUTORGANTE")) collectedCity = f.para || "";
+            if ((key.includes("ESTADO") || key === "UF") && !key.includes("ASSINATURA") && !key.includes("OUTORGANTE")) collectedState = f.para || "";
+          }
+          
+          if (collectedState && collectedCity) {
+            // Extract street name from message (first part before number)
+            const streetMatch = message_text.match(/^((?:rua|avenida|av\.?|travessa|alameda|rodovia|estrada)\s+[^,\d]+)/i);
+            const streetForLookup = streetMatch ? streetMatch[1].trim() : message_text.split(",")[0].trim();
+            
+            if (streetForLookup.length > 3) {
+              const reverseResults = await reverseLookupCEP(collectedState, collectedCity, streetForLookup);
+              if (reverseResults.length > 0) {
+                const resultLines = reverseResults.map(r => `  CEP ${r.cep}: ${r.logradouro}, ${r.bairro}`).join("\n");
+                cepLookupContext = `\n\n🔍 BUSCA AUTOMÁTICA DE CEP (pela rua detectada "${streetForLookup}" em ${collectedCity}/${collectedState}):
+${resultLines}
+INSTRUÇÃO: O cliente informou um endereço. Use o CEP encontrado automaticamente. Se houver múltiplos resultados, pergunte qual é o correto. Capture o endereço completo COM o CEP nos newly_extracted. Pergunte número e complemento se não informados.`;
+                console.log("Proactive reverse CEP lookup results:", JSON.stringify(reverseResults));
+              }
+            }
+          }
+        }
+      }
+    }
 
-    const systemPrompt = `Você é um assistente de coleta de dados para um escritório de advocacia. Está coletando informações do cliente para preencher um documento "${session.template_name}".
 ${agentPersona}
 
 DADOS JÁ COLETADOS:
