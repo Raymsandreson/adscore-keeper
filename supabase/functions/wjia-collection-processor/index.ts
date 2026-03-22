@@ -1405,6 +1405,7 @@ INSTRUÇÃO: O cliente informou um endereço. Use o CEP encontrado automaticamen
       }
     }
 
+    const systemPrompt = `Você é um assistente de coleta de dados para um escritório de advocacia. Está coletando informações do cliente para preencher um documento "${session.template_name}".
 ${agentPersona}
 
 DADOS JÁ COLETADOS:
