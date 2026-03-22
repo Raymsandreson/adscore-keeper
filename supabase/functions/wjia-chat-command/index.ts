@@ -29,14 +29,24 @@ serve(async (req) => {
 
     const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
 
+    const messagesQueryPromise = reset_memory
+      ? Promise.resolve({ data: [] as any[] })
+      : (() => {
+          let query = supabase
+            .from("whatsapp_messages")
+            .select("direction, message_text, message_type, media_url, media_type, created_at")
+            .eq("phone", normalizedPhone);
+
+          if (instance_name) {
+            query = query.eq("instance_name", instance_name);
+          }
+
+          return query.order("created_at", { ascending: false }).limit(25);
+        })();
+
     // 1) Load context in parallel
     const [messagesRes, contactRes, leadRes, templatesRes, instanceRes, shortcutsRes] = await Promise.all([
-      supabase
-        .from("whatsapp_messages")
-        .select("direction, message_text, message_type, media_url, media_type, created_at")
-        .eq("phone", normalizedPhone)
-        .order("created_at", { ascending: false })
-        .limit(60),
+      messagesQueryPromise,
       contact_id
         ? supabase.from("contacts").select("*").eq("id", contact_id).maybeSingle()
         : Promise.resolve({ data: null }),
