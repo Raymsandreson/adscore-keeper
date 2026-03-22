@@ -121,6 +121,8 @@ REGRAS:
 - Para WHATSAPP do escritório: use "(86)99447-3226"
 - Para EMAIL do escritório: use "contato@prudencioadv.com"
 - Formate datas como DD/MM/AAAA
+- CAMPOS DE DATA (DATA_ASSINATURA, DATA_PROCURACAO, data_assinatura_outorgante, ou qualquer campo com "data" e "assinatura"/"procuracao"/"atual"): PREENCHA AUTOMATICAMENTE com a data de hoje (${new Date().toLocaleDateString('pt-BR')}) e NUNCA liste como campo faltante. Inclua nos extracted_fields.
+- Campos de cidade/estado do outorgante (cidade_outorgante, estado_outorgante): copie da CIDADE e UF do cliente
 - Extraia TUDO que puder da conversa e CRM
 - Se o atalho tem prompt_instructions, siga essas instruções adicionais`;
 
