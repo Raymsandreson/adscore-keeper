@@ -181,7 +181,12 @@ function inferVariableFromValue(value: any, catalog: TemplateFieldRef[]): string
     return pick((f) => f.normalized.includes("EMAIL"));
   }
 
-  if (/^\d{5}-?\d{3}$/.test(raw) || digits.length === 8) {
+  // Only match CEP if it looks like a proper CEP format (XXXXX-XXX or 8 digits NOT from a date)
+  if (/^\d{5}-?\d{3}$/.test(raw)) {
+    return pick((f) => f.normalized.includes("CEP"));
+  }
+  // For bare 8-digit strings, exclude date-like patterns (e.g. 22032026 from 22/03/2026)
+  if (digits.length === 8 && !/^\d{2}\/?\d{2}\/?\d{4}$/.test(raw) && !/^\d{4}\/?\d{2}\/?\d{2}$/.test(raw)) {
     return pick((f) => f.normalized.includes("CEP"));
   }
 
@@ -782,7 +787,15 @@ serve(async (req) => {
                 const fileResp = await fetch(doc.media_url);
                 if (!fileResp.ok) { console.error("Failed to download doc:", doc.media_url); continue; }
                 const fileBuffer = await fileResp.arrayBuffer();
-                const base64 = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
+                // Use chunked encoding to avoid stack overflow on large files
+                const bytes = new Uint8Array(fileBuffer);
+                let binaryStr = '';
+                const chunkSize = 8192;
+                for (let i = 0; i < bytes.length; i += chunkSize) {
+                  const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+                  binaryStr += String.fromCharCode(...chunk);
+                }
+                const base64 = btoa(binaryStr);
                 
                 const docTypeLabels: Record<string, string> = {
                   rg_cnh: 'RG_CNH', comprovante_endereco: 'Comprovante_Endereco',
@@ -1405,7 +1418,7 @@ INSTRUÇÃO: O cliente informou um endereço. Use o CEP encontrado automaticamen
       }
     }
 
-    const systemPrompt = `Você é um assistente de coleta de dados para um escritório de advocacia. Está coletando informações do cliente para preencher um documento "${session.template_name}".
+    const systemPrompt = `Você é um assistente de coleta de dados para um escritório de advocacia. Está coletando informações do cliente para preencher um documento "${session.template_name}". Seja NATURAL, simpático e humano nas respostas - como um atendente experiente, NÃO como um robô listando campos.
 ${agentPersona}
 
 DADOS JÁ COLETADOS:
@@ -1433,12 +1446,15 @@ REGRAS:
 - Se o cliente informar um dado diferente de algo já coletado, simplesmente ATUALIZE com o novo valor sem questionar. O cliente sempre tem razão.
 - NUNCA questione ou sinalize divergências/conflitos de dados. Aceite o que o cliente diz como verdade.
 
-REGRA CRÍTICA - NOME COMPLETO:
-- Se o documento (RG/CNH) já extraiu o NOME COMPLETO, USE SEMPRE O NOME COMPLETO do documento.
+REGRA CRÍTICA - NOMES (NOME_COMPLETO, NOME_OUTORGANTE, etc.):
+- CADA campo de nome é INDEPENDENTE. NÃO copie valores entre campos de nome diferentes.
+- {{NOME_COMPLETO}} e {{NOME_OUTORGANTE}} podem ter o MESMO valor (se a mesma pessoa), mas devem ser preenchidos INDIVIDUALMENTE pela extração do documento.
+- Se o documento (RG/CNH) já extraiu o NOME COMPLETO, USE SEMPRE O NOME COMPLETO do documento. NÃO substitua por um nome parcial.
 - Se o cliente responder apenas com o primeiro nome (ex: "Kemly"), isso é uma CONFIRMAÇÃO, NÃO uma correção. NÃO extraia esse nome parcial nos newly_extracted.
-- Só extraia um novo NOME_COMPLETO se o cliente EXPLICITAMENTE corrigir com um nome completo diferente e MAIS LONGO que o atual.
-- Exemplo: documento extraiu "KEMLY RAYANE DA SILVA" e cliente disse "Kemly" → NÃO extraia NOME_COMPLETO. O nome completo já está correto.
-- Exemplo: cliente disse "meu nome é Maria Kemly Santos" → extraia "Maria Kemly Santos" pois é uma correção explícita.
+- Só extraia um novo valor de nome se o cliente EXPLICITAMENTE corrigir com um nome completo diferente e MAIS LONGO que o atual.
+- NUNCA copie o valor de um campo de nome para outro (ex: NÃO copie NOME_OUTORGANTE para NOME_COMPLETO ou vice-versa).
+- Se ambos já foram extraídos do documento, MANTENHA cada um com seu valor original.
+- Exemplo: documento extraiu "KEMLY RAYANE DA SILVA" e cliente disse "Kemly" → NÃO extraia nenhum campo de nome. Os nomes já estão corretos.
 
 REGRA CRÍTICA - ENDEREÇO E CEP:
 - Quando o sistema fornecer resultado de busca de CEP (logradouro, bairro, cidade, UF), use EXATAMENTE esses dados do resultado.
@@ -1593,7 +1609,7 @@ REGRAS DE AUTO-PREENCHIMENTO (JÁ APLICADAS AUTOMATICAMENTE - NÃO pergunte):
         if (targetKey === valueKey) continue;
       }
 
-      // PROTEÇÃO DE NOME COMPLETO: Se o campo é NOME e já existe um nome mais longo, não sobrescrever com nome parcial
+      // PROTEÇÃO DE NOME: Se o campo contém NOME e já existe um nome mais longo, não sobrescrever com nome parcial
       const targetKey = normalizeFieldKey(targetVariable.toString());
       if (targetKey.includes("NOME")) {
         const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(targetVariable.toString()));
@@ -1610,6 +1626,18 @@ REGRAS DE AUTO-PREENCHIMENTO (JÁ APLICADAS AUTOMATICAMENTE - NÃO pergunte):
           // Also protect if new name is contained within existing name (partial confirmation)
           if (existingName.toUpperCase().includes(newName.toUpperCase()) && existingWords >= 2) {
             console.log(`NOME PROTEGIDO (parcial): mantendo "${existingName}" em vez de "${newName}"`);
+            continue;
+          }
+          // Protect against cross-field contamination: if the new value is identical to ANOTHER name field, skip
+          const otherNameFields = updatedFields.filter((f: any) => {
+            const k = normalizeFieldKey(f.de || "");
+            return k.includes("NOME") && k !== targetKey && hasFieldValue(f.para);
+          });
+          const isFromAnotherField = otherNameFields.some((f: any) =>
+            (f.para || "").toString().trim().toUpperCase() === newName.toUpperCase()
+          );
+          if (isFromAnotherField && existingName.toUpperCase() !== newName.toUpperCase()) {
+            console.log(`NOME PROTEGIDO (cross-field): mantendo "${existingName}", rejeitando "${newName}" que veio de outro campo de nome`);
             continue;
           }
         }
