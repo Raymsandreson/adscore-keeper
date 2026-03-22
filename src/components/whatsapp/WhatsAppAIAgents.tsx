@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AIPromptGenerator } from './AIPromptGenerator';
+import { AgentAutomationRules } from './AgentAutomationRules';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +13,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bot, Plus, Pencil, Trash2, Power, PowerOff, Sparkles, Loader2, Phone, Clock, Megaphone, X, FileText } from 'lucide-react';
+import { Bot, Plus, Pencil, Trash2, Power, PowerOff, Sparkles, Loader2, Phone, Clock, Megaphone, X, FileText, Zap } from 'lucide-react';
 import { AgentKnowledgeDocs } from './AgentKnowledgeDocs';
 import { toast } from 'sonner';
 
@@ -359,9 +360,10 @@ export function WhatsAppAIAgents() {
           </DialogHeader>
           {editingAgent && (
             <Tabs defaultValue="general" className="w-full">
-              <TabsList className="w-full grid grid-cols-5">
+              <TabsList className="w-full grid grid-cols-6">
                 <TabsTrigger value="general" className="text-xs">Geral</TabsTrigger>
                 <TabsTrigger value="knowledge" className="text-xs">📚 Base</TabsTrigger>
+                <TabsTrigger value="automations" className="text-xs">⚡ Automações</TabsTrigger>
                 <TabsTrigger value="timing" className="text-xs">Tempos</TabsTrigger>
                 <TabsTrigger value="calls" className="text-xs">Chamadas</TabsTrigger>
                 <TabsTrigger value="campaigns" className="text-xs">Campanhas</TabsTrigger>
@@ -462,6 +464,18 @@ export function WhatsAppAIAgents() {
                   <div className="text-center py-8">
                     <FileText className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
                     <p className="text-sm text-muted-foreground">Salve o agente primeiro para adicionar documentos à base de conhecimento</p>
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* TAB: Automations */}
+              <TabsContent value="automations" className="mt-4">
+                {editingAgent.id ? (
+                  <AgentAutomationRules agentId={editingAgent.id} />
+                ) : (
+                  <div className="text-center py-8">
+                    <Zap className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Salve o agente primeiro para configurar automações</p>
                   </div>
                 )}
               </TabsContent>

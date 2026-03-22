@@ -99,6 +99,36 @@ export function WhatsAppAgentToggle({ phone, instanceName }: Props) {
       setActiveAgentName(agent?.name || null);
       setAgentEnabled(true);
       toast.success(`🤖 Agente "${agent?.name}" ativado nesta conversa`);
+
+      // Trigger on_activation automations
+      try {
+        // Get contact name from conversation
+        const { data: lastMsg } = await supabase
+          .from('whatsapp_messages')
+          .select('contact_name')
+          .eq('phone', phone)
+          .eq('instance_name', instanceName)
+          .not('contact_name', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        supabase.functions.invoke('execute-agent-automations', {
+          body: {
+            agent_id: agentId,
+            trigger_type: 'on_activation',
+            phone,
+            instance_name: instanceName,
+            contact_name: (lastMsg as any)?.contact_name || phone,
+          },
+        }).then(res => {
+          if (res.data?.executed > 0) {
+            toast.info(`⚡ ${res.data.executed} automação(ões) executada(s)`);
+          }
+        }).catch(e => console.error('Automation error:', e));
+      } catch (e) {
+        console.error('Automation trigger error:', e);
+      }
     } catch (e: any) {
       toast.error('Erro: ' + (e.message || ''));
     } finally {

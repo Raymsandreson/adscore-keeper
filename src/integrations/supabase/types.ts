@@ -290,6 +290,44 @@ export type Database = {
           },
         ]
       }
+      agent_automation_rules: {
+        Row: {
+          actions: Json
+          agent_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          trigger_type: string
+          updated_at: string
+        }
+        Insert: {
+          actions?: Json
+          agent_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          trigger_type: string
+          updated_at?: string
+        }
+        Update: {
+          actions?: Json
+          agent_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          trigger_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_automation_rules_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_knowledge_documents: {
         Row: {
           agent_id: string
