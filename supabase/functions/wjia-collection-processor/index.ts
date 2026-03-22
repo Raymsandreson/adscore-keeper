@@ -98,9 +98,10 @@ function getFieldLabel(field: any, catalog: TemplateFieldRef[]): string {
   const rawDe = (field?.de || field?.field_name || "").toString().trim();
   const normKey = normalizeFieldKey(rawDe);
   const match = catalog.find(c => c.normalized === normKey || normalizeFieldKey(c.variable) === normKey);
+  // ALWAYS prefer the exact label from the ZapSign template catalog
   if (match?.label) return match.label;
-  // Fallback: clean up the raw variable name
-  return rawDe.replace(/\{\{|\}\}/g, '').replace(/_/g, ' ').trim();
+  // Fallback: return raw variable without cleanup to preserve original naming
+  return rawDe.replace(/\{\{|\}\}/g, '').trim();
 }
 
 function resolveTemplateVariable(field: any, catalog: TemplateFieldRef[]): string | null {
