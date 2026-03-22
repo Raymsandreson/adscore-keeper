@@ -1268,7 +1268,7 @@ ATENÇÃO - REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
             }
           } else {
             // All extracted → ready
-            const filledSummary = updatedFields.filter((f: any) => f.para).map((f: any) => `• *${(f.de || '').replace(/\{\{|\}\}/g, '')}*: ${f.para}`).join('\n');
+            const filledSummary = updatedFields.filter((f: any) => f.para).map((f: any) => `• *${getFieldLabel(f, requiredFieldCatalog)}*: ${f.para}`).join('\n');
             const docsSummary = receivedDocs.length > 0 ? '\n\nDocumentos anexos:\n' + receivedDocs.map((d: any) => `• ✅ ${docTypeLabels[d.type] || d.type}`).join('\n') : '';
             const skipMsg = `✅ *Dados extraídos dos documentos!*\n\n${filledSummary}${docsSummary}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento.`;
 
