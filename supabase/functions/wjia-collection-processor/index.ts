@@ -1450,7 +1450,7 @@ INSTRUÇÃO: Apresente os CEPs encontrados ao cliente de forma natural e pergunt
           console.log("Reverse CEP lookup results:", JSON.stringify(reverseResults));
         }
       } else {
-        cepLookupContext = `\n\n📍 O cliente não sabe o CEP. Pergunte a rua, cidade e estado para que possamos buscar o CEP. Ex: "Sem problema! Me passa a rua, cidade e estado que eu procuro pra você."`;
+        cepLookupContext = `\n\n📍 O cliente não sabe o CEP. CEP é OPCIONAL neste caso. Peça a rua, número, bairro, cidade e estado para completar o endereço SEM CEP. NÃO insista no CEP. Ex: "Sem problema! Me passa a rua com número, bairro, cidade e estado que a gente segue sem o CEP."`;
       }
     }
     
@@ -1536,15 +1536,19 @@ REGRA CRÍTICA - NOMES (NOME_COMPLETO, NOME_OUTORGANTE, etc.):
 REGRA CRÍTICA - ENDEREÇO E CEP:
 - Quando o sistema fornecer resultado de busca de CEP (logradouro, bairro, cidade, UF), use EXATAMENTE esses dados do resultado.
 - NÃO invente ou modifique o endereço. Se a busca retornou "Rua dos Andradas" use "Rua dos Andradas", não "Avenida João 23".
-- O campo ENDERECO_COMPLETO deve conter o logradouro + número + complemento informados pelo cliente. Ex: "Avenida João XXIII, 2195, Cond Terras Alphaville".
-- Se o cliente informar endereço COM número e complemento, CAPTURE TUDO no ENDERECO_COMPLETO. Não perca número/complemento.
-- Se o cliente ainda não informou número, pergunte o número e complemento.
+- O campo ENDERECO_COMPLETO deve conter: logradouro + número + bairro + complemento. Ex: "Avenida João XXIII, 2195, Bairro Ininga, Cond Terras Alphaville".
+- SEMPRE peça o BAIRRO junto com o endereço. É obrigatório.
+- Se o cliente informar endereço COM número e complemento, CAPTURE TUDO no ENDERECO_COMPLETO. Não perca número/complemento/bairro.
+- Se o cliente ainda não informou número ou bairro, pergunte o número, bairro e complemento.
 - Quando o cliente enviar um endereço (com rua/avenida), o sistema pode já ter buscado o CEP automaticamente (veja acima). Use os dados encontrados.
+- CEP É OPCIONAL: Se o cliente disser que NÃO SABE o CEP, ACEITE e NÃO insista. Colete rua, número, bairro, cidade e estado SEM o CEP. NÃO pergunte o CEP novamente após o cliente dizer que não sabe.
+- Se conseguir o endereço sem CEP, tente a busca reversa. Se não encontrar, siga sem CEP mesmo.
 
 REGRA CRÍTICA - NUNCA RE-PERGUNTE DADOS JÁ COLETADOS:
 - Se um dado JÁ ESTÁ nos "DADOS JÁ COLETADOS" acima (ex: NOME_COMPLETO, CPF), NUNCA pergunte novamente ao cliente.
 - Dados extraídos de documentos (RG, CNH) são CONFIÁVEIS. Não peça confirmação de nome/CPF se já foram extraídos.
 - Foque APENAS nos campos que REALMENTE faltam na lista "DADOS QUE AINDA FALTAM".
+- Se o cliente já disse que NÃO SABE o CEP, NÃO pergunte novamente. CEP não é obrigatório se o cliente não souber.
 
 REGRA CRÍTICA - PEÇA TODOS OS DADOS FALTANTES DE UMA VEZ COM RESUMO:
 - Quando precisar pedir dados ao cliente, faça um RESUMO mostrando o que já tem e o que falta.
@@ -1557,21 +1561,21 @@ REGRA CRÍTICA - PEÇA TODOS OS DADOS FALTANTES DE UMA VEZ COM RESUMO:
   Ainda preciso de:
   ❌ Estado civil
   ❌ Profissão
-  ❌ Endereço completo com CEP
-  ❌ Número da identidade
+  ❌ Endereço completo (rua, número, bairro)
+  ❌ Cidade e estado
   
   Me manda tudo que puder de uma vez!"
 - Use esse formato SEMPRE que pedir dados faltantes. Isso ajuda o cliente a ver o progresso.
 - NÃO peça um dado por vez. Isso é lento e frustrante para o cliente.
-- Só marque all_collected como true se ABSOLUTAMENTE TODOS os campos listados acima tiverem valores preenchidos
+- Só marque all_collected como true se ABSOLUTAMENTE TODOS os campos listados acima tiverem valores preenchidos (exceto CEP se o cliente disse que não sabe)
 - Se TODOS os dados foram coletados, diga que vai preparar o documento
 
 REGRAS DE AUTO-PREENCHIMENTO (JÁ APLICADAS AUTOMATICAMENTE - NÃO pergunte):
 - DATA DE ASSINATURA / DATA DA PROCURAÇÃO: Já preenchido automaticamente. NÃO pergunte ao cliente. NÃO inclua nos still_missing.
 - CIDADE/ESTADO DE ASSINATURA / OUTORGANTE: Já preenchido automaticamente quando o endereço é conhecido. NÃO pergunte separadamente.
 - NATURALIDADE: Se o documento de identidade (RG/CNH) contém o local de nascimento, use esse dado.
-- Quando o cliente informar o CEP, o sistema JÁ BUSCOU o endereço (veja acima). APRESENTE ao cliente e peça confirmação + número/complemento. SÓ extraia os campos de endereço se o cliente CONFIRMAR.
-- Se o cliente não souber o CEP, peça rua, cidade e estado para buscar. Se já tiver esses dados coletados, o sistema já fez a busca reversa (veja acima).
+- Quando o cliente informar o CEP, o sistema JÁ BUSCOU o endereço (veja acima). APRESENTE ao cliente e peça confirmação + número/complemento/bairro. SÓ extraia os campos de endereço se o cliente CONFIRMAR.
+- Se o cliente não souber o CEP, peça rua, número, bairro, cidade e estado. NÃO insista no CEP.
 - Quando o cliente confirmar o endereço do CEP, extraia TODOS os campos de endereço (rua, bairro, cidade, estado, CEP) nos newly_extracted de uma vez.`;
 
     const tools = [{
