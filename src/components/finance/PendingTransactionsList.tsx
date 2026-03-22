@@ -713,7 +713,7 @@ export function PendingTransactionsList({
           const isEditing = editingId === transaction.id;
           const isExpanded = expandedId === transaction.id || isEditing;
           const override = getTransactionOverride(transaction.id);
-          const isPending = !override || (!override.lead_id && !override.contact_id);
+          const isPending = !override || (!override.category_id && !override.lead_id && !override.contact_id && !override.link_acknowledged);
           const cardAssignment = getCardAssignment(transaction.card_last_digits || '');
           
           // Get linked entity name
