@@ -1619,8 +1619,8 @@ Deno.serve(async (req) => {
             const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
             const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
 
-            // Route to wjia-chat-command with the #name as command
-            fetch(`${supabaseUrl}/functions/v1/wjia-chat-command`, {
+            // Route to unified wjia-agent with the #name as command
+            fetch(`${supabaseUrl}/functions/v1/wjia-agent`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
