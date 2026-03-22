@@ -1446,12 +1446,15 @@ REGRAS:
 - Se o cliente informar um dado diferente de algo já coletado, simplesmente ATUALIZE com o novo valor sem questionar. O cliente sempre tem razão.
 - NUNCA questione ou sinalize divergências/conflitos de dados. Aceite o que o cliente diz como verdade.
 
-REGRA CRÍTICA - NOME COMPLETO:
-- Se o documento (RG/CNH) já extraiu o NOME COMPLETO, USE SEMPRE O NOME COMPLETO do documento.
+REGRA CRÍTICA - NOMES (NOME_COMPLETO, NOME_OUTORGANTE, etc.):
+- CADA campo de nome é INDEPENDENTE. NÃO copie valores entre campos de nome diferentes.
+- {{NOME_COMPLETO}} e {{NOME_OUTORGANTE}} podem ter o MESMO valor (se a mesma pessoa), mas devem ser preenchidos INDIVIDUALMENTE pela extração do documento.
+- Se o documento (RG/CNH) já extraiu o NOME COMPLETO, USE SEMPRE O NOME COMPLETO do documento. NÃO substitua por um nome parcial.
 - Se o cliente responder apenas com o primeiro nome (ex: "Kemly"), isso é uma CONFIRMAÇÃO, NÃO uma correção. NÃO extraia esse nome parcial nos newly_extracted.
-- Só extraia um novo NOME_COMPLETO se o cliente EXPLICITAMENTE corrigir com um nome completo diferente e MAIS LONGO que o atual.
-- Exemplo: documento extraiu "KEMLY RAYANE DA SILVA" e cliente disse "Kemly" → NÃO extraia NOME_COMPLETO. O nome completo já está correto.
-- Exemplo: cliente disse "meu nome é Maria Kemly Santos" → extraia "Maria Kemly Santos" pois é uma correção explícita.
+- Só extraia um novo valor de nome se o cliente EXPLICITAMENTE corrigir com um nome completo diferente e MAIS LONGO que o atual.
+- NUNCA copie o valor de um campo de nome para outro (ex: NÃO copie NOME_OUTORGANTE para NOME_COMPLETO ou vice-versa).
+- Se ambos já foram extraídos do documento, MANTENHA cada um com seu valor original.
+- Exemplo: documento extraiu "KEMLY RAYANE DA SILVA" e cliente disse "Kemly" → NÃO extraia nenhum campo de nome. Os nomes já estão corretos.
 
 REGRA CRÍTICA - ENDEREÇO E CEP:
 - Quando o sistema fornecer resultado de busca de CEP (logradouro, bairro, cidade, UF), use EXATAMENTE esses dados do resultado.
