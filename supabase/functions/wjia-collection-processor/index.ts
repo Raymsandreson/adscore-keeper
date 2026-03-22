@@ -1875,7 +1875,7 @@ REGRAS DE AUTO-PREENCHIMENTO (JÁ APLICADAS AUTOMATICAMENTE - NÃO pergunte):
         const summaryLines = updatedFields
           .filter((f: any) => f.para)
           .map((f: any) => {
-            const label = (f.de || '').replace(/\{\{|\}\}/g, '');
+            const label = getFieldLabel(f, requiredFieldCatalog);
             return `• *${label}*: ${f.para}`;
           }).join('\n');
 
