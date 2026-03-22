@@ -362,9 +362,17 @@ REGRA ABSOLUTA - CAMPOS DO TEMPLATE:
           rg_cnh: 'RG / CNH (documento com foto)',
           comprovante_endereco: 'Comprovante de endereço',
           comprovante_renda: 'Comprovante de renda',
-          outros: 'Outros documentos',
         };
-        const docNames = documentTypes.map((t: string) => docTypeLabels[t] || t).join('\n• ');
+        // Build doc names list: standard types + custom names for "outros"
+        const docNamesList: string[] = documentTypes
+          .filter((t: string) => t !== 'outros')
+          .map((t: string) => docTypeLabels[t] || t);
+        if (documentTypes.includes('outros') && customDocumentNames.length > 0) {
+          docNamesList.push(...customDocumentNames.filter((n: string) => n.trim()));
+        } else if (documentTypes.includes('outros')) {
+          docNamesList.push('Outros documentos');
+        }
+        const docNames = docNamesList.join('\n• ');
         const docsFirstMsg = `📝 Para preparar o documento *${parsed.template_name || "Documento"}*, preciso que envie os seguintes documentos:\n\n• ${docNames}\n\n📸 Envie a *foto ou arquivo* de cada documento. Vou extrair as informações automaticamente para agilizar o preenchimento!\n\nSe não tiver algum agora, digite *pular*.`;
 
         if (inst?.instance_token) {
