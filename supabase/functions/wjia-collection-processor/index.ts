@@ -98,9 +98,10 @@ function getFieldLabel(field: any, catalog: TemplateFieldRef[]): string {
   const rawDe = (field?.de || field?.field_name || "").toString().trim();
   const normKey = normalizeFieldKey(rawDe);
   const match = catalog.find(c => c.normalized === normKey || normalizeFieldKey(c.variable) === normKey);
+  // ALWAYS prefer the exact label from the ZapSign template catalog
   if (match?.label) return match.label;
-  // Fallback: clean up the raw variable name
-  return rawDe.replace(/\{\{|\}\}/g, '').replace(/_/g, ' ').trim();
+  // Fallback: return raw variable without cleanup to preserve original naming
+  return rawDe.replace(/\{\{|\}\}/g, '').trim();
 }
 
 function resolveTemplateVariable(field: any, catalog: TemplateFieldRef[]): string | null {
@@ -1522,13 +1523,18 @@ Você está coletando informações do cliente para preencher um documento "${se
 ${agentPersona}
 
 DADOS JÁ COLETADOS:
-${JSON.stringify(collectedData.fields || [], null, 2)}
+${(collectedData.fields || []).filter((f: any) => f.para).map((f: any) => `- ${getFieldLabel(f, requiredFieldCatalog)}: ${f.para}`).join("\n") || "(nenhum ainda)"}
 
-DADOS QUE AINDA FALTAM:
-${missingFields.map((f: any) => `- ${f.friendly_name} (${f.field_name})`).join("\n")}
+DADOS QUE AINDA FALTAM (use EXATAMENTE estes nomes ao se referir aos campos):
+${missingFields.map((f: any) => {
+  const catalogMatch = requiredFieldCatalog.find(c => c.normalized === normalizeFieldKey(f.field_name || f.friendly_name || ""));
+  const exactLabel = catalogMatch?.label || f.friendly_name || f.field_name;
+  const exactVariable = catalogMatch?.variable || f.field_name;
+  return `- ${exactLabel} (variável: ${exactVariable})`;
+}).join("\n")}
 
-LISTA COMPLETA DE CAMPOS DO TEMPLATE (todos são OBRIGATÓRIOS):
-${[...alreadyCollected, ...allTemplateFields].map((f: string) => `- ${f}`).join("\n")}
+LISTA COMPLETA DE CAMPOS DO TEMPLATE COM NOMES EXATOS (use SEMPRE estes nomes):
+${requiredFieldCatalog.map((f) => `- ${f.label} (variável: ${f.variable})`).join("\n") || [...alreadyCollected, ...allTemplateFields].map((f: string) => `- ${f}`).join("\n")}
 
 CONVERSA RECENTE:
 ${conversationText}
@@ -1541,7 +1547,8 @@ REGRAS:
 - Se o cliente mandou nome completo, CPF, RG, endereço, etc., extraia tudo
 - Para NACIONALIDADE: se tem CPF brasileiro, use "brasileiro(a)"
 - Formate datas como DD/MM/AAAA
-- No campo "de", use EXATAMENTE a variável do template (ex: {{CEP}}, {{E-mail}}). NUNCA use o valor do cliente no campo "de"
+- No campo "de", use EXATAMENTE a variável do template como listada acima (ex: {{CEP}}, {{E-mail}}). NUNCA invente nomes de campos. Use SOMENTE as variáveis da lista "CAMPOS DO TEMPLATE" acima.
+- Nos resumos ✅/❌ enviados ao cliente, use EXATAMENTE os NOMES (labels) dos campos como estão listados acima. Ex: se o template tem "Nome do Outorgante", use "Nome do Outorgante" e NÃO "Nome Completo" ou "NOME".
 - Seja educado e natural na conversa
 - Se o cliente informar um dado diferente de algo já coletado, simplesmente ATUALIZE com o novo valor sem questionar. O cliente sempre tem razão.
 - NUNCA questione ou sinalize divergências/conflitos de dados. Aceite o que o cliente diz como verdade.
@@ -1572,17 +1579,13 @@ REGRA CRÍTICA - NUNCA RE-PERGUNTE DADOS JÁ COLETADOS:
 
 REGRA CRÍTICA - PEÇA TODOS OS DADOS FALTANTES DE UMA VEZ COM RESUMO:
 - Quando precisar pedir dados ao cliente, faça um RESUMO mostrando o que já tem e o que falta.
-- Formate assim de forma NATURAL (sem parecer robô):
+- Use EXATAMENTE os nomes dos campos como estão na lista "CAMPOS DO TEMPLATE" acima. NÃO invente nomes genéricos.
+- Formate assim de forma NATURAL:
   "Até agora tenho:
-  ✅ Nome: João da Silva
-  ✅ CPF: 123.456.789-00
-  ✅ RG: 12345678
+  ✅ [Nome exato do campo no template]: valor
   
   Ainda preciso de:
-  ❌ Estado civil
-  ❌ Profissão
-  ❌ Endereço completo (rua, número, bairro)
-  ❌ Cidade e estado
+  ❌ [Nome exato do campo no template]
   
   Me manda tudo que puder de uma vez!"
 - Use esse formato SEMPRE que pedir dados faltantes. Isso ajuda o cliente a ver o progresso.
@@ -1612,9 +1615,9 @@ REGRAS DE AUTO-PREENCHIMENTO (JÁ APLICADAS AUTOMATICAMENTE - NÃO pergunte):
               items: {
                 type: "object",
                 properties: {
-                  field_name: { type: "string" },
-                  de: { type: "string", description: "Nome do campo no template (ex: {{NOME_COMPLETO}})" },
-                  para: { type: "string", description: "Valor extraído" },
+                  field_name: { type: "string", description: "Variável EXATA do template (ex: {{nome_outorgante}}). COPIE exatamente da lista de campos fornecida." },
+                  de: { type: "string", description: "Variável EXATA do template (IGUAL ao field_name). COPIE exatamente da lista de campos fornecida." },
+                  para: { type: "string", description: "Valor extraído da mensagem do cliente" },
                 },
                 required: ["field_name", "de", "para"],
               },
@@ -1625,8 +1628,8 @@ REGRAS DE AUTO-PREENCHIMENTO (JÁ APLICADAS AUTOMATICAMENTE - NÃO pergunte):
               items: {
                 type: "object",
                 properties: {
-                  field_name: { type: "string" },
-                  friendly_name: { type: "string" },
+                  field_name: { type: "string", description: "Variável EXATA do template. COPIE da lista de campos fornecida." },
+                  friendly_name: { type: "string", description: "Label EXATO do campo como está na lista de campos do template. NÃO invente nomes." },
                 },
                 required: ["field_name", "friendly_name"],
               },
