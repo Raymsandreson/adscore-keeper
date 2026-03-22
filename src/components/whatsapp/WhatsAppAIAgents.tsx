@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AIPromptGenerator } from './AIPromptGenerator';
+import { AgentAutomationRules } from './AgentAutomationRules';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
