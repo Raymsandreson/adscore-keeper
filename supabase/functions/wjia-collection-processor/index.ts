@@ -1450,7 +1450,7 @@ INSTRUÇÃO: Apresente os CEPs encontrados ao cliente de forma natural e pergunt
           console.log("Reverse CEP lookup results:", JSON.stringify(reverseResults));
         }
       } else {
-        cepLookupContext = `\n\n📍 O cliente não sabe o CEP. Pergunte a rua, cidade e estado para que possamos buscar o CEP. Ex: "Sem problema! Me passa a rua, cidade e estado que eu procuro pra você."`;
+        cepLookupContext = `\n\n📍 O cliente não sabe o CEP. CEP é OPCIONAL neste caso. Peça a rua, número, bairro, cidade e estado para completar o endereço SEM CEP. NÃO insista no CEP. Ex: "Sem problema! Me passa a rua com número, bairro, cidade e estado que a gente segue sem o CEP."`;
       }
     }
     
