@@ -174,7 +174,7 @@ export function AgentAutomationRules({ agentId }: Props) {
         };
 
         if (rule.id) {
-          const { error } = await supabase
+          const { error } = await (supabase as any)
             .from('agent_automation_rules')
             .update({ actions: rule.actions, is_active: rule.is_active } as any)
             .eq('id', rule.id);
