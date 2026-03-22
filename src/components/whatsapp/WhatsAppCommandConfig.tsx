@@ -220,7 +220,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       shortcut_name: '', description: '', template_token: '', template_name: '',
       prompt_instructions: '', media_extraction_prompt: '',
       notify_on_signature: true, send_signed_pdf: true,
-      request_documents: false, document_types: [],
+      request_documents: false, document_types: [], custom_document_names: [],
       assistant_type: 'document', base_prompt: '',
       model: 'google/gemini-2.5-flash', temperature: 0.7,
       response_delay_seconds: 2, split_messages: false, split_delay_seconds: 3,
