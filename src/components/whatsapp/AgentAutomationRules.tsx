@@ -72,11 +72,9 @@ export function AgentAutomationRules({ agentId }: Props) {
 
   const fetchAll = async () => {
     setLoading(true);
-    const [rulesRes, boardsRes, nucleiRes] = await Promise.all([
-      supabase.from('agent_automation_rules' as any).select('*').eq('agent_id', agentId),
-      supabase.from('kanban_boards').select('id, name').eq('is_active', true).order('display_order'),
-      supabase.from('specialized_nuclei' as any).select('id, name, prefix').eq('is_active', true).order('name'),
-    ]);
+    const rulesRes = await supabase.from('agent_automation_rules' as any).select('*').eq('agent_id', agentId);
+    const boardsRes = await supabase.from('kanban_boards').select('id, name').eq('is_active', true).order('display_order');
+    const nucleiRes = await (supabase as any).from('specialized_nuclei').select('id, name, prefix').eq('is_active', true).order('name');
 
     const rulesMap: Record<string, any> = {};
     for (const trigger of Object.keys(TRIGGER_LABELS)) {
