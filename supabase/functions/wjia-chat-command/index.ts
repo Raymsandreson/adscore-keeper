@@ -100,6 +100,7 @@ serve(async (req) => {
     const sendSignedPdf = matchedShortcut?.send_signed_pdf !== false;
     const requestDocuments = matchedShortcut?.request_documents || false;
     const documentTypes = matchedShortcut?.document_types || [];
+    const customDocumentNames: string[] = matchedShortcut?.custom_document_names || [];
     const assistantType = matchedShortcut?.assistant_type || 'document';
     const shortcutModel = matchedShortcut?.model || 'google/gemini-2.5-flash';
     const shortcutTemperature = matchedShortcut?.temperature ?? 0.1;
