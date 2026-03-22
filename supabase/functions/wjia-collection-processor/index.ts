@@ -94,6 +94,15 @@ function buildTemplateFieldCatalog(session: any): TemplateFieldRef[] {
     .filter((f: TemplateFieldRef) => f.variable && f.normalized);
 }
 
+function getFieldLabel(field: any, catalog: TemplateFieldRef[]): string {
+  const rawDe = (field?.de || field?.field_name || "").toString().trim();
+  const normKey = normalizeFieldKey(rawDe);
+  const match = catalog.find(c => c.normalized === normKey || normalizeFieldKey(c.variable) === normKey);
+  if (match?.label) return match.label;
+  // Fallback: clean up the raw variable name
+  return rawDe.replace(/\{\{|\}\}/g, '').replace(/_/g, ' ').trim();
+}
+
 function resolveTemplateVariable(field: any, catalog: TemplateFieldRef[]): string | null {
   const candidates = [field?.field_name, field?.de, field?.friendly_name]
     .map((v: any) => (v || "").toString().trim())
