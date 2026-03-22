@@ -1672,18 +1672,18 @@ REGRAS DE AUTO-PREENCHIMENTO (JÁ APLICADAS AUTOMATICAMENTE - NÃO pergunte):
     // === AUTO-FILL: signing city/state = client address city/state ===
     const clientCity = updatedFields.find((f: any) => {
       const k = normalizeFieldKey(f.de || "");
-      return (k.includes("CIDADE") || k.includes("MUNICIPIO")) && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && hasFieldValue(f.para);
+      return (k.includes("CIDADE") || k.includes("MUNICIPIO")) && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && !k.includes("OUTORGANTE") && hasFieldValue(f.para);
     });
     const clientState = updatedFields.find((f: any) => {
       const k = normalizeFieldKey(f.de || "");
-      return (k.includes("ESTADO") || k === "UF") && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && hasFieldValue(f.para);
+      return (k.includes("ESTADO") || k === "UF") && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && !k.includes("OUTORGANTE") && hasFieldValue(f.para);
     });
 
     if (clientCity || clientState) {
       for (const templateField of requiredFieldCatalog) {
         const normKey = templateField.normalized;
-        const isSigningCity = (normKey.includes("CIDADE") || normKey.includes("LOCAL") || normKey.includes("MUNICIPIO")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO"));
-        const isSigningState = (normKey.includes("ESTADO") || normKey.includes("UF")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO"));
+        const isSigningCity = (normKey.includes("CIDADE") || normKey.includes("LOCAL") || normKey.includes("MUNICIPIO")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO") || normKey.includes("OUTORGANTE"));
+        const isSigningState = (normKey.includes("ESTADO") || normKey.includes("UF")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO") || normKey.includes("OUTORGANTE"));
 
         if (isSigningCity && clientCity) {
           const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
