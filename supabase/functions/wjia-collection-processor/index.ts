@@ -1546,7 +1546,8 @@ REGRAS:
 - Se o cliente mandou nome completo, CPF, RG, endereço, etc., extraia tudo
 - Para NACIONALIDADE: se tem CPF brasileiro, use "brasileiro(a)"
 - Formate datas como DD/MM/AAAA
-- No campo "de", use EXATAMENTE a variável do template (ex: {{CEP}}, {{E-mail}}). NUNCA use o valor do cliente no campo "de"
+- No campo "de", use EXATAMENTE a variável do template como listada acima (ex: {{CEP}}, {{E-mail}}). NUNCA invente nomes de campos. Use SOMENTE as variáveis da lista "CAMPOS DO TEMPLATE" acima.
+- Nos resumos ✅/❌ enviados ao cliente, use EXATAMENTE os NOMES (labels) dos campos como estão listados acima. Ex: se o template tem "Nome do Outorgante", use "Nome do Outorgante" e NÃO "Nome Completo" ou "NOME".
 - Seja educado e natural na conversa
 - Se o cliente informar um dado diferente de algo já coletado, simplesmente ATUALIZE com o novo valor sem questionar. O cliente sempre tem razão.
 - NUNCA questione ou sinalize divergências/conflitos de dados. Aceite o que o cliente diz como verdade.
