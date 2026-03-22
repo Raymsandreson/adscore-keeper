@@ -453,10 +453,13 @@ async function generateAndSendDocument(opts: {
   signerName: string;
   signerPhone: string;
   sessionId?: string;
+  notifyOnSignature?: boolean;
+  sendSignedPdf?: boolean;
 }) {
   const {
     supabase, zapsignToken, normalizedPhone, instanceRes, instance_name,
     contact_id, lead_id, contactData, parsed, fieldsData, signerName, signerPhone, sessionId,
+    notifyOnSignature = true, sendSignedPdf = true,
   } = opts;
 
   const createBody: any = {
