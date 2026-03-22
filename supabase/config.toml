@@ -150,10 +150,7 @@ verify_jwt = false
 [functions.manychat-webhook]
 verify_jwt = false
 
-[functions.wjia-chat-command]
-verify_jwt = false
-
-[functions.wjia-collection-processor]
+[functions.wjia-agent]
 verify_jwt = false
 
 [functions.wjia-followup-processor]

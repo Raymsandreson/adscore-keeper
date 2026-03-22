@@ -1376,8 +1376,8 @@ Deno.serve(async (req) => {
             .eq('is_active', true)
             .maybeSingle()
 
-          // Fire-and-forget: call wjia-chat-command
-          fetch(`${supabaseUrl}/functions/v1/wjia-chat-command`, {
+          // Fire-and-forget: call unified wjia-agent
+          fetch(`${supabaseUrl}/functions/v1/wjia-agent`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1619,8 +1619,8 @@ Deno.serve(async (req) => {
             const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
             const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
 
-            // Route to wjia-chat-command with the #name as command
-            fetch(`${supabaseUrl}/functions/v1/wjia-chat-command`, {
+            // Route to unified wjia-agent with the #name as command
+            fetch(`${supabaseUrl}/functions/v1/wjia-agent`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -1683,7 +1683,7 @@ Deno.serve(async (req) => {
           console.log('Active WJIA collection session found, routing to collection processor:', activeSession.id, 'direction:', direction, 'message_type:', messageType)
           const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
           const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
-          fetch(`${supabaseUrl}/functions/v1/wjia-collection-processor`, {
+          fetch(`${supabaseUrl}/functions/v1/wjia-agent`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
