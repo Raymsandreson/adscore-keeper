@@ -1522,13 +1522,18 @@ Você está coletando informações do cliente para preencher um documento "${se
 ${agentPersona}
 
 DADOS JÁ COLETADOS:
-${JSON.stringify(collectedData.fields || [], null, 2)}
+${(collectedData.fields || []).filter((f: any) => f.para).map((f: any) => `- ${getFieldLabel(f, requiredFieldCatalog)}: ${f.para}`).join("\n") || "(nenhum ainda)"}
 
-DADOS QUE AINDA FALTAM:
-${missingFields.map((f: any) => `- ${f.friendly_name} (${f.field_name})`).join("\n")}
+DADOS QUE AINDA FALTAM (use EXATAMENTE estes nomes ao se referir aos campos):
+${missingFields.map((f: any) => {
+  const catalogMatch = requiredFieldCatalog.find(c => c.normalized === normalizeFieldKey(f.field_name || f.friendly_name || ""));
+  const exactLabel = catalogMatch?.label || f.friendly_name || f.field_name;
+  const exactVariable = catalogMatch?.variable || f.field_name;
+  return `- ${exactLabel} (variável: ${exactVariable})`;
+}).join("\n")}
 
-LISTA COMPLETA DE CAMPOS DO TEMPLATE (todos são OBRIGATÓRIOS):
-${[...alreadyCollected, ...allTemplateFields].map((f: string) => `- ${f}`).join("\n")}
+LISTA COMPLETA DE CAMPOS DO TEMPLATE COM NOMES EXATOS (use SEMPRE estes nomes):
+${requiredFieldCatalog.map((f) => `- ${f.label} (variável: ${f.variable})`).join("\n") || [...alreadyCollected, ...allTemplateFields].map((f: string) => `- ${f}`).join("\n")}
 
 CONVERSA RECENTE:
 ${conversationText}
