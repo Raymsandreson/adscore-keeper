@@ -1683,7 +1683,7 @@ Deno.serve(async (req) => {
           console.log('Active WJIA collection session found, routing to collection processor:', activeSession.id, 'direction:', direction, 'message_type:', messageType)
           const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
           const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
-          fetch(`${supabaseUrl}/functions/v1/wjia-collection-processor`, {
+          fetch(`${supabaseUrl}/functions/v1/wjia-agent`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
