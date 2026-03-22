@@ -301,6 +301,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_signed_pdf: form.send_signed_pdf,
       request_documents: form.request_documents,
       document_types: form.document_types,
+      custom_document_names: form.custom_document_names,
       assistant_type: form.assistant_type,
       base_prompt: form.base_prompt || null,
       model: form.model,
