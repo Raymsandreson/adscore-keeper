@@ -372,6 +372,8 @@ REGRAS:
       fieldsData,
       signerName,
       signerPhone,
+      notifyOnSignature,
+      sendSignedPdf,
     });
 
   } catch (error: any) {
