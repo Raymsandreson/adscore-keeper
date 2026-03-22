@@ -1578,17 +1578,13 @@ REGRA CRÍTICA - NUNCA RE-PERGUNTE DADOS JÁ COLETADOS:
 
 REGRA CRÍTICA - PEÇA TODOS OS DADOS FALTANTES DE UMA VEZ COM RESUMO:
 - Quando precisar pedir dados ao cliente, faça um RESUMO mostrando o que já tem e o que falta.
-- Formate assim de forma NATURAL (sem parecer robô):
+- Use EXATAMENTE os nomes dos campos como estão na lista "CAMPOS DO TEMPLATE" acima. NÃO invente nomes genéricos.
+- Formate assim de forma NATURAL:
   "Até agora tenho:
-  ✅ Nome: João da Silva
-  ✅ CPF: 123.456.789-00
-  ✅ RG: 12345678
+  ✅ [Nome exato do campo no template]: valor
   
   Ainda preciso de:
-  ❌ Estado civil
-  ❌ Profissão
-  ❌ Endereço completo (rua, número, bairro)
-  ❌ Cidade e estado
+  ❌ [Nome exato do campo no template]
   
   Me manda tudo que puder de uma vez!"
 - Use esse formato SEMPRE que pedir dados faltantes. Isso ajuda o cliente a ver o progresso.
