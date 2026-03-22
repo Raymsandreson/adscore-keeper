@@ -1614,9 +1614,9 @@ REGRAS DE AUTO-PREENCHIMENTO (JÁ APLICADAS AUTOMATICAMENTE - NÃO pergunte):
               items: {
                 type: "object",
                 properties: {
-                  field_name: { type: "string" },
-                  de: { type: "string", description: "Nome do campo no template (ex: {{NOME_COMPLETO}})" },
-                  para: { type: "string", description: "Valor extraído" },
+                  field_name: { type: "string", description: "Variável EXATA do template (ex: {{nome_outorgante}}). COPIE exatamente da lista de campos fornecida." },
+                  de: { type: "string", description: "Variável EXATA do template (IGUAL ao field_name). COPIE exatamente da lista de campos fornecida." },
+                  para: { type: "string", description: "Valor extraído da mensagem do cliente" },
                 },
                 required: ["field_name", "de", "para"],
               },
