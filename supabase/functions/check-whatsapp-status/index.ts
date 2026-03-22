@@ -32,7 +32,7 @@ serve(async (req) => {
         }
         try {
           const baseUrl = inst.base_url || "https://abraci.uazapi.com";
-          const resp = await fetch(`${baseUrl}/status`, {
+          const resp = await fetch(`${baseUrl}/instance/status`, {
             headers: { "token": inst.instance_token },
             signal: AbortSignal.timeout(5000),
           });
@@ -41,13 +41,13 @@ serve(async (req) => {
             return { id: inst.id, instance_name: inst.instance_name, connected: false, status_raw: "api_error", owner_phone: inst.owner_phone || null };
           }
           const data = await resp.json();
-          const ci = data?.status?.checked_instance || data?.checked_instance;
-          const connectionStatus = ci?.connection_status?.toLowerCase() || "unknown";
+          const instanceData = data?.instance;
+          const connectionStatus = instanceData?.status?.toLowerCase() || "unknown";
           
-          console.log(`[${inst.instance_name}] API name="${ci?.name}" status="${connectionStatus}"`);
+          console.log(`[${inst.instance_name}] API name="${instanceData?.name}" status="${connectionStatus}"`);
 
           // Extract and auto-save owner phone
-          const ownerPhone = ci?.owner || data?.owner || data?.status?.owner || null;
+          const ownerPhone = instanceData?.owner || null;
           if (ownerPhone && ownerPhone !== inst.owner_phone) {
             const cleanPhone = ownerPhone.replace(/\D/g, '');
             if (cleanPhone.length >= 10) {
