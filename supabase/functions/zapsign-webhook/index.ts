@@ -402,6 +402,41 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ====================================================
+    // TRIGGER AGENT AUTOMATIONS (on_document_signed)
+    // ====================================================
+    if (isDocFullySigned && localDoc.whatsapp_phone) {
+      try {
+        // Find the agent assigned to this conversation
+        const { data: assignment } = await supabase
+          .from('whatsapp_conversation_agents')
+          .select('agent_id, is_active')
+          .eq('phone', localDoc.whatsapp_phone)
+          .eq('is_active', true)
+          .maybeSingle()
+
+        if (assignment?.agent_id) {
+          console.log(`[zapsign-webhook] Triggering on_document_signed automations for agent ${assignment.agent_id}`)
+          await fetch(`${supabaseUrl}/functions/v1/execute-agent-automations`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+            },
+            body: JSON.stringify({
+              agent_id: assignment.agent_id,
+              trigger_type: 'on_document_signed',
+              phone: localDoc.whatsapp_phone,
+              contact_name: localDoc.signer_name || null,
+              lead_id: localDoc.lead_id || null,
+            }),
+          })
+        }
+      } catch (automationErr) {
+        console.error('Error triggering agent automations:', automationErr)
+      }
+    }
+
     return new Response(
       JSON.stringify({ ok: true, status: docData.status, signed: `${signedCount}/${totalSigners}` }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
