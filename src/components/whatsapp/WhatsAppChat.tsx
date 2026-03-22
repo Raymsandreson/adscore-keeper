@@ -354,7 +354,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
     setNewMessage('');
     toast.info('🤖 Processando comando @wjia...', { duration: 5000 });
     try {
-      const { data, error } = await supabase.functions.invoke('wjia-chat-command', {
+      const { data, error } = await supabase.functions.invoke('wjia-agent', {
         body: {
           phone: conversation.phone,
           instance_name: conversation.instance_name,
