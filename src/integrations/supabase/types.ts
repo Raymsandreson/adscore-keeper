@@ -6997,6 +6997,7 @@ export type Database = {
           base_prompt: string | null
           command_scope: string
           created_at: string | null
+          custom_document_names: string[] | null
           description: string | null
           display_order: number | null
           document_types: string[] | null
@@ -7024,6 +7025,7 @@ export type Database = {
           base_prompt?: string | null
           command_scope?: string
           created_at?: string | null
+          custom_document_names?: string[] | null
           description?: string | null
           display_order?: number | null
           document_types?: string[] | null
@@ -7051,6 +7053,7 @@ export type Database = {
           base_prompt?: string | null
           command_scope?: string
           created_at?: string | null
+          custom_document_names?: string[] | null
           description?: string | null
           display_order?: number | null
           document_types?: string[] | null
