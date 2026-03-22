@@ -36,6 +36,7 @@ interface Shortcut {
   send_signed_pdf: boolean;
   request_documents: boolean;
   document_types: string[];
+  custom_document_names: string[];
   // Agent fields
   assistant_type: string;
   base_prompt: string | null;
