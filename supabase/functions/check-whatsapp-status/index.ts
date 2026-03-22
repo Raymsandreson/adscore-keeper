@@ -47,7 +47,7 @@ serve(async (req) => {
           console.log(`[${inst.instance_name}] API name="${instanceData?.name}" status="${connectionStatus}"`);
 
           // Extract and auto-save owner phone
-          const ownerPhone = ci?.owner || data?.owner || data?.status?.owner || null;
+          const ownerPhone = instanceData?.owner || null;
           if (ownerPhone && ownerPhone !== inst.owner_phone) {
             const cleanPhone = ownerPhone.replace(/\D/g, '');
             if (cleanPhone.length >= 10) {
