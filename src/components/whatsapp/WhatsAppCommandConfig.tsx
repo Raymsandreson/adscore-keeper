@@ -258,6 +258,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_signed_pdf: s.send_signed_pdf !== false,
       request_documents: s.request_documents || false,
       document_types: s.document_types || [],
+      custom_document_names: (s as any).custom_document_names || [],
       assistant_type: s.assistant_type || 'document',
       base_prompt: s.base_prompt || '',
       model: s.model || 'google/gemini-2.5-flash',
