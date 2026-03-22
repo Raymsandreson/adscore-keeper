@@ -180,7 +180,7 @@ export function AgentAutomationRules({ agentId }: Props) {
             .eq('id', rule.id);
           if (error) throw error;
         } else if (rule.actions.length > 0 || rule.is_active) {
-          const { data, error } = await supabase
+          const { data, error } = await (supabase as any)
             .from('agent_automation_rules')
             .insert(payload as any)
             .select()
