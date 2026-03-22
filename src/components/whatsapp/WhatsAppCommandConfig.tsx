@@ -627,6 +627,35 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                                   <Label htmlFor={`doc_${docType.key}`} className="text-xs cursor-pointer">{docType.label}</Label>
                                 </div>
                               ))}
+                              {form.document_types.includes('outros') && (
+                                <div className="ml-6 space-y-2">
+                                  <p className="text-[10px] text-muted-foreground">Nomes dos documentos adicionais:</p>
+                                  {(form.custom_document_names || []).map((name, idx) => (
+                                    <div key={idx} className="flex items-center gap-1">
+                                      <Input
+                                        value={name}
+                                        onChange={e => {
+                                          const updated = [...form.custom_document_names];
+                                          updated[idx] = e.target.value;
+                                          setForm(f => ({ ...f, custom_document_names: updated }));
+                                        }}
+                                        placeholder="Ex: Certidão de nascimento"
+                                        className="h-7 text-xs flex-1"
+                                      />
+                                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => {
+                                        setForm(f => ({ ...f, custom_document_names: f.custom_document_names.filter((_, i) => i !== idx) }));
+                                      }}>
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
+                                    setForm(f => ({ ...f, custom_document_names: [...(f.custom_document_names || []), ''] }));
+                                  }}>
+                                    <Plus className="h-3 w-3 mr-1" /> Adicionar documento
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
