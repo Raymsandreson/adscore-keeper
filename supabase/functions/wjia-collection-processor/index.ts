@@ -94,6 +94,15 @@ function buildTemplateFieldCatalog(session: any): TemplateFieldRef[] {
     .filter((f: TemplateFieldRef) => f.variable && f.normalized);
 }
 
+function getFieldLabel(field: any, catalog: TemplateFieldRef[]): string {
+  const rawDe = (field?.de || field?.field_name || "").toString().trim();
+  const normKey = normalizeFieldKey(rawDe);
+  const match = catalog.find(c => c.normalized === normKey || normalizeFieldKey(c.variable) === normKey);
+  if (match?.label) return match.label;
+  // Fallback: clean up the raw variable name
+  return rawDe.replace(/\{\{|\}\}/g, '').replace(/_/g, ' ').trim();
+}
+
 function resolveTemplateVariable(field: any, catalog: TemplateFieldRef[]): string | null {
   const candidates = [field?.field_name, field?.de, field?.friendly_name]
     .map((v: any) => (v || "").toString().trim())
@@ -495,7 +504,7 @@ REGRAS DE FORMATAÇÃO:
 
     const filledSummary = updatedFields
       .filter((f: any) => f.para)
-      .map((f: any) => `• *${(f.de || '').replace(/\{\{|\}\}/g, '')}*: ${f.para}`)
+      .map((f: any) => `• *${getFieldLabel(f, requiredFieldCatalog)}*: ${f.para}`)
       .join('\n');
     const docsSummary = allReceivedDocs.map((d: any) => `• ✅ ${docTypeLabels[d.type] || d.type}`).join('\n');
 
@@ -1244,7 +1253,7 @@ ATENÇÃO - REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
           if (actuallyMissing.length > 0) {
             // Still missing → move to collecting
             const missingNames = actuallyMissing.map((f: any) => f.friendly_name).join(', ');
-            const filledSummary = updatedFields.filter((f: any) => f.para).map((f: any) => `• *${(f.de || '').replace(/\{\{|\}\}/g, '')}*: ${f.para}`).join('\n');
+            const filledSummary = updatedFields.filter((f: any) => f.para).map((f: any) => `• *${getFieldLabel(f, requiredFieldCatalog)}*: ${f.para}`).join('\n');
             const skipMsg = `Ok! ${receivedDocs.length > 0 ? `Extraí dados dos documentos recebidos.\n\n${filledSummary}\n\n` : ''}⚠️ Ainda preciso que informe: *${missingNames}*`;
 
             await supabase.from("wjia_collection_sessions").update({
@@ -1259,7 +1268,7 @@ ATENÇÃO - REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
             }
           } else {
             // All extracted → ready
-            const filledSummary = updatedFields.filter((f: any) => f.para).map((f: any) => `• *${(f.de || '').replace(/\{\{|\}\}/g, '')}*: ${f.para}`).join('\n');
+            const filledSummary = updatedFields.filter((f: any) => f.para).map((f: any) => `• *${getFieldLabel(f, requiredFieldCatalog)}*: ${f.para}`).join('\n');
             const docsSummary = receivedDocs.length > 0 ? '\n\nDocumentos anexos:\n' + receivedDocs.map((d: any) => `• ✅ ${docTypeLabels[d.type] || d.type}`).join('\n') : '';
             const skipMsg = `✅ *Dados extraídos dos documentos!*\n\n${filledSummary}${docsSummary}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento.`;
 
@@ -1501,7 +1510,7 @@ INSTRUÇÃO: O cliente informou um endereço. Use o CEP encontrado automaticamen
     const systemPrompt = `REGRA ABSOLUTA DE TOM E ESTILO:
 Você é um ser humano real conversando pelo WhatsApp. NUNCA pareça um robô, formulário ou sistema automatizado.
 - Escreva como uma pessoa real digitaria no WhatsApp: frases curtas, naturais, linguagem do dia a dia
-- PROIBIDO usar listas com bullets (•, -, *), numeração ou formatação de formulário
+- Pode usar listas com ✅/❌ APENAS para resumos de progresso de coleta. Para conversa normal, escreva em frases corridas.
 - PROIBIDO repetir perguntas que o cliente já respondeu ou dizer "por favor informe X" como comando
 - Use "você", "tá", "tô", "pra", "beleza", "blz" — português brasileiro informal natural
 - Mantenha mensagens CURTAS como alguém digitando rápido no celular
@@ -1866,7 +1875,7 @@ REGRAS DE AUTO-PREENCHIMENTO (JÁ APLICADAS AUTOMATICAMENTE - NÃO pergunte):
         const summaryLines = updatedFields
           .filter((f: any) => f.para)
           .map((f: any) => {
-            const label = (f.de || '').replace(/\{\{|\}\}/g, '');
+            const label = getFieldLabel(f, requiredFieldCatalog);
             return `• *${label}*: ${f.para}`;
           }).join('\n');
 
