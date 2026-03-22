@@ -924,40 +924,135 @@ serve(async (req) => {
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
       } else {
-        // Client wants to correct something → back to collecting
+        // Client wants to correct something → try to extract the correction directly
+        // instead of asking them to repeat what they just said
+        const collectedData = session.collected_data || { fields: [] };
+        const updatedFields = [...(collectedData.fields || [])];
+        const requiredFieldCatalog = buildTemplateFieldCatalog(session);
+        
+        // Try to detect if the message already contains the corrected value
+        let correctionApplied = false;
+        const msgText = (message_text || "").trim();
+        
+        // Common correction patterns: "meu nome é X", "o nome é X", "nome: X", "cpf X", etc.
+        const correctionPatterns = [
+          /(?:meu\s+)?nome\s+(?:é\s+|completo\s+(?:é\s+)?)?(.+)/i,
+          /(?:o\s+)?cpf\s+(?:é\s+)?(\d[\d.\-\/]+)/i,
+          /(?:o\s+)?rg\s+(?:é\s+)?(\d[\d.\-\/]+)/i,
+          /(?:o\s+)?cep\s+(?:é\s+)?(\d[\d.\-]+)/i,
+          /(?:o\s+)?endere[çc]o\s+(?:é\s+|completo\s+(?:é\s+)?)?(.+)/i,
+          /(?:a\s+)?profiss[aã]o\s+(?:é\s+)?(.+)/i,
+          /(?:o\s+)?estado\s*civil\s+(?:é\s+)?(.+)/i,
+          /(?:a\s+)?nacionalidade\s+(?:é\s+)?(.+)/i,
+          /(?:o\s+)?bairro\s+(?:é\s+)?(.+)/i,
+          /(?:a\s+)?cidade\s+(?:é\s+)?(.+)/i,
+        ];
+        
+        // Map correction keywords to normalized field keys
+        const keywordToFieldMap: Record<string, string[]> = {
+          'nome': ['NOMECOMPLETO', 'NOMEOUTORGANTE', 'NOME'],
+          'cpf': ['CPF'],
+          'rg': ['RG', 'NUMERORG'],
+          'cep': ['CEP'],
+          'endereco': ['ENDERECOCOMPLETO', 'ENDERECO', 'RUA', 'LOGRADOURO'],
+          'profissao': ['PROFISSAO'],
+          'estado civil': ['ESTADOCIVIL'],
+          'nacionalidade': ['NACIONALIDADE'],
+          'bairro': ['BAIRRO'],
+          'cidade': ['CIDADE', 'CIDADEOUTORGANTE'],
+        };
+        
+        for (const pattern of correctionPatterns) {
+          const match = msgText.match(pattern);
+          if (match && match[1]) {
+            const value = match[1].trim();
+            const patternKey = Object.keys(keywordToFieldMap).find(k => pattern.source.toLowerCase().includes(k));
+            if (patternKey) {
+              const possibleKeys = keywordToFieldMap[patternKey];
+              for (const field of updatedFields) {
+                const normDe = normalizeFieldKey(field.de || "");
+                if (possibleKeys.some(pk => normDe.includes(pk) || pk.includes(normDe))) {
+                  field.para = value;
+                  correctionApplied = true;
+                  console.log(`Direct correction applied: ${field.de} = ${value}`);
+                  
+                  // Sync name fields
+                  if (patternKey === 'nome') {
+                    for (const otherField of updatedFields) {
+                      const otherNorm = normalizeFieldKey(otherField.de || "");
+                      if (possibleKeys.some(pk => otherNorm.includes(pk) || pk.includes(otherNorm))) {
+                        otherField.para = value;
+                      }
+                    }
+                  }
+                  break;
+                }
+              }
+            }
+            break;
+          }
+        }
+        
+        if (correctionApplied) {
+          // Update session with corrected data and show new summary
+          const updatedCollectedData = { ...collectedData, fields: updatedFields };
+          
+          const receivedDocsForSummary = Array.isArray(session.received_documents) ? session.received_documents : [];
+          const docTypeLabelsForSummary: Record<string, string> = {
+            rg_cnh: 'RG / CNH', comprovante_endereco: 'Comprovante de endereço',
+            comprovante_renda: 'Comprovante de renda', outros: 'Outros documentos',
+          };
+          const docsSection = receivedDocsForSummary.length > 0
+            ? `\n\n📎 *Documentos anexados:*\n${receivedDocsForSummary.map((d: any) => `• ✅ ${docTypeLabelsForSummary[d.type] || d.type}`).join('\n')}`
+            : '';
+          
+          const summaryLines = updatedFields
+            .filter((f: any) => f.para)
+            .map((f: any) => `• *${getFieldLabel(f, requiredFieldCatalog)}*: ${f.para}`)
+            .join('\n');
+          
+          const correctedMsg = `✅ *Dados atualizados!*\n\nConfira novamente:\n\n${summaryLines}${docsSection}\n\n📋 Está tudo correto agora? Responda *SIM* para gerar o documento ou me diga o que mais precisa corrigir.`;
+          
+          await supabase
+            .from("wjia_collection_sessions")
+            .update({ 
+              collected_data: updatedCollectedData, 
+              status: "ready", 
+              updated_at: new Date().toISOString() 
+            })
+            .eq("id", session.id);
+          
+          if (inst?.instance_token) {
+            const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+            await fetch(`${baseUrl}/send/text`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", token: inst.instance_token },
+              body: JSON.stringify({ number: normalizedPhone, text: correctedMsg }),
+            }).catch(e => console.error("Error sending correction confirmation:", e));
+            
+            await supabase.from("whatsapp_messages").insert({
+              phone: normalizedPhone, instance_name,
+              message_text: correctedMsg, message_type: "text", direction: "outbound",
+              contact_id: session.contact_id || null, lead_id: session.lead_id || null,
+              external_message_id: `wjia_corrected_${Date.now()}`,
+            });
+          }
+          
+          return new Response(JSON.stringify({
+            active_session: true, processed: true, correction_applied: true,
+            session_id: session.id,
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        
+        // Could not parse correction directly → set to collecting and let AI process it
         await supabase
           .from("wjia_collection_sessions")
           .update({ status: "collecting", updated_at: new Date().toISOString() })
           .eq("id", session.id);
 
-        const correctionReply = "Entendi! Me diga qual informação precisa ser corrigida que eu atualizo.";
-
-        if (inst?.instance_token) {
-          const baseUrl = inst.base_url || "https://abraci.uazapi.com";
-          await fetch(`${baseUrl}/send/text`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", token: inst.instance_token },
-            body: JSON.stringify({ number: normalizedPhone, text: correctionReply }),
-          }).catch(e => console.error("Error sending correction reply:", e));
-
-          await supabase.from("whatsapp_messages").insert({
-            phone: normalizedPhone,
-            instance_name,
-            message_text: correctionReply,
-            message_type: "text",
-            direction: "outbound",
-            contact_id: session.contact_id || null,
-            lead_id: session.lead_id || null,
-            external_message_id: `wjia_correct_${Date.now()}`,
-          });
-        }
-
-        return new Response(JSON.stringify({
-          active_session: true,
-          processed: true,
-          correction_mode: true,
-          session_id: session.id,
-        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        // Update session status in-memory so the collecting handler below processes this message
+        session.status = "collecting";
+        // Fall through to the collecting handler below — DO NOT return here
       }
     }
 
