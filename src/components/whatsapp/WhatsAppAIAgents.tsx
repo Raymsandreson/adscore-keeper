@@ -468,6 +468,17 @@ export function WhatsAppAIAgents() {
                 )}
               </TabsContent>
 
+              {/* TAB: Automations */}
+              <TabsContent value="automations" className="mt-4">
+                {editingAgent.id ? (
+                  <AgentAutomationRules agentId={editingAgent.id} />
+                ) : (
+                  <div className="text-center py-8">
+                    <Zap className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Salve o agente primeiro para configurar automações</p>
+                  </div>
+                )}
+
               {/* TAB: Timing */}
               <TabsContent value="timing" className="space-y-4 mt-4">
                 <div>
