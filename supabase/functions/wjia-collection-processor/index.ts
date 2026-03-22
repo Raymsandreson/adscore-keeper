@@ -459,6 +459,26 @@ REGRAS DE FORMATAÇÃO:
       }
     }
 
+    // AUTO-SYNC: If NOME_COMPLETO and NOME_OUTORGANTE both exist as required fields,
+    // copy the value from whichever was filled (usually from document OCR) to the other
+    const nameFieldKeys = ['NOME_COMPLETO', 'NOMECOMPLETO', 'NOME_OUTORGANTE', 'NOMEOUTORGANTE'];
+    const nameFieldsInTemplate = updatedFields.filter((f: any) => {
+      const k = normalizeFieldKey(f.de || "");
+      return nameFieldKeys.includes(k);
+    });
+    
+    if (nameFieldsInTemplate.length >= 2) {
+      const filled = nameFieldsInTemplate.find((f: any) => hasFieldValue(f.para));
+      if (filled) {
+        for (const nf of nameFieldsInTemplate) {
+          if (!hasFieldValue(nf.para)) {
+            console.log(`AUTO-SYNC name: copying "${filled.para}" from ${filled.de} to ${nf.de}`);
+            nf.para = filled.para;
+          }
+        }
+      }
+    }
+
     // Apply defaults
     for (const field of updatedFields) {
       const fieldName = (field.de || "").replace(/\{\{|\}\}/g, "").toUpperCase().trim();
