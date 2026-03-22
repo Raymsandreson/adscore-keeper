@@ -1922,10 +1922,17 @@ Deno.serve(async (req) => {
             }
 
             // Collection session status
-            if (activeCollectionSession) {
-              const sessStatus = (activeCollectionSession as any).status
-              const shortcutName = (activeCollectionSession as any).shortcut_name || 'Atalho'
-              const statusLabel = sessStatus === 'ready' ? 'aguardando confirmação' : 'coletando dados'
+            if (sessionFound) {
+              const sessStatus = (sessionFound as any).status
+              const shortcutName = (sessionFound as any).shortcut_name || 'Atalho'
+              const statusLabels: Record<string, string> = {
+                collecting: 'coletando dados',
+                collecting_docs: 'coletando documentos',
+                processing_docs: 'processando documentos',
+                ready: 'aguardando confirmação',
+                generated: 'documento gerado (aguardando assinatura)',
+              }
+              const statusLabel = statusLabels[sessStatus] || sessStatus
               statusParts.push(`📋 Atalho "${shortcutName}" *EM ANDAMENTO* (${statusLabel}).`)
             }
 
