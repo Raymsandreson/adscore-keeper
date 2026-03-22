@@ -170,7 +170,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     shortcut_name: '', description: '', template_token: '', template_name: '',
     prompt_instructions: '', media_extraction_prompt: '',
     notify_on_signature: true, send_signed_pdf: true,
-    request_documents: false, document_types: [] as string[],
+    request_documents: false, document_types: [] as string[], custom_document_names: [] as string[],
     // Agent fields
     assistant_type: 'document',
     base_prompt: '',

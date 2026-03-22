@@ -273,6 +273,43 @@ REGRA ABSOLUTA - CAMPOS DO TEMPLATE:
       }));
     }
 
+    // POST-AI ENFORCEMENT: Filter extracted_fields and missing_fields to ONLY include template fields
+    if (templateFields.length > 0) {
+      const normalizeKey = (v: string) => (v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\{\{|\}\}/g, "").replace(/[^A-Za-z0-9]+/g, "").toUpperCase().trim();
+      const templateFieldKeys = new Set(templateFields.map((f: any) => normalizeKey(f.variable || f.label)));
+      
+      if (Array.isArray(parsed.extracted_fields)) {
+        const originalCount = parsed.extracted_fields.length;
+        parsed.extracted_fields = parsed.extracted_fields.filter((f: any) => {
+          const key = normalizeKey(f.de || "");
+          const isValid = templateFieldKeys.has(key) || [...templateFieldKeys].some(tk => tk.includes(key) || key.includes(tk));
+          if (!isValid) console.log(`FILTERED ghost extracted field: ${f.de} = ${f.para}`);
+          return isValid;
+        });
+        if (parsed.extracted_fields.length < originalCount) {
+          console.log(`Filtered ${originalCount - parsed.extracted_fields.length} ghost extracted fields`);
+        }
+      }
+      
+      if (Array.isArray(parsed.missing_fields)) {
+        const originalCount = parsed.missing_fields.length;
+        parsed.missing_fields = parsed.missing_fields.filter((f: any) => {
+          const key = normalizeKey(f.field_name || "");
+          const isValid = templateFieldKeys.has(key) || [...templateFieldKeys].some(tk => tk.includes(key) || key.includes(tk));
+          if (!isValid) console.log(`FILTERED ghost missing field: ${f.field_name}`);
+          return isValid;
+        });
+        if (parsed.missing_fields.length < originalCount) {
+          console.log(`Filtered ${originalCount - parsed.missing_fields.length} ghost missing fields`);
+        }
+      }
+      
+      // Re-check all_data_available after filtering
+      if (parsed.missing_fields && parsed.missing_fields.length === 0) {
+        parsed.all_data_available = true;
+      }
+    }
+
     const fieldsData = parsed.extracted_fields || [];
     const missingFields = parsed.missing_fields || [];
     const signerName = parsed.signer_name || contactData.full_name || leadData.victim_name || "Cliente";
