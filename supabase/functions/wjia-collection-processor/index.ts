@@ -746,6 +746,7 @@ serve(async (req) => {
               whatsapp_phone: normalizedPhone,
               notify_on_signature: session.notify_on_signature !== false,
               send_signed_pdf: session.send_signed_pdf !== false,
+              instance_name: session.instance_name || null,
             });
 
             if (inst?.instance_token && signUrl) {

@@ -1,0 +1,1 @@
+ALTER TABLE public.zapsign_documents ADD COLUMN instance_name text;
