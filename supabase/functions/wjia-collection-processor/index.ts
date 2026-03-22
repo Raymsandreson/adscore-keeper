@@ -1236,8 +1236,71 @@ ATENÇÃO - REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
       .join("\n");
 
     const collectedData = session.collected_data || { fields: [] };
-    const missingFields = session.missing_fields || [];
+    let missingFields = session.missing_fields || [];
     const requiredFieldCatalog = buildTemplateFieldCatalog(session);
+
+    // === PRE-AI AUTO-FILL: date, signing city/state ===
+    // Fill these BEFORE AI so it never asks for them
+    const todayFormatted = new Date().toLocaleDateString('pt-BR');
+    const preFilledFields = new Set<string>();
+    const currentFields = [...(collectedData.fields || [])];
+    
+    for (const templateField of requiredFieldCatalog) {
+      const normKey = templateField.normalized;
+      
+      // Auto-fill DATA_ASSINATURA / DATA_PROCURACAO / DATA_ATUAL
+      const isDateField = normKey.includes("DATA") && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO") || normKey.includes("ATUAL") || normKey.includes("HOJE"));
+      if (isDateField) {
+        const existing = currentFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
+        if (!existing || !hasFieldValue(existing.para)) {
+          upsertCollectedField(currentFields, templateField.variable, todayFormatted);
+          console.log(`Pre-AI auto-filled date: ${templateField.variable} = ${todayFormatted}`);
+        }
+        preFilledFields.add(normKey);
+      }
+      
+      // Auto-fill cidade_outorgante / estado_outorgante from client address
+      const isSigningCity = (normKey.includes("CIDADE") || normKey.includes("LOCAL") || normKey.includes("MUNICIPIO")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO") || normKey.includes("OUTORGANTE"));
+      const isSigningState = (normKey.includes("ESTADO") || normKey.includes("UF")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO") || normKey.includes("OUTORGANTE"));
+      
+      if (isSigningCity) {
+        const clientCityField = currentFields.find((f: any) => {
+          const k = normalizeFieldKey(f.de || "");
+          return (k.includes("CIDADE") || k.includes("MUNICIPIO")) && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && !k.includes("OUTORGANTE") && hasFieldValue(f.para);
+        });
+        if (clientCityField) {
+          const existing = currentFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
+          if (!existing || !hasFieldValue(existing.para)) {
+            upsertCollectedField(currentFields, templateField.variable, clientCityField.para);
+            console.log(`Pre-AI auto-filled signing city: ${templateField.variable} = ${clientCityField.para}`);
+          }
+          preFilledFields.add(normKey);
+        }
+      }
+      if (isSigningState) {
+        const clientStateField = currentFields.find((f: any) => {
+          const k = normalizeFieldKey(f.de || "");
+          return (k.includes("ESTADO") || k === "UF") && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && !k.includes("OUTORGANTE") && hasFieldValue(f.para);
+        });
+        if (clientStateField) {
+          const existing = currentFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
+          if (!existing || !hasFieldValue(existing.para)) {
+            upsertCollectedField(currentFields, templateField.variable, clientStateField.para);
+            console.log(`Pre-AI auto-filled signing state: ${templateField.variable} = ${clientStateField.para}`);
+          }
+          preFilledFields.add(normKey);
+        }
+      }
+    }
+    
+    // Update collected data with pre-filled fields
+    collectedData.fields = currentFields;
+    
+    // Remove pre-filled fields from missing fields list so AI never asks for them
+    missingFields = missingFields.filter((f: any) => {
+      const fieldKey = normalizeFieldKey(f?.field_name || f?.friendly_name || "");
+      return !preFilledFields.has(fieldKey);
+    });
 
     // Use AI to extract data from the client's message
     const allTemplateFields = requiredFieldCatalog.length > 0
@@ -1297,6 +1360,50 @@ INSTRUÇÃO: Apresente os CEPs encontrados ao cliente de forma natural e pergunt
         cepLookupContext = `\n\n📍 O cliente não sabe o CEP. Pergunte a rua, cidade e estado para que possamos buscar o CEP. Ex: "Sem problema! Me passa a rua, cidade e estado que eu procuro pra você."`;
       }
     }
+    
+    // === PROACTIVE REVERSE CEP LOOKUP ===
+    // When client sends address-like text without CEP, try to find the CEP automatically
+    if (!detectedCEP && !dontKnowCEP && !cepLookupContext) {
+      const cepFieldMissing = missingFields.some((f: any) => {
+        const k = normalizeFieldKey(f?.field_name || f?.friendly_name || "");
+        return k.includes("CEP");
+      });
+      if (cepFieldMissing && message_text && message_text.length > 10) {
+        // Check if message looks like an address (contains street keywords or number patterns)
+        const msgLower = (message_text || "").toLowerCase();
+        const addressKeywords = /\b(rua|avenida|av\.|travessa|alameda|rodovia|estrada|quadra|qd|lote|lot|condomínio|cond|bloco|conjunto|setor)\b/i;
+        const hasNumber = /\d{1,5}/.test(message_text);
+        
+        if (addressKeywords.test(msgLower) || (hasNumber && msgLower.length > 15)) {
+          // Try to find city/state from already collected data
+          const collectedFields = collectedData.fields || [];
+          let collectedCity = "";
+          let collectedState = "";
+          for (const f of collectedFields) {
+            const key = normalizeFieldKey(f.de || f.field_name || "");
+            if ((key.includes("CIDADE") || key.includes("MUNICIPIO")) && !key.includes("ASSINATURA") && !key.includes("OUTORGANTE")) collectedCity = f.para || "";
+            if ((key.includes("ESTADO") || key === "UF") && !key.includes("ASSINATURA") && !key.includes("OUTORGANTE")) collectedState = f.para || "";
+          }
+          
+          if (collectedState && collectedCity) {
+            // Extract street name from message (first part before number)
+            const streetMatch = message_text.match(/^((?:rua|avenida|av\.?|travessa|alameda|rodovia|estrada)\s+[^,\d]+)/i);
+            const streetForLookup = streetMatch ? streetMatch[1].trim() : message_text.split(",")[0].trim();
+            
+            if (streetForLookup.length > 3) {
+              const reverseResults = await reverseLookupCEP(collectedState, collectedCity, streetForLookup);
+              if (reverseResults.length > 0) {
+                const resultLines = reverseResults.map(r => `  CEP ${r.cep}: ${r.logradouro}, ${r.bairro}`).join("\n");
+                cepLookupContext = `\n\n🔍 BUSCA AUTOMÁTICA DE CEP (pela rua detectada "${streetForLookup}" em ${collectedCity}/${collectedState}):
+${resultLines}
+INSTRUÇÃO: O cliente informou um endereço. Use o CEP encontrado automaticamente. Se houver múltiplos resultados, pergunte qual é o correto. Capture o endereço completo COM o CEP nos newly_extracted. Pergunte número e complemento se não informados.`;
+                console.log("Proactive reverse CEP lookup results:", JSON.stringify(reverseResults));
+              }
+            }
+          }
+        }
+      }
+    }
 
     const systemPrompt = `Você é um assistente de coleta de dados para um escritório de advocacia. Está coletando informações do cliente para preencher um documento "${session.template_name}".
 ${agentPersona}
@@ -1336,8 +1443,10 @@ REGRA CRÍTICA - NOME COMPLETO:
 REGRA CRÍTICA - ENDEREÇO E CEP:
 - Quando o sistema fornecer resultado de busca de CEP (logradouro, bairro, cidade, UF), use EXATAMENTE esses dados do resultado.
 - NÃO invente ou modifique o endereço. Se a busca retornou "Rua dos Andradas" use "Rua dos Andradas", não "Avenida João 23".
-- O campo ENDERECO_COMPLETO deve conter APENAS o logradouro retornado pelo CEP + número/complemento informado pelo cliente.
-- Se o cliente ainda não informou número, NÃO adicione "sem número". Pergunte o número.
+- O campo ENDERECO_COMPLETO deve conter o logradouro + número + complemento informados pelo cliente. Ex: "Avenida João XXIII, 2195, Cond Terras Alphaville".
+- Se o cliente informar endereço COM número e complemento, CAPTURE TUDO no ENDERECO_COMPLETO. Não perca número/complemento.
+- Se o cliente ainda não informou número, pergunte o número e complemento.
+- Quando o cliente enviar um endereço (com rua/avenida), o sistema pode já ter buscado o CEP automaticamente (veja acima). Use os dados encontrados.
 
 REGRA CRÍTICA - NUNCA RE-PERGUNTE DADOS JÁ COLETADOS:
 - Se um dado JÁ ESTÁ nos "DADOS JÁ COLETADOS" acima (ex: NOME_COMPLETO, CPF), NUNCA pergunte novamente ao cliente.
@@ -1364,11 +1473,10 @@ REGRA CRÍTICA - PEÇA TODOS OS DADOS FALTANTES DE UMA VEZ COM RESUMO:
 - Só marque all_collected como true se ABSOLUTAMENTE TODOS os campos listados acima tiverem valores preenchidos
 - Se TODOS os dados foram coletados, diga que vai preparar o documento
 
-REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
-- DATA DE ASSINATURA / DATA DA PROCURAÇÃO / DATA ATUAL: SEMPRE preencha com a data de HOJE (${new Date().toLocaleDateString('pt-BR')}). NUNCA pergunte ao cliente.
-- CIDADE/LOCAL DE ASSINATURA / CIDADE DA PROCURAÇÃO: É SEMPRE a mesma cidade do endereço do cliente. NUNCA pergunte separadamente.
-- ESTADO DE ASSINATURA / UF DA PROCURAÇÃO: É SEMPRE o mesmo estado do endereço do cliente. NUNCA pergunte separadamente.
-- NATURALIDADE: Se o documento de identidade (RG/CNH) contém o local de nascimento, use esse dado. Se não, infira da cidade de nascimento se disponível. Se o campo "NATURALIDADE" está faltando e você tem o local de nascimento do documento, preencha automaticamente.
+REGRAS DE AUTO-PREENCHIMENTO (JÁ APLICADAS AUTOMATICAMENTE - NÃO pergunte):
+- DATA DE ASSINATURA / DATA DA PROCURAÇÃO: Já preenchido automaticamente. NÃO pergunte ao cliente. NÃO inclua nos still_missing.
+- CIDADE/ESTADO DE ASSINATURA / OUTORGANTE: Já preenchido automaticamente quando o endereço é conhecido. NÃO pergunte separadamente.
+- NATURALIDADE: Se o documento de identidade (RG/CNH) contém o local de nascimento, use esse dado.
 - Quando o cliente informar o CEP, o sistema JÁ BUSCOU o endereço (veja acima). APRESENTE ao cliente e peça confirmação + número/complemento. SÓ extraia os campos de endereço se o cliente CONFIRMAR.
 - Se o cliente não souber o CEP, peça rua, cidade e estado para buscar. Se já tiver esses dados coletados, o sistema já fez a busca reversa (veja acima).
 - Quando o cliente confirmar o endereço do CEP, extraia TODOS os campos de endereço (rua, bairro, cidade, estado, CEP) nos newly_extracted de uma vez.`;
@@ -1564,18 +1672,18 @@ REGRAS DE AUTO-PREENCHIMENTO (aplique SEMPRE):
     // === AUTO-FILL: signing city/state = client address city/state ===
     const clientCity = updatedFields.find((f: any) => {
       const k = normalizeFieldKey(f.de || "");
-      return (k.includes("CIDADE") || k.includes("MUNICIPIO")) && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && hasFieldValue(f.para);
+      return (k.includes("CIDADE") || k.includes("MUNICIPIO")) && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && !k.includes("OUTORGANTE") && hasFieldValue(f.para);
     });
     const clientState = updatedFields.find((f: any) => {
       const k = normalizeFieldKey(f.de || "");
-      return (k.includes("ESTADO") || k === "UF") && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && hasFieldValue(f.para);
+      return (k.includes("ESTADO") || k === "UF") && !k.includes("ASSINATURA") && !k.includes("PROCURACAO") && !k.includes("OUTORGANTE") && hasFieldValue(f.para);
     });
 
     if (clientCity || clientState) {
       for (const templateField of requiredFieldCatalog) {
         const normKey = templateField.normalized;
-        const isSigningCity = (normKey.includes("CIDADE") || normKey.includes("LOCAL") || normKey.includes("MUNICIPIO")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO"));
-        const isSigningState = (normKey.includes("ESTADO") || normKey.includes("UF")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO"));
+        const isSigningCity = (normKey.includes("CIDADE") || normKey.includes("LOCAL") || normKey.includes("MUNICIPIO")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO") || normKey.includes("OUTORGANTE"));
+        const isSigningState = (normKey.includes("ESTADO") || normKey.includes("UF")) && (normKey.includes("ASSINATURA") || normKey.includes("PROCURACAO") || normKey.includes("OUTORGANTE"));
 
         if (isSigningCity && clientCity) {
           const existing = updatedFields.find((f: any) => normalizeFieldKey(f.de || "") === normalizeFieldKey(templateField.variable));
