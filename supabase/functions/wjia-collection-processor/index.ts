@@ -181,7 +181,12 @@ function inferVariableFromValue(value: any, catalog: TemplateFieldRef[]): string
     return pick((f) => f.normalized.includes("EMAIL"));
   }
 
-  if (/^\d{5}-?\d{3}$/.test(raw) || digits.length === 8) {
+  // Only match CEP if it looks like a proper CEP format (XXXXX-XXX or 8 digits NOT from a date)
+  if (/^\d{5}-?\d{3}$/.test(raw)) {
+    return pick((f) => f.normalized.includes("CEP"));
+  }
+  // For bare 8-digit strings, exclude date-like patterns (e.g. 22032026 from 22/03/2026)
+  if (digits.length === 8 && !/^\d{2}\/?\d{2}\/?\d{4}$/.test(raw) && !/^\d{4}\/?\d{2}\/?\d{2}$/.test(raw)) {
     return pick((f) => f.normalized.includes("CEP"));
   }
 
