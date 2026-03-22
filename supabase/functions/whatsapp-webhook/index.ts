@@ -1376,8 +1376,8 @@ Deno.serve(async (req) => {
             .eq('is_active', true)
             .maybeSingle()
 
-          // Fire-and-forget: call wjia-chat-command
-          fetch(`${supabaseUrl}/functions/v1/wjia-chat-command`, {
+          // Fire-and-forget: call unified wjia-agent
+          fetch(`${supabaseUrl}/functions/v1/wjia-agent`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
