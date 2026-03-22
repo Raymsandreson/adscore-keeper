@@ -251,12 +251,27 @@ Deno.serve(async (req) => {
           console.log('Sending signed PDF via WhatsApp to:', localDoc.whatsapp_phone, 'URL:', signedFileUrl)
 
           try {
-            const { data: instance } = await supabase
-              .from('whatsapp_instances')
-              .select('*')
-              .eq('is_active', true)
-              .limit(1)
-              .single()
+            // Try to use the same instance that originated the document
+            let instance = null
+            if (localDoc.instance_name) {
+              const { data: namedInst } = await supabase
+                .from('whatsapp_instances')
+                .select('*')
+                .eq('instance_name', localDoc.instance_name)
+                .eq('is_active', true)
+                .single()
+              instance = namedInst
+            }
+            // Fallback to any active instance
+            if (!instance) {
+              const { data: fallbackInst } = await supabase
+                .from('whatsapp_instances')
+                .select('*')
+                .eq('is_active', true)
+                .limit(1)
+                .single()
+              instance = fallbackInst
+            }
 
             if (instance) {
               const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
