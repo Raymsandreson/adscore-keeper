@@ -459,6 +459,26 @@ REGRAS DE FORMATAÇÃO:
       }
     }
 
+    // AUTO-SYNC: If NOME_COMPLETO and NOME_OUTORGANTE both exist as required fields,
+    // copy the value from whichever was filled (usually from document OCR) to the other
+    const nameFieldKeys = ['NOME_COMPLETO', 'NOMECOMPLETO', 'NOME_OUTORGANTE', 'NOMEOUTORGANTE'];
+    const nameFieldsInTemplate = updatedFields.filter((f: any) => {
+      const k = normalizeFieldKey(f.de || "");
+      return nameFieldKeys.includes(k);
+    });
+    
+    if (nameFieldsInTemplate.length >= 2) {
+      const filled = nameFieldsInTemplate.find((f: any) => hasFieldValue(f.para));
+      if (filled) {
+        for (const nf of nameFieldsInTemplate) {
+          if (!hasFieldValue(nf.para)) {
+            console.log(`AUTO-SYNC name: copying "${filled.para}" from ${filled.de} to ${nf.de}`);
+            nf.para = filled.para;
+          }
+        }
+      }
+    }
+
     // Apply defaults
     for (const field of updatedFields) {
       const fieldName = (field.de || "").replace(/\{\{|\}\}/g, "").toUpperCase().trim();
@@ -1447,13 +1467,10 @@ REGRAS:
 - NUNCA questione ou sinalize divergências/conflitos de dados. Aceite o que o cliente diz como verdade.
 
 REGRA CRÍTICA - NOMES (NOME_COMPLETO, NOME_OUTORGANTE, etc.):
-- CADA campo de nome é INDEPENDENTE. NÃO copie valores entre campos de nome diferentes.
-- {{NOME_COMPLETO}} e {{NOME_OUTORGANTE}} podem ter o MESMO valor (se a mesma pessoa), mas devem ser preenchidos INDIVIDUALMENTE pela extração do documento.
-- Se o documento (RG/CNH) já extraiu o NOME COMPLETO, USE SEMPRE O NOME COMPLETO do documento. NÃO substitua por um nome parcial.
+- {{NOME_COMPLETO}} e {{NOME_OUTORGANTE}} representam a MESMA PESSOA. O sistema já sincroniza automaticamente entre eles — NÃO pergunte o nome duas vezes.
+- Se o documento (RG/CNH) já extraiu o nome, USE SEMPRE O NOME COMPLETO do documento. NÃO substitua por um nome parcial.
 - Se o cliente responder apenas com o primeiro nome (ex: "Kemly"), isso é uma CONFIRMAÇÃO, NÃO uma correção. NÃO extraia esse nome parcial nos newly_extracted.
 - Só extraia um novo valor de nome se o cliente EXPLICITAMENTE corrigir com um nome completo diferente e MAIS LONGO que o atual.
-- NUNCA copie o valor de um campo de nome para outro (ex: NÃO copie NOME_OUTORGANTE para NOME_COMPLETO ou vice-versa).
-- Se ambos já foram extraídos do documento, MANTENHA cada um com seu valor original.
 - Exemplo: documento extraiu "KEMLY RAYANE DA SILVA" e cliente disse "Kemly" → NÃO extraia nenhum campo de nome. Os nomes já estão corretos.
 
 REGRA CRÍTICA - ENDEREÇO E CEP:
