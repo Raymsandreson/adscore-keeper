@@ -14,7 +14,8 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { phone, instance_name, command, contact_id, lead_id } = await req.json();
+    const payload = await req.json();
+    const { phone, instance_name, command, contact_id, lead_id, reset_memory = false } = payload;
     if (!phone || !command) {
       return new Response(JSON.stringify({ error: "phone and command are required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
