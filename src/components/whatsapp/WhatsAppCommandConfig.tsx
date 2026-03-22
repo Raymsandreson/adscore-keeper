@@ -36,6 +36,7 @@ interface Shortcut {
   send_signed_pdf: boolean;
   request_documents: boolean;
   document_types: string[];
+  custom_document_names: string[];
   // Agent fields
   assistant_type: string;
   base_prompt: string | null;
@@ -169,7 +170,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     shortcut_name: '', description: '', template_token: '', template_name: '',
     prompt_instructions: '', media_extraction_prompt: '',
     notify_on_signature: true, send_signed_pdf: true,
-    request_documents: false, document_types: [] as string[],
+    request_documents: false, document_types: [] as string[], custom_document_names: [] as string[],
     // Agent fields
     assistant_type: 'document',
     base_prompt: '',
@@ -219,7 +220,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       shortcut_name: '', description: '', template_token: '', template_name: '',
       prompt_instructions: '', media_extraction_prompt: '',
       notify_on_signature: true, send_signed_pdf: true,
-      request_documents: false, document_types: [],
+      request_documents: false, document_types: [], custom_document_names: [],
       assistant_type: 'document', base_prompt: '',
       model: 'google/gemini-2.5-flash', temperature: 0.7,
       response_delay_seconds: 2, split_messages: false, split_delay_seconds: 3,
@@ -257,6 +258,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_signed_pdf: s.send_signed_pdf !== false,
       request_documents: s.request_documents || false,
       document_types: s.document_types || [],
+      custom_document_names: (s as any).custom_document_names || [],
       assistant_type: s.assistant_type || 'document',
       base_prompt: s.base_prompt || '',
       model: s.model || 'google/gemini-2.5-flash',
@@ -299,6 +301,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_signed_pdf: form.send_signed_pdf,
       request_documents: form.request_documents,
       document_types: form.document_types,
+      custom_document_names: form.custom_document_names,
       assistant_type: form.assistant_type,
       base_prompt: form.base_prompt || null,
       model: form.model,
@@ -624,6 +627,35 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                                   <Label htmlFor={`doc_${docType.key}`} className="text-xs cursor-pointer">{docType.label}</Label>
                                 </div>
                               ))}
+                              {form.document_types.includes('outros') && (
+                                <div className="ml-6 space-y-2">
+                                  <p className="text-[10px] text-muted-foreground">Nomes dos documentos adicionais:</p>
+                                  {(form.custom_document_names || []).map((name, idx) => (
+                                    <div key={idx} className="flex items-center gap-1">
+                                      <Input
+                                        value={name}
+                                        onChange={e => {
+                                          const updated = [...form.custom_document_names];
+                                          updated[idx] = e.target.value;
+                                          setForm(f => ({ ...f, custom_document_names: updated }));
+                                        }}
+                                        placeholder="Ex: Certidão de nascimento"
+                                        className="h-7 text-xs flex-1"
+                                      />
+                                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => {
+                                        setForm(f => ({ ...f, custom_document_names: f.custom_document_names.filter((_, i) => i !== idx) }));
+                                      }}>
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
+                                    setForm(f => ({ ...f, custom_document_names: [...(f.custom_document_names || []), ''] }));
+                                  }}>
+                                    <Plus className="h-3 w-3 mr-1" /> Adicionar documento
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>

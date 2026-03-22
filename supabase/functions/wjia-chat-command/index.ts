@@ -100,6 +100,7 @@ serve(async (req) => {
     const sendSignedPdf = matchedShortcut?.send_signed_pdf !== false;
     const requestDocuments = matchedShortcut?.request_documents || false;
     const documentTypes = matchedShortcut?.document_types || [];
+    const customDocumentNames: string[] = matchedShortcut?.custom_document_names || [];
     const assistantType = matchedShortcut?.assistant_type || 'document';
     const shortcutModel = matchedShortcut?.model || 'google/gemini-2.5-flash';
     const shortcutTemperature = matchedShortcut?.temperature ?? 0.1;
@@ -132,10 +133,16 @@ REGRAS:
 - Para WHATSAPP do escritório: use "(86)99447-3226"
 - Para EMAIL do escritório: use "contato@prudencioadv.com"
 - Formate datas como DD/MM/AAAA
-- CAMPOS DE DATA (DATA_ASSINATURA, DATA_PROCURACAO, data_assinatura_outorgante, ou qualquer campo com "data" e "assinatura"/"procuracao"/"atual"): PREENCHA AUTOMATICAMENTE com a data de hoje (${new Date().toLocaleDateString('pt-BR')}) e NUNCA liste como campo faltante. Inclua nos extracted_fields.
-- Campos de cidade/estado do outorgante (cidade_outorgante, estado_outorgante): copie da CIDADE e UF do cliente
+- Campos cujo nome contenha "DATA" junto com "ASSINATURA" ou "PROCURACAO" (ex: DATA_ASSINATURA, DATA_PROCURACAO): PREENCHA AUTOMATICAMENTE com a data de hoje (${new Date().toLocaleDateString('pt-BR')}) e NUNCA liste como campo faltante. Inclua nos extracted_fields.
 - Extraia TUDO que puder da conversa e CRM
-- Se o atalho tem prompt_instructions, siga essas instruções adicionais`;
+- Se o atalho tem prompt_instructions, siga essas instruções adicionais
+
+REGRA ABSOLUTA - CAMPOS DO TEMPLATE:
+- Use SOMENTE os campos que existem no template ZapSign selecionado.
+- NÃO invente campos como "nome_outorgante", "cidade_outorgante", "estado_outorgante" se eles NÃO existem no template.
+- Os campos extracted_fields e missing_fields devem conter EXCLUSIVAMENTE variáveis que aparecem no template.
+- Se o template tem {{NOME COMPLETO}}, use "NOME COMPLETO" — NÃO use "nome_outorgante".
+- Consulte a lista de campos do template (obtida via API) como fonte única de verdade.`;
 
     const tools = [
       {
@@ -267,6 +274,43 @@ REGRAS:
       }));
     }
 
+    // POST-AI ENFORCEMENT: Filter extracted_fields and missing_fields to ONLY include template fields
+    if (templateFields.length > 0) {
+      const normalizeKey = (v: string) => (v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\{\{|\}\}/g, "").replace(/[^A-Za-z0-9]+/g, "").toUpperCase().trim();
+      const templateFieldKeys = new Set(templateFields.map((f: any) => normalizeKey(f.variable || f.label)));
+      
+      if (Array.isArray(parsed.extracted_fields)) {
+        const originalCount = parsed.extracted_fields.length;
+        parsed.extracted_fields = parsed.extracted_fields.filter((f: any) => {
+          const key = normalizeKey(f.de || "");
+          const isValid = templateFieldKeys.has(key) || [...templateFieldKeys].some(tk => tk.includes(key) || key.includes(tk));
+          if (!isValid) console.log(`FILTERED ghost extracted field: ${f.de} = ${f.para}`);
+          return isValid;
+        });
+        if (parsed.extracted_fields.length < originalCount) {
+          console.log(`Filtered ${originalCount - parsed.extracted_fields.length} ghost extracted fields`);
+        }
+      }
+      
+      if (Array.isArray(parsed.missing_fields)) {
+        const originalCount = parsed.missing_fields.length;
+        parsed.missing_fields = parsed.missing_fields.filter((f: any) => {
+          const key = normalizeKey(f.field_name || "");
+          const isValid = templateFieldKeys.has(key) || [...templateFieldKeys].some(tk => tk.includes(key) || key.includes(tk));
+          if (!isValid) console.log(`FILTERED ghost missing field: ${f.field_name}`);
+          return isValid;
+        });
+        if (parsed.missing_fields.length < originalCount) {
+          console.log(`Filtered ${originalCount - parsed.missing_fields.length} ghost missing fields`);
+        }
+      }
+      
+      // Re-check all_data_available after filtering
+      if (parsed.missing_fields && parsed.missing_fields.length === 0) {
+        parsed.all_data_available = true;
+      }
+    }
+
     const fieldsData = parsed.extracted_fields || [];
     const missingFields = parsed.missing_fields || [];
     const signerName = parsed.signer_name || contactData.full_name || leadData.victim_name || "Cliente";
@@ -318,9 +362,17 @@ REGRAS:
           rg_cnh: 'RG / CNH (documento com foto)',
           comprovante_endereco: 'Comprovante de endereço',
           comprovante_renda: 'Comprovante de renda',
-          outros: 'Outros documentos',
         };
-        const docNames = documentTypes.map((t: string) => docTypeLabels[t] || t).join('\n• ');
+        // Build doc names list: standard types + custom names for "outros"
+        const docNamesList: string[] = documentTypes
+          .filter((t: string) => t !== 'outros')
+          .map((t: string) => docTypeLabels[t] || t);
+        if (documentTypes.includes('outros') && customDocumentNames.length > 0) {
+          docNamesList.push(...customDocumentNames.filter((n: string) => n.trim()));
+        } else if (documentTypes.includes('outros')) {
+          docNamesList.push('Outros documentos');
+        }
+        const docNames = docNamesList.join('\n• ');
         const docsFirstMsg = `📝 Para preparar o documento *${parsed.template_name || "Documento"}*, preciso que envie os seguintes documentos:\n\n• ${docNames}\n\n📸 Envie a *foto ou arquivo* de cada documento. Vou extrair as informações automaticamente para agilizar o preenchimento!\n\nSe não tiver algum agora, digite *pular*.`;
 
         if (inst?.instance_token) {
