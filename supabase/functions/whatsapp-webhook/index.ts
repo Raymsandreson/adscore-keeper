@@ -1952,7 +1952,7 @@ Deno.serve(async (req) => {
           const respData = {
             success: true,
             message_id: message.id,
-            agent_command: cmdTrimmed,
+            agent_command: resolvedControlCommand,
             instance_name: instanceName,
           }
           await logWebhook('agent_command_processed', respData)
