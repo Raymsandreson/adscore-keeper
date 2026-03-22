@@ -1866,42 +1866,73 @@ Deno.serve(async (req) => {
             // Build status text with both agent and collection info
             const statusParts: string[] = []
 
-            // Agent status
-            const { data: existing } = await supabase
-              .from('whatsapp_conversation_agents')
-              .select('agent_id, is_active, human_paused_until')
-              .eq('phone', phone)
-              .eq('instance_name', instanceName)
-              .maybeSingle()
-
-            if (existing) {
-              const { data: agentData } = await supabase
-                .from('whatsapp_ai_agents')
-                .select('name')
-                .eq('id', (existing as any).agent_id)
+            // Agent status — check all phone candidates (mirrored webhooks)
+            let foundAgent = false
+            for (const candidatePhone of phoneCandidates) {
+              const { data: existing } = await supabase
+                .from('whatsapp_conversation_agents')
+                .select('agent_id, is_active, human_paused_until')
+                .eq('phone', candidatePhone)
+                .eq('instance_name', instanceName)
                 .maybeSingle()
 
-              const agentName = (agentData as any)?.name || 'Desconhecido'
-              const isActive = (existing as any).is_active
-              const pausedUntil = (existing as any).human_paused_until
+              if (existing) {
+                foundAgent = true
+                const { data: agentData } = await supabase
+                  .from('whatsapp_ai_agents')
+                  .select('name')
+                  .eq('id', (existing as any).agent_id)
+                  .maybeSingle()
 
-              if (!isActive) {
-                statusParts.push(`🤖 Agente "${agentName}" está *DESATIVADO*.`)
-              } else if (pausedUntil && new Date(pausedUntil) > new Date()) {
-                const timeStr = new Date(pausedUntil).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-                statusParts.push(`🤖 Agente "${agentName}" está *PAUSADO* até ${timeStr}.`)
-              } else {
-                statusParts.push(`🤖 Agente "${agentName}" está *ATIVO*.`)
+                const agentName = (agentData as any)?.name || 'Desconhecido'
+                const isActive = (existing as any).is_active
+                const pausedUntil = (existing as any).human_paused_until
+
+                if (!isActive) {
+                  statusParts.push(`🤖 Agente "${agentName}" está *DESATIVADO* (tel: ${candidatePhone}).`)
+                } else if (pausedUntil && new Date(pausedUntil) > new Date()) {
+                  const timeStr = new Date(pausedUntil).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                  statusParts.push(`🤖 Agente "${agentName}" está *PAUSADO* até ${timeStr} (tel: ${candidatePhone}).`)
+                } else {
+                  statusParts.push(`🤖 Agente "${agentName}" está *ATIVO* (tel: ${candidatePhone}).`)
+                }
+                break // found one, stop
               }
-            } else {
+            }
+            if (!foundAgent) {
               statusParts.push('🤖 Nenhum agente atribuído.')
             }
 
+            // Also check collection sessions across all phone candidates
+            let sessionFound = activeCollectionSession
+            if (!sessionFound) {
+              for (const candidatePhone of phoneCandidates) {
+                if (candidatePhone === phone) continue
+                const { data: sess } = await supabase
+                  .from('wjia_collection_sessions')
+                  .select('id, status, shortcut_name')
+                  .eq('phone', candidatePhone)
+                  .eq('instance_name', instanceName)
+                  .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready', 'generated'])
+                  .order('created_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle()
+                if (sess) { sessionFound = sess; break }
+              }
+            }
+
             // Collection session status
-            if (activeCollectionSession) {
-              const sessStatus = (activeCollectionSession as any).status
-              const shortcutName = (activeCollectionSession as any).shortcut_name || 'Atalho'
-              const statusLabel = sessStatus === 'ready' ? 'aguardando confirmação' : 'coletando dados'
+            if (sessionFound) {
+              const sessStatus = (sessionFound as any).status
+              const shortcutName = (sessionFound as any).shortcut_name || 'Atalho'
+              const statusLabels: Record<string, string> = {
+                collecting: 'coletando dados',
+                collecting_docs: 'coletando documentos',
+                processing_docs: 'processando documentos',
+                ready: 'aguardando confirmação',
+                generated: 'documento gerado (aguardando assinatura)',
+              }
+              const statusLabel = statusLabels[sessStatus] || sessStatus
               statusParts.push(`📋 Atalho "${shortcutName}" *EM ANDAMENTO* (${statusLabel}).`)
             }
 
@@ -1921,7 +1952,7 @@ Deno.serve(async (req) => {
           const respData = {
             success: true,
             message_id: message.id,
-            agent_command: cmdTrimmed,
+            agent_command: resolvedControlCommand,
             instance_name: instanceName,
           }
           await logWebhook('agent_command_processed', respData)
