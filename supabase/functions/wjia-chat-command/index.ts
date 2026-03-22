@@ -132,10 +132,16 @@ REGRAS:
 - Para WHATSAPP do escritório: use "(86)99447-3226"
 - Para EMAIL do escritório: use "contato@prudencioadv.com"
 - Formate datas como DD/MM/AAAA
-- CAMPOS DE DATA (DATA_ASSINATURA, DATA_PROCURACAO, data_assinatura_outorgante, ou qualquer campo com "data" e "assinatura"/"procuracao"/"atual"): PREENCHA AUTOMATICAMENTE com a data de hoje (${new Date().toLocaleDateString('pt-BR')}) e NUNCA liste como campo faltante. Inclua nos extracted_fields.
-- Campos de cidade/estado do outorgante (cidade_outorgante, estado_outorgante): copie da CIDADE e UF do cliente
+- Campos cujo nome contenha "DATA" junto com "ASSINATURA" ou "PROCURACAO" (ex: DATA_ASSINATURA, DATA_PROCURACAO): PREENCHA AUTOMATICAMENTE com a data de hoje (${new Date().toLocaleDateString('pt-BR')}) e NUNCA liste como campo faltante. Inclua nos extracted_fields.
 - Extraia TUDO que puder da conversa e CRM
-- Se o atalho tem prompt_instructions, siga essas instruções adicionais`;
+- Se o atalho tem prompt_instructions, siga essas instruções adicionais
+
+REGRA ABSOLUTA - CAMPOS DO TEMPLATE:
+- Use SOMENTE os campos que existem no template ZapSign selecionado.
+- NÃO invente campos como "nome_outorgante", "cidade_outorgante", "estado_outorgante" se eles NÃO existem no template.
+- Os campos extracted_fields e missing_fields devem conter EXCLUSIVAMENTE variáveis que aparecem no template.
+- Se o template tem {{NOME COMPLETO}}, use "NOME COMPLETO" — NÃO use "nome_outorgante".
+- Consulte a lista de campos do template (obtida via API) como fonte única de verdade.`;
 
     const tools = [
       {
