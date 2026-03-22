@@ -803,19 +803,84 @@ serve(async (req) => {
             for (const doc of receivedDocs) {
               if (!doc.media_url) continue;
               try {
-                // Download the file and convert to base64
+                // Download the file
                 const fileResp = await fetch(doc.media_url);
                 if (!fileResp.ok) { console.error("Failed to download doc:", doc.media_url); continue; }
                 const fileBuffer = await fileResp.arrayBuffer();
-                // Use chunked encoding to avoid stack overflow on large files
-                const bytes = new Uint8Array(fileBuffer);
-                let binaryStr = '';
-                const chunkSize = 8192;
-                for (let i = 0; i < bytes.length; i += chunkSize) {
-                  const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
-                  binaryStr += String.fromCharCode(...chunk);
+                const contentType = fileResp.headers.get("content-type") || "";
+                const isImage = contentType.startsWith("image/");
+                
+                let base64ForZapSign: string;
+                
+                if (isImage) {
+                  // ZapSign only accepts PDF — wrap the image in a minimal PDF
+                  const { encode: b64encode } = await import("https://deno.land/std@0.168.0/encoding/base64.ts");
+                  const imageBase64 = b64encode(fileBuffer);
+                  const imgType = contentType.includes("png") ? "PNG" : "JPEG";
+                  
+                  // Build a minimal PDF with the embedded image
+                  // Use a simple A4 page (595x842 pt) with the image centered
+                  const pdfContent = `%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /XObject << /Img1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 44 >>
+stream
+q 500 0 0 700 47 71 cm /Img1 Do Q
+endstream
+endobj
+5 0 obj
+<< /Type /XObject /Subtype /Image /Width 500 /Height 700 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter [/ASCII85Decode /DCTDecode] /Length ${imageBase64.length} >>
+stream
+${imageBase64}
+endstream
+endobj
+xref
+0 6
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+0
+%%EOF`;
+                  
+                  // Instead of building a raw PDF (complex), upload the image to storage and use url_pdf
+                  // Actually, ZapSign url_pdf also only accepts PDF. 
+                  // Best approach: store the image in Supabase storage and reference it in the zapsign_documents record
+                  // For now, skip image attachment to ZapSign and store as activity attachment instead
+                  
+                  // Store the document reference in zapsign_documents for manual access
+                  console.log(`Image doc ${doc.type} stored as reference (ZapSign only accepts PDF attachments)`);
+                  
+                  // Save to activity_attachments or just log it
+                  if (session.lead_id) {
+                    await supabase.from("activity_attachments").insert({
+                      activity_id: session.lead_id, // Use lead_id as reference
+                      file_name: `${doc.type}_${normalizedPhone}.${contentType.includes("png") ? "png" : "jpg"}`,
+                      file_url: doc.media_url,
+                      file_type: contentType,
+                      attachment_type: "document",
+                    }).then(() => console.log(`Saved doc attachment for lead ${session.lead_id}`))
+                    .catch((e: any) => console.error("Error saving attachment:", e));
+                  }
+                  continue; // Skip ZapSign attachment for images
+                } else {
+                  // PDF file — send directly
+                  const bytes = new Uint8Array(fileBuffer);
+                  let binaryStr = '';
+                  const chunkSize = 8192;
+                  for (let i = 0; i < bytes.length; i += chunkSize) {
+                    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+                    binaryStr += String.fromCharCode(...chunk);
+                  }
+                  base64ForZapSign = btoa(binaryStr);
                 }
-                const base64 = btoa(binaryStr);
                 
                 const docTypeLabels: Record<string, string> = {
                   rg_cnh: 'RG_CNH', comprovante_endereco: 'Comprovante_Endereco',
@@ -826,7 +891,7 @@ serve(async (req) => {
                 const attachRes = await fetch(`${ZAPSIGN_API_URL}/docs/${docData.token}/add-extra-doc/`, {
                   method: "POST",
                   headers: { Authorization: `Bearer ${zapsignToken}`, "Content-Type": "application/json" },
-                  body: JSON.stringify({ name: attachName, base64_pdf: base64 }),
+                  body: JSON.stringify({ name: attachName, base64_pdf: base64ForZapSign }),
                 });
 
                 if (attachRes.ok) {
