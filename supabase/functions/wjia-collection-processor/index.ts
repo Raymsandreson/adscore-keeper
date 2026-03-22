@@ -813,63 +813,58 @@ serve(async (req) => {
                 let base64ForZapSign: string;
                 
                 if (isImage) {
-                  // ZapSign only accepts PDF — wrap the image in a minimal PDF
-                  const { encode: b64encode } = await import("https://deno.land/std@0.168.0/encoding/base64.ts");
-                  const imageBase64 = b64encode(fileBuffer);
-                  const imgType = contentType.includes("png") ? "PNG" : "JPEG";
-                  
-                  // Build a minimal PDF with the embedded image
-                  // Use a simple A4 page (595x842 pt) with the image centered
-                  const pdfContent = `%PDF-1.4
-1 0 obj
-<< /Type /Catalog /Pages 2 0 R >>
-endobj
-2 0 obj
-<< /Type /Pages /Kids [3 0 R] /Count 1 >>
-endobj
-3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /XObject << /Img1 5 0 R >> >> >>
-endobj
-4 0 obj
-<< /Length 44 >>
-stream
-q 500 0 0 700 47 71 cm /Img1 Do Q
-endstream
-endobj
-5 0 obj
-<< /Type /XObject /Subtype /Image /Width 500 /Height 700 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter [/ASCII85Decode /DCTDecode] /Length ${imageBase64.length} >>
-stream
-${imageBase64}
-endstream
-endobj
-xref
-0 6
-trailer
-<< /Size 6 /Root 1 0 R >>
-startxref
-0
-%%EOF`;
-                  
-                  // Instead of building a raw PDF (complex), upload the image to storage and use url_pdf
-                  // Actually, ZapSign url_pdf also only accepts PDF. 
-                  // Best approach: store the image in Supabase storage and reference it in the zapsign_documents record
-                  // For now, skip image attachment to ZapSign and store as activity attachment instead
-                  
-                  // Store the document reference in zapsign_documents for manual access
-                  console.log(`Image doc ${doc.type} stored as reference (ZapSign only accepts PDF attachments)`);
-                  
-                  // Save to activity_attachments or just log it
-                  if (session.lead_id) {
-                    await supabase.from("activity_attachments").insert({
-                      activity_id: session.lead_id, // Use lead_id as reference
-                      file_name: `${doc.type}_${normalizedPhone}.${contentType.includes("png") ? "png" : "jpg"}`,
-                      file_url: doc.media_url,
-                      file_type: contentType,
-                      attachment_type: "document",
-                    }).then(() => console.log(`Saved doc attachment for lead ${session.lead_id}`))
-                    .catch((e: any) => console.error("Error saving attachment:", e));
+                  // ZapSign only accepts PDF — convert image to PDF using pdf-lib
+                  try {
+                    const { PDFDocument } = await import("https://esm.sh/pdf-lib@1.17.1");
+                    const pdfDoc = await PDFDocument.create();
+                    
+                    let embeddedImage;
+                    if (contentType.includes("png")) {
+                      embeddedImage = await pdfDoc.embedPng(new Uint8Array(fileBuffer));
+                    } else {
+                      embeddedImage = await pdfDoc.embedJpg(new Uint8Array(fileBuffer));
+                    }
+                    
+                    // Scale image to fit A4 page (595x842) with margins
+                    const maxWidth = 555; // A4 width minus 20pt margins
+                    const maxHeight = 802; // A4 height minus 20pt margins
+                    const imgDims = embeddedImage.scale(1);
+                    let scale = Math.min(maxWidth / imgDims.width, maxHeight / imgDims.height, 1);
+                    const scaledWidth = imgDims.width * scale;
+                    const scaledHeight = imgDims.height * scale;
+                    
+                    const page = pdfDoc.addPage([595, 842]);
+                    page.drawImage(embeddedImage, {
+                      x: (595 - scaledWidth) / 2,
+                      y: (842 - scaledHeight) / 2,
+                      width: scaledWidth,
+                      height: scaledHeight,
+                    });
+                    
+                    const pdfBytes = await pdfDoc.save();
+                    // Convert to base64
+                    let binaryStr = '';
+                    const chunkSize = 8192;
+                    for (let i = 0; i < pdfBytes.length; i += chunkSize) {
+                      const chunk = pdfBytes.subarray(i, Math.min(i + chunkSize, pdfBytes.length));
+                      binaryStr += String.fromCharCode(...chunk);
+                    }
+                    base64ForZapSign = btoa(binaryStr);
+                    console.log(`Converted image (${doc.type}) to PDF for ZapSign attachment`);
+                  } catch (pdfErr) {
+                    console.error(`Failed to convert image to PDF:`, pdfErr);
+                    // Fallback: save as activity attachment
+                    if (session.lead_id) {
+                      await supabase.from("activity_attachments").insert({
+                        activity_id: session.lead_id,
+                        file_name: `${doc.type}_${normalizedPhone}.${contentType.includes("png") ? "png" : "jpg"}`,
+                        file_url: doc.media_url,
+                        file_type: contentType,
+                        attachment_type: "document",
+                      }).catch((e: any) => console.error("Error saving attachment:", e));
+                    }
+                    continue;
                   }
-                  continue; // Skip ZapSign attachment for images
                 } else {
                   // PDF file — send directly
                   const bytes = new Uint8Array(fileBuffer);
