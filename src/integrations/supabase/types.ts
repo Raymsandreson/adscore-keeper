@@ -7310,6 +7310,7 @@ export type Database = {
           doc_token: string
           document_name: string
           id: string
+          instance_name: string | null
           lead_id: string | null
           legal_case_id: string | null
           notify_on_signature: boolean
@@ -7338,6 +7339,7 @@ export type Database = {
           doc_token: string
           document_name: string
           id?: string
+          instance_name?: string | null
           lead_id?: string | null
           legal_case_id?: string | null
           notify_on_signature?: boolean
@@ -7366,6 +7368,7 @@ export type Database = {
           doc_token?: string
           document_name?: string
           id?: string
+          instance_name?: string | null
           lead_id?: string | null
           legal_case_id?: string | null
           notify_on_signature?: boolean
