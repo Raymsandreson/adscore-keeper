@@ -559,6 +559,8 @@ const ActivitiesPage = () => {
       notes: null,
       contact_id: formContactId || null,
       contact_name: formContactName || null,
+      case_id: formCaseId || null,
+      case_title: formCaseTitle || null,
     });
     toast.success('Atividade concluída e próxima criada!');
     closeSheet();
