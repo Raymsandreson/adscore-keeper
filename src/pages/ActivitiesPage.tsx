@@ -129,6 +129,10 @@ const ActivitiesPage = () => {
   const [formStatus, setFormStatus] = useState('pendente');
   const [formContactId, setFormContactId] = useState('');
   const [formContactName, setFormContactName] = useState('');
+  const [formCaseId, setFormCaseId] = useState('');
+  const [formCaseTitle, setFormCaseTitle] = useState('');
+  const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string}[]>([]);
+  const [caseSearch, setCaseSearch] = useState('');
   const [availableContacts, setAvailableContacts] = useState<{id: string; full_name: string}[]>([]);
   const [contactSearch, setContactSearch] = useState('');
 
@@ -211,14 +215,16 @@ const ActivitiesPage = () => {
 
   useEffect(() => {
     const loadSupport = async () => {
-      const [leadsRes, membersRes, contactsRes] = await Promise.all([
+      const [leadsRes, membersRes, contactsRes, casesRes] = await Promise.all([
         supabase.from('leads').select('id, lead_name').order('lead_name').limit(500),
         supabase.from('profiles').select('user_id, full_name'),
         supabase.from('contacts').select('id, full_name').order('full_name').limit(500),
+        supabase.from('legal_cases').select('id, case_number, title').order('created_at', { ascending: false }).limit(500),
       ]);
       setLeads(leadsRes.data || []);
       setTeamMembers(membersRes.data || []);
       setAvailableContacts(contactsRes.data || []);
+      setAvailableCases(casesRes.data || []);
     };
     loadSupport();
   }, []);
@@ -317,6 +323,9 @@ const ActivitiesPage = () => {
     setFormContactId('');
     setFormContactName('');
     setContactSearch('');
+    setFormCaseId('');
+    setFormCaseTitle('');
+    setCaseSearch('');
     setFormMatrixQuadrant('');
   };
 
@@ -349,6 +358,8 @@ const ActivitiesPage = () => {
       notes: formNotes || null,
       contact_id: formContactId || null,
       contact_name: formContactName || null,
+      case_id: formCaseId || null,
+      case_title: formCaseTitle || null,
     };
 
     let createdActivityId: string | null = null;
@@ -406,6 +417,8 @@ const ActivitiesPage = () => {
     setFormStatus(activity.status || 'pendente');
     setFormContactId(activity.contact_id || '');
     setFormContactName(activity.contact_name || '');
+    setFormCaseId((activity as any).case_id || '');
+    setFormCaseTitle((activity as any).case_title || '');
     setFormMatrixQuadrant((activity as any).matrix_quadrant || '');
     // Load contacts and lead preview for this lead
     if (activity.lead_id) {
@@ -488,6 +501,8 @@ const ActivitiesPage = () => {
       status: formStatus,
       contact_id: formContactId || null,
       contact_name: formContactName || null,
+      case_id: formCaseId || null,
+      case_title: formCaseTitle || null,
       matrix_quadrant: formMatrixQuadrant || null,
     } as any);
     closeSheet();
@@ -520,6 +535,8 @@ const ActivitiesPage = () => {
       status: formStatus,
       contact_id: formContactId || null,
       contact_name: formContactName || null,
+      case_id: formCaseId || null,
+      case_title: formCaseTitle || null,
     } as any);
     // Complete it
     await completeActivity(selectedActivity.id);
@@ -542,6 +559,8 @@ const ActivitiesPage = () => {
       notes: null,
       contact_id: formContactId || null,
       contact_name: formContactName || null,
+      case_id: formCaseId || null,
+      case_title: formCaseTitle || null,
     });
     toast.success('Atividade concluída e próxima criada!');
     closeSheet();
@@ -1195,6 +1214,46 @@ const ActivitiesPage = () => {
           <div className="flex items-center gap-2 mt-1">
             <Badge variant="secondary">{formContactName}</Badge>
             <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setFormContactId(''); setFormContactName(''); }}>
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <Label>Caso Jurídico</Label>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar caso..."
+            value={caseSearch}
+            onChange={e => setCaseSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        {(caseSearch || !formCaseId) && (
+          <ScrollArea className="max-h-[100px] mt-1 border rounded-md">
+            {(caseSearch
+              ? availableCases.filter(c => 
+                  c.title?.toLowerCase().includes(caseSearch.toLowerCase()) ||
+                  c.case_number?.toLowerCase().includes(caseSearch.toLowerCase())
+                )
+              : availableCases.slice(0, 20)
+            ).map(c => (
+              <button
+                key={c.id}
+                className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${formCaseId === c.id ? 'bg-accent font-medium' : ''}`}
+                onClick={() => { setFormCaseId(c.id); setFormCaseTitle(`${c.case_number} - ${c.title}`); setCaseSearch(''); }}
+              >
+                <span className="font-medium">{c.case_number}</span> — {c.title}
+              </button>
+            ))}
+          </ScrollArea>
+        )}
+        {formCaseTitle && (
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant="secondary">{formCaseTitle}</Badge>
+            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setFormCaseId(''); setFormCaseTitle(''); }}>
               <X className="h-3 w-3" />
             </Button>
           </div>

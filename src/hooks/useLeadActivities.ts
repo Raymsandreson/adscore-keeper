@@ -28,6 +28,8 @@ export interface LeadActivity {
   contact_id: string | null;
   contact_name: string | null;
   matrix_quadrant: string | null;
+  case_id: string | null;
+  case_title: string | null;
 }
 
 export function useLeadActivities() {

@@ -3529,6 +3529,8 @@ export type Database = {
           activity_type: string
           assigned_to: string | null
           assigned_to_name: string | null
+          case_id: string | null
+          case_title: string | null
           completed_at: string | null
           completed_by: string | null
           completed_by_name: string | null
@@ -3557,6 +3559,8 @@ export type Database = {
           activity_type?: string
           assigned_to?: string | null
           assigned_to_name?: string | null
+          case_id?: string | null
+          case_title?: string | null
           completed_at?: string | null
           completed_by?: string | null
           completed_by_name?: string | null
@@ -3585,6 +3589,8 @@ export type Database = {
           activity_type?: string
           assigned_to?: string | null
           assigned_to_name?: string | null
+          case_id?: string | null
+          case_title?: string | null
           completed_at?: string | null
           completed_by?: string | null
           completed_by_name?: string | null
@@ -3610,6 +3616,13 @@ export type Database = {
           what_was_done?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "lead_activities_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "legal_cases"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "lead_activities_lead_id_fkey"
             columns: ["lead_id"]
