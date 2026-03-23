@@ -131,8 +131,12 @@ const ActivitiesPage = () => {
   const [formContactName, setFormContactName] = useState('');
   const [formCaseId, setFormCaseId] = useState('');
   const [formCaseTitle, setFormCaseTitle] = useState('');
-  const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string}[]>([]);
+  const [formProcessId, setFormProcessId] = useState('');
+  const [formProcessTitle, setFormProcessTitle] = useState('');
+  const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string; lead_id: string | null}[]>([]);
   const [caseSearch, setCaseSearch] = useState('');
+  const [leadCases, setLeadCases] = useState<{id: string; case_number: string; title: string}[]>([]);
+  const [caseProcesses, setCaseProcesses] = useState<{id: string; title: string; process_number: string | null}[]>([]);
   const [availableContacts, setAvailableContacts] = useState<{id: string; full_name: string}[]>([]);
   const [contactSearch, setContactSearch] = useState('');
 
