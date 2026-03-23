@@ -662,7 +662,10 @@ export function KanbanBoardSelector({
             </div>
 
             {editingBoard && (
-              <BoardCustomFieldsSection boardId={editingBoard.id} stages={editingBoard.stages} />
+              <>
+                <BoardCustomFieldsSection boardId={editingBoard.id} stages={editingBoard.stages} />
+                <StageAgentSelector boardId={editingBoard.id} stages={formStages} />
+              </>
             )}
           </div>
 
