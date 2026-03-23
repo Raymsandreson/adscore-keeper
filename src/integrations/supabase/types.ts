@@ -7122,6 +7122,7 @@ export type Database = {
           custom_document_names: string[] | null
           description: string | null
           display_order: number | null
+          document_type_modes: Json | null
           document_types: string[] | null
           followup_steps: Json | null
           human_reply_pause_minutes: number | null
@@ -7150,6 +7151,7 @@ export type Database = {
           custom_document_names?: string[] | null
           description?: string | null
           display_order?: number | null
+          document_type_modes?: Json | null
           document_types?: string[] | null
           followup_steps?: Json | null
           human_reply_pause_minutes?: number | null
@@ -7178,6 +7180,7 @@ export type Database = {
           custom_document_names?: string[] | null
           description?: string | null
           display_order?: number | null
+          document_type_modes?: Json | null
           document_types?: string[] | null
           followup_steps?: Json | null
           human_reply_pause_minutes?: number | null
