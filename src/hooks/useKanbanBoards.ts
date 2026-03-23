@@ -118,6 +118,7 @@ export const useKanbanBoards = (adAccountId?: string) => {
       if (updates.icon !== undefined) updatePayload.icon = updates.icon;
       if (updates.is_default !== undefined) updatePayload.is_default = updates.is_default;
       if (updates.display_order !== undefined) updatePayload.display_order = updates.display_order;
+      if (updates.board_type !== undefined) updatePayload.board_type = updates.board_type;
       if (updates.stages !== undefined) updatePayload.stages = JSON.parse(JSON.stringify(updates.stages));
 
       const { data, error } = await supabase
