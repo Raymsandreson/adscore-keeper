@@ -89,7 +89,7 @@ export function WhatsAppInstanceManager() {
       supabase.from('wjia_command_shortcuts').select('id, hashtag').eq('is_active', true).order('display_order'),
     ]);
     if (!instancesRes.error && instancesRes.data) setInstances(instancesRes.data as Instance[]);
-    if (!agentsRes.error && agentsRes.data) setAgents(agentsRes.data as AgentOption[]);
+    if (!shortcutsRes.error && shortcutsRes.data) setAgents((shortcutsRes.data as any[]).map(s => ({ id: s.id, name: s.hashtag })));
     setLoading(false);
   }, []);
 
