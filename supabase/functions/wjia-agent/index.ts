@@ -166,6 +166,7 @@ async function handleNewCommand(opts: {
   const requestDocuments = matchedShortcut?.request_documents || false;
   const documentTypes = matchedShortcut?.document_types || [];
   const customDocumentNames: string[] = matchedShortcut?.custom_document_names || [];
+  const documentTypeModes: Record<string, string> = matchedShortcut?.document_type_modes || {};
   const assistantType = matchedShortcut?.assistant_type || 'document';
   const shortcutModel = matchedShortcut?.model || 'google/gemini-2.5-flash';
   const shortcutTemperature = matchedShortcut?.temperature ?? 0.1;
@@ -356,16 +357,35 @@ REGRAS:
 
     if (startWithDocs) {
       // Ask for documents first
-      const docNamesList: string[] = documentTypes
+      const requiredDocs: string[] = documentTypes
         .filter((t: string) => t !== 'outros')
+        .filter((t: string) => (documentTypeModes[t] || 'required') === 'required')
+        .map((t: string) => DOC_TYPE_LABELS[t] || t);
+      const optionalDocs: string[] = documentTypes
+        .filter((t: string) => t !== 'outros')
+        .filter((t: string) => documentTypeModes[t] === 'optional')
         .map((t: string) => DOC_TYPE_LABELS[t] || t);
       if (documentTypes.includes('outros') && customDocumentNames.length > 0) {
-        docNamesList.push(...customDocumentNames.filter((n: string) => n.trim()));
+        const outrosMode = documentTypeModes['outros'] || 'required';
+        if (outrosMode === 'required') {
+          requiredDocs.push(...customDocumentNames.filter((n: string) => n.trim()));
+        } else {
+          optionalDocs.push(...customDocumentNames.filter((n: string) => n.trim()));
+        }
       } else if (documentTypes.includes('outros')) {
-        docNamesList.push('Outros documentos');
+        const outrosMode = documentTypeModes['outros'] || 'required';
+        if (outrosMode === 'required') requiredDocs.push('Outros documentos');
+        else optionalDocs.push('Outros documentos');
       }
 
-      const docsFirstMsg = `📝 Para preparar o documento *${parsed.template_name || "Documento"}*, preciso que envie os seguintes documentos:\n\n• ${docNamesList.join('\n• ')}\n\n📸 Envie a *foto ou arquivo* de cada documento. Vou extrair as informações automaticamente!\n\nSe não tiver algum agora, digite *pular*.`;
+      let docsFirstMsg = `📝 Para preparar o documento *${parsed.template_name || "Documento"}*, preciso de algumas informações:\n\n`;
+      if (requiredDocs.length > 0) {
+        docsFirstMsg += `📎 *Envie obrigatoriamente:*\n• ${requiredDocs.join('\n• ')}\n\n`;
+      }
+      if (optionalDocs.length > 0) {
+        docsFirstMsg += `💬 *Opcional (envie o documento OU informe os dados por mensagem):*\n• ${optionalDocs.join('\n• ')}\n\n`;
+      }
+      docsFirstMsg += `📸 Envie a *foto ou arquivo* de cada documento. Vou extrair as informações automaticamente!\n\nSe não tiver algum agora, digite *pular*.`;
 
       if (inst?.instance_token) {
         await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, docsFirstMsg, contact_id, lead_id, "wjia_docsfirst");
@@ -539,12 +559,64 @@ async function handleFollowUp(opts: {
       });
     } else if (session.status !== "collecting" && session.status !== "ready") {
       // Text during doc collection — remind
+      // Load document type modes from shortcut config
+      let sessionDocModes: Record<string, string> = {};
+      if (session.shortcut_name) {
+        const { data: sc } = await supabase.from("wjia_command_shortcuts").select("document_type_modes").eq("shortcut_name", session.shortcut_name).maybeSingle();
+        sessionDocModes = sc?.document_type_modes || {};
+      }
+
       const pendingTypes = requestedTypes.filter(t => !receivedDocs.some((d: any) => d.type === t));
-      await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
-        `📎 Preciso que envie: *${pendingTypes.map(t => DOC_TYPE_LABELS[t] || t).join(", ")}*.\n\nSe não tiver, digite *pular*.`,
-        session.contact_id, session.lead_id, "wjia_remind");
-      return new Response(JSON.stringify({ active_session: true, processed: true, session_id: session.id }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const pendingRequired = pendingTypes.filter(t => (sessionDocModes[t] || 'required') === 'required');
+      const pendingOptional = pendingTypes.filter(t => sessionDocModes[t] === 'optional');
+
+      // If text message and there are only optional docs pending, accept the text as data and move to collecting phase
+      if (message_text && pendingRequired.length === 0 && pendingOptional.length > 0) {
+        // Mark optional docs as "text_provided" and move to collecting
+        for (const optType of pendingOptional) {
+          receivedDocs.push({ type: optType, media_url: null, via: 'text', text_data: message_text });
+        }
+        
+        await supabase.from("wjia_collection_sessions").update({
+          received_documents: receivedDocs,
+          status: "collecting",
+          updated_at: new Date().toISOString(),
+        }).eq("id", session.id);
+
+        session.status = "collecting";
+        session.received_documents = receivedDocs;
+        // Fall through to agent phase
+      } else if (message_text && pendingOptional.length > 0) {
+        // Has both required and optional pending — accept text for optional, remind for required
+        for (const optType of pendingOptional) {
+          receivedDocs.push({ type: optType, media_url: null, via: 'text', text_data: message_text });
+        }
+
+        await supabase.from("wjia_collection_sessions").update({
+          received_documents: receivedDocs,
+          updated_at: new Date().toISOString(),
+        }).eq("id", session.id);
+
+        await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
+          `💬 Dados recebidos!\n\n📎 Ainda preciso que envie: *${pendingRequired.map(t => DOC_TYPE_LABELS[t] || t).join(", ")}*.\n\nSe não tiver, digite *pular*.`,
+          session.contact_id, session.lead_id, "wjia_remind");
+        return new Response(JSON.stringify({ active_session: true, processed: true, session_id: session.id }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } else {
+        // Only required docs pending — remind as before
+        let reminderParts: string[] = [];
+        if (pendingRequired.length > 0) {
+          reminderParts.push(`📎 Envie: *${pendingRequired.map(t => DOC_TYPE_LABELS[t] || t).join(", ")}*`);
+        }
+        if (pendingOptional.length > 0) {
+          reminderParts.push(`💬 Ou informe por mensagem: *${pendingOptional.map(t => DOC_TYPE_LABELS[t] || t).join(", ")}*`);
+        }
+        await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
+          `${reminderParts.join("\n\n")}\n\nSe não tiver, digite *pular*.`,
+          session.contact_id, session.lead_id, "wjia_remind");
+        return new Response(JSON.stringify({ active_session: true, processed: true, session_id: session.id }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
     }
   }
 
