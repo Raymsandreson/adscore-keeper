@@ -204,13 +204,47 @@ serve(async (req) => {
         .eq("instance_name", instance_name);
     }
 
-    // Get agent config
-    const { data: agent } = await supabase
+    // Get agent config - check whatsapp_ai_agents first, then wjia_command_shortcuts
+    let agent: any = null;
+    const { data: aiAgent } = await supabase
       .from("whatsapp_ai_agents")
       .select("*")
       .eq("id", assignment.agent_id)
       .eq("is_active", true)
       .maybeSingle();
+
+    if (aiAgent) {
+      agent = aiAgent;
+    } else {
+      // Fallback: check wjia_command_shortcuts (instance default may reference this table)
+      const { data: shortcut } = await supabase
+        .from("wjia_command_shortcuts")
+        .select("*")
+        .eq("id", assignment.agent_id)
+        .eq("is_active", true)
+        .maybeSingle();
+      
+      if (shortcut) {
+        // Map shortcut fields to agent-compatible format
+        agent = {
+          id: (shortcut as any).id,
+          name: '#' + (shortcut as any).shortcut_name,
+          base_prompt: (shortcut as any).prompt_instructions,
+          model: (shortcut as any).model || "google/gemini-2.5-flash",
+          temperature: (shortcut as any).temperature ?? 70,
+          max_tokens: 1024,
+          response_delay_seconds: (shortcut as any).response_delay_seconds || 0,
+          split_messages: (shortcut as any).split_messages || false,
+          split_delay_seconds: (shortcut as any).split_delay_seconds || 2,
+          sign_messages: false,
+          provider: "lovable_ai",
+          respond_in_groups: false,
+          human_reply_pause_minutes: (shortcut as any).human_reply_pause_minutes || 10,
+          is_shortcut: true,
+        };
+        console.log(`Using command shortcut "${agent.name}" as agent for instance default`);
+      }
+    }
 
     if (!agent) {
       return new Response(JSON.stringify({ skipped: true, reason: "Agent inactive" }), {
