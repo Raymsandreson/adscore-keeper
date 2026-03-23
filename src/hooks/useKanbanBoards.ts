@@ -86,7 +86,8 @@ export const useKanbanBoards = (adAccountId?: string) => {
           is_default: board.is_default || false,
           display_order: boards.length,
           ad_account_id: adAccountId || null,
-        }])
+          board_type: board.board_type || 'funnel',
+        } as any])
         .select()
         .single();
 
