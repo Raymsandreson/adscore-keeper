@@ -18,6 +18,8 @@ interface CopyableTextProps {
   as?: 'span' | 'p' | 'div';
   /** Truncate with ellipsis */
   truncate?: boolean;
+  /** If true, prevents CallFace extension from detecting as phone number */
+  noPhoneDetect?: boolean;
 }
 
 export function CopyableText({
@@ -28,6 +30,7 @@ export function CopyableText({
   showIcon = true,
   as: Tag = 'span',
   truncate = false,
+  noPhoneDetect = false,
 }: CopyableTextProps) {
   const [copied, setCopied] = useState(false);
 
@@ -49,9 +52,11 @@ export function CopyableText({
     <Tag
       onClick={handleCopy}
       title={`Clique para copiar${label ? ` ${label}` : ''}`}
+      {...(noPhoneDetect ? { 'data-callface-ignore': 'true', 'x-autocompletetype': 'off' } as any : {})}
       className={cn(
         'inline-flex items-center gap-1 cursor-pointer rounded px-0.5 -mx-0.5 transition-colors hover:bg-accent group/copy',
         truncate && 'truncate',
+        noPhoneDetect && 'callface-ignore',
         className
       )}
     >
