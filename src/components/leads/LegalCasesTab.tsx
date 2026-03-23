@@ -195,7 +195,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
                     <SelectValue placeholder="Selecione um núcleo..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Nenhum (sequência geral)</SelectItem>
+                    <SelectItem value="__none__">Nenhum (sequência geral)</SelectItem>
                     {nuclei.filter(n => n.is_active).map(n => (
                       <SelectItem key={n.id} value={n.id}>
                         <span className="flex items-center gap-2">
