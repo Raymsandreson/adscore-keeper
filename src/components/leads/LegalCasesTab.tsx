@@ -78,13 +78,13 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
       await updateCase(editingCase.id, {
         title: caseTitle.trim(),
         description: caseDescription || null,
-        nucleus_id: caseNucleusId || null,
+        nucleus_id: caseNucleusId && caseNucleusId !== '__none__' ? caseNucleusId : null,
         notes: caseNotes || null,
       } as Partial<LegalCase>);
     } else {
       const newCase = await createCase({
         lead_id: leadId,
-        nucleus_id: caseNucleusId || null,
+        nucleus_id: caseNucleusId && caseNucleusId !== '__none__' ? caseNucleusId : null,
         title: caseTitle.trim(),
         description: caseDescription,
         notes: caseNotes,
@@ -195,7 +195,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
                     <SelectValue placeholder="Selecione um núcleo..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Nenhum (sequência geral)</SelectItem>
+                    <SelectItem value="__none__">Nenhum (sequência geral)</SelectItem>
                     {nuclei.filter(n => n.is_active).map(n => (
                       <SelectItem key={n.id} value={n.id}>
                         <span className="flex items-center gap-2">
