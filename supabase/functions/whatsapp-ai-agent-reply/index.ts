@@ -218,6 +218,14 @@ serve(async (req) => {
       });
     }
 
+    // Check if agent is allowed to respond in groups
+    if (is_group && !(agent as any).respond_in_groups) {
+      console.log(`Agent ${(agent as any).name} is not allowed to respond in groups, skipping`);
+      return new Response(JSON.stringify({ skipped: true, reason: "Agent not allowed in groups" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ========== RESPONSE DELAY ==========
     if ((agent as any).response_delay_seconds > 0) {
       await new Promise(resolve => setTimeout(resolve, (agent as any).response_delay_seconds * 1000));
