@@ -76,7 +76,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
 
   // Load boards if not provided
   const [loadedBoards, setLoadedBoards] = useState<KanbanBoard[]>([]);
-  const activeBoards = boards.length > 0 ? boards : loadedBoards;
+  const activeBoards = (boards.length > 0 ? boards : loadedBoards).filter(b => b.board_type === 'workflow');
 
   useEffect(() => {
     if (open && boards.length === 0) {
