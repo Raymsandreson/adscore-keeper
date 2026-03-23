@@ -330,6 +330,10 @@ const ActivitiesPage = () => {
     setFormCaseId('');
     setFormCaseTitle('');
     setCaseSearch('');
+    setFormProcessId('');
+    setFormProcessTitle('');
+    setLeadCases([]);
+    setCaseProcesses([]);
     setFormMatrixQuadrant('');
   };
 
