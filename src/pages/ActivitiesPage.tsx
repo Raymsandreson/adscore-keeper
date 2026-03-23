@@ -778,6 +778,15 @@ const ActivitiesPage = () => {
     setFormContactId('');
     setFormContactName('');
     setContactSearch('');
+    setFormCaseId('');
+    setFormCaseTitle('');
+    setFormProcessId('');
+    setFormProcessTitle('');
+    setCaseProcesses([]);
+    // Load cases for this lead
+    supabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).then(({ data }) => {
+      setLeadCases(data || []);
+    });
     // Auto-set activity type based on lead's workflow step
     const workflowType = leadWorkflowActivityTypes[leadId];
     if (workflowType) {
@@ -821,6 +830,12 @@ const ActivitiesPage = () => {
     setFormLeadName('');
     setFormContactId('');
     setFormContactName('');
+    setFormCaseId('');
+    setFormCaseTitle('');
+    setFormProcessId('');
+    setFormProcessTitle('');
+    setLeadCases([]);
+    setCaseProcesses([]);
     // Load all contacts
     const { data } = await supabase.from('contacts').select('id, full_name').order('full_name').limit(500);
     setAvailableContacts(data || []);
