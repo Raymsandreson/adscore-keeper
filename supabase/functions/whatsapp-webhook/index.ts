@@ -2103,6 +2103,7 @@ Deno.serve(async (req) => {
             instance_name: instanceName,
             message_text: messageText,
             lead_id: leadId || null,
+            is_group: isGroup,
           }),
         }).catch(err => console.error('AI agent reply trigger error:', err))
       } catch (e) {

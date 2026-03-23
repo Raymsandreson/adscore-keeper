@@ -11,7 +11,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { phone, instance_name, message_text, lead_id, campaign_id } = await req.json();
+    const { phone, instance_name, message_text, lead_id, campaign_id, is_group } = await req.json();
     if (!phone || !instance_name) {
       return new Response(JSON.stringify({ error: "Missing fields" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -214,6 +214,14 @@ serve(async (req) => {
 
     if (!agent) {
       return new Response(JSON.stringify({ skipped: true, reason: "Agent inactive" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Check if agent is allowed to respond in groups
+    if (is_group && !(agent as any).respond_in_groups) {
+      console.log(`Agent ${(agent as any).name} is not allowed to respond in groups, skipping`);
+      return new Response(JSON.stringify({ skipped: true, reason: "Agent not allowed in groups" }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

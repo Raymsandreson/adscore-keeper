@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_ai_agents ADD COLUMN IF NOT EXISTS respond_in_groups boolean NOT NULL DEFAULT false;
