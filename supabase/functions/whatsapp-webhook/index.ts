@@ -1450,17 +1450,18 @@ Deno.serve(async (req) => {
     }
 
     // ========== ##NAME INTERNAL COMMAND DETECTION (team members) ==========
-    // Handles commands like ##lead, ##caso — for any team member in any conversation
-    // Uses ## prefix, validates sender is a team member (phone in profiles)
+    // Handles commands like ##lead, ##caso, and free-text like ##criar atividade ...
+    // Uses ## prefix and routes to command processor as ghost command
     if (direction === 'outbound' && instanceName && phone && messageText) {
       const trimmedCmd = (messageText || '').trim()
-      const doubleHashMatch = trimmedCmd.match(/^##([a-z0-9_]+)$/i)
-      
+      const doubleHashMatch = trimmedCmd.match(/^##([a-z0-9_]+)(?:\s+([\s\S]+))?$/i)
+
       if (doubleHashMatch) {
         const internalCmdName = doubleHashMatch[1].toLowerCase()
-        console.log('##internal command detected:', internalCmdName, 'phone:', phone, 'instance:', instanceName)
-        
-        // Validate against wjia_command_shortcuts table with scope='internal'
+        const internalCmdArgs = (doubleHashMatch[2] || '').trim()
+        console.log('##internal command detected:', internalCmdName, 'hasArgs:', !!internalCmdArgs, 'phone:', phone, 'instance:', instanceName)
+
+        // Optional shortcut validation (kept for compatibility), but free-text ## commands are also allowed
         const { data: internalShortcut } = await supabase
           .from('wjia_command_shortcuts')
           .select('id, shortcut_name, assistant_type, is_active')
@@ -1469,9 +1470,16 @@ Deno.serve(async (req) => {
           .eq('is_active', true)
           .maybeSingle()
 
-        if (internalShortcut) {
-          console.log('Internal shortcut found:', internalShortcut.shortcut_name)
-          
+        // If there is no active shortcut and no args, keep old behavior (ignore)
+        if (!internalShortcut && !internalCmdArgs) {
+          console.log('No active internal shortcut found for:', internalCmdName, '- ignoring bare ## command')
+        } else {
+          if (internalShortcut) {
+            console.log('Internal shortcut found:', internalShortcut.shortcut_name)
+          } else {
+            console.log('No internal shortcut config found; routing as free-text ## command')
+          }
+
           try {
             // Delete the ##command message from WhatsApp (ghost command)
             if (externalMessageId) {
@@ -1503,10 +1511,15 @@ Deno.serve(async (req) => {
               await supabase.from('whatsapp_messages').delete().eq('id', message.id)
             }
 
+            // For ## commands in regular chats, process as the team member (sender/owner), not the contact phone
+            const internalSenderPhone = normalizePhone(body?.message?.sender_pn || body?.sender_pn || body?.message?.sender || '')
+            const internalOwnerPhone = normalizePhone(body?.message?.owner || body?.chat?.owner || body?.owner || '')
+            const internalLookupPhone = internalSenderPhone || internalOwnerPhone || phone
+
             const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
             const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
 
-            // Route to command processor with ## prefix context
+            // Route to command processor preserving full command text
             fetch(`${supabaseUrl}/functions/v1/whatsapp-command-processor`, {
               method: 'POST',
               headers: {
@@ -1514,9 +1527,9 @@ Deno.serve(async (req) => {
                 'Authorization': `Bearer ${supabaseAnonKey}`,
               },
               body: JSON.stringify({
-                phone: cmdLookupPhone || senderPhone || phone,
+                phone: internalLookupPhone,
                 instance_name: instanceName,
-                message_text: `##${internalCmdName}`,
+                message_text: trimmedCmd,
                 media_url: storedMediaUrl || mediaUrl || null,
                 message_type: messageType || 'text',
                 is_group: isGroup,
@@ -1529,6 +1542,7 @@ Deno.serve(async (req) => {
               success: true,
               message_id: message.id,
               internal_command: internalCmdName,
+              internal_free_text: !internalShortcut,
               instance_name: instanceName,
             }
             await logWebhook('internal_command_routed', respData)
@@ -1539,8 +1553,6 @@ Deno.serve(async (req) => {
           } catch (e) {
             console.error('##internal command processing error:', e)
           }
-        } else {
-          console.log('No active internal shortcut found for:', internalCmdName, '- treating as normal message')
         }
       }
     }
