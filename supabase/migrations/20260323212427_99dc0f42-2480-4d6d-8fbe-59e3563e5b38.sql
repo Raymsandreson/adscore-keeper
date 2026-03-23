@@ -1,0 +1,1 @@
+ALTER TABLE public.wjia_command_shortcuts ADD COLUMN IF NOT EXISTS document_type_modes jsonb DEFAULT '{}'::jsonb;
