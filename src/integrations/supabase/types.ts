@@ -6733,6 +6733,7 @@ export type Database = {
           auto_identify_sender: boolean | null
           base_url: string | null
           created_at: string
+          default_agent_id: string | null
           id: string
           instance_name: string
           instance_token: string
@@ -6748,6 +6749,7 @@ export type Database = {
           auto_identify_sender?: boolean | null
           base_url?: string | null
           created_at?: string
+          default_agent_id?: string | null
           id?: string
           instance_name: string
           instance_token: string
@@ -6763,6 +6765,7 @@ export type Database = {
           auto_identify_sender?: boolean | null
           base_url?: string | null
           created_at?: string
+          default_agent_id?: string | null
           id?: string
           instance_name?: string
           instance_token?: string
@@ -6772,7 +6775,15 @@ export type Database = {
           receive_leads?: boolean | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_instances_default_agent_id_fkey"
+            columns: ["default_agent_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_agents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       whatsapp_internal_notes: {
         Row: {
