@@ -24,7 +24,13 @@ interface Instance {
   ad_account_id: string | null;
   ad_account_name: string | null;
   auto_identify_sender: boolean | null;
+  default_agent_id: string | null;
   created_at: string;
+}
+
+interface AgentOption {
+  id: string;
+  name: string;
 }
 
 interface FormData {

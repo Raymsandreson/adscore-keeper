@@ -153,6 +153,27 @@ serve(async (req) => {
       }
     }
 
+    // 6) If no assignment, check instance-level default agent
+    if (!assignment) {
+      const { data: instanceData } = await supabase
+        .from("whatsapp_instances")
+        .select("default_agent_id")
+        .eq("instance_name", instance_name)
+        .maybeSingle();
+
+      if (instanceData?.default_agent_id) {
+        await supabase.from("whatsapp_conversation_agents").upsert({
+          phone,
+          instance_name,
+          agent_id: instanceData.default_agent_id,
+          is_active: true,
+          activated_by: "instance_default",
+        }, { onConflict: "phone,instance_name" });
+        assignment = { agent_id: instanceData.default_agent_id, is_active: true };
+        console.log(`Auto-assigned agent ${instanceData.default_agent_id} via instance default for ${instance_name}`);
+      }
+    }
+
     if (!assignment) {
       return new Response(JSON.stringify({ skipped: true, reason: "No active agent" }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
