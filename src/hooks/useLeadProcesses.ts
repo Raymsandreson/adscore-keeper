@@ -26,6 +26,7 @@ export interface LeadProcess {
   area: string | null;
   assuntos: string[] | null;
   valor_causa: number | null;
+  estimated_fee_value: number | null;
   envolvidos: any[] | null;
   movimentacoes: any[] | null;
   fonte_nome: string | null;

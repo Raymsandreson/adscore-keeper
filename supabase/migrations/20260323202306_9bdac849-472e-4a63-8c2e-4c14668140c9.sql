@@ -1,0 +1,1 @@
+ALTER TABLE public.lead_processes ADD COLUMN IF NOT EXISTS estimated_fee_value numeric DEFAULT NULL;
