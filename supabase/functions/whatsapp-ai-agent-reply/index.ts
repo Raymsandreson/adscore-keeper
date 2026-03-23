@@ -324,11 +324,6 @@ REGRAS DE ENDEREÇO E CEP:
               } else {
                 contextMessages.push({ role, content: msgText || "[Mensagem de voz não transcrita]" });
               }
-            } else {
-              const errText = await transcribeRes.text();
-              console.error("Audio transcription failed:", transcribeRes.status, errText);
-              contextMessages.push({ role, content: msgText || "[Mensagem de voz]" });
-            }
           } catch (e) {
             console.error("Audio transcription error:", e);
             contextMessages.push({ role, content: msgText || "[Mensagem de voz]" });
