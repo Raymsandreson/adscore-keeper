@@ -791,52 +791,21 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
     ];
 
     // ── Call AI ──
-    const useGoogleDirect = !!GOOGLE_AI_API_KEY;
-    let aiResponse: Response;
-
-    if (useGoogleDirect) {
-      const googleContents = aiMessages
-        .filter((msg: any) => msg.role !== "system")
-        .map((msg: any) => ({
-          role: msg.role === "assistant" ? "model" : "user",
-          parts: [{ text: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content ?? "") }],
-        }));
-
-      aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GOOGLE_AI_API_KEY}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: googleContents.length > 0 ? googleContents : [{ role: "user", parts: [{ text: message_text_final }] }],
-          tools: [{
-            functionDeclarations: [{
-              name: "execute_command",
-              description: tools[0].function.description,
-              parameters: tools[0].function.parameters,
-            }],
-          }],
-          toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["execute_command"] } },
-          generationConfig: { temperature: 0.2 },
-        }),
+    let aiData: any;
+    try {
+      aiData = await geminiChat({
+        model: "google/gemini-2.5-flash",
+        messages: aiMessages,
+        tools,
+        tool_choice: { type: "function", function: { name: "execute_command" } },
+        temperature: 0.2,
       });
-    } else {
-      // Fallback: use shared Gemini helper
-      const geminiResult = await geminiChat({ model: "google/gemini-2.5-flash", messages: aiMessages, tools });
-      aiResponse = new Response(JSON.stringify(geminiResult), { status: 200, headers: { "Content-Type": "application/json" } });
-    }
-
-    // ── Handle AI errors ──
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error("AI error:", aiResponse.status, errText);
-      const fallbackText = aiResponse.status === 402
-        ? "⚠️ Estou sem créditos de IA no momento."
-        : aiResponse.status === 429
-          ? "⏳ Muitos pedidos. Tente em instantes."
-          : "⚠️ Erro temporário. Tente novamente em minutos.";
+    } catch (e: any) {
+      console.error("AI error:", e);
+      const fallbackText = "⚠️ Erro temporário. Tente novamente em minutos.";
 
       await supabase.from("whatsapp_command_history").insert({
-        phone: normalizedPhone, instance_name, role: "assistant", content: fallbackText, tool_data: { error_status: aiResponse.status },
+        phone: normalizedPhone, instance_name, role: "assistant", content: fallbackText, tool_data: { error: e.message },
       });
 
       if (instToken) {
@@ -846,24 +815,15 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
     }
 
     // ── Parse AI response ──
-    const aiData = await aiResponse.json();
     let responseText = "Comando processado.";
     let toolData: any = null;
     let parsed: any = null;
 
-    if (useGoogleDirect) {
-      const parts = aiData?.candidates?.[0]?.content?.parts || [];
-      const fcPart = parts.find((p: any) => p?.functionCall?.name === "execute_command");
-      const txtPart = parts.find((p: any) => typeof p?.text === "string" && p.text.trim());
-      if (fcPart?.functionCall?.args) parsed = fcPart.functionCall.args;
-      if (txtPart?.text) responseText = txtPart.text;
-    } else {
-      const choice = aiData.choices?.[0]?.message;
-      const toolCall = choice?.tool_calls?.[0];
-      responseText = choice?.content || responseText;
-      if (toolCall?.function?.name === "execute_command") {
-        try { parsed = JSON.parse(toolCall.function.arguments); } catch (e) { console.error("Parse error:", e); }
-      }
+    const choice = aiData.choices?.[0]?.message;
+    const toolCall = choice?.tool_calls?.[0];
+    responseText = choice?.content || responseText;
+    if (toolCall?.function?.name === "execute_command") {
+      try { parsed = typeof toolCall.function.arguments === "string" ? JSON.parse(toolCall.function.arguments) : toolCall.function.arguments; } catch (e) { console.error("Parse error:", e); }
     }
 
     if (parsed) {
