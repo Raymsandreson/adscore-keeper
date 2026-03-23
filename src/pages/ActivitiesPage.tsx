@@ -368,6 +368,8 @@ const ActivitiesPage = () => {
       contact_name: formContactName || null,
       case_id: formCaseId || null,
       case_title: formCaseTitle || null,
+      process_id: formProcessId || null,
+      process_title: formProcessTitle || null,
     };
 
     let createdActivityId: string | null = null;
