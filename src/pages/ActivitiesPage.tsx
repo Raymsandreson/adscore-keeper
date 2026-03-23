@@ -429,7 +429,21 @@ const ActivitiesPage = () => {
     setFormContactName(activity.contact_name || '');
     setFormCaseId((activity as any).case_id || '');
     setFormCaseTitle((activity as any).case_title || '');
+    setFormProcessId((activity as any).process_id || '');
+    setFormProcessTitle((activity as any).process_title || '');
     setFormMatrixQuadrant((activity as any).matrix_quadrant || '');
+    // Load cases for this lead
+    if (activity.lead_id) {
+      supabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id).then(({ data }) => {
+        setLeadCases(data || []);
+      });
+    }
+    // Load processes for this case
+    if ((activity as any).case_id) {
+      supabase.from('lead_processes').select('id, title, process_number').eq('case_id', (activity as any).case_id).then(({ data }) => {
+        setCaseProcesses((data || []).map(p => ({ id: p.id, title: p.title, process_number: p.process_number })));
+      });
+    }
     // Load contacts and lead preview for this lead
     if (activity.lead_id) {
       try {
