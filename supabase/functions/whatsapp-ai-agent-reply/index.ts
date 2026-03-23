@@ -204,14 +204,9 @@ serve(async (req) => {
 
     // ========== GENERATE AI RESPONSE ==========
     if ((agent as any).provider === "lovable_ai") {
-      // Use Google AI API directly for cost savings
       const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
-      // Fallback to Lovable AI if Google key not available
-      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-      const useGoogleDirect = !!GOOGLE_AI_API_KEY;
-      
-      if (!GOOGLE_AI_API_KEY && !LOVABLE_API_KEY) {
-        return new Response(JSON.stringify({ error: "AI not configured" }), {
+      if (!GOOGLE_AI_API_KEY) {
+        return new Response(JSON.stringify({ error: "GOOGLE_AI_API_KEY not configured" }), {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
