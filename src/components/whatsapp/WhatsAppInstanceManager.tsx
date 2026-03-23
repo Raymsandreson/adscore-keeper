@@ -301,6 +301,7 @@ export function WhatsAppInstanceManager() {
                         </Select>
                       </div>
                     )}
+                  </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="flex items-center gap-1.5">
                       <Label htmlFor={`active-${inst.id}`} className="text-xs text-muted-foreground">Ativa</Label>
