@@ -223,7 +223,7 @@ const ActivitiesPage = () => {
         supabase.from('leads').select('id, lead_name').order('lead_name').limit(500),
         supabase.from('profiles').select('user_id, full_name'),
         supabase.from('contacts').select('id, full_name').order('full_name').limit(500),
-        supabase.from('legal_cases').select('id, case_number, title').order('created_at', { ascending: false }).limit(500),
+        supabase.from('legal_cases').select('id, case_number, title, lead_id').order('created_at', { ascending: false }).limit(500),
       ]);
       setLeads(leadsRes.data || []);
       setTeamMembers(membersRes.data || []);
