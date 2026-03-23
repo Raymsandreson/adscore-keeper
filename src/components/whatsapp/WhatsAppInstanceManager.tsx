@@ -6,10 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Pencil, Trash2, Smartphone, Wifi, WifiOff, Phone, Globe, Key, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Plus, Pencil, Trash2, Smartphone, Wifi, WifiOff, Phone, Globe, Key, CheckCircle2, RefreshCw, Bot } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Instance {
@@ -24,7 +25,13 @@ interface Instance {
   ad_account_id: string | null;
   ad_account_name: string | null;
   auto_identify_sender: boolean | null;
+  default_agent_id: string | null;
   created_at: string;
+}
+
+interface AgentOption {
+  id: string;
+  name: string;
 }
 
 interface FormData {
@@ -43,6 +50,7 @@ const emptyForm: FormData = {
 
 export function WhatsAppInstanceManager() {
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [agents, setAgents] = useState<AgentOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -76,11 +84,12 @@ export function WhatsAppInstanceManager() {
   };
 
   const fetchInstances = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('whatsapp_instances')
-      .select('*')
-      .order('instance_name');
-    if (!error && data) setInstances(data as Instance[]);
+    const [instancesRes, agentsRes] = await Promise.all([
+      supabase.from('whatsapp_instances').select('*').order('instance_name'),
+      supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
+    ]);
+    if (!instancesRes.error && instancesRes.data) setInstances(instancesRes.data as Instance[]);
+    if (!agentsRes.error && agentsRes.data) setAgents(agentsRes.data as AgentOption[]);
     setLoading(false);
   }, []);
 
@@ -257,6 +266,41 @@ export function WhatsAppInstanceManager() {
                         <Key className="h-3 w-3" /> {inst.instance_token.slice(0, 8)}...
                       </span>
                     </div>
+                    {/* Default Agent Selector */}
+                    {agents.length > 0 && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Bot className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-xs text-muted-foreground shrink-0">Agente padrão:</span>
+                        <Select
+                          value={inst.default_agent_id || 'none'}
+                          onValueChange={async (v) => {
+                            const newVal = v === 'none' ? null : v;
+                            setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, default_agent_id: newVal } : i));
+                            const { error } = await supabase
+                              .from('whatsapp_instances')
+                              .update({ default_agent_id: newVal } as any)
+                              .eq('id', inst.id);
+                            if (error) {
+                              toast.error('Erro ao salvar agente padrão');
+                              setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, default_agent_id: inst.default_agent_id } : i));
+                            } else {
+                              const agentName = agents.find(a => a.id === newVal)?.name;
+                              toast.success(newVal ? `🤖 Agente "${agentName}" definido como padrão` : 'Agente padrão removido');
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="h-7 text-xs w-48">
+                            <SelectValue placeholder="Nenhum" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Nenhum</SelectItem>
+                            {agents.map(a => (
+                              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="flex items-center gap-1.5">

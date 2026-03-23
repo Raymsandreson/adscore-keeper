@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_instances ADD COLUMN IF NOT EXISTS default_agent_id uuid REFERENCES public.whatsapp_ai_agents(id) ON DELETE SET NULL;
