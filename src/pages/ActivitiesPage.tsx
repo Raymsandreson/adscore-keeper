@@ -2717,7 +2717,7 @@ const ActivitiesPage = () => {
                           </Button>
                         )}
                         <span onClick={e => e.stopPropagation()}>
-                          <ShareMenu entityType="activity" entityId={activity.id} entityName={activity.title} summary={activity.lead_name ? `Lead: ${activity.lead_name}` : undefined} size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground" />
+                          <ShareMenu entityType="activity" entityId={activity.id} entityName={activity.title} summary={[activity.lead_name && `Lead: ${activity.lead_name}`, (activity as any).case_title && `Caso: ${(activity as any).case_title}`, (activity as any).process_title && `Processo: ${(activity as any).process_title}`].filter(Boolean).join('\n') || undefined} size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground" />
                         </span>
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={e => { e.stopPropagation(); handleCloneActivity(activity); }} title="Duplicar">
                           <Copy className="h-3.5 w-3.5" />
