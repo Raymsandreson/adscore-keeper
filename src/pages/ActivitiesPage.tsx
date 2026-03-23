@@ -1214,6 +1214,46 @@ const ActivitiesPage = () => {
         )}
       </div>
 
+      <div>
+        <Label>Caso Jurídico</Label>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar caso..."
+            value={caseSearch}
+            onChange={e => setCaseSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        {(caseSearch || !formCaseId) && (
+          <ScrollArea className="max-h-[100px] mt-1 border rounded-md">
+            {(caseSearch
+              ? availableCases.filter(c => 
+                  c.title?.toLowerCase().includes(caseSearch.toLowerCase()) ||
+                  c.case_number?.toLowerCase().includes(caseSearch.toLowerCase())
+                )
+              : availableCases.slice(0, 20)
+            ).map(c => (
+              <button
+                key={c.id}
+                className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${formCaseId === c.id ? 'bg-accent font-medium' : ''}`}
+                onClick={() => { setFormCaseId(c.id); setFormCaseTitle(`${c.case_number} - ${c.title}`); setCaseSearch(''); }}
+              >
+                <span className="font-medium">{c.case_number}</span> — {c.title}
+              </button>
+            ))}
+          </ScrollArea>
+        )}
+        {formCaseTitle && (
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant="secondary">{formCaseTitle}</Badge>
+            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setFormCaseId(''); setFormCaseTitle(''); }}>
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+      </div>
+
       {/* Dynamic fields based on settings */}
       {fieldSettings.map(field => {
         const valueMap: Record<string, [string, (v: string) => void]> = {
