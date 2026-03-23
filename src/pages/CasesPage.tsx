@@ -27,6 +27,7 @@ import { CopyableText } from '@/components/ui/copyable-text';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
+import { CaseWorkflowBoard } from '@/components/cases/CaseWorkflowBoard';
 import {
   Dialog,
   DialogContent,
@@ -412,6 +413,13 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                   ))}
                 </div>
               </div>
+
+              {/* Workflow Board */}
+              <CaseWorkflowBoard
+                caseId={legalCase.id}
+                processes={processes}
+                onProcessUpdated={loadDetails}
+              />
 
               {legalCase.lead_id && (
                 <AddProcessDialog
