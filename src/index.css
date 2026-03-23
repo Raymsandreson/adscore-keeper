@@ -208,3 +208,11 @@ All colors MUST be HSL.
     }
   }
 }
+
+/* Hide CallFace extension phone detection on non-phone elements */
+.callface-ignore [class*="callface"],
+.callface-ignore [id*="callface"],
+.callface-ignore a[href^="tel:"] {
+  display: none !important;
+  pointer-events: none !important;
+}
