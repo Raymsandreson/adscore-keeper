@@ -401,7 +401,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                         </Badge>
                       </div>
                       {p.process_number && (
-                        <CopyableText as="p" copyValue={p.process_number} label="Nº Processo" className="text-[10px] text-muted-foreground">Nº {p.process_number}</CopyableText>
+                        <CopyableText as="p" copyValue={p.process_number} label="Nº Processo" noPhoneDetect className="text-[10px] text-muted-foreground">Nº {p.process_number}</CopyableText>
                       )}
                       {p.fee_percentage != null && (
                         <CopyableText as="p" copyValue={`${p.fee_percentage}%`} label="Honorários" showIcon={false} className="text-[10px] text-muted-foreground">Honorários: {p.fee_percentage}%</CopyableText>
