@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AIPromptGenerator } from './AIPromptGenerator';
 import { AgentAutomationRules } from './AgentAutomationRules';
+import { AgentStageConfig } from './AgentStageConfig';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +14,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bot, Plus, Pencil, Trash2, Power, PowerOff, Sparkles, Loader2, Phone, Clock, Megaphone, X, FileText, Zap } from 'lucide-react';
+import { Bot, Plus, Pencil, Trash2, Power, PowerOff, Sparkles, Loader2, Phone, Clock, Megaphone, X, FileText, Zap, Layers } from 'lucide-react';
 import { AgentKnowledgeDocs } from './AgentKnowledgeDocs';
 import { toast } from 'sonner';
 
@@ -360,8 +361,9 @@ export function WhatsAppAIAgents() {
           </DialogHeader>
           {editingAgent && (
             <Tabs defaultValue="general" className="w-full">
-              <TabsList className="w-full grid grid-cols-6">
+              <TabsList className="w-full grid grid-cols-7">
                 <TabsTrigger value="general" className="text-xs">Geral</TabsTrigger>
+                <TabsTrigger value="stages" className="text-xs">🎯 Etapas</TabsTrigger>
                 <TabsTrigger value="knowledge" className="text-xs">📚 Base</TabsTrigger>
                 <TabsTrigger value="automations" className="text-xs">⚡ Automações</TabsTrigger>
                 <TabsTrigger value="timing" className="text-xs">Tempos</TabsTrigger>
@@ -454,6 +456,18 @@ export function WhatsAppAIAgents() {
                     </div>
                   )}
                 </div>
+              </TabsContent>
+
+              {/* TAB: Stages */}
+              <TabsContent value="stages" className="mt-4">
+                {editingAgent.id ? (
+                  <AgentStageConfig agentId={editingAgent.id} />
+                ) : (
+                  <div className="text-center py-8">
+                    <Layers className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Salve o agente primeiro para configurar etapas</p>
+                  </div>
+                )}
               </TabsContent>
 
               {/* TAB: Knowledge Base */}

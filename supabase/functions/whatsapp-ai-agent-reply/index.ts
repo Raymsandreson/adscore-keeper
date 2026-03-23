@@ -84,7 +84,37 @@ serve(async (req) => {
       }
     }
 
-    // 4) If no assignment, check broadcast list agents
+    // 4) If no assignment, check stage-based agent assignment
+    if (!assignment && lead_id) {
+      const { data: lead } = await supabase
+        .from("leads")
+        .select("board_id, status")
+        .eq("id", lead_id)
+        .maybeSingle();
+
+      if (lead?.board_id && lead?.status) {
+        const { data: stageAssignment } = await supabase
+          .from("agent_stage_assignments")
+          .select("agent_id")
+          .eq("board_id", lead.board_id)
+          .eq("stage_id", lead.status)
+          .maybeSingle();
+
+        if (stageAssignment) {
+          await supabase.from("whatsapp_conversation_agents").upsert({
+            phone,
+            instance_name,
+            agent_id: stageAssignment.agent_id,
+            is_active: true,
+            activated_by: "stage_auto",
+          }, { onConflict: "phone,instance_name" });
+          assignment = { agent_id: stageAssignment.agent_id, is_active: true };
+          console.log(`Auto-assigned agent ${stageAssignment.agent_id} via stage ${lead.status} in board ${lead.board_id}`);
+        }
+      }
+    }
+
+    // 5) If no assignment, check broadcast list agents
     if (!assignment) {
       // Find if this phone belongs to any broadcast list with an active agent
       const normalizedPhone = phone.replace(/\D/g, '');

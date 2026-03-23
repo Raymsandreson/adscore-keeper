@@ -375,6 +375,45 @@ export type Database = {
           },
         ]
       }
+      agent_stage_assignments: {
+        Row: {
+          agent_id: string
+          board_id: string
+          created_at: string
+          id: string
+          stage_id: string
+        }
+        Insert: {
+          agent_id: string
+          board_id: string
+          created_at?: string
+          id?: string
+          stage_id: string
+        }
+        Update: {
+          agent_id?: string
+          board_id?: string
+          created_at?: string
+          id?: string
+          stage_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_stage_assignments_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_stage_assignments_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_conversation_history: {
         Row: {
           ad_account_id: string | null
