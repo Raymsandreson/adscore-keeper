@@ -215,14 +215,16 @@ const ActivitiesPage = () => {
 
   useEffect(() => {
     const loadSupport = async () => {
-      const [leadsRes, membersRes, contactsRes] = await Promise.all([
+      const [leadsRes, membersRes, contactsRes, casesRes] = await Promise.all([
         supabase.from('leads').select('id, lead_name').order('lead_name').limit(500),
         supabase.from('profiles').select('user_id, full_name'),
         supabase.from('contacts').select('id, full_name').order('full_name').limit(500),
+        supabase.from('legal_cases').select('id, case_number, title').order('created_at', { ascending: false }).limit(500),
       ]);
       setLeads(leadsRes.data || []);
       setTeamMembers(membersRes.data || []);
       setAvailableContacts(contactsRes.data || []);
+      setAvailableCases(casesRes.data || []);
     };
     loadSupport();
   }, []);
@@ -321,6 +323,9 @@ const ActivitiesPage = () => {
     setFormContactId('');
     setFormContactName('');
     setContactSearch('');
+    setFormCaseId('');
+    setFormCaseTitle('');
+    setCaseSearch('');
     setFormMatrixQuadrant('');
   };
 
@@ -353,6 +358,8 @@ const ActivitiesPage = () => {
       notes: formNotes || null,
       contact_id: formContactId || null,
       contact_name: formContactName || null,
+      case_id: formCaseId || null,
+      case_title: formCaseTitle || null,
     };
 
     let createdActivityId: string | null = null;
