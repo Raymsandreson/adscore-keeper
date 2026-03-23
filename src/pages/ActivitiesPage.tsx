@@ -417,6 +417,8 @@ const ActivitiesPage = () => {
     setFormStatus(activity.status || 'pendente');
     setFormContactId(activity.contact_id || '');
     setFormContactName(activity.contact_name || '');
+    setFormCaseId((activity as any).case_id || '');
+    setFormCaseTitle((activity as any).case_title || '');
     setFormMatrixQuadrant((activity as any).matrix_quadrant || '');
     // Load contacts and lead preview for this lead
     if (activity.lead_id) {
