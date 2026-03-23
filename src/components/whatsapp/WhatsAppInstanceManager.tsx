@@ -266,7 +266,41 @@ export function WhatsAppInstanceManager() {
                         <Key className="h-3 w-3" /> {inst.instance_token.slice(0, 8)}...
                       </span>
                     </div>
-                  </div>
+                    {/* Default Agent Selector */}
+                    {agents.length > 0 && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Bot className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-xs text-muted-foreground shrink-0">Agente padrão:</span>
+                        <Select
+                          value={inst.default_agent_id || 'none'}
+                          onValueChange={async (v) => {
+                            const newVal = v === 'none' ? null : v;
+                            setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, default_agent_id: newVal } : i));
+                            const { error } = await supabase
+                              .from('whatsapp_instances')
+                              .update({ default_agent_id: newVal } as any)
+                              .eq('id', inst.id);
+                            if (error) {
+                              toast.error('Erro ao salvar agente padrão');
+                              setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, default_agent_id: inst.default_agent_id } : i));
+                            } else {
+                              const agentName = agents.find(a => a.id === newVal)?.name;
+                              toast.success(newVal ? `🤖 Agente "${agentName}" definido como padrão` : 'Agente padrão removido');
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="h-7 text-xs w-48">
+                            <SelectValue placeholder="Nenhum" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Nenhum</SelectItem>
+                            {agents.map(a => (
+                              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="flex items-center gap-1.5">
                       <Label htmlFor={`active-${inst.id}`} className="text-xs text-muted-foreground">Ativa</Label>
