@@ -19,6 +19,7 @@ export interface KanbanBoard {
   is_default: boolean;
   display_order: number;
   ad_account_id: string | null;
+  board_type: 'funnel' | 'workflow';
   created_at: string;
   updated_at: string;
 }
@@ -51,8 +52,9 @@ export const useKanbanBoards = (adAccountId?: string) => {
       // Parse stages from JSONB
       const parsedBoards: KanbanBoard[] = (data || []).map(board => ({
         ...board,
+        board_type: (board as any).board_type as KanbanBoard['board_type'] || 'funnel',
         stages: (board.stages as unknown as KanbanStage[]) || [],
-      }));
+      } as KanbanBoard));
 
       console.log(`📋 Kanban boards loaded: ${parsedBoards.length}`, parsedBoards.map(b => b.name));
 
@@ -84,7 +86,8 @@ export const useKanbanBoards = (adAccountId?: string) => {
           is_default: board.is_default || false,
           display_order: boards.length,
           ad_account_id: adAccountId || null,
-        }])
+          board_type: board.board_type || 'funnel',
+        } as any])
         .select()
         .single();
 
@@ -95,8 +98,9 @@ export const useKanbanBoards = (adAccountId?: string) => {
       
       const createdBoard: KanbanBoard = {
         ...data,
+        board_type: (data as any).board_type || 'funnel',
         stages: (data.stages as unknown as KanbanStage[]) || [],
-      };
+      } as KanbanBoard;
       return createdBoard;
     } catch (error) {
       console.error('Error creating board:', error);
@@ -114,6 +118,7 @@ export const useKanbanBoards = (adAccountId?: string) => {
       if (updates.icon !== undefined) updatePayload.icon = updates.icon;
       if (updates.is_default !== undefined) updatePayload.is_default = updates.is_default;
       if (updates.display_order !== undefined) updatePayload.display_order = updates.display_order;
+      if (updates.board_type !== undefined) updatePayload.board_type = updates.board_type;
       if (updates.stages !== undefined) updatePayload.stages = JSON.parse(JSON.stringify(updates.stages));
 
       const { data, error } = await supabase
@@ -130,8 +135,9 @@ export const useKanbanBoards = (adAccountId?: string) => {
       
       const updatedBoard: KanbanBoard = {
         ...data,
+        board_type: (data as any).board_type || 'funnel',
         stages: (data.stages as unknown as KanbanStage[]) || [],
-      };
+      } as KanbanBoard;
       return updatedBoard;
     } catch (error) {
       console.error('Error updating board:', error);

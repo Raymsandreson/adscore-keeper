@@ -249,7 +249,7 @@ export function KanbanBoardSelector({
   const [formStages, setFormStages] = useState<KanbanStage[]>([]);
   const [newStageName, setNewStageName] = useState('');
   const [newStageColor, setNewStageColor] = useState('#3b82f6');
-  
+  const [formBoardType, setFormBoardType] = useState<'funnel' | 'workflow'>('funnel');
 
   const resetForm = () => {
     setFormName('');
@@ -259,6 +259,7 @@ export function KanbanBoardSelector({
     setFormStages([]);
     setNewStageName('');
     setNewStageColor('#3b82f6');
+    setFormBoardType('funnel');
   };
 
   const handleOpenCreate = () => {
@@ -279,6 +280,7 @@ export function KanbanBoardSelector({
     setFormColor(board.color);
     setFormIcon(board.icon);
     setFormStages([...board.stages]);
+    setFormBoardType(board.board_type || 'funnel');
     setShowEditDialog(true);
   };
 
@@ -291,7 +293,8 @@ export function KanbanBoardSelector({
       color: formColor,
       icon: formIcon,
       stages: formStages,
-    });
+      board_type: formBoardType,
+    } as Partial<KanbanBoard>);
     
     setShowCreateDialog(false);
     resetForm();
@@ -424,6 +427,34 @@ export function KanbanBoardSelector({
                 placeholder="Descreva o propósito deste quadro..."
                 rows={2}
               />
+            </div>
+
+            <div>
+              <Label>Tipo do Quadro</Label>
+              <Select value={formBoardType} onValueChange={(v) => setFormBoardType(v as 'funnel' | 'workflow')}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="funnel">
+                    <span className="flex items-center gap-2">
+                      <LayoutGrid className="h-3.5 w-3.5" />
+                      Funil de Vendas
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="workflow">
+                    <span className="flex items-center gap-2">
+                      <Briefcase className="h-3.5 w-3.5" />
+                      Fluxo de Trabalho (Processual)
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {formBoardType === 'funnel' 
+                  ? 'Funil livre para o período comercial (pré-fechamento)' 
+                  : 'Fluxo sequencial para acompanhar processos pós-fechamento'}
+              </p>
             </div>
 
             <div className="flex gap-4">

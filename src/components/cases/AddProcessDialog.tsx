@@ -84,8 +84,9 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
         if (data) {
           setLoadedBoards(data.map(b => ({
             ...b,
+            board_type: (b as any).board_type || 'funnel',
             stages: Array.isArray(b.stages) ? b.stages as any : [],
-          })));
+          } as KanbanBoard)));
         }
       });
     }
