@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { geminiChat } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,11 +49,6 @@ serve(async (req) => {
         );
       }
 
-      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-      if (!LOVABLE_API_KEY) {
-        throw new Error("LOVABLE_API_KEY is not configured");
-      }
-
       const toneInstructions: Record<string, string> = {
         friendly: "Seja amigável, caloroso e acolhedor. Use emojis com moderação.",
         professional: "Seja profissional e formal, mantendo cordialidade.",
@@ -77,31 +73,17 @@ CONTEXTO:
 - Autor: @${author_username || 'usuário'}
 ${post_url ? `- Post: ${post_url}` : ''}`;
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: `Responda este comentário:\n\n"${comment_text}"` }
-          ],
-          max_tokens: 150,
-          temperature: 0.7,
-        }),
+      const result = await geminiChat({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Responda este comentário:\n\n"${comment_text}"` }
+        ],
+        max_tokens: 150,
+        temperature: 0.7,
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("AI error:", response.status, errorText);
-        throw new Error("AI generation failed");
-      }
-
-      const data = await response.json();
-      const reply = data.choices?.[0]?.message?.content?.trim() || "";
+      const reply = result.choices?.[0]?.message?.content?.trim() || "";
 
       return new Response(
         JSON.stringify({ success: true, reply, comment_id }),
@@ -126,7 +108,6 @@ ${post_url ? `- Post: ${post_url}` : ''}`;
         );
       }
 
-      // Post to Instagram Graph API
       const igResponse = await fetch(
         `https://graph.facebook.com/v21.0/${comment_id}/replies`,
         {
@@ -149,13 +130,11 @@ ${post_url ? `- Post: ${post_url}` : ''}`;
         );
       }
 
-      // Update comment as replied
       await supabase
         .from("instagram_comments")
         .update({ replied_at: new Date().toISOString() })
         .eq("comment_id", comment_id);
 
-      // Log the automated reply
       await supabase.from("n8n_automation_logs").insert({
         action_type: "auto_reply",
         comment_id,
@@ -173,7 +152,6 @@ ${post_url ? `- Post: ${post_url}` : ''}`;
     if (action === "scheduled_run") {
       const scheduleId = body.schedule_id;
       
-      // Fetch schedule config if provided
       let scheduleConfig = {
         max_comments_per_run: body.limit || 5,
         auto_post: body.auto_post === true,
@@ -197,9 +175,7 @@ ${post_url ? `- Post: ${post_url}` : ''}`;
       }
 
       const token = access_token || Deno.env.get("META_ACCESS_TOKEN");
-      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
-      // Fetch pending comments
       const { data: comments, error } = await supabase
         .from("instagram_comments")
         .select("*")
@@ -225,70 +201,60 @@ ${post_url ? `- Post: ${post_url}` : ''}`;
       for (const comment of comments || []) {
         const systemPrompt = `Você é um assistente de Instagram. Responda em português brasileiro, máximo 200 caracteres. ${selectedTone} Autor: @${comment.author_username || 'usuário'}`;
 
-        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-3-flash-preview",
+        try {
+          const aiResult = await geminiChat({
+            model: "google/gemini-2.5-flash",
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: `Responda: "${comment.comment_text}"` }
             ],
             max_tokens: 150,
             temperature: 0.7,
-          }),
-        });
+          });
 
-        if (!aiResponse.ok) {
-          results.push({ comment_id: comment.comment_id, error: "AI generation failed" });
-          continue;
-        }
+          const reply = aiResult.choices?.[0]?.message?.content?.trim() || "";
 
-        const aiData = await aiResponse.json();
-        const reply = aiData.choices?.[0]?.message?.content?.trim() || "";
+          const result: any = {
+            comment_id: comment.comment_id,
+            author_username: comment.author_username,
+            original_comment: comment.comment_text,
+            generated_reply: reply,
+            posted: false,
+          };
 
-        const result: any = {
-          comment_id: comment.comment_id,
-          author_username: comment.author_username,
-          original_comment: comment.comment_text,
-          generated_reply: reply,
-          posted: false,
-        };
+          if (scheduleConfig.auto_post && token && comment.comment_id) {
+            const igResponse = await fetch(
+              `https://graph.facebook.com/v21.0/${comment.comment_id}/replies`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  message: reply,
+                  access_token: token,
+                }),
+              }
+            );
 
-        // Auto-post if enabled
-        if (scheduleConfig.auto_post && token && comment.comment_id) {
-          const igResponse = await fetch(
-            `https://graph.facebook.com/v21.0/${comment.comment_id}/replies`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                message: reply,
-                access_token: token,
-              }),
+            if (igResponse.ok) {
+              const igData = await igResponse.json();
+              result.posted = true;
+              result.reply_id = igData.id;
+              repliesPosted++;
+
+              await supabase
+                .from("instagram_comments")
+                .update({ replied_at: new Date().toISOString() })
+                .eq("comment_id", comment.comment_id);
             }
-          );
-
-          if (igResponse.ok) {
-            const igData = await igResponse.json();
-            result.posted = true;
-            result.reply_id = igData.id;
-            repliesPosted++;
-
-            await supabase
-              .from("instagram_comments")
-              .update({ replied_at: new Date().toISOString() })
-              .eq("comment_id", comment.comment_id);
           }
-        }
 
-        results.push(result);
+          results.push(result);
+        } catch (e) {
+          console.error("AI error for comment:", comment.comment_id, e);
+          results.push({ comment_id: comment.comment_id, error: "AI generation failed" });
+        }
       }
 
-      // Update schedule metrics if schedule_id provided
       if (scheduleId) {
         const { data: currentSchedule } = await supabase
           .from("n8n_comment_schedules")
@@ -312,7 +278,6 @@ ${post_url ? `- Post: ${post_url}` : ''}`;
         }
       }
 
-      // Log the scheduled run
       await supabase.from("n8n_automation_logs").insert({
         action_type: "scheduled_run",
         status: "success",
@@ -339,7 +304,6 @@ ${post_url ? `- Post: ${post_url}` : ''}`;
       const autoPost = body.auto_post === true;
       const token = access_token || Deno.env.get("META_ACCESS_TOKEN");
 
-      // Fetch pending comments
       const { data: comments, error } = await supabase
         .from("instagram_comments")
         .select("*")
@@ -353,17 +317,9 @@ ${post_url ? `- Post: ${post_url}` : ''}`;
       const results = [];
 
       for (const comment of comments || []) {
-        // Generate AI reply
-        const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-        
-        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-3-flash-preview",
+        try {
+          const aiResult = await geminiChat({
+            model: "google/gemini-2.5-flash",
             messages: [
               { 
                 role: "system", 
@@ -373,59 +329,55 @@ ${post_url ? `- Post: ${post_url}` : ''}`;
             ],
             max_tokens: 150,
             temperature: 0.7,
-          }),
-        });
+          });
 
-        if (!aiResponse.ok) {
-          results.push({ comment_id: comment.comment_id, error: "AI generation failed" });
-          continue;
-        }
+          const reply = aiResult.choices?.[0]?.message?.content?.trim() || "";
 
-        const aiData = await aiResponse.json();
-        const reply = aiData.choices?.[0]?.message?.content?.trim() || "";
+          const result: any = {
+            comment_id: comment.comment_id,
+            author_username: comment.author_username,
+            original_comment: comment.comment_text,
+            generated_reply: reply,
+            posted: false,
+          };
 
-        const result: any = {
-          comment_id: comment.comment_id,
-          author_username: comment.author_username,
-          original_comment: comment.comment_text,
-          generated_reply: reply,
-          posted: false,
-        };
+          if (autoPost && token && comment.comment_id) {
+            const igResponse = await fetch(
+              `https://graph.facebook.com/v21.0/${comment.comment_id}/replies`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  message: reply,
+                  access_token: token,
+                }),
+              }
+            );
 
-        // Auto-post if enabled
-        if (autoPost && token && comment.comment_id) {
-          const igResponse = await fetch(
-            `https://graph.facebook.com/v21.0/${comment.comment_id}/replies`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                message: reply,
-                access_token: token,
-              }),
+            if (igResponse.ok) {
+              const igData = await igResponse.json();
+              result.posted = true;
+              result.reply_id = igData.id;
+
+              await supabase
+                .from("instagram_comments")
+                .update({ replied_at: new Date().toISOString() })
+                .eq("comment_id", comment.comment_id);
+
+              await supabase.from("n8n_automation_logs").insert({
+                action_type: "auto_reply",
+                comment_id: comment.comment_id,
+                message_sent: reply,
+                status: "success",
+              });
             }
-          );
-
-          if (igResponse.ok) {
-            const igData = await igResponse.json();
-            result.posted = true;
-            result.reply_id = igData.id;
-
-            await supabase
-              .from("instagram_comments")
-              .update({ replied_at: new Date().toISOString() })
-              .eq("comment_id", comment.comment_id);
-
-            await supabase.from("n8n_automation_logs").insert({
-              action_type: "auto_reply",
-              comment_id: comment.comment_id,
-              message_sent: reply,
-              status: "success",
-            });
           }
-        }
 
-        results.push(result);
+          results.push(result);
+        } catch (e) {
+          console.error("AI error for comment:", comment.comment_id, e);
+          results.push({ comment_id: comment.comment_id, error: "AI generation failed" });
+        }
       }
 
       return new Response(
@@ -462,7 +414,6 @@ ${post_url ? `- Post: ${post_url}` : ''}`;
 
       if (error) throw error;
 
-      // Log the automation
       await supabase.from("n8n_automation_logs").insert({
         action_type: "outbound_register",
         status: "success",
