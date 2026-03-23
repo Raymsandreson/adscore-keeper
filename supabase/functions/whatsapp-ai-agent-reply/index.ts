@@ -305,46 +305,19 @@ REGRAS DE ENDEREÇO E CEP:
             else if (lowerUrl.includes(".wav")) audioMime = "audio/wav";
             else if (lowerUrl.includes(".webm")) audioMime = "audio/webm";
 
-            let transcribeRes: Response;
-            if (useGoogleDirect) {
-              const googleModel = "gemini-2.5-flash-lite";
-              transcribeRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${googleModel}:generateContent?key=${GOOGLE_AI_API_KEY}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  contents: [{ role: "user", parts: [
-                    { text: "Transcreva esta mensagem de voz fielmente em português. Retorne APENAS o texto falado, sem explicações, marcações ou formatação. Se não conseguir transcrever, retorne '[áudio inaudível]'." },
-                    { inlineData: { mimeType: audioMime, data: base64Audio } }
-                  ]}],
-                  generationConfig: { maxOutputTokens: 500, temperature: 0.1 },
-                }),
+              const transcribeResult = await geminiChat({
+                model: "google/gemini-2.5-flash-lite",
+                messages: [
+                  { role: "user", content: [
+                    { type: "text", text: "Transcreva esta mensagem de voz fielmente em português. Retorne APENAS o texto falado, sem explicações, marcações ou formatação. Se não conseguir transcrever, retorne '[áudio inaudível]'." },
+                    { type: "input_audio", input_audio: { format: audioMime.split("/")[1], data: base64Audio } }
+                  ]}
+                ],
+                max_tokens: 500,
+                temperature: 0.1,
               });
-            } else {
-              transcribeRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${LOVABLE_API_KEY}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  model: "google/gemini-2.5-flash-lite",
-                  messages: [
-                    { role: "user", content: [
-                      { type: "text", text: "Transcreva esta mensagem de voz fielmente em português. Retorne APENAS o texto falado, sem explicações, marcações ou formatação. Se não conseguir transcrever, retorne '[áudio inaudível]'." },
-                      { type: "input_audio", input_audio: { format: audioMime.split("/")[1], data: base64Audio } }
-                    ]}
-                  ],
-                  max_tokens: 500,
-                  temperature: 0.1,
-                }),
-              });
-            }
 
-            if (transcribeRes.ok) {
-              const transcribeData = await transcribeRes.json();
-              const transcription = useGoogleDirect
-                ? transcribeData.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
-                : transcribeData.choices?.[0]?.message?.content?.trim();
+              const transcription = transcribeResult.choices?.[0]?.message?.content?.trim();
               if (transcription && transcription !== "[áudio inaudível]") {
                 contextMessages.push({ role, content: `[Mensagem de voz]: ${transcription}` });
                 console.log(`Transcribed audio: ${transcription.substring(0, 100)}...`);
