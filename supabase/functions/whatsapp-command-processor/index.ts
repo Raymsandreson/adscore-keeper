@@ -685,6 +685,15 @@ REGRAS CRÍTICAS DE COMPORTAMENTO:
 12. O assessor que enviou o comando é: "${config.user_name}" (id: ${config.user_id})
 13. Responda em português do Brasil
 
+REGRA CRÍTICA - SEMPRE USE OS CAMPOS DE FERRAMENTA:
+- Quando o assessor pedir para CRIAR algo, você DEVE preencher o campo correspondente na ferramenta:
+  - Criar atividade → OBRIGATÓRIO preencher "new_activity" com todos os campos
+  - Criar lead → OBRIGATÓRIO preencher "new_lead" com todos os campos
+  - Criar caso → OBRIGATÓRIO preencher "new_case" com todos os campos
+- NUNCA apenas escreva "criei a atividade" no response_text sem preencher new_activity - isso NÃO cria nada!
+- O sistema automaticamente adiciona links clicáveis na resposta. NÃO inclua {link} ou URLs no response_text.
+- O response_text deve conter apenas o resumo textual. O link será adicionado automaticamente pelo sistema.
+
 ANEXAR IMAGENS A ATIVIDADES:
 - Se o assessor enviou uma imagem e pede para "anexar" a uma atividade existente, use "attach_to_activity" com o título ou nome do lead para buscar a atividade.
 - Se imagens foram enviadas junto com um comando de criação de atividade, elas serão anexadas automaticamente.
@@ -710,11 +719,12 @@ CRIAR CASO JURÍDICO (new_case):
 
 EXEMPLO DE RESPOSTA BOA:
 Usuário: "criar tarefa teste para amanhã"
-→ Crie imediatamente com activity_type="tarefa", priority="normal", deadline=amanhã 09:00, notification_date=amanhã 08:00
-→ response_text: "✅ Atividade criada!\\n📋 *teste*\\n📅 Prazo: 14/03/2026 09:00\\n🔔 Notificação: 14/03/2026 08:00\\n👤 ${config.user_name}\\n\\n✏️ Editar: {link}"
+→ Preencha new_activity com: title="teste", activity_type="tarefa", priority="normal", deadline=amanhã 09:00, notification_date=amanhã 08:00
+→ response_text: "✅ Atividade criada!\\n📋 *teste*\\n📅 Prazo: 14/03/2026 09:00\\n🔔 Notificação: 14/03/2026 08:00\\n👤 ${config.user_name}"
 
 EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
-"Qual o tipo de atividade? Escolha entre: tarefa, audiência, prazo..." ← PROIBIDO listar opções
+- "Qual o tipo de atividade? Escolha entre: tarefa, audiência, prazo..." ← PROIBIDO listar opções
+- Preencher apenas response_text dizendo "criei" sem preencher new_activity ← NÃO CRIA NADA
 
 IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, links, textos) de uma vez. Todas as informações foram consolidadas antes de chegar até você. Considere TODO o conteúdo junto. Se houver referências a mídias ([MÍDIA: ...]), considere como anexos relevantes ao contexto do comando.`;
 
@@ -1217,9 +1227,9 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
         toolData.search_results = results;
         if (results.length > 0) {
           const resultTexts = results.map((r: any) => {
-            if (sq.search_type === "lead") return `• ${r.lead_name} (${r.status}) - ${r.lead_phone || "sem tel"}`;
-            if (sq.search_type === "activity") return `• ${r.title} (${r.status}/${r.priority}) - ${r.deadline || "sem prazo"} - ${r.assigned_to_name || ""}`;
-            return `• ${r.full_name} - ${r.phone || ""} - ${r.email || ""}`;
+            if (sq.search_type === "lead") return `• ${r.lead_name} (${r.status}) - ${r.lead_phone || "sem tel"}\n  🔗 ${APP_URL}/leads?openLead=${r.id}`;
+            if (sq.search_type === "activity") return `• ${r.title} (${r.status}/${r.priority}) - ${r.deadline || "sem prazo"} - ${r.assigned_to_name || ""}\n  🔗 ${APP_URL}/?openActivity=${r.id}`;
+            return `• ${r.full_name} - ${r.phone || ""} - ${r.email || ""}\n  🔗 ${APP_URL}/leads?tab=contacts&openContact=${r.id}`;
           });
           responseText += "\n\n📋 Resultados:\n" + resultTexts.join("\n");
         } else {
