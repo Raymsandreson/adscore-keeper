@@ -1227,9 +1227,9 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
         toolData.search_results = results;
         if (results.length > 0) {
           const resultTexts = results.map((r: any) => {
-            if (sq.search_type === "lead") return `• ${r.lead_name} (${r.status}) - ${r.lead_phone || "sem tel"}`;
-            if (sq.search_type === "activity") return `• ${r.title} (${r.status}/${r.priority}) - ${r.deadline || "sem prazo"} - ${r.assigned_to_name || ""}`;
-            return `• ${r.full_name} - ${r.phone || ""} - ${r.email || ""}`;
+            if (sq.search_type === "lead") return `• ${r.lead_name} (${r.status}) - ${r.lead_phone || "sem tel"}\n  🔗 ${APP_URL}/leads?openLead=${r.id}`;
+            if (sq.search_type === "activity") return `• ${r.title} (${r.status}/${r.priority}) - ${r.deadline || "sem prazo"} - ${r.assigned_to_name || ""}\n  🔗 ${APP_URL}/?openActivity=${r.id}`;
+            return `• ${r.full_name} - ${r.phone || ""} - ${r.email || ""}\n  🔗 ${APP_URL}/leads?tab=contacts&openContact=${r.id}`;
           });
           responseText += "\n\n📋 Resultados:\n" + resultTexts.join("\n");
         } else {
