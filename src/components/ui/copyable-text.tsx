@@ -18,6 +18,8 @@ interface CopyableTextProps {
   as?: 'span' | 'p' | 'div';
   /** Truncate with ellipsis */
   truncate?: boolean;
+  /** If true, prevents CallFace extension from detecting as phone number */
+  noPhoneDetect?: boolean;
 }
 
 export function CopyableText({
