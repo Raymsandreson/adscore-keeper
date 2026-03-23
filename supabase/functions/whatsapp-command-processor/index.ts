@@ -693,6 +693,7 @@ REGRA CRÍTICA - SEMPRE USE OS CAMPOS DE FERRAMENTA:
 - NUNCA apenas escreva "criei a atividade" no response_text sem preencher new_activity - isso NÃO cria nada!
 - O sistema automaticamente adiciona links clicáveis na resposta. NÃO inclua {link} ou URLs no response_text.
 - O response_text deve conter apenas o resumo textual. O link será adicionado automaticamente pelo sistema.
+- NUNCA inclua IDs, UUIDs, "Task ID", "ID:" ou qualquer identificador técnico no response_text. O usuário não precisa ver IDs.
 
 ANEXAR IMAGENS A ATIVIDADES:
 - Se o assessor enviou uma imagem e pede para "anexar" a uma atividade existente, use "attach_to_activity" com o título ou nome do lead para buscar a atividade.
