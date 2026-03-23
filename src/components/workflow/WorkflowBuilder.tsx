@@ -484,7 +484,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
           description: formDescription.trim() || null,
           color: '#3b82f6',
           stages,
-        });
+          board_type: 'workflow',
+        } as any);
         boardId = created.id;
       }
 
