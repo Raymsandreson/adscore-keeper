@@ -84,9 +84,9 @@ export function WhatsAppInstanceManager() {
   };
 
   const fetchInstances = useCallback(async () => {
-    const [instancesRes, agentsRes] = await Promise.all([
+    const [instancesRes, shortcutsRes] = await Promise.all([
       supabase.from('whatsapp_instances').select('*').order('instance_name'),
-      supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
+      supabase.from('wjia_command_shortcuts').select('id, hashtag').eq('is_active', true).order('display_order'),
     ]);
     if (!instancesRes.error && instancesRes.data) setInstances(instancesRes.data as Instance[]);
     if (!agentsRes.error && agentsRes.data) setAgents(agentsRes.data as AgentOption[]);
