@@ -30,6 +30,7 @@ export function CopyableText({
   showIcon = true,
   as: Tag = 'span',
   truncate = false,
+  noPhoneDetect = false,
 }: CopyableTextProps) {
   const [copied, setCopied] = useState(false);
 
