@@ -1,0 +1,2 @@
+ALTER TABLE whatsapp_instances DROP CONSTRAINT whatsapp_instances_default_agent_id_fkey;
+ALTER TABLE whatsapp_instances ADD CONSTRAINT whatsapp_instances_default_agent_id_fkey FOREIGN KEY (default_agent_id) REFERENCES wjia_command_shortcuts(id) ON DELETE SET NULL;

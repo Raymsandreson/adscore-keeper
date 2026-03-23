@@ -6783,7 +6783,7 @@ export type Database = {
             foreignKeyName: "whatsapp_instances_default_agent_id_fkey"
             columns: ["default_agent_id"]
             isOneToOne: false
-            referencedRelation: "whatsapp_ai_agents"
+            referencedRelation: "wjia_command_shortcuts"
             referencedColumns: ["id"]
           },
         ]
