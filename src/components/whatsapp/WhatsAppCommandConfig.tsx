@@ -37,6 +37,7 @@ interface Shortcut {
   request_documents: boolean;
   document_types: string[];
   custom_document_names: string[];
+  document_type_modes: Record<string, 'required' | 'optional'>;
   // Agent fields
   assistant_type: string;
   base_prompt: string | null;
@@ -171,6 +172,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     prompt_instructions: '', media_extraction_prompt: '',
     notify_on_signature: true, send_signed_pdf: true,
     request_documents: false, document_types: [] as string[], custom_document_names: [] as string[],
+    document_type_modes: {} as Record<string, 'required' | 'optional'>,
     // Agent fields
     assistant_type: 'document',
     base_prompt: '',
@@ -220,7 +222,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       shortcut_name: '', description: '', template_token: '', template_name: '',
       prompt_instructions: '', media_extraction_prompt: '',
       notify_on_signature: true, send_signed_pdf: true,
-      request_documents: false, document_types: [], custom_document_names: [],
+      request_documents: false, document_types: [], custom_document_names: [], document_type_modes: {},
       assistant_type: 'document', base_prompt: '',
       model: 'google/gemini-2.5-flash', temperature: 0.7,
       response_delay_seconds: 2, split_messages: false, split_delay_seconds: 3,
@@ -259,6 +261,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       request_documents: s.request_documents || false,
       document_types: s.document_types || [],
       custom_document_names: (s as any).custom_document_names || [],
+      document_type_modes: (s as any).document_type_modes || {},
       assistant_type: s.assistant_type || 'document',
       base_prompt: s.base_prompt || '',
       model: s.model || 'google/gemini-2.5-flash',
@@ -302,6 +305,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       request_documents: form.request_documents,
       document_types: form.document_types,
       custom_document_names: form.custom_document_names,
+      document_type_modes: form.document_type_modes,
       assistant_type: form.assistant_type,
       base_prompt: form.base_prompt || null,
       model: form.model,
@@ -611,7 +615,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                                 { key: 'comprovante_renda', label: 'Comprovante de renda' },
                                 { key: 'outros', label: 'Outros documentos' },
                               ].map(docType => (
-                                <div key={docType.key} className="flex items-center gap-2">
+                                <div key={docType.key} className="flex items-center gap-2 flex-wrap">
                                   <Checkbox
                                     id={`doc_${docType.key}`}
                                     checked={form.document_types.includes(docType.key)}
@@ -621,10 +625,33 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                                         document_types: checked
                                           ? [...f.document_types, docType.key]
                                           : f.document_types.filter(t => t !== docType.key),
+                                        document_type_modes: checked
+                                          ? { ...f.document_type_modes, [docType.key]: f.document_type_modes[docType.key] || 'required' }
+                                          : (() => { const m = { ...f.document_type_modes }; delete m[docType.key]; return m; })(),
                                       }));
                                     }}
                                   />
                                   <Label htmlFor={`doc_${docType.key}`} className="text-xs cursor-pointer">{docType.label}</Label>
+                                  {form.document_types.includes(docType.key) && (
+                                    <Select
+                                      value={form.document_type_modes[docType.key] || 'required'}
+                                      onValueChange={(val) => setForm(f => ({
+                                        ...f,
+                                        document_type_modes: { ...f.document_type_modes, [docType.key]: val as 'required' | 'optional' },
+                                      }))}
+                                    >
+                                      <SelectTrigger className="h-6 w-[110px] text-[10px]">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="required" className="text-xs">📎 Obrigatório</SelectItem>
+                                        <SelectItem value="optional" className="text-xs">💬 Opcional</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  )}
+                                  {form.document_types.includes(docType.key) && form.document_type_modes[docType.key] === 'optional' && (
+                                    <p className="text-[9px] text-muted-foreground w-full ml-6">Cliente pode informar os dados por mensagem</p>
+                                  )}
                                 </div>
                               ))}
                               {form.document_types.includes('outros') && (
