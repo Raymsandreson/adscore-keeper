@@ -1,0 +1,2 @@
+ALTER TABLE public.lead_activities ADD COLUMN IF NOT EXISTS case_id uuid REFERENCES public.legal_cases(id) ON DELETE SET NULL DEFAULT NULL;
+ALTER TABLE public.lead_activities ADD COLUMN IF NOT EXISTS case_title text DEFAULT NULL;
