@@ -244,7 +244,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { phone, instance_name, media_url, message_type, is_group, group_id } = body;
+    const { phone, instance_name, media_url, message_type, is_group, group_id, is_internal_command } = body;
     let message_text = body.message_text;
 
     if (!phone || !instance_name) {
@@ -320,6 +320,63 @@ serve(async (req) => {
         .eq("is_active", true)
         .maybeSingle();
       if (data) { config = data; break; }
+    }
+
+    // Fallback for ## internal commands: allow the active instance owner on first use
+    if (!config && is_internal_command === true) {
+      try {
+        const { data: activeInstance } = await supabase
+          .from("whatsapp_instances")
+          .select("owner_phone")
+          .eq("instance_name", instance_name)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle();
+
+        const ownerVariants = buildPhoneVariants(activeInstance?.owner_phone || "");
+        const isOwnerPhone = ownerVariants.some((v) => phoneVariants.includes(v));
+
+        if (isOwnerPhone) {
+          const phoneSuffix = normalizedPhone.slice(-8);
+          const { data: ownerProfile } = await supabase
+            .from("profiles")
+            .select("user_id, full_name")
+            .ilike("phone", `%${phoneSuffix}%`)
+            .limit(1)
+            .maybeSingle();
+
+          if (ownerProfile?.user_id) {
+            const autoUserName = ownerProfile.full_name || "Membro da equipe";
+
+            await supabase
+              .from("whatsapp_command_config")
+              .upsert(
+                {
+                  instance_name,
+                  authorized_phone: normalizedPhone,
+                  user_id: ownerProfile.user_id,
+                  user_name: autoUserName,
+                  is_active: true,
+                },
+                { onConflict: "instance_name,authorized_phone" }
+              );
+
+            config = {
+              instance_name,
+              authorized_phone: normalizedPhone,
+              user_id: ownerProfile.user_id,
+              user_name: autoUserName,
+              is_active: true,
+            };
+
+            console.log(`Auto-authorized internal command owner: ${normalizedPhone} on ${instance_name}`);
+          } else {
+            console.log(`Owner phone matched but no profile found for ${normalizedPhone}`);
+          }
+        }
+      } catch (e) {
+        console.error("Auto-authorize internal command owner failed:", e);
+      }
     }
 
     if (!config) {
