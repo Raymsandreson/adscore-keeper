@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { geminiChat } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,8 +11,6 @@ serve(async (req) => {
 
   try {
     const { description } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     const systemPrompt = `Você é um assistente especializado em organização de rotinas de trabalho. 
 O usuário vai descrever o que precisa fazer durante a semana e você deve criar uma rotina estruturada em blocos de tempo.
@@ -36,37 +35,18 @@ Regras:
 Exemplo de formato:
 [{"activityType":"reuniao","label":"Reuniões","color":"bg-blue-500","days":[1,3],"startHour":9,"endHour":11,"isCustom":true}]`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Crie uma rotina semanal para: ${description}` },
-        ],
-      }),
+    const result = await geminiChat({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `Crie uma rotina semanal para: ${description}` },
+      ],
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Limite de requisições atingido. Tente novamente em instantes." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw new Error(`AI gateway error: ${response.status}`);
-    }
+    const content = result.choices?.[0]?.message?.content || "[]";
 
-    const aiData = await response.json();
-    const content = aiData.choices?.[0]?.message?.content || "[]";
-
-    // Parse JSON from AI response
     let configs;
     try {
-      // Remove markdown code blocks if present
       const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       configs = JSON.parse(cleaned);
     } catch {
