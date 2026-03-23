@@ -249,7 +249,7 @@ export function KanbanBoardSelector({
   const [formStages, setFormStages] = useState<KanbanStage[]>([]);
   const [newStageName, setNewStageName] = useState('');
   const [newStageColor, setNewStageColor] = useState('#3b82f6');
-  
+  const [formBoardType, setFormBoardType] = useState<'funnel' | 'workflow'>('funnel');
 
   const resetForm = () => {
     setFormName('');
@@ -259,6 +259,7 @@ export function KanbanBoardSelector({
     setFormStages([]);
     setNewStageName('');
     setNewStageColor('#3b82f6');
+    setFormBoardType('funnel');
   };
 
   const handleOpenCreate = () => {
@@ -279,6 +280,7 @@ export function KanbanBoardSelector({
     setFormColor(board.color);
     setFormIcon(board.icon);
     setFormStages([...board.stages]);
+    setFormBoardType(board.board_type || 'funnel');
     setShowEditDialog(true);
   };
 
@@ -291,7 +293,8 @@ export function KanbanBoardSelector({
       color: formColor,
       icon: formIcon,
       stages: formStages,
-    });
+      board_type: formBoardType,
+    } as Partial<KanbanBoard>);
     
     setShowCreateDialog(false);
     resetForm();
