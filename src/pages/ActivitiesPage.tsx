@@ -1265,12 +1265,13 @@ const ActivitiesPage = () => {
         )}
       </div>
 
+      {/* Caso Jurídico - cascading: if lead selected, show lead's cases; otherwise search all */}
       <div>
         <Label>Caso Jurídico</Label>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar caso..."
+            placeholder={formLeadId ? "Selecionar caso deste lead..." : "Buscar caso..."}
             value={caseSearch}
             onChange={e => setCaseSearch(e.target.value)}
             className="pl-9"
@@ -1278,32 +1279,95 @@ const ActivitiesPage = () => {
         </div>
         {(caseSearch || !formCaseId) && (
           <ScrollArea className="max-h-[100px] mt-1 border rounded-md">
-            {(caseSearch
-              ? availableCases.filter(c => 
-                  c.title?.toLowerCase().includes(caseSearch.toLowerCase()) ||
-                  c.case_number?.toLowerCase().includes(caseSearch.toLowerCase())
-                )
-              : availableCases.slice(0, 20)
-            ).map(c => (
-              <button
-                key={c.id}
-                className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${formCaseId === c.id ? 'bg-accent font-medium' : ''}`}
-                onClick={() => { setFormCaseId(c.id); setFormCaseTitle(`${c.case_number} - ${c.title}`); setCaseSearch(''); }}
-              >
-                <span className="font-medium">{c.case_number}</span> — {c.title}
-              </button>
-            ))}
+            {(() => {
+              // If lead is selected, show lead's cases; otherwise search all
+              const casesToShow = formLeadId
+                ? (caseSearch
+                    ? leadCases.filter(c => c.title?.toLowerCase().includes(caseSearch.toLowerCase()) || c.case_number?.toLowerCase().includes(caseSearch.toLowerCase()))
+                    : leadCases)
+                : (caseSearch
+                    ? availableCases.filter(c => c.title?.toLowerCase().includes(caseSearch.toLowerCase()) || c.case_number?.toLowerCase().includes(caseSearch.toLowerCase()))
+                    : availableCases.slice(0, 20));
+              return casesToShow.map(c => (
+                <button
+                  key={c.id}
+                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${formCaseId === c.id ? 'bg-accent font-medium' : ''}`}
+                  onClick={async () => {
+                    setFormCaseId(c.id);
+                    setFormCaseTitle(`${c.case_number} - ${c.title}`);
+                    setCaseSearch('');
+                    setFormProcessId('');
+                    setFormProcessTitle('');
+                    // Auto-select lead if case has lead_id and no lead selected
+                    if (!formLeadId) {
+                      const fullCase = availableCases.find(ac => ac.id === c.id);
+                      if (fullCase?.lead_id) {
+                        const lead = leads.find(l => l.id === fullCase.lead_id);
+                        if (lead) {
+                          setFormLeadId(lead.id);
+                          setFormLeadName(lead.lead_name || '');
+                        }
+                      }
+                    }
+                    // Load processes for this case
+                    const { data: procs } = await supabase
+                      .from('lead_processes')
+                      .select('id, title, process_number')
+                      .eq('case_id', c.id);
+                    setCaseProcesses((procs || []).map(p => ({ id: p.id, title: p.title, process_number: p.process_number })));
+                  }}
+                >
+                  <span className="font-medium">{c.case_number}</span> — {c.title}
+                </button>
+              ));
+            })()}
           </ScrollArea>
         )}
         {formCaseTitle && (
           <div className="flex items-center gap-2 mt-1">
-            <Badge variant="secondary">{formCaseTitle}</Badge>
-            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setFormCaseId(''); setFormCaseTitle(''); }}>
+            <Badge variant="secondary" className="text-xs">{formCaseTitle}</Badge>
+            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => {
+              setFormCaseId('');
+              setFormCaseTitle('');
+              setFormProcessId('');
+              setFormProcessTitle('');
+              setCaseProcesses([]);
+            }}>
               <X className="h-3 w-3" />
             </Button>
           </div>
         )}
       </div>
+
+      {/* Processo vinculado - appears when a case is selected */}
+      {formCaseId && caseProcesses.length > 0 && (
+        <div>
+          <Label>Processo vinculado</Label>
+          <ScrollArea className="max-h-[100px] mt-1 border rounded-md">
+            {caseProcesses.map(p => (
+              <button
+                key={p.id}
+                className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${formProcessId === p.id ? 'bg-accent font-medium' : ''}`}
+                onClick={() => {
+                  setFormProcessId(p.id);
+                  setFormProcessTitle(p.process_number ? `${p.process_number} - ${p.title}` : p.title);
+                }}
+              >
+                {p.process_number && <span className="font-medium">{p.process_number}</span>}
+                {p.process_number ? ' — ' : ''}{p.title}
+              </button>
+            ))}
+          </ScrollArea>
+          {formProcessTitle && (
+            <div className="flex items-center gap-2 mt-1">
+              <Badge variant="outline" className="text-xs">{formProcessTitle}</Badge>
+              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setFormProcessId(''); setFormProcessTitle(''); }}>
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Dynamic fields based on settings */}
       {fieldSettings.map(field => {
