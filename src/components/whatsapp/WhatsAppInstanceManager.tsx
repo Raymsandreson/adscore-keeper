@@ -84,11 +84,12 @@ export function WhatsAppInstanceManager() {
   };
 
   const fetchInstances = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('whatsapp_instances')
-      .select('*')
-      .order('instance_name');
-    if (!error && data) setInstances(data as Instance[]);
+    const [instancesRes, agentsRes] = await Promise.all([
+      supabase.from('whatsapp_instances').select('*').order('instance_name'),
+      supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
+    ]);
+    if (!instancesRes.error && instancesRes.data) setInstances(instancesRes.data as Instance[]);
+    if (!agentsRes.error && agentsRes.data) setAgents(agentsRes.data as AgentOption[]);
     setLoading(false);
   }, []);
 
