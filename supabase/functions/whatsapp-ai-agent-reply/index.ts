@@ -352,85 +352,17 @@ REGRAS DE ENDEREÇO E CEP:
         }
       }
 
-      let aiResponse: Response;
-      
-      if (useGoogleDirect) {
-        // Map Lovable model names to Google model names
-        const modelMap: Record<string, string> = {
-          "google/gemini-2.5-flash": "gemini-2.5-flash",
-          "google/gemini-2.5-flash-lite": "gemini-2.5-flash-lite",
-          "google/gemini-2.5-pro": "gemini-2.5-pro",
-          "google/gemini-3-flash-preview": "gemini-2.5-flash", // fallback
-        };
-        const agentModel = (agent as any).model || "google/gemini-2.5-flash";
-        const googleModel = modelMap[agentModel] || "gemini-2.5-flash-lite";
-        
-        // Convert OpenAI-style messages to Google format
-        const googleContents: any[] = [];
-        // System instruction is separate in Google API
-        const systemInstruction = { parts: [{ text: systemPrompt }] };
-        
-        for (const msg of contextMessages) {
-          const role = msg.role === "assistant" ? "model" : "user";
-          if (typeof msg.content === "string") {
-            googleContents.push({ role, parts: [{ text: msg.content }] });
-          } else if (Array.isArray(msg.content)) {
-            // Multimodal content - convert to Google parts format
-            const parts: any[] = [];
-            for (const part of msg.content) {
-              if (part.type === "text") {
-                parts.push({ text: part.text });
-              } else if (part.type === "image_url") {
-                parts.push({ text: `[imagem: ${part.image_url.url}]` });
-              }
-            }
-            googleContents.push({ role, parts });
-          }
-        }
-        
-        aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${googleModel}:generateContent?key=${GOOGLE_AI_API_KEY}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction,
-            contents: googleContents,
-            generationConfig: {
-              maxOutputTokens: (agent as any).max_tokens,
-              temperature: (agent as any).temperature / 100,
-            },
-          }),
-        });
-      } else {
-        aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: (agent as any).model,
-            messages: [
-              { role: "system", content: systemPrompt },
-              ...contextMessages,
-            ],
-            max_tokens: (agent as any).max_tokens,
-            temperature: (agent as any).temperature / 100,
-          }),
-        });
-      }
+      const aiResult = await geminiChat({
+        model: (agent as any).model || "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...contextMessages,
+        ],
+        max_tokens: (agent as any).max_tokens,
+        temperature: (agent as any).temperature / 100,
+      });
 
-      if (!aiResponse.ok) {
-        const errText = await aiResponse.text();
-        console.error("AI error:", aiResponse.status, errText);
-        return new Response(JSON.stringify({ error: "AI failed" }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const aiData = await aiResponse.json();
-      let reply = useGoogleDirect
-        ? (aiData.candidates?.[0]?.content?.parts?.[0]?.text || "")
-        : (aiData.choices?.[0]?.message?.content || "");
+      let reply = aiResult.choices?.[0]?.message?.content || "";
       if (!reply.trim()) {
         return new Response(JSON.stringify({ skipped: true, reason: "Empty response" }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
