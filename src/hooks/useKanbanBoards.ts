@@ -19,6 +19,7 @@ export interface KanbanBoard {
   is_default: boolean;
   display_order: number;
   ad_account_id: string | null;
+  board_type: 'funnel' | 'workflow';
   created_at: string;
   updated_at: string;
 }
