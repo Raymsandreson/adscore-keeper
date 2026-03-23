@@ -70,9 +70,16 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     process_number: '',
     description: '',
     fee_percentage: '',
+    valor_causa: '',
+    estimated_fee_value: '',
     started_at: new Date().toISOString().slice(0, 10),
     notes: '',
   });
+
+  // Auto-calculate estimated fee when valor_causa or fee_percentage changes
+  const autoCalculatedFee = manualForm.valor_causa && manualForm.fee_percentage
+    ? (parseFloat(manualForm.valor_causa) * parseFloat(manualForm.fee_percentage) / 100).toFixed(2)
+    : '';
 
   // Load boards if not provided
   const [loadedBoards, setLoadedBoards] = useState<KanbanBoard[]>([]);
@@ -328,6 +335,10 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           title: manualForm.title,
           description: manualForm.description || null,
           fee_percentage: manualForm.fee_percentage ? parseFloat(manualForm.fee_percentage) : null,
+          valor_causa: manualForm.valor_causa ? parseFloat(manualForm.valor_causa) : null,
+          estimated_fee_value: manualForm.estimated_fee_value 
+            ? parseFloat(manualForm.estimated_fee_value) 
+            : (autoCalculatedFee ? parseFloat(autoCalculatedFee) : null),
           workflow_id: workflowId || null,
           workflow_name: selectedBoard?.name || null,
           started_at: manualForm.started_at || null,
@@ -378,7 +389,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     setOabEstado('SP');
     setProcessType('judicial');
     setWorkflowId('');
-    setManualForm({ title: '', process_number: '', description: '', fee_percentage: '', started_at: new Date().toISOString().slice(0, 10), notes: '' });
+    setManualForm({ title: '', process_number: '', description: '', fee_percentage: '', valor_causa: '', estimated_fee_value: '', started_at: new Date().toISOString().slice(0, 10), notes: '' });
   };
 
   return (
@@ -569,6 +580,36 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
                   onChange={e => setManualForm(p => ({ ...p, fee_percentage: e.target.value }))}
                   placeholder="Ex: 30"
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Valor da Causa (R$)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={manualForm.valor_causa}
+                  onChange={e => setManualForm(p => ({ ...p, valor_causa: e.target.value }))}
+                  placeholder="Ex: 150000.00"
+                />
+              </div>
+              <div>
+                <Label>Honorários Estimados (R$)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={manualForm.estimated_fee_value || autoCalculatedFee}
+                  onChange={e => setManualForm(p => ({ ...p, estimated_fee_value: e.target.value }))}
+                  placeholder={autoCalculatedFee ? `Auto: R$ ${parseFloat(autoCalculatedFee).toLocaleString('pt-BR')}` : 'Ex: 45000.00'}
+                />
+                {autoCalculatedFee && !manualForm.estimated_fee_value && (
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Calculado: {manualForm.fee_percentage}% de R$ {parseFloat(manualForm.valor_causa).toLocaleString('pt-BR')}
+                  </p>
+                )}
               </div>
             </div>
 
