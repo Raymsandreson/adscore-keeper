@@ -131,8 +131,12 @@ const ActivitiesPage = () => {
   const [formContactName, setFormContactName] = useState('');
   const [formCaseId, setFormCaseId] = useState('');
   const [formCaseTitle, setFormCaseTitle] = useState('');
-  const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string}[]>([]);
+  const [formProcessId, setFormProcessId] = useState('');
+  const [formProcessTitle, setFormProcessTitle] = useState('');
+  const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string; lead_id: string | null}[]>([]);
   const [caseSearch, setCaseSearch] = useState('');
+  const [leadCases, setLeadCases] = useState<{id: string; case_number: string; title: string}[]>([]);
+  const [caseProcesses, setCaseProcesses] = useState<{id: string; title: string; process_number: string | null}[]>([]);
   const [availableContacts, setAvailableContacts] = useState<{id: string; full_name: string}[]>([]);
   const [contactSearch, setContactSearch] = useState('');
 
@@ -219,7 +223,7 @@ const ActivitiesPage = () => {
         supabase.from('leads').select('id, lead_name').order('lead_name').limit(500),
         supabase.from('profiles').select('user_id, full_name'),
         supabase.from('contacts').select('id, full_name').order('full_name').limit(500),
-        supabase.from('legal_cases').select('id, case_number, title').order('created_at', { ascending: false }).limit(500),
+        supabase.from('legal_cases').select('id, case_number, title, lead_id').order('created_at', { ascending: false }).limit(500),
       ]);
       setLeads(leadsRes.data || []);
       setTeamMembers(membersRes.data || []);
@@ -326,6 +330,10 @@ const ActivitiesPage = () => {
     setFormCaseId('');
     setFormCaseTitle('');
     setCaseSearch('');
+    setFormProcessId('');
+    setFormProcessTitle('');
+    setLeadCases([]);
+    setCaseProcesses([]);
     setFormMatrixQuadrant('');
   };
 
@@ -360,6 +368,8 @@ const ActivitiesPage = () => {
       contact_name: formContactName || null,
       case_id: formCaseId || null,
       case_title: formCaseTitle || null,
+      process_id: formProcessId || null,
+      process_title: formProcessTitle || null,
     };
 
     let createdActivityId: string | null = null;
@@ -419,7 +429,21 @@ const ActivitiesPage = () => {
     setFormContactName(activity.contact_name || '');
     setFormCaseId((activity as any).case_id || '');
     setFormCaseTitle((activity as any).case_title || '');
+    setFormProcessId((activity as any).process_id || '');
+    setFormProcessTitle((activity as any).process_title || '');
     setFormMatrixQuadrant((activity as any).matrix_quadrant || '');
+    // Load cases for this lead
+    if (activity.lead_id) {
+      supabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id).then(({ data }) => {
+        setLeadCases(data || []);
+      });
+    }
+    // Load processes for this case
+    if ((activity as any).case_id) {
+      supabase.from('lead_processes').select('id, title, process_number').eq('case_id', (activity as any).case_id).then(({ data }) => {
+        setCaseProcesses((data || []).map(p => ({ id: p.id, title: p.title, process_number: p.process_number })));
+      });
+    }
     // Load contacts and lead preview for this lead
     if (activity.lead_id) {
       try {
@@ -503,6 +527,8 @@ const ActivitiesPage = () => {
       contact_name: formContactName || null,
       case_id: formCaseId || null,
       case_title: formCaseTitle || null,
+      process_id: formProcessId || null,
+      process_title: formProcessTitle || null,
       matrix_quadrant: formMatrixQuadrant || null,
     } as any);
     closeSheet();
@@ -537,6 +563,8 @@ const ActivitiesPage = () => {
       contact_name: formContactName || null,
       case_id: formCaseId || null,
       case_title: formCaseTitle || null,
+      process_id: formProcessId || null,
+      process_title: formProcessTitle || null,
     } as any);
     // Complete it
     await completeActivity(selectedActivity.id);
@@ -561,6 +589,8 @@ const ActivitiesPage = () => {
       contact_name: formContactName || null,
       case_id: formCaseId || null,
       case_title: formCaseTitle || null,
+      process_id: formProcessId || null,
+      process_title: formProcessTitle || null,
     });
     toast.success('Atividade concluída e próxima criada!');
     closeSheet();
@@ -748,6 +778,15 @@ const ActivitiesPage = () => {
     setFormContactId('');
     setFormContactName('');
     setContactSearch('');
+    setFormCaseId('');
+    setFormCaseTitle('');
+    setFormProcessId('');
+    setFormProcessTitle('');
+    setCaseProcesses([]);
+    // Load cases for this lead
+    supabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).then(({ data }) => {
+      setLeadCases(data || []);
+    });
     // Auto-set activity type based on lead's workflow step
     const workflowType = leadWorkflowActivityTypes[leadId];
     if (workflowType) {
@@ -791,6 +830,12 @@ const ActivitiesPage = () => {
     setFormLeadName('');
     setFormContactId('');
     setFormContactName('');
+    setFormCaseId('');
+    setFormCaseTitle('');
+    setFormProcessId('');
+    setFormProcessTitle('');
+    setLeadCases([]);
+    setCaseProcesses([]);
     // Load all contacts
     const { data } = await supabase.from('contacts').select('id, full_name').order('full_name').limit(500);
     setAvailableContacts(data || []);
@@ -1220,12 +1265,13 @@ const ActivitiesPage = () => {
         )}
       </div>
 
+      {/* Caso Jurídico - cascading: if lead selected, show lead's cases; otherwise search all */}
       <div>
         <Label>Caso Jurídico</Label>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar caso..."
+            placeholder={formLeadId ? "Selecionar caso deste lead..." : "Buscar caso..."}
             value={caseSearch}
             onChange={e => setCaseSearch(e.target.value)}
             className="pl-9"
@@ -1233,32 +1279,95 @@ const ActivitiesPage = () => {
         </div>
         {(caseSearch || !formCaseId) && (
           <ScrollArea className="max-h-[100px] mt-1 border rounded-md">
-            {(caseSearch
-              ? availableCases.filter(c => 
-                  c.title?.toLowerCase().includes(caseSearch.toLowerCase()) ||
-                  c.case_number?.toLowerCase().includes(caseSearch.toLowerCase())
-                )
-              : availableCases.slice(0, 20)
-            ).map(c => (
-              <button
-                key={c.id}
-                className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${formCaseId === c.id ? 'bg-accent font-medium' : ''}`}
-                onClick={() => { setFormCaseId(c.id); setFormCaseTitle(`${c.case_number} - ${c.title}`); setCaseSearch(''); }}
-              >
-                <span className="font-medium">{c.case_number}</span> — {c.title}
-              </button>
-            ))}
+            {(() => {
+              // If lead is selected, show lead's cases; otherwise search all
+              const casesToShow = formLeadId
+                ? (caseSearch
+                    ? leadCases.filter(c => c.title?.toLowerCase().includes(caseSearch.toLowerCase()) || c.case_number?.toLowerCase().includes(caseSearch.toLowerCase()))
+                    : leadCases)
+                : (caseSearch
+                    ? availableCases.filter(c => c.title?.toLowerCase().includes(caseSearch.toLowerCase()) || c.case_number?.toLowerCase().includes(caseSearch.toLowerCase()))
+                    : availableCases.slice(0, 20));
+              return casesToShow.map(c => (
+                <button
+                  key={c.id}
+                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${formCaseId === c.id ? 'bg-accent font-medium' : ''}`}
+                  onClick={async () => {
+                    setFormCaseId(c.id);
+                    setFormCaseTitle(`${c.case_number} - ${c.title}`);
+                    setCaseSearch('');
+                    setFormProcessId('');
+                    setFormProcessTitle('');
+                    // Auto-select lead if case has lead_id and no lead selected
+                    if (!formLeadId) {
+                      const fullCase = availableCases.find(ac => ac.id === c.id);
+                      if (fullCase?.lead_id) {
+                        const lead = leads.find(l => l.id === fullCase.lead_id);
+                        if (lead) {
+                          setFormLeadId(lead.id);
+                          setFormLeadName(lead.lead_name || '');
+                        }
+                      }
+                    }
+                    // Load processes for this case
+                    const { data: procs } = await supabase
+                      .from('lead_processes')
+                      .select('id, title, process_number')
+                      .eq('case_id', c.id);
+                    setCaseProcesses((procs || []).map(p => ({ id: p.id, title: p.title, process_number: p.process_number })));
+                  }}
+                >
+                  <span className="font-medium">{c.case_number}</span> — {c.title}
+                </button>
+              ));
+            })()}
           </ScrollArea>
         )}
         {formCaseTitle && (
           <div className="flex items-center gap-2 mt-1">
-            <Badge variant="secondary">{formCaseTitle}</Badge>
-            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setFormCaseId(''); setFormCaseTitle(''); }}>
+            <Badge variant="secondary" className="text-xs">{formCaseTitle}</Badge>
+            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => {
+              setFormCaseId('');
+              setFormCaseTitle('');
+              setFormProcessId('');
+              setFormProcessTitle('');
+              setCaseProcesses([]);
+            }}>
               <X className="h-3 w-3" />
             </Button>
           </div>
         )}
       </div>
+
+      {/* Processo vinculado - appears when a case is selected */}
+      {formCaseId && caseProcesses.length > 0 && (
+        <div>
+          <Label>Processo vinculado</Label>
+          <ScrollArea className="max-h-[100px] mt-1 border rounded-md">
+            {caseProcesses.map(p => (
+              <button
+                key={p.id}
+                className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${formProcessId === p.id ? 'bg-accent font-medium' : ''}`}
+                onClick={() => {
+                  setFormProcessId(p.id);
+                  setFormProcessTitle(p.process_number ? `${p.process_number} - ${p.title}` : p.title);
+                }}
+              >
+                {p.process_number && <span className="font-medium">{p.process_number}</span>}
+                {p.process_number ? ' — ' : ''}{p.title}
+              </button>
+            ))}
+          </ScrollArea>
+          {formProcessTitle && (
+            <div className="flex items-center gap-2 mt-1">
+              <Badge variant="outline" className="text-xs">{formProcessTitle}</Badge>
+              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setFormProcessId(''); setFormProcessTitle(''); }}>
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Dynamic fields based on settings */}
       {fieldSettings.map(field => {
@@ -2608,7 +2717,7 @@ const ActivitiesPage = () => {
                           </Button>
                         )}
                         <span onClick={e => e.stopPropagation()}>
-                          <ShareMenu entityType="activity" entityId={activity.id} entityName={activity.title} summary={activity.lead_name ? `Lead: ${activity.lead_name}` : undefined} size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground" />
+                          <ShareMenu entityType="activity" entityId={activity.id} entityName={activity.title} summary={[activity.lead_name && `Lead: ${activity.lead_name}`, (activity as any).case_title && `Caso: ${(activity as any).case_title}`, (activity as any).process_title && `Processo: ${(activity as any).process_title}`].filter(Boolean).join('\n') || undefined} size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground" />
                         </span>
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={e => { e.stopPropagation(); handleCloneActivity(activity); }} title="Duplicar">
                           <Copy className="h-3.5 w-3.5" />

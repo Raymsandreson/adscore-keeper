@@ -30,6 +30,8 @@ export interface LeadActivity {
   matrix_quadrant: string | null;
   case_id: string | null;
   case_title: string | null;
+  process_id: string | null;
+  process_title: string | null;
 }
 
 export function useLeadActivities() {

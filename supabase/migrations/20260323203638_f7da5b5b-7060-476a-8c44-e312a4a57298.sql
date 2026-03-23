@@ -1,0 +1,2 @@
+ALTER TABLE public.lead_activities ADD COLUMN IF NOT EXISTS process_id uuid REFERENCES public.lead_processes(id) ON DELETE SET NULL DEFAULT NULL;
+ALTER TABLE public.lead_activities ADD COLUMN IF NOT EXISTS process_title text DEFAULT NULL;
