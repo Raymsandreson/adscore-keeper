@@ -1297,9 +1297,9 @@ Deno.serve(async (req) => {
         const cmdLookupPhone = isGroup && senderPnRaw ? senderPnRaw : phone
         const cmdPhoneVariants = buildPhoneVariants(cmdLookupPhone)
         
-        // Also try owner phone as fallback for self-chat / fromMe scenarios
+        // Also try owner phone as fallback only for outbound group events (never for inbound)
         const ownerPhoneCmd = normalizePhone(body?.message?.owner || body?.chat?.owner || body?.owner || '')
-        if (isGroup && ownerPhoneCmd) {
+        if (isGroup && direction === 'outbound' && ownerPhoneCmd) {
           buildPhoneVariants(ownerPhoneCmd).forEach(v => { if (!cmdPhoneVariants.includes(v)) cmdPhoneVariants.push(v) })
         }
         
