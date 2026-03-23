@@ -45,8 +45,9 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
         if (data) {
           setBoard({
             ...data,
+            board_type: (data as any).board_type || 'funnel',
             stages: (data.stages as unknown as KanbanStage[]) || [],
-          });
+          } as KanbanBoard);
         }
       });
   }, [boardId]);
