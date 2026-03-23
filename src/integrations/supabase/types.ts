@@ -3549,6 +3549,8 @@ export type Database = {
           notes: string | null
           notification_date: string | null
           priority: string | null
+          process_id: string | null
+          process_title: string | null
           status: string
           title: string
           updated_at: string
@@ -3579,6 +3581,8 @@ export type Database = {
           notes?: string | null
           notification_date?: string | null
           priority?: string | null
+          process_id?: string | null
+          process_title?: string | null
           status?: string
           title: string
           updated_at?: string
@@ -3609,6 +3613,8 @@ export type Database = {
           notes?: string | null
           notification_date?: string | null
           priority?: string | null
+          process_id?: string | null
+          process_title?: string | null
           status?: string
           title?: string
           updated_at?: string
@@ -3628,6 +3634,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activities_process_id_fkey"
+            columns: ["process_id"]
+            isOneToOne: false
+            referencedRelation: "lead_processes"
             referencedColumns: ["id"]
           },
         ]
