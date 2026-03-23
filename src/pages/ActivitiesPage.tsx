@@ -535,6 +535,8 @@ const ActivitiesPage = () => {
       status: formStatus,
       contact_id: formContactId || null,
       contact_name: formContactName || null,
+      case_id: formCaseId || null,
+      case_title: formCaseTitle || null,
     } as any);
     // Complete it
     await completeActivity(selectedActivity.id);
