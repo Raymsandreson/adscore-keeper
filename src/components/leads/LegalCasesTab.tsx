@@ -78,13 +78,13 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
       await updateCase(editingCase.id, {
         title: caseTitle.trim(),
         description: caseDescription || null,
-        nucleus_id: caseNucleusId || null,
+        nucleus_id: caseNucleusId && caseNucleusId !== '__none__' ? caseNucleusId : null,
         notes: caseNotes || null,
       } as Partial<LegalCase>);
     } else {
       const newCase = await createCase({
         lead_id: leadId,
-        nucleus_id: caseNucleusId || null,
+        nucleus_id: caseNucleusId && caseNucleusId !== '__none__' ? caseNucleusId : null,
         title: caseTitle.trim(),
         description: caseDescription,
         notes: caseNotes,
