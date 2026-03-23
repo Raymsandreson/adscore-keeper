@@ -4,7 +4,7 @@ import { Target, Building2, Package, Lightbulb, Briefcase, Network, ChevronRight
 import { cn } from '@/lib/utils';
 
 export type TranslationAction =
-  | { type: 'tab'; tab: 'modelo' | 'estrutura' }
+  | { type: 'tab'; tab: 'modelo' | 'estrutura'; section?: string }
   | { type: 'route'; route: string }
   | { type: 'dialog'; dialog: 'newProduct' };
 
@@ -67,7 +67,7 @@ const TRANSLATION_ROWS: TranslationRow[] = [
         'Crie checklists e SLAs para garantir consistência',
       ],
       action: 'Organizar Áreas e Times →',
-      onAction: { type: 'tab', tab: 'estrutura' },
+      onAction: { type: 'tab', tab: 'estrutura', section: 'deliver-value' },
     },
   },
   {

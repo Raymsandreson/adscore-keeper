@@ -54,6 +54,7 @@ export function DeliverValueSection({ companies, costCenters, positions, teams, 
   }));
 
   return (
+    <div id="deliver-value">
     <ValueFlowSection
       color="blue"
       number={2}
@@ -268,5 +269,6 @@ export function DeliverValueSection({ companies, costCenters, positions, teams, 
         </CardContent>
       </Card>
     </ValueFlowSection>
+    </div>
   );
 }
