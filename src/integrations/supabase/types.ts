@@ -3482,6 +3482,7 @@ export type Database = {
       kanban_boards: {
         Row: {
           ad_account_id: string | null
+          board_type: string
           color: string | null
           created_at: string
           description: string | null
@@ -3495,6 +3496,7 @@ export type Database = {
         }
         Insert: {
           ad_account_id?: string | null
+          board_type?: string
           color?: string | null
           created_at?: string
           description?: string | null
@@ -3508,6 +3510,7 @@ export type Database = {
         }
         Update: {
           ad_account_id?: string | null
+          board_type?: string
           color?: string | null
           created_at?: string
           description?: string | null
@@ -3851,6 +3854,7 @@ export type Database = {
           valor_causa: number | null
           workflow_id: string | null
           workflow_name: string | null
+          workflow_stage_id: string | null
         }
         Insert: {
           ano_inicio?: number | null
@@ -3886,6 +3890,7 @@ export type Database = {
           valor_causa?: number | null
           workflow_id?: string | null
           workflow_name?: string | null
+          workflow_stage_id?: string | null
         }
         Update: {
           ano_inicio?: number | null
@@ -3921,6 +3926,7 @@ export type Database = {
           valor_causa?: number | null
           workflow_id?: string | null
           workflow_name?: string | null
+          workflow_stage_id?: string | null
         }
         Relationships: [
           {
@@ -4210,6 +4216,7 @@ export type Database = {
           status: string
           title: string
           updated_at: string
+          workflow_board_id: string | null
         }
         Insert: {
           assigned_to?: string | null
@@ -4226,6 +4233,7 @@ export type Database = {
           status?: string
           title: string
           updated_at?: string
+          workflow_board_id?: string | null
         }
         Update: {
           assigned_to?: string | null
@@ -4242,6 +4250,7 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
+          workflow_board_id?: string | null
         }
         Relationships: [
           {
@@ -4256,6 +4265,13 @@ export type Database = {
             columns: ["nucleus_id"]
             isOneToOne: false
             referencedRelation: "specialized_nuclei"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_cases_workflow_board_id_fkey"
+            columns: ["workflow_board_id"]
+            isOneToOne: false
+            referencedRelation: "kanban_boards"
             referencedColumns: ["id"]
           },
         ]
