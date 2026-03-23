@@ -52,8 +52,9 @@ export const useKanbanBoards = (adAccountId?: string) => {
       // Parse stages from JSONB
       const parsedBoards: KanbanBoard[] = (data || []).map(board => ({
         ...board,
+        board_type: (board as any).board_type as KanbanBoard['board_type'] || 'funnel',
         stages: (board.stages as unknown as KanbanStage[]) || [],
-      }));
+      } as KanbanBoard));
 
       console.log(`📋 Kanban boards loaded: ${parsedBoards.length}`, parsedBoards.map(b => b.name));
 
@@ -96,8 +97,9 @@ export const useKanbanBoards = (adAccountId?: string) => {
       
       const createdBoard: KanbanBoard = {
         ...data,
+        board_type: (data as any).board_type || 'funnel',
         stages: (data.stages as unknown as KanbanStage[]) || [],
-      };
+      } as KanbanBoard;
       return createdBoard;
     } catch (error) {
       console.error('Error creating board:', error);
@@ -131,8 +133,9 @@ export const useKanbanBoards = (adAccountId?: string) => {
       
       const updatedBoard: KanbanBoard = {
         ...data,
+        board_type: (data as any).board_type || 'funnel',
         stages: (data.stages as unknown as KanbanStage[]) || [],
-      };
+      } as KanbanBoard;
       return updatedBoard;
     } catch (error) {
       console.error('Error updating board:', error);
