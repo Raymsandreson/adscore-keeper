@@ -559,12 +559,64 @@ async function handleFollowUp(opts: {
       });
     } else if (session.status !== "collecting" && session.status !== "ready") {
       // Text during doc collection — remind
+      // Load document type modes from shortcut config
+      let sessionDocModes: Record<string, string> = {};
+      if (session.shortcut_name) {
+        const { data: sc } = await supabase.from("wjia_command_shortcuts").select("document_type_modes").eq("shortcut_name", session.shortcut_name).maybeSingle();
+        sessionDocModes = sc?.document_type_modes || {};
+      }
+
       const pendingTypes = requestedTypes.filter(t => !receivedDocs.some((d: any) => d.type === t));
-      await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
-        `📎 Preciso que envie: *${pendingTypes.map(t => DOC_TYPE_LABELS[t] || t).join(", ")}*.\n\nSe não tiver, digite *pular*.`,
-        session.contact_id, session.lead_id, "wjia_remind");
-      return new Response(JSON.stringify({ active_session: true, processed: true, session_id: session.id }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const pendingRequired = pendingTypes.filter(t => (sessionDocModes[t] || 'required') === 'required');
+      const pendingOptional = pendingTypes.filter(t => sessionDocModes[t] === 'optional');
+
+      // If text message and there are only optional docs pending, accept the text as data and move to collecting phase
+      if (message_text && pendingRequired.length === 0 && pendingOptional.length > 0) {
+        // Mark optional docs as "text_provided" and move to collecting
+        for (const optType of pendingOptional) {
+          receivedDocs.push({ type: optType, media_url: null, via: 'text', text_data: message_text });
+        }
+        
+        await supabase.from("wjia_collection_sessions").update({
+          received_documents: receivedDocs,
+          status: "collecting",
+          updated_at: new Date().toISOString(),
+        }).eq("id", session.id);
+
+        session.status = "collecting";
+        session.received_documents = receivedDocs;
+        // Fall through to agent phase
+      } else if (message_text && pendingOptional.length > 0) {
+        // Has both required and optional pending — accept text for optional, remind for required
+        for (const optType of pendingOptional) {
+          receivedDocs.push({ type: optType, media_url: null, via: 'text', text_data: message_text });
+        }
+
+        await supabase.from("wjia_collection_sessions").update({
+          received_documents: receivedDocs,
+          updated_at: new Date().toISOString(),
+        }).eq("id", session.id);
+
+        await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
+          `💬 Dados recebidos!\n\n📎 Ainda preciso que envie: *${pendingRequired.map(t => DOC_TYPE_LABELS[t] || t).join(", ")}*.\n\nSe não tiver, digite *pular*.`,
+          session.contact_id, session.lead_id, "wjia_remind");
+        return new Response(JSON.stringify({ active_session: true, processed: true, session_id: session.id }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } else {
+        // Only required docs pending — remind as before
+        let reminderParts: string[] = [];
+        if (pendingRequired.length > 0) {
+          reminderParts.push(`📎 Envie: *${pendingRequired.map(t => DOC_TYPE_LABELS[t] || t).join(", ")}*`);
+        }
+        if (pendingOptional.length > 0) {
+          reminderParts.push(`💬 Ou informe por mensagem: *${pendingOptional.map(t => DOC_TYPE_LABELS[t] || t).join(", ")}*`);
+        }
+        await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
+          `${reminderParts.join("\n\n")}\n\nSe não tiver, digite *pular*.`,
+          session.contact_id, session.lead_id, "wjia_remind");
+        return new Response(JSON.stringify({ active_session: true, processed: true, session_id: session.id }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
     }
   }
 
