@@ -74,7 +74,8 @@ interface PhaseConfig {
 type ViewMode = 'list' | 'edit';
 
 export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: WorkflowBuilderProps) {
-  const { boards, fetchBoards, createBoard, updateBoard, deleteBoard } = useKanbanBoards();
+  const { boards: allBoards, fetchBoards, createBoard, updateBoard, deleteBoard } = useKanbanBoards();
+  const boards = allBoards.filter(b => b.board_type === 'workflow');
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const {
     templates,
