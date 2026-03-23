@@ -3831,6 +3831,7 @@ export type Database = {
           description: string | null
           envolvidos: Json | null
           escavador_raw: Json | null
+          estimated_fee_value: number | null
           fee_percentage: number | null
           finished_at: string | null
           fonte_data_fim: string | null
@@ -3867,6 +3868,7 @@ export type Database = {
           description?: string | null
           envolvidos?: Json | null
           escavador_raw?: Json | null
+          estimated_fee_value?: number | null
           fee_percentage?: number | null
           finished_at?: string | null
           fonte_data_fim?: string | null
@@ -3903,6 +3905,7 @@ export type Database = {
           description?: string | null
           envolvidos?: Json | null
           escavador_raw?: Json | null
+          estimated_fee_value?: number | null
           fee_percentage?: number | null
           finished_at?: string | null
           fonte_data_fim?: string | null
