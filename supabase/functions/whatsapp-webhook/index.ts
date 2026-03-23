@@ -1896,8 +1896,6 @@ Deno.serve(async (req) => {
             } else {
               statusParts.push('🤖 Nenhum agente atribuído.')
             }
-              }
-            }
 
             // Collection session status — only this conversation
             if (activeCollectionSession) {
