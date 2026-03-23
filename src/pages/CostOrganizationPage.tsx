@@ -69,6 +69,12 @@ export default function CostOrganizationPage() {
       switch (action.type) {
         case 'tab':
           setMainTab(action.tab);
+          if (action.section) {
+            setTimeout(() => {
+              const el = document.getElementById(action.section!);
+              el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 200);
+          }
           break;
         case 'route': {
           const previousPath = window.location.pathname;
