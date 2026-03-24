@@ -572,26 +572,23 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     const maxSec = Math.floor(charsPerPart / 10);
                     const fmtTime = (s: number) => s >= 60 ? `${Math.floor(s / 60)}min ${s % 60}s` : `${s}s`;
                     return (
-                      <div className="space-y-2 pt-2 border-t border-border/50">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-[11px] flex items-center gap-1"><Volume2 className="h-3 w-3" />Dividir áudio em</Label>
-                          <span className="text-[10px] font-mono text-muted-foreground">{parts} {parts === 1 ? 'áudio único' : 'partes'}</span>
-                        </div>
-                        <Slider
-                          value={[parts]}
-                          onValueChange={([v]) => {
-                            const newMax = Math.round(totalChars / v);
-                            setForm(f => ({ ...f, max_tts_chars: Math.max(300, Math.min(3000, newMax)) }));
-                          }}
+                      <div className="space-y-1 pt-2 border-t border-border/50">
+                        <Label className="text-[11px] flex items-center gap-1"><Volume2 className="h-3 w-3" />Dividir áudio em quantas partes?</Label>
+                        <Input
+                          type="number"
                           min={1}
-                          max={Math.max(1, Math.ceil(totalChars / 300))}
-                          step={1}
+                          max={10}
+                          value={parts}
+                          onChange={e => {
+                            const v = Math.max(1, Math.min(10, parseInt(e.target.value) || 1));
+                            const newMax = Math.round(totalChars / v);
+                            setForm(f => ({ ...f, max_tts_chars: Math.max(300, Math.min(5000, newMax)) }));
+                          }}
+                          className="h-9 text-xs w-20"
                         />
-                        <div className="flex justify-between text-[10px] text-muted-foreground">
-                          <span>1 áudio</span>
-                          <span>Cada parte ≈ {charsPerPart} chars · {fmtTime(minSec)}–{fmtTime(maxSec)}</span>
-                          <span>{Math.max(1, Math.ceil(totalChars / 300))} partes</span>
-                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          Cada parte ≈ {charsPerPart} chars · {fmtTime(minSec)}–{fmtTime(maxSec)} de áudio
+                        </p>
                       </div>
                     );
                   })()}
