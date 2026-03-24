@@ -490,12 +490,24 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                 <div className="space-y-1">
                   <Label className="text-xs">🧠 Prompt do Agente</Label>
                   <p className="text-[10px] text-muted-foreground">Define a personalidade, tom, instruções de coleta e regras de comportamento do agente.</p>
-                  <Textarea
-                    placeholder="Você é um assistente jurídico profissional. Ao interagir com o cliente, colete nome completo, CPF, RG, endereço..."
-                    value={form.prompt_instructions}
-                    onChange={e => setForm(f => ({ ...f, prompt_instructions: e.target.value }))}
-                    className="min-h-[120px] text-xs"
-                  />
+                  <div className="relative">
+                    <Textarea
+                      placeholder="Você é um assistente jurídico profissional. Ao interagir com o cliente, colete nome completo, CPF, RG, endereço..."
+                      value={form.prompt_instructions}
+                      onChange={e => setForm(f => ({ ...f, prompt_instructions: e.target.value }))}
+                      className="min-h-[120px] text-xs pr-8"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute top-1 right-1 h-6 w-6 text-muted-foreground hover:text-primary"
+                      onClick={() => setPromptSheetOpen(true)}
+                      title="Expandir editor"
+                    >
+                      <Maximize2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
