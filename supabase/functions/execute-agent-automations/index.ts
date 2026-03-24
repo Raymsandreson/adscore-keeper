@@ -228,7 +228,65 @@ Deno.serve(async (req) => {
             results.push({ type: 'move_lead_stage', ok: true });
             break;
           }
-        }
+
+          case 'create_group': {
+            if (!createdLeadId) { results.push({ type: 'create_group', skipped: 'no lead' }); break; }
+
+            const normalizedPhone = phone?.replace(/\D/g, '') || '';
+            const boardId = action.config?.board_id;
+
+            // Get lead name
+            const { data: leadForGroup } = await supabase
+              .from('leads')
+              .select('lead_name, board_id')
+              .eq('id', createdLeadId)
+              .single();
+
+            const groupBoardId = boardId || leadForGroup?.board_id;
+            const groupName = leadForGroup?.lead_name || contact_name || normalizedPhone;
+
+            // Get creator instance
+            let creatorInstanceId: string | null = null;
+            if (instance_name) {
+              const { data: inst } = await supabase
+                .from('whatsapp_instances')
+                .select('id')
+                .eq('instance_name', instance_name)
+                .eq('is_active', true)
+                .maybeSingle();
+              if (inst) creatorInstanceId = inst.id;
+            }
+
+            // Call create-whatsapp-group edge function
+            const groupRes = await fetch(`${supabaseUrl}/functions/v1/create-whatsapp-group`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseKey}`,
+              },
+              body: JSON.stringify({
+                phone: normalizedPhone,
+                lead_name: groupName,
+                board_id: groupBoardId,
+                contact_phone: normalizedPhone,
+                creator_instance_id: creatorInstanceId,
+              }),
+            });
+
+            const groupData = await groupRes.json();
+            if (!groupData.success) throw new Error(groupData.error || 'Failed to create group');
+
+            // Save group_id to lead
+            if (groupData.group_id) {
+              await supabase
+                .from('leads')
+                .update({ whatsapp_group_id: groupData.group_id } as any)
+                .eq('id', createdLeadId);
+            }
+
+            results.push({ type: 'create_group', ok: true, group_id: groupData.group_id });
+            break;
+          }
       } catch (actionError: any) {
         console.error(`[agent-automations] Action ${action.type} failed:`, actionError.message);
         results.push({ type: action.type, error: actionError.message });
