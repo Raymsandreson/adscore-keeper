@@ -430,10 +430,14 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
                           </span>
                         )}
                         {cl.contact.phone && (
-                          <span className="flex items-center gap-0.5">
+                          <a
+                            href={`tel:${cl.contact.phone?.replace(/\D/g, '').replace(/^55/, '')}`}
+                            className="callface-dial flex items-center gap-0.5 hover:underline"
+                            data-phone={cl.contact.phone?.replace(/\D/g, '').replace(/^55/, '')}
+                          >
                             <Phone className="h-3 w-3" />
                             {cl.contact.phone}
-                          </span>
+                          </a>
                         )}
                       </div>
                       {/* Call stats */}
