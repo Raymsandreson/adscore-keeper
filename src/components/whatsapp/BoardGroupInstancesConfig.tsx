@@ -37,7 +37,7 @@ export function BoardGroupInstancesConfig() {
 
   const fetchData = async () => {
     setLoading(true);
-    const boardsRes = await supabase.from('kanban_boards').select('id, name').eq('is_active', true).order('display_order');
+    const boardsRes = await (supabase as any).from('kanban_boards').select('id, name').eq('is_active', true).order('display_order');
     const instancesRes = await (supabase as any).from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true);
     setBoards((boardsRes.data as any[]) || []);
     setInstances((instancesRes.data as any[]) || []);
