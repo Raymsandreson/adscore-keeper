@@ -284,6 +284,26 @@ Deno.serve(async (req) => {
                 .eq('id', createdLeadId);
             }
 
+            // Save group_id to contact too
+            if (groupData.group_id && createdContactId) {
+              await supabase
+                .from('contacts')
+                .update({ whatsapp_group_id: groupData.group_id } as any)
+                .eq('id', createdContactId);
+            } else if (groupData.group_id && normalizedPhone) {
+              const { data: contactForGroup } = await supabase
+                .from('contacts')
+                .select('id')
+                .eq('phone', normalizedPhone)
+                .maybeSingle();
+              if (contactForGroup) {
+                await supabase
+                  .from('contacts')
+                  .update({ whatsapp_group_id: groupData.group_id } as any)
+                  .eq('id', contactForGroup.id);
+              }
+            }
+
             results.push({ type: 'create_group', ok: true, group_id: groupData.group_id });
             break;
           }
