@@ -1,56 +1,77 @@
 
 
-## Plano: Sugestões de Continuação Inteligentes no Chat IA
+## Diagnóstico do Problema
 
-### O que muda
+Analisei o sistema de ponta a ponta e identifiquei as causas raiz:
 
-Toda resposta da IA no chat virá acompanhada de 2-4 "chips" clicáveis de sugestão de próximo passo. O usuário clica, o texto vai para o campo de input (editável), e basta enviar. A IA também deve preencher todos os campos relevantes (data, notificação, matriz, tipo) proativamente nas suas respostas.
+### Por que transcreve errado
 
-### Implementação
+Existem **4 caminhos de transcrição separados e inconsistentes** no sistema:
 
-**1. Backend: Adicionar `follow_up_suggestions` ao tool calling da IA**
+1. **`whatsapp-webhook/downloadAndStoreMedia`** — usa `gemini-2.5-flash-lite` (modelo fraco) com prompt genérico. É **este** que salva o `message_text` no banco. Está alucinando conteúdo (ex: inventando "vaga de emprego" quando a pessoa falou outra coisa).
 
-No `supabase/functions/analyze-activity-chat/index.ts`, modo `assistant`:
-- Adicionar campo `follow_up_suggestions` ao schema da tool `suggest_field_updates`
-- Array de 2-4 objetos com `{ label: string, message: string }` onde `label` é texto curto do chip e `message` é o texto completo que será enviado como mensagem
-- Atualizar o system prompt para instruir a IA a SEMPRE gerar sugestões de continuação contextuais (ex: "Definir próximo passo", "Criar atividade de acompanhamento", "Atualizar status do lead")
-- Incluir no prompt que as sugestões devem cobrir cenários como: perguntar detalhes faltantes, criar atividades com campos completos, atualizar status, definir prioridades
+2. **`whatsapp-ai-agent-reply`** — faz sua PRÓPRIA transcrição com ElevenLabs + Gemini fallback, mas **não atualiza** o texto salvo. O agente IA pode "ouvir" corretamente, mas o texto exibido no chat vem do caminho 1.
 
-**2. Frontend: Renderizar chips de sugestão após cada mensagem da IA**
+3. **`whatsapp-command-processor`** — tem transcrição separada, usando `image_url` (tipo errado para áudio).
 
-No `ActivityChatSheet.tsx`:
-- Salvar `follow_up_suggestions` no campo `ai_suggestion` da mensagem (já existe o campo JSON)
-- No `renderMessage` para mensagens AI, renderizar os chips como botões horizontais scrolláveis abaixo do texto
-- Ao clicar no chip, preencher `inputText` com o `message` da sugestão para o usuário revisar/editar antes de enviar
-- Estilizar como badges/chips compactos com ícone de seta
+4. **`wjia-agent`** — mesma coisa, usa `image_url` ao invés de `input_audio`.
 
-**3. Atualizar o system prompt**
+### Por que "não traz" a transcrição
 
-Adicionar instruções:
-- "SEMPRE inclua 2-4 sugestões de continuação no campo follow_up_suggestions"
-- "As sugestões devem ser frases completas que o usuário enviaria, cobrindo: detalhes faltantes, próximos passos, criação de atividades, atualização de campos"
-- "Cada sugestão deve ser autossuficiente — ao ser enviada, a IA deve conseguir agir sem pedir mais informações"
-- "Sempre que possível, as sugestões devem incluir dados concretos (datas, tipos, prioridades) para que a IA preencha todos os campos automaticamente"
+O chat já exibe `message_text` abaixo do player de áudio, mas sem indicador visual de que é uma transcrição. Quando a transcrição está errada, parece que o sistema "não traz" nada útil.
 
-### Exemplo de fluxo
+---
 
+## Plano de Correção
+
+### 1. Criar função STT compartilhada (`_shared/stt.ts`)
+
+Função única `transcribeAudio()` que:
+- **Primário**: ElevenLabs Scribe v2 (download do áudio, envio como FormData, `language_code: "por"`)
+- **Fallback**: Gemini 2.5 Flash (não flash-lite), com `temperature: 0`, prompt rigoroso, usando `input_audio` (base64) corretamente
+- Aceita um `sttPrompt` opcional (editável por agente)
+
+### 2. Atualizar `whatsapp-webhook` (`downloadAndStoreMedia`)
+
+- Substituir o bloco de STT Gemini flash-lite (linhas 140-179) pela chamada à nova função compartilhada `transcribeAudio()`
+- Garantir que o resultado fiel seja salvo em `message_text`
+
+### 3. Atualizar `whatsapp-ai-agent-reply`
+
+- Substituir o bloco de transcrição (linhas 391-442) pela função compartilhada
+- Remover duplicação de código
+
+### 4. Atualizar `whatsapp-command-processor`
+
+- Substituir `transcribeWithElevenLabs()` local e o fallback Gemini (linhas 55-285) pela função compartilhada
+- Corrigir o uso incorreto de `image_url` para áudio
+
+### 5. Atualizar `wjia-agent`
+
+- Substituir transcrição (linhas 74-87) pela função compartilhada
+- Corrigir o uso de `image_url` + `urlToBase64DataUri` para áudio
+
+### 6. UI: Indicador visual de transcrição no chat
+
+No `WhatsAppChat.tsx`, adicionar um label `🎤 Transcrição:` antes do texto quando `message_type === 'audio'` e `message_text` existe, para deixar claro que é uma transcrição automática e não texto digitado.
+
+---
+
+### Detalhes Técnicos
+
+**Nova `_shared/stt.ts`:**
 ```text
-Usuário: "Preciso agendar uma reunião com o cliente João"
-
-IA: "Entendido! Posso criar a atividade de reunião com João. 
-     Quando seria a melhor data?"
-
-Chips:
-[📅 Amanhã às 14h] → "Agende a reunião com João para amanhã às 14h, prioridade normal, matriz Agende"
-[📅 Próxima segunda 10h] → "Agende a reunião com João para próxima segunda às 10h, prioridade normal"  
-[📋 Me ajude a definir] → "Quais horários estão disponíveis considerando minhas atividades pendentes?"
-[➕ Criar agora sem data] → "Crie a atividade de reunião com João como pendente para eu definir a data depois"
+transcribeAudio(audioBuffer, audioMime, sttPrompt?)
+  ├─ Try ElevenLabs Scribe v2  (FormData, model_id: scribe_v2, language: por)
+  ├─ Fallback: Gemini 2.5 Flash  (input_audio, temperature: 0)
+  └─ Return: string | null
 ```
 
-### Detalhes técnicos
-
-- O campo `ai_suggestion` (JSONB) já existe na tabela `activity_chat_messages` — basta incluir `follow_up_suggestions` dentro dele
-- Nenhuma migration necessária
-- A resposta da tool `suggest_field_updates` passa a retornar `follow_up_suggestions` junto com os outros campos
-- No frontend, os chips são renderizados apenas na última mensagem da IA (para não poluir o histórico)
+**Arquivos modificados:**
+- `supabase/functions/_shared/stt.ts` (novo)
+- `supabase/functions/whatsapp-webhook/index.ts`
+- `supabase/functions/whatsapp-ai-agent-reply/index.ts`
+- `supabase/functions/whatsapp-command-processor/index.ts`
+- `supabase/functions/wjia-agent/index.ts`
+- `src/components/whatsapp/WhatsAppChat.tsx`
 
