@@ -564,26 +564,37 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       <span>Longa</span>
                     </div>
                   </div>
-                  {form.reply_with_audio && (
-                    <div className="space-y-1 pt-2 border-t border-border/50">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-[11px] flex items-center gap-1"><Volume2 className="h-3 w-3" />Limite por áudio</Label>
-                        <span className="text-[10px] font-mono text-muted-foreground">{form.max_tts_chars} chars · {Math.floor(form.max_tts_chars / 15 / 60)}min {Math.round((form.max_tts_chars / 15) % 60)}s–{Math.floor(form.max_tts_chars / 10 / 60)}min {Math.round((form.max_tts_chars / 10) % 60)}s</span>
+                  {form.reply_with_audio && (() => {
+                    const totalChars = Math.floor(form.max_tokens * 0.75 * 0.8);
+                    const parts = Math.max(1, Math.ceil(totalChars / form.max_tts_chars));
+                    const charsPerPart = Math.round(totalChars / parts);
+                    const minSec = Math.floor(charsPerPart / 15);
+                    const maxSec = Math.floor(charsPerPart / 10);
+                    const fmtTime = (s: number) => s >= 60 ? `${Math.floor(s / 60)}min ${s % 60}s` : `${s}s`;
+                    return (
+                      <div className="space-y-2 pt-2 border-t border-border/50">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] flex items-center gap-1"><Volume2 className="h-3 w-3" />Dividir áudio em</Label>
+                          <span className="text-[10px] font-mono text-muted-foreground">{parts} {parts === 1 ? 'áudio único' : 'partes'}</span>
+                        </div>
+                        <Slider
+                          value={[parts]}
+                          onValueChange={([v]) => {
+                            const newMax = Math.round(totalChars / v);
+                            setForm(f => ({ ...f, max_tts_chars: Math.max(300, Math.min(3000, newMax)) }));
+                          }}
+                          min={1}
+                          max={Math.max(1, Math.ceil(totalChars / 300))}
+                          step={1}
+                        />
+                        <div className="flex justify-between text-[10px] text-muted-foreground">
+                          <span>1 áudio</span>
+                          <span>Cada parte ≈ {charsPerPart} chars · {fmtTime(minSec)}–{fmtTime(maxSec)}</span>
+                          <span>{Math.max(1, Math.ceil(totalChars / 300))} partes</span>
+                        </div>
                       </div>
-                      <Slider
-                        value={[form.max_tts_chars]}
-                        onValueChange={([v]) => setForm(f => ({ ...f, max_tts_chars: v }))}
-                        min={500}
-                        max={3000}
-                        step={100}
-                      />
-                      <div className="flex justify-between text-[10px] text-muted-foreground">
-                        <span>Curto</span>
-                        <span>Respostas maiores = múltiplos áudios</span>
-                        <span>Longo</span>
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
