@@ -953,6 +953,29 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
           </CardContent>
         </Card>
       ))}
+
+      <Sheet open={promptSheetOpen} onOpenChange={setPromptSheetOpen}>
+        <SheetContent side="right" className="w-[500px] sm:w-[600px] flex flex-col p-0">
+          <SheetHeader className="px-6 py-4 border-b shrink-0">
+            <SheetTitle className="text-sm flex items-center gap-2">
+              🧠 Prompt do Agente
+            </SheetTitle>
+            <p className="text-xs text-muted-foreground">Edite o prompt com mais espaço. As alterações são aplicadas em tempo real.</p>
+          </SheetHeader>
+          <div className="flex-1 p-4 overflow-hidden">
+            <Textarea
+              value={form.prompt_instructions}
+              onChange={e => setForm(f => ({ ...f, prompt_instructions: e.target.value }))}
+              placeholder="Você é um assistente jurídico profissional..."
+              className="h-full w-full resize-none text-sm font-mono leading-relaxed"
+            />
+          </div>
+          <div className="px-6 py-3 border-t shrink-0 flex items-center justify-between text-xs text-muted-foreground">
+            <span>{form.prompt_instructions?.length || 0} caracteres</span>
+            <Button size="sm" onClick={() => setPromptSheetOpen(false)}>Fechar</Button>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
