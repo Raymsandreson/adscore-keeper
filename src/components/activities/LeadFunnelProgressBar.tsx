@@ -152,8 +152,6 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const currentIdx = stages.findIndex(s => s.id === currentStageId);
   const progressPercent = currentIdx >= 0 ? ((currentIdx + 1) / stages.length) * 100 : 0;
 
-  // Allow viewing a different stage
-  const [viewingStageId, setViewingStageId] = useState<string | null>(null);
   const activeViewStageId = viewingStageId || currentStageId;
 
   // Get instances for the viewed stage
