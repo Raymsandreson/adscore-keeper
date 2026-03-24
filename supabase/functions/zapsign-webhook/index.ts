@@ -245,7 +245,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Send signed PDF via WhatsApp
+      // Send signed PDF via WhatsApp to client
       if (localDoc.whatsapp_phone && localDoc.send_signed_pdf !== false) {
         if (signedFileUrl) {
           console.log('Sending signed PDF via WhatsApp to:', localDoc.whatsapp_phone, 'URL:', signedFileUrl)
@@ -312,6 +312,51 @@ Deno.serve(async (req) => {
                 })
               } else {
                 console.error('Failed to send signed PDF via WhatsApp:', uazResponseText)
+              }
+
+              // ====================================================
+              // SEND SIGNED PDF TO WHATSAPP GROUP
+              // ====================================================
+              try {
+                let groupId: string | null = null
+                if (localDoc.lead_id) {
+                  const { data: leadG } = await supabase.from('leads').select('whatsapp_group_id').eq('id', localDoc.lead_id).maybeSingle()
+                  groupId = leadG?.whatsapp_group_id || null
+                }
+                if (!groupId && localDoc.contact_id) {
+                  const { data: contactG } = await supabase.from('contacts').select('whatsapp_group_id').eq('id', localDoc.contact_id).maybeSingle()
+                  groupId = contactG?.whatsapp_group_id || null
+                }
+
+                if (groupId) {
+                  console.log(`Sending signed PDF to group: ${groupId}`)
+                  
+                  // Send signed PDF to group
+                  await fetch(`${baseUrl}/send/media`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
+                    body: JSON.stringify({
+                      number: groupId,
+                      file: signedFileUrl,
+                      type: 'document',
+                      caption: `✅ ${docName} - Assinado por todos os signatários`,
+                    }),
+                  })
+
+                  // Send summary message to group
+                  const signerName = localDoc.signer_name || 'Cliente'
+                  const summaryMsg = `✅ *Documento Assinado!*\n\n📄 *${docName}*\n👤 *Signatário:* ${signerName}\n📊 *Assinaturas:* ${signedCount}/${totalSigners} ✅\n📅 *Data:* ${new Date().toLocaleDateString('pt-BR')}\n\n🎉 Todas as assinaturas foram coletadas com sucesso!`
+                  
+                  await fetch(`${baseUrl}/send/text`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
+                    body: JSON.stringify({ number: groupId, text: summaryMsg }),
+                  })
+                  
+                  console.log(`Signed PDF and summary sent to group ${groupId}`)
+                }
+              } catch (groupErr) {
+                console.error('Error sending signed PDF to group:', groupErr)
               }
             } else {
               console.error('No active WhatsApp instance found to send signed PDF')
