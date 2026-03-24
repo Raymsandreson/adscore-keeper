@@ -188,14 +188,29 @@ export function WhatsAppLeadsDashboard() {
   const fetchTodayMetrics = async () => {
     const todayStart = startOfDay(new Date()).toISOString();
 
-    let inboundQuery = supabase
-      .from('whatsapp_messages')
-      .select('phone, contact_name, created_at, instance_name')
-      .eq('direction', 'inbound')
-      .not('phone', 'like', '%@g.us')
-      .gte('created_at', todayStart)
-      .order('created_at', { ascending: true })
-      .limit(500);
+    // Helper to fetch all rows paginated (avoid 1000-row default limit)
+    const fetchAllInbound = async () => {
+      const allRows: any[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        let q = supabase
+          .from('whatsapp_messages')
+          .select('phone, contact_name, created_at, instance_name')
+          .eq('direction', 'inbound')
+          .not('phone', 'like', '%@g.us')
+          .gte('created_at', todayStart)
+          .order('created_at', { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (selectedInstance !== 'all') q = q.eq('instance_name', selectedInstance);
+        const { data } = await q;
+        if (!data || data.length === 0) break;
+        allRows.push(...data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+      return allRows;
+    };
 
     let outboundQuery = supabase
       .from('whatsapp_messages')
@@ -203,11 +218,10 @@ export function WhatsAppLeadsDashboard() {
       .eq('direction', 'outbound')
       .gte('created_at', todayStart)
       .order('created_at', { ascending: false })
-      .limit(500);
+      .limit(1000);
 
     // Apply instance filter to today metrics too
     if (selectedInstance !== 'all') {
-      inboundQuery = inboundQuery.eq('instance_name', selectedInstance);
       outboundQuery = outboundQuery.eq('instance_name', selectedInstance);
     }
 
