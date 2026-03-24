@@ -42,6 +42,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const [instances, setInstances] = useState<ChecklistInstance[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
+  const { createLeadInstances, fetchLeadInstances } = useChecklists();
 
   const fetchData = useCallback(async () => {
     if (!leadId || !boardId) {
@@ -50,24 +51,32 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     }
 
     try {
-      const [boardRes, historyRes, instancesRes] = await Promise.all([
+      const [boardRes, historyRes] = await Promise.all([
         supabase.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
         supabase.from('lead_stage_history').select('to_stage').eq('lead_id', leadId).order('changed_at', { ascending: false }).limit(1),
-        supabase.from('lead_checklist_instances').select('id, stage_id, checklist_template_id, items, is_completed, is_readonly').eq('lead_id', leadId).eq('board_id', boardId),
       ]);
 
+      let stageId: string | null = null;
       if (boardRes.data?.stages) {
         const parsed = boardRes.data.stages as unknown as Stage[];
         setStages(parsed);
       }
 
       if (historyRes.data && historyRes.data.length > 0) {
-        setCurrentStageId(historyRes.data[0].to_stage);
+        stageId = historyRes.data[0].to_stage;
+        setCurrentStageId(stageId);
       }
 
-      if (instancesRes.data) {
-        // Fetch template names
-        const templateIds = [...new Set(instancesRes.data.map(i => i.checklist_template_id))];
+      // Create instances if needed (same as WhatsAppLeadStageManager)
+      if (stageId) {
+        await createLeadInstances(leadId, boardId, stageId);
+      }
+
+      // Fetch all instances
+      const allInstances = await fetchLeadInstances(leadId);
+
+      if (allInstances.length > 0) {
+        const templateIds = [...new Set(allInstances.map(i => i.checklist_template_id))];
         let templateNames: Record<string, string> = {};
         if (templateIds.length > 0) {
           const { data: templates } = await supabase
@@ -77,7 +86,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
           (templates || []).forEach(t => { templateNames[t.id] = t.name; });
         }
 
-        setInstances(instancesRes.data.map(i => ({
+        setInstances(allInstances.map(i => ({
           ...i,
           items: (i.items as unknown as ChecklistItem[]) || [],
           template_name: templateNames[i.checklist_template_id] || 'Passos',
