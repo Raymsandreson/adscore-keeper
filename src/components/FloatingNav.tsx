@@ -152,14 +152,9 @@ export function FloatingNav() {
     }
   };
 
-  // Update indicator based on unseen features from latest release
-  useEffect(() => {
-    setHasUpdate(unseenCount > 0);
-  }, [unseenCount]);
-
   // Also listen for PWA updates
   useEffect(() => {
-    const unsub = onUpdateAvailable(() => setHasUpdate(true));
+    const unsub = onUpdateAvailable(() => setHasPwaUpdate(true));
     return unsub;
   }, []);
 
