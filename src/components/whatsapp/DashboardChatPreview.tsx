@@ -12,10 +12,10 @@ import { cn } from '@/lib/utils';
 
 interface Message {
   id: string;
-  content: string | null;
+  message_text: string | null;
   direction: string;
   created_at: string;
-  message_type: string | null;
+  message_type: string;
   media_url: string | null;
   media_type: string | null;
 }
