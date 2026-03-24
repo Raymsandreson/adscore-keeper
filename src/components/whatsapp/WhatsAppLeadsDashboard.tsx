@@ -87,7 +87,11 @@ function formatResponseTime(minutes: number): string {
 
 type SheetType = 'new_convs' | 'followups' | 'documents' | 'funnel' | 'slow_responses' | 'conversations' | 'qualified' | 'converted' | 'lead_followups' | null;
 
-export function WhatsAppLeadsDashboard() {
+interface WhatsAppLeadsDashboardProps {
+  onOpenChat?: (phone: string) => void;
+}
+
+export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardProps = {}) {
   const navigate = useNavigate();
   const [leads, setLeads] = useState<LeadWithMessages[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
@@ -1799,6 +1803,7 @@ export function WhatsAppLeadsDashboard() {
         hasContact={chatPreview?.hasContact ?? false}
         wasResponded={chatPreview?.wasResponded ?? false}
         responseTimeMinutes={chatPreview?.responseTimeMinutes ?? null}
+        onOpenChat={onOpenChat}
       />
     </div>
   );
