@@ -6,11 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Zap, Plus, Trash2, UserPlus, FolderKanban, Briefcase, ListChecks, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, Zap, Plus, Trash2, UserPlus, FolderKanban, Briefcase, ListChecks, ChevronDown, ChevronUp, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface AutomationAction {
-  type: 'create_lead' | 'create_contact' | 'create_activity' | 'create_case' | 'move_lead_stage';
+  type: 'create_lead' | 'create_contact' | 'create_activity' | 'create_case' | 'move_lead_stage' | 'create_group';
   config: Record<string, any>;
   enabled: boolean;
 }
@@ -51,6 +51,7 @@ const ACTION_TYPES = [
   { value: 'create_activity', label: 'Criar Atividade', icon: ListChecks, description: 'Cria uma atividade vinculada ao lead' },
   { value: 'create_case', label: 'Criar Caso', icon: Briefcase, description: 'Cria um caso jurídico vinculado ao lead' },
   { value: 'move_lead_stage', label: 'Mover Lead de Etapa', icon: FolderKanban, description: 'Move o lead para um funil/etapa específico' },
+  { value: 'create_group', label: 'Criar Grupo WhatsApp', icon: Users, description: 'Cria um grupo com as instâncias configuradas no funil' },
 ];
 
 interface Props {
@@ -313,6 +314,22 @@ export function AgentAutomationRules({ agentId }: Props) {
                 {nuclei.map(n => <SelectItem key={n.id} value={n.id}>{n.prefix} - {n.name}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+        )}
+
+        {action.type === 'create_group' && (
+          <div>
+            <Label className="text-[10px]">Funil (usa instâncias configuradas)</Label>
+            <Select
+              value={action.config.board_id || ''}
+              onValueChange={v => handleUpdateActionConfig(trigger, index, 'board_id', v)}
+            >
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar funil..." /></SelectTrigger>
+              <SelectContent>
+                {boards.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-[10px] text-muted-foreground mt-1">O nome do grupo será o nome do lead. Configure as instâncias em Configurações → Grupos.</p>
           </div>
         )}
       </div>
