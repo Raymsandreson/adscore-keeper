@@ -322,6 +322,11 @@ REGRAS DE ENDEREÇO E CEP:
 
 `;
       let systemPrompt = humanizationPrefix + ((agent as any).base_prompt || '');
+      
+      // Add contact identification context to prevent identity confusion
+      if (contact_name) {
+        systemPrompt += `\n\nIDENTIFICAÇÃO DO CONTATO:\nVocê está conversando com: ${contact_name} (telefone: ${phone}).\nIMPORTANTE: Se durante a conversa aparecer áudios ou mensagens que mencionem outros nomes, NÃO confunda — o cliente com quem você está falando é ${contact_name}. Outros nomes podem ser de terceiros mencionados na conversa.`
+      }
       if (knowledgeContext) {
         systemPrompt += "\n\n=== BASE DE CONHECIMENTO ===\nUse as informações abaixo como referência para responder perguntas. Baseie suas respostas nestes documentos quando relevante:\n\n" + knowledgeContext + "\n\n=== FIM DA BASE DE CONHECIMENTO ===";
       }
@@ -480,6 +485,7 @@ REGRAS DE ENDEREÇO E CEP:
 
         // Check if we should reply with audio (agent setting + incoming was audio)
         const shouldReplyAudio = (agent as any).reply_with_audio === true && message_type === "audio";
+        console.log(`Audio reply check: reply_with_audio=${(agent as any).reply_with_audio}, message_type=${message_type}, shouldReplyAudio=${shouldReplyAudio}`);
 
         if (shouldReplyAudio) {
           // Generate TTS audio via ElevenLabs
