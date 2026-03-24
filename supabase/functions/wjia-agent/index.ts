@@ -69,19 +69,12 @@ Deno.serve(async (req) => {
     // ============================================================
     let message_text = rawMessageText;
 
-    // Transcribe audio if needed
+    // Transcribe audio if needed — using shared STT (ElevenLabs + Gemini fallback)
     const isAudio = message_type === "audio" || message_type === "ptt" || (media_type?.startsWith("audio/"));
     if (isAudio && media_url && !message_text) {
       try {
-        const result = await geminiChat({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: "Transcreva EXATAMENTE o que a pessoa disse. Retorne apenas a transcrição." },
-            { role: "user", content: [{ type: "text", text: "Transcreva:" }, { type: "image_url", image_url: { url: await urlToBase64DataUri(media_url) } }] },
-          ],
-          temperature: 0.1,
-        });
-        const t = result.choices?.[0]?.message?.content;
+        const { transcribeFromUrl } = await import("../_shared/stt.ts");
+        const t = await transcribeFromUrl(media_url);
         if (t?.trim()) message_text = t.trim();
       } catch (e) { console.error("Audio transcription error:", e); }
     }

@@ -1142,7 +1142,14 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                     </a>
                   </div>
                 )}
-                {msg.message_text && <p className="whitespace-pre-wrap">{msg.message_text}</p>}
+                {msg.message_text && (
+                  <p className="whitespace-pre-wrap">
+                    {msg.message_type === 'audio' && (
+                      <span className="text-[10px] font-medium text-muted-foreground block mb-0.5">🎤 Transcrição:</span>
+                    )}
+                    {msg.message_text}
+                  </p>
+                )}
                 {!msg.message_text && !msg.media_url && msg.message_type !== 'text' && (
                   <p className="text-xs italic opacity-70">📎 {msg.message_type}</p>
                 )}

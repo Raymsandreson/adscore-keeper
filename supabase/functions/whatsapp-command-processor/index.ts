@@ -52,43 +52,7 @@ async function sendWhatsAppAudio(baseUrl: string, token: string, number: string,
   }
 }
 
-async function transcribeWithElevenLabs(mediaUrl: string): Promise<string | null> {
-  const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
-  if (!ELEVENLABS_API_KEY) {
-    console.warn("ELEVENLABS_API_KEY not configured, falling back to Gemini");
-    return null;
-  }
-
-  try {
-    // Download audio file first
-    const audioResp = await fetch(mediaUrl);
-    if (!audioResp.ok) throw new Error(`Failed to download audio: ${audioResp.status}`);
-    const audioBlob = await audioResp.blob();
-
-    const formData = new FormData();
-    formData.append("file", audioBlob, "audio.ogg");
-    formData.append("model_id", "scribe_v2");
-    formData.append("language_code", "por");
-
-    const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
-      method: "POST",
-      headers: { "xi-api-key": ELEVENLABS_API_KEY },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("ElevenLabs STT error:", response.status, errText);
-      return null;
-    }
-
-    const result = await response.json();
-    return result.text?.trim() || null;
-  } catch (e) {
-    console.error("ElevenLabs STT error:", e);
-    return null;
-  }
-}
+// Removed: transcribeWithElevenLabs — now uses shared _shared/stt.ts
 
 async function generateTTSAudio(text: string, voiceId?: string): Promise<string | null> {
   const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
@@ -253,34 +217,19 @@ serve(async (req) => {
       });
     }
 
-    // ── Audio transcription: ElevenLabs Scribe v2 (fallback to Gemini) ──
+    // ── Audio transcription: shared STT (ElevenLabs + Gemini fallback) ──
     const isAudio = message_type === 'audio' || message_type === 'ptt';
     if (isAudio && media_url && !message_text) {
-      console.log('Transcribing audio with ElevenLabs Scribe:', media_url);
-      
-      // Try ElevenLabs first
-      let transcript = await transcribeWithElevenLabs(media_url);
-      
-      // Fallback to Gemini if ElevenLabs fails
-      if (!transcript) {
-        console.log('Falling back to Gemini for transcription');
-        try {
-          const transcriptionResult = await geminiChat({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              { role: "system", content: "Transcreva EXATAMENTE o que a pessoa disse no áudio. Retorne APENAS a transcrição literal." },
-              { role: "user", content: [{ type: "image_url", image_url: { url: media_url } }] },
-            ],
-          });
-          transcript = transcriptionResult.choices?.[0]?.message?.content?.trim() || null;
-        } catch (e) {
-          console.error('Gemini transcription fallback error:', e);
+      console.log('Transcribing audio via shared STT:', media_url);
+      try {
+        const { transcribeFromUrl } = await import("../_shared/stt.ts");
+        const transcript = await transcribeFromUrl(media_url);
+        if (transcript) {
+          console.log('Audio transcribed:', transcript.substring(0, 100));
+          message_text = transcript;
         }
-      }
-
-      if (transcript) {
-        console.log('Audio transcribed:', transcript.substring(0, 100));
-        message_text = transcript;
+      } catch (e) {
+        console.error('Shared STT error:', e);
       }
     }
 

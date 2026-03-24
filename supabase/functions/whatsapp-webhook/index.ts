@@ -137,44 +137,17 @@ async function downloadAndStoreMedia(
 
     console.log('Downloaded media:', fileBuffer.byteLength, 'bytes, type:', contentType);
 
-    // Fallback STT: when UazAPI doesn't return transcription for audio, transcribe with Gemini
+    // STT: transcribe audio using shared utility (ElevenLabs primary, Gemini fallback)
     if (messageType === 'audio' && (!transcription || !transcription.trim())) {
       try {
-        const bytes = new Uint8Array(fileBuffer)
-        let binary = ''
-        const chunkSize = 0x8000
-        for (let i = 0; i < bytes.length; i += chunkSize) {
-          const chunk = bytes.subarray(i, i + chunkSize)
-          binary += String.fromCharCode(...chunk)
-        }
-        const base64Audio = btoa(binary)
-        const format = (contentType || 'audio/ogg').split('/')[1]?.split(';')[0]?.trim() || 'ogg'
-
-        const stt = await geminiChat({
-          model: 'google/gemini-2.5-flash-lite',
-          messages: [
-            {
-              role: 'system',
-              content: 'Você é um transcritor de áudio. Retorne apenas a transcrição literal em português brasileiro, sem explicações e sem formatação adicional.'
-            },
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: 'Transcreva este áudio integralmente.' },
-                { type: 'input_audio', input_audio: { data: base64Audio, format } },
-              ],
-            },
-          ],
-          temperature: 0,
-        })
-
-        const sttText = stt?.choices?.[0]?.message?.content?.trim()
+        const { transcribeAudio } = await import("../_shared/stt.ts");
+        const sttText = await transcribeAudio(fileBuffer, contentType || 'audio/ogg');
         if (sttText) {
-          transcription = sttText
-          console.log('Audio transcription generated via Gemini fallback:', sttText.substring(0, 120))
+          transcription = sttText;
+          console.log('Audio transcription via shared STT:', sttText.substring(0, 120));
         }
       } catch (sttError) {
-        console.error('Gemini fallback STT failed:', sttError)
+        console.error('Shared STT failed:', sttError);
       }
     }
 
