@@ -14,7 +14,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bot, Plus, Pencil, Trash2, Power, PowerOff, Sparkles, Loader2, Phone, Clock, Megaphone, X, FileText, Zap, Layers } from 'lucide-react';
+import { Bot, Plus, Pencil, Trash2, Power, PowerOff, Sparkles, Loader2, Phone, Clock, Megaphone, X, FileText, Zap, Layers, Volume2 } from 'lucide-react';
 import { AgentKnowledgeDocs } from './AgentKnowledgeDocs';
 import { toast } from 'sonner';
 
@@ -113,12 +113,14 @@ export function WhatsAppAIAgents() {
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
   const [callQueueCount, setCallQueueCount] = useState(0);
   const [teamMembers, setTeamMembers] = useState<{ user_id: string; full_name: string }[]>([]);
+  const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string; type: 'builtin' | 'custom' }[]>([]);
 
   useEffect(() => {
     fetchAgents();
     fetchInstances();
     fetchCallQueueCount();
     fetchTeamMembers();
+    fetchVoices();
   }, []);
 
   const fetchAgents = async () => {
@@ -183,7 +185,7 @@ export function WhatsAppAIAgents() {
       auto_call_mode: 'on_no_response', auto_call_delay_seconds: 0,
       auto_call_no_response_minutes: 30, auto_call_instance_name: null,
       call_assigned_to: null, human_pause_minutes: 30, split_messages: false, split_delay_seconds: 2,
-      respond_in_groups: false, reply_with_audio: false,
+      respond_in_groups: false, reply_with_audio: false, reply_voice_id: null,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
@@ -228,6 +230,7 @@ export function WhatsAppAIAgents() {
         split_delay_seconds: editingAgent.split_delay_seconds ?? 2,
         respond_in_groups: editingAgent.respond_in_groups ?? false,
         reply_with_audio: editingAgent.reply_with_audio ?? false,
+        reply_voice_id: editingAgent.reply_voice_id || null,
       };
 
       if (editingAgent.id) {
