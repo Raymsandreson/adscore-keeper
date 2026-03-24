@@ -192,6 +192,7 @@ export function WhatsAppLeadsDashboard() {
       .from('whatsapp_messages')
       .select('phone, contact_name, created_at, instance_name')
       .eq('direction', 'inbound')
+      .not('phone', 'like', '%@g.us')
       .gte('created_at', todayStart)
       .order('created_at', { ascending: true })
       .limit(500);
