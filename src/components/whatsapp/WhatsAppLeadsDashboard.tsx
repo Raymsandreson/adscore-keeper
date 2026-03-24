@@ -1003,7 +1003,11 @@ export function WhatsAppLeadsDashboard() {
               <span className="text-xs text-muted-foreground">Conversas Novas Hoje</span>
             </div>
             <p className="text-2xl font-bold">{todayNewConvs.length}</p>
-            <p className="text-xs text-muted-foreground">Clique para ver</p>
+            <div className="flex items-center gap-2 text-[10px]">
+              <span className="text-emerald-600 font-medium">{todayNewConvs.filter(c => c.has_lead).length} leads</span>
+              <span className="text-primary font-medium">{todayNewConvs.filter(c => c.has_contact).length} contatos</span>
+              <span className="text-muted-foreground">{todayNewConvs.filter(c => !c.has_lead && !c.has_contact).length} sem vínculo</span>
+            </div>
           </CardContent>
         </Card>
         <Card 
