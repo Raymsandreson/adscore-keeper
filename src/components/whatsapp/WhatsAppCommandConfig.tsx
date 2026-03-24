@@ -104,6 +104,7 @@ export function WhatsAppCommandConfig() {
       assistant_type: s.assistant_type || 'document',
       model: s.model || 'google/gemini-2.5-flash',
       temperature: s.temperature ?? 0.7,
+      max_tokens: (s as any).max_tokens ?? 2048,
       response_delay_seconds: s.response_delay_seconds ?? 2,
       split_messages: s.split_messages ?? false,
       split_delay_seconds: s.split_delay_seconds ?? 3,
@@ -185,6 +186,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     base_prompt: '',
     model: 'google/gemini-2.5-flash',
     temperature: 0.7,
+    max_tokens: 2048,
     response_delay_seconds: 2,
     split_messages: false,
     split_delay_seconds: 3,
@@ -260,7 +262,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       request_documents: false, document_types: [], custom_document_names: [], document_type_modes: {},
       assistant_type: 'document', base_prompt: '',
       model: 'google/gemini-2.5-flash', temperature: 0.7,
-      response_delay_seconds: 2, split_messages: false, split_delay_seconds: 3,
+      max_tokens: 2048, response_delay_seconds: 2, split_messages: false, split_delay_seconds: 3,
       reply_with_audio: false, reply_voice_id: null, respond_in_groups: false,
     });
     setFollowupSteps([]);
@@ -302,6 +304,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       base_prompt: s.base_prompt || '',
       model: s.model || 'google/gemini-2.5-flash',
       temperature: s.temperature ?? 0.7,
+      max_tokens: (s as any).max_tokens ?? 2048,
       response_delay_seconds: s.response_delay_seconds ?? 2,
       split_messages: s.split_messages ?? false,
       split_delay_seconds: s.split_delay_seconds ?? 3,
@@ -349,6 +352,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       base_prompt: form.base_prompt || null,
       model: form.model,
       temperature: form.temperature,
+      max_tokens: form.max_tokens,
       response_delay_seconds: form.response_delay_seconds,
       split_messages: form.split_messages,
       split_delay_seconds: form.split_delay_seconds,
@@ -531,6 +535,21 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     <p className="text-[10px] text-muted-foreground">
                       {form.temperature <= 0.3 ? 'Preciso e determinístico' : form.temperature >= 0.8 ? 'Criativo e variado' : 'Balanceado'}
                     </p>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Tamanho da resposta: {form.max_tokens} tokens ≈ {Math.round(form.max_tokens * 0.75)} palavras</Label>
+                  <Slider
+                    value={[form.max_tokens]}
+                    onValueChange={([v]) => setForm(f => ({ ...f, max_tokens: v }))}
+                    min={256}
+                    max={8192}
+                    step={256}
+                    className="mt-2"
+                  />
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>Curta</span>
+                    <span>Longa (~{Math.round(form.max_tokens * 0.75 / 200)}min de leitura)</span>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
