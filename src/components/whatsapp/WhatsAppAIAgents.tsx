@@ -49,6 +49,7 @@ interface AIAgent {
   respond_in_groups: boolean;
   reply_with_audio: boolean;
   reply_voice_id: string | null;
+  stt_prompt: string | null;
   created_at: string;
 }
 
@@ -206,6 +207,7 @@ export function WhatsAppAIAgents() {
       auto_call_no_response_minutes: 30, auto_call_instance_name: null,
       call_assigned_to: null, human_pause_minutes: 30, split_messages: false, split_delay_seconds: 2,
       respond_in_groups: false, reply_with_audio: false, reply_voice_id: null,
+      stt_prompt: null,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
@@ -251,6 +253,7 @@ export function WhatsAppAIAgents() {
         respond_in_groups: editingAgent.respond_in_groups ?? false,
         reply_with_audio: editingAgent.reply_with_audio ?? false,
         reply_voice_id: editingAgent.reply_voice_id || null,
+        stt_prompt: editingAgent.stt_prompt || null,
       };
 
       if (editingAgent.id) {
@@ -500,6 +503,21 @@ export function WhatsAppAIAgents() {
                       <p className="text-[10px] text-muted-foreground">Escolha a voz para respostas em áudio. Vozes personalizadas aparecem com 🎤</p>
                     </div>
                   )}
+                  
+                  {/* STT Prompt */}
+                  <div className="space-y-1">
+                    <Label className="text-xs flex items-center gap-1">🎙️ Prompt de Transcrição (STT)</Label>
+                    <Textarea
+                      className="text-xs min-h-[60px]"
+                      placeholder="Transcreva fielmente esta mensagem de voz. Retorne SOMENTE o texto exato..."
+                      value={editingAgent.stt_prompt || ''}
+                      onChange={e => setEditingAgent({ ...editingAgent, stt_prompt: e.target.value || null })}
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      Prompt usado como fallback (Gemini) quando ElevenLabs Scribe não está disponível. Deixe vazio para usar o padrão.
+                    </p>
+                  </div>
+
                   <div className="flex items-center justify-between">
                     <div>
                       <Label className="text-xs">Dividir mensagens longas</Label>
