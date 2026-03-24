@@ -205,21 +205,23 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
             {stages.map((stage, idx) => {
               const isPast = idx < currentIdx;
               const isCurrent = idx === currentIdx;
+              const isViewing = stage.id === activeViewStageId;
               return (
-                <Badge
+                <button
                   key={stage.id}
-                  variant={isCurrent ? "default" : "outline"}
+                  onClick={(e) => { e.stopPropagation(); setViewingStageId(stage.id === currentStageId ? null : stage.id); }}
                   className={cn(
-                    "text-[10px] px-1.5 py-0 h-5 transition-all",
-                    isPast && "bg-primary/15 text-primary border-primary/30",
-                    isCurrent && "bg-primary text-primary-foreground",
-                    !isPast && !isCurrent && "opacity-70 text-muted-foreground"
+                    "inline-flex items-center text-[10px] px-1.5 py-0 h-5 rounded-full border transition-all font-medium",
+                    isViewing && "ring-2 ring-primary/50",
+                    isPast && "bg-primary/15 text-primary border-primary/30 hover:bg-primary/25 cursor-pointer",
+                    isCurrent && "bg-primary text-primary-foreground border-primary cursor-pointer",
+                    !isPast && !isCurrent && "opacity-70 text-muted-foreground border-border hover:opacity-100 cursor-pointer"
                   )}
                 >
                   {isPast && <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />}
                   {isCurrent && <Circle className="h-2.5 w-2.5 mr-0.5 fill-current" />}
                   {stage.name}
-                </Badge>
+                </button>
               );
             })}
           </div>
