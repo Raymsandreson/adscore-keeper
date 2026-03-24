@@ -503,6 +503,21 @@ export function WhatsAppAIAgents() {
                       <p className="text-[10px] text-muted-foreground">Escolha a voz para respostas em áudio. Vozes personalizadas aparecem com 🎤</p>
                     </div>
                   )}
+                  
+                  {/* STT Prompt */}
+                  <div className="space-y-1">
+                    <Label className="text-xs flex items-center gap-1">🎙️ Prompt de Transcrição (STT)</Label>
+                    <Textarea
+                      className="text-xs min-h-[60px]"
+                      placeholder="Transcreva fielmente esta mensagem de voz. Retorne SOMENTE o texto exato..."
+                      value={editingAgent.stt_prompt || ''}
+                      onChange={e => setEditingAgent({ ...editingAgent, stt_prompt: e.target.value || null })}
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      Prompt usado como fallback (Gemini) quando ElevenLabs Scribe não está disponível. Deixe vazio para usar o padrão.
+                    </p>
+                  </div>
+
                   <div className="flex items-center justify-between">
                     <div>
                       <Label className="text-xs">Dividir mensagens longas</Label>
