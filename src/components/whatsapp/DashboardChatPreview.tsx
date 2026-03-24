@@ -8,7 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Lock } from 'lucide-react';
+import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -43,12 +43,14 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [loading, setLoading] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!open || !phone) return;
     setLoading(true);
+    setAiSuggestion(null);
     const fetchMessages = async () => {
       const { data } = await supabase
         .from('whatsapp_messages')
@@ -63,7 +65,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     fetchMessages();
   }, [open, phone]);
 
-  // Realtime subscription for new messages
+  // Realtime
   useEffect(() => {
     if (!open || !phone) return;
     const channel = supabase
@@ -93,7 +95,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     if (!newMessage.trim() || !phone || sending) return;
     setSending(true);
     try {
-      // Resolve instance
       let instanceId: string | undefined;
       const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
       if (msgInstanceName) {
@@ -115,7 +116,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         if (firstInst) instanceId = firstInst.id;
       }
 
-      // Get sender name
       let finalMessage = newMessage.trim();
       if (user) {
         const { data: profile } = await supabase
@@ -138,7 +138,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Erro ao enviar');
 
-      // Optimistic update
       setMessages(prev => [...prev, {
         id: data.message_id || crypto.randomUUID(),
         message_text: finalMessage,
@@ -167,10 +166,29 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
   };
 
-  const handleLinkLead = () => {
+  const handleAction = (action: string) => {
     if (phone && onOpenChat) {
       onOpenChange(false);
       onOpenChat(phone);
+    }
+  };
+
+  const handleSuggestNextStep = async () => {
+    if (!phone || loadingSuggestion) return;
+    setLoadingSuggestion(true);
+    setAiSuggestion(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('suggest-next-step', {
+        body: { phone },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setAiSuggestion(data.suggestion);
+    } catch (e: any) {
+      console.error('Error suggesting:', e);
+      toast.error('Erro ao gerar sugestão');
+    } finally {
+      setLoadingSuggestion(false);
     }
   };
 
@@ -206,29 +224,62 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
               </div>
             </div>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="shrink-0 ml-2 h-8 w-8">
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleLinkLead}>
-                  <Link2 className="h-4 w-4 mr-2" /> Vincular Lead
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleLinkLead}>
-                  <Plus className="h-4 w-4 mr-2" /> Criar Lead + Contato
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleLinkLead}>
-                  <UserPlus className="h-4 w-4 mr-2" /> Criar Contato
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleLinkLead}>
-                  <Scale className="h-4 w-4 mr-2" /> Criar Caso Jurídico
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div className="flex items-center gap-1 shrink-0 ml-2">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={handleSuggestNextStep}
+                disabled={loadingSuggestion}
+                title="Sugerir próximo passo com IA"
+              >
+                {loadingSuggestion ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-amber-500" />}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" className="h-8 w-8">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleAction('link')}>
+                    <Link2 className="h-4 w-4 mr-2" /> Vincular Lead
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAction('create_lead')}>
+                    <Plus className="h-4 w-4 mr-2" /> Criar Lead + Contato
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAction('create_contact')}>
+                    <UserPlus className="h-4 w-4 mr-2" /> Criar Contato
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAction('create_case')}>
+                    <Scale className="h-4 w-4 mr-2" /> Criar Caso Jurídico
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </DrawerHeader>
+
+        {/* AI Suggestion Banner */}
+        {aiSuggestion && (
+          <div className="mx-4 mb-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 relative">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-1 right-1 h-5 w-5"
+              onClick={() => setAiSuggestion(null)}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+            <div className="flex items-start gap-2 pr-5">
+              <Sparkles className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-0.5">Próximo passo sugerido</p>
+                <p className="text-xs text-amber-900 dark:text-amber-200">{aiSuggestion}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Messages area */}
         <div className="flex-1 min-h-0 px-4">
@@ -239,7 +290,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           ) : messages.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">Nenhuma mensagem encontrada</p>
           ) : (
-            <ScrollArea className="h-[55vh]">
+            <ScrollArea className="h-[50vh]">
               <div className="space-y-1 pr-3">
                 {messages.map((msg) => {
                   const dateLabel = formatDateSeparator(msg.created_at);
@@ -285,7 +336,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         <div className="px-4 pb-4 pt-2 shrink-0 border-t">
           <div className="flex items-end gap-2">
             <Textarea
-              ref={textareaRef}
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               onKeyDown={handleKeyDown}
