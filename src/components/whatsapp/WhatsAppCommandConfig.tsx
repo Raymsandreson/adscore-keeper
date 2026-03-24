@@ -200,6 +200,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [formSection, setFormSection] = useState<'general' | 'ai' | 'document' | 'followup'>('general');
   const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string }[]>([]);
+  const [promptSheetOpen, setPromptSheetOpen] = useState(false);
 
   const BUILTIN_VOICES = [
     { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura (padrão)' },
