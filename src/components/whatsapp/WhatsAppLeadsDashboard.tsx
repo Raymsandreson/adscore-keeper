@@ -96,7 +96,7 @@ export function WhatsAppLeadsDashboard() {
   const [selectedInstance, setSelectedInstance] = useState('all');
 
   // New metrics state
-  const [todayNewConvs, setTodayNewConvs] = useState<{ phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null }[]>([]);
+  const [todayNewConvs, setTodayNewConvs] = useState<{ phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null; has_lead: boolean; has_contact: boolean }[]>([]);
   const [todayFollowups, setTodayFollowups] = useState<{ phone: string; contact_name: string | null; outbound_count: number; last_outbound_at: string; instance_name: string | null }[]>([]);
   const [todayDocs, setTodayDocs] = useState<{ id: string; document_name: string; template_name: string | null; signer_name: string | null; status: string; created_at: string }[]>([]);
   const [funnelStages, setFunnelStages] = useState<{ stageName: string; stageColor: string; count: number; msgCount: number; followupCount: number; leads: { id: string; name: string; phone: string | null; outboundMsgs: number; inboundMsgs: number; lastActivity: string | null }[] }[]>([]);
@@ -230,7 +230,54 @@ export function WhatsAppLeadsDashboard() {
           phoneMap.set(msg.phone, { phone: msg.phone, contact_name: msg.contact_name, first_message_at: msg.created_at, instance_name: msg.instance_name });
         }
       }
-      setTodayNewConvs(Array.from(phoneMap.values()));
+      const uniquePhones = Array.from(phoneMap.keys());
+
+      if (uniquePhones.length > 0) {
+        // Check which phones had messages BEFORE today (not truly new)
+        const { data: oldMsgs } = await supabase
+          .from('whatsapp_messages')
+          .select('phone')
+          .eq('direction', 'inbound')
+          .lt('created_at', todayStart)
+          .in('phone', uniquePhones.slice(0, 200));
+        
+        const oldPhones = new Set((oldMsgs || []).map(m => m.phone));
+
+        // Check which phones have leads or contacts
+        const phoneSuffixes = uniquePhones.filter(p => !oldPhones.has(p)).map(p => p.slice(-8));
+        
+        let leadPhones = new Set<string>();
+        let contactPhones = new Set<string>();
+
+        if (phoneSuffixes.length > 0) {
+          const [leadsRes, contactsRes] = await Promise.all([
+            supabase.from('leads').select('lead_phone').not('lead_phone', 'is', null),
+            supabase.from('contacts').select('phone').not('phone', 'is', null),
+          ]);
+          
+          const leadPhoneList = (leadsRes.data || []).map(l => (l.lead_phone || '').replace(/\D/g, ''));
+          const contactPhoneList = (contactsRes.data || []).map(c => (c.phone || '').replace(/\D/g, ''));
+          
+          for (const phone of uniquePhones) {
+            const suffix = phone.slice(-8);
+            if (leadPhoneList.some(lp => lp.endsWith(suffix))) leadPhones.add(phone);
+            if (contactPhoneList.some(cp => cp.endsWith(suffix))) contactPhones.add(phone);
+          }
+        }
+
+        // Only keep truly new conversations (no prior messages)
+        const trulyNew = uniquePhones
+          .filter(p => !oldPhones.has(p))
+          .map(p => ({
+            ...phoneMap.get(p)!,
+            has_lead: leadPhones.has(p),
+            has_contact: contactPhones.has(p),
+          }));
+
+        setTodayNewConvs(trulyNew);
+      } else {
+        setTodayNewConvs([]);
+      }
     }
 
     if (followupsRes.data) {
@@ -956,7 +1003,11 @@ export function WhatsAppLeadsDashboard() {
               <span className="text-xs text-muted-foreground">Conversas Novas Hoje</span>
             </div>
             <p className="text-2xl font-bold">{todayNewConvs.length}</p>
-            <p className="text-xs text-muted-foreground">Clique para ver</p>
+            <div className="flex items-center gap-2 text-[10px]">
+              <span className="text-emerald-600 font-medium">{todayNewConvs.filter(c => c.has_lead).length} leads</span>
+              <span className="text-primary font-medium">{todayNewConvs.filter(c => c.has_contact).length} contatos</span>
+              <span className="text-muted-foreground">{todayNewConvs.filter(c => !c.has_lead && !c.has_contact).length} sem vínculo</span>
+            </div>
           </CardContent>
         </Card>
         <Card 
@@ -1406,8 +1457,12 @@ export function WhatsAppLeadsDashboard() {
             <div className="space-y-2 pr-4">
               {todayNewConvs.map((conv, i) => (
                 <div key={`${conv.phone}-${i}`} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{conv.contact_name || conv.phone}</p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium truncate">{conv.contact_name || conv.phone}</p>
+                      {conv.has_lead && <Badge variant="default" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Lead</Badge>}
+                      {conv.has_contact && <Badge variant="secondary" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Contato</Badge>}
+                    </div>
                     <p className="text-xs text-muted-foreground">{conv.phone}</p>
                     {conv.instance_name && <p className="text-[10px] text-muted-foreground">{conv.instance_name}</p>}
                   </div>
