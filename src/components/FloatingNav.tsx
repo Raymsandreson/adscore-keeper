@@ -134,7 +134,8 @@ export function FloatingNav() {
   const containerRef = useRef<HTMLDivElement>(null);
   const unreadMentions = useUnreadMentionsCount();
   const { unseenCount, isFeatureAcked, acknowledgeFeature, acknowledgeAll } = useChangelogAcknowledgments();
-  const [hasUpdate, setHasUpdate] = useState(false);
+  const [hasPwaUpdate, setHasPwaUpdate] = useState(false);
+  const hasUpdate = unseenCount > 0 || hasPwaUpdate;
   const [updating, setUpdating] = useState(false);
   const [checking, setChecking] = useState(false);
   const [updateNotesOpen, setUpdateNotesOpen] = useState(false);
@@ -151,14 +152,9 @@ export function FloatingNav() {
     }
   };
 
-  // Update indicator based on unseen features from latest release
-  useEffect(() => {
-    setHasUpdate(unseenCount > 0);
-  }, [unseenCount]);
-
   // Also listen for PWA updates
   useEffect(() => {
-    const unsub = onUpdateAvailable(() => setHasUpdate(true));
+    const unsub = onUpdateAvailable(() => setHasPwaUpdate(true));
     return unsub;
   }, []);
 
@@ -513,7 +509,7 @@ export function FloatingNav() {
                 const result = await checkForUpdates();
                 setChecking(false);
                 if (result === 'update-found') {
-                  setHasUpdate(true);
+                  setHasPwaUpdate(true);
                   setUpdateNotesOpen(true);
                 } else if (result === 'no-sw') {
                   // No service worker — just hard reload
