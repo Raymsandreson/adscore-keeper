@@ -231,6 +231,21 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           .eq('id', lead.id);
       }
 
+      // Save group_id to contact too
+      if (data.group_id) {
+        const { data: contact } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('phone', normalizedPhone)
+          .maybeSingle();
+        if (contact) {
+          await supabase
+            .from('contacts')
+            .update({ whatsapp_group_id: data.group_id } as any)
+            .eq('id', contact.id);
+        }
+      }
+
       toast.success(`Grupo "${leadName}" criado com ${data.participants_count} participantes!`);
     } catch (e: any) {
       console.error('Error creating group:', e);

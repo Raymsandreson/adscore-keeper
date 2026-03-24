@@ -429,10 +429,57 @@ export async function generateZapSignDocument(
     } catch (e) { console.error("Attach error:", e); }
   }
 
-  // Send sign link
+  // Send sign link to client
   if (signUrl) {
     const signMsg = `📝 *Documento pronto para assinatura!*\n\nOlá ${signerName.split(" ")[0]}! O documento *${session.template_name}* está pronto.\n\n👉 Clique para assinar: ${signUrl}\n\n*Instruções:*\n1. Clique no link\n2. Confira seus dados\n3. Assine digitalmente\n\nQualquer dúvida, estou à disposição! 🙏`;
     await sendWhatsApp(supabase, inst, normalizedPhone, instanceName, signMsg, session.contact_id, session.lead_id, "wjia_sign");
+  }
+
+  // ====================================================
+  // AUTO-SEND COLLECTED DOCS + SUMMARY TO WHATSAPP GROUP
+  // ====================================================
+  try {
+    // Find group_id from lead or contact
+    let groupId: string | null = null;
+    if (session.lead_id) {
+      const { data: leadG } = await supabase.from("leads").select("whatsapp_group_id").eq("id", session.lead_id).maybeSingle();
+      groupId = leadG?.whatsapp_group_id || null;
+    }
+    if (!groupId && session.contact_id) {
+      const { data: contactG } = await supabase.from("contacts").select("whatsapp_group_id").eq("id", session.contact_id).maybeSingle();
+      groupId = contactG?.whatsapp_group_id || null;
+    }
+
+    if (groupId && inst?.instance_token) {
+      const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+
+      // Send collected documents (images) to the group
+      for (const doc of receivedDocs) {
+        if (!doc.media_url) continue;
+        const typeLabel = DOC_TYPE_LABELS[doc.type] || doc.type;
+        try {
+          await fetch(`${baseUrl}/send/media`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", token: inst.instance_token },
+            body: JSON.stringify({ number: groupId, file: doc.media_url, type: "document", caption: `📎 ${typeLabel} - ${signerName}` }),
+          });
+          console.log(`Doc ${typeLabel} sent to group ${groupId}`);
+        } catch (e) { console.error(`Error sending doc to group:`, e); }
+      }
+
+      // Send case summary to the group
+      const summaryLines = fields.filter(f => f.para).map(f => `• *${getFieldLabel(f, buildTemplateFieldCatalog([]))}*: ${f.para}`).join("\n");
+      const summaryMsg = `📋 *Resumo do Caso - ${session.template_name}*\n\n👤 *Cliente:* ${signerName}\n📱 *Telefone:* ${normalizedPhone}\n\n${summaryLines}\n\n📝 Documento: *${session.template_name}*\n🔗 ${signUrl || 'Aguardando assinatura'}`;
+      
+      await fetch(`${baseUrl}/send/text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", token: inst.instance_token },
+        body: JSON.stringify({ number: groupId, text: summaryMsg }),
+      });
+      console.log(`Summary sent to group ${groupId}`);
+    }
+  } catch (groupErr) {
+    console.error("Error sending to group:", groupErr);
   }
 
   return docData;
