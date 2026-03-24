@@ -560,7 +560,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     />
                     <div className="flex justify-between text-[10px] text-muted-foreground">
                       <span>Curta</span>
-                      <span>≈ {Math.floor(form.max_tokens * 0.75)} palavras · {Math.floor(form.max_tokens * 0.75 / 200)}min {Math.round(((form.max_tokens * 0.75 / 200) % 1) * 60)}s de leitura{form.reply_with_audio ? ` · ${Math.floor(form.max_tokens * 0.75 * 0.8 / 15)}s–${Math.floor(form.max_tokens * 0.75 * 0.8 / 10)}s de áudio` : ''}</span>
+                      <span>≈ {Math.floor(form.max_tokens * 0.75)} palavras · {Math.floor(form.max_tokens * 0.75 / 200)}min {Math.round(((form.max_tokens * 0.75 / 200) % 1) * 60)}s de leitura{form.reply_with_audio ? ` · ${Math.floor(form.max_tokens * 0.75 * 0.8 / 15 / 60)}min ${Math.round((form.max_tokens * 0.75 * 0.8 / 15) % 60)}s–${Math.floor(form.max_tokens * 0.75 * 0.8 / 10 / 60)}min ${Math.round((form.max_tokens * 0.75 * 0.8 / 10) % 60)}s de áudio` : ''}</span>
                       <span>Longa</span>
                     </div>
                   </div>
