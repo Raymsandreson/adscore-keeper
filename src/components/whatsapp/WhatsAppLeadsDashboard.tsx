@@ -230,7 +230,54 @@ export function WhatsAppLeadsDashboard() {
           phoneMap.set(msg.phone, { phone: msg.phone, contact_name: msg.contact_name, first_message_at: msg.created_at, instance_name: msg.instance_name });
         }
       }
-      setTodayNewConvs(Array.from(phoneMap.values()));
+      const uniquePhones = Array.from(phoneMap.keys());
+
+      if (uniquePhones.length > 0) {
+        // Check which phones had messages BEFORE today (not truly new)
+        const { data: oldMsgs } = await supabase
+          .from('whatsapp_messages')
+          .select('phone')
+          .eq('direction', 'inbound')
+          .lt('created_at', todayStart)
+          .in('phone', uniquePhones.slice(0, 200));
+        
+        const oldPhones = new Set((oldMsgs || []).map(m => m.phone));
+
+        // Check which phones have leads or contacts
+        const phoneSuffixes = uniquePhones.filter(p => !oldPhones.has(p)).map(p => p.slice(-8));
+        
+        let leadPhones = new Set<string>();
+        let contactPhones = new Set<string>();
+
+        if (phoneSuffixes.length > 0) {
+          const [leadsRes, contactsRes] = await Promise.all([
+            supabase.from('leads').select('lead_phone').not('lead_phone', 'is', null),
+            supabase.from('contacts').select('phone').not('phone', 'is', null),
+          ]);
+          
+          const leadPhoneList = (leadsRes.data || []).map(l => (l.lead_phone || '').replace(/\D/g, ''));
+          const contactPhoneList = (contactsRes.data || []).map(c => (c.phone || '').replace(/\D/g, ''));
+          
+          for (const phone of uniquePhones) {
+            const suffix = phone.slice(-8);
+            if (leadPhoneList.some(lp => lp.endsWith(suffix))) leadPhones.add(phone);
+            if (contactPhoneList.some(cp => cp.endsWith(suffix))) contactPhones.add(phone);
+          }
+        }
+
+        // Only keep truly new conversations (no prior messages)
+        const trulyNew = uniquePhones
+          .filter(p => !oldPhones.has(p))
+          .map(p => ({
+            ...phoneMap.get(p)!,
+            has_lead: leadPhones.has(p),
+            has_contact: contactPhones.has(p),
+          }));
+
+        setTodayNewConvs(trulyNew);
+      } else {
+        setTodayNewConvs([]);
+      }
     }
 
     if (followupsRes.data) {
