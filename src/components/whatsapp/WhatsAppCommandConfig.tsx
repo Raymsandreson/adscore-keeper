@@ -641,19 +641,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                         </SelectContent>
                       </Select>
                       <p className="text-[10px] text-muted-foreground">Vozes personalizadas aparecem com 🎤</p>
-                      <div className="mt-2 space-y-1">
-                        <Label className="text-[10px]">Limite por áudio: {form.max_tts_chars} chars ≈ {Math.floor(form.max_tts_chars / 15)}s–{Math.floor(form.max_tts_chars / 10)}s</Label>
-                        <Slider
-                          value={[form.max_tts_chars]}
-                          onValueChange={([v]) => setForm(f => ({ ...f, max_tts_chars: v }))}
-                          min={500}
-                          max={3000}
-                          step={100}
-                        />
-                        <p className="text-[10px] text-muted-foreground">
-                          Respostas maiores serão divididas em múltiplos áudios
-                        </p>
-                      </div>
                     </div>
                   )}
                 </div>
