@@ -458,10 +458,18 @@ export function WhatsAppAIAgents() {
                   <Slider value={[editingAgent.temperature ?? 50]} onValueChange={([v]) => setEditingAgent({ ...editingAgent, temperature: v })} min={0} max={100} step={5} />
                   <div className="flex justify-between text-[10px] text-muted-foreground mt-1"><span>Preciso</span><span>Criativo</span></div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs">Max tokens</Label>
-                    <Input type="number" value={editingAgent.max_tokens ?? 2000} onChange={e => setEditingAgent({ ...editingAgent, max_tokens: parseInt(e.target.value) || 2000 })} />
+                <div>
+                  <Label className="text-xs">Tamanho máximo da resposta</Label>
+                  <Slider
+                    value={[editingAgent.max_tokens ?? 2048]}
+                    onValueChange={([v]) => setEditingAgent({ ...editingAgent, max_tokens: v })}
+                    min={256}
+                    max={8192}
+                    step={256}
+                  />
+                  <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                    <span>Curta (~{Math.round((editingAgent.max_tokens ?? 2048) * 0.75 / 200)}min de leitura)</span>
+                    <span>{editingAgent.max_tokens ?? 2048} tokens ≈ {Math.round((editingAgent.max_tokens ?? 2048) * 0.75)} palavras</span>
                   </div>
                 </div>
                 <div className="space-y-2">
