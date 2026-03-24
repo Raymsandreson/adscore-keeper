@@ -389,7 +389,7 @@ REGRAS DE ENDEREÇO E CEP:
           { role: "system", content: systemPrompt },
           ...contextMessages,
         ],
-        max_tokens: (agent as any).max_tokens,
+        max_tokens: (agent as any).max_tokens || 2048,
         temperature: (agent as any).temperature / 100,
       });
 
