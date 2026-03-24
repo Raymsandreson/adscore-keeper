@@ -96,7 +96,7 @@ export function WhatsAppLeadsDashboard() {
   const [selectedInstance, setSelectedInstance] = useState('all');
 
   // New metrics state
-  const [todayNewConvs, setTodayNewConvs] = useState<{ phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null; has_lead: boolean; has_contact: boolean }[]>([]);
+  const [todayNewConvs, setTodayNewConvs] = useState<{ phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null; has_lead: boolean; has_contact: boolean; was_responded: boolean; response_time_minutes: number | null; last_inbound_at: string | null; outbound_count: number }[]>([]);
   const [todayFollowups, setTodayFollowups] = useState<{ phone: string; contact_name: string | null; outbound_count: number; last_outbound_at: string; instance_name: string | null }[]>([]);
   const [todayDocs, setTodayDocs] = useState<{ id: string; document_name: string; template_name: string | null; signer_name: string | null; status: string; created_at: string }[]>([]);
   const [funnelStages, setFunnelStages] = useState<{ stageName: string; stageColor: string; count: number; msgCount: number; followupCount: number; leads: { id: string; name: string; phone: string | null; outboundMsgs: number; inboundMsgs: number; lastActivity: string | null }[] }[]>([]);
@@ -297,13 +297,59 @@ export function WhatsAppLeadsDashboard() {
         }
 
         // Only keep truly new conversations (no prior messages)
-        const trulyNew = uniquePhones
-          .filter(p => !oldPhones.has(p))
-          .map(p => ({
-            ...phoneMap.get(p)!,
+        const trulyNewPhones = uniquePhones.filter(p => !oldPhones.has(p));
+
+        // Fetch outbound messages for these phones to check response status
+        const outboundMap = new Map<string, { count: number; first_at: string | null }>();
+        for (let i = 0; i < trulyNewPhones.length; i += 200) {
+          const batch = trulyNewPhones.slice(i, i + 200);
+          const { data: outMsgs } = await supabase
+            .from('whatsapp_messages')
+            .select('phone, created_at')
+            .eq('direction', 'outbound')
+            .gte('created_at', todayStart)
+            .in('phone', batch)
+            .order('created_at', { ascending: true });
+          for (const m of (outMsgs || [])) {
+            const existing = outboundMap.get(m.phone);
+            if (!existing) {
+              outboundMap.set(m.phone, { count: 1, first_at: m.created_at });
+            } else {
+              existing.count++;
+            }
+          }
+        }
+
+        // Also get last inbound message time for each phone
+        const lastInboundMap = new Map<string, string>();
+        for (const msg of inboundData) {
+          if (trulyNewPhones.includes(msg.phone)) {
+            const existing = lastInboundMap.get(msg.phone);
+            if (!existing || msg.created_at > existing) {
+              lastInboundMap.set(msg.phone, msg.created_at);
+            }
+          }
+        }
+
+        const trulyNew = trulyNewPhones.map(p => {
+          const convData = phoneMap.get(p)!;
+          const outbound = outboundMap.get(p);
+          const lastInbound = lastInboundMap.get(p) || null;
+          const wasResponded = !!outbound;
+          let responseTimeMinutes: number | null = null;
+          if (outbound?.first_at) {
+            responseTimeMinutes = differenceInMinutes(parseISO(outbound.first_at), parseISO(convData.first_message_at));
+          }
+          return {
+            ...convData,
             has_lead: leadPhones.has(p),
             has_contact: contactPhones.has(p),
-          }));
+            was_responded: wasResponded,
+            response_time_minutes: responseTimeMinutes,
+            last_inbound_at: lastInbound,
+            outbound_count: outbound?.count || 0,
+          };
+        });
 
         setTodayNewConvs(trulyNew);
       } else {
@@ -1486,22 +1532,56 @@ export function WhatsAppLeadsDashboard() {
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-100px)] mt-4">
             <div className="space-y-2 pr-4">
-              {todayNewConvs.map((conv, i) => (
-                <div key={`${conv.phone}-${i}`} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+              {todayNewConvs.map((conv, i) => {
+                const waitingMinutes = conv.was_responded 
+                  ? conv.response_time_minutes 
+                  : differenceInMinutes(new Date(), parseISO(conv.last_inbound_at || conv.first_message_at));
+                const formatWait = (mins: number | null) => {
+                  if (mins === null) return '';
+                  if (mins < 60) return `${mins}min`;
+                  const h = Math.floor(mins / 60);
+                  const m = mins % 60;
+                  return m > 0 ? `${h}h${m}min` : `${h}h`;
+                };
+                return (
+                <div 
+                  key={`${conv.phone}-${i}`} 
+                  className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
+                  onClick={() => {
+                    setSheetOpen(null);
+                    navigate(`/whatsapp?openChat=${encodeURIComponent(conv.phone)}`);
+                  }}
+                >
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="text-sm font-medium truncate">{conv.contact_name || conv.phone}</p>
                       {conv.has_lead && <Badge variant="default" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Lead</Badge>}
                       {conv.has_contact && <Badge variant="secondary" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Contato</Badge>}
+                      {!conv.has_lead && !conv.has_contact && <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 shrink-0 text-muted-foreground">Sem vínculo</Badge>}
                     </div>
                     <p className="text-xs text-muted-foreground">{conv.phone}</p>
-                    {conv.instance_name && <p className="text-[10px] text-muted-foreground">{conv.instance_name}</p>}
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      {conv.instance_name && <span className="text-[10px] text-muted-foreground">{conv.instance_name}</span>}
+                      {conv.was_responded ? (
+                        <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 bg-emerald-50 text-emerald-700 border-emerald-200">
+                          ✓ Respondido {conv.outbound_count > 1 ? `(${conv.outbound_count}x)` : ''} em {formatWait(conv.response_time_minutes)}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 bg-amber-50 text-amber-700 border-amber-200">
+                          ⏳ Aguardando há {formatWait(waitingMinutes)}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-xs text-muted-foreground shrink-0 ml-2">
-                    {format(parseISO(conv.first_message_at), 'HH:mm')}
-                  </span>
+                  <div className="text-right shrink-0 ml-2 flex flex-col items-end gap-1">
+                    <span className="text-xs text-muted-foreground">
+                      {format(parseISO(conv.first_message_at), 'HH:mm')}
+                    </span>
+                    <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                  </div>
                 </div>
-              ))}
+                );
+              })}
               {todayNewConvs.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-8">Nenhuma conversa nova hoje</p>
               )}
