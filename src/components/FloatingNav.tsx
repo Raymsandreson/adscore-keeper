@@ -136,6 +136,7 @@ export function FloatingNav() {
   const { unseenCount, isFeatureAcked, acknowledgeFeature, acknowledgeAll } = useChangelogAcknowledgments();
   const [hasPwaUpdate, setHasPwaUpdate] = useState(false);
   const hasUpdate = unseenCount > 0 || hasPwaUpdate;
+  const [updating, setUpdating] = useState(false);
   const [checking, setChecking] = useState(false);
   const [updateNotesOpen, setUpdateNotesOpen] = useState(false);
   const { position, onPointerDown, onPointerMove, onPointerUp, resetPosition, isDragging, setPositionAndPersist } = useDraggable();
