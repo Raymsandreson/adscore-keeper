@@ -538,7 +538,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Tamanho da resposta: {form.max_tokens} tokens ≈ {Math.round(form.max_tokens * 0.75)} palavras</Label>
+                  <Label className="text-xs">Tamanho da resposta: {form.max_tokens} tokens ≈ {Math.floor(form.max_tokens * 0.75 / 200)}min {Math.round(((form.max_tokens * 0.75 / 200) % 1) * 60)}s de leitura</Label>
                   <Slider
                     value={[form.max_tokens]}
                     onValueChange={([v]) => setForm(f => ({ ...f, max_tokens: v }))}
@@ -549,7 +549,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                   />
                   <div className="flex justify-between text-[10px] text-muted-foreground">
                     <span>Curta</span>
-                    <span>Longa (~{Math.round(form.max_tokens * 0.75 / 200)}min de leitura)</span>
+                    <span>Longa</span>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
