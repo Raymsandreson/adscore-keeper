@@ -14,8 +14,9 @@ import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
 import { 
   Bot, Plus, Trash2, MessageSquare, Sparkles, 
-  Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2, Volume2
+  Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2, Volume2, Maximize2
 } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { MemberAssistantSettings } from './MemberAssistantSettings';
 
