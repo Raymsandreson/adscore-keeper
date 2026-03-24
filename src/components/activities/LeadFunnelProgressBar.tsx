@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronUp, CheckCircle2, Circle, Lock } from 'lucide-react';
+import { ChevronDown, ChevronUp, CheckCircle2, Circle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useChecklists } from '@/hooks/useChecklists';
 
 interface Stage {
   id: string;
