@@ -455,6 +455,13 @@ export function WhatsAppAIAgents() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
+                      <Label className="text-xs">Responder com áudio</Label>
+                      <p className="text-[10px] text-muted-foreground">Quando o contato enviar áudio, o agente responde com áudio também (via ElevenLabs TTS)</p>
+                    </div>
+                    <Switch checked={editingAgent.reply_with_audio ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, reply_with_audio: v })} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
                       <Label className="text-xs">Dividir mensagens longas</Label>
                       <p className="text-[10px] text-muted-foreground">Quebra a resposta em partes menores para parecer mais natural</p>
                     </div>
