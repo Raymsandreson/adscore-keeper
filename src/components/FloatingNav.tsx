@@ -509,7 +509,7 @@ export function FloatingNav() {
                 const result = await checkForUpdates();
                 setChecking(false);
                 if (result === 'update-found') {
-                  setHasUpdate(true);
+                  setHasPwaUpdate(true);
                   setUpdateNotesOpen(true);
                 } else if (result === 'no-sw') {
                   // No service worker — just hard reload
