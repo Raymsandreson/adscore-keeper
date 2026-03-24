@@ -1116,14 +1116,25 @@ export function ContactDetailSheet({
                       </div>
                       <div className="flex items-center gap-1">
                         {contactLead.lead?.lead_phone && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={(e) => { e.stopPropagation(); window.open(`https://wa.me/${contactLead.lead?.lead_phone?.replace(/\D/g, '')}`, '_blank'); }}
-                          >
-                            <MessageSquare className="h-4 w-4 text-green-600" />
-                          </Button>
+                          <>
+                            <a
+                              href={`tel:${contactLead.lead?.lead_phone?.replace(/\D/g, '').replace(/^55/, '')}`}
+                              className="callface-dial inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent"
+                              data-phone={contactLead.lead?.lead_phone?.replace(/\D/g, '').replace(/^55/, '')}
+                              title="Ligar via CallFace"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <PhoneCall className="h-4 w-4 text-primary" />
+                            </a>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={(e) => { e.stopPropagation(); window.open(`https://wa.me/${contactLead.lead?.lead_phone?.replace(/\D/g, '')}`, '_blank'); }}
+                            >
+                              <MessageSquare className="h-4 w-4 text-green-600" />
+                            </Button>
+                          </>
                         )}
                         <Button
                           variant="ghost"
