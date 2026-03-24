@@ -238,7 +238,9 @@ serve(async (req) => {
           split_delay_seconds: (shortcut as any).split_delay_seconds || 2,
           sign_messages: false,
           provider: "lovable_ai",
-          respond_in_groups: false,
+          respond_in_groups: (shortcut as any).respond_in_groups || false,
+          reply_with_audio: (shortcut as any).reply_with_audio || false,
+          reply_voice_id: (shortcut as any).reply_voice_id || null,
           human_reply_pause_minutes: (shortcut as any).human_reply_pause_minutes || 10,
           is_shortcut: true,
         };

@@ -7152,7 +7152,10 @@ export type Database = {
           model: string | null
           notify_on_signature: boolean
           prompt_instructions: string | null
+          reply_voice_id: string | null
+          reply_with_audio: boolean
           request_documents: boolean | null
+          respond_in_groups: boolean
           response_delay_seconds: number | null
           send_signed_pdf: boolean
           shortcut_name: string
@@ -7181,7 +7184,10 @@ export type Database = {
           model?: string | null
           notify_on_signature?: boolean
           prompt_instructions?: string | null
+          reply_voice_id?: string | null
+          reply_with_audio?: boolean
           request_documents?: boolean | null
+          respond_in_groups?: boolean
           response_delay_seconds?: number | null
           send_signed_pdf?: boolean
           shortcut_name: string
@@ -7210,7 +7216,10 @@ export type Database = {
           model?: string | null
           notify_on_signature?: boolean
           prompt_instructions?: string | null
+          reply_voice_id?: string | null
+          reply_with_audio?: boolean
           request_documents?: boolean | null
+          respond_in_groups?: boolean
           response_delay_seconds?: number | null
           send_signed_pdf?: boolean
           shortcut_name?: string
