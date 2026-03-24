@@ -166,7 +166,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
           {/* Compact progress bar */}
           <div className="flex items-center gap-2">
             {/* Stage dots */}
-            <div className="flex items-center gap-0.5 flex-1">
+            <div className="flex items-center gap-1 flex-1">
               {stages.map((stage, idx) => {
                 const isPast = idx < currentIdx;
                 const isCurrent = idx === currentIdx;
@@ -174,8 +174,8 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                   <div key={stage.id} className="flex items-center flex-1">
                     <div
                       className={cn(
-                        "h-1.5 flex-1 rounded-full transition-colors",
-                        isPast ? "bg-primary" : isCurrent ? "bg-primary/60" : "bg-muted"
+                        "h-2.5 flex-1 rounded-full transition-colors shadow-sm",
+                        isPast ? "bg-primary" : isCurrent ? "bg-primary/80 ring-2 ring-primary/30" : "bg-muted-foreground/20"
                       )}
                       title={stage.name}
                     />
@@ -183,16 +183,16 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                 );
               })}
             </div>
-            <div className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
+            <div className="flex items-center gap-1.5 text-xs shrink-0">
               {currentStageId && (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
+                <Badge variant="default" className="text-[10px] px-2 py-0.5 h-5 font-semibold">
                   {stages.find(s => s.id === currentStageId)?.name || currentStageId}
                 </Badge>
               )}
               {totalItems > 0 && (
-                <span>{completedItems}/{totalItems}</span>
+                <span className="text-xs font-medium text-foreground">{completedItems}/{totalItems}</span>
               )}
-              {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              {expanded ? <ChevronUp className="h-3.5 w-3.5 text-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-foreground" />}
             </div>
           </div>
         </button>
