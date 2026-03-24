@@ -134,8 +134,8 @@ export function FloatingNav() {
   const containerRef = useRef<HTMLDivElement>(null);
   const unreadMentions = useUnreadMentionsCount();
   const { unseenCount, isFeatureAcked, acknowledgeFeature, acknowledgeAll } = useChangelogAcknowledgments();
-  const [hasUpdate, setHasUpdate] = useState(false);
-  const [updating, setUpdating] = useState(false);
+  const [hasPwaUpdate, setHasPwaUpdate] = useState(false);
+  const hasUpdate = unseenCount > 0 || hasPwaUpdate;
   const [checking, setChecking] = useState(false);
   const [updateNotesOpen, setUpdateNotesOpen] = useState(false);
   const { position, onPointerDown, onPointerMove, onPointerUp, resetPosition, isDragging, setPositionAndPersist } = useDraggable();
