@@ -1532,22 +1532,56 @@ export function WhatsAppLeadsDashboard() {
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-100px)] mt-4">
             <div className="space-y-2 pr-4">
-              {todayNewConvs.map((conv, i) => (
-                <div key={`${conv.phone}-${i}`} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+              {todayNewConvs.map((conv, i) => {
+                const waitingMinutes = conv.was_responded 
+                  ? conv.response_time_minutes 
+                  : differenceInMinutes(new Date(), parseISO(conv.last_inbound_at || conv.first_message_at));
+                const formatWait = (mins: number | null) => {
+                  if (mins === null) return '';
+                  if (mins < 60) return `${mins}min`;
+                  const h = Math.floor(mins / 60);
+                  const m = mins % 60;
+                  return m > 0 ? `${h}h${m}min` : `${h}h`;
+                };
+                return (
+                <div 
+                  key={`${conv.phone}-${i}`} 
+                  className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
+                  onClick={() => {
+                    setSheetOpen(null);
+                    navigate(`/whatsapp?openChat=${encodeURIComponent(conv.phone)}`);
+                  }}
+                >
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="text-sm font-medium truncate">{conv.contact_name || conv.phone}</p>
                       {conv.has_lead && <Badge variant="default" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Lead</Badge>}
                       {conv.has_contact && <Badge variant="secondary" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Contato</Badge>}
+                      {!conv.has_lead && !conv.has_contact && <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 shrink-0 text-muted-foreground">Sem vínculo</Badge>}
                     </div>
                     <p className="text-xs text-muted-foreground">{conv.phone}</p>
-                    {conv.instance_name && <p className="text-[10px] text-muted-foreground">{conv.instance_name}</p>}
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      {conv.instance_name && <span className="text-[10px] text-muted-foreground">{conv.instance_name}</span>}
+                      {conv.was_responded ? (
+                        <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 bg-emerald-50 text-emerald-700 border-emerald-200">
+                          ✓ Respondido {conv.outbound_count > 1 ? `(${conv.outbound_count}x)` : ''} em {formatWait(conv.response_time_minutes)}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 bg-amber-50 text-amber-700 border-amber-200">
+                          ⏳ Aguardando há {formatWait(waitingMinutes)}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-xs text-muted-foreground shrink-0 ml-2">
-                    {format(parseISO(conv.first_message_at), 'HH:mm')}
-                  </span>
+                  <div className="text-right shrink-0 ml-2 flex flex-col items-end gap-1">
+                    <span className="text-xs text-muted-foreground">
+                      {format(parseISO(conv.first_message_at), 'HH:mm')}
+                    </span>
+                    <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                  </div>
                 </div>
-              ))}
+                );
+              })}
               {todayNewConvs.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-8">Nenhuma conversa nova hoje</p>
               )}
