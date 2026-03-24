@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
   Webhook, BarChart3, Megaphone, ArrowLeft, 
-  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2
+  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users
 } from 'lucide-react';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
@@ -15,7 +15,7 @@ import { WhatsAppCommandConfig } from './WhatsAppCommandConfig';
 import { WhatsAppInstanceManager } from './WhatsAppInstanceManager';
 import { WhatsAppNotificationSettings } from './WhatsAppNotificationSettings';
 import { VoiceSettings } from '@/components/voice/VoiceSettings';
-
+import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
 
 interface Tab {
   id: string;
@@ -77,6 +77,15 @@ const tabs: Tab[] = [
     icon: <Megaphone className="h-5 w-5" />,
     description: 'Vincule instâncias a contas de anúncios',
     accentColor: 'text-orange-500',
+  },
+  {
+    id: 'groups',
+    label: 'Grupos',
+    icon: <Users className="h-5 w-5" />,
+    description: 'Instâncias para criação automática de grupos',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-violet-500',
   },
   {
     id: 'integration',
@@ -220,6 +229,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'voice' && <VoiceSettings />}
             {activeTab === 'reports' && <WhatsAppReportSettings />}
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
+            {activeTab === 'groups' && <BoardGroupInstancesConfig />}
             {activeTab === 'integration' && <WhatsAppSetupGuide />}
             {activeTab === 'logs' && <WebhookLogsViewer />}
           </div>

@@ -546,6 +546,42 @@ export type Database = {
         }
         Relationships: []
       }
+      board_group_instances: {
+        Row: {
+          board_id: string
+          created_at: string
+          id: string
+          instance_id: string
+        }
+        Insert: {
+          board_id: string
+          created_at?: string
+          id?: string
+          instance_id: string
+        }
+        Update: {
+          board_id?: string
+          created_at?: string
+          id?: string
+          instance_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "board_group_instances_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "board_group_instances_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       broadcast_list_agents: {
         Row: {
           agent_id: string
