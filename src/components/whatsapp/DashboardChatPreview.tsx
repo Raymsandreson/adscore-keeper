@@ -8,7 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X } from 'lucide-react';
+import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -45,6 +45,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [sending, setSending] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -170,6 +171,72 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     if (phone && onOpenChat) {
       onOpenChange(false);
       onOpenChat(phone);
+    }
+  };
+
+  const handleCreateGroup = async () => {
+    if (!phone || creatingGroup) return;
+    setCreatingGroup(true);
+    try {
+      // Find lead linked to this contact/phone
+      const normalizedPhone = phone.replace(/\D/g, '');
+      
+      // Try to find lead via contact_leads or directly by phone
+      let leadName = contactName || normalizedPhone;
+      let boardId: string | undefined;
+
+      const { data: lead } = await supabase
+        .from('leads')
+        .select('id, lead_name, board_id')
+        .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${normalizedPhone.slice(-8)}%`)
+        .limit(1)
+        .maybeSingle();
+
+      if (lead) {
+        leadName = lead.lead_name || leadName;
+        boardId = lead.board_id || undefined;
+      }
+
+      // Get instance id
+      let instanceId: string | undefined;
+      const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
+      if (msgInstanceName) {
+        const { data: inst } = await supabase
+          .from('whatsapp_instances')
+          .select('id')
+          .eq('instance_name', msgInstanceName)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (inst) instanceId = inst.id;
+      }
+
+      const { data, error } = await supabase.functions.invoke('create-whatsapp-group', {
+        body: {
+          phone: normalizedPhone,
+          lead_name: leadName,
+          board_id: boardId,
+          contact_phone: normalizedPhone,
+          creator_instance_id: instanceId,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Erro ao criar grupo');
+
+      // Save group_id to lead if available
+      if (lead?.id && data.group_id) {
+        await supabase
+          .from('leads')
+          .update({ whatsapp_group_id: data.group_id } as any)
+          .eq('id', lead.id);
+      }
+
+      toast.success(`Grupo "${leadName}" criado com ${data.participants_count} participantes!`);
+    } catch (e: any) {
+      console.error('Error creating group:', e);
+      toast.error(e.message || 'Erro ao criar grupo');
+    } finally {
+      setCreatingGroup(false);
     }
   };
 
