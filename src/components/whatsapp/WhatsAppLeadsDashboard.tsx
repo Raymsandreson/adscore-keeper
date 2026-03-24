@@ -225,8 +225,8 @@ export function WhatsAppLeadsDashboard() {
       outboundQuery = outboundQuery.eq('instance_name', selectedInstance);
     }
 
-    const [newConvsRes, followupsRes, docsRes] = await Promise.all([
-      inboundQuery,
+    const [inboundData, followupsRes, docsRes] = await Promise.all([
+      fetchAllInbound(),
       outboundQuery,
       supabase
         .from('zapsign_documents')
@@ -235,9 +235,9 @@ export function WhatsAppLeadsDashboard() {
         .order('created_at', { ascending: false }),
     ]);
 
-    if (newConvsRes.data) {
+    if (inboundData.length > 0) {
       const phoneMap = new Map<string, { phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null }>();
-      for (const msg of newConvsRes.data) {
+      for (const msg of inboundData) {
         // Skip group conversations (phones > 13 digits or containing @g.us)
         if (msg.phone.length > 13 || msg.phone.includes('@g.us')) continue;
         if (!phoneMap.has(msg.phone)) {
@@ -247,15 +247,18 @@ export function WhatsAppLeadsDashboard() {
       const uniquePhones = Array.from(phoneMap.keys());
 
       if (uniquePhones.length > 0) {
-        // Check which phones had messages BEFORE today (not truly new)
-        const { data: oldMsgs } = await supabase
-          .from('whatsapp_messages')
-          .select('phone')
-          .eq('direction', 'inbound')
-          .lt('created_at', todayStart)
-          .in('phone', uniquePhones.slice(0, 200));
-        
-        const oldPhones = new Set((oldMsgs || []).map(m => m.phone));
+        // Check which phones had messages BEFORE today (not truly new) - paginate in batches of 200
+        const oldPhones = new Set<string>();
+        for (let i = 0; i < uniquePhones.length; i += 200) {
+          const batch = uniquePhones.slice(i, i + 200);
+          const { data: oldMsgs } = await supabase
+            .from('whatsapp_messages')
+            .select('phone')
+            .eq('direction', 'inbound')
+            .lt('created_at', todayStart)
+            .in('phone', batch);
+          (oldMsgs || []).forEach(m => oldPhones.add(m.phone));
+        }
 
         // Check which phones have leads or contacts
         const phoneSuffixes = uniquePhones.filter(p => !oldPhones.has(p)).map(p => p.slice(-8));
