@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
   Webhook, BarChart3, Megaphone, ArrowLeft, 
-  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2
+  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users
 } from 'lucide-react';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
@@ -15,7 +15,7 @@ import { WhatsAppCommandConfig } from './WhatsAppCommandConfig';
 import { WhatsAppInstanceManager } from './WhatsAppInstanceManager';
 import { WhatsAppNotificationSettings } from './WhatsAppNotificationSettings';
 import { VoiceSettings } from '@/components/voice/VoiceSettings';
-
+import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
 
 interface Tab {
   id: string;
