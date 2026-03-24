@@ -310,12 +310,13 @@ Você é um ser humano real conversando pelo WhatsApp. NUNCA revele ou insinue q
 - Mantenha mensagens curtas, como alguém digitando rápido no celular
 - Use "você", "tá", "tô", "pra" — linguagem informal brasileira natural
 - Se a pessoa não tiver algo no momento, diga algo como "sem problema, manda quando conseguir" ao invés de "digite pular"
+- NUNCA peça pro cliente digitar ou responder por texto — se ele mandou áudio, responda normalmente sobre o que ele falou. O cliente pode se comunicar da forma que preferir (áudio ou texto)
 
 REGRAS DE ENDEREÇO E CEP:
 - Se o cliente informar o CEP, NÃO pergunte rua, bairro, cidade ou estado — esses dados são obtidos automaticamente pelo CEP
 - Se precisar de endereço, peça o CEP primeiro — é mais rápido e evita erros
 - Se o cliente não souber o CEP, ACEITE e peça rua, número, bairro, cidade e estado — NÃO insista no CEP
-- CEP é OPCIONAL: se o cliente disse que não sabe, NÃO pergunte novamente. Colete o endereço sem CEP.
+- Se o cliente disse que não sabe o CEP, NÃO pergunte novamente. Colete o endereço sem CEP.
 - ENDEREÇO COMPLETO deve incluir: rua, número, bairro, complemento (se houver), cidade e estado
 - DATA DE ASSINATURA de documentos é SEMPRE a data de hoje, nunca pergunte
 - LOCAL DE ASSINATURA é SEMPRE a mesma cidade/estado do endereço do cliente, nunca pergunte separadamente
@@ -354,37 +355,49 @@ REGRAS DE ENDEREÇO E CEP:
           // Transcribe audio by downloading and sending as inline base64
           try {
             // Download audio file first
+            console.log(`Downloading audio from: ${mediaUrl.substring(0, 100)}...`);
             const audioRes = await fetch(mediaUrl);
             if (!audioRes.ok) throw new Error(`Failed to download audio: ${audioRes.status}`);
             const audioBuffer = await audioRes.arrayBuffer();
             const audioBytes = new Uint8Array(audioBuffer);
+            console.log(`Audio downloaded: ${audioBytes.length} bytes`);
             
-            // Convert to base64
-            let base64Audio = "";
-            const chunkSize = 8192;
-            for (let i = 0; i < audioBytes.length; i += chunkSize) {
-              base64Audio += String.fromCharCode(...audioBytes.slice(i, i + chunkSize));
-            }
-            base64Audio = btoa(base64Audio);
-            
-            // Detect mime type from URL
-            const lowerUrl = mediaUrl.toLowerCase();
-            let audioMime = "audio/ogg";
-            if (lowerUrl.includes(".mp3")) audioMime = "audio/mp3";
-            else if (lowerUrl.includes(".mp4") || lowerUrl.includes(".m4a")) audioMime = "audio/mp4";
-            else if (lowerUrl.includes(".wav")) audioMime = "audio/wav";
-            else if (lowerUrl.includes(".webm")) audioMime = "audio/webm";
+            if (audioBytes.length < 100) {
+              console.warn(`Audio too small (${audioBytes.length} bytes), likely empty/corrupt`);
+              contextMessages.push({ role, content: msgText || "[Mensagem de voz não transcrita]" });
+            } else {
+              // Convert to base64
+              let base64Audio = "";
+              const chunkSize = 8192;
+              for (let i = 0; i < audioBytes.length; i += chunkSize) {
+                base64Audio += String.fromCharCode(...audioBytes.slice(i, i + chunkSize));
+              }
+              base64Audio = btoa(base64Audio);
+              console.log(`Audio base64 length: ${base64Audio.length} chars`);
+              
+              // Detect mime type from URL or content-type header
+              const contentType = audioRes.headers.get("content-type") || "";
+              const lowerUrl = mediaUrl.toLowerCase();
+              let audioMime = "audio/ogg";
+              if (contentType.startsWith("audio/")) {
+                audioMime = contentType.split(";")[0].trim();
+              } else if (lowerUrl.includes(".mp3")) audioMime = "audio/mp3";
+              else if (lowerUrl.includes(".mp4") || lowerUrl.includes(".m4a")) audioMime = "audio/mp4";
+              else if (lowerUrl.includes(".wav")) audioMime = "audio/wav";
+              else if (lowerUrl.includes(".webm")) audioMime = "audio/webm";
+              else if (lowerUrl.includes(".ogg") || lowerUrl.includes(".opus")) audioMime = "audio/ogg";
+              console.log(`Audio mime: ${audioMime}`);
 
               const transcribeResult = await geminiChat({
-                model: "google/gemini-2.5-flash-lite",
+                model: "google/gemini-2.5-flash",
                 messages: [
                   { role: "user", content: [
-                    { type: "text", text: "Transcreva esta mensagem de voz fielmente em português. Retorne APENAS o texto falado, sem explicações, marcações ou formatação. Se não conseguir transcrever, retorne '[áudio inaudível]'." },
+                    { type: "text", text: "Transcreva fielmente esta mensagem de voz. Retorne SOMENTE o texto exato que a pessoa falou, sem inventar nada. Se o áudio estiver inaudível, retorne '[áudio inaudível]'. NÃO invente conteúdo." },
                     { type: "input_audio", input_audio: { format: audioMime.split("/")[1], data: base64Audio } }
                   ]}
                 ],
-                max_tokens: 500,
-                temperature: 0.1,
+                max_tokens: 1000,
+                temperature: 0,
               });
 
               const transcription = transcribeResult.choices?.[0]?.message?.content?.trim();
@@ -394,6 +407,7 @@ REGRAS DE ENDEREÇO E CEP:
               } else {
                 contextMessages.push({ role, content: msgText || "[Mensagem de voz não transcrita]" });
               }
+            }
           } catch (e) {
             console.error("Audio transcription error:", e);
             contextMessages.push({ role, content: msgText || "[Mensagem de voz]" });
