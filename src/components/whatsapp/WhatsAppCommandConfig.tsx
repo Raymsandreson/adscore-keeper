@@ -568,7 +568,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     <div className="space-y-1 pt-2 border-t border-border/50">
                       <div className="flex items-center justify-between">
                         <Label className="text-[11px] flex items-center gap-1"><Volume2 className="h-3 w-3" />Limite por áudio</Label>
-                        <span className="text-[10px] font-mono text-muted-foreground">{form.max_tts_chars} chars ≈ {Math.floor(form.max_tts_chars / 15)}s–{Math.floor(form.max_tts_chars / 10)}s</span>
+                        <span className="text-[10px] font-mono text-muted-foreground">{form.max_tts_chars} chars · {Math.floor(form.max_tts_chars / 15 / 60)}min {Math.round((form.max_tts_chars / 15) % 60)}s–{Math.floor(form.max_tts_chars / 10 / 60)}min {Math.round((form.max_tts_chars / 10) % 60)}s</span>
                       </div>
                       <Slider
                         value={[form.max_tts_chars]}
