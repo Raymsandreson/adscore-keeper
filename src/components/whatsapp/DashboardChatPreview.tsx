@@ -3,12 +3,15 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Textarea } from '@/components/ui/textarea';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ExternalLink, Loader2, User, ArrowRight } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 interface Message {
   id: string;
@@ -18,6 +21,7 @@ interface Message {
   message_type: string;
   media_url: string | null;
   media_type: string | null;
+  instance_name: string | null;
 }
 
 interface Props {
@@ -34,10 +38,13 @@ interface Props {
 }
 
 export function DashboardChatPreview({ open, onOpenChange, phone, contactName, instanceName, hasLead, hasContact, wasResponded, responseTimeMinutes, onOpenChat }: Props) {
-  const navigate = useNavigate();
+  const { user } = useAuthContext();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const [newMessage, setNewMessage] = useState('');
+  const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!open || !phone) return;
@@ -45,15 +52,34 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     const fetchMessages = async () => {
       const { data } = await supabase
         .from('whatsapp_messages')
-        .select('id, message_text, direction, created_at, message_type, media_url, media_type')
+        .select('id, message_text, direction, created_at, message_type, media_url, media_type, instance_name')
         .eq('phone', phone)
         .order('created_at', { ascending: true })
-        .limit(100);
+        .limit(200);
       setMessages(data || []);
       setLoading(false);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 100);
     };
     fetchMessages();
+  }, [open, phone]);
+
+  // Realtime subscription for new messages
+  useEffect(() => {
+    if (!open || !phone) return;
+    const channel = supabase
+      .channel(`dashboard-chat-${phone}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'whatsapp_messages',
+        filter: `phone=eq.${phone}`,
+      }, (payload) => {
+        const msg = payload.new as any;
+        setMessages(prev => [...prev, msg]);
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [open, phone]);
 
   const formatDateSeparator = (dateStr: string) => {
@@ -63,12 +89,88 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     return format(date, "dd 'de' MMMM", { locale: ptBR });
   };
 
-  const goToFullChat = () => {
-    onOpenChange(false);
+  const handleSend = async () => {
+    if (!newMessage.trim() || !phone || sending) return;
+    setSending(true);
+    try {
+      // Resolve instance
+      let instanceId: string | undefined;
+      const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
+      if (msgInstanceName) {
+        const { data: inst } = await supabase
+          .from('whatsapp_instances')
+          .select('id')
+          .eq('instance_name', msgInstanceName)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (inst) instanceId = inst.id;
+      }
+      if (!instanceId) {
+        const { data: firstInst } = await supabase
+          .from('whatsapp_instances')
+          .select('id')
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
+        if (firstInst) instanceId = firstInst.id;
+      }
+
+      // Get sender name
+      let finalMessage = newMessage.trim();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name, treatment_title')
+          .eq('user_id', user.id)
+          .single();
+        if (profile?.full_name) {
+          const parts = profile.full_name.split(' ');
+          const displayName = parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1]}` : parts[0];
+          const title = profile.treatment_title || '';
+          const senderName = title ? `${title} ${displayName}` : displayName;
+          finalMessage = `*${senderName}:*\n${newMessage.trim()}`;
+        }
+      }
+
+      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+        body: { phone, message: finalMessage, instance_id: instanceId },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Erro ao enviar');
+
+      // Optimistic update
+      setMessages(prev => [...prev, {
+        id: data.message_id || crypto.randomUUID(),
+        message_text: finalMessage,
+        direction: 'outbound',
+        created_at: new Date().toISOString(),
+        message_type: 'text',
+        media_url: null,
+        media_type: null,
+        instance_name: msgInstanceName || null,
+      }]);
+      setNewMessage('');
+      toast.success('Mensagem enviada!');
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    } catch (e: any) {
+      console.error('Error sending:', e);
+      toast.error('Erro ao enviar mensagem');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleLinkLead = () => {
     if (phone && onOpenChat) {
+      onOpenChange(false);
       onOpenChat(phone);
-    } else if (phone) {
-      navigate(`/whatsapp?openChat=${encodeURIComponent(phone)}`);
     }
   };
 
@@ -76,8 +178,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[85vh]">
-        <DrawerHeader className="pb-2">
+      <DrawerContent className="max-h-[92vh] flex flex-col">
+        <DrawerHeader className="pb-2 shrink-0">
           <div className="flex items-center justify-between">
             <div className="min-w-0 flex-1">
               <DrawerTitle className="text-base truncate flex items-center gap-2">
@@ -103,13 +205,33 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                 )}
               </div>
             </div>
-            <Button variant="outline" size="sm" className="shrink-0 ml-2 gap-1" onClick={goToFullChat}>
-              Abrir chat <ExternalLink className="h-3 w-3" />
-            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="shrink-0 ml-2 h-8 w-8">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleLinkLead}>
+                  <Link2 className="h-4 w-4 mr-2" /> Vincular Lead
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleLinkLead}>
+                  <Plus className="h-4 w-4 mr-2" /> Criar Lead + Contato
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleLinkLead}>
+                  <UserPlus className="h-4 w-4 mr-2" /> Criar Contato
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleLinkLead}>
+                  <Scale className="h-4 w-4 mr-2" /> Criar Caso Jurídico
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </DrawerHeader>
 
-        <div className="flex-1 min-h-0 px-4 pb-4">
+        {/* Messages area */}
+        <div className="flex-1 min-h-0 px-4">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -117,7 +239,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           ) : messages.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">Nenhuma mensagem encontrada</p>
           ) : (
-            <ScrollArea className="h-[50vh]">
+            <ScrollArea className="h-[55vh]">
               <div className="space-y-1 pr-3">
                 {messages.map((msg) => {
                   const dateLabel = formatDateSeparator(msg.created_at);
@@ -159,10 +281,27 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           )}
         </div>
 
-        <div className="px-4 pb-4">
-          <Button variant="default" className="w-full gap-2" onClick={goToFullChat}>
-            Abrir conversa completa <ArrowRight className="h-4 w-4" />
-          </Button>
+        {/* Message input */}
+        <div className="px-4 pb-4 pt-2 shrink-0 border-t">
+          <div className="flex items-end gap-2">
+            <Textarea
+              ref={textareaRef}
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Digite uma mensagem..."
+              className="min-h-[40px] max-h-[100px] resize-none text-sm"
+              rows={1}
+            />
+            <Button
+              size="icon"
+              className="shrink-0 h-10 w-10"
+              onClick={handleSend}
+              disabled={!newMessage.trim() || sending}
+            >
+              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </Button>
+          </div>
         </div>
       </DrawerContent>
     </Drawer>
