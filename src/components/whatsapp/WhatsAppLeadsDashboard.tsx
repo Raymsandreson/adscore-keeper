@@ -224,6 +224,8 @@ export function WhatsAppLeadsDashboard() {
     if (newConvsRes.data) {
       const phoneMap = new Map<string, { phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null }>();
       for (const msg of newConvsRes.data) {
+        // Skip group conversations (phones > 13 digits or containing @g.us)
+        if (msg.phone.length > 13 || msg.phone.includes('@g.us')) continue;
         if (!phoneMap.has(msg.phone)) {
           phoneMap.set(msg.phone, { phone: msg.phone, contact_name: msg.contact_name, first_message_at: msg.created_at, instance_name: msg.instance_name });
         }
