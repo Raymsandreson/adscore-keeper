@@ -14,7 +14,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bot, Plus, Pencil, Trash2, Power, PowerOff, Sparkles, Loader2, Phone, Clock, Megaphone, X, FileText, Zap, Layers } from 'lucide-react';
+import { Bot, Plus, Pencil, Trash2, Power, PowerOff, Sparkles, Loader2, Phone, Clock, Megaphone, X, FileText, Zap, Layers, Volume2 } from 'lucide-react';
 import { AgentKnowledgeDocs } from './AgentKnowledgeDocs';
 import { toast } from 'sonner';
 
@@ -48,6 +48,7 @@ interface AIAgent {
   human_pause_minutes: number;
   respond_in_groups: boolean;
   reply_with_audio: boolean;
+  reply_voice_id: string | null;
   created_at: string;
 }
 
@@ -112,12 +113,14 @@ export function WhatsAppAIAgents() {
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
   const [callQueueCount, setCallQueueCount] = useState(0);
   const [teamMembers, setTeamMembers] = useState<{ user_id: string; full_name: string }[]>([]);
+  const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string; type: 'builtin' | 'custom' }[]>([]);
 
   useEffect(() => {
     fetchAgents();
     fetchInstances();
     fetchCallQueueCount();
     fetchTeamMembers();
+    fetchVoices();
   }, []);
 
   const fetchAgents = async () => {
@@ -157,6 +160,26 @@ export function WhatsAppAIAgents() {
     setTeamMembers((data as any[]) || []);
   };
 
+  const BUILTIN_VOICES = [
+    { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura (padrão)' },
+    { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah' },
+    { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George' },
+    { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel' },
+    { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica' },
+    { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily' },
+    { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam' },
+  ];
+
+  const fetchVoices = async () => {
+    const builtins = BUILTIN_VOICES.map(v => ({ id: v.id, name: v.name, type: 'builtin' as const }));
+    const { data: customs } = await supabase
+      .from('custom_voices')
+      .select('id, name, elevenlabs_voice_id, status')
+      .eq('status', 'ready');
+    const customList = (customs || []).map((v: any) => ({ id: v.id, name: `🎤 ${v.name} (personalizada)`, type: 'custom' as const }));
+    setAvailableVoices([...builtins, ...customList]);
+  };
+
   const fetchAvailableCampaigns = async () => {
     const { data } = await supabase
       .from('leads')
@@ -182,7 +205,7 @@ export function WhatsAppAIAgents() {
       auto_call_mode: 'on_no_response', auto_call_delay_seconds: 0,
       auto_call_no_response_minutes: 30, auto_call_instance_name: null,
       call_assigned_to: null, human_pause_minutes: 30, split_messages: false, split_delay_seconds: 2,
-      respond_in_groups: false, reply_with_audio: false,
+      respond_in_groups: false, reply_with_audio: false, reply_voice_id: null,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
@@ -227,6 +250,7 @@ export function WhatsAppAIAgents() {
         split_delay_seconds: editingAgent.split_delay_seconds ?? 2,
         respond_in_groups: editingAgent.respond_in_groups ?? false,
         reply_with_audio: editingAgent.reply_with_audio ?? false,
+        reply_voice_id: editingAgent.reply_voice_id || null,
       };
 
       if (editingAgent.id) {
@@ -460,6 +484,22 @@ export function WhatsAppAIAgents() {
                     </div>
                     <Switch checked={editingAgent.reply_with_audio ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, reply_with_audio: v })} />
                   </div>
+                  {editingAgent.reply_with_audio && (
+                    <div className="space-y-1 pl-2 border-l-2 border-primary/20">
+                      <Label className="text-xs flex items-center gap-1"><Volume2 className="h-3 w-3" />Voz do agente</Label>
+                      <Select value={editingAgent.reply_voice_id || 'FGY2WhTYpPnrIDTdsKH5'} onValueChange={v => setEditingAgent({ ...editingAgent, reply_voice_id: v })}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Selecione a voz" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableVoices.map(v => (
+                            <SelectItem key={v.id} value={v.id} className="text-xs">{v.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[10px] text-muted-foreground">Escolha a voz para respostas em áudio. Vozes personalizadas aparecem com 🎤</p>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <div>
                       <Label className="text-xs">Dividir mensagens longas</Label>

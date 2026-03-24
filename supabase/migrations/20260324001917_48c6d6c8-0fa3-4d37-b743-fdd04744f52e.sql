@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_ai_agents ADD COLUMN IF NOT EXISTS reply_voice_id text DEFAULT NULL;

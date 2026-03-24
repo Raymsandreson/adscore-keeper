@@ -496,7 +496,19 @@ REGRAS DE ENDEREÇO E CEP:
 
             const truncated = cleanText.length > 1000 ? cleanText.substring(0, 1000) + "..." : cleanText;
 
-            const voiceId = "FGY2WhTYpPnrIDTdsKH5"; // Laura default
+            // Use agent's configured voice or fallback to Laura
+            let voiceId = (agent as any).reply_voice_id || "FGY2WhTYpPnrIDTdsKH5";
+            
+            // If voice ID looks like a custom_voices UUID, resolve the ElevenLabs voice ID
+            if (voiceId.length === 36 && voiceId.includes("-")) {
+              const { data: customVoice } = await supabase
+                .from("custom_voices")
+                .select("elevenlabs_voice_id")
+                .eq("id", voiceId)
+                .eq("status", "ready")
+                .maybeSingle();
+              voiceId = customVoice?.elevenlabs_voice_id || "FGY2WhTYpPnrIDTdsKH5";
+            }
             const ttsResp = await fetch(
               `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
               {
