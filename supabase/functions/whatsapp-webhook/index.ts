@@ -2105,6 +2105,7 @@ Deno.serve(async (req) => {
             message_type: messageType,
             lead_id: leadId || null,
             is_group: isGroup,
+            contact_name: contactName || null,
           }),
         }).catch(err => console.error('AI agent reply trigger error:', err))
       } catch (e) {
