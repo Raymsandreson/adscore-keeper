@@ -49,6 +49,7 @@ interface AIAgent {
   respond_in_groups: boolean;
   reply_with_audio: boolean;
   reply_voice_id: string | null;
+  stt_prompt: string | null;
   created_at: string;
 }
 

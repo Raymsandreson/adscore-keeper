@@ -388,19 +388,58 @@ REGRAS DE ENDEREÇO E CEP:
               else if (lowerUrl.includes(".ogg") || lowerUrl.includes(".opus")) audioMime = "audio/ogg";
               console.log(`Audio mime: ${audioMime}`);
 
-              const transcribeResult = await geminiChat({
-                model: "google/gemini-2.5-flash",
-                messages: [
-                  { role: "user", content: [
-                    { type: "text", text: "Transcreva fielmente esta mensagem de voz. Retorne SOMENTE o texto exato que a pessoa falou, sem inventar nada. Se o áudio estiver inaudível, retorne '[áudio inaudível]'. NÃO invente conteúdo." },
-                    { type: "input_audio", input_audio: { format: audioMime.split("/")[1], data: base64Audio } }
-                  ]}
-                ],
-                max_tokens: 1000,
-                temperature: 0,
-              });
-
-              const transcription = transcribeResult.choices?.[0]?.message?.content?.trim();
+              // Try ElevenLabs Scribe v2 first (dedicated STT), fallback to Gemini
+              let transcription = "";
+              const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
+              
+              if (ELEVENLABS_API_KEY) {
+                try {
+                  // Decode base64 to binary for ElevenLabs
+                  const binaryAudio = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
+                  const audioBlob = new Blob([binaryAudio], { type: audioMime });
+                  
+                  const formData = new FormData();
+                  const ext = audioMime.split("/")[1]?.split(";")[0] || "ogg";
+                  formData.append("file", audioBlob, `audio.${ext}`);
+                  formData.append("model_id", "scribe_v2");
+                  formData.append("language_code", "por");
+                  formData.append("tag_audio_events", "false");
+                  formData.append("diarize", "false");
+                  
+                  const sttRes = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+                    method: "POST",
+                    headers: { "xi-api-key": ELEVENLABS_API_KEY },
+                    body: formData,
+                  });
+                  
+                  if (sttRes.ok) {
+                    const sttData = await sttRes.json();
+                    transcription = sttData.text?.trim() || "";
+                    console.log(`ElevenLabs STT transcription (${transcription.length} chars): ${transcription.substring(0, 100)}...`);
+                  } else {
+                    console.error(`ElevenLabs STT error: ${sttRes.status} ${await sttRes.text()}`);
+                  }
+                } catch (sttErr) {
+                  console.error("ElevenLabs STT failed, falling back to Gemini:", sttErr);
+                }
+              }
+              
+              // Fallback to Gemini if ElevenLabs failed or unavailable
+              if (!transcription) {
+                const sttPrompt = (agent as any)?.stt_prompt || "Transcreva fielmente esta mensagem de voz. Retorne SOMENTE o texto exato que a pessoa falou, sem inventar nada. Se o áudio estiver inaudível, retorne '[áudio inaudível]'. NÃO invente conteúdo.";
+                const transcribeResult = await geminiChat({
+                  model: "google/gemini-2.5-flash",
+                  messages: [
+                    { role: "user", content: [
+                      { type: "text", text: sttPrompt },
+                      { type: "input_audio", input_audio: { format: audioMime.split("/")[1], data: base64Audio } }
+                    ]}
+                  ],
+                  max_tokens: 1000,
+                  temperature: 0,
+                });
+                transcription = transcribeResult.choices?.[0]?.message?.content?.trim() || "";
+              }
               if (transcription && transcription !== "[áudio inaudível]") {
                 contextMessages.push({ role, content: `[Mensagem de voz]: ${transcription}` });
                 console.log(`Transcribed audio: ${transcription.substring(0, 100)}...`);
