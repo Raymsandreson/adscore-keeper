@@ -557,11 +557,11 @@ REGRAS DE ENDEREÇO E CEP:
             const audioUrl = urlData?.publicUrl;
 
             if (audioUrl) {
-              // Send audio via UazAPI
-              const sendRes = await fetch(`${baseUrl}/send/audio`, {
+              // Send audio via UazAPI v2 unified /send/media endpoint
+              const sendRes = await fetch(`${baseUrl}/send/media`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "token": token },
-                body: JSON.stringify({ number: phone, audio: audioUrl }),
+                body: JSON.stringify({ number: phone, file: audioUrl, type: "audio" }),
               });
               if (!sendRes.ok) {
                 console.error("UazAPI audio send error:", sendRes.status, await sendRes.text());

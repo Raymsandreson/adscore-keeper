@@ -39,10 +39,10 @@ async function sendWhatsAppText(baseUrl: string, token: string, number: string, 
 
 async function sendWhatsAppAudio(baseUrl: string, token: string, number: string, audioUrl: string) {
   try {
-    const res = await fetch(`${baseUrl}/send/audio`, {
+    const res = await fetch(`${baseUrl}/send/media`, {
       method: "POST",
       headers: { "Content-Type": "application/json", token },
-      body: JSON.stringify({ number, audio: audioUrl, ptt: true }),
+      body: JSON.stringify({ number, file: audioUrl, type: "audio" }),
     });
     if (!res.ok) {
       console.warn("sendAudio failed:", await res.text());
