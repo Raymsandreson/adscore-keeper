@@ -351,63 +351,13 @@ REGRAS DE ENDEREÇO E CEP:
         const mediaUrl = (m as any).media_url;
         const msgText = (m as any).message_text;
 
-        if (msgType === "audio" && mediaUrl) {
-          // Transcribe audio by downloading and sending as inline base64
-          try {
-            // Download audio file first
-            console.log(`Downloading audio from: ${mediaUrl.substring(0, 100)}...`);
-            const audioRes = await fetch(mediaUrl);
-            if (!audioRes.ok) throw new Error(`Failed to download audio: ${audioRes.status}`);
-            const audioBuffer = await audioRes.arrayBuffer();
-            const audioBytes = new Uint8Array(audioBuffer);
-            console.log(`Audio downloaded: ${audioBytes.length} bytes`);
-            
-            if (audioBytes.length < 100) {
-              console.warn(`Audio too small (${audioBytes.length} bytes), likely empty/corrupt`);
-              contextMessages.push({ role, content: msgText || "[Mensagem de voz não transcrita]" });
-            } else {
-              // Convert to base64
-              let base64Audio = "";
-              const chunkSize = 8192;
-              for (let i = 0; i < audioBytes.length; i += chunkSize) {
-                base64Audio += String.fromCharCode(...audioBytes.slice(i, i + chunkSize));
-              }
-              base64Audio = btoa(base64Audio);
-              console.log(`Audio base64 length: ${base64Audio.length} chars`);
-              
-              // Detect mime type from URL or content-type header
-              const contentType = audioRes.headers.get("content-type") || "";
-              const lowerUrl = mediaUrl.toLowerCase();
-              let audioMime = "audio/ogg";
-              if (contentType.startsWith("audio/")) {
-                audioMime = contentType.split(";")[0].trim();
-              } else if (lowerUrl.includes(".mp3")) audioMime = "audio/mp3";
-              else if (lowerUrl.includes(".mp4") || lowerUrl.includes(".m4a")) audioMime = "audio/mp4";
-              else if (lowerUrl.includes(".wav")) audioMime = "audio/wav";
-              else if (lowerUrl.includes(".webm")) audioMime = "audio/webm";
-              else if (lowerUrl.includes(".ogg") || lowerUrl.includes(".opus")) audioMime = "audio/ogg";
-              console.log(`Audio mime: ${audioMime}`);
-
-              // Transcribe using shared STT utility (ElevenLabs primary, Gemini fallback)
-              let transcription = "";
-              try {
-                const { transcribeAudio } = await import("../_shared/stt.ts");
-                const binaryAudio = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
-                const sttPrompt = (agent as any)?.stt_prompt || undefined;
-                transcription = (await transcribeAudio(binaryAudio, audioMime, sttPrompt)) || "";
-              } catch (sttErr) {
-                console.error("Shared STT failed:", sttErr);
-              }
-              if (transcription && transcription !== "[áudio inaudível]") {
-                contextMessages.push({ role, content: `[Mensagem de voz]: ${transcription}` });
-                console.log(`Transcribed audio: ${transcription.substring(0, 100)}...`);
-              } else {
-                contextMessages.push({ role, content: msgText || "[Mensagem de voz não transcrita]" });
-              }
-            }
-          } catch (e) {
-            console.error("Audio transcription error:", e);
-            contextMessages.push({ role, content: msgText || "[Mensagem de voz]" });
+        if (msgType === "audio") {
+          // Use the already-transcribed text from the webhook (stored in message_text)
+          // This avoids re-transcribing and getting different/wrong results
+          if (msgText?.trim() && msgText !== "[áudio inaudível]") {
+            contextMessages.push({ role, content: `[Mensagem de voz]: ${msgText}` });
+          } else {
+            contextMessages.push({ role, content: "[Mensagem de voz não transcrita]" });
           }
         } else if (msgType === "image" && mediaUrl) {
           // Use multimodal content for images
