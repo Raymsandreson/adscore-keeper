@@ -193,6 +193,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     reply_with_audio: false,
     reply_voice_id: null as string | null,
     respond_in_groups: false,
+    max_tts_chars: 1000,
   });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
   const [humanReplyPauseMinutes, setHumanReplyPauseMinutes] = useState(0);
@@ -263,7 +264,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       assistant_type: 'document', base_prompt: '',
       model: 'google/gemini-2.5-flash', temperature: 0.7,
       max_tokens: 2048, response_delay_seconds: 2, split_messages: false, split_delay_seconds: 3,
-      reply_with_audio: false, reply_voice_id: null, respond_in_groups: false,
+      reply_with_audio: false, reply_voice_id: null, respond_in_groups: false, max_tts_chars: 1000,
     });
     setFollowupSteps([]);
     setHumanReplyPauseMinutes(0);
@@ -311,6 +312,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       reply_with_audio: (s as any).reply_with_audio ?? false,
       reply_voice_id: (s as any).reply_voice_id || null,
       respond_in_groups: (s as any).respond_in_groups ?? false,
+      max_tts_chars: (s as any).max_tts_chars ?? 1000,
+      max_tts_chars: (s as any).max_tts_chars ?? 1000,
     });
     setFollowupSteps(s.followup_steps || []);
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
@@ -360,6 +363,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       reply_with_audio: form.reply_with_audio,
       reply_voice_id: form.reply_voice_id,
       respond_in_groups: form.respond_in_groups,
+      max_tts_chars: form.max_tts_chars,
     };
 
     let error;
@@ -608,6 +612,19 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                         </SelectContent>
                       </Select>
                       <p className="text-[10px] text-muted-foreground">Vozes personalizadas aparecem com 🎤</p>
+                      <div className="mt-2 space-y-1">
+                        <Label className="text-[10px]">Limite por áudio: {form.max_tts_chars} chars ≈ {Math.floor(form.max_tts_chars / 15)}s–{Math.floor(form.max_tts_chars / 10)}s</Label>
+                        <Slider
+                          value={[form.max_tts_chars]}
+                          onValueChange={([v]) => setForm(f => ({ ...f, max_tts_chars: v }))}
+                          min={500}
+                          max={3000}
+                          step={100}
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          Respostas maiores serão divididas em múltiplos áudios
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>
