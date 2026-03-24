@@ -30,9 +30,10 @@ interface Props {
   hasContact: boolean;
   wasResponded: boolean;
   responseTimeMinutes: number | null;
+  onOpenChat?: (phone: string) => void;
 }
 
-export function DashboardChatPreview({ open, onOpenChange, phone, contactName, instanceName, hasLead, hasContact, wasResponded, responseTimeMinutes }: Props) {
+export function DashboardChatPreview({ open, onOpenChange, phone, contactName, instanceName, hasLead, hasContact, wasResponded, responseTimeMinutes, onOpenChat }: Props) {
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -64,7 +65,11 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
 
   const goToFullChat = () => {
     onOpenChange(false);
-    if (phone) navigate(`/whatsapp?openChat=${encodeURIComponent(phone)}`);
+    if (phone && onOpenChat) {
+      onOpenChat(phone);
+    } else if (phone) {
+      navigate(`/whatsapp?openChat=${encodeURIComponent(phone)}`);
+    }
   };
 
   let lastDateLabel = '';

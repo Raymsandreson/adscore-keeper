@@ -1164,7 +1164,7 @@ export function WhatsAppInbox() {
       {showDashboard && (
         <Dialog open={showDashboard} onOpenChange={setShowDashboard}>
           <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-0">
-            <WhatsAppLeadsDashboard />
+            <WhatsAppLeadsDashboard onOpenChat={(phone) => { setShowDashboard(false); setSelectedPhone(phone); }} />
           </DialogContent>
         </Dialog>
       )}
