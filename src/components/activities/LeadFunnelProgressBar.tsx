@@ -196,7 +196,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                     "text-[10px] px-1.5 py-0 h-5 transition-all",
                     isPast && "bg-primary/15 text-primary border-primary/30",
                     isCurrent && "bg-primary text-primary-foreground",
-                    !isPast && !isCurrent && "opacity-50"
+                    !isPast && !isCurrent && "opacity-70 text-muted-foreground"
                   )}
                 >
                   {isPast && <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />}
