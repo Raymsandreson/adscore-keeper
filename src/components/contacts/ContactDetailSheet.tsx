@@ -807,22 +807,22 @@ export function ContactDetailSheet({
                       <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
                         <Phone className="h-4 w-4 text-muted-foreground" />
                         <CopyableText copyValue={contact.phone} label="Telefone" className="flex-1">
-                          <a href={`tel:${contact.phone?.replace(/\D/g, '')}`} className="hover:underline">
+                          <a
+                            href={`tel:${contact.phone?.replace(/\D/g, '').replace(/^55/, '')}`}
+                            className="callface-dial hover:underline"
+                            data-phone={contact.phone?.replace(/\D/g, '').replace(/^55/, '')}
+                          >
                             {contact.phone}
                           </a>
                         </CopyableText>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => {
-                            // Click tel: link to trigger CallFace extension
-                            window.location.href = `tel:${contact.phone?.replace(/\D/g, '')}`;
-                          }}
+                        <a
+                          href={`tel:${contact.phone?.replace(/\D/g, '').replace(/^55/, '')}`}
+                          className="callface-dial inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent"
+                          data-phone={contact.phone?.replace(/\D/g, '').replace(/^55/, '')}
                           title="Ligar via CallFace"
                         >
                           <PhoneCall className="h-4 w-4 text-primary" />
-                        </Button>
+                        </a>
                         <Button
                           variant="ghost"
                           size="icon"
