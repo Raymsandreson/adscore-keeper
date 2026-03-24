@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_ai_agents ADD COLUMN IF NOT EXISTS stt_prompt text DEFAULT 'Transcreva fielmente esta mensagem de voz. Retorne SOMENTE o texto exato que a pessoa falou, sem inventar nada. Se o áudio estiver inaudível, retorne ''[áudio inaudível]''. NÃO invente conteúdo.';

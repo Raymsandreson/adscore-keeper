@@ -6230,6 +6230,7 @@ export type Database = {
           sign_messages: boolean
           split_delay_seconds: number | null
           split_messages: boolean | null
+          stt_prompt: string | null
           temperature: number
           uazapi_agent_id: string | null
           uazapi_config: Json | null
@@ -6265,6 +6266,7 @@ export type Database = {
           sign_messages?: boolean
           split_delay_seconds?: number | null
           split_messages?: boolean | null
+          stt_prompt?: string | null
           temperature?: number
           uazapi_agent_id?: string | null
           uazapi_config?: Json | null
@@ -6300,6 +6302,7 @@ export type Database = {
           sign_messages?: boolean
           split_delay_seconds?: number | null
           split_messages?: boolean | null
+          stt_prompt?: string | null
           temperature?: number
           uazapi_agent_id?: string | null
           uazapi_config?: Json | null
