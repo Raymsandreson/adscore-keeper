@@ -321,6 +321,10 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                   <DropdownMenuItem onClick={() => handleAction('create_case')}>
                     <Scale className="h-4 w-4 mr-2" /> Criar Caso Jurídico
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleCreateGroup} disabled={creatingGroup}>
+                    {creatingGroup ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Users className="h-4 w-4 mr-2" />}
+                    Criar Grupo WhatsApp
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
