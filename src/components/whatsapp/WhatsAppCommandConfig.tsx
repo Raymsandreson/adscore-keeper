@@ -14,8 +14,9 @@ import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
 import { 
   Bot, Plus, Trash2, MessageSquare, Sparkles, 
-  Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2, Volume2
+  Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2, Volume2, Maximize2
 } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { MemberAssistantSettings } from './MemberAssistantSettings';
 
@@ -199,6 +200,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [formSection, setFormSection] = useState<'general' | 'ai' | 'document' | 'followup'>('general');
   const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string }[]>([]);
+  const [promptSheetOpen, setPromptSheetOpen] = useState(false);
 
   const BUILTIN_VOICES = [
     { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura (padrão)' },
@@ -489,12 +491,24 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                 <div className="space-y-1">
                   <Label className="text-xs">🧠 Prompt do Agente</Label>
                   <p className="text-[10px] text-muted-foreground">Define a personalidade, tom, instruções de coleta e regras de comportamento do agente.</p>
-                  <Textarea
-                    placeholder="Você é um assistente jurídico profissional. Ao interagir com o cliente, colete nome completo, CPF, RG, endereço..."
-                    value={form.prompt_instructions}
-                    onChange={e => setForm(f => ({ ...f, prompt_instructions: e.target.value }))}
-                    className="min-h-[120px] text-xs"
-                  />
+                  <div className="relative">
+                    <Textarea
+                      placeholder="Você é um assistente jurídico profissional. Ao interagir com o cliente, colete nome completo, CPF, RG, endereço..."
+                      value={form.prompt_instructions}
+                      onChange={e => setForm(f => ({ ...f, prompt_instructions: e.target.value }))}
+                      className="min-h-[120px] text-xs pr-8"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute top-1 right-1 h-6 w-6 text-muted-foreground hover:text-primary"
+                      onClick={() => setPromptSheetOpen(true)}
+                      title="Expandir editor"
+                    >
+                      <Maximize2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
@@ -939,6 +953,29 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
           </CardContent>
         </Card>
       ))}
+
+      <Sheet open={promptSheetOpen} onOpenChange={setPromptSheetOpen}>
+        <SheetContent side="right" className="w-[500px] sm:w-[600px] flex flex-col p-0">
+          <SheetHeader className="px-6 py-4 border-b shrink-0">
+            <SheetTitle className="text-sm flex items-center gap-2">
+              🧠 Prompt do Agente
+            </SheetTitle>
+            <p className="text-xs text-muted-foreground">Edite o prompt com mais espaço. As alterações são aplicadas em tempo real.</p>
+          </SheetHeader>
+          <div className="flex-1 p-4 overflow-hidden">
+            <Textarea
+              value={form.prompt_instructions}
+              onChange={e => setForm(f => ({ ...f, prompt_instructions: e.target.value }))}
+              placeholder="Você é um assistente jurídico profissional..."
+              className="h-full w-full resize-none text-sm font-mono leading-relaxed"
+            />
+          </div>
+          <div className="px-6 py-3 border-t shrink-0 flex items-center justify-between text-xs text-muted-foreground">
+            <span>{form.prompt_instructions?.length || 0} caracteres</span>
+            <Button size="sm" onClick={() => setPromptSheetOpen(false)}>Fechar</Button>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
