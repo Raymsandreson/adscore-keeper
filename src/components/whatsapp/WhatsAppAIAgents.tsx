@@ -207,6 +207,7 @@ export function WhatsAppAIAgents() {
       auto_call_no_response_minutes: 30, auto_call_instance_name: null,
       call_assigned_to: null, human_pause_minutes: 30, split_messages: false, split_delay_seconds: 2,
       respond_in_groups: false, reply_with_audio: false, reply_voice_id: null,
+      stt_prompt: null,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
@@ -252,6 +253,7 @@ export function WhatsAppAIAgents() {
         respond_in_groups: editingAgent.respond_in_groups ?? false,
         reply_with_audio: editingAgent.reply_with_audio ?? false,
         reply_voice_id: editingAgent.reply_voice_id || null,
+        stt_prompt: editingAgent.stt_prompt || null,
       };
 
       if (editingAgent.id) {
