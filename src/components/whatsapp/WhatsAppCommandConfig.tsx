@@ -198,6 +198,30 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [loadingFields, setLoadingFields] = useState(false);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [formSection, setFormSection] = useState<'general' | 'ai' | 'document' | 'followup'>('general');
+  const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string }[]>([]);
+
+  const BUILTIN_VOICES = [
+    { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura (padrão)' },
+    { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah' },
+    { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George' },
+    { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel' },
+    { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica' },
+    { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily' },
+    { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam' },
+  ];
+
+  useEffect(() => {
+    const fetchVoices = async () => {
+      const builtins = BUILTIN_VOICES.map(v => ({ id: v.id, name: v.name }));
+      const { data: customs } = await supabase
+        .from('custom_voices')
+        .select('id, name, elevenlabs_voice_id, status')
+        .eq('status', 'ready');
+      const customList = (customs || []).map((v: any) => ({ id: v.id, name: `🎤 ${v.name} (personalizada)` }));
+      setAvailableVoices([...builtins, ...customList]);
+    };
+    fetchVoices();
+  }, []);
 
   const loadZapSignTemplates = useCallback(async () => {
     if (zapsignTemplates.length > 0) return;
