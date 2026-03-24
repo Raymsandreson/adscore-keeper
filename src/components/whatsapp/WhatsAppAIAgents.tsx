@@ -48,6 +48,7 @@ interface AIAgent {
   human_pause_minutes: number;
   respond_in_groups: boolean;
   reply_with_audio: boolean;
+  reply_voice_id: string | null;
   created_at: string;
 }
 
