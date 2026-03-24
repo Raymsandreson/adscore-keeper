@@ -548,7 +548,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <Label className="text-[11px]">Tamanho do texto</Label>
+                      <Label className="text-[11px]">Tamanho máximo da resposta</Label>
                       <span className="text-[10px] font-mono text-muted-foreground">{form.max_tokens} tokens</span>
                     </div>
                     <Slider
@@ -560,7 +560,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     />
                     <div className="flex justify-between text-[10px] text-muted-foreground">
                       <span>Curta</span>
-                      <span>≈ {Math.floor(form.max_tokens * 0.75)} palavras</span>
+                      <span>≈ {Math.floor(form.max_tokens * 0.75)} palavras · {Math.floor(form.max_tokens * 0.75 / 200)}min {Math.round(((form.max_tokens * 0.75 / 200) % 1) * 60)}s de leitura{form.reply_with_audio ? ` · ${Math.floor(form.max_tokens * 0.75 * 0.8 / 15)}s–${Math.floor(form.max_tokens * 0.75 * 0.8 / 10)}s de áudio` : ''}</span>
                       <span>Longa</span>
                     </div>
                   </div>
@@ -568,7 +568,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     <div className="space-y-1 pt-2 border-t border-border/50">
                       <div className="flex items-center justify-between">
                         <Label className="text-[11px] flex items-center gap-1"><Volume2 className="h-3 w-3" />Limite por áudio</Label>
-                        <span className="text-[10px] font-mono text-muted-foreground">{form.max_tts_chars} chars ≈ {Math.floor(form.max_tts_chars / 15)}s–{Math.floor(form.max_tts_chars / 10)}s</span>
+                        <span className="text-[10px] font-mono text-muted-foreground">{form.max_tts_chars} chars · {Math.floor(form.max_tts_chars / 15 / 60)}min {Math.round((form.max_tts_chars / 15) % 60)}s–{Math.floor(form.max_tts_chars / 10 / 60)}min {Math.round((form.max_tts_chars / 10) % 60)}s</span>
                       </div>
                       <Slider
                         value={[form.max_tts_chars]}
