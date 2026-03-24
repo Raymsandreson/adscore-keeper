@@ -51,19 +51,33 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     }
 
     try {
-      const [boardRes, historyRes] = await Promise.all([
+      const [boardRes, historyRes, leadRes] = await Promise.all([
         supabase.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
         supabase.from('lead_stage_history').select('to_stage').eq('lead_id', leadId).order('changed_at', { ascending: false }).limit(1),
+        supabase.from('leads').select('status').eq('id', leadId).maybeSingle(),
       ]);
 
       let stageId: string | null = null;
+      let parsedStages: Stage[] = [];
       if (boardRes.data?.stages) {
-        const parsed = boardRes.data.stages as unknown as Stage[];
-        setStages(parsed);
+        parsedStages = boardRes.data.stages as unknown as Stage[];
+        setStages(parsedStages);
       }
 
+      // Try history first, then fall back to lead.status
       if (historyRes.data && historyRes.data.length > 0) {
         stageId = historyRes.data[0].to_stage;
+      }
+      
+      // If no history or stageId doesn't match any board stage, use lead.status
+      if (!stageId || !parsedStages.some(s => s.id === stageId)) {
+        const leadStatus = leadRes.data?.status;
+        if (leadStatus && parsedStages.some(s => s.id === leadStatus)) {
+          stageId = leadStatus;
+        }
+      }
+      
+      if (stageId) {
         setCurrentStageId(stageId);
       }
 
