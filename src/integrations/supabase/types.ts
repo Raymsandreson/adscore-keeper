@@ -7154,6 +7154,7 @@ export type Database = {
           human_reply_pause_minutes: number | null
           id: string
           is_active: boolean | null
+          max_tokens: number | null
           max_tts_chars: number | null
           media_extraction_prompt: string | null
           model: string | null
@@ -7187,6 +7188,7 @@ export type Database = {
           human_reply_pause_minutes?: number | null
           id?: string
           is_active?: boolean | null
+          max_tokens?: number | null
           max_tts_chars?: number | null
           media_extraction_prompt?: string | null
           model?: string | null
@@ -7220,6 +7222,7 @@ export type Database = {
           human_reply_pause_minutes?: number | null
           id?: string
           is_active?: boolean | null
+          max_tokens?: number | null
           max_tts_chars?: number | null
           media_extraction_prompt?: string | null
           model?: string | null
