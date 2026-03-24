@@ -540,20 +540,50 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     </p>
                   </div>
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Tamanho da resposta: {form.max_tokens} tokens ≈ {Math.floor(form.max_tokens * 0.75 / 200)}min {Math.round(((form.max_tokens * 0.75 / 200) % 1) * 60)}s de leitura</Label>
-                  <Slider
-                    value={[form.max_tokens]}
-                    onValueChange={([v]) => setForm(f => ({ ...f, max_tokens: v }))}
-                    min={256}
-                    max={8192}
-                    step={256}
-                    className="mt-2"
-                  />
-                  <div className="flex justify-between text-[10px] text-muted-foreground">
-                    <span>Curta</span>
-                    <span>Longa</span>
+                {/* Response Limits Section */}
+                <div className="space-y-3 border rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <Maximize2 className="h-3.5 w-3.5 text-primary" />
+                    <Label className="text-xs font-semibold">Limites de Resposta</Label>
                   </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-[11px]">Tamanho do texto</Label>
+                      <span className="text-[10px] font-mono text-muted-foreground">{form.max_tokens} tokens</span>
+                    </div>
+                    <Slider
+                      value={[form.max_tokens]}
+                      onValueChange={([v]) => setForm(f => ({ ...f, max_tokens: v }))}
+                      min={256}
+                      max={8192}
+                      step={256}
+                    />
+                    <div className="flex justify-between text-[10px] text-muted-foreground">
+                      <span>Curta</span>
+                      <span>≈ {Math.floor(form.max_tokens * 0.75)} palavras</span>
+                      <span>Longa</span>
+                    </div>
+                  </div>
+                  {form.reply_with_audio && (
+                    <div className="space-y-1 pt-2 border-t border-border/50">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-[11px] flex items-center gap-1"><Volume2 className="h-3 w-3" />Limite por áudio</Label>
+                        <span className="text-[10px] font-mono text-muted-foreground">{form.max_tts_chars} chars ≈ {Math.floor(form.max_tts_chars / 15)}s–{Math.floor(form.max_tts_chars / 10)}s</span>
+                      </div>
+                      <Slider
+                        value={[form.max_tts_chars]}
+                        onValueChange={([v]) => setForm(f => ({ ...f, max_tts_chars: v }))}
+                        min={500}
+                        max={3000}
+                        step={100}
+                      />
+                      <div className="flex justify-between text-[10px] text-muted-foreground">
+                        <span>Curto</span>
+                        <span>Respostas maiores = múltiplos áudios</span>
+                        <span>Longo</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
@@ -611,19 +641,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                         </SelectContent>
                       </Select>
                       <p className="text-[10px] text-muted-foreground">Vozes personalizadas aparecem com 🎤</p>
-                      <div className="mt-2 space-y-1">
-                        <Label className="text-[10px]">Limite por áudio: {form.max_tts_chars} chars ≈ {Math.floor(form.max_tts_chars / 15)}s–{Math.floor(form.max_tts_chars / 10)}s</Label>
-                        <Slider
-                          value={[form.max_tts_chars]}
-                          onValueChange={([v]) => setForm(f => ({ ...f, max_tts_chars: v }))}
-                          min={500}
-                          max={3000}
-                          step={100}
-                        />
-                        <p className="text-[10px] text-muted-foreground">
-                          Respostas maiores serão divididas em múltiplos áudios
-                        </p>
-                      </div>
                     </div>
                   )}
                 </div>
