@@ -14,7 +14,7 @@ import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
 import { 
   Bot, Plus, Trash2, MessageSquare, Sparkles, 
-  Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2
+  Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2, Volume2
 } from 'lucide-react';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { MemberAssistantSettings } from './MemberAssistantSettings';
@@ -48,6 +48,9 @@ interface Shortcut {
   split_delay_seconds: number;
   human_reply_pause_minutes: number;
   command_scope: string;
+  reply_with_audio: boolean;
+  reply_voice_id: string | null;
+  respond_in_groups: boolean;
 }
 
 interface FollowupStep {
@@ -105,6 +108,9 @@ export function WhatsAppCommandConfig() {
       split_delay_seconds: s.split_delay_seconds ?? 3,
       human_reply_pause_minutes: s.human_reply_pause_minutes ?? 0,
       command_scope: s.command_scope || 'client',
+      reply_with_audio: s.reply_with_audio ?? false,
+      reply_voice_id: s.reply_voice_id || null,
+      respond_in_groups: s.respond_in_groups ?? false,
     })) as Shortcut[]);
     
     setLoading(false);
@@ -226,6 +232,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       assistant_type: 'document', base_prompt: '',
       model: 'google/gemini-2.5-flash', temperature: 0.7,
       response_delay_seconds: 2, split_messages: false, split_delay_seconds: 3,
+      reply_with_audio: false, reply_voice_id: null, respond_in_groups: false,
     });
     setFollowupSteps([]);
     setHumanReplyPauseMinutes(0);
@@ -269,6 +276,9 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       response_delay_seconds: s.response_delay_seconds ?? 2,
       split_messages: s.split_messages ?? false,
       split_delay_seconds: s.split_delay_seconds ?? 3,
+      reply_with_audio: (s as any).reply_with_audio ?? false,
+      reply_voice_id: (s as any).reply_voice_id || null,
+      respond_in_groups: (s as any).respond_in_groups ?? false,
     });
     setFollowupSteps(s.followup_steps || []);
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
@@ -314,6 +324,9 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       split_messages: form.split_messages,
       split_delay_seconds: form.split_delay_seconds,
       command_scope: commandScope,
+      reply_with_audio: form.reply_with_audio,
+      reply_voice_id: form.reply_voice_id,
+      respond_in_groups: form.respond_in_groups,
     };
 
     let error;
