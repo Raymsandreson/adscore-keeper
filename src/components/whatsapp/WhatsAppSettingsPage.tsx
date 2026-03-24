@@ -79,6 +79,15 @@ const tabs: Tab[] = [
     accentColor: 'text-orange-500',
   },
   {
+    id: 'groups',
+    label: 'Grupos',
+    icon: <Users className="h-5 w-5" />,
+    description: 'Instâncias para criação automática de grupos',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-violet-500',
+  },
+  {
     id: 'integration',
     label: 'Integração',
     icon: <Webhook className="h-5 w-5" />,
@@ -220,6 +229,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'voice' && <VoiceSettings />}
             {activeTab === 'reports' && <WhatsAppReportSettings />}
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
+            {activeTab === 'groups' && <BoardGroupInstancesConfig />}
             {activeTab === 'integration' && <WhatsAppSetupGuide />}
             {activeTab === 'logs' && <WebhookLogsViewer />}
           </div>
