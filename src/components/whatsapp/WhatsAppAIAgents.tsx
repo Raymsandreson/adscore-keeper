@@ -459,7 +459,7 @@ export function WhatsAppAIAgents() {
                   <div className="flex justify-between text-[10px] text-muted-foreground mt-1"><span>Preciso</span><span>Criativo</span></div>
                 </div>
                 <div>
-                  <Label className="text-xs">Tamanho máximo da resposta</Label>
+                  <Label className="text-xs">Tamanho máximo da resposta: {editingAgent.max_tokens ?? 2048} tokens</Label>
                   <Slider
                     value={[editingAgent.max_tokens ?? 2048]}
                     onValueChange={([v]) => setEditingAgent({ ...editingAgent, max_tokens: v })}
