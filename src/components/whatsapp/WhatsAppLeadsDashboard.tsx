@@ -13,6 +13,7 @@ import { format, subDays, startOfDay, endOfDay, differenceInMinutes, parseISO } 
 import { toast } from 'sonner';
 import { ptBR } from 'date-fns/locale';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { DashboardChatPreview } from './DashboardChatPreview';
 
 interface LeadWithMessages {
   id: string;
@@ -105,6 +106,7 @@ export function WhatsAppLeadsDashboard() {
   const [selectedSlowBucket, setSelectedSlowBucket] = useState<string | null>(null);
   const [sendingReport, setSendingReport] = useState(false);
   const [leadFollowupDetails, setLeadFollowupDetails] = useState<LeadFollowupDetail[]>([]);
+  const [chatPreview, setChatPreview] = useState<{ phone: string; contactName: string | null; instanceName: string | null; hasLead: boolean; hasContact: boolean; wasResponded: boolean; responseTimeMinutes: number | null } | null>(null);
 
   // Stage info map for reuse
   const [stageInfoMap, setStageInfoMap] = useState<Map<string, { name: string; color: string }>>(new Map());
@@ -1548,8 +1550,15 @@ export function WhatsAppLeadsDashboard() {
                   key={`${conv.phone}-${i}`} 
                   className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
                   onClick={() => {
-                    setSheetOpen(null);
-                    navigate(`/whatsapp?openChat=${encodeURIComponent(conv.phone)}`);
+                    setChatPreview({
+                      phone: conv.phone,
+                      contactName: conv.contact_name,
+                      instanceName: conv.instance_name,
+                      hasLead: conv.has_lead,
+                      hasContact: conv.has_contact,
+                      wasResponded: conv.was_responded,
+                      responseTimeMinutes: conv.response_time_minutes,
+                    });
                   }}
                 >
                   <div className="min-w-0 flex-1">
@@ -1778,6 +1787,19 @@ export function WhatsAppLeadsDashboard() {
           </ScrollArea>
         </SheetContent>
       </Sheet>
+
+      {/* Chat Preview Bottom Sheet */}
+      <DashboardChatPreview
+        open={!!chatPreview}
+        onOpenChange={(open) => !open && setChatPreview(null)}
+        phone={chatPreview?.phone ?? null}
+        contactName={chatPreview?.contactName ?? null}
+        instanceName={chatPreview?.instanceName ?? null}
+        hasLead={chatPreview?.hasLead ?? false}
+        hasContact={chatPreview?.hasContact ?? false}
+        wasResponded={chatPreview?.wasResponded ?? false}
+        responseTimeMinutes={chatPreview?.responseTimeMinutes ?? null}
+      />
     </div>
   );
 }
