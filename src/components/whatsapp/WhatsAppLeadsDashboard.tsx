@@ -149,26 +149,40 @@ export function WhatsAppLeadsDashboard() {
     }
     const since = sinceDate.toISOString();
 
+    const untilIso = untilDate ? untilDate.toISOString() : null;
+
+    // Paginated fetch for messages to avoid 1000-row default limit
+    const fetchAllMessages = async () => {
+      const allRows: any[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        let q = supabase
+          .from('whatsapp_messages')
+          .select('id, phone, direction, created_at, lead_id, instance_name, contact_name')
+          .gte('created_at', since)
+          .order('created_at', { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (untilIso) q = q.lte('created_at', untilIso);
+        const { data } = await q;
+        if (!data || data.length === 0) break;
+        allRows.push(...data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+      return allRows;
+    };
+
     let leadsQuery = supabase
       .from('leads')
       .select('id, lead_name, lead_phone, source, status, created_at, campaign_name, adset_name, ad_name, board_id')
       .gte('created_at', since)
       .order('created_at', { ascending: false });
-    
-    let msgsQuery = supabase
-      .from('whatsapp_messages')
-      .select('id, phone, direction, created_at, lead_id, instance_name, contact_name')
-      .gte('created_at', since)
-      .order('created_at', { ascending: true });
+    if (untilIso) leadsQuery = leadsQuery.lte('created_at', untilIso);
 
-    if (untilDate) {
-      leadsQuery = leadsQuery.lte('created_at', untilDate.toISOString());
-      msgsQuery = msgsQuery.lte('created_at', untilDate.toISOString());
-    }
-
-    const [leadsRes, msgsRes, instRes] = await Promise.all([
+    const [allMsgs, leadsRes, instRes] = await Promise.all([
+      fetchAllMessages(),
       leadsQuery,
-      msgsQuery,
       supabase
         .from('whatsapp_instances')
         .select('id, instance_name, receive_leads, ad_account_name, owner_phone')
@@ -176,13 +190,13 @@ export function WhatsAppLeadsDashboard() {
     ]);
 
     if (leadsRes.data) setLeads(leadsRes.data as LeadWithMessages[]);
-    if (msgsRes.data) setMessages(msgsRes.data);
+    setMessages(allMsgs);
     if (instRes.data) setInstances(instRes.data);
     setLoading(false);
 
     // Fetch today's metrics for new cards
     fetchTodayMetrics();
-    fetchFunnelStages(msgsRes.data || []);
+    fetchFunnelStages(allMsgs);
   };
 
   const fetchTodayMetrics = async () => {
