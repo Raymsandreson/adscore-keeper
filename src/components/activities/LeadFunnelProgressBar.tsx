@@ -170,15 +170,37 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
               {stages.map((stage, idx) => {
                 const isPast = idx < currentIdx;
                 const isCurrent = idx === currentIdx;
+                // Check if this stage's checklist is fully completed
+                const stageInstances = instances.filter(i => i.stage_id === stage.id);
+                const stageTotal = stageInstances.reduce((s, i) => s + i.items.length, 0);
+                const stageCompleted = stageInstances.reduce((s, i) => s + i.items.filter(it => it.checked).length, 0);
+                const isStageComplete = stageTotal > 0 && stageCompleted === stageTotal;
+                const hasPartialProgress = stageTotal > 0 && stageCompleted > 0 && !isStageComplete;
+                const partialPercent = stageTotal > 0 ? (stageCompleted / stageTotal) * 100 : 0;
+
                 return (
-                  <div key={stage.id} className="flex items-center flex-1">
+                  <div key={stage.id} className="flex items-center flex-1 relative">
+                    {/* Background bar */}
                     <div
                       className={cn(
-                        "h-2.5 flex-1 rounded-full transition-colors shadow-sm",
-                        isPast ? "bg-primary" : isCurrent ? "bg-primary/80 ring-2 ring-primary/30" : "bg-muted-foreground/20"
+                        "h-2.5 w-full rounded-full transition-colors shadow-sm overflow-hidden",
+                        isStageComplete ? "bg-green-500" :
+                        isPast ? "bg-primary" :
+                        "bg-muted-foreground/20"
                       )}
-                      title={stage.name}
-                    />
+                      title={`${stage.name}${stageTotal > 0 ? ` (${stageCompleted}/${stageTotal})` : ''}`}
+                    >
+                      {/* Partial progress fill for current stage */}
+                      {hasPartialProgress && isCurrent && (
+                        <div
+                          className="h-full bg-green-500/70 rounded-full transition-all duration-300"
+                          style={{ width: `${partialPercent}%` }}
+                        />
+                      )}
+                    </div>
+                    {isCurrent && !isStageComplete && (
+                      <div className="absolute inset-0 rounded-full ring-2 ring-primary/40 pointer-events-none" />
+                    )}
                   </div>
                 );
               })}
