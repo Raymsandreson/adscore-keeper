@@ -313,7 +313,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       reply_voice_id: (s as any).reply_voice_id || null,
       respond_in_groups: (s as any).respond_in_groups ?? false,
       max_tts_chars: (s as any).max_tts_chars ?? 1000,
-      max_tts_chars: (s as any).max_tts_chars ?? 1000,
     });
     setFollowupSteps(s.followup_steps || []);
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
