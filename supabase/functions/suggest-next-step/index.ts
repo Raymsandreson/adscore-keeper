@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { callGemini } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,9 +13,6 @@ serve(async (req) => {
   try {
     const { phone } = await req.json();
     if (!phone) throw new Error("phone is required");
-
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -38,26 +36,13 @@ serve(async (req) => {
     const normalizedPhone = phone.replace(/\D/g, "");
     const phoneSuffix = normalizedPhone.slice(-8);
 
-    const [contactResult, leadResult] = await Promise.all([
+    const [contactResult, directLeadResult] = await Promise.all([
       supabase.from("contacts").select("id, full_name, classification").ilike("phone", `%${phoneSuffix}`).maybeSingle(),
-      supabase.from("contact_leads").select("lead_id, leads:lead_id(lead_name, status, board_id)").ilike("contacts.phone", `%${phoneSuffix}`).limit(1),
+      supabase.from("leads").select("lead_name, status, board_id").ilike("lead_phone", `%${phoneSuffix}`).maybeSingle(),
     ]);
 
     const contact = contactResult.data;
-    
-    // Try lead via contact_leads or direct phone match
-    let leadInfo: any = null;
-    if (leadResult.data) {
-      leadInfo = (leadResult.data as any)?.leads;
-    }
-    if (!leadInfo) {
-      const { data: directLead } = await supabase
-        .from("leads")
-        .select("lead_name, status, board_id")
-        .ilike("lead_phone", `%${phoneSuffix}`)
-        .maybeSingle();
-      leadInfo = directLead;
-    }
+    const leadInfo = directLeadResult.data;
 
     // Build conversation transcript
     const transcript = messages
@@ -89,37 +74,23 @@ Regras:
 - Considere o tom e urgência da conversa
 - NÃO use listas, bullets ou formatação markdown complexa`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Conversa:\n${transcript}` },
-        ],
-      }),
+    const response = await callGemini({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `Conversa:\n${transcript}` },
+      ],
+      max_tokens: 256,
     });
 
     if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Limite de requisições atingido. Tente novamente em alguns segundos." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Créditos de IA esgotados." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw new Error(`AI gateway error: ${response.status}`);
+      const errText = await response.text();
+      console.error("Gemini error:", response.status, errText);
+      throw new Error(`AI error: ${response.status}`);
     }
 
     const aiData = await response.json();
-    const suggestion = aiData.choices?.[0]?.message?.content || "Não foi possível gerar sugestão.";
+    const suggestion = aiData.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível gerar sugestão.";
 
     return new Response(JSON.stringify({ suggestion, hasContact: !!contact, hasLead: !!leadInfo }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
