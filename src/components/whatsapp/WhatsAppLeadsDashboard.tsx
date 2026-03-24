@@ -1457,8 +1457,12 @@ export function WhatsAppLeadsDashboard() {
             <div className="space-y-2 pr-4">
               {todayNewConvs.map((conv, i) => (
                 <div key={`${conv.phone}-${i}`} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{conv.contact_name || conv.phone}</p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium truncate">{conv.contact_name || conv.phone}</p>
+                      {conv.has_lead && <Badge variant="default" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Lead</Badge>}
+                      {conv.has_contact && <Badge variant="secondary" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Contato</Badge>}
+                    </div>
                     <p className="text-xs text-muted-foreground">{conv.phone}</p>
                     {conv.instance_name && <p className="text-[10px] text-muted-foreground">{conv.instance_name}</p>}
                   </div>
