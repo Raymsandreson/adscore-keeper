@@ -6223,6 +6223,7 @@ export type Database = {
           name: string
           provider: string
           read_messages: boolean
+          reply_with_audio: boolean
           respond_in_groups: boolean
           response_delay_seconds: number
           sign_messages: boolean
@@ -6256,6 +6257,7 @@ export type Database = {
           name: string
           provider?: string
           read_messages?: boolean
+          reply_with_audio?: boolean
           respond_in_groups?: boolean
           response_delay_seconds?: number
           sign_messages?: boolean
@@ -6289,6 +6291,7 @@ export type Database = {
           name?: string
           provider?: string
           read_messages?: boolean
+          reply_with_audio?: boolean
           respond_in_groups?: boolean
           response_delay_seconds?: number
           sign_messages?: boolean

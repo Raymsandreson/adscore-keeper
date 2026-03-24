@@ -2102,6 +2102,7 @@ Deno.serve(async (req) => {
             phone,
             instance_name: instanceName,
             message_text: messageText,
+            message_type: messageType,
             lead_id: leadId || null,
             is_group: isGroup,
           }),

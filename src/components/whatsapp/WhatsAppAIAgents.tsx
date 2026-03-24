@@ -47,6 +47,7 @@ interface AIAgent {
   split_delay_seconds: number;
   human_pause_minutes: number;
   respond_in_groups: boolean;
+  reply_with_audio: boolean;
   created_at: string;
 }
 
@@ -181,7 +182,7 @@ export function WhatsAppAIAgents() {
       auto_call_mode: 'on_no_response', auto_call_delay_seconds: 0,
       auto_call_no_response_minutes: 30, auto_call_instance_name: null,
       call_assigned_to: null, human_pause_minutes: 30, split_messages: false, split_delay_seconds: 2,
-      respond_in_groups: false,
+      respond_in_groups: false, reply_with_audio: false,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
@@ -225,6 +226,7 @@ export function WhatsAppAIAgents() {
         split_messages: editingAgent.split_messages ?? false,
         split_delay_seconds: editingAgent.split_delay_seconds ?? 2,
         respond_in_groups: editingAgent.respond_in_groups ?? false,
+        reply_with_audio: editingAgent.reply_with_audio ?? false,
       };
 
       if (editingAgent.id) {
@@ -450,6 +452,13 @@ export function WhatsAppAIAgents() {
                       <p className="text-[10px] text-muted-foreground">Permitir que este agente responda mensagens em grupos do WhatsApp</p>
                     </div>
                     <Switch checked={editingAgent.respond_in_groups ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, respond_in_groups: v })} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-xs">Responder com áudio</Label>
+                      <p className="text-[10px] text-muted-foreground">Quando o contato enviar áudio, o agente responde com áudio também (via ElevenLabs TTS)</p>
+                    </div>
+                    <Switch checked={editingAgent.reply_with_audio ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, reply_with_audio: v })} />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>

@@ -11,7 +11,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { phone, instance_name, message_text, lead_id, campaign_id, is_group } = await req.json();
+    const { phone, instance_name, message_text, message_type, lead_id, campaign_id, is_group } = await req.json();
     if (!phone || !instance_name) {
       return new Response(JSON.stringify({ error: "Missing fields" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -476,22 +476,109 @@ REGRAS DE ENDEREÇO E CEP:
         const token = (instance as any).instance_token;
         const delayBetween = ((agent as any).split_delay_seconds || 2) * 1000;
 
-        for (let i = 0; i < messageParts.length; i++) {
-          const part = messageParts[i];
-          const sendRes = await fetch(`${baseUrl}/send/text`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "token": token },
-            body: JSON.stringify({ number: phone, text: part }),
-          });
-          if (!sendRes.ok) {
-            const errText = await sendRes.text();
-            console.error("UazAPI send error:", sendRes.status, errText);
-          } else {
-            console.log(`UazAPI send success part ${i + 1}/${messageParts.length} to ${phone}`);
+        // Check if we should reply with audio (agent setting + incoming was audio)
+        const shouldReplyAudio = (agent as any).reply_with_audio === true && message_type === "audio";
+
+        if (shouldReplyAudio) {
+          // Generate TTS audio via ElevenLabs
+          try {
+            const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
+            if (!ELEVENLABS_API_KEY) throw new Error("ELEVENLABS_API_KEY not configured");
+
+            // Clean text for TTS
+            const cleanText = reply
+              .replace(/\*([^*]+)\*/g, "$1")
+              .replace(/_([^_]+)_/g, "$1")
+              .replace(/✅|📋|📅|🔔|👤|✏️|🤖|⚠️|📊|📌|📞|💬|👥|🔄|📈|🏆|☑️|🕐|📍|🎯|💡|🔴|🟠|🟡|🟢|🌟|⏳|🔍|📥|🔗|🚀|1️⃣|2️⃣|3️⃣/g, "")
+              .replace(/https?:\/\/\S+/g, "")
+              .replace(/\n{3,}/g, "\n\n")
+              .trim();
+
+            const truncated = cleanText.length > 1000 ? cleanText.substring(0, 1000) + "..." : cleanText;
+
+            const voiceId = "FGY2WhTYpPnrIDTdsKH5"; // Laura default
+            const ttsResp = await fetch(
+              `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
+              {
+                method: "POST",
+                headers: {
+                  "xi-api-key": ELEVENLABS_API_KEY,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  text: truncated,
+                  model_id: "eleven_multilingual_v2",
+                  voice_settings: { stability: 0.6, similarity_boost: 0.75, style: 0.3, speed: 1.1 },
+                }),
+              }
+            );
+
+            if (!ttsResp.ok) {
+              console.error("ElevenLabs TTS error:", ttsResp.status, await ttsResp.text());
+              throw new Error("TTS failed");
+            }
+
+            const audioBuffer = await ttsResp.arrayBuffer();
+
+            // Upload to storage
+            const fileName = `tts-agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+            const filePath = `tts/${fileName}`;
+
+            const { error: uploadErr } = await supabase.storage
+              .from("whatsapp-media")
+              .upload(filePath, new Uint8Array(audioBuffer), {
+                contentType: "audio/mpeg",
+                upsert: false,
+              });
+
+            if (uploadErr) throw uploadErr;
+
+            const { data: urlData } = supabase.storage.from("whatsapp-media").getPublicUrl(filePath);
+            const audioUrl = urlData?.publicUrl;
+
+            if (audioUrl) {
+              // Send audio via UazAPI
+              const sendRes = await fetch(`${baseUrl}/send/audio`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "token": token },
+                body: JSON.stringify({ number: phone, audio: audioUrl }),
+              });
+              if (!sendRes.ok) {
+                console.error("UazAPI audio send error:", sendRes.status, await sendRes.text());
+              } else {
+                console.log(`UazAPI audio reply sent to ${phone}`);
+              }
+            }
+          } catch (ttsErr) {
+            console.error("TTS audio reply failed, falling back to text:", ttsErr);
+            // Fallback: send as text
+            for (let i = 0; i < messageParts.length; i++) {
+              await fetch(`${baseUrl}/send/text`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "token": token },
+                body: JSON.stringify({ number: phone, text: messageParts[i] }),
+              });
+              if (i < messageParts.length - 1) await new Promise(r => setTimeout(r, delayBetween));
+            }
           }
-          // Wait between parts (except last)
-          if (i < messageParts.length - 1) {
-            await new Promise(r => setTimeout(r, delayBetween));
+        } else {
+          // Standard text reply
+          for (let i = 0; i < messageParts.length; i++) {
+            const part = messageParts[i];
+            const sendRes = await fetch(`${baseUrl}/send/text`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "token": token },
+              body: JSON.stringify({ number: phone, text: part }),
+            });
+            if (!sendRes.ok) {
+              const errText = await sendRes.text();
+              console.error("UazAPI send error:", sendRes.status, errText);
+            } else {
+              console.log(`UazAPI send success part ${i + 1}/${messageParts.length} to ${phone}`);
+            }
+            if (i < messageParts.length - 1) {
+              await new Promise(r => setTimeout(r, delayBetween));
+            }
           }
         }
       } else {
