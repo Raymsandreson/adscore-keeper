@@ -562,25 +562,26 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       const words = Math.floor(form.max_tokens * 0.75);
                       const readMin = Math.floor(words / 200);
                       const readSec = Math.round(((words / 200) % 1) * 60);
-                      const totalCharsSlider = Math.floor(words * 0.8);
-                      const audioMinLow = Math.floor(totalCharsSlider / 15 / 60);
-                      const audioSecLow = Math.round((totalCharsSlider / 15) % 60);
-                      const audioMinHigh = Math.floor(totalCharsSlider / 10 / 60);
-                      const audioSecHigh = Math.round((totalCharsSlider / 10) % 60);
+                      // Audio: ~130-160 palavras/min faladas, usamos 130 (min) e 160 (max)
+                      const audioTotalSecLow = Math.round(words / 160 * 60);
+                      const audioTotalSecHigh = Math.round(words / 130 * 60);
+                      const fmtT = (s: number) => `${Math.floor(s / 60)}min ${s % 60}s`;
                       return (
                         <div className="text-[10px] text-muted-foreground text-center">
                           ≈ {words} palavras · {readMin}min {readSec}s de leitura
-                          {form.reply_with_audio && (<> · {audioMinLow}min {audioSecLow}s–{audioMinHigh}min {audioSecHigh}s de áudio total</>)}
+                          {form.reply_with_audio && (<> · {fmtT(audioTotalSecLow)}–{fmtT(audioTotalSecHigh)} de áudio total</>)}
                         </div>
                       );
                     })()}
                   </div>
                   {form.reply_with_audio && (() => {
-                    const totalChars = Math.floor(form.max_tokens * 0.75 * 0.8);
+                    const words = Math.floor(form.max_tokens * 0.75);
+                    const totalChars = Math.floor(words * 0.8);
                     const parts = Math.max(1, Math.ceil(totalChars / form.max_tts_chars));
-                    const charsPerPart = Math.round(totalChars / parts);
-                    const minSec = Math.floor(charsPerPart / 15);
-                    const maxSec = Math.floor(charsPerPart / 10);
+                    // Duração por parte baseada em palavras
+                    const wordsPerPart = Math.round(words / parts);
+                    const partSecLow = Math.round(wordsPerPart / 160 * 60);
+                    const partSecHigh = Math.round(wordsPerPart / 130 * 60);
                     const fmtTime = (s: number) => s >= 60 ? `${Math.floor(s / 60)}min ${s % 60}s` : `${s}s`;
                     return (
                       <div className="space-y-1 pt-2 border-t border-border/50">
@@ -598,7 +599,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                           className="h-9 text-xs w-20"
                         />
                         <p className="text-[10px] text-muted-foreground">
-                          Cada parte ≈ {charsPerPart} chars · {fmtTime(minSec)}–{fmtTime(maxSec)} de áudio
+                          Cada parte ≈ {wordsPerPart} palavras · {fmtTime(partSecLow)}–{fmtTime(partSecHigh)} de áudio
                         </p>
                       </div>
                     );
