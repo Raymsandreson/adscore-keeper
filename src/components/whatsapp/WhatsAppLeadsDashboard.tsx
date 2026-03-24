@@ -297,13 +297,59 @@ export function WhatsAppLeadsDashboard() {
         }
 
         // Only keep truly new conversations (no prior messages)
-        const trulyNew = uniquePhones
-          .filter(p => !oldPhones.has(p))
-          .map(p => ({
-            ...phoneMap.get(p)!,
+        const trulyNewPhones = uniquePhones.filter(p => !oldPhones.has(p));
+
+        // Fetch outbound messages for these phones to check response status
+        const outboundMap = new Map<string, { count: number; first_at: string | null }>();
+        for (let i = 0; i < trulyNewPhones.length; i += 200) {
+          const batch = trulyNewPhones.slice(i, i + 200);
+          const { data: outMsgs } = await supabase
+            .from('whatsapp_messages')
+            .select('phone, created_at')
+            .eq('direction', 'outbound')
+            .gte('created_at', todayStart)
+            .in('phone', batch)
+            .order('created_at', { ascending: true });
+          for (const m of (outMsgs || [])) {
+            const existing = outboundMap.get(m.phone);
+            if (!existing) {
+              outboundMap.set(m.phone, { count: 1, first_at: m.created_at });
+            } else {
+              existing.count++;
+            }
+          }
+        }
+
+        // Also get last inbound message time for each phone
+        const lastInboundMap = new Map<string, string>();
+        for (const msg of inboundData) {
+          if (trulyNewPhones.includes(msg.phone)) {
+            const existing = lastInboundMap.get(msg.phone);
+            if (!existing || msg.created_at > existing) {
+              lastInboundMap.set(msg.phone, msg.created_at);
+            }
+          }
+        }
+
+        const trulyNew = trulyNewPhones.map(p => {
+          const convData = phoneMap.get(p)!;
+          const outbound = outboundMap.get(p);
+          const lastInbound = lastInboundMap.get(p) || null;
+          const wasResponded = !!outbound;
+          let responseTimeMinutes: number | null = null;
+          if (outbound?.first_at) {
+            responseTimeMinutes = differenceInMinutes(parseISO(outbound.first_at), parseISO(convData.first_message_at));
+          }
+          return {
+            ...convData,
             has_lead: leadPhones.has(p),
             has_contact: contactPhones.has(p),
-          }));
+            was_responded: wasResponded,
+            response_time_minutes: responseTimeMinutes,
+            last_inbound_at: lastInbound,
+            outbound_count: outbound?.count || 0,
+          };
+        });
 
         setTodayNewConvs(trulyNew);
       } else {
