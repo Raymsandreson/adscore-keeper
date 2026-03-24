@@ -160,6 +160,26 @@ export function WhatsAppAIAgents() {
     setTeamMembers((data as any[]) || []);
   };
 
+  const BUILTIN_VOICES = [
+    { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura (padrão)' },
+    { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah' },
+    { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George' },
+    { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel' },
+    { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica' },
+    { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily' },
+    { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam' },
+  ];
+
+  const fetchVoices = async () => {
+    const builtins = BUILTIN_VOICES.map(v => ({ id: v.id, name: v.name, type: 'builtin' as const }));
+    const { data: customs } = await supabase
+      .from('custom_voices')
+      .select('id, name, elevenlabs_voice_id, status')
+      .eq('status', 'ready');
+    const customList = (customs || []).map((v: any) => ({ id: v.id, name: `🎤 ${v.name} (personalizada)`, type: 'custom' as const }));
+    setAvailableVoices([...builtins, ...customList]);
+  };
+
   const fetchAvailableCampaigns = async () => {
     const { data } = await supabase
       .from('leads')
