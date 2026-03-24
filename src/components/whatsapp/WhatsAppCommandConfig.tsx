@@ -187,6 +187,9 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     response_delay_seconds: 2,
     split_messages: false,
     split_delay_seconds: 3,
+    reply_with_audio: false,
+    reply_voice_id: null as string | null,
+    respond_in_groups: false,
   });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
   const [humanReplyPauseMinutes, setHumanReplyPauseMinutes] = useState(0);
