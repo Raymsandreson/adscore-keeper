@@ -558,11 +558,22 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       max={8192}
                       step={256}
                     />
-                    <div className="flex justify-between text-[10px] text-muted-foreground">
-                      <span>Curta</span>
-                      <span>≈ {Math.floor(form.max_tokens * 0.75)} palavras · {Math.floor(form.max_tokens * 0.75 / 200)}min {Math.round(((form.max_tokens * 0.75 / 200) % 1) * 60)}s de leitura{form.reply_with_audio ? ` · ${Math.floor(form.max_tokens * 0.75 * 0.8 / 15 / 60)}min ${Math.round((form.max_tokens * 0.75 * 0.8 / 15) % 60)}s–${Math.floor(form.max_tokens * 0.75 * 0.8 / 10 / 60)}min ${Math.round((form.max_tokens * 0.75 * 0.8 / 10) % 60)}s de áudio` : ''}</span>
-                      <span>Longa</span>
-                    </div>
+                    {(() => {
+                      const words = Math.floor(form.max_tokens * 0.75);
+                      const readMin = Math.floor(words / 200);
+                      const readSec = Math.round(((words / 200) % 1) * 60);
+                      const totalCharsSlider = Math.floor(words * 0.8);
+                      const audioMinLow = Math.floor(totalCharsSlider / 15 / 60);
+                      const audioSecLow = Math.round((totalCharsSlider / 15) % 60);
+                      const audioMinHigh = Math.floor(totalCharsSlider / 10 / 60);
+                      const audioSecHigh = Math.round((totalCharsSlider / 10) % 60);
+                      return (
+                        <div className="text-[10px] text-muted-foreground text-center">
+                          ≈ {words} palavras · {readMin}min {readSec}s de leitura
+                          {form.reply_with_audio && (<> · {audioMinLow}min {audioSecLow}s–{audioMinHigh}min {audioSecHigh}s de áudio total</>)}
+                        </div>
+                      );
+                    })()}
                   </div>
                   {form.reply_with_audio && (() => {
                     const totalChars = Math.floor(form.max_tokens * 0.75 * 0.8);
