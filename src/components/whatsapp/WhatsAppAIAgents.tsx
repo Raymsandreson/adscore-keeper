@@ -484,6 +484,22 @@ export function WhatsAppAIAgents() {
                     </div>
                     <Switch checked={editingAgent.reply_with_audio ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, reply_with_audio: v })} />
                   </div>
+                  {editingAgent.reply_with_audio && (
+                    <div className="space-y-1 pl-2 border-l-2 border-primary/20">
+                      <Label className="text-xs flex items-center gap-1"><Volume2 className="h-3 w-3" />Voz do agente</Label>
+                      <Select value={editingAgent.reply_voice_id || 'FGY2WhTYpPnrIDTdsKH5'} onValueChange={v => setEditingAgent({ ...editingAgent, reply_voice_id: v })}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Selecione a voz" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableVoices.map(v => (
+                            <SelectItem key={v.id} value={v.id} className="text-xs">{v.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[10px] text-muted-foreground">Escolha a voz para respostas em áudio. Vozes personalizadas aparecem com 🎤</p>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <div>
                       <Label className="text-xs">Dividir mensagens longas</Label>
