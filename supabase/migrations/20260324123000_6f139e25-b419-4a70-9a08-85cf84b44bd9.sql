@@ -1,0 +1,2 @@
+ALTER TABLE public.wjia_command_shortcuts ADD COLUMN IF NOT EXISTS max_tts_chars integer DEFAULT 1000;
+ALTER TABLE public.whatsapp_ai_agents ADD COLUMN IF NOT EXISTS max_tts_chars integer DEFAULT 1000;

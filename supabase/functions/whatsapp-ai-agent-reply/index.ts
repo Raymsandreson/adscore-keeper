@@ -232,7 +232,8 @@ serve(async (req) => {
           base_prompt: (shortcut as any).prompt_instructions,
           model: (shortcut as any).model || "google/gemini-2.5-flash",
           temperature: (shortcut as any).temperature ?? 70,
-          max_tokens: 1024,
+          max_tokens: (shortcut as any).max_tokens ?? 1024,
+          max_tts_chars: (shortcut as any).max_tts_chars ?? 1000,
           response_delay_seconds: (shortcut as any).response_delay_seconds || 0,
           split_messages: (shortcut as any).split_messages || false,
           split_delay_seconds: (shortcut as any).split_delay_seconds || 2,
@@ -463,7 +464,39 @@ REGRAS DE ENDEREÇO E CEP:
               .replace(/\n{3,}/g, "\n\n")
               .trim();
 
-            const truncated = cleanText.length > 1000 ? cleanText.substring(0, 1000) + "..." : cleanText;
+            const maxChars = (agent as any).max_tts_chars || 1000;
+            
+            // Split text into chunks at sentence boundaries
+            const splitTextForTTS = (text: string, limit: number): string[] => {
+              if (text.length <= limit) return [text];
+              const chunks: string[] = [];
+              let remaining = text;
+              while (remaining.length > 0) {
+                if (remaining.length <= limit) {
+                  chunks.push(remaining);
+                  break;
+                }
+                // Find last sentence boundary within limit
+                let cutAt = -1;
+                for (const sep of ['. ', '! ', '? ', '.\n', '!\n', '?\n']) {
+                  const idx = remaining.lastIndexOf(sep, limit);
+                  if (idx > cutAt) cutAt = idx + sep.length;
+                }
+                if (cutAt <= 0) {
+                  // No sentence boundary, try comma or space
+                  cutAt = remaining.lastIndexOf(', ', limit);
+                  if (cutAt > 0) cutAt += 2;
+                  else cutAt = remaining.lastIndexOf(' ', limit);
+                  if (cutAt <= 0) cutAt = limit;
+                }
+                chunks.push(remaining.substring(0, cutAt).trim());
+                remaining = remaining.substring(cutAt).trim();
+              }
+              return chunks;
+            };
+
+            const ttsChunks = splitTextForTTS(cleanText, maxChars);
+            console.log(`TTS: splitting ${cleanText.length} chars into ${ttsChunks.length} chunk(s) (limit: ${maxChars})`);
 
             // Use agent's configured voice or fallback to Laura
             let voiceId = (agent as any).reply_voice_id || "FGY2WhTYpPnrIDTdsKH5";
@@ -478,56 +511,63 @@ REGRAS DE ENDEREÇO E CEP:
                 .maybeSingle();
               voiceId = customVoice?.elevenlabs_voice_id || "FGY2WhTYpPnrIDTdsKH5";
             }
-            const ttsResp = await fetch(
-              `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
-              {
-                method: "POST",
-                headers: {
-                  "xi-api-key": ELEVENLABS_API_KEY,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  text: truncated,
-                  model_id: "eleven_multilingual_v2",
-                  voice_settings: { stability: 0.6, similarity_boost: 0.75, style: 0.3, speed: 1.1 },
-                }),
+
+            for (let ci = 0; ci < ttsChunks.length; ci++) {
+              const chunk = ttsChunks[ci];
+              const ttsResp = await fetch(
+                `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
+                {
+                  method: "POST",
+                  headers: {
+                    "xi-api-key": ELEVENLABS_API_KEY,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    text: chunk,
+                    model_id: "eleven_multilingual_v2",
+                    voice_settings: { stability: 0.6, similarity_boost: 0.75, style: 0.3, speed: 1.1 },
+                    ...(ci > 0 ? { previous_text: ttsChunks[ci - 1].slice(-200) } : {}),
+                    ...(ci < ttsChunks.length - 1 ? { next_text: ttsChunks[ci + 1].slice(0, 200) } : {}),
+                  }),
+                }
+              );
+
+              if (!ttsResp.ok) {
+                console.error(`ElevenLabs TTS error chunk ${ci + 1}:`, ttsResp.status, await ttsResp.text());
+                throw new Error("TTS failed");
               }
-            );
 
-            if (!ttsResp.ok) {
-              console.error("ElevenLabs TTS error:", ttsResp.status, await ttsResp.text());
-              throw new Error("TTS failed");
-            }
+              const audioBuffer = await ttsResp.arrayBuffer();
+              const fileName = `tts-agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+              const filePath = `tts/${fileName}`;
 
-            const audioBuffer = await ttsResp.arrayBuffer();
+              const { error: uploadErr } = await supabase.storage
+                .from("whatsapp-media")
+                .upload(filePath, new Uint8Array(audioBuffer), {
+                  contentType: "audio/mpeg",
+                  upsert: false,
+                });
+              if (uploadErr) throw uploadErr;
 
-            // Upload to storage
-            const fileName = `tts-agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
-            const filePath = `tts/${fileName}`;
+              const { data: urlData } = supabase.storage.from("whatsapp-media").getPublicUrl(filePath);
+              const audioUrl = urlData?.publicUrl;
 
-            const { error: uploadErr } = await supabase.storage
-              .from("whatsapp-media")
-              .upload(filePath, new Uint8Array(audioBuffer), {
-                contentType: "audio/mpeg",
-                upsert: false,
-              });
+              if (audioUrl) {
+                const sendRes = await fetch(`${baseUrl}/send/media`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "token": token },
+                  body: JSON.stringify({ number: phone, file: audioUrl, type: "audio" }),
+                });
+                if (!sendRes.ok) {
+                  console.error("UazAPI audio send error:", sendRes.status, await sendRes.text());
+                } else {
+                  console.log(`UazAPI audio reply sent chunk ${ci + 1}/${ttsChunks.length} to ${phone}`);
+                }
+              }
 
-            if (uploadErr) throw uploadErr;
-
-            const { data: urlData } = supabase.storage.from("whatsapp-media").getPublicUrl(filePath);
-            const audioUrl = urlData?.publicUrl;
-
-            if (audioUrl) {
-              // Send audio via UazAPI v2 unified /send/media endpoint
-              const sendRes = await fetch(`${baseUrl}/send/media`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "token": token },
-                body: JSON.stringify({ number: phone, file: audioUrl, type: "audio" }),
-              });
-              if (!sendRes.ok) {
-                console.error("UazAPI audio send error:", sendRes.status, await sendRes.text());
-              } else {
-                console.log(`UazAPI audio reply sent to ${phone}`);
+              // Delay between audio parts
+              if (ci < ttsChunks.length - 1) {
+                await new Promise(r => setTimeout(r, delayBetween));
               }
             }
           } catch (ttsErr) {

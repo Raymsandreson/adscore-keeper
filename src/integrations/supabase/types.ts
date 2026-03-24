@@ -6219,6 +6219,7 @@ export type Database = {
           id: string
           is_active: boolean
           max_tokens: number
+          max_tts_chars: number | null
           model: string
           name: string
           provider: string
@@ -6255,6 +6256,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           max_tokens?: number
+          max_tts_chars?: number | null
           model?: string
           name: string
           provider?: string
@@ -6291,6 +6293,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           max_tokens?: number
+          max_tts_chars?: number | null
           model?: string
           name?: string
           provider?: string
@@ -7151,6 +7154,7 @@ export type Database = {
           human_reply_pause_minutes: number | null
           id: string
           is_active: boolean | null
+          max_tts_chars: number | null
           media_extraction_prompt: string | null
           model: string | null
           notify_on_signature: boolean
@@ -7183,6 +7187,7 @@ export type Database = {
           human_reply_pause_minutes?: number | null
           id?: string
           is_active?: boolean | null
+          max_tts_chars?: number | null
           media_extraction_prompt?: string | null
           model?: string | null
           notify_on_signature?: boolean
@@ -7215,6 +7220,7 @@ export type Database = {
           human_reply_pause_minutes?: number | null
           id?: string
           is_active?: boolean | null
+          max_tts_chars?: number | null
           media_extraction_prompt?: string | null
           model?: string | null
           notify_on_signature?: boolean
