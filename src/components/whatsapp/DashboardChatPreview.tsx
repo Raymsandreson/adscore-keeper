@@ -44,7 +44,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     const fetchMessages = async () => {
       const { data } = await supabase
         .from('whatsapp_messages')
-        .select('id, content, direction, created_at, message_type, media_url, media_type')
+        .select('id, message_text, direction, created_at, message_type, media_url, media_type')
         .eq('phone', phone)
         .order('created_at', { ascending: true })
         .limit(100);
@@ -134,12 +134,12 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                             ? "bg-muted text-foreground rounded-tl-none"
                             : "bg-primary text-primary-foreground rounded-tr-none"
                         )}>
-                          {msg.media_type && !msg.content && (
+                          {msg.media_type && !msg.message_text && (
                             <span className="italic text-[10px] opacity-70">
                               {msg.media_type === 'image' ? '📷 Imagem' : msg.media_type === 'audio' ? '🎵 Áudio' : msg.media_type === 'video' ? '🎬 Vídeo' : msg.media_type === 'document' ? '📄 Documento' : '📎 Mídia'}
                             </span>
                           )}
-                          {msg.content && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
+                          {msg.message_text && <p className="whitespace-pre-wrap break-words">{msg.message_text}</p>}
                           <p className={cn("text-[9px] mt-0.5", isInbound ? "text-muted-foreground" : "text-primary-foreground/70")}>
                             {format(parseISO(msg.created_at), 'HH:mm')}
                           </p>
