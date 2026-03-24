@@ -47,6 +47,7 @@ interface AIAgent {
   split_delay_seconds: number;
   human_pause_minutes: number;
   respond_in_groups: boolean;
+  reply_with_audio: boolean;
   created_at: string;
 }
 
