@@ -547,6 +547,37 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     )}
                   </div>
                 </div>
+                {/* Respond in Groups + Audio Reply */}
+                <div className="space-y-2 border rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-xs">Responder em grupos</Label>
+                      <p className="text-[10px] text-muted-foreground">Permite que o agente responda em grupos do WhatsApp</p>
+                    </div>
+                    <Switch checked={form.respond_in_groups} onCheckedChange={v => setForm(f => ({ ...f, respond_in_groups: v }))} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-xs">Responder com áudio</Label>
+                      <p className="text-[10px] text-muted-foreground">Quando o contato enviar áudio, responde com áudio (ElevenLabs TTS)</p>
+                    </div>
+                    <Switch checked={form.reply_with_audio} onCheckedChange={v => setForm(f => ({ ...f, reply_with_audio: v }))} />
+                  </div>
+                  {form.reply_with_audio && (
+                    <div className="space-y-1 pl-2 border-l-2 border-primary/20">
+                      <Label className="text-xs flex items-center gap-1"><Volume2 className="h-3 w-3" />Voz do agente</Label>
+                      <Select value={form.reply_voice_id || 'FGY2WhTYpPnrIDTdsKH5'} onValueChange={v => setForm(f => ({ ...f, reply_voice_id: v }))}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione a voz" /></SelectTrigger>
+                        <SelectContent>
+                          {availableVoices.map(v => (
+                            <SelectItem key={v.id} value={v.id} className="text-xs">{v.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[10px] text-muted-foreground">Vozes personalizadas aparecem com 🎤</p>
+                    </div>
+                  )}
+                </div>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <Label className="text-xs">🔍 Prompt de Extração de Mídia</Label>
