@@ -453,23 +453,25 @@ export function WhatsAppAIAgents() {
                   )}
                   <Textarea value={editingAgent.base_prompt || ''} onChange={e => setEditingAgent({ ...editingAgent, base_prompt: e.target.value })} placeholder="Instruções do agente..." rows={5} />
                 </div>
-                <div>
-                  <Label className="text-xs">Criatividade: {editingAgent.temperature}</Label>
-                  <Slider value={[editingAgent.temperature ?? 50]} onValueChange={([v]) => setEditingAgent({ ...editingAgent, temperature: v })} min={0} max={100} step={5} />
-                  <div className="flex justify-between text-[10px] text-muted-foreground mt-1"><span>Preciso</span><span>Criativo</span></div>
-                </div>
-                <div>
-                  <Label className="text-xs">Tamanho máximo da resposta: {editingAgent.max_tokens ?? 2048} tokens</Label>
-                  <Slider
-                    value={[editingAgent.max_tokens ?? 2048]}
-                    onValueChange={([v]) => setEditingAgent({ ...editingAgent, max_tokens: v })}
-                    min={256}
-                    max={8192}
-                    step={256}
-                  />
-                  <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-                    <span>Curta (~{Math.round((editingAgent.max_tokens ?? 2048) * 0.75 / 200)}min de leitura)</span>
-                    <span>{editingAgent.max_tokens ?? 2048} tokens ≈ {Math.round((editingAgent.max_tokens ?? 2048) * 0.75)} palavras</span>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs">Temperatura: {(editingAgent.temperature ?? 50) / 100}</Label>
+                    <Slider value={[editingAgent.temperature ?? 50]} onValueChange={([v]) => setEditingAgent({ ...editingAgent, temperature: v })} min={0} max={100} step={5} />
+                    <div className="flex justify-between text-[10px] text-muted-foreground mt-1"><span>Preciso</span><span>Criativo</span></div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Tamanho da resposta: {editingAgent.max_tokens ?? 2048}</Label>
+                    <Slider
+                      value={[editingAgent.max_tokens ?? 2048]}
+                      onValueChange={([v]) => setEditingAgent({ ...editingAgent, max_tokens: v })}
+                      min={256}
+                      max={8192}
+                      step={256}
+                    />
+                    <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                      <span>Curta</span>
+                      <span>~{Math.round((editingAgent.max_tokens ?? 2048) * 0.75)} palavras</span>
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-2">
