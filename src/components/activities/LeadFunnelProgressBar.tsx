@@ -42,6 +42,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const [instances, setInstances] = useState<ChecklistInstance[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [viewingStageId, setViewingStageId] = useState<string | null>(null);
   const { createLeadInstances, fetchLeadInstances } = useChecklists();
 
   const fetchData = useCallback(async () => {
@@ -151,8 +152,10 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const currentIdx = stages.findIndex(s => s.id === currentStageId);
   const progressPercent = currentIdx >= 0 ? ((currentIdx + 1) / stages.length) * 100 : 0;
 
-  // Get instances for the current stage
-  const currentStageInstances = instances.filter(i => i.stage_id === currentStageId && !i.is_readonly);
+  const activeViewStageId = viewingStageId || currentStageId;
+
+  // Get instances for the viewed stage
+  const currentStageInstances = instances.filter(i => i.stage_id === activeViewStageId);
   const totalItems = currentStageInstances.reduce((sum, i) => sum + i.items.length, 0);
   const completedItems = currentStageInstances.reduce((sum, i) => sum + i.items.filter(item => item.checked).length, 0);
 
@@ -202,21 +205,23 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
             {stages.map((stage, idx) => {
               const isPast = idx < currentIdx;
               const isCurrent = idx === currentIdx;
+              const isViewing = stage.id === activeViewStageId;
               return (
-                <Badge
+                <button
                   key={stage.id}
-                  variant={isCurrent ? "default" : "outline"}
+                  onClick={(e) => { e.stopPropagation(); setViewingStageId(stage.id === currentStageId ? null : stage.id); }}
                   className={cn(
-                    "text-[10px] px-1.5 py-0 h-5 transition-all",
-                    isPast && "bg-primary/15 text-primary border-primary/30",
-                    isCurrent && "bg-primary text-primary-foreground",
-                    !isPast && !isCurrent && "opacity-70 text-muted-foreground"
+                    "inline-flex items-center text-[10px] px-1.5 py-0 h-5 rounded-full border transition-all font-medium",
+                    isViewing && "ring-2 ring-primary/50",
+                    isPast && "bg-primary/15 text-primary border-primary/30 hover:bg-primary/25 cursor-pointer",
+                    isCurrent && "bg-primary text-primary-foreground border-primary cursor-pointer",
+                    !isPast && !isCurrent && "opacity-70 text-muted-foreground border-border hover:opacity-100 cursor-pointer"
                   )}
                 >
                   {isPast && <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />}
                   {isCurrent && <Circle className="h-2.5 w-2.5 mr-0.5 fill-current" />}
                   {stage.name}
-                </Badge>
+                </button>
               );
             })}
           </div>
