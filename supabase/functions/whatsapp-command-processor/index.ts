@@ -521,11 +521,14 @@ serve(async (req) => {
     // Clear collecting state by saving a non-collecting assistant placeholder
     // (will be replaced by the actual response below)
 
-    // 3) Rebuild history WITHOUT the collecting messages for clean AI context
+    // 3) Rebuild history — ONLY current session messages (from collectStartIdx)
+    //    This prevents old conversations from polluting the AI context
     const chatHistory: any[] = [];
-    for (const msg of allHistory) {
-      if (msg.role === "assistant" && msg.tool_data?.collecting === true) continue; // skip collecting prompts
-      if (msg.content === "[EXECUTAR COMANDO]") continue; // skip execute marker
+    const sessionStart = collectStartIdx >= 0 ? collectStartIdx : 0;
+    for (let i = sessionStart; i < allHistory.length; i++) {
+      const msg = allHistory[i];
+      if (msg.role === "assistant" && msg.tool_data?.collecting === true) continue;
+      if (msg.content === "[EXECUTAR COMANDO]") continue;
       if (msg.role === "user" || msg.role === "assistant") {
         chatHistory.push(msg);
       }
