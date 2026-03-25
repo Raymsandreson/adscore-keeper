@@ -263,9 +263,38 @@ serve(async (req) => {
       });
     }
 
-    // ========== RESPONSE DELAY ==========
-    if ((agent as any).response_delay_seconds > 0) {
-      await new Promise(resolve => setTimeout(resolve, (agent as any).response_delay_seconds * 1000));
+    // ========== MESSAGE BATCHING DELAY ==========
+    // Wait for the configured delay to allow the sender to finish sending multiple messages
+    const batchDelaySeconds = (agent as any).response_delay_seconds || 0;
+    if (batchDelaySeconds > 0) {
+      console.log(`Batching delay: waiting ${batchDelaySeconds}s for more messages from ${phone}`);
+      await new Promise(resolve => setTimeout(resolve, batchDelaySeconds * 1000));
+
+      // After sleeping, check if newer inbound messages arrived during the delay
+      // If yes, skip this invocation — the latest message's invocation will handle all of them
+      const cutoffTime = new Date(Date.now() - batchDelaySeconds * 1000).toISOString();
+      const { data: newerMessages } = await supabase
+        .from("whatsapp_messages")
+        .select("id, created_at")
+        .eq("phone", phone)
+        .eq("instance_name", instance_name)
+        .eq("direction", "inbound")
+        .gt("created_at", cutoffTime)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (newerMessages && newerMessages.length > 0) {
+        const newestMsgTime = new Date((newerMessages[0] as any).created_at).getTime();
+        // If a message arrived less than (delay * 0.8) seconds ago, a newer invocation will handle it
+        const freshThresholdMs = batchDelaySeconds * 800; // 80% of delay window
+        if (Date.now() - newestMsgTime < freshThresholdMs) {
+          console.log(`Batching: newer message detected, skipping this invocation (newer msg age: ${Date.now() - newestMsgTime}ms)`);
+          return new Response(JSON.stringify({ skipped: true, reason: "Batching: newer message will handle" }), {
+            status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+      console.log(`Batching delay complete: processing all accumulated messages for ${phone}`);
     }
 
     // ========== GENERATE AI RESPONSE ==========
