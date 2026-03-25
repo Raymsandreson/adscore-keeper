@@ -378,6 +378,8 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           }
         }
 
+        const leadInfoMap = (window as any).__leadInfoMap as Map<string, { name: string; stage_type: 'closed' | 'refused' | 'funnel' }> || new Map();
+        
         const trulyNew = trulyNewPhones.map(p => {
           const convData = phoneMap.get(p)!;
           const outbound = outboundMap.get(p);
@@ -387,6 +389,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           if (outbound?.first_at) {
             responseTimeMinutes = differenceInMinutes(parseISO(outbound.first_at), parseISO(convData.first_message_at));
           }
+          const leadInfo = leadInfoMap.get(p);
           return {
             ...convData,
             has_lead: leadPhones.has(p),
@@ -395,6 +398,8 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             response_time_minutes: responseTimeMinutes,
             last_inbound_at: lastInbound,
             outbound_count: outbound?.count || 0,
+            lead_stage_type: leadInfo?.stage_type || 'none' as 'closed' | 'refused' | 'funnel' | 'none',
+            lead_name: leadInfo?.name || null,
           };
         });
 
