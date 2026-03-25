@@ -80,35 +80,50 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
         return;
       }
 
-      const [leadsRes, stageRes, checklistRes, templatesRes] = await Promise.all([
+      const [leadsRes, stageRes, checklistInstancesRes, templatesRes] = await Promise.all([
         supabase.from('leads').select('id, board_id').in('id', leadIds),
         supabase.from('lead_stage_history')
           .select('lead_id, to_stage, changed_at')
           .in('lead_id', leadIds)
           .order('changed_at', { ascending: false }),
         supabase.from('lead_checklist_instances')
-          .select('lead_id, checklist_template_id, is_completed')
-          .in('lead_id', leadIds)
-          .eq('is_completed', true),
-        supabase.from('checklist_templates').select('id, name').order('name'),
+          .select('lead_id, checklist_template_id, is_completed, items')
+          .in('lead_id', leadIds),
+        supabase.from('checklist_templates').select('id, name, items').order('name'),
       ]);
 
       const map = new Map<string, LeadInfo>();
       for (const lead of (leadsRes.data || [])) {
         const latestStage = stageRes.data?.find(s => s.lead_id === lead.id);
-        const completedIds = (checklistRes.data || [])
-          .filter(c => c.lead_id === lead.id)
+        const leadInstances = (checklistInstancesRes.data || []).filter(c => c.lead_id === lead.id);
+        const completedIds = leadInstances
+          .filter(c => c.is_completed)
           .map(c => c.checklist_template_id);
+        
+        // Collect all individually checked item IDs
+        const checkedItemIds: string[] = [];
+        for (const inst of leadInstances) {
+          const items = (inst.items as any[]) || [];
+          for (const item of items) {
+            if (item.checked) checkedItemIds.push(item.id);
+          }
+        }
 
         map.set(lead.id, {
           id: lead.id,
           board_id: lead.board_id,
           current_stage: latestStage?.to_stage || null,
           completed_checklist_ids: completedIds,
+          checkedItemIds,
         });
       }
       setLeadInfoMap(map);
-      setChecklistTemplates(templatesRes.data || []);
+      // Parse template items for hierarchical display
+      setChecklistTemplates((templatesRes.data || []).map(t => ({
+        id: t.id,
+        name: t.name,
+        items: ((t.items as any[]) || []).map((item: any) => ({ id: item.id, label: item.label })),
+      })));
     };
     fetchData();
   }, [conversations, selectedInstanceId]);
