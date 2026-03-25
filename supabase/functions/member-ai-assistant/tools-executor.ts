@@ -113,8 +113,34 @@ async function createActivity(supabase: any, args: any, userId: string, userName
     .single()
 
   if (error) return { error: error.message }
+
+  // Attach media if provided
+  if (args.media_url && data?.id) {
+    const mediaUrl = args.media_url
+    const fileName = mediaUrl.split('/').pop() || 'anexo'
+    const fileType = fileName.includes('.pdf') ? 'application/pdf' 
+      : fileName.includes('.png') ? 'image/png'
+      : fileName.includes('.jpg') || fileName.includes('.jpeg') ? 'image/jpeg'
+      : 'application/octet-stream'
+    
+    await supabase.from('activity_attachments').insert({
+      activity_id: data.id,
+      file_name: fileName,
+      file_type: fileType,
+      file_url: mediaUrl,
+      attachment_type: 'file',
+      created_by: userId,
+    })
+  }
+
   const APP_URL = "https://adscore-keeper.lovable.app"
-  return { success: true, activity_id: data.id, title: data.title, link: `${APP_URL}/?openActivity=${data.id}` }
+  return { 
+    success: true, 
+    activity_id: data.id, 
+    title: data.title, 
+    media_attached: !!args.media_url,
+    link: `${APP_URL}/?openActivity=${data.id}` 
+  }
 }
 
 async function getGoalsProgress(supabase: any, args: any, userId: string) {

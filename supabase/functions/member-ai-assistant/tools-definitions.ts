@@ -57,6 +57,7 @@ export const toolDefinitions = [
           priority: { type: "string", enum: ["baixa", "normal", "alta", "urgente"] },
           deadline: { type: "string", description: "Data limite no formato YYYY-MM-DD" },
           lead_name: { type: "string", description: "Nome do lead associado (opcional)" },
+          media_url: { type: "string", description: "URL da mídia anexada pelo membro (imagem ou documento) para vincular à atividade" },
         },
         required: ["title"],
       },
