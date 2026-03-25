@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
   Webhook, BarChart3, Megaphone, ArrowLeft, 
-  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users
+  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network
 } from 'lucide-react';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
@@ -87,6 +87,15 @@ const tabs: Tab[] = [
     badge: '🆕 Novo',
     badgeVariant: 'default',
     accentColor: 'text-violet-500',
+  },
+  {
+    id: 'nuclei',
+    label: 'Núcleos',
+    icon: <Network className="h-5 w-5" />,
+    description: 'Criar e gerenciar núcleos especializados',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-rose-500',
   },
   {
     id: 'integration',
@@ -231,6 +240,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'reports' && <WhatsAppReportSettings />}
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
             {activeTab === 'groups' && <BoardGroupInstancesConfig />}
+            {activeTab === 'nuclei' && <NucleiSettings />}
             {activeTab === 'integration' && <WhatsAppSetupGuide />}
             {activeTab === 'logs' && <WebhookLogsViewer />}
           </div>
