@@ -1,0 +1,1 @@
+ALTER TABLE public.member_assistant_config ADD COLUMN IF NOT EXISTS batch_delay_seconds integer NOT NULL DEFAULT 6;

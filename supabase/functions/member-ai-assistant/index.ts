@@ -35,16 +35,25 @@ Deno.serve(async (req) => {
     }
 
     // ========== MESSAGE BATCHING DELAY ==========
-    // Wait 6 seconds to allow the member to finish sending multiple messages
-    const MEMBER_BATCH_DELAY_SECONDS = 6
+    // Read delay from config, default 6 seconds
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
+    const { data: memberConfig } = await supabase
+      .from('member_assistant_config')
+      .select('batch_delay_seconds')
+      .limit(1)
+      .maybeSingle()
+
+    const MEMBER_BATCH_DELAY_SECONDS = (memberConfig as any)?.batch_delay_seconds ?? 6
     if (MEMBER_BATCH_DELAY_SECONDS > 0) {
       console.log(`Member assistant batching: waiting ${MEMBER_BATCH_DELAY_SECONDS}s for more messages from ${phone}`)
       await new Promise(resolve => setTimeout(resolve, MEMBER_BATCH_DELAY_SECONDS * 1000))
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseKey)
+
+
 
     // Check if newer messages arrived during the batching delay — if so, skip this invocation
     if (MEMBER_BATCH_DELAY_SECONDS > 0) {
