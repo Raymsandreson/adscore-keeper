@@ -51,6 +51,7 @@ interface Props {
   contactId?: string;
   leadId?: string;
   legalCaseId?: string;
+  instanceName?: string;
   messages?: Array<{ direction: string; message_text: string | null; media_url?: string | null; media_type?: string | null; created_at?: string; timestamp?: string }>;
   leadData?: Record<string, any>;
   contactData?: Record<string, any>;
@@ -58,7 +59,7 @@ interface Props {
 }
 
 export function ZapSignDocumentDialog({
-  open, onOpenChange, phone, contactName, contactId, leadId, legalCaseId,
+  open, onOpenChange, phone, contactName, contactId, leadId, legalCaseId, instanceName,
   messages = [], leadData, contactData, onSendMessage
 }: Props) {
   const { user } = useAuthContext();
@@ -421,9 +422,10 @@ export function ZapSignDocumentDialog({
           legal_case_id: legalCaseId || null,
           created_by: user?.id || null,
           send_via_whatsapp: false,
-          whatsapp_phone: phone,
-          notify_on_signature: notifyOnSignature,
-          send_signed_pdf: sendSignedPdf,
+           whatsapp_phone: phone,
+           notify_on_signature: notifyOnSignature,
+           send_signed_pdf: sendSignedPdf,
+           instance_name: instanceName || null,
         },
       });
 

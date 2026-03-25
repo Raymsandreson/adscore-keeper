@@ -216,6 +216,7 @@ Deno.serve(async (req) => {
           whatsapp_phone: whatsapp_phone || null,
           notify_on_signature: body.notify_on_signature !== false,
           send_signed_pdf: body.send_signed_pdf !== false,
+          instance_name: body.instance_name || null,
         })
         .select()
         .single()
