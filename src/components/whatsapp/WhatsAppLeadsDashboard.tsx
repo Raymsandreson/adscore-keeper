@@ -1588,7 +1588,14 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           </div>
           <ScrollArea className="h-[calc(100vh-145px)] mt-3">
             <div className="space-y-2 pr-4">
-              {todayNewConvs.map((conv, i) => {
+              {todayNewConvs.filter(conv => {
+                const mins = conv.was_responded ? conv.response_time_minutes : differenceInMinutes(new Date(), parseISO(conv.last_inbound_at || conv.first_message_at));
+                if (convResponseFilter === 'responded') return conv.was_responded;
+                if (convResponseFilter === 'waiting') return !conv.was_responded;
+                if (convResponseFilter === 'fast') return conv.was_responded && (conv.response_time_minutes ?? 999) <= 10;
+                if (convResponseFilter === 'slow') return (mins ?? 0) > 30;
+                return true;
+              }).map((conv, i) => {
                 const waitingMinutes = conv.was_responded 
                   ? conv.response_time_minutes 
                   : differenceInMinutes(new Date(), parseISO(conv.last_inbound_at || conv.first_message_at));
