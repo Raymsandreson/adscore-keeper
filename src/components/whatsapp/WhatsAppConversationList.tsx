@@ -18,6 +18,7 @@ interface LeadInfo {
   board_id: string | null;
   current_stage: string | null;
   completed_checklist_ids: string[];
+  checkedItemIds: string[]; // individual item IDs that are checked across all instances
 }
 
 interface Props {
@@ -43,15 +44,15 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [selectedBoardId, setSelectedBoardId] = useState<string>('all');
   const [selectedStageId, setSelectedStageId] = useState<string>('all');
-  // Multi-select passos
-  const [selectedChecklistIds, setSelectedChecklistIds] = useState<string[]>([]);
+  // Multi-select passos (individual item IDs now)
+  const [selectedChecklistItemIds, setSelectedChecklistItemIds] = useState<string[]>([]);
   const [checklistPopoverOpen, setChecklistPopoverOpen] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('last_received');
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all');
 
   const [phonesWithCalls, setPhonesWithCalls] = useState<Set<string>>(new Set());
   const [leadInfoMap, setLeadInfoMap] = useState<Map<string, LeadInfo>>(new Map());
-  const [checklistTemplates, setChecklistTemplates] = useState<{ id: string; name: string }[]>([]);
+  const [checklistTemplates, setChecklistTemplates] = useState<{ id: string; name: string; items: { id: string; label: string }[] }[]>([]);
 
   // Track lead IDs to avoid unnecessary re-fetches
   const prevLeadIdsRef = useRef<string>('');
@@ -79,35 +80,50 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
         return;
       }
 
-      const [leadsRes, stageRes, checklistRes, templatesRes] = await Promise.all([
+      const [leadsRes, stageRes, checklistInstancesRes, templatesRes] = await Promise.all([
         supabase.from('leads').select('id, board_id').in('id', leadIds),
         supabase.from('lead_stage_history')
           .select('lead_id, to_stage, changed_at')
           .in('lead_id', leadIds)
           .order('changed_at', { ascending: false }),
         supabase.from('lead_checklist_instances')
-          .select('lead_id, checklist_template_id, is_completed')
-          .in('lead_id', leadIds)
-          .eq('is_completed', true),
-        supabase.from('checklist_templates').select('id, name').order('name'),
+          .select('lead_id, checklist_template_id, is_completed, items')
+          .in('lead_id', leadIds),
+        supabase.from('checklist_templates').select('id, name, items').order('name'),
       ]);
 
       const map = new Map<string, LeadInfo>();
       for (const lead of (leadsRes.data || [])) {
         const latestStage = stageRes.data?.find(s => s.lead_id === lead.id);
-        const completedIds = (checklistRes.data || [])
-          .filter(c => c.lead_id === lead.id)
+        const leadInstances = (checklistInstancesRes.data || []).filter(c => c.lead_id === lead.id);
+        const completedIds = leadInstances
+          .filter(c => c.is_completed)
           .map(c => c.checklist_template_id);
+        
+        // Collect all individually checked item IDs
+        const checkedItemIds: string[] = [];
+        for (const inst of leadInstances) {
+          const items = (inst.items as any[]) || [];
+          for (const item of items) {
+            if (item.checked) checkedItemIds.push(item.id);
+          }
+        }
 
         map.set(lead.id, {
           id: lead.id,
           board_id: lead.board_id,
           current_stage: latestStage?.to_stage || null,
           completed_checklist_ids: completedIds,
+          checkedItemIds,
         });
       }
       setLeadInfoMap(map);
-      setChecklistTemplates(templatesRes.data || []);
+      // Parse template items for hierarchical display
+      setChecklistTemplates((templatesRes.data || []).map(t => ({
+        id: t.id,
+        name: t.name,
+        items: ((t.items as any[]) || []).map((item: any) => ({ id: item.id, label: item.label })),
+      })));
     };
     fetchData();
   }, [conversations, selectedInstanceId]);
@@ -175,18 +191,18 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
       if (!info || info.current_stage !== selectedStageId) return false;
     }
 
-    // Multi-select passos: lead must have ALL selected checklists completed
-    if (selectedChecklistIds.length > 0) {
+    // Multi-select passos: lead must have ALL selected item IDs checked
+    if (selectedChecklistItemIds.length > 0) {
       const info = getLeadInfo(c);
       if (!info) return false;
-      const allCompleted = selectedChecklistIds.every(id =>
-        info.completed_checklist_ids.includes(id)
+      const allChecked = selectedChecklistItemIds.every(id =>
+        info.checkedItemIds.includes(id)
       );
-      if (!allCompleted) return false;
+      if (!allChecked) return false;
     }
 
     return true;
-  }), [conversations, search, quickFilter, directionFilter, selectedBoardId, selectedStageId, selectedChecklistIds, leadInfoMap, phonesWithCalls]);
+  }), [conversations, search, quickFilter, directionFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, phonesWithCalls]);
 
   // Sort conversations based on mode
   const sortedFiltered = useMemo(() => {
@@ -231,17 +247,19 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
     return phone;
   };
 
-  const toggleChecklist = (id: string) => {
-    setSelectedChecklistIds(prev =>
+  const toggleChecklistItem = (id: string) => {
+    setSelectedChecklistItemIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
   };
 
+  const allItemIds = useMemo(() => checklistTemplates.flatMap(t => t.items.map(i => i.id)), [checklistTemplates]);
+
   const toggleAll = () => {
-    if (selectedChecklistIds.length === checklistTemplates.length) {
-      setSelectedChecklistIds([]);
+    if (selectedChecklistItemIds.length === allItemIds.length) {
+      setSelectedChecklistItemIds([]);
     } else {
-      setSelectedChecklistIds(checklistTemplates.map(t => t.id));
+      setSelectedChecklistItemIds([...allItemIds]);
     }
   };
 
@@ -372,17 +390,15 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
               >
                 <span className="flex items-center gap-1.5">
                   <CheckSquare className="h-3 w-3 text-muted-foreground" />
-                  {selectedChecklistIds.length === 0
-                    ? 'Passos concluídos'
-                    : selectedChecklistIds.length === checklistTemplates.length
-                      ? 'Todos os passos'
-                      : `${selectedChecklistIds.length} passo${selectedChecklistIds.length > 1 ? 's' : ''} selecionado${selectedChecklistIds.length > 1 ? 's' : ''}`
+                  {selectedChecklistItemIds.length === 0
+                    ? 'Filtrar por passos'
+                    : `${selectedChecklistItemIds.length} passo${selectedChecklistItemIds.length > 1 ? 's' : ''} selecionado${selectedChecklistItemIds.length > 1 ? 's' : ''}`
                   }
                 </span>
                 <ChevronDown className="h-3 w-3 text-muted-foreground" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-64 p-2" align="start">
+            <PopoverContent className="w-72 p-2 max-h-[320px] overflow-y-auto" align="start">
               <div className="space-y-1">
                 {/* Select all */}
                 <div
@@ -390,35 +406,65 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
                   onClick={toggleAll}
                 >
                   <Checkbox
-                    checked={selectedChecklistIds.length === checklistTemplates.length && checklistTemplates.length > 0}
+                    checked={selectedChecklistItemIds.length === allItemIds.length && allItemIds.length > 0}
                     onCheckedChange={toggleAll}
                     onClick={e => e.stopPropagation()}
                   />
                   <span className="text-xs font-medium text-muted-foreground">Selecionar todos</span>
                 </div>
                 <div className="border-t my-1" />
-                {checklistTemplates.map(t => (
-                  <div
-                    key={t.id}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent cursor-pointer"
-                    onClick={() => toggleChecklist(t.id)}
-                  >
-                    <Checkbox
-                      checked={selectedChecklistIds.includes(t.id)}
-                      onCheckedChange={() => toggleChecklist(t.id)}
-                      onClick={e => e.stopPropagation()}
-                    />
-                    <span className="text-xs">{t.name}</span>
-                  </div>
-                ))}
-                {selectedChecklistIds.length > 0 && (
+                {/* Hierarchical: Template (Objetivo) → Items (Passos) */}
+                {checklistTemplates.map(tmpl => {
+                  const tmplItemIds = tmpl.items.map(i => i.id);
+                  const allSelected = tmplItemIds.length > 0 && tmplItemIds.every(id => selectedChecklistItemIds.includes(id));
+                  const someSelected = tmplItemIds.some(id => selectedChecklistItemIds.includes(id));
+                  return (
+                    <div key={tmpl.id} className="space-y-0.5">
+                      {/* Template header - toggle all items */}
+                      <div
+                        className="flex items-center gap-2 px-2 py-1 rounded hover:bg-accent cursor-pointer"
+                        onClick={() => {
+                          if (allSelected) {
+                            setSelectedChecklistItemIds(prev => prev.filter(id => !tmplItemIds.includes(id)));
+                          } else {
+                            setSelectedChecklistItemIds(prev => [...new Set([...prev, ...tmplItemIds])]);
+                          }
+                        }}
+                      >
+                        <Checkbox
+                          checked={allSelected}
+                          className={someSelected && !allSelected ? 'opacity-50' : ''}
+                          onCheckedChange={() => {}}
+                          onClick={e => e.stopPropagation()}
+                        />
+                        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{tmpl.name}</span>
+                      </div>
+                      {/* Individual items */}
+                      {tmpl.items.map(item => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-2 pl-6 pr-2 py-1 rounded hover:bg-accent cursor-pointer"
+                          onClick={() => toggleChecklistItem(item.id)}
+                        >
+                          <Checkbox
+                            checked={selectedChecklistItemIds.includes(item.id)}
+                            onCheckedChange={() => toggleChecklistItem(item.id)}
+                            onClick={e => e.stopPropagation()}
+                          />
+                          <span className="text-xs truncate">{item.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+                {selectedChecklistItemIds.length > 0 && (
                   <>
                     <div className="border-t my-1" />
                     <Button
                       variant="ghost"
                       size="sm"
                       className="w-full h-7 text-xs text-muted-foreground"
-                      onClick={() => setSelectedChecklistIds([])}
+                      onClick={() => setSelectedChecklistItemIds([])}
                     >
                       Limpar seleção
                     </Button>
