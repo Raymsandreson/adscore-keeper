@@ -1076,7 +1076,7 @@ export function WhatsAppInbox() {
                 <SelectValue placeholder="Selecione um funil" />
               </SelectTrigger>
               <SelectContent>
-                {boards.map(b => (
+                {boards.filter(b => b.board_type !== 'workflow').map(b => (
                   <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                 ))}
               </SelectContent>
