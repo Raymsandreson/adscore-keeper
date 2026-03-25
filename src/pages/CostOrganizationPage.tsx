@@ -695,6 +695,19 @@ export default function CostOrganizationPage() {
         </TabsContent>
       </Tabs>
 
+      {/* Gerenciar Estrutura Dialog */}
+      <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings2 className="h-5 w-5" />
+              Gerenciar Estrutura
+            </DialogTitle>
+          </DialogHeader>
+          <FinancialConfigManager />
+        </DialogContent>
+      </Dialog>
+
       <ProductFormDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
