@@ -116,17 +116,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
   const [stageInfoMap, setStageInfoMap] = useState<Map<string, { name: string; color: string }>>(new Map());
   const [leadStageMap, setLeadStageMap] = useState<Map<string, { stageId: string; boardId: string }>>(new Map());
 
-  useEffect(() => {
-    fetchData();
-  }, [period]);
-
-  // Re-fetch today metrics when instance filter changes
-  useEffect(() => {
-    fetchTodayMetrics();
-  }, [selectedInstance]);
-
-  const fetchData = async () => {
-    setLoading(true);
+  const getPeriodRange = useCallback(() => {
     const now = new Date();
     let sinceDate: Date;
     let untilDate: Date | null = null;
@@ -153,9 +143,26 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
       default:
         sinceDate = subDays(now, parseInt(period));
     }
-    const since = sinceDate.toISOString();
+    return { since: sinceDate.toISOString(), until: untilDate ? untilDate.toISOString() : null };
+  }, [period]);
 
-    const untilIso = untilDate ? untilDate.toISOString() : null;
+  const periodLabel = useMemo(() => {
+    const opt = PERIOD_OPTIONS.find(o => o.value === period);
+    return opt?.label || 'Período';
+  }, [period]);
+
+  useEffect(() => {
+    fetchData();
+  }, [period]);
+
+  // Re-fetch today metrics when instance filter changes
+  useEffect(() => {
+    fetchTodayMetrics();
+  }, [selectedInstance]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    const { since, until: untilIso } = getPeriodRange();
 
     // Paginated fetch for messages to avoid 1000-row default limit
     const fetchAllMessages = async () => {
@@ -206,7 +213,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
   };
 
   const fetchTodayMetrics = async () => {
-    const todayStart = startOfDay(new Date()).toISOString();
+    const { since: todayStart, until: todayEnd } = getPeriodRange();
 
     // Helper to fetch all rows paginated (avoid 1000-row default limit)
     const fetchAllInbound = async () => {
@@ -222,6 +229,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           .gte('created_at', todayStart)
           .order('created_at', { ascending: true })
           .range(from, from + pageSize - 1);
+        if (todayEnd) q = q.lte('created_at', todayEnd);
         if (selectedInstance !== 'all') q = q.eq('instance_name', selectedInstance);
         const { data } = await q;
         if (!data || data.length === 0) break;
@@ -239,20 +247,24 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
       .gte('created_at', todayStart)
       .order('created_at', { ascending: false })
       .limit(1000);
+    if (todayEnd) outboundQuery = outboundQuery.lte('created_at', todayEnd);
 
     // Apply instance filter to today metrics too
     if (selectedInstance !== 'all') {
       outboundQuery = outboundQuery.eq('instance_name', selectedInstance);
     }
 
+    let docsQuery = supabase
+      .from('zapsign_documents')
+      .select('id, document_name, template_name, signer_name, status, created_at')
+      .gte('created_at', todayStart)
+      .order('created_at', { ascending: false });
+    if (todayEnd) docsQuery = docsQuery.lte('created_at', todayEnd);
+
     const [inboundData, followupsRes, docsRes] = await Promise.all([
       fetchAllInbound(),
       outboundQuery,
-      supabase
-        .from('zapsign_documents')
-        .select('id, document_name, template_name, signer_name, status, created_at')
-        .gte('created_at', todayStart)
-        .order('created_at', { ascending: false }),
+      docsQuery,
     ]);
 
     if (inboundData.length > 0) {
@@ -309,13 +321,15 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
         const outboundMap = new Map<string, { count: number; first_at: string | null }>();
         for (let i = 0; i < trulyNewPhones.length; i += 200) {
           const batch = trulyNewPhones.slice(i, i + 200);
-          const { data: outMsgs } = await supabase
+          let outQ = supabase
             .from('whatsapp_messages')
             .select('phone, created_at')
             .eq('direction', 'outbound')
             .gte('created_at', todayStart)
             .in('phone', batch)
             .order('created_at', { ascending: true });
+          if (todayEnd) outQ = outQ.lte('created_at', todayEnd);
+          const { data: outMsgs } = await outQ;
           for (const m of (outMsgs || [])) {
             const existing = outboundMap.get(m.phone);
             if (!existing) {
@@ -389,14 +403,17 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
 
       if (!boardsData || boardsData.length === 0) return;
 
-      const todayStart = startOfDay(new Date()).toISOString();
+      const { since: funnelStart, until: funnelEnd } = getPeriodRange();
       
-      const { data: whatsappLeads } = await supabase
+      let funnelQuery = supabase
         .from('whatsapp_messages')
         .select('lead_id, phone, direction, instance_name')
         .not('lead_id', 'is', null)
-        .gte('created_at', todayStart)
+        .gte('created_at', funnelStart)
         .limit(1000);
+      if (funnelEnd) funnelQuery = funnelQuery.lte('created_at', funnelEnd);
+
+      const { data: whatsappLeads } = await funnelQuery;
 
       if (!whatsappLeads || whatsappLeads.length === 0) {
         setFunnelStages([]);
@@ -1083,7 +1100,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <MessageSquare className="h-4 w-4 text-primary" />
-              <span className="text-xs text-muted-foreground">Conversas Novas Hoje</span>
+              <span className="text-xs text-muted-foreground">Conversas Novas {periodLabel}</span>
             </div>
             <p className="text-2xl font-bold">{todayNewConvs.length}</p>
             <div className="flex items-center gap-2 text-[10px]">
@@ -1113,7 +1130,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <Phone className="h-4 w-4 text-blue-500" />
-              <span className="text-xs text-muted-foreground">Contatos Hoje</span>
+              <span className="text-xs text-muted-foreground">Contatos {periodLabel}</span>
             </div>
             <p className="text-2xl font-bold">{todayFollowups.length}</p>
             <p className="text-xs text-muted-foreground">telefones contatados</p>
@@ -1126,7 +1143,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <FileSignature className="h-4 w-4 text-amber-500" />
-              <span className="text-xs text-muted-foreground">Documentos Hoje</span>
+              <span className="text-xs text-muted-foreground">Documentos {periodLabel}</span>
             </div>
             <p className="text-2xl font-bold">{todayDocs.length}</p>
             <p className="text-xs text-muted-foreground">Clique para ver</p>
@@ -1183,7 +1200,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <GitBranch className="h-4 w-4 text-primary" />
-              Conversas por Etapa do Funil (Hoje)
+              Conversas por Etapa do Funil ({periodLabel})
             </CardTitle>
             <p className="text-xs text-muted-foreground">Leads com conversas ativas · msgs enviadas · follow-ups</p>
           </CardHeader>
@@ -1533,7 +1550,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-primary" />
-              Conversas Novas Hoje ({todayNewConvs.length})
+              Conversas Novas {periodLabel} ({todayNewConvs.length})
             </SheetTitle>
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-100px)] mt-4">
@@ -1596,7 +1613,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
                 );
               })}
               {todayNewConvs.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-8">Nenhuma conversa nova hoje</p>
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhuma conversa nova no período</p>
               )}
             </div>
           </ScrollArea>
@@ -1609,7 +1626,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <Phone className="h-5 w-5 text-blue-500" />
-              Contatos Hoje ({todayFollowups.length})
+              Contatos {periodLabel} ({todayFollowups.length})
             </SheetTitle>
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-100px)] mt-4">
@@ -1630,7 +1647,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
                 </div>
               ))}
               {todayFollowups.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-8">Nenhum follow-up hoje</p>
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum follow-up no período</p>
               )}
             </div>
           </ScrollArea>
@@ -1643,7 +1660,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <FileSignature className="h-5 w-5 text-amber-500" />
-              Documentos Gerados Hoje ({todayDocs.length})
+              Documentos Gerados {periodLabel} ({todayDocs.length})
             </SheetTitle>
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-100px)] mt-4">
@@ -1681,7 +1698,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
                 ));
               })()}
               {todayDocs.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-8">Nenhum documento gerado hoje</p>
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum documento gerado no período</p>
               )}
             </div>
           </ScrollArea>
