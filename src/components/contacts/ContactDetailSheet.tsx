@@ -1315,7 +1315,7 @@ export function ContactDetailSheet({
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o funil" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[9999]" position="popper" sideOffset={4}>
                     {kanbanBoards.map((board) => (
                       <SelectItem key={board.id} value={board.id}>
                         <div className="flex items-center gap-2">
@@ -1336,7 +1336,7 @@ export function ContactDetailSheet({
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[9999]" position="popper" sideOffset={4}>
                   <SelectItem value="closed">
                     <div className="flex items-center gap-2">
                       <CheckCircle className="h-4 w-4 text-green-500" />
