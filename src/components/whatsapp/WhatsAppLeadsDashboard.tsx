@@ -101,7 +101,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
   const [selectedInstance, setSelectedInstance] = useState('all');
 
   // New metrics state
-  const [todayNewConvs, setTodayNewConvs] = useState<{ phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null; has_lead: boolean; has_contact: boolean; was_responded: boolean; response_time_minutes: number | null; last_inbound_at: string | null; outbound_count: number }[]>([]);
+  const [todayNewConvs, setTodayNewConvs] = useState<{ phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null; has_lead: boolean; has_contact: boolean; was_responded: boolean; response_time_minutes: number | null; last_inbound_at: string | null; outbound_count: number; lead_stage_type: 'closed' | 'refused' | 'funnel' | 'none'; lead_name: string | null }[]>([]);
   const [todayFollowups, setTodayFollowups] = useState<{ phone: string; contact_name: string | null; outbound_count: number; last_outbound_at: string; instance_name: string | null }[]>([]);
   const [todayDocs, setTodayDocs] = useState<{ id: string; document_name: string; template_name: string | null; signer_name: string | null; status: string; created_at: string }[]>([]);
   const [funnelStages, setFunnelStages] = useState<{ stageName: string; stageColor: string; count: number; msgCount: number; followupCount: number; leads: { id: string; name: string; phone: string | null; outboundMsgs: number; inboundMsgs: number; lastActivity: string | null }[] }[]>([]);
@@ -109,6 +109,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
   const [selectedFunnelStage, setSelectedFunnelStage] = useState<string | null>(null);
   const [selectedSlowBucket, setSelectedSlowBucket] = useState<string | null>(null);
   const [convResponseFilter, setConvResponseFilter] = useState<'all' | 'responded' | 'waiting' | 'fast' | 'slow'>('all');
+  const [convStageFilter, setConvStageFilter] = useState<'all' | 'has_lead' | 'no_lead' | 'closed' | 'refused' | 'funnel'>('all');
   const [sendingReport, setSendingReport] = useState(false);
   const [leadFollowupDetails, setLeadFollowupDetails] = useState<LeadFollowupDetail[]>([]);
   const [chatPreview, setChatPreview] = useState<{ phone: string; contactName: string | null; instanceName: string | null; hasLead: boolean; hasContact: boolean; wasResponded: boolean; responseTimeMinutes: number | null } | null>(null);
@@ -298,19 +299,41 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
         
         let leadPhones = new Set<string>();
         let contactPhones = new Set<string>();
+        let leadInfoMap = new Map<string, { name: string; stage_type: 'closed' | 'refused' | 'funnel' }>();
 
         if (phoneSuffixes.length > 0) {
-          const [leadsRes, contactsRes] = await Promise.all([
-            supabase.from('leads').select('lead_phone').not('lead_phone', 'is', null),
+          const [leadsRes, contactsRes, boardsRes] = await Promise.all([
+            supabase.from('leads').select('lead_phone, lead_name, status, board_id').not('lead_phone', 'is', null),
             supabase.from('contacts').select('phone').not('phone', 'is', null),
+            supabase.from('kanban_boards').select('id, stages'),
           ]);
           
-          const leadPhoneList = (leadsRes.data || []).map(l => (l.lead_phone || '').replace(/\D/g, ''));
+          const leadPhoneList = (leadsRes.data || []).map(l => ({ phone: (l.lead_phone || '').replace(/\D/g, ''), name: l.lead_name, status: l.status, board_id: l.board_id }));
           const contactPhoneList = (contactsRes.data || []).map(c => (c.phone || '').replace(/\D/g, ''));
+          
+          // Build board stages map for stage type classification
+          const boardStagesMap = new Map<string, { id: string }[]>();
+          for (const b of (boardsRes.data || [])) {
+            boardStagesMap.set(b.id, (b.stages as unknown as { id: string }[]) || []);
+          }
+
+          const CLOSED_IDS = ['closed', 'fechado', 'done'];
+          const REFUSED_IDS = ['recusado', 'not_qualified', 'lost'];
+          
+          // Map phone -> lead info
           
           for (const phone of uniquePhones) {
             const suffix = phone.slice(-8);
-            if (leadPhoneList.some(lp => lp.endsWith(suffix))) leadPhones.add(phone);
+            const matchedLead = leadPhoneList.find(lp => lp.phone.endsWith(suffix));
+            if (matchedLead) {
+              leadPhones.add(phone);
+              let stageType: 'closed' | 'refused' | 'funnel' = 'funnel';
+              if (matchedLead.status) {
+                if (CLOSED_IDS.includes(matchedLead.status)) stageType = 'closed';
+                else if (REFUSED_IDS.includes(matchedLead.status)) stageType = 'refused';
+              }
+              leadInfoMap.set(phone, { name: matchedLead.name, stage_type: stageType });
+            }
             if (contactPhoneList.some(cp => cp.endsWith(suffix))) contactPhones.add(phone);
           }
         }
@@ -352,6 +375,8 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           }
         }
 
+        
+        
         const trulyNew = trulyNewPhones.map(p => {
           const convData = phoneMap.get(p)!;
           const outbound = outboundMap.get(p);
@@ -361,6 +386,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           if (outbound?.first_at) {
             responseTimeMinutes = differenceInMinutes(parseISO(outbound.first_at), parseISO(convData.first_message_at));
           }
+          const leadInfo = leadInfoMap.get(p);
           return {
             ...convData,
             has_lead: leadPhones.has(p),
@@ -369,6 +395,8 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             response_time_minutes: responseTimeMinutes,
             last_inbound_at: lastInbound,
             outbound_count: outbound?.count || 0,
+            lead_stage_type: leadInfo?.stage_type || 'none' as 'closed' | 'refused' | 'funnel' | 'none',
+            lead_name: leadInfo?.name || null,
           };
         });
 
@@ -1546,7 +1574,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
       </Sheet>
 
       {/* New Conversations Today Sheet */}
-      <Sheet open={sheetOpen === 'new_convs'} onOpenChange={(open) => { if (!open) { setSheetOpen(null); setConvResponseFilter('all'); } }}>
+      <Sheet open={sheetOpen === 'new_convs'} onOpenChange={(open) => { if (!open) { setSheetOpen(null); setConvResponseFilter('all'); setConvStageFilter('all'); } }}>
         <SheetContent className="w-[400px] sm:w-[450px]">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
@@ -1586,14 +1614,55 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
               </button>
             ))}
           </div>
-          <ScrollArea className="h-[calc(100vh-145px)] mt-3">
+          {/* Lead stage filters */}
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {[
+              { key: 'all' as const, label: '📋 Todos' },
+              { key: 'has_lead' as const, label: '🎯 Com Lead' },
+              { key: 'no_lead' as const, label: '❌ Sem Lead' },
+              { key: 'funnel' as const, label: '🔄 Em Andamento' },
+              { key: 'closed' as const, label: '✅ Fechado' },
+              { key: 'refused' as const, label: '🚫 Recusado' },
+            ].map(f => (
+              <button
+                key={f.key}
+                onClick={() => setConvStageFilter(f.key)}
+                className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                  convStageFilter === f.key
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-muted/50 text-muted-foreground border-border hover:bg-accent'
+                }`}
+              >
+                {f.label}
+                {f.key !== 'all' && (() => {
+                  const count = todayNewConvs.filter(c => {
+                    if (f.key === 'has_lead') return c.has_lead;
+                    if (f.key === 'no_lead') return !c.has_lead;
+                    if (f.key === 'funnel') return c.has_lead && c.lead_stage_type === 'funnel';
+                    if (f.key === 'closed') return c.has_lead && c.lead_stage_type === 'closed';
+                    if (f.key === 'refused') return c.has_lead && c.lead_stage_type === 'refused';
+                    return true;
+                  }).length;
+                  return ` (${count})`;
+                })()}
+              </button>
+            ))}
+          </div>
+          <ScrollArea className="h-[calc(100vh-185px)] mt-3">
             <div className="space-y-2 pr-4">
               {todayNewConvs.filter(conv => {
+                // Response filter
                 const mins = conv.was_responded ? conv.response_time_minutes : differenceInMinutes(new Date(), parseISO(conv.last_inbound_at || conv.first_message_at));
-                if (convResponseFilter === 'responded') return conv.was_responded;
-                if (convResponseFilter === 'waiting') return !conv.was_responded;
-                if (convResponseFilter === 'fast') return conv.was_responded && (conv.response_time_minutes ?? 999) <= 10;
-                if (convResponseFilter === 'slow') return (mins ?? 0) > 30;
+                if (convResponseFilter === 'responded' && !conv.was_responded) return false;
+                if (convResponseFilter === 'waiting' && conv.was_responded) return false;
+                if (convResponseFilter === 'fast' && !(conv.was_responded && (conv.response_time_minutes ?? 999) <= 10)) return false;
+                if (convResponseFilter === 'slow' && !((mins ?? 0) > 30)) return false;
+                // Stage filter
+                if (convStageFilter === 'has_lead' && !conv.has_lead) return false;
+                if (convStageFilter === 'no_lead' && conv.has_lead) return false;
+                if (convStageFilter === 'funnel' && !(conv.has_lead && conv.lead_stage_type === 'funnel')) return false;
+                if (convStageFilter === 'closed' && !(conv.has_lead && conv.lead_stage_type === 'closed')) return false;
+                if (convStageFilter === 'refused' && !(conv.has_lead && conv.lead_stage_type === 'refused')) return false;
                 return true;
               }).map((conv, i) => {
                 const waitingMinutes = conv.was_responded 
@@ -1606,6 +1675,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
                   const m = mins % 60;
                   return m > 0 ? `${h}h${m}min` : `${h}h`;
                 };
+                const displayName = conv.lead_name || conv.contact_name || conv.phone;
                 return (
                 <div 
                   key={`${conv.phone}-${i}`} 
@@ -1624,12 +1694,14 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <p className="text-sm font-medium truncate">{conv.contact_name || conv.phone}</p>
-                      {conv.has_lead && <Badge variant="default" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Lead</Badge>}
-                      {conv.has_contact && <Badge variant="secondary" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Contato</Badge>}
+                      <p className="text-sm font-medium truncate">{displayName}</p>
+                      {conv.has_lead && conv.lead_stage_type === 'closed' && <Badge variant="default" className="text-[8px] px-1 py-0 h-3.5 shrink-0 bg-emerald-600">Fechado</Badge>}
+                      {conv.has_lead && conv.lead_stage_type === 'refused' && <Badge variant="destructive" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Recusado</Badge>}
+                      {conv.has_lead && conv.lead_stage_type === 'funnel' && <Badge variant="default" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Lead</Badge>}
+                      {conv.has_contact && !conv.has_lead && <Badge variant="secondary" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Contato</Badge>}
                       {!conv.has_lead && !conv.has_contact && <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 shrink-0 text-muted-foreground">Sem vínculo</Badge>}
                     </div>
-                    <p className="text-xs text-muted-foreground">{conv.phone}</p>
+                    <p className="text-xs text-muted-foreground" data-callface-ignore="true" x-autocompletetype="off">{conv.phone}</p>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
                       {conv.instance_name && <span className="text-[10px] text-muted-foreground">{conv.instance_name}</span>}
                       {conv.was_responded ? (
@@ -1659,8 +1731,6 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           </ScrollArea>
         </SheetContent>
       </Sheet>
-
-      {/* Follow-ups Today Sheet (by phone) */}
       <Sheet open={sheetOpen === 'followups'} onOpenChange={(open) => !open && setSheetOpen(null)}>
         <SheetContent className="w-[400px] sm:w-[450px]">
           <SheetHeader>
