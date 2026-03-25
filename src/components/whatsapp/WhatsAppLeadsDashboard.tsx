@@ -213,7 +213,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
   };
 
   const fetchTodayMetrics = async () => {
-    const todayStart = startOfDay(new Date()).toISOString();
+    const { since: todayStart, until: todayEnd } = getPeriodRange();
 
     // Helper to fetch all rows paginated (avoid 1000-row default limit)
     const fetchAllInbound = async () => {
