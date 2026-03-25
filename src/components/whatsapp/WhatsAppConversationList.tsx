@@ -247,17 +247,19 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
     return phone;
   };
 
-  const toggleChecklist = (id: string) => {
-    setSelectedChecklistIds(prev =>
+  const toggleChecklistItem = (id: string) => {
+    setSelectedChecklistItemIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
   };
 
+  const allItemIds = useMemo(() => checklistTemplates.flatMap(t => t.items.map(i => i.id)), [checklistTemplates]);
+
   const toggleAll = () => {
-    if (selectedChecklistIds.length === checklistTemplates.length) {
-      setSelectedChecklistIds([]);
+    if (selectedChecklistItemIds.length === allItemIds.length) {
+      setSelectedChecklistItemIds([]);
     } else {
-      setSelectedChecklistIds(checklistTemplates.map(t => t.id));
+      setSelectedChecklistItemIds([...allItemIds]);
     }
   };
 
