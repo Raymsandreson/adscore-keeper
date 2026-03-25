@@ -52,9 +52,8 @@ Deno.serve(async (req) => {
       await new Promise(resolve => setTimeout(resolve, MEMBER_BATCH_DELAY_SECONDS * 1000))
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseKey)
+
+
 
     // Check if newer messages arrived during the batching delay — if so, skip this invocation
     if (MEMBER_BATCH_DELAY_SECONDS > 0) {
