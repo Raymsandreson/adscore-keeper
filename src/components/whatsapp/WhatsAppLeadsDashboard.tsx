@@ -337,9 +337,6 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             }
             if (contactPhoneList.some(cp => cp.endsWith(suffix))) contactPhones.add(phone);
           }
-          
-          // Store leadInfoMap for later use
-          (window as any).__leadInfoMap = leadInfoMap;
         }
 
         // Only keep truly new conversations (no prior messages)
@@ -379,7 +376,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           }
         }
 
-        const leadInfoMap = (window as any).__leadInfoMap as Map<string, { name: string; stage_type: 'closed' | 'refused' | 'funnel' }> || new Map();
+        
         
         const trulyNew = trulyNewPhones.map(p => {
           const convData = phoneMap.get(p)!;
