@@ -247,20 +247,24 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
       .gte('created_at', todayStart)
       .order('created_at', { ascending: false })
       .limit(1000);
+    if (todayEnd) outboundQuery = outboundQuery.lte('created_at', todayEnd);
 
     // Apply instance filter to today metrics too
     if (selectedInstance !== 'all') {
       outboundQuery = outboundQuery.eq('instance_name', selectedInstance);
     }
 
+    let docsQuery = supabase
+      .from('zapsign_documents')
+      .select('id, document_name, template_name, signer_name, status, created_at')
+      .gte('created_at', todayStart)
+      .order('created_at', { ascending: false });
+    if (todayEnd) docsQuery = docsQuery.lte('created_at', todayEnd);
+
     const [inboundData, followupsRes, docsRes] = await Promise.all([
       fetchAllInbound(),
       outboundQuery,
-      supabase
-        .from('zapsign_documents')
-        .select('id, document_name, template_name, signer_name, status, created_at')
-        .gte('created_at', todayStart)
-        .order('created_at', { ascending: false }),
+      docsQuery,
     ]);
 
     if (inboundData.length > 0) {
