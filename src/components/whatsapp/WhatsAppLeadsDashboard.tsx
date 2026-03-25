@@ -108,6 +108,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
   const [sheetOpen, setSheetOpen] = useState<SheetType>(null);
   const [selectedFunnelStage, setSelectedFunnelStage] = useState<string | null>(null);
   const [selectedSlowBucket, setSelectedSlowBucket] = useState<string | null>(null);
+  const [convResponseFilter, setConvResponseFilter] = useState<'all' | 'responded' | 'waiting' | 'fast' | 'slow'>('all');
   const [sendingReport, setSendingReport] = useState(false);
   const [leadFollowupDetails, setLeadFollowupDetails] = useState<LeadFollowupDetail[]>([]);
   const [chatPreview, setChatPreview] = useState<{ phone: string; contactName: string | null; instanceName: string | null; hasLead: boolean; hasContact: boolean; wasResponded: boolean; responseTimeMinutes: number | null } | null>(null);
