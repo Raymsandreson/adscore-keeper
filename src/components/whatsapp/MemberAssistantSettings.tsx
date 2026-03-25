@@ -215,8 +215,22 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
             <p className="text-xs text-muted-foreground">
               Se definido, apenas mensagens recebidas nesta instância ativarão o assistente para membros.
             </p>
-          </div>
+           </div>
 
+          <div className="space-y-2">
+            <Label>Delay de agrupamento (segundos)</Label>
+            <p className="text-xs text-muted-foreground">
+              Aguarda esse tempo para juntar várias mensagens do membro antes de processar. Se o membro enviar 3 msgs em 5s e o delay for 8s, todas serão processadas juntas.
+            </p>
+            <Input
+              type="number"
+              min={0}
+              max={30}
+              value={batchDelaySeconds}
+              onChange={e => setBatchDelaySeconds(parseInt(e.target.value) || 0)}
+              className="w-24"
+            />
+          </div>
           <div className="flex justify-end">
             <Button onClick={handleSave} disabled={saving} size="sm" className="gap-2">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
