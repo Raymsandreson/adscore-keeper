@@ -8,6 +8,19 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+function formatDatePtBr(dateValue: string | null | undefined) {
+  if (!dateValue) return 'Não informado'
+  const d = new Date(dateValue)
+  if (Number.isNaN(d.getTime())) return dateValue
+  return d.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -40,19 +53,47 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Load conversation history for context (last 20 messages)
-    const { data: history } = await supabase
+    // Load only recent context to avoid mixing older commands
+    const { data: latestLock } = await supabase
+      .from('whatsapp_command_history')
+      .select('created_at')
+      .eq('phone', phone)
+      .eq('instance_name', instance_name)
+      .eq('role', 'member_lock')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const lockWindowStart = latestLock?.created_at
+      ? new Date(new Date(latestLock.created_at).getTime() - 2 * 60 * 1000).toISOString()
+      : null
+
+    let historyQuery = supabase
       .from('whatsapp_messages')
       .select('direction, message_text, created_at')
       .eq('phone', phone)
       .eq('instance_name', instance_name)
       .not('message_text', 'is', null)
       .order('created_at', { ascending: false })
-      .limit(20)
+      .limit(12)
 
+    if (lockWindowStart) {
+      historyQuery = historyQuery.gte('created_at', lockWindowStart)
+    }
+
+    const { data: history } = await historyQuery
+
+    const currentText = (message_text || '').trim()
     const conversationMessages = (history || [])
       .reverse()
-      .filter((m: any) => m.message_text?.trim())
+      .filter((m: any) => {
+        const text = m.message_text?.trim()
+        if (!text) return false
+        if (/^⚠️\s*\*?Alerta de Desconexão/i.test(text)) return false
+        if (text.startsWith('🤖 *WhatsJUD IA*')) return false
+        if (currentText && text === currentText) return false
+        return true
+      })
       .map((m: any) => ({
         role: m.direction === 'inbound' ? 'user' as const : 'assistant' as const,
         content: m.message_text,
@@ -143,6 +184,7 @@ REGRA DE MÍDIA ANEXADA:
     const ADMIN_TOOLS = new Set(['manage_conversation_agent'])
     let usedAdminTool = false
     const collectedLinks: string[] = []
+    const createdActivitySummaries: string[] = []
 
     // Process tool calls if any (support multi-turn)
     let iterations = 0
@@ -167,6 +209,21 @@ REGRA DE MÍDIA ANEXADA:
         // Collect links from tool results for fallback
         if (result?.link) collectedLinks.push(result.link)
 
+        if (fnName === 'create_activity' && result?.success) {
+          createdActivitySummaries.push(
+            [
+              '📌 *Atividade criada*',
+              `• Título: ${result.title || 'Não informado'}`,
+              `• Data de criação: ${formatDatePtBr(result.created_at)}`,
+              `• Tipo: ${result.activity_type || 'tarefa'}`,
+              `• Status: ${result.status || 'pendente'}`,
+              `• O que foi feito: ${result.what_was_done || 'Não informado'}`,
+              `• Próximo passo: ${result.next_steps || 'Não informado'}`,
+              `• Observação: ${result.current_status_notes || result.notes || 'Não informado'}`,
+            ].join('\n')
+          )
+        }
+
         toolResults.push({
           role: 'tool' as const,
           tool_call_id: toolCall.id,
@@ -185,6 +242,12 @@ REGRA DE MÍDIA ANEXADA:
 
       assistantMessage = followUp.choices?.[0]?.message
       finalText = assistantMessage?.content || ''
+    }
+
+    if (createdActivitySummaries.length > 0) {
+      const summaryBlock = createdActivitySummaries.join('\n\n')
+      if (!finalText) finalText = summaryBlock
+      else if (!finalText.includes('📌 *Atividade criada*')) finalText += `\n\n${summaryBlock}`
     }
 
     // Fallback: if tool returned links but AI omitted them, append
