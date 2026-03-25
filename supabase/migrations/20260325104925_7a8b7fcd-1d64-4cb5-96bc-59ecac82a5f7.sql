@@ -1,0 +1,1 @@
+ALTER TABLE public.member_assistant_config ADD COLUMN command_processor_prompt TEXT DEFAULT NULL;
