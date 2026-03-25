@@ -113,18 +113,61 @@ Deno.serve(async (req) => {
     }
 
     // ====================================================
+    // Fetch the creator's profile for sender identification
+    // ====================================================
+    let creatorDisplayName: string | null = null
+    if (localDoc.created_by) {
+      const { data: creatorProfile } = await supabase
+        .from('profiles')
+        .select('full_name, treatment_title')
+        .eq('user_id', localDoc.created_by)
+        .single()
+      if (creatorProfile?.full_name) {
+        const parts = creatorProfile.full_name.split(' ')
+        const shortName = parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1]}` : parts[0]
+        const title = creatorProfile.treatment_title || ''
+        creatorDisplayName = title ? `${title} ${shortName}` : shortName
+      }
+    }
+
+    // Helper: resolve the correct WhatsApp instance (prefer doc's instance_name)
+    const resolveInstance = async () => {
+      let instance = null
+      if (localDoc.instance_name) {
+        const { data: namedInst } = await supabase
+          .from('whatsapp_instances')
+          .select('*')
+          .eq('instance_name', localDoc.instance_name)
+          .eq('is_active', true)
+          .single()
+        instance = namedInst
+      }
+      if (!instance) {
+        const { data: fallbackInst } = await supabase
+          .from('whatsapp_instances')
+          .select('*')
+          .eq('is_active', true)
+          .limit(1)
+          .single()
+        instance = fallbackInst
+      }
+      return instance
+    }
+
+    // Helper: prefix message with creator's name for sender identification
+    const prefixWithSender = (msg: string) => {
+      if (creatorDisplayName) return `*${creatorDisplayName}:*\n${msg}`
+      return msg
+    }
+
+    // ====================================================
     // NOTIFY on each individual signature (partial or full)
     // ====================================================
     const justSignedSigner = triggeringSigner?.status === 'signed' ? triggeringSigner : null
 
     if (justSignedSigner && localDoc.whatsapp_phone && localDoc.notify_on_signature !== false) {
       try {
-        const { data: instance } = await supabase
-          .from('whatsapp_instances')
-          .select('*')
-          .eq('is_active', true)
-          .limit(1)
-          .single()
+        const instance = await resolveInstance()
 
         if (instance) {
           const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
