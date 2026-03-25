@@ -4519,6 +4519,7 @@ export type Database = {
       }
       member_assistant_config: {
         Row: {
+          command_processor_prompt: string | null
           created_at: string
           id: string
           instance_id: string | null
@@ -4527,6 +4528,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          command_processor_prompt?: string | null
           created_at?: string
           id?: string
           instance_id?: string | null
@@ -4535,6 +4537,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          command_processor_prompt?: string | null
           created_at?: string
           id?: string
           instance_id?: string | null

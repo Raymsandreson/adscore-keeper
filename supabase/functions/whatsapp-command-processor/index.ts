@@ -593,7 +593,25 @@ serve(async (req) => {
     }
 
     // ── System Prompt ──
-    const systemPrompt = `Você é o assistente IA do CRM WhatsJUD, recebendo comandos via WhatsApp do assessor "${config.user_name}".
+    // Check for custom prompt from member_assistant_config
+    const { data: macConfig } = await supabase.from("member_assistant_config").select("command_processor_prompt").limit(1).maybeSingle();
+    const customPrompt = (macConfig as any)?.command_processor_prompt;
+
+    let systemPrompt: string;
+    if (customPrompt) {
+      // Replace variables in custom prompt
+      systemPrompt = customPrompt
+        .replace(/\{assessor_name\}/g, config.user_name)
+        .replace(/\{assessor_id\}/g, config.user_id)
+        .replace(/\{assessores_list\}/g, assessorsList)
+        .replace(/\{activity_types\}/g, actTypes.map((t: any) => `  - key: "${t.key}" → ${t.label}`).join("\n"))
+        .replace(/\{boards_list\}/g, boardsList)
+        .replace(/\{nuclei_list\}/g, nucleiList || "Nenhum núcleo cadastrado")
+        .replace(/\{routine_context\}/g, routineContext)
+        .replace(/\{current_date\}/g, new Date().toISOString().split("T")[0])
+        .replace(/\{group_conversation_context\}/g, groupConversationContext);
+    } else {
+      systemPrompt = `Você é o assistente IA do CRM WhatsJUD, recebendo comandos via WhatsApp do assessor "${config.user_name}".
 
 VOCÊ PODE:
 1. Criar atividades/tarefas (new_activity)
@@ -688,6 +706,7 @@ REGRA ABSOLUTA - FIDELIDADE AO COMANDO:
 - NUNCA gere conteúdo aleatório ou de contexto anterior. Use SOMENTE o que está na mensagem atual.
 
 IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, links, textos) de uma vez. Todas as informações foram consolidadas antes de chegar até você. Considere TODO o conteúdo junto. Se houver referências a mídias ([MÍDIA: ...]), considere como anexos relevantes ao contexto do comando. Se houver imagens anexadas, ANALISE-AS para extrair informações relevantes.`;
+    }
 
     // Build AI messages — pass images as multimodal content so the AI can SEE them
     const aiMessages: any[] = [{ role: "system", content: systemPrompt }];
