@@ -96,23 +96,27 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Load only recent context to avoid mixing older commands
-    const { data: latestLock } = await supabase
-      .from('whatsapp_command_history')
+    // ========== CONTEXT ISOLATION ==========
+    // Strategy: only load messages AFTER the last completed action (outbound with link/summary).
+    // This prevents old commands from influencing new ones.
+    // If the AI asked a follow-up question (no action completed), keep that context.
+
+    // Find the last outbound message that contains action completion markers
+    const { data: lastCompletedAction } = await supabase
+      .from('whatsapp_messages')
       .select('created_at')
       .eq('phone', phone)
       .eq('instance_name', instance_name)
-      .eq('role', 'member_lock')
+      .eq('direction', 'outbound')
+      .not('message_text', 'is', null)
+      .or('message_text.ilike.%🔗 *Acessar:*%,message_text.ilike.%📌 *Atividade criada*%,message_text.ilike.%✅%Lead%criado%,message_text.ilike.%✅%Contato%criado%,message_text.ilike.%✅%movido%')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
 
-    const lockDate = latestLock?.created_at ? new Date(latestLock.created_at) : null
-    const lockAgeMs = lockDate ? Date.now() - lockDate.getTime() : Number.POSITIVE_INFINITY
-    const useRecentHistory = lockAgeMs <= 5 * 60 * 1000
-    const lockWindowStart = lockDate
-      ? new Date(lockDate.getTime() - 2 * 60 * 1000).toISOString()
-      : null
+    const contextStartTime = lastCompletedAction?.created_at
+      ? new Date(lastCompletedAction.created_at).toISOString()
+      : new Date(Date.now() - 5 * 60 * 1000).toISOString() // fallback: 5 min window
 
     let historyQuery = supabase
       .from('whatsapp_messages')
@@ -120,18 +124,14 @@ Deno.serve(async (req) => {
       .eq('phone', phone)
       .eq('instance_name', instance_name)
       .not('message_text', 'is', null)
+      .gt('created_at', contextStartTime)
       .order('created_at', { ascending: false })
-      .limit(12)
-
-    if (lockWindowStart && useRecentHistory) {
-      historyQuery = historyQuery.gte('created_at', lockWindowStart)
-    }
+      .limit(15)
 
     const { data: historyData } = await historyQuery
-    const history = useRecentHistory ? historyData : []
 
     const currentText = (message_text || '').trim()
-    const conversationMessages = (history || [])
+    const conversationMessages = (historyData || [])
       .reverse()
       .filter((m: any) => {
         const text = m.message_text?.trim()
