@@ -1015,7 +1015,7 @@ Retorne APENAS o JSON, sem markdown.` },
           }
           if (attachedCount > 0) {
             responseText += `\n\n📎 ${attachedCount} anexo(s) vinculado(s) à atividade *${targetAct.title}*`;
-            responseText += `\n✏️ Ver: ${APP_URL}/?openActivity=${targetAct.id}`;
+              responseText += `\n🔗 *Acessar:*\n${APP_URL}/?openActivity=${targetAct.id}`;
           } else {
             responseText += "\n\n⚠️ Nenhuma imagem/documento encontrado para anexar.";
           }
