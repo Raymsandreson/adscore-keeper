@@ -95,13 +95,39 @@ Formato obrigatório: coloque o link em uma linha separada no final da resposta,
 🔗 *Acessar:* <cole aqui o valor do campo link>
 Se a ferramenta retornou link, sua resposta PRECISA conter esse link. Não resuma, não omita, não substitua.
 - Para gerenciar agentes: quando o membro pedir "desativar assistente na conversa com X", use manage_conversation_agent com action=deactivate e contact_name=X
-- Sempre busque o contato pelo nome quando o membro não informar o telefone diretamente`
+- Sempre busque o contato pelo nome quando o membro não informar o telefone diretamente
+
+REGRA DE MÍDIA ANEXADA:
+- Quando o membro enviar uma mensagem junto com uma imagem ou documento (indicado por [MÍDIA ANEXADA]), você DEVE:
+  1. Analisar o conteúdo da mídia (a descrição já foi extraída para você)
+  2. Usar as informações da mídia para preencher campos da atividade (descrição, notas, etc.)
+  3. Ao criar atividade com mídia, SEMPRE passe media_url no parâmetro da ferramenta create_activity
+  4. Mencione na resposta que a mídia foi analisada e anexada à atividade
+- Se o membro enviar APENAS uma mídia sem texto claro de comando, pergunte o que ele deseja fazer com ela`
+
+    // Build user message content with media if present
+    const hasMedia = media_url && message_type !== 'text'
+    let userContent: any = message_text || ''
+    
+    if (hasMedia) {
+      // For images, use vision capability
+      if (message_type === 'image' && media_url) {
+        userContent = [
+          { type: 'text', text: `[MÍDIA ANEXADA: imagem]\n${message_text || 'O membro enviou uma imagem. Analise o conteúdo e pergunte o que deseja fazer.'}` },
+          { type: 'image_url', image_url: { url: media_url } },
+        ]
+      } else if (message_type === 'document') {
+        userContent = `[MÍDIA ANEXADA: documento - ${media_type || 'arquivo'}]\nURL: ${media_url}\n${message_text || 'O membro enviou um documento. Pergunte o que deseja fazer com ele.'}`
+      } else {
+        userContent = `[MÍDIA ANEXADA: ${message_type} - ${media_type || ''}]\nURL: ${media_url}\n${message_text || 'O membro enviou uma mídia. Pergunte o que deseja fazer.'}`
+      }
+    }
 
     // First AI call with tools
     const aiMessages = [
       { role: 'system' as const, content: systemPrompt },
       ...conversationMessages.slice(-10),
-      { role: 'user' as const, content: message_text },
+      { role: 'user' as const, content: userContent },
     ]
 
     let response = await geminiChat({
