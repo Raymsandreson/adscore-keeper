@@ -377,9 +377,6 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
         }
 
 
-      {/* Funnel & Checklist Overview */}
-      <DashboardFunnelChecklist selectedInstance={selectedInstance} onOpenChat={onOpenChat} />
-
         const trulyNew = trulyNewPhones.map(p => {
           const convData = phoneMap.get(p)!;
           const outbound = outboundMap.get(p);
@@ -1283,6 +1280,9 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           </CardContent>
         </Card>
       )}
+
+      {/* Funnel & Checklist Overview */}
+      <DashboardFunnelChecklist selectedInstance={selectedInstance} onOpenChat={onOpenChat} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
