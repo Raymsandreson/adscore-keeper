@@ -390,17 +390,15 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
               >
                 <span className="flex items-center gap-1.5">
                   <CheckSquare className="h-3 w-3 text-muted-foreground" />
-                  {selectedChecklistIds.length === 0
-                    ? 'Passos concluídos'
-                    : selectedChecklistIds.length === checklistTemplates.length
-                      ? 'Todos os passos'
-                      : `${selectedChecklistIds.length} passo${selectedChecklistIds.length > 1 ? 's' : ''} selecionado${selectedChecklistIds.length > 1 ? 's' : ''}`
+                  {selectedChecklistItemIds.length === 0
+                    ? 'Filtrar por passos'
+                    : `${selectedChecklistItemIds.length} passo${selectedChecklistItemIds.length > 1 ? 's' : ''} selecionado${selectedChecklistItemIds.length > 1 ? 's' : ''}`
                   }
                 </span>
                 <ChevronDown className="h-3 w-3 text-muted-foreground" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-64 p-2" align="start">
+            <PopoverContent className="w-72 p-2 max-h-[320px] overflow-y-auto" align="start">
               <div className="space-y-1">
                 {/* Select all */}
                 <div
@@ -408,35 +406,65 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
                   onClick={toggleAll}
                 >
                   <Checkbox
-                    checked={selectedChecklistIds.length === checklistTemplates.length && checklistTemplates.length > 0}
+                    checked={selectedChecklistItemIds.length === allItemIds.length && allItemIds.length > 0}
                     onCheckedChange={toggleAll}
                     onClick={e => e.stopPropagation()}
                   />
                   <span className="text-xs font-medium text-muted-foreground">Selecionar todos</span>
                 </div>
                 <div className="border-t my-1" />
-                {checklistTemplates.map(t => (
-                  <div
-                    key={t.id}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent cursor-pointer"
-                    onClick={() => toggleChecklist(t.id)}
-                  >
-                    <Checkbox
-                      checked={selectedChecklistIds.includes(t.id)}
-                      onCheckedChange={() => toggleChecklist(t.id)}
-                      onClick={e => e.stopPropagation()}
-                    />
-                    <span className="text-xs">{t.name}</span>
-                  </div>
-                ))}
-                {selectedChecklistIds.length > 0 && (
+                {/* Hierarchical: Template (Objetivo) → Items (Passos) */}
+                {checklistTemplates.map(tmpl => {
+                  const tmplItemIds = tmpl.items.map(i => i.id);
+                  const allSelected = tmplItemIds.length > 0 && tmplItemIds.every(id => selectedChecklistItemIds.includes(id));
+                  const someSelected = tmplItemIds.some(id => selectedChecklistItemIds.includes(id));
+                  return (
+                    <div key={tmpl.id} className="space-y-0.5">
+                      {/* Template header - toggle all items */}
+                      <div
+                        className="flex items-center gap-2 px-2 py-1 rounded hover:bg-accent cursor-pointer"
+                        onClick={() => {
+                          if (allSelected) {
+                            setSelectedChecklistItemIds(prev => prev.filter(id => !tmplItemIds.includes(id)));
+                          } else {
+                            setSelectedChecklistItemIds(prev => [...new Set([...prev, ...tmplItemIds])]);
+                          }
+                        }}
+                      >
+                        <Checkbox
+                          checked={allSelected}
+                          className={someSelected && !allSelected ? 'opacity-50' : ''}
+                          onCheckedChange={() => {}}
+                          onClick={e => e.stopPropagation()}
+                        />
+                        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{tmpl.name}</span>
+                      </div>
+                      {/* Individual items */}
+                      {tmpl.items.map(item => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-2 pl-6 pr-2 py-1 rounded hover:bg-accent cursor-pointer"
+                          onClick={() => toggleChecklistItem(item.id)}
+                        >
+                          <Checkbox
+                            checked={selectedChecklistItemIds.includes(item.id)}
+                            onCheckedChange={() => toggleChecklistItem(item.id)}
+                            onClick={e => e.stopPropagation()}
+                          />
+                          <span className="text-xs truncate">{item.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+                {selectedChecklistItemIds.length > 0 && (
                   <>
                     <div className="border-t my-1" />
                     <Button
                       variant="ghost"
                       size="sm"
                       className="w-full h-7 text-xs text-muted-foreground"
-                      onClick={() => setSelectedChecklistIds([])}
+                      onClick={() => setSelectedChecklistItemIds([])}
                     >
                       Limpar seleção
                     </Button>
