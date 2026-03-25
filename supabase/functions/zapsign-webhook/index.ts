@@ -184,7 +184,7 @@ Deno.serve(async (req) => {
             progressText = `🎉 *Todas as ${totalSigners} assinaturas foram coletadas!*\n\n📎 O PDF assinado será enviado em seguida.`
           }
 
-          const notificationMessage = `${statusEmoji} *Assinatura recebida!*\n\n📄 *${docName}*\n${statusText}\n${progressText}`
+          const notificationMessage = prefixWithSender(`${statusEmoji} *Assinatura recebida!*\n\n📄 *${docName}*\n${statusText}\n${progressText}`)
 
           const notifyRes = await fetch(`${baseUrl}/send/text`, {
             method: 'POST',
