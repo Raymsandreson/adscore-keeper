@@ -521,11 +521,14 @@ serve(async (req) => {
     // Clear collecting state by saving a non-collecting assistant placeholder
     // (will be replaced by the actual response below)
 
-    // 3) Rebuild history WITHOUT the collecting messages for clean AI context
+    // 3) Rebuild history — ONLY current session messages (from collectStartIdx)
+    //    This prevents old conversations from polluting the AI context
     const chatHistory: any[] = [];
-    for (const msg of allHistory) {
-      if (msg.role === "assistant" && msg.tool_data?.collecting === true) continue; // skip collecting prompts
-      if (msg.content === "[EXECUTAR COMANDO]") continue; // skip execute marker
+    const sessionStart = collectStartIdx >= 0 ? collectStartIdx : 0;
+    for (let i = sessionStart; i < allHistory.length; i++) {
+      const msg = allHistory[i];
+      if (msg.role === "assistant" && msg.tool_data?.collecting === true) continue;
+      if (msg.content === "[EXECUTAR COMANDO]") continue;
       if (msg.role === "user" || msg.role === "assistant") {
         chatHistory.push(msg);
       }
@@ -676,14 +679,68 @@ Usuário: "criar tarefa teste para amanhã"
 EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
 - "Qual o tipo de atividade? Escolha entre: tarefa, audiência, prazo..." ← PROIBIDO listar opções
 - Preencher apenas response_text dizendo "criei" sem preencher new_activity ← NÃO CRIA NADA
+- Inventar título/descrição que NÃO foi pedido pelo assessor ← PROIBIDO
 
-IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, links, textos) de uma vez. Todas as informações foram consolidadas antes de chegar até você. Considere TODO o conteúdo junto. Se houver referências a mídias ([MÍDIA: ...]), considere como anexos relevantes ao contexto do comando.`;
+REGRA ABSOLUTA - FIDELIDADE AO COMANDO:
+- O título da atividade DEVE refletir EXATAMENTE o que o assessor pediu. NÃO invente.
+- Se o assessor disse "criar atv para Luana sobre andamento do processo", o título deve ser algo como "Andamento do processo" e assigned_to_name deve ser "Luana".
+- Se há uma imagem/mídia anexada, ANALISE o conteúdo visual para complementar a atividade (números de processo, nomes, prazos, etc).
+- NUNCA gere conteúdo aleatório ou de contexto anterior. Use SOMENTE o que está na mensagem atual.
 
-    // Build AI messages
+IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, links, textos) de uma vez. Todas as informações foram consolidadas antes de chegar até você. Considere TODO o conteúdo junto. Se houver referências a mídias ([MÍDIA: ...]), considere como anexos relevantes ao contexto do comando. Se houver imagens anexadas, ANALISE-AS para extrair informações relevantes.`;
+
+    // Build AI messages — pass images as multimodal content so the AI can SEE them
     const aiMessages: any[] = [{ role: "system", content: systemPrompt }];
     for (const msg of chatHistory) {
-      if (msg.role === "user") aiMessages.push({ role: "user", content: msg.content });
-      else if (msg.role === "assistant") aiMessages.push({ role: "assistant", content: msg.content });
+      if (msg.role === "user") {
+        // Check if this message has associated media (image)
+        const mediaInfo = msg.tool_data?.media_url && msg.tool_data?.message_type === 'image'
+          ? msg.tool_data : null;
+        
+        if (mediaInfo) {
+          // Send as multimodal message so AI can see the image
+          aiMessages.push({
+            role: "user",
+            content: [
+              { type: "text", text: msg.content || "(imagem anexada)" },
+              { type: "image_url", image_url: { url: mediaInfo.media_url } },
+            ],
+          });
+        } else {
+          aiMessages.push({ role: "user", content: msg.content });
+        }
+      } else if (msg.role === "assistant") {
+        aiMessages.push({ role: "assistant", content: msg.content });
+      }
+    }
+
+    // Also pass buffered images that weren't in history (consolidated)
+    if (bufferedMedia.length > 0) {
+      const imageUrls = bufferedMedia.filter(m => m.type === 'image').map(m => m.url);
+      if (imageUrls.length > 0) {
+        const lastUserIdx = aiMessages.length - 1;
+        // Find the last user message and enhance it with images
+        for (let i = aiMessages.length - 1; i >= 0; i--) {
+          if (aiMessages[i].role === "user") {
+            const existingContent = typeof aiMessages[i].content === 'string'
+              ? aiMessages[i].content
+              : (Array.isArray(aiMessages[i].content) ? aiMessages[i].content.find((p: any) => p.type === 'text')?.text || '' : '');
+            
+            // Only enhance if not already multimodal with all images
+            const existingImageCount = Array.isArray(aiMessages[i].content)
+              ? aiMessages[i].content.filter((p: any) => p.type === 'image_url').length : 0;
+            
+            if (existingImageCount < imageUrls.length) {
+              const parts: any[] = [{ type: "text", text: existingContent }];
+              for (const url of imageUrls) {
+                parts.push({ type: "image_url", image_url: { url } });
+              }
+              aiMessages[i].content = parts;
+            }
+            break;
+          }
+        }
+      }
     }
 
     const tools = [
