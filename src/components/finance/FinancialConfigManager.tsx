@@ -33,6 +33,97 @@ export function FinancialConfigManager() {
   );
 }
 
+function NucleiTab() {
+  const { nuclei, addNucleus, updateNucleus, deleteNucleus } = useSpecializedNuclei();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: '', prefix: '', color: '#3b82f6', description: '' });
+
+  const handleAdd = async () => {
+    if (!form.name.trim()) { toast.error('Nome é obrigatório'); return; }
+    if (!form.prefix.trim()) { toast.error('Prefixo é obrigatório'); return; }
+    await addNucleus({ name: form.name, prefix: form.prefix.toUpperCase(), color: form.color, description: form.description || null });
+    setForm({ name: '', prefix: '', color: '#3b82f6', description: '' });
+  };
+
+  const handleSaveEdit = async (id: string) => {
+    await updateNucleus(id, { name: form.name, prefix: form.prefix.toUpperCase(), color: form.color, description: form.description || null });
+    setEditing(null);
+  };
+
+  const startEdit = (n: SpecializedNucleus) => {
+    setEditing(n.id);
+    setForm({ name: n.name, prefix: n.prefix, color: n.color, description: n.description || '' });
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Núcleos Especializados</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-4 gap-2">
+          <Input placeholder="Nome do Núcleo" value={editing ? '' : form.name} onChange={e => !editing && setForm(p => ({ ...p, name: e.target.value }))} disabled={!!editing} />
+          <Input placeholder="Prefixo (ex: ATT)" value={editing ? '' : form.prefix} onChange={e => !editing && setForm(p => ({ ...p, prefix: e.target.value }))} disabled={!!editing} />
+          <Input placeholder="Descrição" value={editing ? '' : form.description} onChange={e => !editing && setForm(p => ({ ...p, description: e.target.value }))} disabled={!!editing} />
+          <div className="flex gap-1">
+            <input type="color" value={editing ? '#3b82f6' : form.color} onChange={e => !editing && setForm(p => ({ ...p, color: e.target.value }))} disabled={!!editing} className="w-10 h-9 rounded border cursor-pointer" />
+            <Button size="sm" onClick={handleAdd} disabled={!!editing}><Plus className="h-4 w-4" /></Button>
+          </div>
+        </div>
+        <ScrollArea className="max-h-[300px]">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Cor</TableHead>
+                <TableHead>Nome</TableHead>
+                <TableHead>Prefixo</TableHead>
+                <TableHead>Descrição</TableHead>
+                <TableHead className="w-20">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {nuclei.map(n => (
+                <TableRow key={n.id}>
+                  {editing === n.id ? (
+                    <>
+                      <TableCell><input type="color" value={form.color} onChange={e => setForm(p => ({ ...p, color: e.target.value }))} className="w-8 h-8 rounded border cursor-pointer" /></TableCell>
+                      <TableCell><Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} className="h-8" /></TableCell>
+                      <TableCell><Input value={form.prefix} onChange={e => setForm(p => ({ ...p, prefix: e.target.value }))} className="h-8" /></TableCell>
+                      <TableCell><Input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className="h-8" /></TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleSaveEdit(n.id)}><Check className="h-3 w-3" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(null)}><X className="h-3 w-3" /></Button>
+                        </div>
+                      </TableCell>
+                    </>
+                  ) : (
+                    <>
+                      <TableCell><div className="w-4 h-4 rounded-full" style={{ backgroundColor: n.color }} /></TableCell>
+                      <TableCell className="font-medium">{n.name}</TableCell>
+                      <TableCell><Badge variant="outline">{n.prefix}</Badge></TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{n.description || '—'}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(n)}><Edit2 className="h-3 w-3" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteNucleus(n.id)}><Trash2 className="h-3 w-3" /></Button>
+                        </div>
+                      </TableCell>
+                    </>
+                  )}
+                </TableRow>
+              ))}
+              {nuclei.length === 0 && (
+                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Nenhum núcleo cadastrado</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </ScrollArea>
+      </CardContent>
+    </Card>
+  );
+}
+
 function CompaniesTab() {
   const { companies, addCompany, updateCompany, deleteCompany } = useCompanies();
   const [editing, setEditing] = useState<string | null>(null);
