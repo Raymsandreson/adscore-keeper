@@ -116,17 +116,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
   const [stageInfoMap, setStageInfoMap] = useState<Map<string, { name: string; color: string }>>(new Map());
   const [leadStageMap, setLeadStageMap] = useState<Map<string, { stageId: string; boardId: string }>>(new Map());
 
-  useEffect(() => {
-    fetchData();
-  }, [period]);
-
-  // Re-fetch today metrics when instance filter changes
-  useEffect(() => {
-    fetchTodayMetrics();
-  }, [selectedInstance]);
-
-  const fetchData = async () => {
-    setLoading(true);
+  const getPeriodRange = useCallback(() => {
     const now = new Date();
     let sinceDate: Date;
     let untilDate: Date | null = null;
@@ -153,9 +143,26 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
       default:
         sinceDate = subDays(now, parseInt(period));
     }
-    const since = sinceDate.toISOString();
+    return { since: sinceDate.toISOString(), until: untilDate ? untilDate.toISOString() : null };
+  }, [period]);
 
-    const untilIso = untilDate ? untilDate.toISOString() : null;
+  const periodLabel = useMemo(() => {
+    const opt = PERIOD_OPTIONS.find(o => o.value === period);
+    return opt?.label || 'Período';
+  }, [period]);
+
+  useEffect(() => {
+    fetchData();
+  }, [period]);
+
+  // Re-fetch today metrics when instance filter changes
+  useEffect(() => {
+    fetchTodayMetrics();
+  }, [selectedInstance]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    const { since, until: untilIso } = getPeriodRange();
 
     // Paginated fetch for messages to avoid 1000-row default limit
     const fetchAllMessages = async () => {
