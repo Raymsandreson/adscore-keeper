@@ -1577,7 +1577,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
       </Sheet>
 
       {/* New Conversations Today Sheet */}
-      <Sheet open={sheetOpen === 'new_convs'} onOpenChange={(open) => { if (!open) { setSheetOpen(null); setConvResponseFilter('all'); } }}>
+      <Sheet open={sheetOpen === 'new_convs'} onOpenChange={(open) => { if (!open) { setSheetOpen(null); setConvResponseFilter('all'); setConvStageFilter('all'); } }}>
         <SheetContent className="w-[400px] sm:w-[450px]">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
@@ -1617,14 +1617,55 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
               </button>
             ))}
           </div>
-          <ScrollArea className="h-[calc(100vh-145px)] mt-3">
+          {/* Lead stage filters */}
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {[
+              { key: 'all' as const, label: '📋 Todos' },
+              { key: 'has_lead' as const, label: '🎯 Com Lead' },
+              { key: 'no_lead' as const, label: '❌ Sem Lead' },
+              { key: 'funnel' as const, label: '🔄 Em Andamento' },
+              { key: 'closed' as const, label: '✅ Fechado' },
+              { key: 'refused' as const, label: '🚫 Recusado' },
+            ].map(f => (
+              <button
+                key={f.key}
+                onClick={() => setConvStageFilter(f.key)}
+                className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                  convStageFilter === f.key
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-muted/50 text-muted-foreground border-border hover:bg-accent'
+                }`}
+              >
+                {f.label}
+                {f.key !== 'all' && (() => {
+                  const count = todayNewConvs.filter(c => {
+                    if (f.key === 'has_lead') return c.has_lead;
+                    if (f.key === 'no_lead') return !c.has_lead;
+                    if (f.key === 'funnel') return c.has_lead && c.lead_stage_type === 'funnel';
+                    if (f.key === 'closed') return c.has_lead && c.lead_stage_type === 'closed';
+                    if (f.key === 'refused') return c.has_lead && c.lead_stage_type === 'refused';
+                    return true;
+                  }).length;
+                  return ` (${count})`;
+                })()}
+              </button>
+            ))}
+          </div>
+          <ScrollArea className="h-[calc(100vh-185px)] mt-3">
             <div className="space-y-2 pr-4">
               {todayNewConvs.filter(conv => {
+                // Response filter
                 const mins = conv.was_responded ? conv.response_time_minutes : differenceInMinutes(new Date(), parseISO(conv.last_inbound_at || conv.first_message_at));
-                if (convResponseFilter === 'responded') return conv.was_responded;
-                if (convResponseFilter === 'waiting') return !conv.was_responded;
-                if (convResponseFilter === 'fast') return conv.was_responded && (conv.response_time_minutes ?? 999) <= 10;
-                if (convResponseFilter === 'slow') return (mins ?? 0) > 30;
+                if (convResponseFilter === 'responded' && !conv.was_responded) return false;
+                if (convResponseFilter === 'waiting' && conv.was_responded) return false;
+                if (convResponseFilter === 'fast' && !(conv.was_responded && (conv.response_time_minutes ?? 999) <= 10)) return false;
+                if (convResponseFilter === 'slow' && !((mins ?? 0) > 30)) return false;
+                // Stage filter
+                if (convStageFilter === 'has_lead' && !conv.has_lead) return false;
+                if (convStageFilter === 'no_lead' && conv.has_lead) return false;
+                if (convStageFilter === 'funnel' && !(conv.has_lead && conv.lead_stage_type === 'funnel')) return false;
+                if (convStageFilter === 'closed' && !(conv.has_lead && conv.lead_stage_type === 'closed')) return false;
+                if (convStageFilter === 'refused' && !(conv.has_lead && conv.lead_stage_type === 'refused')) return false;
                 return true;
               }).map((conv, i) => {
                 const waitingMinutes = conv.was_responded 
@@ -1637,6 +1678,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
                   const m = mins % 60;
                   return m > 0 ? `${h}h${m}min` : `${h}h`;
                 };
+                const displayName = conv.lead_name || conv.contact_name || conv.phone;
                 return (
                 <div 
                   key={`${conv.phone}-${i}`} 
@@ -1655,12 +1697,14 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <p className="text-sm font-medium truncate">{conv.contact_name || conv.phone}</p>
-                      {conv.has_lead && <Badge variant="default" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Lead</Badge>}
-                      {conv.has_contact && <Badge variant="secondary" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Contato</Badge>}
+                      <p className="text-sm font-medium truncate">{displayName}</p>
+                      {conv.has_lead && conv.lead_stage_type === 'closed' && <Badge variant="default" className="text-[8px] px-1 py-0 h-3.5 shrink-0 bg-emerald-600">Fechado</Badge>}
+                      {conv.has_lead && conv.lead_stage_type === 'refused' && <Badge variant="destructive" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Recusado</Badge>}
+                      {conv.has_lead && conv.lead_stage_type === 'funnel' && <Badge variant="default" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Lead</Badge>}
+                      {conv.has_contact && !conv.has_lead && <Badge variant="secondary" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Contato</Badge>}
                       {!conv.has_lead && !conv.has_contact && <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 shrink-0 text-muted-foreground">Sem vínculo</Badge>}
                     </div>
-                    <p className="text-xs text-muted-foreground">{conv.phone}</p>
+                    <p className="text-xs text-muted-foreground" data-callface-ignore="true" x-autocompletetype="off">{conv.phone}</p>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
                       {conv.instance_name && <span className="text-[10px] text-muted-foreground">{conv.instance_name}</span>}
                       {conv.was_responded ? (
@@ -1690,8 +1734,6 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           </ScrollArea>
         </SheetContent>
       </Sheet>
-
-      {/* Follow-ups Today Sheet (by phone) */}
       <Sheet open={sheetOpen === 'followups'} onOpenChange={(open) => !open && setSheetOpen(null)}>
         <SheetContent className="w-[400px] sm:w-[450px]">
           <SheetHeader>
