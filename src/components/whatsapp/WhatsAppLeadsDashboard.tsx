@@ -321,13 +321,15 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
         const outboundMap = new Map<string, { count: number; first_at: string | null }>();
         for (let i = 0; i < trulyNewPhones.length; i += 200) {
           const batch = trulyNewPhones.slice(i, i + 200);
-          const { data: outMsgs } = await supabase
+          let outQ = supabase
             .from('whatsapp_messages')
             .select('phone, created_at')
             .eq('direction', 'outbound')
             .gte('created_at', todayStart)
             .in('phone', batch)
             .order('created_at', { ascending: true });
+          if (todayEnd) outQ = outQ.lte('created_at', todayEnd);
+          const { data: outMsgs } = await outQ;
           for (const m of (outMsgs || [])) {
             const existing = outboundMap.get(m.phone);
             if (!existing) {
