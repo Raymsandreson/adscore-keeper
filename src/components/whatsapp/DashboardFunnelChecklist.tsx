@@ -7,6 +7,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { CheckSquare, ChevronRight, Filter, Loader2, MessageSquare, Phone, ExternalLink, ListChecks } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 
@@ -459,6 +460,7 @@ function LeadsList({
   boardId: string;
   onOpenChat?: (phone: string) => void;
 }) {
+  const navigate = useNavigate();
   const [checklistInstances, setChecklistInstances] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -511,10 +513,7 @@ function LeadsList({
           key={lead.id}
           className="p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
           onClick={() => {
-            if (lead.lead_phone && onOpenChat) {
-              const phone = lead.lead_phone.replace(/\D/g, '');
-              onOpenChat(phone);
-            }
+            navigate(`/leads?board=${boardId}&openLead=${lead.id}`);
           }}
         >
           <div className="flex items-center justify-between">
