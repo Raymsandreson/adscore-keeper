@@ -108,6 +108,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
   const [sheetOpen, setSheetOpen] = useState<SheetType>(null);
   const [selectedFunnelStage, setSelectedFunnelStage] = useState<string | null>(null);
   const [selectedSlowBucket, setSelectedSlowBucket] = useState<string | null>(null);
+  const [convResponseFilter, setConvResponseFilter] = useState<'all' | 'responded' | 'waiting' | 'fast' | 'slow'>('all');
   const [sendingReport, setSendingReport] = useState(false);
   const [leadFollowupDetails, setLeadFollowupDetails] = useState<LeadFollowupDetail[]>([]);
   const [chatPreview, setChatPreview] = useState<{ phone: string; contactName: string | null; instanceName: string | null; hasLead: boolean; hasContact: boolean; wasResponded: boolean; responseTimeMinutes: number | null } | null>(null);
@@ -1545,7 +1546,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
       </Sheet>
 
       {/* New Conversations Today Sheet */}
-      <Sheet open={sheetOpen === 'new_convs'} onOpenChange={(open) => !open && setSheetOpen(null)}>
+      <Sheet open={sheetOpen === 'new_convs'} onOpenChange={(open) => { if (!open) { setSheetOpen(null); setConvResponseFilter('all'); } }}>
         <SheetContent className="w-[400px] sm:w-[450px]">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
@@ -1553,9 +1554,48 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
               Conversas Novas {periodLabel} ({todayNewConvs.length})
             </SheetTitle>
           </SheetHeader>
-          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {[
+              { key: 'all' as const, label: 'Todas' },
+              { key: 'responded' as const, label: '✓ Respondidas' },
+              { key: 'waiting' as const, label: '⏳ Aguardando' },
+              { key: 'fast' as const, label: '⚡ < 10min' },
+              { key: 'slow' as const, label: '🐢 > 30min' },
+            ].map(f => (
+              <button
+                key={f.key}
+                onClick={() => setConvResponseFilter(f.key)}
+                className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
+                  convResponseFilter === f.key
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-muted/50 text-muted-foreground border-border hover:bg-accent'
+                }`}
+              >
+                {f.label}
+                {f.key !== 'all' && (() => {
+                  const count = todayNewConvs.filter(c => {
+                    const mins = c.was_responded ? c.response_time_minutes : differenceInMinutes(new Date(), parseISO(c.last_inbound_at || c.first_message_at));
+                    if (f.key === 'responded') return c.was_responded;
+                    if (f.key === 'waiting') return !c.was_responded;
+                    if (f.key === 'fast') return c.was_responded && (c.response_time_minutes ?? 999) <= 10;
+                    if (f.key === 'slow') return (mins ?? 0) > 30;
+                    return true;
+                  }).length;
+                  return ` (${count})`;
+                })()}
+              </button>
+            ))}
+          </div>
+          <ScrollArea className="h-[calc(100vh-145px)] mt-3">
             <div className="space-y-2 pr-4">
-              {todayNewConvs.map((conv, i) => {
+              {todayNewConvs.filter(conv => {
+                const mins = conv.was_responded ? conv.response_time_minutes : differenceInMinutes(new Date(), parseISO(conv.last_inbound_at || conv.first_message_at));
+                if (convResponseFilter === 'responded') return conv.was_responded;
+                if (convResponseFilter === 'waiting') return !conv.was_responded;
+                if (convResponseFilter === 'fast') return conv.was_responded && (conv.response_time_minutes ?? 999) <= 10;
+                if (convResponseFilter === 'slow') return (mins ?? 0) > 30;
+                return true;
+              }).map((conv, i) => {
                 const waitingMinutes = conv.was_responded 
                   ? conv.response_time_minutes 
                   : differenceInMinutes(new Date(), parseISO(conv.last_inbound_at || conv.first_message_at));
