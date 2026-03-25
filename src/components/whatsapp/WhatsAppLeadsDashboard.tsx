@@ -301,19 +301,44 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
         let contactPhones = new Set<string>();
 
         if (phoneSuffixes.length > 0) {
-          const [leadsRes, contactsRes] = await Promise.all([
-            supabase.from('leads').select('lead_phone').not('lead_phone', 'is', null),
+          const [leadsRes, contactsRes, boardsRes] = await Promise.all([
+            supabase.from('leads').select('lead_phone, lead_name, status, board_id').not('lead_phone', 'is', null),
             supabase.from('contacts').select('phone').not('phone', 'is', null),
+            supabase.from('kanban_boards').select('id, stages'),
           ]);
           
-          const leadPhoneList = (leadsRes.data || []).map(l => (l.lead_phone || '').replace(/\D/g, ''));
+          const leadPhoneList = (leadsRes.data || []).map(l => ({ phone: (l.lead_phone || '').replace(/\D/g, ''), name: l.lead_name, status: l.status, board_id: l.board_id }));
           const contactPhoneList = (contactsRes.data || []).map(c => (c.phone || '').replace(/\D/g, ''));
+          
+          // Build board stages map for stage type classification
+          const boardStagesMap = new Map<string, { id: string }[]>();
+          for (const b of (boardsRes.data || [])) {
+            boardStagesMap.set(b.id, (b.stages as unknown as { id: string }[]) || []);
+          }
+
+          const CLOSED_IDS = ['closed', 'fechado', 'done'];
+          const REFUSED_IDS = ['recusado', 'not_qualified', 'lost'];
+          
+          // Map phone -> lead info
+          const leadInfoMap = new Map<string, { name: string; stage_type: 'closed' | 'refused' | 'funnel' }>();
           
           for (const phone of uniquePhones) {
             const suffix = phone.slice(-8);
-            if (leadPhoneList.some(lp => lp.endsWith(suffix))) leadPhones.add(phone);
+            const matchedLead = leadPhoneList.find(lp => lp.phone.endsWith(suffix));
+            if (matchedLead) {
+              leadPhones.add(phone);
+              let stageType: 'closed' | 'refused' | 'funnel' = 'funnel';
+              if (matchedLead.status) {
+                if (CLOSED_IDS.includes(matchedLead.status)) stageType = 'closed';
+                else if (REFUSED_IDS.includes(matchedLead.status)) stageType = 'refused';
+              }
+              leadInfoMap.set(phone, { name: matchedLead.name, stage_type: stageType });
+            }
             if (contactPhoneList.some(cp => cp.endsWith(suffix))) contactPhones.add(phone);
           }
+          
+          // Store leadInfoMap for later use
+          (window as any).__leadInfoMap = leadInfoMap;
         }
 
         // Only keep truly new conversations (no prior messages)
