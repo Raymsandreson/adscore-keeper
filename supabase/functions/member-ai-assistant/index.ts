@@ -88,7 +88,12 @@ Regras:
 - Ao mover lead de etapa, primeiro busque o lead e as etapas disponíveis se necessário
 - Inclua emojis relevantes nas respostas para melhor legibilidade
 - Quando o membro pedir para criar contato e vincular a lead, execute ambas ferramentas em sequência
-- SEMPRE inclua o deep link retornado pela ferramenta na resposta (ex: 🔗 *Acessar atividade:* <link>). NUNCA omita o link.
+
+REGRA OBRIGATÓRIA DE LINKS:
+Quando uma ferramenta retornar um campo "link" no resultado, você DEVE incluir esse link na sua resposta final. 
+Formato obrigatório: coloque o link em uma linha separada no final da resposta, assim:
+🔗 *Acessar:* <cole aqui o valor do campo link>
+Se a ferramenta retornou link, sua resposta PRECISA conter esse link. Não resuma, não omita, não substitua.
 - Para gerenciar agentes: quando o membro pedir "desativar assistente na conversa com X", use manage_conversation_agent com action=deactivate e contact_name=X
 - Sempre busque o contato pelo nome quando o membro não informar o telefone diretamente`
 
