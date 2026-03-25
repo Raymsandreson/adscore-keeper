@@ -116,6 +116,7 @@ Se a ferramenta retornou link, sua resposta PRECISA conter esse link. Não resum
     // Admin tools that should result in ephemeral (auto-delete) responses
     const ADMIN_TOOLS = new Set(['manage_conversation_agent'])
     let usedAdminTool = false
+    const collectedLinks: string[] = []
 
     // Process tool calls if any (support multi-turn)
     let iterations = 0
@@ -137,6 +138,9 @@ Se a ferramenta retornou link, sua resposta PRECISA conter esse link. Não resum
           result = { error: String(e) }
         }
 
+        // Collect links from tool results for fallback
+        if (result?.link) collectedLinks.push(result.link)
+
         toolResults.push({
           role: 'tool' as const,
           tool_call_id: toolCall.id,
@@ -155,6 +159,15 @@ Se a ferramenta retornou link, sua resposta PRECISA conter esse link. Não resum
 
       assistantMessage = followUp.choices?.[0]?.message
       finalText = assistantMessage?.content || ''
+    }
+
+    // Fallback: if tool returned links but AI omitted them, append
+    if (collectedLinks.length > 0 && finalText) {
+      for (const link of collectedLinks) {
+        if (!finalText.includes(link)) {
+          finalText += `\n\n🔗 *Acessar:* ${link}`
+        }
+      }
     }
 
     if (!finalText) {
