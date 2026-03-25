@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Sparkles, Building2, Package, Target, TrendingUp, Loader2, Plus, Pencil, Trash2, DollarSign, Shield, Lightbulb, Send, Users, Gem, Truck, HandCoins, FolderTree, Settings2 } from 'lucide-react';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { Textarea } from '@/components/ui/textarea';
@@ -192,10 +192,23 @@ export default function CostOrganizationPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setConfigDialogOpen(true)}>
-            <Settings2 className="h-4 w-4 mr-2" />
-            Gerenciar Estrutura
-          </Button>
+          <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Settings2 className="h-4 w-4 mr-2" />
+                Gerenciar Estrutura
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Settings2 className="h-5 w-5" />
+                  Gerenciar Estrutura
+                </DialogTitle>
+              </DialogHeader>
+              <FinancialConfigManager />
+            </DialogContent>
+          </Dialog>
           {mainTab === 'modelo' && (
             <>
               <Button variant="outline" onClick={handleNewProduct}>
@@ -694,19 +707,6 @@ export default function CostOrganizationPage() {
           <OrganizationalStructureTab />
         </TabsContent>
       </Tabs>
-
-      {/* Gerenciar Estrutura Dialog */}
-      <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Settings2 className="h-5 w-5" />
-              Gerenciar Estrutura
-            </DialogTitle>
-          </DialogHeader>
-          <FinancialConfigManager />
-        </DialogContent>
-      </Dialog>
 
       <ProductFormDialog
         open={dialogOpen}
