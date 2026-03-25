@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
     const { data: historyData } = await historyQuery
 
     const currentText = (message_text || '').trim()
-    const conversationMessages = (history || [])
+    const conversationMessages = (historyData || [])
       .reverse()
       .filter((m: any) => {
         const text = m.message_text?.trim()
