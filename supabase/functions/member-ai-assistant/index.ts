@@ -46,6 +46,32 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    // Check if newer messages arrived during the batching delay — if so, skip this invocation
+    if (MEMBER_BATCH_DELAY_SECONDS > 0) {
+      const cutoffTime = new Date(Date.now() - MEMBER_BATCH_DELAY_SECONDS * 1000).toISOString()
+      const { data: newerMsgs } = await supabase
+        .from('whatsapp_messages')
+        .select('id, created_at')
+        .eq('phone', phone)
+        .eq('instance_name', instance_name)
+        .eq('direction', 'inbound')
+        .gt('created_at', cutoffTime)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (newerMsgs && newerMsgs.length > 0) {
+        const newestAge = Date.now() - new Date((newerMsgs[0] as any).created_at).getTime()
+        const freshThreshold = MEMBER_BATCH_DELAY_SECONDS * 800 // 80% of delay
+        if (newestAge < freshThreshold) {
+          console.log(`Member batching: newer message detected (age: ${newestAge}ms), skipping this invocation`)
+          return new Response(JSON.stringify({ skipped: true, reason: 'batching_dedup' }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
+      }
+      console.log(`Member batching delay complete: processing accumulated messages for ${phone}`)
+    }
+
     // Get instance credentials for sending reply
     const { data: inst } = await supabase
       .from('whatsapp_instances')
