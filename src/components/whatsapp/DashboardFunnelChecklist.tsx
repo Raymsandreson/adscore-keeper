@@ -460,6 +460,7 @@ function LeadsList({
   boardId: string;
   onOpenChat?: (phone: string) => void;
 }) {
+  const navigate = useNavigate();
   const [checklistInstances, setChecklistInstances] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
 
