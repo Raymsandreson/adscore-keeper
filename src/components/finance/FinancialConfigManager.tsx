@@ -17,13 +17,15 @@ import { toast } from 'sonner';
 
 export function FinancialConfigManager() {
   return (
-    <Tabs defaultValue="companies" className="space-y-4">
+    <Tabs defaultValue="nuclei" className="space-y-4">
       <TabsList>
+        <TabsTrigger value="nuclei"><Target className="h-4 w-4 mr-1" /> Núcleos</TabsTrigger>
         <TabsTrigger value="companies"><Building2 className="h-4 w-4 mr-1" /> Empresas</TabsTrigger>
         <TabsTrigger value="cost_centers"><Layers className="h-4 w-4 mr-1" /> Centros de Custo</TabsTrigger>
         <TabsTrigger value="beneficiaries"><Users className="h-4 w-4 mr-1" /> Beneficiários</TabsTrigger>
       </TabsList>
 
+      <TabsContent value="nuclei"><NucleiTab /></TabsContent>
       <TabsContent value="companies"><CompaniesTab /></TabsContent>
       <TabsContent value="cost_centers"><CostCentersTab /></TabsContent>
       <TabsContent value="beneficiaries"><BeneficiariesTab /></TabsContent>
