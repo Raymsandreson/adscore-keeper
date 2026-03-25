@@ -191,18 +191,18 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
       if (!info || info.current_stage !== selectedStageId) return false;
     }
 
-    // Multi-select passos: lead must have ALL selected checklists completed
-    if (selectedChecklistIds.length > 0) {
+    // Multi-select passos: lead must have ALL selected item IDs checked
+    if (selectedChecklistItemIds.length > 0) {
       const info = getLeadInfo(c);
       if (!info) return false;
-      const allCompleted = selectedChecklistIds.every(id =>
-        info.completed_checklist_ids.includes(id)
+      const allChecked = selectedChecklistItemIds.every(id =>
+        info.checkedItemIds.includes(id)
       );
-      if (!allCompleted) return false;
+      if (!allChecked) return false;
     }
 
     return true;
-  }), [conversations, search, quickFilter, directionFilter, selectedBoardId, selectedStageId, selectedChecklistIds, leadInfoMap, phonesWithCalls]);
+  }), [conversations, search, quickFilter, directionFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, phonesWithCalls]);
 
   // Sort conversations based on mode
   const sortedFiltered = useMemo(() => {
