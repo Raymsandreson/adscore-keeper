@@ -438,6 +438,7 @@ REGRAS:
     template_data: fieldsData, lead_id: lead_id || null, contact_id: contact_id || null,
     sent_via_whatsapp: true, whatsapp_phone: normalizedPhone,
     notify_on_signature: notifyOnSignature, send_signed_pdf: sendSignedPdf,
+    instance_name: instance_name,
   });
 
   if (inst?.instance_token && signUrl) {
