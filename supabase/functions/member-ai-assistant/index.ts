@@ -64,8 +64,11 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle()
 
-    const lockWindowStart = latestLock?.created_at
-      ? new Date(new Date(latestLock.created_at).getTime() - 2 * 60 * 1000).toISOString()
+    const lockDate = latestLock?.created_at ? new Date(latestLock.created_at) : null
+    const lockAgeMs = lockDate ? Date.now() - lockDate.getTime() : Number.POSITIVE_INFINITY
+    const useRecentHistory = lockAgeMs <= 5 * 60 * 1000
+    const lockWindowStart = lockDate
+      ? new Date(lockDate.getTime() - 2 * 60 * 1000).toISOString()
       : null
 
     let historyQuery = supabase
@@ -77,11 +80,12 @@ Deno.serve(async (req) => {
       .order('created_at', { ascending: false })
       .limit(12)
 
-    if (lockWindowStart) {
+    if (lockWindowStart && useRecentHistory) {
       historyQuery = historyQuery.gte('created_at', lockWindowStart)
     }
 
-    const { data: history } = await historyQuery
+    const { data: historyData } = await historyQuery
+    const history = useRecentHistory ? historyData : []
 
     const currentText = (message_text || '').trim()
     const conversationMessages = (history || [])
@@ -185,6 +189,7 @@ REGRA DE MÍDIA ANEXADA:
     let usedAdminTool = false
     const collectedLinks: string[] = []
     const createdActivitySummaries: string[] = []
+    let hasCreatedActivityInRequest = false
 
     // Process tool calls if any (support multi-turn)
     let iterations = 0
@@ -200,8 +205,16 @@ REGRA DE MÍDIA ANEXADA:
         if (ADMIN_TOOLS.has(fnName)) usedAdminTool = true
 
         let result: any = null
+        if (fnName === 'create_activity' && hasCreatedActivityInRequest) {
+          result = { skipped: true, reason: 'duplicate_create_activity_ignored' }
+        }
         try {
-          result = await executeToolCall(supabase, fnName, fnArgs, member_user_id, member_name)
+          if (!result) {
+            result = await executeToolCall(supabase, fnName, fnArgs, member_user_id, member_name)
+          }
+          if (fnName === 'create_activity' && result?.success) {
+            hasCreatedActivityInRequest = true
+          }
         } catch (e) {
           result = { error: String(e) }
         }
