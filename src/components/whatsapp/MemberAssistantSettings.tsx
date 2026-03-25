@@ -48,6 +48,9 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
   const [instances, setInstances] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [commandProcessorPrompt, setCommandProcessorPrompt] = useState('');
+  const [showPromptEditor, setShowPromptEditor] = useState(false);
+  const [savingPrompt, setSavingPrompt] = useState(false);
 
   // Internal command form
   const [showForm, setShowForm] = useState(false);
@@ -74,6 +77,7 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
       setConfigId(configRes.data.id);
       setIsActive(configRes.data.is_active ?? true);
       setInstanceId((configRes.data as any).instance_id || null);
+      setCommandProcessorPrompt((configRes.data as any).command_processor_prompt || '');
     }
     setLoading(false);
   };
@@ -217,6 +221,62 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
             </Button>
           </div>
         </CardContent>
+      </Card>
+
+      {/* PROMPT DO PROCESSADOR ## */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Bot className="h-5 w-5" />
+                Prompt do Processador de Comandos
+              </CardTitle>
+              <CardDescription>
+                Prompt de sistema usado pela IA ao processar comandos ## dos membros
+              </CardDescription>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setShowPromptEditor(!showPromptEditor)}>
+              <Pencil className="h-3.5 w-3.5 mr-1" /> {showPromptEditor ? 'Fechar' : 'Editar'}
+            </Button>
+          </div>
+        </CardHeader>
+        {showPromptEditor && (
+          <CardContent className="space-y-3">
+            <div className="rounded-lg border p-3 bg-muted/50">
+              <p className="text-xs text-muted-foreground">
+                Deixe em branco para usar o prompt padrão do sistema. Variáveis disponíveis: <code>{'{assessor_name}'}</code>, <code>{'{assessor_id}'}</code>, <code>{'{assessores_list}'}</code>, <code>{'{activity_types}'}</code>, <code>{'{boards_list}'}</code>, <code>{'{nuclei_list}'}</code>, <code>{'{routine_context}'}</code>, <code>{'{current_date}'}</code>
+              </p>
+            </div>
+            <Textarea
+              placeholder="Deixe vazio para usar o prompt padrão..."
+              value={commandProcessorPrompt}
+              onChange={e => setCommandProcessorPrompt(e.target.value)}
+              className="min-h-[250px] text-xs font-mono"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button size="sm" variant="ghost" onClick={() => { setCommandProcessorPrompt(''); }}>Limpar</Button>
+              <Button size="sm" disabled={savingPrompt} onClick={async () => {
+                setSavingPrompt(true);
+                try {
+                  const payload = { command_processor_prompt: commandProcessorPrompt || null, updated_at: new Date().toISOString() };
+                  if (configId) {
+                    const { error } = await supabase.from('member_assistant_config').update(payload).eq('id', configId);
+                    if (error) throw error;
+                  } else {
+                    const { data, error } = await supabase.from('member_assistant_config').insert(payload).select('id').single();
+                    if (error) throw error;
+                    setConfigId(data.id);
+                  }
+                  toast.success('Prompt salvo!');
+                } catch (e: any) { toast.error(e.message); } finally { setSavingPrompt(false); }
+              }}>
+                {savingPrompt ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                <span className="ml-1">Salvar Prompt</span>
+              </Button>
+            </div>
+          </CardContent>
+        )}
       </Card>
 
       {/* ## INTERNAL COMMANDS */}
