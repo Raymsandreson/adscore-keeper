@@ -679,8 +679,15 @@ Usuário: "criar tarefa teste para amanhã"
 EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
 - "Qual o tipo de atividade? Escolha entre: tarefa, audiência, prazo..." ← PROIBIDO listar opções
 - Preencher apenas response_text dizendo "criei" sem preencher new_activity ← NÃO CRIA NADA
+- Inventar título/descrição que NÃO foi pedido pelo assessor ← PROIBIDO
 
-IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, links, textos) de uma vez. Todas as informações foram consolidadas antes de chegar até você. Considere TODO o conteúdo junto. Se houver referências a mídias ([MÍDIA: ...]), considere como anexos relevantes ao contexto do comando.`;
+REGRA ABSOLUTA - FIDELIDADE AO COMANDO:
+- O título da atividade DEVE refletir EXATAMENTE o que o assessor pediu. NÃO invente.
+- Se o assessor disse "criar atv para Luana sobre andamento do processo", o título deve ser algo como "Andamento do processo" e assigned_to_name deve ser "Luana".
+- Se há uma imagem/mídia anexada, ANALISE o conteúdo visual para complementar a atividade (números de processo, nomes, prazos, etc).
+- NUNCA gere conteúdo aleatório ou de contexto anterior. Use SOMENTE o que está na mensagem atual.
+
+IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, links, textos) de uma vez. Todas as informações foram consolidadas antes de chegar até você. Considere TODO o conteúdo junto. Se houver referências a mídias ([MÍDIA: ...]), considere como anexos relevantes ao contexto do comando. Se houver imagens anexadas, ANALISE-AS para extrair informações relevantes.`;
 
     // Build AI messages — pass images as multimodal content so the AI can SEE them
     const aiMessages: any[] = [{ role: "system", content: systemPrompt }];
