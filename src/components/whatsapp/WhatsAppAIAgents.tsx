@@ -584,9 +584,9 @@ export function WhatsAppAIAgents() {
               {/* TAB: Timing */}
               <TabsContent value="timing" className="space-y-4 mt-4">
                 <div>
-                  <Label>Delay antes de responder (segundos)</Label>
-                  <p className="text-[10px] text-muted-foreground mb-1">Simula tempo de digitação humano</p>
-                  <Input type="number" value={editingAgent.response_delay_seconds ?? 0} onChange={e => setEditingAgent({ ...editingAgent, response_delay_seconds: parseInt(e.target.value) || 0 })} min={0} max={300} />
+                  <Label>Delay de agrupamento (segundos)</Label>
+                  <p className="text-[10px] text-muted-foreground mb-1">Aguarda esse tempo para juntar várias mensagens do contato antes de processar. Ex: se o contato mandar 3 msgs em 5s e o delay for 8s, todas serão processadas juntas.</p>
+                  <Input type="number" value={editingAgent.response_delay_seconds ?? 0} onChange={e => setEditingAgent({ ...editingAgent, response_delay_seconds: parseInt(e.target.value) || 0 })} min={0} max={60} />
                 </div>
                 <div className="border rounded-lg p-3 space-y-3">
                   <div className="flex items-center justify-between">
