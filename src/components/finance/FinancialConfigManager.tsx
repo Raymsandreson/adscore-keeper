@@ -11,7 +11,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useCompanies, Company } from '@/hooks/useCompanies';
 import { useCostCenters, CostCenter } from '@/hooks/useCostCenters';
 import { useBeneficiaries, Beneficiary } from '@/hooks/useBeneficiaries';
-import { Building2, Layers, Users, Plus, Edit2, Trash2, Save, X, Check } from 'lucide-react';
+import { useSpecializedNuclei, SpecializedNucleus } from '@/hooks/useSpecializedNuclei';
+import { Building2, Layers, Users, Plus, Edit2, Trash2, Save, X, Check, Target } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function FinancialConfigManager() {
