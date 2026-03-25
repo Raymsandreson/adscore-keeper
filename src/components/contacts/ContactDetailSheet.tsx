@@ -1316,7 +1316,7 @@ export function ContactDetailSheet({
                     <SelectValue placeholder="Selecione o funil" />
                   </SelectTrigger>
                   <SelectContent className="z-[9999]" position="popper" sideOffset={4}>
-                    {kanbanBoards.map((board) => (
+                    {kanbanBoards.filter(b => (b as any).board_type !== 'workflow').map((board) => (
                       <SelectItem key={board.id} value={board.id}>
                         <div className="flex items-center gap-2">
                           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: board.color || '#3b82f6' }} />
