@@ -18,6 +18,7 @@ interface LeadInfo {
   board_id: string | null;
   current_stage: string | null;
   completed_checklist_ids: string[];
+  checkedItemIds: string[]; // individual item IDs that are checked across all instances
 }
 
 interface Props {
