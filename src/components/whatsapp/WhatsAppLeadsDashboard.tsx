@@ -321,7 +321,6 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           const REFUSED_IDS = ['recusado', 'not_qualified', 'lost'];
           
           // Map phone -> lead info
-          const leadInfoMap = new Map<string, { name: string; stage_type: 'closed' | 'refused' | 'funnel' }>();
           
           for (const phone of uniquePhones) {
             const suffix = phone.slice(-8);
