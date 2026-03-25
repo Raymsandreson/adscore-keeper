@@ -100,16 +100,21 @@ async function createActivity(supabase: any, args: any, userId: string, userName
     .insert({
       title: args.title,
       description: args.description || null,
+      activity_type: args.activity_type || 'tarefa',
       priority: args.priority || 'normal',
       deadline: args.deadline || new Date().toISOString().split('T')[0],
-      activity_type: 'tarefa',
+      notification_date: args.notification_date || null,
       status: 'pendente',
       assigned_to: userId,
       assigned_to_name: userName,
       created_by: userId,
       lead_name: args.lead_name || null,
+      notes: args.notes || null,
+      what_was_done: args.what_was_done || null,
+      next_steps: args.next_steps || null,
+      current_status_notes: args.current_status_notes || null,
     })
-    .select('id, title')
+    .select('id, title, created_at, activity_type, status, deadline, notification_date, lead_name, notes, what_was_done, next_steps, current_status_notes')
     .single()
 
   if (error) return { error: error.message }
@@ -138,6 +143,16 @@ async function createActivity(supabase: any, args: any, userId: string, userName
     success: true, 
     activity_id: data.id, 
     title: data.title, 
+    created_at: data.created_at,
+    activity_type: data.activity_type,
+    status: data.status,
+    deadline: data.deadline,
+    notification_date: data.notification_date,
+    lead_name: data.lead_name,
+    notes: data.notes,
+    what_was_done: data.what_was_done,
+    next_steps: data.next_steps,
+    current_status_notes: data.current_status_notes,
     media_attached: !!args.media_url,
     link: `${APP_URL}/?openActivity=${data.id}` 
   }
