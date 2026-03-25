@@ -1100,7 +1100,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <MessageSquare className="h-4 w-4 text-primary" />
-              <span className="text-xs text-muted-foreground">Conversas Novas Hoje</span>
+              <span className="text-xs text-muted-foreground">Conversas Novas {periodLabel}</span>
             </div>
             <p className="text-2xl font-bold">{todayNewConvs.length}</p>
             <div className="flex items-center gap-2 text-[10px]">
@@ -1130,7 +1130,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <Phone className="h-4 w-4 text-blue-500" />
-              <span className="text-xs text-muted-foreground">Contatos Hoje</span>
+              <span className="text-xs text-muted-foreground">Contatos {periodLabel}</span>
             </div>
             <p className="text-2xl font-bold">{todayFollowups.length}</p>
             <p className="text-xs text-muted-foreground">telefones contatados</p>
@@ -1143,7 +1143,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <FileSignature className="h-4 w-4 text-amber-500" />
-              <span className="text-xs text-muted-foreground">Documentos Hoje</span>
+              <span className="text-xs text-muted-foreground">Documentos {periodLabel}</span>
             </div>
             <p className="text-2xl font-bold">{todayDocs.length}</p>
             <p className="text-xs text-muted-foreground">Clique para ver</p>
@@ -1200,7 +1200,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <GitBranch className="h-4 w-4 text-primary" />
-              Conversas por Etapa do Funil (Hoje)
+              Conversas por Etapa do Funil ({periodLabel})
             </CardTitle>
             <p className="text-xs text-muted-foreground">Leads com conversas ativas · msgs enviadas · follow-ups</p>
           </CardHeader>
@@ -1550,7 +1550,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-primary" />
-              Conversas Novas Hoje ({todayNewConvs.length})
+              Conversas Novas {periodLabel} ({todayNewConvs.length})
             </SheetTitle>
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-100px)] mt-4">
@@ -1613,7 +1613,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
                 );
               })}
               {todayNewConvs.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-8">Nenhuma conversa nova hoje</p>
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhuma conversa nova no período</p>
               )}
             </div>
           </ScrollArea>
@@ -1626,7 +1626,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <Phone className="h-5 w-5 text-blue-500" />
-              Contatos Hoje ({todayFollowups.length})
+              Contatos {periodLabel} ({todayFollowups.length})
             </SheetTitle>
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-100px)] mt-4">
@@ -1647,7 +1647,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
                 </div>
               ))}
               {todayFollowups.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-8">Nenhum follow-up hoje</p>
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum follow-up no período</p>
               )}
             </div>
           </ScrollArea>
@@ -1660,7 +1660,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <FileSignature className="h-5 w-5 text-amber-500" />
-              Documentos Gerados Hoje ({todayDocs.length})
+              Documentos Gerados {periodLabel} ({todayDocs.length})
             </SheetTitle>
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-100px)] mt-4">
@@ -1698,7 +1698,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
                 ));
               })()}
               {todayDocs.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-8">Nenhum documento gerado hoje</p>
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum documento gerado no período</p>
               )}
             </div>
           </ScrollArea>
