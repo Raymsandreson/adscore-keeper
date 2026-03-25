@@ -51,6 +51,7 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
   const [commandProcessorPrompt, setCommandProcessorPrompt] = useState('');
   const [showPromptEditor, setShowPromptEditor] = useState(false);
   const [savingPrompt, setSavingPrompt] = useState(false);
+  const [batchDelaySeconds, setBatchDelaySeconds] = useState(6);
 
   // Internal command form
   const [showForm, setShowForm] = useState(false);
@@ -78,6 +79,7 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
       setIsActive(configRes.data.is_active ?? true);
       setInstanceId((configRes.data as any).instance_id || null);
       setCommandProcessorPrompt((configRes.data as any).command_processor_prompt || '');
+      setBatchDelaySeconds((configRes.data as any).batch_delay_seconds ?? 6);
     }
     setLoading(false);
   };
@@ -90,6 +92,7 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
         is_active: isActive,
         instance_id: instanceId || null,
         instance_name: selectedInst?.instance_name || null,
+        batch_delay_seconds: batchDelaySeconds,
         updated_at: new Date().toISOString(),
       };
 
