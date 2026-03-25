@@ -513,10 +513,7 @@ function LeadsList({
           key={lead.id}
           className="p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
           onClick={() => {
-            if (lead.lead_phone && onOpenChat) {
-              const phone = lead.lead_phone.replace(/\D/g, '');
-              onOpenChat(phone);
-            }
+            navigate(`/leads?board=${boardId}&openLead=${lead.id}`);
           }}
         >
           <div className="flex items-center justify-between">
