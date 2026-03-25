@@ -44,15 +44,15 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [selectedBoardId, setSelectedBoardId] = useState<string>('all');
   const [selectedStageId, setSelectedStageId] = useState<string>('all');
-  // Multi-select passos
-  const [selectedChecklistIds, setSelectedChecklistIds] = useState<string[]>([]);
+  // Multi-select passos (individual item IDs now)
+  const [selectedChecklistItemIds, setSelectedChecklistItemIds] = useState<string[]>([]);
   const [checklistPopoverOpen, setChecklistPopoverOpen] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('last_received');
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all');
 
   const [phonesWithCalls, setPhonesWithCalls] = useState<Set<string>>(new Set());
   const [leadInfoMap, setLeadInfoMap] = useState<Map<string, LeadInfo>>(new Map());
-  const [checklistTemplates, setChecklistTemplates] = useState<{ id: string; name: string }[]>([]);
+  const [checklistTemplates, setChecklistTemplates] = useState<{ id: string; name: string; items: { id: string; label: string }[] }[]>([]);
 
   // Track lead IDs to avoid unnecessary re-fetches
   const prevLeadIdsRef = useRef<string>('');
