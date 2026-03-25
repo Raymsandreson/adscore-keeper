@@ -113,7 +113,8 @@ async function createActivity(supabase: any, args: any, userId: string, userName
     .single()
 
   if (error) return { error: error.message }
-  return { success: true, activity_id: data.id, title: data.title }
+  const APP_URL = "https://adscore-keeper.lovable.app"
+  return { success: true, activity_id: data.id, title: data.title, link: `${APP_URL}/?openActivity=${data.id}` }
 }
 
 async function getGoalsProgress(supabase: any, args: any, userId: string) {
@@ -174,7 +175,8 @@ async function createLead(supabase: any, args: any, userId: string) {
     .single()
 
   if (error) return { error: error.message }
-  return { success: true, lead_id: data.id, lead_name: data.lead_name, stage: data.current_stage }
+  const APP_URL = "https://adscore-keeper.lovable.app"
+  return { success: true, lead_id: data.id, lead_name: data.lead_name, stage: data.current_stage, link: `${APP_URL}/leads?openLead=${data.id}` }
 }
 
 async function updateLead(supabase: any, args: any) {
@@ -312,7 +314,8 @@ async function createContact(supabase: any, args: any, userId: string) {
     .single()
 
   if (error) return { error: error.message }
-  return { success: true, contact_id: data.id, full_name: data.full_name }
+  const APP_URL = "https://adscore-keeper.lovable.app"
+  return { success: true, contact_id: data.id, full_name: data.full_name, link: `${APP_URL}/leads?tab=contacts&openContact=${data.id}` }
 }
 
 async function linkContactToLead(supabase: any, args: any) {
