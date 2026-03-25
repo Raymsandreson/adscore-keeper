@@ -101,7 +101,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
   const [selectedInstance, setSelectedInstance] = useState('all');
 
   // New metrics state
-  const [todayNewConvs, setTodayNewConvs] = useState<{ phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null; has_lead: boolean; has_contact: boolean; was_responded: boolean; response_time_minutes: number | null; last_inbound_at: string | null; outbound_count: number }[]>([]);
+  const [todayNewConvs, setTodayNewConvs] = useState<{ phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null; has_lead: boolean; has_contact: boolean; was_responded: boolean; response_time_minutes: number | null; last_inbound_at: string | null; outbound_count: number; lead_stage_type: 'closed' | 'refused' | 'funnel' | 'none'; lead_name: string | null }[]>([]);
   const [todayFollowups, setTodayFollowups] = useState<{ phone: string; contact_name: string | null; outbound_count: number; last_outbound_at: string; instance_name: string | null }[]>([]);
   const [todayDocs, setTodayDocs] = useState<{ id: string; document_name: string; template_name: string | null; signer_name: string | null; status: string; created_at: string }[]>([]);
   const [funnelStages, setFunnelStages] = useState<{ stageName: string; stageColor: string; count: number; msgCount: number; followupCount: number; leads: { id: string; name: string; phone: string | null; outboundMsgs: number; inboundMsgs: number; lastActivity: string | null }[] }[]>([]);
@@ -109,6 +109,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
   const [selectedFunnelStage, setSelectedFunnelStage] = useState<string | null>(null);
   const [selectedSlowBucket, setSelectedSlowBucket] = useState<string | null>(null);
   const [convResponseFilter, setConvResponseFilter] = useState<'all' | 'responded' | 'waiting' | 'fast' | 'slow'>('all');
+  const [convStageFilter, setConvStageFilter] = useState<'all' | 'has_lead' | 'no_lead' | 'closed' | 'refused' | 'funnel'>('all');
   const [sendingReport, setSendingReport] = useState(false);
   const [leadFollowupDetails, setLeadFollowupDetails] = useState<LeadFollowupDetail[]>([]);
   const [chatPreview, setChatPreview] = useState<{ phone: string; contactName: string | null; instanceName: string | null; hasLead: boolean; hasContact: boolean; wasResponded: boolean; responseTimeMinutes: number | null } | null>(null);
