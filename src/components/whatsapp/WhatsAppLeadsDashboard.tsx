@@ -299,6 +299,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
         
         let leadPhones = new Set<string>();
         let contactPhones = new Set<string>();
+        let leadInfoMap = new Map<string, { name: string; stage_type: 'closed' | 'refused' | 'funnel' }>();
 
         if (phoneSuffixes.length > 0) {
           const [leadsRes, contactsRes, boardsRes] = await Promise.all([
