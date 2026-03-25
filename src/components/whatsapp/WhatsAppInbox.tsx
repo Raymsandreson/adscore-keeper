@@ -305,10 +305,11 @@ export function WhatsAppInbox() {
 
   const handleCreateLead = () => {
     if (!selectedConversation) return;
-    if (boards.length === 1) {
-      createLeadWithBoard(boards[0].id);
+    const funnelBoards = boards.filter(b => b.board_type !== 'workflow');
+    if (funnelBoards.length === 1) {
+      createLeadWithBoard(funnelBoards[0].id);
     } else {
-      setSelectedBoardId(boards[0]?.id || '');
+      setSelectedBoardId(funnelBoards[0]?.id || '');
       setShowBoardPicker(true);
     }
   };
