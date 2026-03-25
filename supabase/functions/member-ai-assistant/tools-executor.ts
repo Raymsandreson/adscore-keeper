@@ -113,7 +113,8 @@ async function createActivity(supabase: any, args: any, userId: string, userName
     .single()
 
   if (error) return { error: error.message }
-  return { success: true, activity_id: data.id, title: data.title }
+  const APP_URL = "https://adscore-keeper.lovable.app"
+  return { success: true, activity_id: data.id, title: data.title, link: `${APP_URL}/?openActivity=${data.id}` }
 }
 
 async function getGoalsProgress(supabase: any, args: any, userId: string) {

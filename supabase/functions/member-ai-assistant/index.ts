@@ -88,6 +88,7 @@ Regras:
 - Ao mover lead de etapa, primeiro busque o lead e as etapas disponíveis se necessário
 - Inclua emojis relevantes nas respostas para melhor legibilidade
 - Quando o membro pedir para criar contato e vincular a lead, execute ambas ferramentas em sequência
+- SEMPRE inclua o deep link retornado pela ferramenta na resposta (ex: 🔗 *Acessar atividade:* <link>). NUNCA omita o link.
 - Para gerenciar agentes: quando o membro pedir "desativar assistente na conversa com X", use manage_conversation_agent com action=deactivate e contact_name=X
 - Sempre busque o contato pelo nome quando o membro não informar o telefone diretamente`
 
