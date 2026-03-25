@@ -16,6 +16,7 @@ import { WhatsAppInstanceManager } from './WhatsAppInstanceManager';
 import { WhatsAppNotificationSettings } from './WhatsAppNotificationSettings';
 import { VoiceSettings } from '@/components/voice/VoiceSettings';
 import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
+import { NucleiSettings } from './NucleiSettings';
 
 interface Tab {
   id: string;
