@@ -229,6 +229,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           .gte('created_at', todayStart)
           .order('created_at', { ascending: true })
           .range(from, from + pageSize - 1);
+        if (todayEnd) q = q.lte('created_at', todayEnd);
         if (selectedInstance !== 'all') q = q.eq('instance_name', selectedInstance);
         const { data } = await q;
         if (!data || data.length === 0) break;
