@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { ptBR } from 'date-fns/locale';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DashboardChatPreview } from './DashboardChatPreview';
+import { DashboardFunnelChecklist } from './DashboardFunnelChecklist';
 
 interface LeadWithMessages {
   id: string;
@@ -375,8 +376,10 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           }
         }
 
-        
-        
+
+      {/* Funnel & Checklist Overview */}
+      <DashboardFunnelChecklist selectedInstance={selectedInstance} onOpenChat={onOpenChat} />
+
         const trulyNew = trulyNewPhones.map(p => {
           const convData = phoneMap.get(p)!;
           const outbound = outboundMap.get(p);
