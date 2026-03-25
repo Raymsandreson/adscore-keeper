@@ -633,6 +633,7 @@ REGRAS CRÍTICAS DE COMPORTAMENTO:
 11. Após criar atividade ou lead, inclua na response_text um resumo do que foi criado com os campos preenchidos.
 12. O assessor que enviou o comando é: "${config.user_name}" (id: ${config.user_id})
 13. Responda em português do Brasil
+14. NUNCA escreva frases genéricas como "Ela já pode acompanhar no sistema" - o sistema adiciona o link automaticamente.
 
 REGRA CRÍTICA - SEMPRE USE OS CAMPOS DE FERRAMENTA:
 - Quando o assessor pedir para CRIAR algo, você DEVE preencher o campo correspondente na ferramenta:
@@ -906,7 +907,7 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
           responseText += "\n\n⚠️ Erro ao criar atividade: " + actErr.message;
         } else {
           toolData.activity_created = newAct;
-          responseText += `\n\n✏️ Editar: ${APP_URL}/?openActivity=${newAct?.id}`;
+          responseText += `\n\n🔗 *Acessar atividade:*\n${APP_URL}/?openActivity=${newAct?.id}`;
           console.log("Activity created via WhatsApp:", newAct?.id);
 
           // Auto-attach images/documents from buffered media
@@ -925,6 +926,60 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
             }
             if (imageMedia.length > 0) {
               responseText += `\n📎 ${imageMedia.length} anexo(s) vinculado(s) à atividade`;
+            }
+
+            // AI Vision: extract info from images and update activity
+            const imageUrls = imageMedia.filter(m => m.type === 'image').map(m => m.url);
+            if (imageUrls.length > 0) {
+              try {
+                const visionParts: any[] = [
+                  { type: "text", text: `Analise as imagens a seguir e extraia TODAS as informações relevantes para organizar na atividade "${newAct.title}".
+Retorne um JSON com:
+- "description": texto descritivo completo do que aparece na(s) imagem(ns) (documentos, textos, informações visíveis)
+- "extracted_notes": resumo das informações-chave extraídas (nomes, números, datas, valores, etc)
+- "next_steps": próximos passos sugeridos baseado no conteúdo
+
+Se for um documento jurídico, extraia: número do processo, partes, datas, valores, decisões.
+Se for uma foto/print, descreva o conteúdo relevante.
+Retorne APENAS o JSON, sem markdown.` },
+                ];
+                for (const url of imageUrls) {
+                  visionParts.push({ type: "image_url", image_url: { url } });
+                }
+
+                const visionResult = await geminiChat({
+                  model: "google/gemini-2.5-flash",
+                  messages: [{ role: "user", content: visionParts }],
+                  temperature: 0.1,
+                });
+
+                const visionText = visionResult.choices?.[0]?.message?.content || "";
+                let extracted: any = null;
+                try {
+                  const cleaned = visionText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+                  extracted = JSON.parse(cleaned);
+                } catch { /* ignore parse errors */ }
+
+                if (extracted) {
+                  const updateFields: any = {};
+                  if (extracted.description) {
+                    updateFields.description = (act.notes ? act.notes + "\n\n" : "") + "📷 *Informações extraídas da mídia:*\n" + extracted.description;
+                  }
+                  if (extracted.extracted_notes) {
+                    updateFields.current_status_notes = extracted.extracted_notes;
+                  }
+                  if (extracted.next_steps && !act.next_steps) {
+                    updateFields.next_steps = extracted.next_steps;
+                  }
+
+                  if (Object.keys(updateFields).length > 0) {
+                    await supabase.from("lead_activities").update(updateFields).eq("id", newAct.id);
+                    responseText += `\n🔍 Informações extraídas da imagem e salvas na atividade`;
+                  }
+                }
+              } catch (visionErr) {
+                console.error("Vision extraction error:", visionErr);
+              }
             }
           }
         }
