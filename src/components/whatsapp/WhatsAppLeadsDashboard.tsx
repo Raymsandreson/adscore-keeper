@@ -403,14 +403,17 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
 
       if (!boardsData || boardsData.length === 0) return;
 
-      const todayStart = startOfDay(new Date()).toISOString();
+      const { since: funnelStart, until: funnelEnd } = getPeriodRange();
       
-      const { data: whatsappLeads } = await supabase
+      let funnelQuery = supabase
         .from('whatsapp_messages')
         .select('lead_id, phone, direction, instance_name')
         .not('lead_id', 'is', null)
-        .gte('created_at', todayStart)
+        .gte('created_at', funnelStart)
         .limit(1000);
+      if (funnelEnd) funnelQuery = funnelQuery.lte('created_at', funnelEnd);
+
+      const { data: whatsappLeads } = await funnelQuery;
 
       if (!whatsappLeads || whatsappLeads.length === 0) {
         setFunnelStages([]);
