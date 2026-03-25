@@ -607,7 +607,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Delay de resposta (seg)</Label>
+                    <Label className="text-xs">Delay agrupamento (seg)</Label>
                     <Input
                       type="number" min={0} max={30}
                       value={form.response_delay_seconds}
