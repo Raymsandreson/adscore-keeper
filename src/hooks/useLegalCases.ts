@@ -15,6 +15,8 @@ export interface LegalCase {
   assigned_to: string | null;
   created_by: string | null;
   notes: string | null;
+  benefit_type: string | null;
+  acolhedor: string | null;
   created_at: string;
   updated_at: string;
   // Joined fields
