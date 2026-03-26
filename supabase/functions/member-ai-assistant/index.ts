@@ -393,8 +393,14 @@ REGRA DE MÍDIA ANEXADA:
 
     if (createdActivitySummaries.length > 0) {
       const summaryBlock = createdActivitySummaries.join('\n\n')
-      if (!finalText) finalText = summaryBlock
-      else if (!finalText.includes('📌 *Atividade criada*')) finalText += `\n\n${summaryBlock}`
+      if (!finalText) {
+        finalText = summaryBlock
+      } else {
+        // ALWAYS replace any AI-generated activity summary with the verified one
+        // Remove any AI-hallucinated "Atividade criada" blocks (they may have wrong names/data)
+        finalText = finalText.replace(/📌\s*\*?Atividade criada\*?[\s\S]*?(?=\n\n🔗|\n\n[^•\n]|$)/gi, '').trim()
+        finalText += `\n\n${summaryBlock}`
+      }
     }
 
     // Replace any AI-hallucinated links with the real ones from tool results
