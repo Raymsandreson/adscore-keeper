@@ -183,6 +183,7 @@ Ao criar atividades, você DEVE copiar INTEGRALMENTE todo o conteúdo textual qu
 - NUNCA resuma, simplifique ou omita partes do conteúdo. Se o membro escreveu 20 linhas, as 20 linhas devem aparecer nos campos.
 - Exemplo: se o membro disse "criar atv para providenciar: contrato social, CNPJ, RG e CPF", o campo "current_status_notes" ou "notes" DEVE conter "Providenciar: contrato social, CNPJ, RG e CPF" — e não apenas "Providenciar documentos".
 - Se houver sub-listas (ex: Pessoa Jurídica: ..., Pessoa Física: ...), COPIE TODAS as sub-listas completas.
+- REGRA DE DESIGNAÇÃO: Quando o membro disser "atv para Luana", "tarefa para o Raym", "criar atividade e mandar para X", você DEVE preencher o campo "assigned_to_name" com o nome da pessoa mencionada. Se disser "para mim", deixe vazio (será atribuído ao próprio membro). Se mencionar dois nomes (ex: "atv para Luana e mandar para Raym"), o "assigned_to_name" é quem vai EXECUTAR a tarefa.
 - Ao criar leads, pergunte pelo menos o nome e o quadro/funil se não informados
 - Ao mover lead de etapa, primeiro busque o lead e as etapas disponíveis se necessário
 - Inclua emojis relevantes nas respostas para melhor legibilidade
