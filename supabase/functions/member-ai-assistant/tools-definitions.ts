@@ -64,6 +64,7 @@ export const toolDefinitions = [
           next_steps: { type: "string", description: "Próximo passo planejado" },
           current_status_notes: { type: "string", description: "Observação de status atual" },
           media_url: { type: "string", description: "URL da mídia anexada pelo membro (imagem ou documento) para vincular à atividade" },
+          assigned_to_name: { type: "string", description: "Nome do assessor/membro para quem a atividade deve ser designada. Se o membro disser 'atv para Luana', preencha com 'Luana'. Se não informado, a atividade fica para o próprio membro que pediu." },
         },
         required: ["title"],
       },

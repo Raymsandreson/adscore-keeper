@@ -95,6 +95,27 @@ async function getLeadsSummary(supabase: any, args: any, userId: string) {
 }
 
 async function createActivity(supabase: any, args: any, userId: string, userName: string) {
+  // Resolve assigned user: if a name was provided, look up their profile
+  let assignedToId = userId
+  let assignedToName = userName
+  
+  if (args.assigned_to_name) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('user_id, full_name')
+      .ilike('full_name', `%${args.assigned_to_name}%`)
+      .limit(5)
+
+    if (profiles && profiles.length > 0) {
+      // Pick the best match (first result)
+      assignedToId = profiles[0].user_id
+      assignedToName = profiles[0].full_name
+    } else {
+      // Name not found, keep the requester but note in the activity
+      assignedToName = args.assigned_to_name
+    }
+  }
+
   const { data, error } = await supabase
     .from('lead_activities')
     .insert({
@@ -105,8 +126,8 @@ async function createActivity(supabase: any, args: any, userId: string, userName
       deadline: args.deadline || new Date().toISOString().split('T')[0],
       notification_date: args.notification_date || null,
       status: 'pendente',
-      assigned_to: userId,
-      assigned_to_name: userName,
+      assigned_to: assignedToId,
+      assigned_to_name: assignedToName,
       created_by: userId,
       lead_name: args.lead_name || null,
       notes: args.notes || null,
