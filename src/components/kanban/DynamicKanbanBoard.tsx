@@ -1021,7 +1021,7 @@ export function DynamicKanbanBoard({
                               )}
                             </div>
                             {lead.lead_phone && (
-                              <CopyableText text={lead.lead_phone} className="text-xs text-muted-foreground" />
+                              <span className="text-xs text-muted-foreground">{lead.lead_phone}</span>
                             )}
                           </CardContent>
                         </Card>
