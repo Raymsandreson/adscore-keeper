@@ -666,36 +666,26 @@ export function DynamicKanbanBoard({
                                           </>
                                         )}
 
-                                        {/* Quick actions: Fechado / Recusado */}
-                                        {(() => {
-                                          const closedId = findClosedStageId(board.stages);
-                                          const refusedId = findRefusedStageId(board.stages);
-                                          const showSection = (closedId && lead.status !== closedId) || (refusedId && lead.status !== refusedId);
-                                          if (!showSection) return null;
-                                          return (
-                                            <>
-                                              <DropdownMenuSeparator />
-                                              {closedId && lead.status !== closedId && (
-                                                <DropdownMenuItem
-                                                  onClick={() => onMoveToStage(lead.id, closedId)}
-                                                  className="text-green-600"
-                                                >
-                                                  <CheckCircle2 className="h-3 w-3 mr-2" />
-                                                  Marcar como Fechado
-                                                </DropdownMenuItem>
-                                              )}
-                                              {refusedId && lead.status !== refusedId && (
-                                                <DropdownMenuItem
-                                                  onClick={() => onMoveToStage(lead.id, refusedId)}
-                                                  className="text-red-600"
-                                                >
-                                                  <XCircle className="h-3 w-3 mr-2" />
-                                                  Marcar como Recusado
-                                                </DropdownMenuItem>
-                                              )}
-                                            </>
-                                          );
-                                        })()}
+                                        {/* Quick actions: Fechado / Recusado (status-based) */}
+                                        {onChangeLeadStatus && (l as any).lead_status === 'active' && (
+                                          <>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem
+                                              onClick={() => onChangeLeadStatus(lead.id, 'closed')}
+                                              className="text-green-600"
+                                            >
+                                              <CheckCircle2 className="h-3 w-3 mr-2" />
+                                              Marcar como Fechado
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              onClick={() => onChangeLeadStatus(lead.id, 'refused')}
+                                              className="text-red-600"
+                                            >
+                                              <XCircle className="h-3 w-3 mr-2" />
+                                              Marcar como Recusado
+                                            </DropdownMenuItem>
+                                          </>
+                                        )}
                                         
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem
