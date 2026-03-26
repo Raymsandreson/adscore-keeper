@@ -84,7 +84,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
         return;
       }
 
-      const [leadsRes, stageRes, checklistInstancesRes, templatesRes] = await Promise.all([
+      const [leadsRes, stageRes, checklistInstancesRes, templatesRes, docsRes] = await Promise.all([
         supabase.from('leads').select('id, board_id').in('id', leadIds),
         supabase.from('lead_stage_history')
           .select('lead_id, to_stage, changed_at')
@@ -94,7 +94,23 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
           .select('lead_id, checklist_template_id, is_completed, items')
           .in('lead_id', leadIds),
         supabase.from('checklist_templates').select('id, name, items').order('name'),
+        supabase.from('zapsign_documents')
+          .select('lead_id, status, signed_at')
+          .in('lead_id', leadIds),
       ]);
+
+      // Build doc status map
+      const docMap = new Map<string, 'signed' | 'unsigned'>();
+      for (const doc of (docsRes.data || [])) {
+        if (!doc.lead_id) continue;
+        const current = docMap.get(doc.lead_id);
+        if (doc.signed_at || doc.status === 'signed') {
+          docMap.set(doc.lead_id, 'signed');
+        } else if (!current) {
+          docMap.set(doc.lead_id, 'unsigned');
+        }
+      }
+      setLeadDocStatus(docMap);
 
       const map = new Map<string, LeadInfo>();
       for (const lead of (leadsRes.data || [])) {
