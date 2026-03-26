@@ -107,6 +107,8 @@ export function BoardGroupInstancesConfig() {
     audio_voice_id: '',
   });
   const [savingSettings, setSavingSettings] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewMessage, setPreviewMessage] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
