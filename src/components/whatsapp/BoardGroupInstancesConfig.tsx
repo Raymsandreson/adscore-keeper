@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText, Volume2, Sparkles } from 'lucide-react';
+import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText, Volume2, Sparkles, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Instance {
@@ -109,6 +109,8 @@ export function BoardGroupInstancesConfig() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewMessage, setPreviewMessage] = useState<string | null>(null);
+  const [refineInput, setRefineInput] = useState('');
+  const [refineLoading, setRefineLoading] = useState(false);
 
   useEffect(() => {
     fetchData();
