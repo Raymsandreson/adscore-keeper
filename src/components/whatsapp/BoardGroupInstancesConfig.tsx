@@ -323,6 +323,7 @@ export function BoardGroupInstancesConfig() {
       const { data, error } = await supabase.functions.invoke('generate-group-message-preview', {
         body: {
           board_name: boardName,
+          board_id: selectedBoard,
           instructions: settings.initial_message_template || '',
           participants,
           lead_fields: settings.lead_fields,
