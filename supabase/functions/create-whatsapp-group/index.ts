@@ -176,37 +176,61 @@ Deno.serve(async (req) => {
     const groupData = await createRes.json()
     console.log('Group created:', JSON.stringify(groupData).substring(0, 500))
 
-    const groupId = groupData?.id || groupData?.jid || groupData?.data?.id || groupData?.gid || null
+    // Try to extract groupId from various response formats
+    let groupId = groupData?.group?.JID || groupData?.id || groupData?.jid || groupData?.data?.id || groupData?.gid || null
+    console.log('Resolved groupId:', groupId)
 
-    // Promote board instances as admins
-    for (const inst of boardInstances) {
-      if (inst.id === creatorInstance.id) continue
-      if (!inst.owner_phone) continue
+    if (!groupId) {
+      console.error('Could not resolve group ID from response:', JSON.stringify(groupData).substring(0, 300))
+    }
 
-      const instPhone = inst.owner_phone.replace(/\D/g, '')
-      if (!instPhone) continue
+    // Wait for WhatsApp to fully process the group creation
+    await new Promise(resolve => setTimeout(resolve, 3000))
 
-      try {
-        if (groupId) {
-          await fetch(`${baseUrl}/group/promote`, {
+    // Promote ALL board instances as admins (except lead contact)
+    if (groupId) {
+      // Collect all phones to promote (all instances except creator who is already admin)
+      const phonesToPromote: string[] = []
+
+      for (const inst of boardInstances) {
+        if (inst.id === creatorInstance.id) continue
+        if (!inst.owner_phone) continue
+        const instPhone = inst.owner_phone.replace(/\D/g, '')
+        if (instPhone && !phonesToPromote.includes(instPhone)) {
+          phonesToPromote.push(instPhone)
+        }
+      }
+
+      if (phonesToPromote.length > 0) {
+        try {
+          console.log(`Promoting ${phonesToPromote.length} participants as admin:`, phonesToPromote)
+          const promoteRes = await fetch(`${baseUrl}/group/promote`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-            body: JSON.stringify({ id: groupId, participants: [instPhone] }),
+            body: JSON.stringify({ id: groupId, participants: phonesToPromote }),
           })
+          const promoteResult = await promoteRes.text()
+          console.log('Promote result:', promoteResult)
+        } catch (e) {
+          console.error('Error promoting instances as admin:', e)
         }
-      } catch (e) {
-        console.error(`Error promoting instance ${inst.instance_name}:`, e)
       }
     }
 
     // Send initial message if configured
     if (groupId && settings) {
+      console.log('Sending initial message... use_ai_message:', settings.use_ai_message, 'template:', !!settings.initial_message_template)
       await sendInitialMessage(supabase, settings, leadData, lead_name, groupName, groupId, baseUrl, creatorInstance, board_id, boardInstances)
+    } else {
+      console.log('Skipping initial message. groupId:', groupId, 'settings:', !!settings)
     }
 
     // Forward documents if configured
     if (groupId && settings?.forward_document_types?.length > 0 && leadData) {
+      console.log('Forwarding documents. Types:', settings.forward_document_types)
       await forwardDocuments(supabase, settings, leadData, groupId, baseUrl, creatorInstance)
+    } else {
+      console.log('Skipping document forwarding. groupId:', groupId, 'docTypes:', settings?.forward_document_types, 'hasLead:', !!leadData)
     }
 
     return new Response(JSON.stringify({
