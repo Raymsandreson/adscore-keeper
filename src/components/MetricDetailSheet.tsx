@@ -502,6 +502,23 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
             <p className="text-[10px] text-muted-foreground">
               {format(dateRange.start, "dd/MM/yyyy")} — {format(dateRange.end, "dd/MM/yyyy")}
             </p>
+
+            {metricKey === 'leadsClosed' && teamMembers.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <Select value={filterUserId} onValueChange={setFilterUserId}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Filtrar por acolhedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os acolhedores</SelectItem>
+                    {teamMembers.map(m => (
+                      <SelectItem key={m.user_id} value={m.user_id}>{m.full_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           )}
           {dateRangeOverride && (
