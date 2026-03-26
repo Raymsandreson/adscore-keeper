@@ -87,16 +87,16 @@ const ProcessTrackingPage = () => {
 
   // Measure table width for the top scrollbar
   useEffect(() => {
-    if (tableContentRef.current) {
-      const observer = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          setTableWidth(entry.target.scrollWidth);
-        }
-      });
-      observer.observe(tableContentRef.current);
-      return () => observer.disconnect();
-    }
-  }, [records]);
+    const el = tableContentRef.current;
+    if (!el) return;
+    
+    const measure = () => setTableWidth(el.scrollWidth);
+    measure(); // immediate measure
+    
+    const observer = new ResizeObserver(() => measure());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [records, loading]);
 
   const filteredRecords = records.filter(r => {
     if (!searchTerm) return true;
