@@ -80,9 +80,10 @@ interface Props {
   onPrivacyChanged?: () => void;
   shareInfo?: ConvShareInfo | null;
   onUpdateWithAI?: () => void;
+  onOpenChat?: (phone: string) => void;
 }
 
-export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI }: Props) {
+export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat }: Props) {
   const { profile } = useAuthContext();
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -354,6 +355,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
         }
       }
 
+      setLinkedGroupId(data.group_id || null);
       toast.success(`Grupo "${leadName}" criado com ${data.participants_count} participantes!`);
     } catch (e: any) {
       console.error('Error creating group:', e);
