@@ -64,6 +64,47 @@ export default function CasesPage() {
   const { nuclei } = useSpecializedNuclei();
   const navigate = useNavigate();
 
+  // Export to Google Sheets state
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [spreadsheetId, setSpreadsheetId] = useState('');
+  const [sheetName, setSheetName] = useState('');
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportToSheets = async () => {
+    if (!spreadsheetId.trim()) {
+      toast.error('Informe o ID da planilha');
+      return;
+    }
+    setExporting(true);
+    try {
+      // Extract spreadsheet ID from URL if full URL is pasted
+      let sheetId = spreadsheetId.trim();
+      const urlMatch = sheetId.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+      if (urlMatch) sheetId = urlMatch[1];
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await supabase.functions.invoke('export-cases-to-sheets', {
+        body: {
+          spreadsheet_id: sheetId,
+          sheet_name: sheetName.trim() || undefined,
+          nucleus_filter: nucleusFilter !== 'all' ? nucleusFilter : undefined,
+        },
+      });
+
+      if (response.error) throw new Error(response.error.message);
+      const result = response.data;
+      if (result.error) throw new Error(result.error);
+
+      toast.success(result.message || `${result.rows_exported} casos exportados!`);
+      setShowExportDialog(false);
+    } catch (err: any) {
+      console.error('Export error:', err);
+      toast.error(err.message || 'Erro ao exportar');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const fetchCases = useCallback(async () => {
     setLoading(true);
     try {
