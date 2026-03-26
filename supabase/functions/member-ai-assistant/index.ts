@@ -397,14 +397,16 @@ REGRA DE MÍDIA ANEXADA:
       else if (!finalText.includes('📌 *Atividade criada*')) finalText += `\n\n${summaryBlock}`
     }
 
-    // Replace any AI-hallucinated openActivity links with the real ones from tool results
+    // Replace any AI-hallucinated links with the real ones from tool results
     if (collectedLinks.length > 0 && finalText) {
-      // Remove any AI-generated Acessar lines (they may contain wrong IDs)
-      finalText = finalText.replace(/\n*🔗\s*\*?Acessar:?\*?\s*https?:\/\/[^\s\n]+/gi, '')
-      // Also remove bare openActivity URLs the AI might have placed inline
-      finalText = finalText.replace(/https?:\/\/[^\s]*\?openActivity=[a-f0-9-]+/gi, '')
-      finalText = finalText.trim()
-      // Append the correct links from tool results
+      // Remove ALL app domain URLs the AI may have hallucinated (any format)
+      finalText = finalText.replace(/\n*🔗[^\n]*/gi, '')
+      finalText = finalText.replace(/https?:\/\/adscore-keeper\.lovable\.app[^\s\n]*/gi, '')
+      finalText = finalText.replace(/https?:\/\/[^\s]*openActivity=[a-f0-9-]+/gi, '')
+      finalText = finalText.replace(/https?:\/\/[^\s]*openLead=[a-f0-9-]+/gi, '')
+      finalText = finalText.replace(/https?:\/\/[^\s]*openContact=[a-f0-9-]+/gi, '')
+      finalText = finalText.replace(/\n{3,}/g, '\n\n').trim()
+      // Append the correct verified links from tool results
       for (const link of collectedLinks) {
         finalText += `\n\n🔗 *Acessar:* ${link}`
       }
