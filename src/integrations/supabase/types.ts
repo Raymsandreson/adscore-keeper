@@ -6967,6 +6967,7 @@ export type Database = {
           instance_name: string | null
           is_active: boolean | null
           name: string
+          notify_checklist_steps: boolean | null
           notify_daily_summary: boolean | null
           notify_goal_progress: boolean | null
           notify_overdue_tasks: boolean | null
@@ -6990,6 +6991,7 @@ export type Database = {
           instance_name?: string | null
           is_active?: boolean | null
           name?: string
+          notify_checklist_steps?: boolean | null
           notify_daily_summary?: boolean | null
           notify_goal_progress?: boolean | null
           notify_overdue_tasks?: boolean | null
@@ -7013,6 +7015,7 @@ export type Database = {
           instance_name?: string | null
           is_active?: boolean | null
           name?: string
+          notify_checklist_steps?: boolean | null
           notify_daily_summary?: boolean | null
           notify_goal_progress?: boolean | null
           notify_overdue_tasks?: boolean | null
