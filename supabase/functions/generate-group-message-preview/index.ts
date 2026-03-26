@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { board_name, board_id, instructions, participants, lead_fields } = await req.json();
+    const { board_name, board_id, instructions, participants, lead_fields, refinement, current_message } = await req.json();
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -101,12 +101,21 @@ ${instructionFieldAnalysis}
 
 Gere a mensagem COMPLETA formatada para WhatsApp usando *negrito*, emojis e organização clara. Use TODOS os dados fictícios acima para mostrar como ficará na prática. A mensagem deve ser EXTENSA e DETALHADA, incluindo todas as seções solicitadas nas instruções.`;
 
+    const messages: { role: string; content: string }[] = [
+      { role: 'system', content: systemPrompt },
+    ];
+
+    if (refinement && current_message) {
+      // Refinement mode: send current message as assistant, then refinement as user
+      messages.push({ role: 'assistant', content: current_message });
+      messages.push({ role: 'user', content: `Refine a mensagem acima com a seguinte instrução: ${refinement}\n\nRetorne a mensagem COMPLETA refinada, não apenas as alterações.` });
+    } else {
+      messages.push({ role: 'user', content: 'Gere a mensagem de pré-visualização COMPLETA do grupo, sem cortar nenhuma seção.' });
+    }
+
     const result = await geminiChat({
       model: 'google/gemini-2.5-flash',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: 'Gere a mensagem de pré-visualização COMPLETA do grupo, sem cortar nenhuma seção.' },
-      ],
+      messages,
       temperature: 0.7,
       max_tokens: 8192,
     });
