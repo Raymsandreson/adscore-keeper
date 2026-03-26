@@ -585,6 +585,47 @@ export type Database = {
           },
         ]
       }
+      board_group_settings: {
+        Row: {
+          board_id: string
+          created_at: string
+          current_sequence: number | null
+          group_name_prefix: string | null
+          id: string
+          lead_fields: string[] | null
+          sequence_start: number | null
+          updated_at: string
+        }
+        Insert: {
+          board_id: string
+          created_at?: string
+          current_sequence?: number | null
+          group_name_prefix?: string | null
+          id?: string
+          lead_fields?: string[] | null
+          sequence_start?: number | null
+          updated_at?: string
+        }
+        Update: {
+          board_id?: string
+          created_at?: string
+          current_sequence?: number | null
+          group_name_prefix?: string | null
+          id?: string
+          lead_fields?: string[] | null
+          sequence_start?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "board_group_settings_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: true
+            referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       broadcast_list_agents: {
         Row: {
           agent_id: string
