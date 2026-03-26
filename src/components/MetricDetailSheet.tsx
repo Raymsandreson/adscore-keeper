@@ -122,10 +122,20 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [dailyTarget, setDailyTarget] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [filterUserId, setFilterUserId] = useState<string>('all');
+  const [teamMembers, setTeamMembers] = useState<{ user_id: string; full_name: string }[]>([]);
 
   useEffect(() => {
-    if (open) { if (!dateRangeOverride) setPeriod('today'); setHistoryOpen(false); }
+    if (open) { if (!dateRangeOverride) setPeriod('today'); setHistoryOpen(false); setFilterUserId('all'); }
   }, [open, dateRangeOverride]);
+
+  useEffect(() => {
+    if (open && metricKey === 'leadsClosed') {
+      supabase.from('profiles').select('user_id, full_name').then(({ data }) => {
+        setTeamMembers((data || []).filter(p => p.full_name).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')));
+      });
+    }
+  }, [open, metricKey]);
 
   const dateRange = useMemo(() => dateRangeOverride || getDateRange(period, lastXDays, customFrom, customTo), [dateRangeOverride, period, lastXDays, customFrom, customTo]);
 
@@ -136,7 +146,7 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
   useEffect(() => {
     if (!open || !metricKey || (!user && !targetUserId)) return;
     fetchItems(metricKey);
-  }, [open, metricKey, user, targetUserId, dateRange]);
+  }, [open, metricKey, user, targetUserId, dateRange, filterUserId]);
 
   useEffect(() => {
     if (!open || !metricKey || !user) return;
@@ -206,11 +216,21 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
         case 'leadsClosed': {
           // Query stage history for closed events within the date range
           const CLOSED_PATTERNS = ['closed', 'fechado', 'fechados', 'done'];
-          const { data: closedHistory } = await supabase.from('lead_stage_history')
+          const effectiveUserId = filterUserId !== 'all' ? filterUserId : userId;
+          let query = supabase.from('lead_stage_history')
             .select('id, lead_id, to_stage, changed_at, changed_by')
-            .eq('changed_by', userId)
             .gte('changed_at', startDate).lte('changed_at', endDate)
             .order('changed_at', { ascending: false });
+          
+          if (filterUserId !== 'all') {
+            query = query.eq('changed_by', effectiveUserId);
+          } else if (!targetUserId) {
+            // No filter selected and no target user override - show all
+          } else {
+            query = query.eq('changed_by', effectiveUserId);
+          }
+          
+          const { data: closedHistory } = await query;
           
           const closedEntries = (closedHistory || []).filter(h => {
             const lower = (h.to_stage || '').toLowerCase();
@@ -227,10 +247,20 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
               closedLeadDetails[l.id] = { name: l.lead_name || 'Sem nome', board_id: l.board_id };
             });
           }
+
+          // Get user names for subtitle
+          const changedByIds = [...new Set(closedEntries.map(h => h.changed_by).filter(Boolean))];
+          let userNamesMap: Record<string, string> = {};
+          if (changedByIds.length > 0) {
+            const { data: profiles } = await supabase.from('profiles')
+              .select('user_id, full_name').in('user_id', changedByIds);
+            (profiles || []).forEach(p => { userNamesMap[p.user_id] = p.full_name || 'Usuário'; });
+          }
           
           result = closedEntries.map(h => ({
             id: h.id, 
             title: closedLeadDetails[h.lead_id]?.name || 'Lead removido',
+            subtitle: filterUserId === 'all' && h.changed_by ? `👤 ${userNamesMap[h.changed_by] || 'Usuário'}` : undefined,
             badge: '✓ Fechado', badgeVariant: 'default' as const,
             navigateTo: closedLeadDetails[h.lead_id]?.board_id 
               ? `/leads?board=${closedLeadDetails[h.lead_id].board_id}&openLead=${h.lead_id}` 
@@ -472,6 +502,23 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
             <p className="text-[10px] text-muted-foreground">
               {format(dateRange.start, "dd/MM/yyyy")} — {format(dateRange.end, "dd/MM/yyyy")}
             </p>
+
+            {metricKey === 'leadsClosed' && teamMembers.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <Select value={filterUserId} onValueChange={setFilterUserId}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Filtrar por acolhedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os acolhedores</SelectItem>
+                    {teamMembers.map(m => (
+                      <SelectItem key={m.user_id} value={m.user_id}>{m.full_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           )}
           {dateRangeOverride && (
