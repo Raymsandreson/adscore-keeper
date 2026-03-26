@@ -563,6 +563,7 @@ Deno.serve(async (req) => {
                   board_id: leadForBoard.board_id,
                   contact_phone: leadPhone,
                   creator_instance_id: boardInst?.instance_id || null,
+                  lead_id: localDoc.lead_id,
                 }),
               })
 
