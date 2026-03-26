@@ -123,18 +123,24 @@ export function useMyTeamRanking() {
           statsMap.get(l.created_by)!.leads++;
         }
       });
-      // Count closed from stage history (moved to closed stage)
+      // Count closed - deduplicate by lead_id (one close per lead)
       const CLOSED_PATTERNS = ['closed', 'fechado', 'fechados', 'done'];
       const isClosedStageId = (id: string) => {
         const lower = id.toLowerCase();
         return CLOSED_PATTERNS.some(p => lower === p || lower.startsWith(p + '_'));
       };
+      const closedByUser = new Map<string, Set<string>>();
       (stageRes.data || []).forEach(s => {
         const changedBy = (s as any).changed_by;
         const toStage = (s as any).to_stage;
-        if (changedBy && statsMap.has(changedBy) && toStage && isClosedStageId(toStage)) {
-          statsMap.get(changedBy)!.closed++;
+        const leadId = (s as any).lead_id;
+        if (changedBy && statsMap.has(changedBy) && toStage && isClosedStageId(toStage) && leadId) {
+          if (!closedByUser.has(changedBy)) closedByUser.set(changedBy, new Set());
+          closedByUser.get(changedBy)!.add(leadId);
         }
+      });
+      closedByUser.forEach((leadIds, userId) => {
+        if (statsMap.has(userId)) statsMap.get(userId)!.closed = leadIds.size;
       });
       (activityRes.data || []).forEach(a => {
         if (statsMap.has(a.user_id)) {
