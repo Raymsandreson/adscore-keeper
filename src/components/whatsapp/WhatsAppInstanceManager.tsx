@@ -132,6 +132,8 @@ export function WhatsAppInstanceManager() {
     fetchVoices();
   }, []);
 
+  useEffect(() => { fetchInstances(); }, [fetchInstances]);
+
   const openCreate = () => {
     setEditingId(null);
     setForm(emptyForm);
