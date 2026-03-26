@@ -600,6 +600,15 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
           }}
           onEditLead={(lead) => setEditingLeadId(lead.id)}
           availableBoards={boards}
+          onChangeLeadStatus={async (leadId, newStatus) => {
+            try {
+              await supabase.from('leads').update({ lead_status: newStatus } as any).eq('id', leadId);
+              toast.success(newStatus === 'closed' ? 'Lead marcado como Fechado' : newStatus === 'refused' ? 'Lead marcado como Recusado' : 'Lead reativado');
+              fetchLeads();
+            } catch (e) {
+              toast.error('Erro ao alterar status');
+            }
+          }}
         />
       ) : (
         <Card>
