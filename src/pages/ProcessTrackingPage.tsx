@@ -230,41 +230,62 @@ const ProcessTrackingPage = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[180px]">Cliente</TableHead>
-                  <TableHead className="min-w-[160px]">Caso</TableHead>
+                  <TableHead className="min-w-[180px] sticky left-0 bg-background z-10">Cliente</TableHead>
+                  <TableHead className="min-w-[140px]">Caso</TableHead>
                   <TableHead className="min-w-[120px]">CPF</TableHead>
-                  <TableHead className="min-w-[100px]">Tipo</TableHead>
+                  <TableHead className="min-w-[120px]">Senha Gov</TableHead>
+                  <TableHead className="min-w-[140px]">Nº Processo</TableHead>
+                  <TableHead className="min-w-[130px]">Tipo</TableHead>
+                  <TableHead className="min-w-[140px]">Pendência</TableHead>
+                  <TableHead className="min-w-[160px]">Data Gerar Guia</TableHead>
+                  <TableHead className="min-w-[160px]">Nasc. Bebê</TableHead>
+                  <TableHead className="min-w-[110px]">Protocolado</TableHead>
+                  <TableHead className="min-w-[140px]">Data Criação Grupo</TableHead>
+                  <TableHead className="min-w-[170px]">Data Protocolo/Cancel.</TableHead>
+                  <TableHead className="min-w-[100px]">Tempo (dias)</TableHead>
+                  <TableHead className="min-w-[130px]">Status Processo</TableHead>
+                  <TableHead className="min-w-[140px]">Data Decisão Final</TableHead>
+                  <TableHead className="min-w-[160px]">Motivo Indeferimento</TableHead>
+                  <TableHead className="min-w-[180px]">Observação</TableHead>
+                  <TableHead className="min-w-[130px]">Cliente no Grupo</TableHead>
+                  <TableHead className="min-w-[130px]">Ativ. Criada</TableHead>
                   <TableHead className="min-w-[120px]">Acolhedor</TableHead>
-                  <TableHead className="min-w-[120px]">Nº Processo</TableHead>
-                  <TableHead className="min-w-[120px]">Status</TableHead>
-                  <TableHead className="min-w-[100px]">Pendência</TableHead>
+                  <TableHead className="min-w-[140px]">Pago Acolhedor</TableHead>
+                  <TableHead className="min-w-[130px]">Data Pagamento</TableHead>
                   <TableHead className="w-10"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
+                    <TableCell colSpan={23} className="text-center py-8">
                       <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
                     </TableCell>
                   </TableRow>
                 ) : filteredRecords.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={23} className="text-center py-8 text-muted-foreground">
                       {searchTerm ? 'Nenhum registro encontrado' : 'Importe dados da planilha para começar'}
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredRecords.map(record => (
                     <TableRow key={record.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setDetailRecord(record)}>
-                      <TableCell className="font-medium">{record.cliente || '—'}</TableCell>
+                      <TableCell className="font-medium sticky left-0 bg-background z-10">{record.cliente || '—'}</TableCell>
                       <TableCell>{record.caso || '—'}</TableCell>
                       <TableCell className="font-mono text-xs">{record.cpf || '—'}</TableCell>
+                      <TableCell className="font-mono text-xs">{record.senha_gov || '—'}</TableCell>
+                      <TableCell className="font-mono text-xs">{record.numero_processo || '—'}</TableCell>
                       <TableCell>
                         {record.tipo ? <Badge variant="outline" className="text-xs">{record.tipo}</Badge> : '—'}
                       </TableCell>
-                      <TableCell>{record.acolhedor || '—'}</TableCell>
-                      <TableCell className="font-mono text-xs">{record.numero_processo || '—'}</TableCell>
+                      <TableCell>{record.pendencia || '—'}</TableCell>
+                      <TableCell>{record.data_gerar_guia || '—'}</TableCell>
+                      <TableCell>{record.data_nascimento_bebe || '—'}</TableCell>
+                      <TableCell>{record.protocolado || '—'}</TableCell>
+                      <TableCell>{record.data_criacao || '—'}</TableCell>
+                      <TableCell>{record.data_protocolo_cancelamento || '—'}</TableCell>
+                      <TableCell className="text-center">{record.tempo_dias ?? '—'}</TableCell>
                       <TableCell>
                         {record.status_processo ? (
                           <Badge variant={statusColor(record.status_processo)} className="text-xs">
@@ -272,7 +293,14 @@ const ProcessTrackingPage = () => {
                           </Badge>
                         ) : '—'}
                       </TableCell>
-                      <TableCell>{record.pendencia || '—'}</TableCell>
+                      <TableCell>{record.data_decisao_final || '—'}</TableCell>
+                      <TableCell>{record.motivo_indeferimento || '—'}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">{record.observacao || '—'}</TableCell>
+                      <TableCell>{record.cliente_no_grupo || '—'}</TableCell>
+                      <TableCell>{record.atividade_criada || '—'}</TableCell>
+                      <TableCell>{record.acolhedor || '—'}</TableCell>
+                      <TableCell>{record.pago_acolhedor || '—'}</TableCell>
+                      <TableCell>{record.data_pagamento || '—'}</TableCell>
                       <TableCell>
                         <Button variant="ghost" size="icon" className="h-7 w-7">
                           <Eye className="h-3.5 w-3.5" />
