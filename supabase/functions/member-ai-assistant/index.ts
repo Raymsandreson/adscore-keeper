@@ -38,6 +38,11 @@ function inferAssigneeNameFromCommand(text: string | null | undefined): string |
   return candidate
 }
 
+function commandExplicitlySaysSelf(text: string | null | undefined): boolean {
+  if (!text) return false
+  return /\b(para mim|pra mim|para eu|pra eu)\b/i.test(text)
+}
+
 function formatDatePtBr(dateValue: string | null | undefined) {
   if (!dateValue) return 'Não informado'
   const d = new Date(dateValue)
@@ -122,7 +127,7 @@ Deno.serve(async (req) => {
       supabase
         .from('activity_types')
         .select('key, label')
-        .eq('is_active', true)
+        .or('is_active.eq.true,is_active.is.null')
         .order('display_order'),
     ])
 
@@ -307,9 +312,21 @@ REGRA DE MÍDIA ANEXADA:
         const fnName = toolCall.function?.name
         const fnArgs = JSON.parse(toolCall.function?.arguments || '{}')
 
-        if (fnName === 'create_activity' && !fnArgs.assigned_to_name) {
+        if (fnName === 'create_activity') {
           const inferredAssignee = inferAssigneeNameFromCommand(currentText)
-          if (inferredAssignee) fnArgs.assigned_to_name = inferredAssignee
+          if (inferredAssignee) {
+            fnArgs.assigned_to_name = inferredAssignee
+          } else if (commandExplicitlySaysSelf(currentText)) {
+            fnArgs.assigned_to_name = ''
+          }
+
+          if (currentText) {
+            fnArgs.raw_command_text = currentText
+          }
+
+          if (media_url && !fnArgs.media_url) {
+            fnArgs.media_url = media_url
+          }
         }
 
         console.log('Executing tool:', fnName, 'with args:', fnArgs)
@@ -344,7 +361,6 @@ REGRA DE MÍDIA ANEXADA:
               '📌 *Atividade criada*',
               `• Título: ${result.title || 'Não informado'}`,
               `• Para: ${result.assigned_to_name || 'Não informado'}`,
-              result.description ? `• Descrição: ${result.description}` : null,
               `• Data de criação: ${formatDatePtBr(result.created_at)}`,
               `• Tipo: ${resolvedTypeLabel}`,
               `• Status: ${result.status || 'pendente'}`,
