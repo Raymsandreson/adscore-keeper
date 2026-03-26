@@ -427,11 +427,34 @@ async function buildPersonalizedReport(
       fetchPaginated('outbound'),
     ])
 
+    // Unique phones with inbound messages today = total conversations
     const phoneFirstInbound = new Map<string, any>()
     for (const m of inboundMsgs) {
       if (!phoneFirstInbound.has(m.phone)) phoneFirstInbound.set(m.phone, m)
     }
-    const newConversations = phoneFirstInbound.size
+    const totalConversations = phoneFirstInbound.size
+
+    // Determine truly NEW conversations (no messages before today)
+    let newConversations = 0
+    if (totalConversations > 0) {
+      const phonesToCheck = Array.from(phoneFirstInbound.keys())
+      // Check in batches of 50
+      for (let i = 0; i < phonesToCheck.length; i += 50) {
+        const batch = phonesToCheck.slice(i, i + 50)
+        let priorQ = supabase
+          .from('whatsapp_messages')
+          .select('phone')
+          .in('phone', batch)
+          .lt('created_at', sinceIso)
+          .limit(batch.length)
+        if (filterByInstance) priorQ = priorQ.in('instance_name', userInstances)
+        const { data: priorMsgs } = await priorQ
+        const phonesWithHistory = new Set((priorMsgs || []).map((m: any) => m.phone))
+        for (const p of batch) {
+          if (!phonesWithHistory.has(p)) newConversations++
+        }
+      }
+    }
 
     const outboundPhones = new Set(outboundMsgs.map((m: any) => m.phone))
 
@@ -449,7 +472,7 @@ async function buildPersonalizedReport(
         }
       }
     }
-    const waitingCount = newConversations - respondedCount
+    const waitingCount = totalConversations - respondedCount
     const avgResponseMin = responseCount > 0 ? Math.round(totalResponseMinutes / responseCount) : 0
 
     // Contacts created today
@@ -477,6 +500,7 @@ async function buildPersonalizedReport(
     }
 
     sections.push(`📱 *Relatório WhatsApp* ${instanceLabel}`)
+    sections.push(`  • Conversas: ${totalConversations}`)
     sections.push(`  • Conversas novas: ${newConversations}`)
     sections.push(`  • Respondidas: ${respondedCount} | Aguardando: ${waitingCount}`)
     sections.push(`  • Tempo médio de resposta: ${responseCount > 0 ? fmtTime(avgResponseMin) : 'N/A'}`)
