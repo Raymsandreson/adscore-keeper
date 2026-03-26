@@ -204,15 +204,38 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
           break;
         }
         case 'leadsClosed': {
-          const { data } = await supabase.from('leads').select('id, lead_name, status, board_id, created_at')
-            .eq('created_by', userId).gte('created_at', startDate).lte('created_at', endDate)
-            .in('status', ['converted', 'won', 'closed', 'fechado', 'done'])
-            .order('created_at', { ascending: false });
-          result = (data || []).map(l => ({
-            id: l.id, title: l.lead_name || 'Sem nome',
+          // Query stage history for closed events within the date range
+          const CLOSED_PATTERNS = ['closed', 'fechado', 'fechados', 'done'];
+          const { data: closedHistory } = await supabase.from('lead_stage_history')
+            .select('id, lead_id, to_stage, changed_at, changed_by')
+            .eq('changed_by', userId)
+            .gte('changed_at', startDate).lte('changed_at', endDate)
+            .order('changed_at', { ascending: false });
+          
+          const closedEntries = (closedHistory || []).filter(h => {
+            const lower = (h.to_stage || '').toLowerCase();
+            return CLOSED_PATTERNS.some(p => lower === p || lower.startsWith(p + '_'));
+          });
+          
+          // Get lead details
+          const closedLeadIds = [...new Set(closedEntries.map(h => h.lead_id))];
+          let closedLeadDetails: Record<string, { name: string; board_id: string | null }> = {};
+          if (closedLeadIds.length > 0) {
+            const { data: leadsData } = await supabase.from('leads')
+              .select('id, lead_name, board_id').in('id', closedLeadIds);
+            (leadsData || []).forEach(l => {
+              closedLeadDetails[l.id] = { name: l.lead_name || 'Sem nome', board_id: l.board_id };
+            });
+          }
+          
+          result = closedEntries.map(h => ({
+            id: h.id, 
+            title: closedLeadDetails[h.lead_id]?.name || 'Lead removido',
             badge: '✓ Fechado', badgeVariant: 'default' as const,
-            navigateTo: l.board_id ? `/leads?board=${l.board_id}&openLead=${l.id}` : `/leads?openLead=${l.id}`,
-            date: format(new Date(l.created_at), 'yyyy-MM-dd'),
+            navigateTo: closedLeadDetails[h.lead_id]?.board_id 
+              ? `/leads?board=${closedLeadDetails[h.lead_id].board_id}&openLead=${h.lead_id}` 
+              : `/leads?openLead=${h.lead_id}`,
+            date: h.changed_at ? format(new Date(h.changed_at), 'yyyy-MM-dd') : undefined,
           }));
           break;
         }
