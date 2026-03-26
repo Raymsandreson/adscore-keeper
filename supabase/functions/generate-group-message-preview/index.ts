@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { geminiChat } from "../_shared/gemini.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,7 +13,21 @@ serve(async (req) => {
   }
 
   try {
-    const { board_name, instructions, participants, lead_fields } = await req.json();
+    const { board_name, board_id, instructions, participants, lead_fields } = await req.json();
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Fetch existing custom fields for this board to check what exists
+    let existingCustomFields: string[] = [];
+    if (board_id) {
+      const { data: fields } = await supabase
+        .from('lead_custom_fields')
+        .select('field_name')
+        .or(`board_id.eq.${board_id},board_id.is.null`);
+      existingCustomFields = (fields || []).map((f: any) => f.field_name);
+    }
 
     const fieldLabels: Record<string, string> = {
       lead_name: 'Nome do Lead',
@@ -50,9 +65,14 @@ serve(async (req) => {
       return `- ${label}: ${value}`;
     }).join('\n');
 
+    // Analyze instructions to detect fields that may not exist
+    const instructionFieldAnalysis = existingCustomFields.length > 0
+      ? `\nCAMPOS PERSONALIZADOS EXISTENTES NO SISTEMA:\n${existingCustomFields.map(f => `- ${f}`).join('\n')}\n\nIMPORTANTE: Após gerar a mensagem, analise as instruções do usuário. Se as instruções mencionam informações que NÃO existem como campos personalizados no sistema (listados acima), adicione ao final uma seção "⚠️ OBSERVAÇÃO PARA O ADMINISTRADOR:" listando quais campos personalizados precisam ser CRIADOS no sistema para que essas informações possam ser preenchidas e usadas na mensagem real. Exemplo: se as instruções pedem "data provável do parto" mas esse campo não existe, sugira a criação dele.`
+      : `\nNENHUM CAMPO PERSONALIZADO foi encontrado para este funil. Se as instruções mencionam informações específicas (como datas, valores, condições), adicione ao final uma seção "⚠️ OBSERVAÇÃO PARA O ADMINISTRADOR:" sugerindo quais campos personalizados devem ser CRIADOS no sistema.`;
+
     const systemPrompt = `Você é um assistente que gera mensagens iniciais para grupos de WhatsApp de um escritório de advocacia.
 
-Gere uma mensagem de exemplo usando os DADOS FICTÍCIOS fornecidos abaixo para demonstrar como ficará a mensagem real quando um grupo for criado.
+Gere uma mensagem COMPLETA de exemplo usando os DADOS FICTÍCIOS fornecidos abaixo para demonstrar como ficará a mensagem real quando um grupo for criado. NÃO corte ou encurte a mensagem.
 
 DADOS FICTÍCIOS DO LEAD:
 ${fieldsContext}
@@ -77,17 +97,18 @@ ${participants || '- Nenhum participante configurado'}
 FUNIL: ${board_name || 'Não informado'}
 
 ${instructions ? `INSTRUÇÕES ADICIONAIS DO USUÁRIO:\n${instructions}` : ''}
+${instructionFieldAnalysis}
 
-Gere a mensagem formatada para WhatsApp usando *negrito*, emojis e organização clara. Use TODOS os dados fictícios acima para mostrar como ficará na prática.`;
+Gere a mensagem COMPLETA formatada para WhatsApp usando *negrito*, emojis e organização clara. Use TODOS os dados fictícios acima para mostrar como ficará na prática. A mensagem deve ser EXTENSA e DETALHADA, incluindo todas as seções solicitadas nas instruções.`;
 
     const result = await geminiChat({
       model: 'google/gemini-2.5-flash',
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: 'Gere a mensagem de pré-visualização do grupo.' },
+        { role: 'user', content: 'Gere a mensagem de pré-visualização COMPLETA do grupo, sem cortar nenhuma seção.' },
       ],
       temperature: 0.7,
-      max_tokens: 2000,
+      max_tokens: 8192,
     });
 
     const message = result.choices?.[0]?.message?.content || 'Não foi possível gerar a mensagem.';
