@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Pencil, Trash2, Smartphone, Wifi, WifiOff, Phone, Globe, Key, CheckCircle2, RefreshCw, Bot } from 'lucide-react';
+import { Plus, Pencil, Trash2, Smartphone, Wifi, WifiOff, Phone, Globe, Key, CheckCircle2, RefreshCw, Bot, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Instance {
@@ -26,12 +26,20 @@ interface Instance {
   ad_account_name: string | null;
   auto_identify_sender: boolean | null;
   default_agent_id: string | null;
+  voice_id: string | null;
+  voice_name: string | null;
   created_at: string;
 }
 
 interface AgentOption {
   id: string;
   name: string;
+}
+
+interface VoiceOption {
+  id: string;
+  name: string;
+  type: 'preset' | 'custom';
 }
 
 interface FormData {
@@ -51,6 +59,7 @@ const emptyForm: FormData = {
 export function WhatsAppInstanceManager() {
   const [instances, setInstances] = useState<Instance[]>([]);
   const [agents, setAgents] = useState<AgentOption[]>([]);
+  const [voices, setVoices] = useState<VoiceOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -91,6 +100,36 @@ export function WhatsAppInstanceManager() {
     if (!instancesRes.error && instancesRes.data) setInstances(instancesRes.data as Instance[]);
     if (!shortcutsRes.error && shortcutsRes.data) setAgents((shortcutsRes.data as any[]).map(s => ({ id: s.id, name: '#' + s.shortcut_name })));
     setLoading(false);
+  }, []);
+
+  // Fetch available voices
+  useEffect(() => {
+    const fetchVoices = async () => {
+      const presetVoices: VoiceOption[] = [
+        { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura (pt-BR)', type: 'preset' },
+        { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', type: 'preset' },
+        { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', type: 'preset' },
+        { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', type: 'preset' },
+        { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam', type: 'preset' },
+        { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily', type: 'preset' },
+        { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica', type: 'preset' },
+        { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', type: 'preset' },
+        { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger', type: 'preset' },
+        { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda', type: 'preset' },
+      ];
+      // Fetch custom cloned voices
+      const { data: customVoices } = await supabase
+        .from('custom_voices')
+        .select('id, name, elevenlabs_voice_id')
+        .eq('status', 'ready');
+      const custom: VoiceOption[] = (customVoices || []).map((v: any) => ({
+        id: v.elevenlabs_voice_id,
+        name: `🎤 ${v.name}`,
+        type: 'custom' as const,
+      })).filter((v: VoiceOption) => v.id);
+      setVoices([...presetVoices, ...custom]);
+    };
+    fetchVoices();
   }, []);
 
   useEffect(() => { fetchInstances(); }, [fetchInstances]);
@@ -296,6 +335,41 @@ export function WhatsAppInstanceManager() {
                             <SelectItem value="none">Nenhum</SelectItem>
                             {agents.map(a => (
                               <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {/* Voice Selector */}
+                    {voices.length > 0 && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Volume2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-xs text-muted-foreground shrink-0">Voz (TTS):</span>
+                        <Select
+                          value={inst.voice_id || 'none'}
+                          onValueChange={async (v) => {
+                            const newVoiceId = v === 'none' ? null : v;
+                            const newVoiceName = newVoiceId ? voices.find(vo => vo.id === newVoiceId)?.name || null : null;
+                            setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, voice_id: newVoiceId, voice_name: newVoiceName } : i));
+                            const { error } = await supabase
+                              .from('whatsapp_instances')
+                              .update({ voice_id: newVoiceId, voice_name: newVoiceName } as any)
+                              .eq('id', inst.id);
+                            if (error) {
+                              toast.error('Erro ao salvar voz');
+                              setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, voice_id: inst.voice_id, voice_name: inst.voice_name } : i));
+                            } else {
+                              toast.success(newVoiceId ? `🔊 Voz "${newVoiceName}" definida` : 'Voz removida');
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="h-7 text-xs w-48">
+                            <SelectValue placeholder="Nenhuma" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Nenhuma (usar padrão)</SelectItem>
+                            {voices.map(v => (
+                              <SelectItem key={v.id} value={v.id} className="text-xs">{v.name}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
