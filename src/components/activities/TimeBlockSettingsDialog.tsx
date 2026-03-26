@@ -150,6 +150,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
   const [editingType, setEditingType] = useState<ActivityType | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const [editColor, setEditColor] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   // Delete with migration state
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: ActivityType; linkedCount: number } | null>(null);
@@ -293,11 +294,12 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
     setEditingType(type);
     setEditLabel(type.label);
     setEditColor(type.color);
+    setEditDescription(type.description || '');
   };
 
   const handleSaveEdit = async () => {
     if (!editingType || !editLabel.trim()) return;
-    await updateType(editingType.id, { label: editLabel.trim(), color: editColor });
+    await updateType(editingType.id, { label: editLabel.trim(), color: editColor, description: editDescription.trim() || null });
     setEditingType(null);
     toast.success('Tipo atualizado!');
   };
@@ -849,40 +851,51 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
 
               {/* Inline edit type */}
               {editingType && (
-                <div className="flex gap-2 items-end border rounded-lg p-3 bg-muted/20">
-                  <div className="flex-1 space-y-1">
-                    <p className="text-[10px] text-muted-foreground">Editar: {editingType.label}</p>
-                    <Input
-                      value={editLabel}
-                      onChange={e => setEditLabel(e.target.value)}
-                      className="h-8 text-sm"
-                      onKeyDown={e => e.key === 'Enter' && handleSaveEdit()}
-                      autoFocus
-                    />
+                <div className="flex flex-col gap-2 border rounded-lg p-3 bg-muted/20">
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1 space-y-1">
+                      <p className="text-[10px] text-muted-foreground">Editar: {editingType.label}</p>
+                      <Input
+                        value={editLabel}
+                        onChange={e => setEditLabel(e.target.value)}
+                        className="h-8 text-sm"
+                        placeholder="Nome do tipo"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-muted-foreground">Cor</p>
+                      <div className="flex gap-1 flex-wrap max-w-[200px]">
+                        {COLOR_OPTIONS.map(c => (
+                          <button
+                            key={c.value}
+                            onClick={() => setEditColor(c.value)}
+                            className={cn(
+                              'h-5 w-5 rounded-full border-2 transition-all',
+                              c.value,
+                              editColor === c.value ? 'border-foreground scale-110' : 'border-transparent'
+                            )}
+                            title={c.label}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <Button size="sm" className="h-8" onClick={handleSaveEdit} disabled={!editLabel.trim()}>
+                      <Save className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingType(null)}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[10px] text-muted-foreground">Cor</p>
-                    <div className="flex gap-1 flex-wrap max-w-[200px]">
-                      {COLOR_OPTIONS.map(c => (
-                        <button
-                          key={c.value}
-                          onClick={() => setEditColor(c.value)}
-                          className={cn(
-                            'h-5 w-5 rounded-full border-2 transition-all',
-                            c.value,
-                            editColor === c.value ? 'border-foreground scale-110' : 'border-transparent'
-                          )}
-                          title={c.label}
-                        />
-                      ))}
-                    </div>
+                    <p className="text-[10px] text-muted-foreground">Descrição (usada pela IA para identificar o tipo correto)</p>
+                    <Input
+                      value={editDescription}
+                      onChange={e => setEditDescription(e.target.value)}
+                      className="h-8 text-sm"
+                      placeholder="Ex: Atividades de prospecção ativa de novos clientes via telefone e WhatsApp"
+                    />
                   </div>
-                  <Button size="sm" className="h-8" onClick={handleSaveEdit} disabled={!editLabel.trim()}>
-                    <Save className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingType(null)}>
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
                 </div>
               )}
             </div>
