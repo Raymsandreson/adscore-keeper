@@ -1978,21 +1978,8 @@ Deno.serve(async (req) => {
               .maybeSingle()
 
             if (memberProfile) {
-              // Anti-loop: check if we already processed or are processing for this phone recently
-              // Check both outbound replies AND recent inbound from same phone (duplicate webhook)
-              const twoMinAgo = new Date(Date.now() - 120_000).toISOString()
-              
-              const { data: recentOutbound } = await supabase
-                .from('whatsapp_messages')
-                .select('id')
-                .eq('phone', phone)
-                .eq('instance_name', instanceName)
-                .eq('direction', 'outbound')
-                .gte('created_at', twoMinAgo)
-                .limit(1)
-                .maybeSingle()
-
-              // Also check recent inbound from same member to prevent duplicate webhook processing
+              // Anti-loop: only block duplicate webhook processing (30s lock), NOT recent outbound replies.
+              // The old 2-min outbound check was blocking user confirmations like "Sim" after AI questions.
               const { data: recentInbound } = await supabase
                 .from('whatsapp_command_history')
                 .select('id')
@@ -2002,9 +1989,8 @@ Deno.serve(async (req) => {
                 .limit(1)
                 .maybeSingle()
 
-              if (recentOutbound || recentInbound) {
-                console.log('Anti-loop: skipping member assistant for', phone, 
-                  recentOutbound ? '(recent outbound)' : '(recent lock)')
+              if (recentInbound) {
+                console.log('Anti-loop: skipping member assistant for', phone, '(recent lock)')
               } else {
                 console.log('Member detected:', memberProfile.full_name, '- routing to member AI assistant')
 
