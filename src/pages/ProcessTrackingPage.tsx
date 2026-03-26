@@ -13,8 +13,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
   FileSpreadsheet, Upload, Loader2, Search, AlertTriangle, Check,
-  X, RefreshCw, Eye,
+  X, RefreshCw, Eye, FileUp,
 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface ImportRow {
   cliente: string | null;
