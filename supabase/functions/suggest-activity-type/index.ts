@@ -22,8 +22,12 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, supabaseKey);
 
-    const { data: types } = await sb.from("activity_types").select("key, label").eq("is_active", true).order("display_order");
-    const typesList = (types || []).map((t: any) => `- "${t.key}" = ${t.label}`).join("\n");
+    const { data: types } = await sb.from("activity_types").select("key, label, description").eq("is_active", true).order("display_order");
+    const typesList = (types || []).map((t: any) => {
+      let line = `- "${t.key}" = ${t.label}`;
+      if (t.description) line += ` — ${t.description}`;
+      return line;
+    }).join("\n");
 
     const result = await geminiChat({
       model: "google/gemini-2.5-flash-lite",

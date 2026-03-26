@@ -229,7 +229,7 @@ async function createActivity(supabase: any, args: any, userId: string, userName
       .eq('user_id', assignedToId),
     supabase
       .from('activity_types')
-      .select('key, label')
+      .select('key, label, description')
       .or('is_active.eq.true,is_active.is.null')
       .order('display_order')
       .limit(200),
@@ -278,7 +278,8 @@ async function createActivity(supabase: any, args: any, userId: string, userName
           .map((t: any) => {
             const labelTokens = Array.from(new Set(normalizeText(t.label || '').split(/[^a-z0-9]+/).filter((x) => x.length > 2)))
             const keyTokens = Array.from(new Set(normalizeText(t.key || '').split(/[^a-z0-9]+/).filter((x) => x.length > 2 && !/^custom\d+$/.test(x))))
-            const tokens = Array.from(new Set([...labelTokens, ...keyTokens]))
+            const descTokens = Array.from(new Set(normalizeText(t.description || '').split(/[^a-z0-9]+/).filter((x) => x.length > 2)))
+            const tokens = Array.from(new Set([...labelTokens, ...keyTokens, ...descTokens]))
             const overlap = tokens.filter((token) => contextTokens.includes(token)).length
             return { key: t.key, overlap }
           })

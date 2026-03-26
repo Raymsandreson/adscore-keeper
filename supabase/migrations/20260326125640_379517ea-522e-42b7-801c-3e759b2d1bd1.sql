@@ -1,0 +1,1 @@
+ALTER TABLE public.activity_types ADD COLUMN IF NOT EXISTS description text;

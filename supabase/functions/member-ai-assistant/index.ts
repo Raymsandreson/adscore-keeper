@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
         .single(),
       supabase
         .from('activity_types')
-        .select('key, label')
+        .select('key, label, description')
         .or('is_active.eq.true,is_active.is.null')
         .order('display_order'),
     ])
@@ -134,7 +134,11 @@ Deno.serve(async (req) => {
     const inst = instResult.data
     const activityTypes = (activityTypesResult.data || []) as any[]
     const activityTypeLabelByKey = new Map(activityTypes.map((t: any) => [String(t.key), String(t.label)]))
-    const activityTypesListText = activityTypes.map((t: any) => `• "${t.key}" = ${t.label}`).join('\n')
+    const activityTypesListText = activityTypes.map((t: any) => {
+      let line = `• "${t.key}" = ${t.label}`
+      if (t.description) line += ` — ${t.description}`
+      return line
+    }).join('\n')
 
     if (!inst) {
       console.error('No active instance found:', instance_name)
