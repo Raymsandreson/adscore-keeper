@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    const { phone, lead_name, board_id, contact_phone, creator_instance_id } = await req.json()
+    const { phone, lead_name, board_id, contact_phone, creator_instance_id, lead_id } = await req.json()
 
     if (!lead_name) {
       return new Response(JSON.stringify({ success: false, error: 'lead_name is required' }), {
@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Get the creator instance (the one that will create the group)
+    // Get the creator instance
     let creatorInstance: any = null
     if (creator_instance_id) {
       const { data } = await supabase
@@ -52,10 +52,74 @@ Deno.serve(async (req) => {
 
     const baseUrl = creatorInstance.base_url || 'https://abraci.uazapi.com'
 
-    // Build participant list: contact phone + configured board instances' owner phones
-    const participants: string[] = []
+    // Build group name from settings
+    let groupName = lead_name
+    if (board_id) {
+      const { data: settings } = await supabase
+        .from('board_group_settings')
+        .select('*')
+        .eq('board_id', board_id)
+        .maybeSingle()
 
-    // Add contact phone
+      if (settings) {
+        // Get lead data for field substitution
+        let leadData: any = null
+        
+        // Try to find lead by id or phone
+        const normalizedPhone = (contact_phone || phone || '').replace(/\D/g, '')
+        if (lead_id) {
+          const { data } = await supabase.from('leads').select('*').eq('id', lead_id).maybeSingle()
+          leadData = data
+        }
+        if (!leadData && normalizedPhone) {
+          const { data } = await supabase
+            .from('leads')
+            .select('*')
+            .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${normalizedPhone.slice(-8)}%`)
+            .limit(1)
+            .maybeSingle()
+          leadData = data
+        }
+
+        // Increment sequence
+        const nextSeq = Math.max(
+          (settings.current_sequence || 0) + 1,
+          settings.sequence_start || 1
+        )
+        
+        // Update current_sequence atomically
+        await supabase
+          .from('board_group_settings')
+          .update({ current_sequence: nextSeq, updated_at: new Date().toISOString() })
+          .eq('board_id', board_id)
+
+        // Build name parts
+        const parts: string[] = []
+        
+        // Prefix
+        if (settings.group_name_prefix) {
+          parts.push(settings.group_name_prefix)
+        }
+        
+        // Sequence number
+        parts.push(String(nextSeq).padStart(4, '0'))
+
+        // Lead fields
+        const leadFields = settings.lead_fields || ['lead_name']
+        for (const field of leadFields) {
+          if (leadData && leadData[field]) {
+            parts.push(String(leadData[field]))
+          } else if (field === 'lead_name') {
+            parts.push(lead_name)
+          }
+        }
+
+        groupName = parts.join(' ')
+      }
+    }
+
+    // Build participant list
+    const participants: string[] = []
     const normalizedContact = (contact_phone || phone || '').replace(/\D/g, '')
     if (normalizedContact) {
       participants.push(normalizedContact)
@@ -70,7 +134,7 @@ Deno.serve(async (req) => {
         .eq('board_id', board_id)
 
       if (bgi && bgi.length > 0) {
-        const instanceIds = bgi.map(b => b.instance_id)
+        const instanceIds = bgi.map((b: any) => b.instance_id)
         const { data: instances } = await supabase
           .from('whatsapp_instances')
           .select('id, owner_phone, instance_name')
@@ -84,21 +148,21 @@ Deno.serve(async (req) => {
     // Add board instances' owner phones (except creator's own phone)
     for (const inst of boardInstances) {
       if (inst.owner_phone && inst.id !== creatorInstance.id) {
-        const phone = inst.owner_phone.replace(/\D/g, '')
-        if (phone && !participants.includes(phone)) {
-          participants.push(phone)
+        const p = inst.owner_phone.replace(/\D/g, '')
+        if (p && !participants.includes(p)) {
+          participants.push(p)
         }
       }
     }
 
-    console.log(`Creating group "${lead_name}" via instance ${creatorInstance.instance_name} with ${participants.length} participants`)
+    console.log(`Creating group "${groupName}" via instance ${creatorInstance.instance_name} with ${participants.length} participants`)
 
     // Create group via UazAPI
     const createRes = await fetch(`${baseUrl}/group/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
       body: JSON.stringify({
-        name: lead_name,
+        name: groupName,
         participants: participants,
       }),
     })
@@ -114,8 +178,7 @@ Deno.serve(async (req) => {
 
     const groupId = groupData?.id || groupData?.jid || groupData?.data?.id || groupData?.gid || null
 
-    // Now add the other board instances to the group (their owner phones)
-    // The creator is already in the group, so we add remaining instances
+    // Promote board instances as admins
     for (const inst of boardInstances) {
       if (inst.id === creatorInstance.id) continue
       if (!inst.owner_phone) continue
@@ -123,18 +186,8 @@ Deno.serve(async (req) => {
       const instPhone = inst.owner_phone.replace(/\D/g, '')
       if (!instPhone) continue
 
-      // The phone was already added as participant during creation,
-      // but if the API didn't add them, try explicitly
       try {
-        // Get this instance's connection to add it as admin if needed
-        const { data: instData } = await supabase
-          .from('whatsapp_instances')
-          .select('*')
-          .eq('id', inst.id)
-          .single()
-
-        if (instData && groupId) {
-          // Use the creator instance to promote them as admin
+        if (groupId) {
           await fetch(`${baseUrl}/group/promote`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
@@ -142,14 +195,14 @@ Deno.serve(async (req) => {
           })
         }
       } catch (e) {
-        console.error(`Error adding instance ${inst.instance_name} to group:`, e)
+        console.error(`Error promoting instance ${inst.instance_name}:`, e)
       }
     }
 
     return new Response(JSON.stringify({
       success: true,
       group_id: groupId,
-      group_name: lead_name,
+      group_name: groupName,
       participants_count: participants.length,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
