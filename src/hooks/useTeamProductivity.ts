@@ -247,18 +247,24 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         }
       });
 
-      // Count leads closed per user - use stage history to detect closed stages
+      // Count leads closed per user - deduplicate by lead_id
       const CLOSED_PATTERNS = ['closed', 'fechado', 'fechados', 'done'];
       const isClosedStageId = (id: string) => {
         const lower = id.toLowerCase();
         return CLOSED_PATTERNS.some(p => lower === p || lower.startsWith(p + '_'));
       };
+      const closedByUser = new Map<string, Set<string>>();
       stageHistory.forEach(s => {
         const changedBy = (s as any).changed_by;
         const toStage = (s as any).to_stage;
-        if (changedBy && toStage && isClosedStageId(toStage)) {
-          getUser(changedBy).leadsClosed++;
+        const leadId = (s as any).lead_id;
+        if (changedBy && toStage && isClosedStageId(toStage) && leadId) {
+          if (!closedByUser.has(changedBy)) closedByUser.set(changedBy, new Set());
+          closedByUser.get(changedBy)!.add(leadId);
         }
+      });
+      closedByUser.forEach((leadIds, uId) => {
+        getUser(uId).leadsClosed = leadIds.size;
       });
 
       // Count calls from CAT contacts
@@ -392,7 +398,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         totalCommentReplies: replies.length,
         totalStageChanges: stageHistory.length,
         totalFollowups: followups.length,
-        totalLeadsClosed: stageHistory.filter(s => isClosedStageId((s as any).to_stage || '')).length,
+        totalLeadsClosed: new Set(stageHistory.filter(s => isClosedStageId((s as any).to_stage || '')).map(s => (s as any).lead_id)).size,
         totalPageVisits: activities.filter(a => a.action_type === 'page_visit').length,
         totalCallsMade: catContacts.filter(c => c.contact_channel === 'phone' || c.contact_channel === 'ligacao').length,
         totalChecklistItems: activities.filter(a => a.action_type === 'checklist_item_checked').length,
