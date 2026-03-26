@@ -548,11 +548,12 @@ async function buildPersonalizedReport(
     if (userId) allLeadsQ = allLeadsQ.eq('assigned_to', userId)
     const { data: allLeadsToday, count: totalLeadsToday } = await allLeadsQ
 
-    // Leads by time of day (São Paulo timezone)
+    // Distribution by time of day based on NEW CONVERSATIONS (first inbound message from each phone)
     let manha = 0, tarde = 0, noite = 0, madrugada = 0
-    for (const lead of (allLeadsToday || [])) {
-      const leadBR = new Date(new Date(lead.created_at).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
-      const h = leadBR.getHours()
+    for (const [phone, firstMsg] of phoneFirstInbound) {
+      // Only count truly new conversations (no prior history)
+      const msgBR = new Date(new Date(firstMsg.created_at).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+      const h = msgBR.getHours()
       if (h >= 6 && h < 12) manha++
       else if (h >= 12 && h < 18) tarde++
       else if (h >= 18 && h < 24) noite++
@@ -564,6 +565,8 @@ async function buildPersonalizedReport(
     sections.push(`  • ✅ Fechados: ${closedToday || 0}`)
     sections.push(`  • ❌ Recusados: ${refusedToday || 0}`)
     sections.push(`  • 🔄 Em andamento: ${inProgressToday || 0}`)
+    sections.push(``)
+    sections.push(`📥 *Conversas Novas por Período*`)
     sections.push(`  • 🌅 Manhã (6h-12h): ${manha}`)
     sections.push(`  • ☀️ Tarde (12h-18h): ${tarde}`)
     sections.push(`  • 🌙 Noite (18h-00h): ${noite}`)
