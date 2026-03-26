@@ -565,6 +565,12 @@ export function BoardGroupInstancesConfig() {
                     </div>
                   </div>
                 )}
+                {adminNotes && (
+                  <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-xs text-yellow-800 dark:bg-yellow-950/30 dark:text-yellow-200 dark:border-yellow-700">
+                    <div className="font-medium mb-1">⚠️ Observação para o Administrador:</div>
+                    <div className="whitespace-pre-wrap">{adminNotes}</div>
+                  </div>
+                )}
               </>
             )}
           </div>
