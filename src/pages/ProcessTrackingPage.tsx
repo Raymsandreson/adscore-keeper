@@ -264,14 +264,14 @@ const ProcessTrackingPage = () => {
       {/* Data Table */}
       <Card>
         <CardContent className="p-0">
-          {/* Top scrollbar */}
+          {/* Top scrollbar - always visible */}
           <div
             ref={topScrollRef}
             onScroll={handleTopScroll}
-            className="overflow-x-auto w-full"
-            style={{ height: 16 }}
+            className="overflow-x-auto w-full border-b border-border"
+            style={{ minHeight: 20, overflowY: 'hidden' }}
           >
-            <div style={{ width: tableWidth, height: 1 }} />
+            <div style={{ width: tableWidth || '100%', height: 1 }} />
           </div>
           {/* Table with bottom scrollbar */}
           <div
