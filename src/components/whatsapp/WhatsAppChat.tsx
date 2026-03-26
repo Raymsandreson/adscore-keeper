@@ -80,9 +80,10 @@ interface Props {
   onPrivacyChanged?: () => void;
   shareInfo?: ConvShareInfo | null;
   onUpdateWithAI?: () => void;
+  onOpenChat?: (phone: string) => void;
 }
 
-export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI }: Props) {
+export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat }: Props) {
   const { profile } = useAuthContext();
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -103,6 +104,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
   const [showGroupMembers, setShowGroupMembers] = useState(false);
   const [showZapSign, setShowZapSign] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [linkedGroupId, setLinkedGroupId] = useState<string | null>(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -236,6 +238,39 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
     checkPrivate();
   }, [conversation.phone, conversation.instance_name]);
 
+  // Check if contact/lead has a linked group
+  useEffect(() => {
+    const checkLinkedGroup = async () => {
+      const normalizedPhone = conversation.phone?.replace(/\D/g, '') || '';
+      if (!normalizedPhone) return;
+      // Check contact first
+      const { data: contact } = await supabase
+        .from('contacts')
+        .select('whatsapp_group_id')
+        .eq('phone', normalizedPhone)
+        .not('whatsapp_group_id', 'is', null)
+        .maybeSingle();
+      if (contact?.whatsapp_group_id) {
+        setLinkedGroupId(contact.whatsapp_group_id);
+        return;
+      }
+      // Check lead
+      const { data: lead } = await (supabase as any)
+        .from('leads')
+        .select('whatsapp_group_id')
+        .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${normalizedPhone.slice(-8)}%`)
+        .not('whatsapp_group_id', 'is', null)
+        .limit(1)
+        .maybeSingle();
+      if (lead?.whatsapp_group_id) {
+        setLinkedGroupId(lead.whatsapp_group_id);
+      } else {
+        setLinkedGroupId(null);
+      }
+    };
+    checkLinkedGroup();
+  }, [conversation.phone]);
+
   const handleTogglePrivate = async () => {
     if (!conversation.instance_name) return;
     setTogglingPrivate(true);
@@ -320,6 +355,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
         }
       }
 
+      setLinkedGroupId(data.group_id || null);
       toast.success(`Grupo "${leadName}" criado com ${data.participants_count} participantes!`);
     } catch (e: any) {
       console.error('Error creating group:', e);
@@ -869,7 +905,12 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
               <DropdownMenuItem onClick={() => setShowZapSign(true)} className="gap-2">
                 <FileSignature className="h-4 w-4" /> Gerar Documento para Assinatura
               </DropdownMenuItem>
-              {!isGroup && (
+              {!isGroup && linkedGroupId && (
+                <DropdownMenuItem onClick={() => onOpenChat?.(linkedGroupId)} className="gap-2">
+                  <Users className="h-4 w-4" /> Acessar Grupo
+                </DropdownMenuItem>
+              )}
+              {!isGroup && !linkedGroupId && (
                 <DropdownMenuItem onClick={handleCreateGroup} disabled={creatingGroup} className="gap-2">
                   {creatingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
                   Criar Grupo WhatsApp
