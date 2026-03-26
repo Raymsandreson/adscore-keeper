@@ -231,6 +231,26 @@ Deno.serve(async (req) => {
     // Wait for WhatsApp to fully process the group creation
     await new Promise(resolve => setTimeout(resolve, 3000))
 
+    // If group was created empty, add participants one by one
+    if (groupId && validParticipants.length > 0) {
+      const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
+      for (const p of validParticipants) {
+        try {
+          const addRes = await fetch(`${baseUrl}/group/addParticipant`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+            body: JSON.stringify({ id: groupJid, participants: [p] }),
+          })
+          if (!addRes.ok) {
+            console.warn(`Failed to add ${p} to group:`, await addRes.text())
+          }
+        } catch (e) {
+          console.warn(`Error adding ${p} to group:`, e)
+        }
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+    }
+
     // Promote ALL board instances as admins (except lead contact)
     if (groupId) {
       // Collect all phones to promote (all instances except creator who is already admin)
