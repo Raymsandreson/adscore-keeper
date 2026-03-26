@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -20,7 +21,7 @@ import {
 import {
   Briefcase, Search, Scale, ChevronDown, ChevronRight,
   Gavel, FileText, Users, ArrowLeft, ExternalLink, Plus,
-  Edit3, CheckCircle, Archive, Trash2, XCircle,
+  Edit3, CheckCircle, Archive, Trash2, XCircle, Upload, Loader2,
 } from 'lucide-react';
 import { LegalCase } from '@/hooks/useLegalCases';
 import { CopyableText } from '@/components/ui/copyable-text';
@@ -62,6 +63,47 @@ export default function CasesPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { nuclei } = useSpecializedNuclei();
   const navigate = useNavigate();
+
+  // Export to Google Sheets state
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [spreadsheetId, setSpreadsheetId] = useState('');
+  const [sheetName, setSheetName] = useState('');
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportToSheets = async () => {
+    if (!spreadsheetId.trim()) {
+      toast.error('Informe o ID da planilha');
+      return;
+    }
+    setExporting(true);
+    try {
+      // Extract spreadsheet ID from URL if full URL is pasted
+      let sheetId = spreadsheetId.trim();
+      const urlMatch = sheetId.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+      if (urlMatch) sheetId = urlMatch[1];
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await supabase.functions.invoke('export-cases-to-sheets', {
+        body: {
+          spreadsheet_id: sheetId,
+          sheet_name: sheetName.trim() || undefined,
+          nucleus_filter: nucleusFilter !== 'all' ? nucleusFilter : undefined,
+        },
+      });
+
+      if (response.error) throw new Error(response.error.message);
+      const result = response.data;
+      if (result.error) throw new Error(result.error);
+
+      toast.success(result.message || `${result.rows_exported} casos exportados!`);
+      setShowExportDialog(false);
+    } catch (err: any) {
+      console.error('Export error:', err);
+      toast.error(err.message || 'Erro ao exportar');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const fetchCases = useCallback(async () => {
     setLoading(true);
@@ -119,6 +161,10 @@ export default function CasesPage() {
         <div className="flex items-center gap-3 mb-3">
           <Briefcase className="h-5 w-5 text-primary" />
           <h1 className="text-lg font-semibold">Setor Processual — Casos</h1>
+          <Button variant="outline" size="sm" className="ml-auto" onClick={() => setShowExportDialog(true)}>
+            <Upload className="h-4 w-4 mr-1" />
+            Exportar
+          </Button>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -185,6 +231,52 @@ export default function CasesPage() {
             />
         ))}
       </div>
+
+      {/* Export to Google Sheets Dialog */}
+      <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Exportar para Google Sheets</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>URL ou ID da planilha *</Label>
+              <Input
+                value={spreadsheetId}
+                onChange={e => setSpreadsheetId(e.target.value)}
+                placeholder="Cole a URL ou ID da planilha do Google Sheets"
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Ex: https://docs.google.com/spreadsheets/d/1WQC...
+              </p>
+            </div>
+            <div>
+              <Label>Nome da aba (opcional)</Label>
+              <Input
+                value={sheetName}
+                onChange={e => setSheetName(e.target.value)}
+                placeholder="Ex: PREVIDENCIÁRIO"
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Se não informado, usa a primeira aba da planilha
+              </p>
+            </div>
+            {nucleusFilter !== 'all' && (
+              <p className="text-sm text-muted-foreground">
+                📌 Filtrando por núcleo selecionado: apenas casos do filtro ativo serão exportados
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowExportDialog(false)}>Cancelar</Button>
+            <Button onClick={handleExportToSheets} disabled={exporting || !spreadsheetId.trim()}>
+              {exporting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Exportando...</> : 'Exportar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
