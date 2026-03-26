@@ -243,32 +243,38 @@ Deno.serve(async (req) => {
     console.log(`Valid participants for group: ${validParticipants.length}/${participants.length}`, JSON.stringify(validParticipants))
 
     // Create group - try with valid participants first, fallback to creating empty group
-    let createRes = await fetch(`${baseUrl}/group/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-      body: JSON.stringify({
+    let createRes = await postUazApiWithRetry(
+      baseUrl,
+      creatorInstance.instance_token,
+      '/group/create',
+      {
         name: groupName,
         participants: validParticipants,
-      }),
-    })
+      },
+    )
 
     // If creation fails with participants, try creating with no participants then adding them
     if (!createRes.ok) {
       const errText = await createRes.text()
       console.warn('Group create with participants failed:', createRes.status, errText, '- Trying empty group creation')
-      
-      createRes = await fetch(`${baseUrl}/group/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-        body: JSON.stringify({
+
+      createRes = await postUazApiWithRetry(
+        baseUrl,
+        creatorInstance.instance_token,
+        '/group/create',
+        {
           name: groupName,
           participants: [],
-        }),
-      })
+        },
+      )
 
       if (!createRes.ok) {
         const errText2 = await createRes.text()
-        console.error('Empty group create also failed:', createRes.status, errText2)
+
+        if (isRateLimited(createRes.status, errText2)) {
+          throw new Error('A instância atingiu limite temporário da API para criação de grupo. Aguarde 1-2 minutos e tente novamente.')
+        }
+
         throw new Error(`Erro ao criar grupo: ${createRes.status} - ${errText2}`)
       }
     }
