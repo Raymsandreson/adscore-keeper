@@ -49,8 +49,8 @@ Deno.serve(async (req) => {
       const currentTime = `${currentHH}:${currentMM}`
       const currentDay = brNow.getDay()
 
-      const scheduleTimes: string[] = (config as any).dashboard_schedule_times || []
-      const scheduleDays: number[] = (config as any).dashboard_schedule_days || [1, 2, 3, 4, 5]
+      const scheduleTimes: string[] = (config as any).schedule_times || (config as any).dashboard_schedule_times || []
+      const scheduleDays: number[] = (config as any).schedule_days || (config as any).dashboard_schedule_days || [1, 2, 3, 4, 5]
 
       const timeMatch = scheduleTimes.some((t: string) => t === currentTime)
       const dayMatch = scheduleDays.includes(currentDay)
