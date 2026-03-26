@@ -13,8 +13,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
   FileSpreadsheet, Upload, Loader2, Search, AlertTriangle, Check,
-  X, RefreshCw, Eye,
+  X, RefreshCw, Eye, FileUp,
 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface ImportRow {
   cliente: string | null;
@@ -57,6 +58,7 @@ const ProcessTrackingPage = () => {
   const [conflictDecisions, setConflictDecisions] = useState<Record<number, 'overwrite' | 'skip'>>({});
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [detailRecord, setDetailRecord] = useState<ProcessTracking | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const topScrollRef = useRef<HTMLDivElement>(null);
   const bottomScrollRef = useRef<HTMLDivElement>(null);
@@ -142,6 +144,138 @@ const ProcessTrackingPage = () => {
     }
   };
 
+  const CSV_COLUMN_MAP: Record<string, keyof ImportRow> = {
+    'cliente': 'cliente', 'caso': 'caso', 'cpf': 'cpf', 'senha gov': 'senha_gov',
+    'senha_gov': 'senha_gov', 'data criação': 'data_criacao', 'data_criacao': 'data_criacao',
+    'tipo': 'tipo', 'acolhedor': 'acolhedor', 'nº processo': 'numero_processo',
+    'numero_processo': 'numero_processo', 'n processo': 'numero_processo',
+    'pendência': 'pendencia', 'pendencia': 'pendencia', 'data gerar guia': 'data_gerar_guia',
+    'data_gerar_guia': 'data_gerar_guia', 'nasc. bebê': 'data_nascimento_bebe',
+    'data_nascimento_bebe': 'data_nascimento_bebe', 'nasc bebe': 'data_nascimento_bebe',
+    'protocolado': 'protocolado', 'data protocolo cancelamento': 'data_protocolo_cancelamento',
+    'data_protocolo_cancelamento': 'data_protocolo_cancelamento',
+    'tempo (dias)': 'tempo_dias', 'tempo_dias': 'tempo_dias', 'tempo dias': 'tempo_dias',
+    'status processo': 'status_processo', 'status_processo': 'status_processo',
+    'data decisão final': 'data_decisao_final', 'data_decisao_final': 'data_decisao_final',
+    'motivo indeferimento': 'motivo_indeferimento', 'motivo_indeferimento': 'motivo_indeferimento',
+    'observação': 'observacao', 'observacao': 'observacao',
+    'cliente no grupo': 'cliente_no_grupo', 'cliente_no_grupo': 'cliente_no_grupo',
+    'atividade criada': 'atividade_criada', 'atividade_criada': 'atividade_criada',
+    'pago acolhedor': 'pago_acolhedor', 'pago_acolhedor': 'pago_acolhedor',
+    'data pagamento': 'data_pagamento', 'data_pagamento': 'data_pagamento',
+  };
+
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+        else { inQuotes = !inQuotes; }
+      } else if ((char === ',' || char === ';') && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+
+  const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) { toast.error('Arquivo CSV vazio ou sem dados'); return; }
+
+      const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
+      const columnIndices: Record<string, number> = {};
+      headers.forEach((h, i) => {
+        const mapped = CSV_COLUMN_MAP[h];
+        if (mapped) columnIndices[mapped as string] = i;
+      });
+
+      if (!columnIndices['cliente'] && !columnIndices['cpf']) {
+        toast.error('CSV não possui colunas reconhecidas (cliente, cpf, etc.)');
+        return;
+      }
+
+      const rows: ImportRow[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        if (values.every(v => !v)) continue;
+
+        const row: ImportRow = {
+          cliente: values[columnIndices['cliente']] || null,
+          caso: values[columnIndices['caso']] || null,
+          cpf: values[columnIndices['cpf']] || null,
+          senha_gov: values[columnIndices['senha_gov']] || null,
+          data_criacao: values[columnIndices['data_criacao']] || null,
+          tipo: values[columnIndices['tipo']] || null,
+          acolhedor: values[columnIndices['acolhedor']] || null,
+          numero_processo: values[columnIndices['numero_processo']] || null,
+          pendencia: values[columnIndices['pendencia']] || null,
+          data_gerar_guia: values[columnIndices['data_gerar_guia']] || null,
+          data_nascimento_bebe: values[columnIndices['data_nascimento_bebe']] || null,
+          protocolado: values[columnIndices['protocolado']] || null,
+          data_protocolo_cancelamento: values[columnIndices['data_protocolo_cancelamento']] || null,
+          tempo_dias: columnIndices['tempo_dias'] !== undefined ? (parseInt(values[columnIndices['tempo_dias']]) || null) : null,
+          status_processo: values[columnIndices['status_processo']] || null,
+          data_decisao_final: values[columnIndices['data_decisao_final']] || null,
+          motivo_indeferimento: values[columnIndices['motivo_indeferimento']] || null,
+          observacao: values[columnIndices['observacao']] || null,
+          cliente_no_grupo: values[columnIndices['cliente_no_grupo']] || null,
+          atividade_criada: values[columnIndices['atividade_criada']] || null,
+          pago_acolhedor: values[columnIndices['pago_acolhedor']] || null,
+          data_pagamento: values[columnIndices['data_pagamento']] || null,
+          existing_id: null,
+          has_conflict: false,
+          import_source: 'csv',
+        };
+
+        // Check for conflicts by CPF
+        if (row.cpf) {
+          const existing = records.find(r => r.cpf === row.cpf);
+          if (existing) {
+            row.existing_id = existing.id;
+            row.has_conflict = true;
+          }
+        }
+
+        rows.push(row);
+      }
+
+      if (!rows.length) { toast.info('Nenhum dado válido encontrado no CSV'); return; }
+
+      const withConflicts = rows.filter(r => r.has_conflict);
+      const withoutConflicts = rows.filter(r => !r.has_conflict);
+
+      setImportData(rows);
+
+      if (withConflicts.length > 0) {
+        setConflicts(withConflicts);
+        setConflictDecisions({});
+        setShowConflictDialog(true);
+      } else {
+        setSelectedRows(new Set(withoutConflicts.map((_, i) => i)));
+        setShowImportDialog(true);
+      }
+
+      toast.success(`${rows.length} registros lidos do CSV`);
+    } catch (err: any) {
+      toast.error('Erro ao ler CSV: ' + (err.message || ''));
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleResolveConflicts = () => {
     setShowConflictDialog(false);
     if (importData) {
@@ -221,32 +355,66 @@ const ProcessTrackingPage = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Upload className="h-4 w-4 text-primary" />
-            Importar da Planilha
+            Importar Dados
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="md:col-span-2 space-y-1">
-              <Label>URL da Planilha Google</Label>
-              <Input
-                value={sheetUrl}
-                onChange={e => setSheetUrl(e.target.value)}
-                placeholder="https://docs.google.com/spreadsheets/d/..."
+        <CardContent>
+          <Tabs defaultValue="csv" className="w-full">
+            <TabsList className="mb-4">
+              <TabsTrigger value="csv" className="gap-2">
+                <FileUp className="h-4 w-4" />
+                Arquivo CSV
+              </TabsTrigger>
+              <TabsTrigger value="sheets" className="gap-2">
+                <FileSpreadsheet className="h-4 w-4" />
+                Google Sheets
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="csv" className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Selecione um arquivo CSV com as colunas correspondentes (Cliente, Caso, CPF, etc.)
+              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={handleCSVImport}
+                className="hidden"
               />
-            </div>
-            <div className="space-y-1">
-              <Label>Nome da Aba (opcional)</Label>
-              <Input
-                value={sheetName}
-                onChange={e => setSheetName(e.target.value)}
-                placeholder="Ex: Previdenciário"
-              />
-            </div>
-          </div>
-          <Button onClick={handleFetchSheet} disabled={importing} className="gap-2">
-            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {importing ? 'Lendo planilha...' : 'Importar Dados'}
-          </Button>
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importing}
+                className="gap-2"
+              >
+                {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+                {importing ? 'Lendo CSV...' : 'Selecionar CSV'}
+              </Button>
+            </TabsContent>
+            <TabsContent value="sheets" className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="md:col-span-2 space-y-1">
+                  <Label>URL da Planilha Google</Label>
+                  <Input
+                    value={sheetUrl}
+                    onChange={e => setSheetUrl(e.target.value)}
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Nome da Aba (opcional)</Label>
+                  <Input
+                    value={sheetName}
+                    onChange={e => setSheetName(e.target.value)}
+                    placeholder="Ex: Previdenciário"
+                  />
+                </div>
+              </div>
+              <Button onClick={handleFetchSheet} disabled={importing} className="gap-2">
+                {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {importing ? 'Lendo planilha...' : 'Importar Dados'}
+              </Button>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
