@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText, Volume2 } from 'lucide-react';
+import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText, Volume2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Instance {
@@ -107,6 +107,8 @@ export function BoardGroupInstancesConfig() {
     audio_voice_id: '',
   });
   const [savingSettings, setSavingSettings] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewMessage, setPreviewMessage] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -307,6 +309,36 @@ export function BoardGroupInstancesConfig() {
 
   const allVoices = [...VOICE_OPTIONS, ...customVoices];
 
+  const generatePreview = async () => {
+    setPreviewLoading(true);
+    setPreviewMessage(null);
+    try {
+      const boardName = boards.find(b => b.id === selectedBoard)?.name || 'Funil';
+      const participants = linkedInstances.map(id => {
+        const inst = instances.find(i => i.id === id);
+        const config = instanceConfigs[id] || { role_title: '', role_description: '' };
+        return `- ${inst?.instance_name || 'Instância'}: ${config.role_title || 'Sem cargo'} (${config.role_description || 'Sem descrição'})`;
+      }).join('\n');
+
+      const { data, error } = await supabase.functions.invoke('generate-group-message-preview', {
+        body: {
+          board_name: boardName,
+          instructions: settings.initial_message_template || '',
+          participants,
+          lead_fields: settings.lead_fields,
+        },
+      });
+
+      if (error) throw error;
+      setPreviewMessage(data?.message || 'Não foi possível gerar a pré-visualização.');
+    } catch (e: any) {
+      toast.error('Erro ao gerar pré-visualização');
+      console.error(e);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
   return (
@@ -445,9 +477,30 @@ export function BoardGroupInstancesConfig() {
             )}
 
             {settings.use_ai_message && (
-              <p className="text-[10px] text-muted-foreground">
-                ℹ️ A IA usará APENAS dados do banco de dados (campos do lead, campos personalizados, atividades abertas e participantes do grupo). Nenhuma informação será inventada.
-              </p>
+              <>
+                <p className="text-[10px] text-muted-foreground">
+                  ℹ️ A IA usará APENAS dados do banco de dados (campos do lead, campos personalizados, atividades abertas e participantes do grupo). Nenhuma informação será inventada.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs h-7"
+                  onClick={generatePreview}
+                  disabled={previewLoading}
+                >
+                  {previewLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                  Pré-visualizar Mensagem
+                </Button>
+                {previewMessage && (
+                  <div className="p-3 rounded-lg border bg-background text-xs whitespace-pre-wrap max-h-[300px] overflow-y-auto">
+                    <div className="flex items-center gap-1.5 mb-2 text-[10px] text-muted-foreground font-medium">
+                      <Eye className="h-3 w-3" />
+                      Modelo de mensagem gerado pela IA (com dados fictícios):
+                    </div>
+                    {previewMessage}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
