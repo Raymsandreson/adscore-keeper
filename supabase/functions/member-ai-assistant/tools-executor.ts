@@ -229,7 +229,7 @@ async function createActivity(supabase: any, args: any, userId: string, userName
       .eq('user_id', assignedToId),
     supabase
       .from('activity_types')
-      .select('key, label')
+      .select('key, label, description')
       .or('is_active.eq.true,is_active.is.null')
       .order('display_order')
       .limit(200),
