@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText, Volume2, Sparkles } from 'lucide-react';
+import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText, Volume2, Sparkles, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Instance {
@@ -109,6 +109,8 @@ export function BoardGroupInstancesConfig() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewMessage, setPreviewMessage] = useState<string | null>(null);
+  const [refineInput, setRefineInput] = useState('');
+  const [refineLoading, setRefineLoading] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -340,6 +342,41 @@ export function BoardGroupInstancesConfig() {
     }
   };
 
+  const handleRefinePreview = async () => {
+    if (!refineInput.trim() || !previewMessage) return;
+    setRefineLoading(true);
+    try {
+      const boardName = boards.find(b => b.id === selectedBoard)?.name || 'Funil';
+      const participants = linkedInstances.map(id => {
+        const inst = instances.find(i => i.id === id);
+        const config = instanceConfigs[id] || { role_title: '', role_description: '' };
+        return `- ${inst?.instance_name || 'Instância'}: ${config.role_title || 'Sem cargo'} (${config.role_description || 'Sem descrição'})`;
+      }).join('\n');
+
+      const { data, error } = await supabase.functions.invoke('generate-group-message-preview', {
+        body: {
+          board_name: boardName,
+          board_id: selectedBoard,
+          instructions: settings.initial_message_template || '',
+          participants,
+          lead_fields: settings.lead_fields,
+          refinement: refineInput.trim(),
+          current_message: previewMessage,
+        },
+      });
+
+      if (error) throw error;
+      setPreviewMessage(data?.message || previewMessage);
+      setRefineInput('');
+      toast.success('Modelo refinado com IA!');
+    } catch (e: any) {
+      toast.error('Erro ao refinar modelo');
+      console.error(e);
+    } finally {
+      setRefineLoading(false);
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
   return (
@@ -504,6 +541,25 @@ export function BoardGroupInstancesConfig() {
                       className="w-full p-3 pt-1 text-xs bg-transparent border-0 outline-none resize-y min-h-[120px] max-h-[400px] whitespace-pre-wrap font-sans"
                       rows={12}
                     />
+                    <div className="flex gap-2 px-3 pb-3">
+                      <Input
+                        placeholder="Refine com IA: ex. mais formal, adicione seção de documentos pendentes..."
+                        value={refineInput}
+                        onChange={e => setRefineInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && !refineLoading && handleRefinePreview()}
+                        className="text-xs flex-1"
+                        disabled={refineLoading}
+                      />
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="shrink-0 h-9 w-9"
+                        onClick={handleRefinePreview}
+                        disabled={!refineInput.trim() || refineLoading}
+                      >
+                        {refineLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
                   </div>
                 )}
               </>
