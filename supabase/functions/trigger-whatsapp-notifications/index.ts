@@ -122,7 +122,6 @@ Deno.serve(async (req) => {
         .order('deadline', { ascending: true })
         .limit(20)
 
-      // If targeting a specific user, filter their tasks
       if (targetUserId) {
         query = query.eq('assigned_to', targetUserId)
       }
@@ -200,6 +199,108 @@ Deno.serve(async (req) => {
       sections.push(`  • Atividades criadas: ${activitiesCreated || 0}`)
       sections.push(`  • Atividades concluídas: ${activitiesCompleted || 0}`)
       sections.push(`  • Leads criados: ${leadsCreated || 0}`)
+      sections.push('')
+    }
+
+    // ── WhatsApp Dashboard Report ──
+    if (config.notify_whatsapp_dashboard) {
+      const todayStart = new Date(now)
+      todayStart.setHours(0, 0, 0, 0)
+      const sinceIso = todayStart.toISOString()
+
+      const dashInstanceNames: string[] = (config as any).dashboard_instance_names || []
+      const filterByInstance = dashInstanceNames.length > 0
+
+      // Fetch inbound messages (new conversations)
+      const fetchPaginated = async (direction: string) => {
+        const allRows: any[] = []
+        let from = 0
+        const pageSize = 1000
+        while (true) {
+          let q = supabase
+            .from('whatsapp_messages')
+            .select('phone, contact_name, created_at, instance_name, lead_id')
+            .eq('direction', direction)
+            .not('phone', 'like', '%@g.us')
+            .gte('created_at', sinceIso)
+            .order('created_at', { ascending: true })
+            .range(from, from + pageSize - 1)
+          if (filterByInstance) q = q.in('instance_name', dashInstanceNames)
+          const { data } = await q
+          if (!data || data.length === 0) break
+          allRows.push(...data)
+          if (data.length < pageSize) break
+          from += pageSize
+        }
+        return allRows
+      }
+
+      const [inboundMsgs, outboundMsgs] = await Promise.all([
+        fetchPaginated('inbound'),
+        fetchPaginated('outbound'),
+      ])
+
+      // Unique new conversations (first inbound per phone today)
+      const phoneFirstInbound = new Map<string, any>()
+      for (const m of inboundMsgs) {
+        if (!phoneFirstInbound.has(m.phone)) phoneFirstInbound.set(m.phone, m)
+      }
+      const newConversations = phoneFirstInbound.size
+
+      // Outbound phones set
+      const outboundPhones = new Set(outboundMsgs.map((m: any) => m.phone))
+
+      // Responded conversations
+      let respondedCount = 0
+      let totalResponseMinutes = 0
+      let responseCount = 0
+      for (const [phone, firstIn] of phoneFirstInbound) {
+        if (outboundPhones.has(phone)) {
+          respondedCount++
+          const firstOut = outboundMsgs.find((m: any) => m.phone === phone && new Date(m.created_at) > new Date(firstIn.created_at))
+          if (firstOut) {
+            const diff = Math.round((new Date(firstOut.created_at).getTime() - new Date(firstIn.created_at).getTime()) / 60000)
+            totalResponseMinutes += diff
+            responseCount++
+          }
+        }
+      }
+      const waitingCount = newConversations - respondedCount
+      const avgResponseMin = responseCount > 0 ? Math.round(totalResponseMinutes / responseCount) : 0
+
+      // Contacts created today
+      let contactsQ = supabase
+        .from('contacts')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', sinceIso)
+      const { count: contactsCreated } = await contactsQ
+
+      // Documents signed today
+      const { count: docsCount } = await supabase
+        .from('lead_activities')
+        .select('id', { count: 'exact', head: true })
+        .eq('activity_type', 'documento')
+        .gte('created_at', sinceIso)
+
+      // Format response time
+      const fmtTime = (min: number) => {
+        if (min < 60) return `${min}min`
+        const h = Math.floor(min / 60)
+        const m = min % 60
+        return m > 0 ? `${h}h${m}m` : `${h}h`
+      }
+
+      const instanceLabel = filterByInstance
+        ? `(${dashInstanceNames.join(', ')})`
+        : '(todas as instâncias)'
+
+      sections.push(`📱 *Relatório WhatsApp* ${instanceLabel}`)
+      sections.push(`  • Conversas novas: ${newConversations}`)
+      sections.push(`  • Respondidas: ${respondedCount} | Aguardando: ${waitingCount}`)
+      sections.push(`  • Tempo médio de resposta: ${responseCount > 0 ? fmtTime(avgResponseMin) : 'N/A'}`)
+      sections.push(`  • Contatos criados: ${contactsCreated || 0}`)
+      sections.push(`  • Documentos: ${docsCount || 0}`)
+      sections.push(`  • Total mensagens: ${inboundMsgs.length} recebidas / ${outboundMsgs.length} enviadas`)
       sections.push('')
     }
 
