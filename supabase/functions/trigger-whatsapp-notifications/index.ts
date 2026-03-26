@@ -508,6 +508,88 @@ async function buildPersonalizedReport(
     sections.push(`  • Documentos: ${docsCount || 0}`)
     sections.push(`  • Total mensagens: ${inboundMsgs.length} recebidas / ${outboundMsgs.length} enviadas`)
     sections.push('')
+
+    // ── Leads by status today ──
+    const closedStageIds = ['closed', 'fechado', 'done']
+    const refusedStageIds = ['recusado', 'not_qualified', 'lost']
+
+    // Leads closed today (moved to closed stage today)
+    let closedQ = supabase
+      .from('leads')
+      .select('id', { count: 'exact', head: true })
+      .in('status', closedStageIds)
+      .gte('updated_at', sinceIso)
+    if (userId) closedQ = closedQ.eq('assigned_to', userId)
+    const { count: closedToday } = await closedQ
+
+    // Leads refused today
+    let refusedQ = supabase
+      .from('leads')
+      .select('id', { count: 'exact', head: true })
+      .in('status', refusedStageIds)
+      .gte('updated_at', sinceIso)
+    if (userId) refusedQ = refusedQ.eq('assigned_to', userId)
+    const { count: refusedToday } = await refusedQ
+
+    // Leads in progress (not closed/refused, created today)
+    let inProgressQ = supabase
+      .from('leads')
+      .select('id', { count: 'exact', head: true })
+      .not('status', 'in', `(${[...closedStageIds, ...refusedStageIds].join(',')})`)
+      .gte('created_at', sinceIso)
+    if (userId) inProgressQ = inProgressQ.eq('assigned_to', userId)
+    const { count: inProgressToday } = await inProgressQ
+
+    // All leads created today
+    let allLeadsQ = supabase
+      .from('leads')
+      .select('id, created_at', { count: 'exact' })
+      .gte('created_at', sinceIso)
+    if (userId) allLeadsQ = allLeadsQ.eq('assigned_to', userId)
+    const { data: allLeadsToday, count: totalLeadsToday } = await allLeadsQ
+
+    // Leads by time of day (São Paulo timezone)
+    let manha = 0, tarde = 0, noite = 0, madrugada = 0
+    for (const lead of (allLeadsToday || [])) {
+      const leadBR = new Date(new Date(lead.created_at).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+      const h = leadBR.getHours()
+      if (h >= 6 && h < 12) manha++
+      else if (h >= 12 && h < 18) tarde++
+      else if (h >= 18 && h < 24) noite++
+      else madrugada++
+    }
+
+    sections.push(`📈 *Leads do Dia*`)
+    sections.push(`  • Total criados: ${totalLeadsToday || 0}`)
+    sections.push(`  • ✅ Fechados: ${closedToday || 0}`)
+    sections.push(`  • ❌ Recusados: ${refusedToday || 0}`)
+    sections.push(`  • 🔄 Em andamento: ${inProgressToday || 0}`)
+    sections.push(`  • 🌅 Manhã (6h-12h): ${manha}`)
+    sections.push(`  • ☀️ Tarde (12h-18h): ${tarde}`)
+    sections.push(`  • 🌙 Noite (18h-00h): ${noite}`)
+    sections.push(`  • 🌃 Madrugada (00h-6h): ${madrugada}`)
+    sections.push('')
+
+    // ── Follow-ups today ──
+    let followupsQ = supabase
+      .from('lead_followups')
+      .select('followup_type', { count: 'exact' })
+      .gte('created_at', sinceIso)
+    const { data: followupsData, count: followupsTotal } = await followupsQ
+
+    const fTypes: Record<string, number> = {}
+    const fLabels: Record<string, string> = { whatsapp: '💬 WhatsApp', call: '📞 Ligação', email: '📧 E-mail', visit: '🏠 Visita', meeting: '🤝 Reunião' }
+    for (const f of (followupsData || [])) {
+      fTypes[f.followup_type] = (fTypes[f.followup_type] || 0) + 1
+    }
+
+    sections.push(`📋 *Follow-ups: ${followupsTotal || 0}*`)
+    if (Object.keys(fTypes).length > 0) {
+      for (const [k, v] of Object.entries(fTypes)) {
+        sections.push(`  ${fLabels[k] || k}: ${v}`)
+      }
+    }
+    sections.push('')
   }
 
   return sections.join('\n').trim()
