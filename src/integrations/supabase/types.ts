@@ -1179,6 +1179,110 @@ export type Database = {
         }
         Relationships: []
       }
+      case_process_tracking: {
+        Row: {
+          acolhedor: string | null
+          atividade_criada: string | null
+          case_id: string | null
+          caso: string | null
+          cliente: string | null
+          cliente_no_grupo: string | null
+          cpf: string | null
+          created_at: string | null
+          data_criacao: string | null
+          data_decisao_final: string | null
+          data_gerar_guia: string | null
+          data_nascimento_bebe: string | null
+          data_pagamento: string | null
+          data_protocolo_cancelamento: string | null
+          id: string
+          import_source: string | null
+          imported_at: string | null
+          lead_id: string | null
+          motivo_indeferimento: string | null
+          numero_processo: string | null
+          observacao: string | null
+          pago_acolhedor: string | null
+          pendencia: string | null
+          protocolado: string | null
+          senha_gov: string | null
+          status_processo: string | null
+          tempo_dias: number | null
+          tipo: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          acolhedor?: string | null
+          atividade_criada?: string | null
+          case_id?: string | null
+          caso?: string | null
+          cliente?: string | null
+          cliente_no_grupo?: string | null
+          cpf?: string | null
+          created_at?: string | null
+          data_criacao?: string | null
+          data_decisao_final?: string | null
+          data_gerar_guia?: string | null
+          data_nascimento_bebe?: string | null
+          data_pagamento?: string | null
+          data_protocolo_cancelamento?: string | null
+          id?: string
+          import_source?: string | null
+          imported_at?: string | null
+          lead_id?: string | null
+          motivo_indeferimento?: string | null
+          numero_processo?: string | null
+          observacao?: string | null
+          pago_acolhedor?: string | null
+          pendencia?: string | null
+          protocolado?: string | null
+          senha_gov?: string | null
+          status_processo?: string | null
+          tempo_dias?: number | null
+          tipo?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          acolhedor?: string | null
+          atividade_criada?: string | null
+          case_id?: string | null
+          caso?: string | null
+          cliente?: string | null
+          cliente_no_grupo?: string | null
+          cpf?: string | null
+          created_at?: string | null
+          data_criacao?: string | null
+          data_decisao_final?: string | null
+          data_gerar_guia?: string | null
+          data_nascimento_bebe?: string | null
+          data_pagamento?: string | null
+          data_protocolo_cancelamento?: string | null
+          id?: string
+          import_source?: string | null
+          imported_at?: string | null
+          lead_id?: string | null
+          motivo_indeferimento?: string | null
+          numero_processo?: string | null
+          observacao?: string | null
+          pago_acolhedor?: string | null
+          pendencia?: string | null
+          protocolado?: string | null
+          senha_gov?: string | null
+          status_processo?: string | null
+          tempo_dias?: number | null
+          tipo?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_process_tracking_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "legal_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cat_lead_contacts: {
         Row: {
           cat_lead_id: string

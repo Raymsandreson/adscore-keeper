@@ -104,6 +104,34 @@ export function useLegalCases(leadId?: string) {
       } as LegalCase;
 
       setCases(prev => [enriched, ...prev]);
+
+      // Auto-create process tracking record
+      try {
+        // Fetch lead data for auto-fill
+        let leadData: any = null;
+        if (caseData.lead_id) {
+          const { data: ld } = await supabase
+            .from('leads')
+            .select('lead_name, acolhedor, case_type')
+            .eq('id', caseData.lead_id)
+            .maybeSingle();
+          leadData = ld;
+        }
+
+        await supabase.from('case_process_tracking').insert({
+          case_id: enriched.id,
+          lead_id: caseData.lead_id || null,
+          cliente: leadData?.lead_name || caseData.title,
+          caso: caseData.title,
+          tipo: leadData?.case_type || (enriched as any).benefit_type || null,
+          acolhedor: leadData?.acolhedor || (enriched as any).acolhedor || null,
+          data_criacao: new Date().toISOString().split('T')[0],
+          import_source: 'auto_lead_close',
+        } as any);
+      } catch (trackingError) {
+        console.warn('Could not auto-create tracking record:', trackingError);
+      }
+
       toast.success(`Caso ${caseNumber} criado`);
       return enriched;
     } catch (error) {
