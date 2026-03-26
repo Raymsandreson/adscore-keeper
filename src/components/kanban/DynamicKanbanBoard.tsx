@@ -410,7 +410,7 @@ export function DynamicKanbanBoard({
           className="overflow-x-auto"
           style={{ height: '12px' }}
         >
-          <div style={{ width: `calc(${board.stages.length} * max(280px, calc((100vw - ${board.stages.length * 4 + 16}px) / ${board.stages.length})) + ${(board.stages.length - 1) * 4}px)`, height: '1px' }} />
+          <div style={{ width: `calc(${board.stages.length + 2} * max(260px, calc((100vw - ${(board.stages.length + 2) * 4 + 16}px) / ${board.stages.length + 2})) + ${(board.stages.length + 1) * 4}px)`, height: '1px' }} />
         </div>
 
         <div ref={bottomScrollRef} onScroll={handleBottomScroll} className="flex gap-1 overflow-x-auto pb-4">
@@ -431,7 +431,7 @@ export function DynamicKanbanBoard({
                 className={`flex-shrink-0 rounded-lg border transition-all ${
                   isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''
                 }`}
-                style={{ width: `max(280px, calc((100vw - ${board.stages.length * 4 + 16}px) / ${board.stages.length}))` }}
+                style={{ width: `max(260px, calc((100vw - ${(board.stages.length + 2) * 4 + 16}px) / ${board.stages.length + 2}))` }}
                 onDragOver={(e) => handleDragOver(e, stage.id)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, stage.id)}
