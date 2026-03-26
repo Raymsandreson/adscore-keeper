@@ -26,12 +26,20 @@ interface Instance {
   ad_account_name: string | null;
   auto_identify_sender: boolean | null;
   default_agent_id: string | null;
+  voice_id: string | null;
+  voice_name: string | null;
   created_at: string;
 }
 
 interface AgentOption {
   id: string;
   name: string;
+}
+
+interface VoiceOption {
+  id: string;
+  name: string;
+  type: 'preset' | 'custom';
 }
 
 interface FormData {
