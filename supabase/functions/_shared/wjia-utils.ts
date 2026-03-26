@@ -389,6 +389,25 @@ export async function generateZapSignDocument(
     .update({ status: "generated", doc_token: docData.token, sign_url: signUrl })
     .eq("id", session.id);
 
+  // Resolve the user who owns this instance to set created_by
+  let createdByUserId: string | null = null;
+  if (instanceName) {
+    const { data: instRow } = await supabase
+      .from('whatsapp_instances')
+      .select('id')
+      .eq('instance_name', instanceName)
+      .eq('is_active', true)
+      .maybeSingle();
+    if (instRow?.id) {
+      const { data: ownerProfile } = await supabase
+        .from('profiles')
+        .select('user_id')
+        .eq('default_instance_id', instRow.id)
+        .maybeSingle();
+      createdByUserId = ownerProfile?.user_id || null;
+    }
+  }
+
   await supabase.from("zapsign_documents").insert({
     doc_token: docData.token, template_id: session.template_token,
     document_name: session.template_name || "Documento",
@@ -399,6 +418,7 @@ export async function generateZapSignDocument(
     contact_id: session.contact_id || null, sent_via_whatsapp: true,
     whatsapp_phone: normalizedPhone, notify_on_signature: session.notify_on_signature !== false,
     send_signed_pdf: session.send_signed_pdf !== false, instance_name: instanceName,
+    created_by: createdByUserId,
   });
 
   // Attach received documents
