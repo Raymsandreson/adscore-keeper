@@ -114,7 +114,7 @@ async function createActivity(supabase: any, args: any, userId: string, userName
       next_steps: args.next_steps || null,
       current_status_notes: args.current_status_notes || null,
     })
-    .select('id, title, created_at, activity_type, status, deadline, notification_date, lead_name, notes, what_was_done, next_steps, current_status_notes')
+    .select('id, title, description, created_at, activity_type, status, deadline, notification_date, lead_name, notes, what_was_done, next_steps, current_status_notes')
     .single()
 
   if (error) return { error: error.message }
@@ -143,6 +143,7 @@ async function createActivity(supabase: any, args: any, userId: string, userName
     success: true, 
     activity_id: data.id, 
     title: data.title, 
+    description: data.description,
     created_at: data.created_at,
     activity_type: data.activity_type,
     status: data.status,
