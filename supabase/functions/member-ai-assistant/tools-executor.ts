@@ -30,6 +30,99 @@ export async function executeToolCall(
 
 // ========== EXISTING TOOLS ==========
 
+function normalizeText(value: string = '') {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+function sanitizeAssigneeHint(value: string) {
+  return value
+    .replace(/^\s*(?:atividade|atv|tarefa)?\s*(?:para|pra)?\s*/i, '')
+    .replace(/\s*(?:e\s+mandar|e\s+enviar|mandar|enviar|avisar|com)\b.*$/i, '')
+    .trim()
+}
+
+function scoreProfileMatch(hint: string, profileName: string | null | undefined) {
+  const normalizedHint = normalizeText(hint)
+  const normalizedName = normalizeText(profileName || '')
+  if (!normalizedHint || !normalizedName) return -1
+
+  if (normalizedName === normalizedHint) return 100
+
+  const hintTokens = normalizedHint.split(/\s+/).filter(Boolean)
+  const nameTokens = normalizedName.split(/\s+/).filter(Boolean)
+
+  if (hintTokens.length === 1 && nameTokens[0] === hintTokens[0]) return 96
+  if (normalizedName.startsWith(`${normalizedHint} `)) return 92
+  if (hintTokens.every((t) => nameTokens.includes(t))) return 88
+  if (normalizedName.includes(normalizedHint)) return 76
+
+  return -1
+}
+
+async function resolveAssignee(supabase: any, assigneeRaw: unknown, userId: string, userName: string) {
+  const raw = typeof assigneeRaw === 'string' ? assigneeRaw : ''
+  const hint = sanitizeAssigneeHint(raw)
+
+  if (!hint) {
+    return { assignedToId: userId, assignedToName: userName }
+  }
+
+  const normalizedHint = normalizeText(hint)
+  if (normalizedHint === 'mim' || normalizedHint === 'eu') {
+    return { assignedToId: userId, assignedToName: userName }
+  }
+
+  const firstToken = normalizedHint.split(' ')[0] || hint
+  const { data: profiles, error } = await supabase
+    .from('profiles')
+    .select('user_id, full_name')
+    .not('full_name', 'is', null)
+    .ilike('full_name', `%${firstToken}%`)
+    .limit(25)
+
+  if (error || !profiles || profiles.length === 0) {
+    return {
+      error: 'assignee_not_found',
+      hint,
+      candidates: [],
+    }
+  }
+
+  const scored = profiles
+    .map((p: any) => ({ ...p, score: scoreProfileMatch(hint, p.full_name) }))
+    .filter((p: any) => p.score >= 0)
+    .sort((a: any, b: any) => b.score - a.score)
+
+  if (scored.length === 0) {
+    return {
+      error: 'assignee_not_found',
+      hint,
+      candidates: profiles.map((p: any) => p.full_name).filter(Boolean),
+    }
+  }
+
+  const best = scored[0]
+  const second = scored[1]
+  const ambiguous = second && best.score === second.score && best.score < 100
+
+  if (best.score < 76 || ambiguous) {
+    return {
+      error: 'assignee_ambiguous',
+      hint,
+      candidates: scored.slice(0, 5).map((p: any) => p.full_name).filter(Boolean),
+    }
+  }
+
+  return {
+    assignedToId: best.user_id,
+    assignedToName: best.full_name || hint,
+  }
+}
+
 async function getOverdueTasks(supabase: any, args: any, userId: string) {
   const now = new Date()
   let query = supabase
@@ -95,61 +188,45 @@ async function getLeadsSummary(supabase: any, args: any, userId: string) {
 }
 
 async function createActivity(supabase: any, args: any, userId: string, userName: string) {
-  const normalizeText = (value: string) => value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim()
-
-  const sanitizeAssigneeHint = (value: string) => value
-    .replace(/^\s*(?:atividade|atv|tarefa)?\s*(?:para|pra)?\s*/i, '')
-    .replace(/\s*(?:e\s+mandar|e\s+enviar|mandar|enviar|avisar|com)\b.*$/i, '')
-    .trim()
-
-  // Resolve assigned user: if a name was provided, look up their profile
-  let assignedToId = userId
-  let assignedToName = userName
-
-  const assigneeRaw = typeof args.assigned_to_name === 'string' ? args.assigned_to_name : ''
-  const assigneeHint = sanitizeAssigneeHint(assigneeRaw)
-
-  if (assigneeHint) {
-    const normalizedHint = normalizeText(assigneeHint)
-
-    if (normalizedHint !== 'mim' && normalizedHint !== 'eu') {
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, full_name')
-        .ilike('full_name', `%${assigneeHint}%`)
-        .limit(5)
-
-      if (profiles && profiles.length > 0) {
-        // Pick the best match (first result)
-        assignedToId = profiles[0].user_id
-        assignedToName = profiles[0].full_name
-      } else {
-        // Name not found, keep the requester but note in the activity
-        assignedToName = assigneeHint
-      }
+  const assigneeResolution = await resolveAssignee(supabase, args.assigned_to_name, userId, userName)
+  if ('error' in assigneeResolution) {
+    const isAmbiguous = assigneeResolution.error === 'assignee_ambiguous'
+    return {
+      error: isAmbiguous
+        ? `Nome do assessor "${assigneeResolution.hint}" ficou ambíguo. Informe o nome completo.`
+        : `Não encontrei o assessor "${assigneeResolution.hint}".`,
+      assignee_resolution: assigneeResolution.error,
+      assignee_hint: assigneeResolution.hint,
+      assignee_candidates: assigneeResolution.candidates || [],
     }
   }
 
+  const assignedToId = assigneeResolution.assignedToId
+  const assignedToName = assigneeResolution.assignedToName
+
   // Resolve activity type to an active key (UI expects key, not free text)
-  let resolvedActivityType = typeof args.activity_type === 'string' ? args.activity_type.trim() : ''
+  const requestedActivityType = typeof args.activity_type === 'string' ? args.activity_type.trim() : ''
+  let resolvedActivityType = requestedActivityType
   const { data: activeActivityTypes } = await supabase
     .from('activity_types')
     .select('key, label')
-    .eq('is_active', true)
+    .or('is_active.eq.true,is_active.is.null')
     .order('display_order')
     .limit(200)
 
   if (activeActivityTypes && activeActivityTypes.length > 0) {
     const normalizedType = normalizeText(resolvedActivityType)
-    const exactKey = activeActivityTypes.find((t: any) => t.key === resolvedActivityType)
+    const exactKey = activeActivityTypes.find((t: any) => normalizeText(t.key || '') === normalizedType)
     const byLabel = activeActivityTypes.find((t: any) => normalizeText(t.label || '') === normalizedType)
     const fuzzyLabel = activeActivityTypes.find((t: any) => {
       const label = normalizeText(t.label || '')
-      return normalizedType && (label.includes(normalizedType) || normalizedType.includes(label))
+      const key = normalizeText(t.key || '')
+      return normalizedType && (
+        label.includes(normalizedType) ||
+        normalizedType.includes(label) ||
+        key.includes(normalizedType) ||
+        normalizedType.includes(key)
+      )
     })
 
     resolvedActivityType = exactKey?.key || byLabel?.key || fuzzyLabel?.key || activeActivityTypes[0].key
@@ -157,11 +234,30 @@ async function createActivity(supabase: any, args: any, userId: string, userName
 
   if (!resolvedActivityType) resolvedActivityType = 'tarefa'
 
+  const rawCommandText = typeof args.raw_command_text === 'string' ? args.raw_command_text.trim() : ''
+  const commandWithoutMediaMarker = rawCommandText.replace(/\[MÍDIA ANEXADA:[^\]]+\]\s*/gi, '').trim()
+  const descriptionText = typeof args.description === 'string' ? args.description.trim() : ''
+  const providedCurrentStatus = typeof args.current_status_notes === 'string' ? args.current_status_notes.trim() : ''
+  const providedNotes = typeof args.notes === 'string' ? args.notes.trim() : ''
+  const providedWhatWasDone = typeof args.what_was_done === 'string' ? args.what_was_done.trim() : ''
+  const providedNextSteps = typeof args.next_steps === 'string' ? args.next_steps.trim() : ''
+
+  const richestContent = [descriptionText, commandWithoutMediaMarker]
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)[0] || ''
+
+  const currentStatusNotes = providedCurrentStatus || richestContent || null
+  const notes = providedNotes || (richestContent && richestContent !== currentStatusNotes ? richestContent : null)
+
+  const safeTitle = typeof args.title === 'string' && args.title.trim()
+    ? args.title.trim()
+    : 'Nova atividade'
+
   const { data, error } = await supabase
     .from('lead_activities')
     .insert({
-      title: args.title,
-      description: args.description || null,
+      title: safeTitle,
+      description: null,
       activity_type: resolvedActivityType,
       priority: args.priority || 'normal',
       deadline: args.deadline || new Date().toISOString().split('T')[0],
@@ -171,10 +267,10 @@ async function createActivity(supabase: any, args: any, userId: string, userName
       assigned_to_name: assignedToName,
       created_by: userId,
       lead_name: args.lead_name || null,
-      notes: args.notes || null,
-      what_was_done: args.what_was_done || null,
-      next_steps: args.next_steps || null,
-      current_status_notes: args.current_status_notes || null,
+      notes,
+      what_was_done: providedWhatWasDone || null,
+      next_steps: providedNextSteps || null,
+      current_status_notes: currentStatusNotes,
     })
     .select('id, title, description, created_at, activity_type, status, deadline, notification_date, lead_name, notes, what_was_done, next_steps, current_status_notes')
     .single()
@@ -205,7 +301,6 @@ async function createActivity(supabase: any, args: any, userId: string, userName
     success: true, 
     activity_id: data.id, 
     title: data.title, 
-    description: data.description,
     created_at: data.created_at,
     activity_type: data.activity_type,
     status: data.status,
@@ -217,6 +312,7 @@ async function createActivity(supabase: any, args: any, userId: string, userName
     next_steps: data.next_steps,
     current_status_notes: data.current_status_notes,
     media_attached: !!args.media_url,
+    activity_type_requested: requestedActivityType || null,
     assigned_to_name: assignedToName,
     assigned_to_id: assignedToId,
     link: `${APP_URL}/?openActivity=${data.id}` 
