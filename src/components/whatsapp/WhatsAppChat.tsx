@@ -869,6 +869,12 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
               <DropdownMenuItem onClick={() => setShowZapSign(true)} className="gap-2">
                 <FileSignature className="h-4 w-4" /> Gerar Documento para Assinatura
               </DropdownMenuItem>
+              {!isGroup && (
+                <DropdownMenuItem onClick={handleCreateGroup} disabled={creatingGroup} className="gap-2">
+                  {creatingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
+                  Criar Grupo WhatsApp
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
           <WhatsAppCallRecorder
