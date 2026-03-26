@@ -126,8 +126,16 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
   const [teamMembers, setTeamMembers] = useState<{ user_id: string; full_name: string }[]>([]);
 
   useEffect(() => {
-    if (open) { if (!dateRangeOverride) setPeriod('today'); setHistoryOpen(false); }
+    if (open) { if (!dateRangeOverride) setPeriod('today'); setHistoryOpen(false); setFilterUserId('all'); }
   }, [open, dateRangeOverride]);
+
+  useEffect(() => {
+    if (open && metricKey === 'leadsClosed') {
+      supabase.from('profiles').select('user_id, full_name').then(({ data }) => {
+        setTeamMembers((data || []).filter(p => p.full_name).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')));
+      });
+    }
+  }, [open, metricKey]);
 
   const dateRange = useMemo(() => dateRangeOverride || getDateRange(period, lastXDays, customFrom, customTo), [dateRangeOverride, period, lastXDays, customFrom, customTo]);
 
@@ -138,7 +146,7 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
   useEffect(() => {
     if (!open || !metricKey || (!user && !targetUserId)) return;
     fetchItems(metricKey);
-  }, [open, metricKey, user, targetUserId, dateRange]);
+  }, [open, metricKey, user, targetUserId, dateRange, filterUserId]);
 
   useEffect(() => {
     if (!open || !metricKey || !user) return;
