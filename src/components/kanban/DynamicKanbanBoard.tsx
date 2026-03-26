@@ -667,7 +667,7 @@ export function DynamicKanbanBoard({
                                         )}
 
                                         {/* Quick actions: Fechado / Recusado (status-based) */}
-                                        {onChangeLeadStatus && (lead as any).lead_status === 'active' && (
+                                        {onChangeLeadStatus && ((lead as any).lead_status === 'active' || !(lead as any).lead_status) && (
                                           <>
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem
