@@ -237,7 +237,39 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
     checkPrivate();
   }, [conversation.phone, conversation.instance_name]);
 
-  const handleTogglePrivate = async () => {
+  // Check if contact/lead has a linked group
+  useEffect(() => {
+    const checkLinkedGroup = async () => {
+      const normalizedPhone = conversation.phone?.replace(/\D/g, '') || '';
+      if (!normalizedPhone) return;
+      // Check contact first
+      const { data: contact } = await supabase
+        .from('contacts')
+        .select('whatsapp_group_id')
+        .eq('phone', normalizedPhone)
+        .not('whatsapp_group_id', 'is', null)
+        .maybeSingle();
+      if (contact?.whatsapp_group_id) {
+        setLinkedGroupId(contact.whatsapp_group_id);
+        return;
+      }
+      // Check lead
+      const { data: lead } = await (supabase as any)
+        .from('leads')
+        .select('whatsapp_group_id')
+        .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${normalizedPhone.slice(-8)}%`)
+        .not('whatsapp_group_id', 'is', null)
+        .limit(1)
+        .maybeSingle();
+      if (lead?.whatsapp_group_id) {
+        setLinkedGroupId(lead.whatsapp_group_id);
+      } else {
+        setLinkedGroupId(null);
+      }
+    };
+    checkLinkedGroup();
+  }, [conversation.phone]);
+
     if (!conversation.instance_name) return;
     setTogglingPrivate(true);
     try {
