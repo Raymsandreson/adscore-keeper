@@ -6986,6 +6986,8 @@ export type Database = {
           owner_phone: string | null
           receive_leads: boolean | null
           updated_at: string
+          voice_id: string | null
+          voice_name: string | null
         }
         Insert: {
           ad_account_id?: string | null
@@ -7002,6 +7004,8 @@ export type Database = {
           owner_phone?: string | null
           receive_leads?: boolean | null
           updated_at?: string
+          voice_id?: string | null
+          voice_name?: string | null
         }
         Update: {
           ad_account_id?: string | null
@@ -7018,6 +7022,8 @@ export type Database = {
           owner_phone?: string | null
           receive_leads?: boolean | null
           updated_at?: string
+          voice_id?: string | null
+          voice_name?: string | null
         }
         Relationships: [
           {
