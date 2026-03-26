@@ -595,5 +595,35 @@ async function buildPersonalizedReport(
     sections.push('')
   }
 
+  // ── Checklist Steps ──
+  if (config.notify_checklist_steps) {
+    // Count checklist items completed today by checking updated_at on lead_checklist_instances
+    // Items are stored as JSONB array; we need to count checked items
+    const brNowStr2 = now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })
+    const brNowDate2 = new Date(brNowStr2)
+    const todayStartCL = new Date(Date.UTC(brNowDate2.getFullYear(), brNowDate2.getMonth(), brNowDate2.getDate(), 3, 0, 0, 0))
+    const sinceCL = todayStartCL.toISOString()
+
+    const { data: checklists } = await supabase
+      .from('lead_checklist_instances')
+      .select('items, updated_at')
+      .gte('updated_at', sinceCL)
+
+    let totalSteps = 0
+    let completedSteps = 0
+    for (const cl of (checklists || [])) {
+      const items = Array.isArray(cl.items) ? cl.items : []
+      for (const item of items) {
+        totalSteps++
+        if ((item as any).checked || (item as any).completed) completedSteps++
+      }
+    }
+
+    sections.push(`✅ *Passos Dados (Checklist): ${completedSteps}*`)
+    sections.push(`  • Total de passos em checklists atualizados: ${totalSteps}`)
+    sections.push(`  • Concluídos hoje: ${completedSteps}`)
+    sections.push('')
+  }
+
   return sections.join('\n').trim()
 }
