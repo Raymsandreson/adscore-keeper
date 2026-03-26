@@ -95,33 +95,74 @@ async function getLeadsSummary(supabase: any, args: any, userId: string) {
 }
 
 async function createActivity(supabase: any, args: any, userId: string, userName: string) {
+  const normalizeText = (value: string) => value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+
+  const sanitizeAssigneeHint = (value: string) => value
+    .replace(/^\s*(?:atividade|atv|tarefa)?\s*(?:para|pra)?\s*/i, '')
+    .replace(/\s*(?:e\s+mandar|e\s+enviar|mandar|enviar|avisar|com)\b.*$/i, '')
+    .trim()
+
   // Resolve assigned user: if a name was provided, look up their profile
   let assignedToId = userId
   let assignedToName = userName
-  
-  if (args.assigned_to_name) {
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('user_id, full_name')
-      .ilike('full_name', `%${args.assigned_to_name}%`)
-      .limit(5)
 
-    if (profiles && profiles.length > 0) {
-      // Pick the best match (first result)
-      assignedToId = profiles[0].user_id
-      assignedToName = profiles[0].full_name
-    } else {
-      // Name not found, keep the requester but note in the activity
-      assignedToName = args.assigned_to_name
+  const assigneeRaw = typeof args.assigned_to_name === 'string' ? args.assigned_to_name : ''
+  const assigneeHint = sanitizeAssigneeHint(assigneeRaw)
+
+  if (assigneeHint) {
+    const normalizedHint = normalizeText(assigneeHint)
+
+    if (normalizedHint !== 'mim' && normalizedHint !== 'eu') {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name')
+        .ilike('full_name', `%${assigneeHint}%`)
+        .limit(5)
+
+      if (profiles && profiles.length > 0) {
+        // Pick the best match (first result)
+        assignedToId = profiles[0].user_id
+        assignedToName = profiles[0].full_name
+      } else {
+        // Name not found, keep the requester but note in the activity
+        assignedToName = assigneeHint
+      }
     }
   }
+
+  // Resolve activity type to an active key (UI expects key, not free text)
+  let resolvedActivityType = typeof args.activity_type === 'string' ? args.activity_type.trim() : ''
+  const { data: activeActivityTypes } = await supabase
+    .from('activity_types')
+    .select('key, label')
+    .eq('is_active', true)
+    .order('display_order')
+    .limit(200)
+
+  if (activeActivityTypes && activeActivityTypes.length > 0) {
+    const normalizedType = normalizeText(resolvedActivityType)
+    const exactKey = activeActivityTypes.find((t: any) => t.key === resolvedActivityType)
+    const byLabel = activeActivityTypes.find((t: any) => normalizeText(t.label || '') === normalizedType)
+    const fuzzyLabel = activeActivityTypes.find((t: any) => {
+      const label = normalizeText(t.label || '')
+      return normalizedType && (label.includes(normalizedType) || normalizedType.includes(label))
+    })
+
+    resolvedActivityType = exactKey?.key || byLabel?.key || fuzzyLabel?.key || activeActivityTypes[0].key
+  }
+
+  if (!resolvedActivityType) resolvedActivityType = 'tarefa'
 
   const { data, error } = await supabase
     .from('lead_activities')
     .insert({
       title: args.title,
       description: args.description || null,
-      activity_type: args.activity_type || 'tarefa',
+      activity_type: resolvedActivityType,
       priority: args.priority || 'normal',
       deadline: args.deadline || new Date().toISOString().split('T')[0],
       notification_date: args.notification_date || null,
