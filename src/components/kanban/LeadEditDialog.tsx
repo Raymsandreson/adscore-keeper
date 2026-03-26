@@ -569,11 +569,13 @@ ${scrapeData.content || ''}
       return;
     }
 
+    console.log('[handleSave] Starting save for lead:', lead.id);
     setSaving(true);
     try {
       // Resolve WhatsApp group link to JID if it's a link (non-blocking)
       let resolvedGroupId = whatsappGroupId || null;
       if (whatsappGroupId && whatsappGroupId.includes('chat.whatsapp.com')) {
+        console.log('[handleSave] Resolving WhatsApp group link...');
         try {
           const { data: resolveData } = await supabase.functions.invoke('send-whatsapp', {
             body: { action: 'resolve_group_link', group_link: whatsappGroupId },
