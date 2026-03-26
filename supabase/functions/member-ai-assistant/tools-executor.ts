@@ -107,11 +107,23 @@ async function resolveAssignee(supabase: any, assigneeRaw: unknown, userId: stri
 
   const best = scored[0]
   const second = scored[1]
-  const ambiguous = second && best.score === second.score && best.score < 100
 
-  if (best.score < 76 || ambiguous) {
+  // If there's only one candidate, or the best is clearly ahead, auto-select
+  // Only reject if there are multiple candidates with identical top scores
+  const trulyAmbiguous = second && best.score === second.score && best.score < 100
+
+  if (trulyAmbiguous) {
     return {
       error: 'assignee_ambiguous',
+      hint,
+      candidates: scored.slice(0, 5).map((p: any) => p.full_name).filter(Boolean),
+    }
+  }
+
+  // If best score is very low (< 30) and there are multiple candidates, reject
+  if (best.score < 30 && scored.length > 1) {
+    return {
+      error: 'assignee_not_found',
       hint,
       candidates: scored.slice(0, 5).map((p: any) => p.full_name).filter(Boolean),
     }
