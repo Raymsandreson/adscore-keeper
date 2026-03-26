@@ -270,6 +270,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
     checkLinkedGroup();
   }, [conversation.phone]);
 
+  const handleTogglePrivate = async () => {
     if (!conversation.instance_name) return;
     setTogglingPrivate(true);
     try {
