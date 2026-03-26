@@ -15,11 +15,13 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Parse optional target_user_id for per-user sending
+    // Parse body
     let targetUserId: string | null = null
+    let isScheduled = false
     try {
       const body = await req.json()
       targetUserId = body?.target_user_id || null
+      isScheduled = body?.scheduled === true
     } catch {
       // No body or invalid JSON — send to all
     }
@@ -37,6 +39,29 @@ Deno.serve(async (req) => {
         JSON.stringify({ success: false, error: 'Nenhuma configuração de notificação ativa encontrada' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
+    }
+
+    // If triggered by cron (scheduled), check if now matches configured schedule
+    if (isScheduled) {
+      const now = new Date()
+      const brNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+      const currentHH = String(brNow.getHours()).padStart(2, '0')
+      const currentMM = String(brNow.getMinutes()).padStart(2, '0')
+      const currentTime = `${currentHH}:${currentMM}`
+      const currentDay = brNow.getDay() // 0=Sun, 1=Mon...
+
+      const scheduleTimes: string[] = (config as any).dashboard_schedule_times || []
+      const scheduleDays: number[] = (config as any).dashboard_schedule_days || [1, 2, 3, 4, 5]
+
+      const timeMatch = scheduleTimes.some((t: string) => t === currentTime)
+      const dayMatch = scheduleDays.includes(currentDay)
+
+      if (!timeMatch || !dayMatch) {
+        return new Response(
+          JSON.stringify({ success: true, skipped: true, reason: `Not scheduled now (${currentTime}, day ${currentDay})` }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
     }
 
     // Determine target phones
