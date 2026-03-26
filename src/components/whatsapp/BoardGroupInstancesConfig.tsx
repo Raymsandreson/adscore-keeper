@@ -111,6 +111,7 @@ export function BoardGroupInstancesConfig() {
   const [previewMessage, setPreviewMessage] = useState<string | null>(null);
   const [refineInput, setRefineInput] = useState('');
   const [refineLoading, setRefineLoading] = useState(false);
+  const [adminNotes, setAdminNotes] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -334,6 +335,7 @@ export function BoardGroupInstancesConfig() {
 
       if (error) throw error;
       setPreviewMessage(data?.message || 'Não foi possível gerar a pré-visualização.');
+      setAdminNotes(data?.admin_notes || null);
     } catch (e: any) {
       toast.error('Erro ao gerar pré-visualização');
       console.error(e);
@@ -367,6 +369,7 @@ export function BoardGroupInstancesConfig() {
 
       if (error) throw error;
       setPreviewMessage(data?.message || previewMessage);
+      setAdminNotes(data?.admin_notes || null);
       setRefineInput('');
       toast.success('Modelo refinado com IA!');
     } catch (e: any) {
@@ -560,6 +563,12 @@ export function BoardGroupInstancesConfig() {
                         {refineLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                       </Button>
                     </div>
+                  </div>
+                )}
+                {adminNotes && (
+                  <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-xs text-yellow-800 dark:bg-yellow-950/30 dark:text-yellow-200 dark:border-yellow-700">
+                    <div className="font-medium mb-1">⚠️ Observação para o Administrador:</div>
+                    <div className="whitespace-pre-wrap">{adminNotes}</div>
                   </div>
                 )}
               </>
