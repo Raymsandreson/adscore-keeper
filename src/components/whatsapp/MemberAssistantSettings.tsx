@@ -244,7 +244,70 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
         </CardContent>
       </Card>
 
-      {/* PROMPT DO PROCESSADOR ## */}
+      {/* PROMPT DO ASSISTENTE DE MEMBROS (mensagens diretas) */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Bot className="h-5 w-5" />
+                Prompt do Assistente (mensagens diretas)
+              </CardTitle>
+              <CardDescription>
+                Prompt de sistema usado pela IA quando membros enviam mensagens diretas (sem ##)
+              </CardDescription>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setShowAssistantPromptEditor(!showAssistantPromptEditor)}>
+              <Pencil className="h-3.5 w-3.5 mr-1" /> {showAssistantPromptEditor ? 'Fechar' : 'Editar'}
+            </Button>
+          </div>
+        </CardHeader>
+        {showAssistantPromptEditor && (
+          <CardContent className="space-y-3">
+            <div className="rounded-lg border p-3 bg-muted/50">
+              <p className="text-xs text-muted-foreground">
+                Deixe em branco para usar o prompt padrão. Variáveis disponíveis: <code>{'{member_name}'}</code>, <code>{'{member_id}'}</code>. 
+                O prompt padrão atual está pré-carregado abaixo para referência.
+              </p>
+            </div>
+            {!assistantPrompt && (
+              <div className="flex justify-end">
+                <Button size="sm" variant="outline" onClick={() => setAssistantPrompt(DEFAULT_ASSISTANT_PROMPT)}>
+                  Carregar prompt padrão para edição
+                </Button>
+              </div>
+            )}
+            <Textarea
+              placeholder="Deixe vazio para usar o prompt padrão..."
+              value={assistantPrompt}
+              onChange={e => setAssistantPrompt(e.target.value)}
+              className="min-h-[350px] text-xs font-mono"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button size="sm" variant="ghost" onClick={() => setAssistantPrompt('')}>Limpar (usar padrão)</Button>
+              <Button size="sm" disabled={savingAssistantPrompt} onClick={async () => {
+                setSavingAssistantPrompt(true);
+                try {
+                  const payload = { assistant_prompt: assistantPrompt || null, updated_at: new Date().toISOString() };
+                  if (configId) {
+                    const { error } = await supabase.from('member_assistant_config').update(payload).eq('id', configId);
+                    if (error) throw error;
+                  } else {
+                    const { data, error } = await supabase.from('member_assistant_config').insert(payload).select('id').single();
+                    if (error) throw error;
+                    setConfigId(data.id);
+                  }
+                  toast.success('Prompt do assistente salvo!');
+                } catch (e: any) { toast.error(e.message); } finally { setSavingAssistantPrompt(false); }
+              }}>
+                {savingAssistantPrompt ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                <span className="ml-1">Salvar Prompt</span>
+              </Button>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
