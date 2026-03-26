@@ -5,6 +5,60 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const MAX_GROUP_NAME_LENGTH = 95
+const RATE_LIMIT_RETRIES = 3
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function normalizeGroupName(rawName: string): string {
+  const cleaned = (rawName || '')
+    .replace(/[\n\r\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!cleaned) return 'Grupo de Atendimento'
+
+  if (cleaned.length <= MAX_GROUP_NAME_LENGTH) return cleaned
+
+  const shortened = cleaned.slice(0, MAX_GROUP_NAME_LENGTH).trim()
+  console.warn(`Group name too long (${cleaned.length}), truncating to ${MAX_GROUP_NAME_LENGTH}:`, shortened)
+  return shortened
+}
+
+function isRateLimited(status: number, bodyText: string): boolean {
+  return status === 429 || /rate[-_ ]?overlimit|too\s+many\s+requests|429/i.test(bodyText || '')
+}
+
+async function postUazApiWithRetry(
+  baseUrl: string,
+  token: string,
+  endpoint: string,
+  payload: Record<string, unknown>,
+  retries = RATE_LIMIT_RETRIES,
+): Promise<Response> {
+  let attempt = 0
+
+  while (true) {
+    const res = await fetch(`${baseUrl}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', token },
+      body: JSON.stringify(payload),
+    })
+
+    if (res.ok) return res
+
+    const bodyText = await res.clone().text()
+    const shouldRetry = isRateLimited(res.status, bodyText) && attempt < retries
+
+    if (!shouldRetry) return res
+
+    const delayMs = 1200 * Math.pow(2, attempt)
+    console.warn(`UazAPI rate limit on ${endpoint} (attempt ${attempt + 1}/${retries + 1}). Retrying in ${delayMs}ms...`)
+    await sleep(delayMs)
+    attempt++
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -111,6 +165,8 @@ Deno.serve(async (req) => {
       groupName = parts.join(' ')
     }
 
+    groupName = normalizeGroupName(groupName)
+
     // Build participant list
     const participants: string[] = []
     const normalizedContact = (contact_phone || phone || '').replace(/\D/g, '')
@@ -187,32 +243,38 @@ Deno.serve(async (req) => {
     console.log(`Valid participants for group: ${validParticipants.length}/${participants.length}`, JSON.stringify(validParticipants))
 
     // Create group - try with valid participants first, fallback to creating empty group
-    let createRes = await fetch(`${baseUrl}/group/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-      body: JSON.stringify({
+    let createRes = await postUazApiWithRetry(
+      baseUrl,
+      creatorInstance.instance_token,
+      '/group/create',
+      {
         name: groupName,
         participants: validParticipants,
-      }),
-    })
+      },
+    )
 
     // If creation fails with participants, try creating with no participants then adding them
     if (!createRes.ok) {
       const errText = await createRes.text()
       console.warn('Group create with participants failed:', createRes.status, errText, '- Trying empty group creation')
-      
-      createRes = await fetch(`${baseUrl}/group/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-        body: JSON.stringify({
+
+      createRes = await postUazApiWithRetry(
+        baseUrl,
+        creatorInstance.instance_token,
+        '/group/create',
+        {
           name: groupName,
           participants: [],
-        }),
-      })
+        },
+      )
 
       if (!createRes.ok) {
         const errText2 = await createRes.text()
-        console.error('Empty group create also failed:', createRes.status, errText2)
+
+        if (isRateLimited(createRes.status, errText2)) {
+          throw new Error('A instância atingiu limite temporário da API para criação de grupo. Aguarde 1-2 minutos e tente novamente.')
+        }
+
         throw new Error(`Erro ao criar grupo: ${createRes.status} - ${errText2}`)
       }
     }
@@ -236,18 +298,20 @@ Deno.serve(async (req) => {
       const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
       for (const p of validParticipants) {
         try {
-          const addRes = await fetch(`${baseUrl}/group/addParticipant`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-            body: JSON.stringify({ id: groupJid, participants: [p] }),
-          })
+          const addRes = await postUazApiWithRetry(
+            baseUrl,
+            creatorInstance.instance_token,
+            '/group/addParticipant',
+            { id: groupJid, participants: [p] },
+          )
+
           if (!addRes.ok) {
             console.warn(`Failed to add ${p} to group:`, await addRes.text())
           }
         } catch (e) {
           console.warn(`Error adding ${p} to group:`, e)
         }
-        await new Promise(resolve => setTimeout(resolve, 500))
+        await sleep(600)
       }
     }
 
@@ -268,11 +332,13 @@ Deno.serve(async (req) => {
       if (phonesToPromote.length > 0) {
         try {
           console.log(`Promoting ${phonesToPromote.length} participants as admin:`, phonesToPromote)
-          const promoteRes = await fetch(`${baseUrl}/group/promote`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-            body: JSON.stringify({ id: groupId, participants: phonesToPromote }),
-          })
+          const promoteRes = await postUazApiWithRetry(
+            baseUrl,
+            creatorInstance.instance_token,
+            '/group/promote',
+            { id: groupId, participants: phonesToPromote },
+          )
+
           const promoteResult = await promoteRes.text()
           console.log('Promote result:', promoteResult)
         } catch (e) {
