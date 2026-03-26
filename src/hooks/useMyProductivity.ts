@@ -184,8 +184,10 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
       }
       const sessionMinutes = Math.max(calculatedSessionMinutes, localSessionMinutes);
       const uniqueLeadsProgressed = new Set(stageHistory.map(s => (s as any).lead_id)).size;
-      const CLOSED_STAGE_IDS = ['closed', 'fechado', 'done'];
-      const leadsClosed = stageHistory.filter(s => CLOSED_STAGE_IDS.includes((s as any).to_stage)).length;
+      const leadsClosed = stageHistory.filter(s => {
+        const toStage = ((s as any).to_stage || '').toLowerCase();
+        return ['closed', 'fechado', 'fechados', 'done'].some(p => toStage === p || toStage.startsWith(p + '_'));
+      }).length;
       // Total comment replies = replied on own posts + outbound_manual + sent (outbound on third-party posts)
       const totalCommentReplies = replies.length + outboundComments.length + sentComments.length;
 

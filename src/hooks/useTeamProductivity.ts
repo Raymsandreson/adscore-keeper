@@ -248,11 +248,15 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       });
 
       // Count leads closed per user - use stage history to detect closed stages
-      const CLOSED_STAGE_IDS = ['closed', 'fechado', 'done'];
+      const CLOSED_PATTERNS = ['closed', 'fechado', 'fechados', 'done'];
+      const isClosedStageId = (id: string) => {
+        const lower = id.toLowerCase();
+        return CLOSED_PATTERNS.some(p => lower === p || lower.startsWith(p + '_'));
+      };
       stageHistory.forEach(s => {
         const changedBy = (s as any).changed_by;
         const toStage = (s as any).to_stage;
-        if (changedBy && toStage && CLOSED_STAGE_IDS.includes(toStage)) {
+        if (changedBy && toStage && isClosedStageId(toStage)) {
           getUser(changedBy).leadsClosed++;
         }
       });
@@ -388,7 +392,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         totalCommentReplies: replies.length,
         totalStageChanges: stageHistory.length,
         totalFollowups: followups.length,
-        totalLeadsClosed: stageHistory.filter(s => CLOSED_STAGE_IDS.includes((s as any).to_stage)).length,
+        totalLeadsClosed: stageHistory.filter(s => isClosedStageId((s as any).to_stage || '')).length,
         totalPageVisits: activities.filter(a => a.action_type === 'page_visit').length,
         totalCallsMade: catContacts.filter(c => c.contact_channel === 'phone' || c.contact_channel === 'ligacao').length,
         totalChecklistItems: activities.filter(a => a.action_type === 'checklist_item_checked').length,

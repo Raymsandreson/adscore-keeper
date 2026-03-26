@@ -124,11 +124,15 @@ export function useMyTeamRanking() {
         }
       });
       // Count closed from stage history (moved to closed stage)
-      const CLOSED_STAGE_IDS = ['closed', 'fechado', 'done'];
+      const CLOSED_PATTERNS = ['closed', 'fechado', 'fechados', 'done'];
+      const isClosedStageId = (id: string) => {
+        const lower = id.toLowerCase();
+        return CLOSED_PATTERNS.some(p => lower === p || lower.startsWith(p + '_'));
+      };
       (stageRes.data || []).forEach(s => {
         const changedBy = (s as any).changed_by;
         const toStage = (s as any).to_stage;
-        if (changedBy && statsMap.has(changedBy) && toStage && CLOSED_STAGE_IDS.includes(toStage)) {
+        if (changedBy && statsMap.has(changedBy) && toStage && isClosedStageId(toStage)) {
           statsMap.get(changedBy)!.closed++;
         }
       });
