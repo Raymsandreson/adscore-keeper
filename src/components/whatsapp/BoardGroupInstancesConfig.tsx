@@ -4,9 +4,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Users, Hash, Type, Eye } from 'lucide-react';
+import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Instance {
@@ -25,6 +26,9 @@ interface GroupSettings {
   sequence_start: number;
   current_sequence: number;
   lead_fields: string[];
+  initial_message_template: string;
+  use_ai_message: boolean;
+  forward_document_types: string[];
 }
 
 const LEAD_FIELD_OPTIONS = [
@@ -42,6 +46,30 @@ const LEAD_FIELD_OPTIONS = [
   { value: 'neighborhood', label: 'Bairro' },
 ];
 
+const DOCUMENT_TYPE_OPTIONS = [
+  { value: 'procuracao', label: 'Procuração' },
+  { value: 'rg', label: 'RG' },
+  { value: 'cpf', label: 'CPF' },
+  { value: 'cnh', label: 'CNH' },
+  { value: 'comprovante_endereco', label: 'Comprovante de Endereço' },
+  { value: 'laudo_medico', label: 'Laudo Médico' },
+  { value: 'cat', label: 'CAT' },
+  { value: 'contrato', label: 'Contrato' },
+  { value: 'zapsign_signed', label: 'Documento Assinado (ZapSign)' },
+  { value: 'outros', label: 'Outros documentos' },
+];
+
+const MESSAGE_VARIABLES = [
+  { var: '{lead_name}', label: 'Nome do Lead' },
+  { var: '{victim_name}', label: 'Nome da Vítima' },
+  { var: '{case_type}', label: 'Tipo de Caso' },
+  { var: '{city}', label: 'Cidade' },
+  { var: '{state}', label: 'Estado' },
+  { var: '{case_number}', label: 'Nº do Caso' },
+  { var: '{group_name}', label: 'Nome do Grupo' },
+  { var: '{board_name}', label: 'Nome do Funil' },
+];
+
 export function BoardGroupInstancesConfig() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
@@ -54,6 +82,9 @@ export function BoardGroupInstancesConfig() {
     sequence_start: 1,
     current_sequence: 0,
     lead_fields: ['lead_name'],
+    initial_message_template: '',
+    use_ai_message: false,
+    forward_document_types: [],
   });
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -100,9 +131,15 @@ export function BoardGroupInstancesConfig() {
         sequence_start: data.sequence_start || 1,
         current_sequence: data.current_sequence || 0,
         lead_fields: data.lead_fields || ['lead_name'],
+        initial_message_template: data.initial_message_template || '',
+        use_ai_message: data.use_ai_message || false,
+        forward_document_types: data.forward_document_types || [],
       });
     } else {
-      setSettings({ group_name_prefix: '', sequence_start: 1, current_sequence: 0, lead_fields: ['lead_name'] });
+      setSettings({
+        group_name_prefix: '', sequence_start: 1, current_sequence: 0, lead_fields: ['lead_name'],
+        initial_message_template: '', use_ai_message: false, forward_document_types: [],
+      });
     }
   };
 
@@ -139,28 +176,31 @@ export function BoardGroupInstancesConfig() {
         .eq('board_id', selectedBoard)
         .maybeSingle();
 
+      const payload = {
+        group_name_prefix: settings.group_name_prefix,
+        sequence_start: settings.sequence_start,
+        lead_fields: settings.lead_fields,
+        initial_message_template: settings.initial_message_template || null,
+        use_ai_message: settings.use_ai_message,
+        forward_document_types: settings.forward_document_types,
+        updated_at: new Date().toISOString(),
+      };
+
       if (existing) {
         await (supabase as any)
           .from('board_group_settings')
-          .update({
-            group_name_prefix: settings.group_name_prefix,
-            sequence_start: settings.sequence_start,
-            lead_fields: settings.lead_fields,
-            updated_at: new Date().toISOString(),
-          })
+          .update(payload)
           .eq('board_id', selectedBoard);
       } else {
         await (supabase as any)
           .from('board_group_settings')
           .insert({
             board_id: selectedBoard,
-            group_name_prefix: settings.group_name_prefix,
-            sequence_start: settings.sequence_start,
+            ...payload,
             current_sequence: settings.sequence_start > 1 ? settings.sequence_start - 1 : 0,
-            lead_fields: settings.lead_fields,
           });
       }
-      toast.success('Configuração de nome salva!');
+      toast.success('Configuração salva!');
     } catch (e: any) {
       toast.error('Erro ao salvar configuração');
     } finally {
@@ -174,6 +214,15 @@ export function BoardGroupInstancesConfig() {
         ? prev.lead_fields.filter(f => f !== field)
         : [...prev.lead_fields, field];
       return { ...prev, lead_fields: fields.length > 0 ? fields : ['lead_name'] };
+    });
+  };
+
+  const toggleDocType = (docType: string) => {
+    setSettings(prev => {
+      const types = prev.forward_document_types.includes(docType)
+        ? prev.forward_document_types.filter(t => t !== docType)
+        : [...prev.forward_document_types, docType];
+      return { ...prev, forward_document_types: types };
     });
   };
 
@@ -269,15 +318,113 @@ export function BoardGroupInstancesConfig() {
               <span className="text-[10px] text-muted-foreground">Preview:</span>
               <span className="text-[11px] font-medium truncate">{getPreviewName()}</span>
             </div>
-
-            <Button size="sm" onClick={saveSettings} disabled={savingSettings} className="w-full h-7 text-xs">
-              {savingSettings ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
-              Salvar Configuração de Nome
-            </Button>
           </div>
+
+          {/* Initial Message Configuration */}
+          <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-primary" />
+              <h4 className="font-medium text-xs">Mensagem Inicial do Grupo</h4>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="use_ai_message"
+                checked={settings.use_ai_message}
+                onCheckedChange={(checked) => setSettings(prev => ({ ...prev, use_ai_message: !!checked }))}
+              />
+              <Label htmlFor="use_ai_message" className="text-xs cursor-pointer">
+                Gerar mensagem com IA (resumo do caso com dados do lead)
+              </Label>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-[11px] text-muted-foreground">
+                {settings.use_ai_message ? 'Instruções adicionais para a IA' : 'Template da mensagem'}
+              </Label>
+              <Textarea
+                value={settings.initial_message_template}
+                onChange={e => setSettings(prev => ({ ...prev, initial_message_template: e.target.value }))}
+                placeholder={settings.use_ai_message
+                  ? 'Ex: Gere um resumo do caso incluindo dados do lead, tipo de acidente e empresa...'
+                  : 'Ex: 📋 *Novo Caso* - {lead_name}\n\nTipo: {case_type}\nCidade: {city}/{state}'
+                }
+                className="text-xs min-h-[80px]"
+              />
+            </div>
+
+            {!settings.use_ai_message && (
+              <div className="space-y-1.5">
+                <Label className="text-[11px] text-muted-foreground">Variáveis disponíveis</Label>
+                <div className="flex flex-wrap gap-1">
+                  {MESSAGE_VARIABLES.map(v => (
+                    <button
+                      key={v.var}
+                      type="button"
+                      onClick={() => {
+                        setSettings(prev => ({
+                          ...prev,
+                          initial_message_template: prev.initial_message_template + ' ' + v.var,
+                        }));
+                      }}
+                      className="text-[9px] px-1.5 py-0.5 rounded bg-muted border border-border hover:bg-accent text-muted-foreground transition-colors"
+                    >
+                      {v.var} <span className="text-muted-foreground/60">({v.label})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Document Forwarding */}
+          <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary" />
+              <h4 className="font-medium text-xs">Documentos para Enviar ao Grupo</h4>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Selecione quais documentos da conversa privada devem ser enviados automaticamente ao grupo em formato PDF, nomeados com o nome do lead.
+            </p>
+
+            <div className="flex flex-wrap gap-1.5">
+              {DOCUMENT_TYPE_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => toggleDocType(opt.value)}
+                  className={`text-[10px] px-2 py-1 rounded-full border transition-colors ${
+                    settings.forward_document_types.includes(opt.value)
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-background text-muted-foreground border-border hover:border-primary/50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            {settings.forward_document_types.length > 0 && (
+              <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
+                <Eye className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-[10px] text-muted-foreground">Arquivos serão nomeados como:</span>
+                <span className="text-[10px] font-medium">RG - João Silva.pdf, Procuração - João Silva.pdf</span>
+              </div>
+            )}
+          </div>
+
+          {/* Save Button */}
+          <Button size="sm" onClick={saveSettings} disabled={savingSettings} className="w-full h-8 text-xs">
+            {savingSettings ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+            Salvar Todas as Configurações
+          </Button>
 
           {/* Instances */}
           <div className="space-y-2 mt-3">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-primary" />
+              <h4 className="font-medium text-xs">Instâncias Participantes</h4>
+            </div>
             {instances.length === 0 ? (
               <p className="text-xs text-muted-foreground">Nenhuma instância ativa encontrada.</p>
             ) : (
