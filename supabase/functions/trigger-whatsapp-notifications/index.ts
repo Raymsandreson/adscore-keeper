@@ -574,10 +574,27 @@ async function buildPersonalizedReport(
     sections.push('')
 
     // ── Follow-ups today ──
+    // Get user's lead IDs for filtering
+    let userLeadIds: string[] | null = null
+    if (userId) {
+      const { data: userLeads } = await supabase
+        .from('leads')
+        .select('id')
+        .eq('assigned_to', userId)
+        .limit(500)
+      userLeadIds = (userLeads || []).map((l: any) => l.id)
+    }
+
     let followupsQ = supabase
       .from('lead_followups')
       .select('followup_type', { count: 'exact' })
       .gte('created_at', sinceIso)
+    if (userLeadIds && userLeadIds.length > 0) {
+      followupsQ = followupsQ.in('lead_id', userLeadIds)
+    } else if (userId && (!userLeadIds || userLeadIds.length === 0)) {
+      // User has no leads, skip
+      followupsQ = followupsQ.eq('lead_id', '00000000-0000-0000-0000-000000000000')
+    }
     const { data: followupsData, count: followupsTotal } = await followupsQ
 
     const fTypes: Record<string, number> = {}
@@ -602,22 +619,28 @@ async function buildPersonalizedReport(
     const todayStartZ = new Date(Date.UTC(brNowDateZ.getFullYear(), brNowDateZ.getMonth(), brNowDateZ.getDate(), 3, 0, 0, 0))
     const sinceZ = todayStartZ.toISOString()
 
-    const { count: docsGenerated } = await supabase
+    let docsGenQ = supabase
       .from('zapsign_documents')
       .select('id', { count: 'exact', head: true })
       .gte('created_at', sinceZ)
+    if (userId) docsGenQ = docsGenQ.eq('created_by', userId)
+    const { count: docsGenerated } = await docsGenQ
 
-    const { count: docsSigned } = await supabase
+    let docsSignedQ = supabase
       .from('zapsign_documents')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'signed')
       .gte('updated_at', sinceZ)
+    if (userId) docsSignedQ = docsSignedQ.eq('created_by', userId)
+    const { count: docsSigned } = await docsSignedQ
 
-    const { count: docsPending } = await supabase
+    let docsPendQ = supabase
       .from('zapsign_documents')
       .select('id', { count: 'exact', head: true })
       .in('status', ['pending', 'sent'])
       .gte('created_at', sinceZ)
+    if (userId) docsPendQ = docsPendQ.eq('created_by', userId)
+    const { count: docsPending } = await docsPendQ
 
     sections.push(`📝 *Documentos ZapSign*`)
     sections.push(`  • Gerados hoje: ${docsGenerated || 0}`)
@@ -676,10 +699,27 @@ async function buildPersonalizedReport(
     const todayStartCL = new Date(Date.UTC(brNowDate2.getFullYear(), brNowDate2.getMonth(), brNowDate2.getDate(), 3, 0, 0, 0))
     const sinceCL = todayStartCL.toISOString()
 
-    const { data: checklists } = await supabase
+    // Get user's lead IDs for filtering checklist
+    let clLeadIds: string[] | null = null
+    if (userId) {
+      const { data: userLeads } = await supabase
+        .from('leads')
+        .select('id')
+        .eq('assigned_to', userId)
+        .limit(500)
+      clLeadIds = (userLeads || []).map((l: any) => l.id)
+    }
+
+    let clQuery = supabase
       .from('lead_checklist_instances')
       .select('items, updated_at')
       .gte('updated_at', sinceCL)
+    if (clLeadIds && clLeadIds.length > 0) {
+      clQuery = clQuery.in('lead_id', clLeadIds)
+    } else if (userId && (!clLeadIds || clLeadIds.length === 0)) {
+      clQuery = clQuery.eq('lead_id', '00000000-0000-0000-0000-000000000000')
+    }
+    const { data: checklists } = await clQuery
 
     let totalSteps = 0
     let completedSteps = 0
