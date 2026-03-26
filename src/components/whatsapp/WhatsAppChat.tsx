@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList } from 'lucide-react';
+import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search } from 'lucide-react';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { ZapSignDocumentDialog } from './ZapSignDocumentDialog';
 import { GroupMembersDialog } from './GroupMembersDialog';
@@ -90,6 +90,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [leads, setLeads] = useState<Array<{ id: string; lead_name: string | null }>>([]);
   const [selectedLeadId, setSelectedLeadId] = useState('');
+  const [leadSearchQuery, setLeadSearchQuery] = useState('');
   const [selectedRelationship, setSelectedRelationship] = useState('');
   const [selectedParticipantPhone, setSelectedParticipantPhone] = useState('');
   const [callRecords, setCallRecords] = useState<any[]>([]);
@@ -974,16 +975,48 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           <div className="space-y-4">
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Lead</label>
-              <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
-                <SelectTrigger><SelectValue placeholder="Selecione um lead..." /></SelectTrigger>
-                <SelectContent>
-                  {leads.map(lead => (
-                    <SelectItem key={lead.id} value={lead.id}>
-                      {lead.lead_name || 'Lead sem nome'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar lead por nome..."
+                  value={leadSearchQuery}
+                  onChange={(e) => setLeadSearchQuery(e.target.value)}
+                  className="pl-8 h-9"
+                />
+              </div>
+              {selectedLeadId && (
+                <div className="flex items-center gap-2 p-2 rounded-md bg-primary/10 border border-primary/30">
+                  <span className="text-sm flex-1 truncate">
+                    {leads.find(l => l.id === selectedLeadId)?.lead_name || 'Lead selecionado'}
+                  </span>
+                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setSelectedLeadId('')}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              <ScrollArea className="max-h-[200px]">
+                <div className="space-y-0.5">
+                  {leads
+                    .filter(l => !leadSearchQuery || (l.lead_name || '').toLowerCase().includes(leadSearchQuery.toLowerCase()))
+                    .map(lead => (
+                      <button
+                        key={lead.id}
+                        type="button"
+                        className={cn(
+                          "w-full flex items-center gap-2 p-2 rounded-md text-left text-sm transition-colors",
+                          selectedLeadId === lead.id ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
+                        )}
+                        onClick={() => setSelectedLeadId(lead.id)}
+                      >
+                        <span className="truncate">{lead.lead_name || 'Lead sem nome'}</span>
+                      </button>
+                    ))
+                  }
+                  {leads.filter(l => !leadSearchQuery || (l.lead_name || '').toLowerCase().includes(leadSearchQuery.toLowerCase())).length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-4">Nenhum lead encontrado</p>
+                  )}
+                </div>
+              </ScrollArea>
             </div>
 
             {/* Group participant selector */}
