@@ -41,6 +41,29 @@ Deno.serve(async (req) => {
       )
     }
 
+    // If triggered by cron (scheduled), check if now matches configured schedule
+    if (isScheduled) {
+      const now = new Date()
+      const brNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+      const currentHH = String(brNow.getHours()).padStart(2, '0')
+      const currentMM = String(brNow.getMinutes()).padStart(2, '0')
+      const currentTime = `${currentHH}:${currentMM}`
+      const currentDay = brNow.getDay() // 0=Sun, 1=Mon...
+
+      const scheduleTimes: string[] = (config as any).dashboard_schedule_times || []
+      const scheduleDays: number[] = (config as any).dashboard_schedule_days || [1, 2, 3, 4, 5]
+
+      const timeMatch = scheduleTimes.some((t: string) => t === currentTime)
+      const dayMatch = scheduleDays.includes(currentDay)
+
+      if (!timeMatch || !dayMatch) {
+        return new Response(
+          JSON.stringify({ success: true, skipped: true, reason: `Not scheduled now (${currentTime}, day ${currentDay})` }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
     // Determine target phones
     let phones: string[] = []
     let targetName = ''
