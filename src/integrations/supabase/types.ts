@@ -6967,6 +6967,7 @@ export type Database = {
           instance_name: string | null
           is_active: boolean | null
           name: string
+          notify_callface_calls: boolean | null
           notify_checklist_steps: boolean | null
           notify_daily_summary: boolean | null
           notify_goal_progress: boolean | null
@@ -6974,6 +6975,7 @@ export type Database = {
           notify_session_reminder: boolean | null
           notify_weekly_summary: boolean | null
           notify_whatsapp_dashboard: boolean | null
+          notify_zapsign_documents: boolean | null
           overdue_threshold_hours: number | null
           recipient_phones: string[] | null
           recipient_user_ids: string[] | null
@@ -6991,6 +6993,7 @@ export type Database = {
           instance_name?: string | null
           is_active?: boolean | null
           name?: string
+          notify_callface_calls?: boolean | null
           notify_checklist_steps?: boolean | null
           notify_daily_summary?: boolean | null
           notify_goal_progress?: boolean | null
@@ -6998,6 +7001,7 @@ export type Database = {
           notify_session_reminder?: boolean | null
           notify_weekly_summary?: boolean | null
           notify_whatsapp_dashboard?: boolean | null
+          notify_zapsign_documents?: boolean | null
           overdue_threshold_hours?: number | null
           recipient_phones?: string[] | null
           recipient_user_ids?: string[] | null
@@ -7015,6 +7019,7 @@ export type Database = {
           instance_name?: string | null
           is_active?: boolean | null
           name?: string
+          notify_callface_calls?: boolean | null
           notify_checklist_steps?: boolean | null
           notify_daily_summary?: boolean | null
           notify_goal_progress?: boolean | null
@@ -7022,6 +7027,7 @@ export type Database = {
           notify_session_reminder?: boolean | null
           notify_weekly_summary?: boolean | null
           notify_whatsapp_dashboard?: boolean | null
+          notify_zapsign_documents?: boolean | null
           overdue_threshold_hours?: number | null
           recipient_phones?: string[] | null
           recipient_user_ids?: string[] | null
