@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -40,6 +41,10 @@ interface NotificationConfig {
   notify_daily_summary: boolean;
   notify_weekly_summary: boolean;
   notify_session_reminder: boolean;
+  notify_whatsapp_dashboard: boolean;
+  dashboard_instance_names: string[];
+  dashboard_schedule_times: string[];
+  dashboard_schedule_days: number[];
   schedule_times: string[];
   schedule_days: number[];
   overdue_threshold_hours: number;
@@ -57,6 +62,10 @@ const DEFAULT_CONFIG: NotificationConfig = {
   notify_daily_summary: true,
   notify_weekly_summary: false,
   notify_session_reminder: false,
+  notify_whatsapp_dashboard: false,
+  dashboard_instance_names: [],
+  dashboard_schedule_times: ['08:00', '18:00'],
+  dashboard_schedule_days: [1, 2, 3, 4, 5],
   schedule_times: ['08:00', '18:00'],
   schedule_days: [1, 2, 3, 4, 5],
   overdue_threshold_hours: 24,
@@ -88,22 +97,27 @@ export function WhatsAppNotificationSettings() {
     setInstances(instRes.data || []);
     setProfiles((profilesRes.data as UserProfile[]) || []);
     if (configRes.data) {
+      const d = configRes.data as any;
       setConfig({
-        id: configRes.data.id,
-        is_active: configRes.data.is_active ?? true,
-        name: configRes.data.name || 'Notificações Gerais',
-        instance_name: configRes.data.instance_name || '',
-        recipient_phones: configRes.data.recipient_phones || [],
-        recipient_user_ids: (configRes.data as any).recipient_user_ids || [],
-        notify_overdue_tasks: configRes.data.notify_overdue_tasks ?? true,
-        notify_goal_progress: configRes.data.notify_goal_progress ?? true,
-        notify_daily_summary: configRes.data.notify_daily_summary ?? true,
-        notify_weekly_summary: configRes.data.notify_weekly_summary ?? false,
-        notify_session_reminder: configRes.data.notify_session_reminder ?? false,
-        schedule_times: configRes.data.schedule_times || ['08:00', '18:00'],
-        schedule_days: configRes.data.schedule_days || [1, 2, 3, 4, 5],
-        overdue_threshold_hours: configRes.data.overdue_threshold_hours ?? 24,
-        goal_alert_percent: configRes.data.goal_alert_percent ?? 50,
+        id: d.id,
+        is_active: d.is_active ?? true,
+        name: d.name || 'Notificações Gerais',
+        instance_name: d.instance_name || '',
+        recipient_phones: d.recipient_phones || [],
+        recipient_user_ids: d.recipient_user_ids || [],
+        notify_overdue_tasks: d.notify_overdue_tasks ?? true,
+        notify_goal_progress: d.notify_goal_progress ?? true,
+        notify_daily_summary: d.notify_daily_summary ?? true,
+        notify_weekly_summary: d.notify_weekly_summary ?? false,
+        notify_session_reminder: d.notify_session_reminder ?? false,
+        notify_whatsapp_dashboard: d.notify_whatsapp_dashboard ?? false,
+        dashboard_instance_names: d.dashboard_instance_names || [],
+        dashboard_schedule_times: d.dashboard_schedule_times || ['08:00', '18:00'],
+        dashboard_schedule_days: d.dashboard_schedule_days || [1, 2, 3, 4, 5],
+        schedule_times: d.schedule_times || ['08:00', '18:00'],
+        schedule_days: d.schedule_days || [1, 2, 3, 4, 5],
+        overdue_threshold_hours: d.overdue_threshold_hours ?? 24,
+        goal_alert_percent: d.goal_alert_percent ?? 50,
       });
     }
     setLoading(false);
@@ -129,6 +143,10 @@ export function WhatsAppNotificationSettings() {
         notify_daily_summary: config.notify_daily_summary,
         notify_weekly_summary: config.notify_weekly_summary,
         notify_session_reminder: config.notify_session_reminder,
+        notify_whatsapp_dashboard: config.notify_whatsapp_dashboard,
+        dashboard_instance_names: config.dashboard_instance_names,
+        dashboard_schedule_times: config.dashboard_schedule_times,
+        dashboard_schedule_days: config.dashboard_schedule_days,
         schedule_times: config.schedule_times,
         schedule_days: config.schedule_days,
         overdue_threshold_hours: config.overdue_threshold_hours,
@@ -426,7 +444,116 @@ export function WhatsAppNotificationSettings() {
         </CardContent>
       </Card>
 
-      {/* Action buttons */}
+      {/* WhatsApp Dashboard Report */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                📊 Relatório do Dashboard WhatsApp
+              </CardTitle>
+              <CardDescription>Receba um relatório automático com as métricas do dashboard de WhatsApp</CardDescription>
+            </div>
+            <Switch
+              checked={config.notify_whatsapp_dashboard}
+              onCheckedChange={(v) => setConfig(prev => ({ ...prev, notify_whatsapp_dashboard: v }))}
+            />
+          </div>
+        </CardHeader>
+        {config.notify_whatsapp_dashboard && (
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Instâncias a monitorar</Label>
+              <p className="text-xs text-muted-foreground">Selecione quais instâncias serão incluídas no relatório</p>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {instances.map((inst) => {
+                  const isSelected = config.dashboard_instance_names.includes(inst.instance_name);
+                  return (
+                    <label
+                      key={inst.instance_name}
+                      className="flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={(checked) => {
+                          setConfig(prev => ({
+                            ...prev,
+                            dashboard_instance_names: checked
+                              ? [...prev.dashboard_instance_names, inst.instance_name]
+                              : prev.dashboard_instance_names.filter((n: string) => n !== inst.instance_name),
+                          }));
+                        }}
+                      />
+                      <span className="text-sm">{inst.instance_name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              {config.dashboard_instance_names.length === 0 && (
+                <p className="text-xs text-amber-600">⚠️ Nenhuma instância selecionada — o relatório incluirá todas.</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Horários de envio do relatório</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="time"
+                  value={newTime}
+                  onChange={(e) => setNewTime(e.target.value)}
+                  placeholder="Ex: 08:00"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (newTime && !config.dashboard_schedule_times.includes(newTime)) {
+                      setConfig(prev => ({ ...prev, dashboard_schedule_times: [...prev.dashboard_schedule_times, newTime].sort() }));
+                      setNewTime('');
+                    }
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {config.dashboard_schedule_times.map((time) => (
+                  <Badge key={time} variant="outline" className="gap-1 text-sm">
+                    🕐 {time}
+                    <X
+                      className="h-3 w-3 cursor-pointer"
+                      onClick={() => setConfig(prev => ({ ...prev, dashboard_schedule_times: prev.dashboard_schedule_times.filter(t => t !== time) }))}
+                    />
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Dias da semana</Label>
+              <div className="flex gap-1.5">
+                {DAYS_OF_WEEK.map(({ value, label }) => (
+                  <Button
+                    key={value}
+                    size="sm"
+                    variant={config.dashboard_schedule_days.includes(value) ? 'default' : 'outline'}
+                    className="h-9 w-11 text-xs"
+                    onClick={() => setConfig(prev => ({
+                      ...prev,
+                      dashboard_schedule_days: prev.dashboard_schedule_days.includes(value)
+                        ? prev.dashboard_schedule_days.filter(d => d !== value)
+                        : [...prev.dashboard_schedule_days, value].sort(),
+                    }))}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
       <div className="flex justify-between gap-3">
         <Button
           variant="outline"

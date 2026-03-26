@@ -6959,6 +6959,9 @@ export type Database = {
       whatsapp_notification_config: {
         Row: {
           created_at: string | null
+          dashboard_instance_names: string[] | null
+          dashboard_schedule_days: number[] | null
+          dashboard_schedule_times: string[] | null
           goal_alert_percent: number | null
           id: string
           instance_name: string | null
@@ -6969,6 +6972,7 @@ export type Database = {
           notify_overdue_tasks: boolean | null
           notify_session_reminder: boolean | null
           notify_weekly_summary: boolean | null
+          notify_whatsapp_dashboard: boolean | null
           overdue_threshold_hours: number | null
           recipient_phones: string[] | null
           recipient_user_ids: string[] | null
@@ -6978,6 +6982,9 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          dashboard_instance_names?: string[] | null
+          dashboard_schedule_days?: number[] | null
+          dashboard_schedule_times?: string[] | null
           goal_alert_percent?: number | null
           id?: string
           instance_name?: string | null
@@ -6988,6 +6995,7 @@ export type Database = {
           notify_overdue_tasks?: boolean | null
           notify_session_reminder?: boolean | null
           notify_weekly_summary?: boolean | null
+          notify_whatsapp_dashboard?: boolean | null
           overdue_threshold_hours?: number | null
           recipient_phones?: string[] | null
           recipient_user_ids?: string[] | null
@@ -6997,6 +7005,9 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          dashboard_instance_names?: string[] | null
+          dashboard_schedule_days?: number[] | null
+          dashboard_schedule_times?: string[] | null
           goal_alert_percent?: number | null
           id?: string
           instance_name?: string | null
@@ -7007,6 +7018,7 @@ export type Database = {
           notify_overdue_tasks?: boolean | null
           notify_session_reminder?: boolean | null
           notify_weekly_summary?: boolean | null
+          notify_whatsapp_dashboard?: boolean | null
           overdue_threshold_hours?: number | null
           recipient_phones?: string[] | null
           recipient_user_ids?: string[] | null
