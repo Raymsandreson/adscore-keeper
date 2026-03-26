@@ -906,6 +906,132 @@ export function DynamicKanbanBoard({
               </div>
             );
           })}
+
+          {/* Fixed Status Columns: Fechados & Recusados */}
+          {[
+            { id: 'closed', name: 'Fechados', color: '#22c55e', icon: CheckCircle2, leads: closedLeads },
+            { id: 'refused', name: 'Recusados', color: '#ef4444', icon: XCircle, leads: refusedLeads },
+          ].map(statusCol => {
+            const colFilter = stageFilters[statusCol.id] || '';
+            const filteredLeads = colFilter
+              ? statusCol.leads.filter(lead => lead.lead_name?.toLowerCase().includes(colFilter.toLowerCase()))
+              : statusCol.leads;
+            const IconComp = statusCol.icon;
+            return (
+              <div
+                key={statusCol.id}
+                className="flex-shrink-0 rounded-lg border"
+                style={{ width: `max(240px, calc((100vw - ${(board.stages.length + 2) * 4 + 16}px) / ${board.stages.length + 2}))` }}
+                onDragOver={(e) => { e.preventDefault(); setDragOverStage(statusCol.id); }}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverStage(null);
+                  if (draggedLead && onChangeLeadStatus) {
+                    onChangeLeadStatus(draggedLead.id, statusCol.id as 'closed' | 'refused');
+                  }
+                  setDraggedLead(null);
+                }}
+              >
+                <div
+                  className="p-3 rounded-t-lg border-b space-y-2"
+                  style={{ backgroundColor: `${statusCol.color}15`, borderColor: `${statusCol.color}30` }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <IconComp className="w-3.5 h-3.5" style={{ color: statusCol.color }} />
+                      <h3 className="font-medium text-sm" style={{ color: statusCol.color }}>
+                        {statusCol.name}
+                      </h3>
+                      <Badge variant="secondary" className="text-xs">
+                        <AnimatedNumber value={filteredLeads.length} />
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar lead..."
+                      value={colFilter}
+                      onChange={(e) => setStageFilters(prev => ({ ...prev, [statusCol.id]: e.target.value }))}
+                      className="h-7 pl-7 pr-7 text-xs"
+                    />
+                    {colFilter && (
+                      <Button variant="ghost" size="icon" className="absolute right-0 top-1/2 transform -translate-y-1/2 h-7 w-7"
+                        onClick={() => setStageFilters(prev => ({ ...prev, [statusCol.id]: '' }))}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <div className="h-[calc(100vh-380px)] min-h-[300px] overflow-y-auto">
+                  <div className="p-2 space-y-2">
+                    {filteredLeads.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-8 text-center">
+                        <IconComp className="h-8 w-8 text-muted-foreground/40 mb-2" />
+                        <p className="text-xs text-muted-foreground">Nenhum lead {statusCol.name.toLowerCase()}</p>
+                      </div>
+                    ) : (
+                      filteredLeads.map(lead => (
+                        <Card key={lead.id} className="cursor-pointer hover:shadow-md transition-all"
+                          onClick={(e) => { e.stopPropagation(); onEditLead?.(lead); }}
+                        >
+                          <CardContent className="p-3 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Avatar className="h-7 w-7 flex-shrink-0">
+                                  <AvatarFallback className="text-xs" style={{ backgroundColor: `${statusCol.color}20`, color: statusCol.color }}>
+                                    {getInitials(lead.lead_name)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="text-sm font-medium truncate">{lead.lead_name || 'Sem nome'}</span>
+                              </div>
+                              {onChangeLeadStatus && (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
+                                      <MoreVertical className="h-3 w-3" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onChangeLeadStatus(lead.id, 'active'); }}>
+                                      <ArrowRightLeft className="h-3 w-3 mr-2" />
+                                      Voltar para Em Andamento
+                                    </DropdownMenuItem>
+                                    {statusCol.id === 'closed' && (
+                                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onChangeLeadStatus(lead.id, 'refused'); }} className="text-red-600">
+                                        <XCircle className="h-3 w-3 mr-2" />
+                                        Mover para Recusados
+                                      </DropdownMenuItem>
+                                    )}
+                                    {statusCol.id === 'refused' && (
+                                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onChangeLeadStatus(lead.id, 'closed'); }} className="text-green-600">
+                                        <CheckCircle2 className="h-3 w-3 mr-2" />
+                                        Mover para Fechados
+                                      </DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem className="text-destructive" onClick={(e) => { e.stopPropagation(); handleDeleteClick(lead.id); }}>
+                                      <Trash2 className="h-3 w-3 mr-2" />
+                                      Remover
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
+                            </div>
+                            {lead.lead_phone && (
+                              <CopyableText text={lead.lead_phone} className="text-xs text-muted-foreground" />
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Conversion Value Dialog */}
