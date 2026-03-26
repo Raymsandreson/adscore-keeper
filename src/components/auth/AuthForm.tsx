@@ -34,6 +34,103 @@ const PasswordInput = ({ id, value, onChange, show, onToggle, placeholder = '•
 );
 
 export const AuthForm = () => {
+  const signIn = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    return { error };
+  };
+
+  const signUp = async (email: string, password: string, fullName: string) => {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: window.location.origin, data: { full_name: fullName } },
+    });
+    return { error };
+  };
+  const [isLoading, setIsLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  
+  // Password visibility
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showSignupConfirm, setShowSignupConfirm] = useState(false);
+  
+  // Login form state
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  
+  // Signup form state
+  const [signupName, setSignupName] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [signupConfirmPassword, setSignupConfirmPassword] = useState('');
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    
+    const { error } = await signIn(loginEmail, loginPassword);
+    
+    if (error) {
+      toast.error('Erro ao fazer login', { description: error.message });
+    } else {
+      toast.success('Login realizado com sucesso!');
+    }
+    
+    setIsLoading(false);
+  };
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (signupPassword !== signupConfirmPassword) {
+      toast.error('As senhas não coincidem');
+      return;
+    }
+    
+    if (signupPassword.length < 6) {
+      toast.error('A senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    const { error } = await signUp(signupEmail, signupPassword, signupName);
+    
+    if (error) {
+      toast.error('Erro ao criar conta', { description: error.message });
+    } else {
+      toast.success('Conta criada com sucesso!', { 
+        description: 'Você já pode fazer login.' 
+      });
+    }
+    
+    setIsLoading(false);
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) {
+      toast.error('Informe seu email');
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) throw error;
+      toast.success('Email enviado!', { description: 'Verifique sua caixa de entrada para redefinir a senha.' });
+      setShowForgotPassword(false);
+      setForgotEmail('');
+    } catch (error: any) {
+      toast.error('Erro ao enviar email', { description: error.message });
+    } finally {
+      setForgotLoading(false);
+    }
+  };
 
   if (showForgotPassword) {
     return (
