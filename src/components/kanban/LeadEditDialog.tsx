@@ -680,8 +680,8 @@ ${scrapeData.content || ''}
       toast.success('Lead atualizado com sucesso!');
       onOpenChange(false);
     } catch (error) {
-      console.error('Error saving lead:', error);
-      toast.error('Erro ao salvar lead');
+      console.error('[handleSave] Error saving lead:', error);
+      toast.error('Erro ao salvar lead: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
     } finally {
       setSaving(false);
     }
