@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { useLegalCases } from '@/hooks/useLegalCases';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
-import { Loader2, Scale, Sparkles, CalendarIcon } from 'lucide-react';
+import { Loader2, Scale, Sparkles, CalendarIcon, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -22,6 +23,14 @@ interface ExtractedProcess {
   process_number?: string;
   process_type?: 'judicial' | 'administrativo';
   description?: string;
+}
+
+interface DuplicateCase {
+  id: string;
+  case_number: string;
+  title: string;
+  status: string;
+  created_at: string;
 }
 
 interface Props {
@@ -42,6 +51,8 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
   const { boards } = useKanbanBoards();
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  const [duplicates, setDuplicates] = useState<DuplicateCase[]>([]);
+  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
 
   const [title, setTitle] = useState('');
   const [caseNumber, setCaseNumber] = useState('');
@@ -61,7 +72,8 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       setNotes('');
       setExtractedProcesses([]);
       setClosingDate(new Date());
-      // Auto-select default board
+      setDuplicates([]);
+      setShowDuplicateWarning(false);
       const defaultBoard = boards.find(b => b.is_default) || boards[0];
       setSelectedBoardId(defaultBoard?.id || '');
     }
@@ -133,11 +145,60 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
     }
   };
 
-  const handleCreate = async () => {
+  const checkDuplicates = async (): Promise<DuplicateCase[]> => {
+    const searchTitle = title.trim();
+    if (!searchTitle) return [];
+
+    try {
+      // Search by similar title or same lead
+      let query = supabase
+        .from('legal_cases')
+        .select('id, case_number, title, status, created_at')
+        .ilike('title', `%${searchTitle}%`)
+        .limit(10);
+
+      const { data: byTitle } = await query;
+
+      // Also search by lead_id if available
+      let byLead: any[] = [];
+      if (leadId) {
+        const { data } = await supabase
+          .from('legal_cases')
+          .select('id, case_number, title, status, created_at')
+          .eq('lead_id', leadId);
+        byLead = data || [];
+      }
+
+      // Merge and deduplicate
+      const allResults = [...(byTitle || []), ...byLead];
+      const unique = allResults.filter((item, index, self) =>
+        index === self.findIndex(t => t.id === item.id)
+      );
+
+      return unique;
+    } catch (err) {
+      console.error('Error checking duplicates:', err);
+      return [];
+    }
+  };
+
+  const handleCreateClick = async () => {
     if (!title.trim()) {
       toast.error('Informe o título do caso');
       return;
     }
+
+    const found = await checkDuplicates();
+    if (found.length > 0) {
+      setDuplicates(found);
+      setShowDuplicateWarning(true);
+      return;
+    }
+
+    await executeCreate();
+  };
+
+  const executeCreate = async () => {
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -258,7 +319,13 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
     }
   };
 
+  const statusLabel = (s: string) => {
+    const map: Record<string, string> = { aberto: 'Aberto', em_andamento: 'Em Andamento', encerrado: 'Encerrado', arquivado: 'Arquivado' };
+    return map[s] || s;
+  };
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
@@ -394,12 +461,55 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={handleCreate} disabled={saving || !title.trim()}>
+          <Button onClick={handleCreateClick} disabled={saving || !title.trim()}>
             {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
             Criar Caso
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog open={showDuplicateWarning} onOpenChange={setShowDuplicateWarning}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2 text-amber-600">
+            <AlertTriangle className="h-5 w-5" />
+            Caso possivelmente duplicado
+          </AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-3">
+              <p>Foram encontrados casos semelhantes já cadastrados:</p>
+              <div className="max-h-48 overflow-y-auto space-y-2">
+                {duplicates.map(d => (
+                  <div key={d.id} className="flex items-center gap-3 p-2 rounded-lg border bg-muted/50">
+                    <Scale className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">{d.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {d.case_number} · {statusLabel(d.status)} · {format(new Date(d.created_at), 'dd/MM/yyyy')}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-sm font-medium">Deseja criar um novo caso mesmo assim?</p>
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              setShowDuplicateWarning(false);
+              executeCreate();
+            }}
+            className="bg-amber-600 hover:bg-amber-700"
+          >
+            Criar mesmo assim
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
