@@ -391,28 +391,44 @@ REGRA DE MÍDIA ANEXADA:
       finalText = assistantMessage?.content || ''
     }
 
+    // When tool actions produced verified data, build the ENTIRE message from real data
+    // instead of trusting AI-generated text (which may hallucinate names, types, links)
     if (createdActivitySummaries.length > 0) {
       const summaryBlock = createdActivitySummaries.join('\n\n')
-      if (!finalText) {
-        finalText = summaryBlock
-      } else {
-        // ALWAYS replace any AI-generated activity summary with the verified one
-        // Remove any AI-hallucinated "Atividade criada" blocks (they may have wrong names/data)
-        finalText = finalText.replace(/📌\s*\*?Atividade criada\*?[\s\S]*?(?=\n\n🔗|\n\n[^•\n]|$)/gi, '').trim()
-        finalText += `\n\n${summaryBlock}`
+      
+      // Extract only the AI's initial confirmation line (e.g. "✅ Tarefa criada com sucesso!")
+      // but discard any details/summary the AI generated (they may have wrong data)
+      let aiIntro = ''
+      if (finalText) {
+        // Grab the first line(s) before any bullet points or structured data
+        const lines = finalText.split('\n')
+        const introLines: string[] = []
+        for (const line of lines) {
+          const trimmed = line.trim()
+          // Stop at first bullet, structured block, or link
+          if (trimmed.startsWith('•') || trimmed.startsWith('📌') || trimmed.startsWith('🔗') || 
+              trimmed.startsWith('- ') || trimmed.includes('openActivity=') ||
+              trimmed.includes('adscore-keeper.lovable.app')) break
+          if (trimmed) introLines.push(trimmed)
+        }
+        aiIntro = introLines.join('\n').trim()
       }
-    }
-
-    // Replace any AI-hallucinated links with the real ones from tool results
-    if (collectedLinks.length > 0 && finalText) {
-      // Remove ALL app domain URLs the AI may have hallucinated (any format)
+      
+      // Build final message: AI intro + verified summary + verified links
+      finalText = aiIntro ? `${aiIntro}\n\n${summaryBlock}` : summaryBlock
+      
+      // Append verified links
+      for (const link of collectedLinks) {
+        finalText += `\n\n🔗 *Acessar:* ${link}`
+      }
+    } else if (collectedLinks.length > 0 && finalText) {
+      // No activity created, but other tools returned links - clean AI hallucinated links
       finalText = finalText.replace(/\n*🔗[^\n]*/gi, '')
       finalText = finalText.replace(/https?:\/\/adscore-keeper\.lovable\.app[^\s\n]*/gi, '')
       finalText = finalText.replace(/https?:\/\/[^\s]*openActivity=[a-f0-9-]+/gi, '')
       finalText = finalText.replace(/https?:\/\/[^\s]*openLead=[a-f0-9-]+/gi, '')
       finalText = finalText.replace(/https?:\/\/[^\s]*openContact=[a-f0-9-]+/gi, '')
       finalText = finalText.replace(/\n{3,}/g, '\n\n').trim()
-      // Append the correct verified links from tool results
       for (const link of collectedLinks) {
         finalText += `\n\n🔗 *Acessar:* ${link}`
       }
