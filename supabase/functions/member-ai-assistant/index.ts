@@ -81,13 +81,24 @@ Deno.serve(async (req) => {
       console.log(`Member batching delay complete: processing accumulated messages for ${phone}`)
     }
 
-    // Get instance credentials for sending reply
-    const { data: inst } = await supabase
-      .from('whatsapp_instances')
-      .select('id, instance_name, instance_token, base_url')
-      .eq('instance_name', instance_name)
-      .eq('is_active', true)
-      .single()
+    // Get instance credentials and activity types in parallel
+    const [instResult, activityTypesResult] = await Promise.all([
+      supabase
+        .from('whatsapp_instances')
+        .select('id, instance_name, instance_token, base_url')
+        .eq('instance_name', instance_name)
+        .eq('is_active', true)
+        .single(),
+      supabase
+        .from('activity_types')
+        .select('key, label')
+        .eq('is_active', true)
+        .order('display_order'),
+    ])
+
+    const inst = instResult.data
+    const activityTypes = (activityTypesResult.data || []) as any[]
+    const activityTypesListText = activityTypes.map((t: any) => `• "${t.key}" = ${t.label}`).join('\n')
 
     if (!inst) {
       console.error('No active instance found:', instance_name)
@@ -175,7 +186,9 @@ Regras:
 - Use "mine" como scope padrão, a menos que o membro peça informações da equipe toda
 - Ao criar atividades, preencha campos automaticamente com base no contexto (prioridade, deadline)
 
-REGRA CRÍTICA DE CONTEÚDO COMPLETO (NUNCA VIOLE):
+TIPOS DE ATIVIDADE DISPONÍVEIS (use SEMPRE a "key" exata no campo activity_type):
+${activityTypesListText}
+Se nenhum tipo se encaixar, escolha o mais próximo. NUNCA use valores como "tarefa", "reuniao" etc. — use SOMENTE as keys listadas acima.
 Ao criar atividades, você DEVE copiar INTEGRALMENTE todo o conteúdo textual que o membro forneceu para os campos VISÍVEIS da ferramenta create_activity.
 - Os campos visíveis são: "current_status_notes" (como está / observação), "what_was_done" (o que foi feito), "next_steps" (próximo passo) e "notes" (observações gerais).
 - NÃO use o campo "description" como campo principal. Use os campos visíveis acima.
@@ -189,8 +202,9 @@ Ao criar atividades, você DEVE copiar INTEGRALMENTE todo o conteúdo textual qu
 - Inclua emojis relevantes nas respostas para melhor legibilidade
 - Quando o membro pedir para criar contato e vincular a lead, execute ambas ferramentas em sequência
 
-REGRA OBRIGATÓRIA DE LINKS:
+REGRA OBRIGATÓRIA DE LINKS E DESIGNAÇÃO:
 Quando uma ferramenta retornar um campo "link" no resultado, você DEVE incluir esse link na sua resposta final. 
+Quando retornar "assigned_to_name", CONFIRME na resposta para QUEM a atividade foi atribuída usando o nome retornado pela ferramenta (não o nome que você interpretou).
 Formato obrigatório: coloque o link em uma linha separada no final da resposta, assim:
 🔗 *Acessar:* <cole aqui o valor do campo link>
 Se a ferramenta retornou link, sua resposta PRECISA conter esse link. Não resuma, não omita, não substitua.
