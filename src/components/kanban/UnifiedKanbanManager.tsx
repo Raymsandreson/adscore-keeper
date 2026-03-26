@@ -602,7 +602,28 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
           availableBoards={boards}
           onChangeLeadStatus={async (leadId, newStatus) => {
             try {
+              // Get current lead data for history
+              const { data: currentLead } = await supabase
+                .from('leads')
+                .select('status, board_id, lead_status')
+                .eq('id', leadId)
+                .single();
+
+              const { data: { user } } = await supabase.auth.getUser();
+
               await supabase.from('leads').update({ lead_status: newStatus } as any).eq('id', leadId);
+
+              // Record in lead_stage_history so productivity metrics track it
+              await supabase.from('lead_stage_history').insert({
+                lead_id: leadId,
+                from_stage: (currentLead as any)?.lead_status || 'active',
+                to_stage: newStatus,
+                from_board_id: currentLead?.board_id || selectedBoardId,
+                to_board_id: currentLead?.board_id || selectedBoardId,
+                changed_by: user?.id || null,
+                notes: newStatus === 'closed' ? 'Lead fechado' : newStatus === 'refused' ? 'Lead recusado' : 'Lead reativado',
+              } as any);
+
               toast.success(newStatus === 'closed' ? 'Lead marcado como Fechado' : newStatus === 'refused' ? 'Lead marcado como Recusado' : 'Lead reativado');
               fetchLeads();
             } catch (e) {
