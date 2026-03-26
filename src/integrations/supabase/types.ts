@@ -4332,7 +4332,9 @@ export type Database = {
       }
       legal_cases: {
         Row: {
+          acolhedor: string | null
           assigned_to: string | null
+          benefit_type: string | null
           case_number: string
           created_at: string
           created_by: string | null
@@ -4349,7 +4351,9 @@ export type Database = {
           workflow_board_id: string | null
         }
         Insert: {
+          acolhedor?: string | null
           assigned_to?: string | null
+          benefit_type?: string | null
           case_number: string
           created_at?: string
           created_by?: string | null
@@ -4366,7 +4370,9 @@ export type Database = {
           workflow_board_id?: string | null
         }
         Update: {
+          acolhedor?: string | null
           assigned_to?: string | null
+          benefit_type?: string | null
           case_number?: string
           created_at?: string
           created_by?: string | null
