@@ -21,7 +21,7 @@ import {
 import {
   Briefcase, Search, Scale, ChevronDown, ChevronRight,
   Gavel, FileText, Users, ArrowLeft, ExternalLink, Plus,
-  Edit3, CheckCircle, Archive, Trash2, XCircle,
+  Edit3, CheckCircle, Archive, Trash2, XCircle, Upload, Loader2,
 } from 'lucide-react';
 import { LegalCase } from '@/hooks/useLegalCases';
 import { CopyableText } from '@/components/ui/copyable-text';
