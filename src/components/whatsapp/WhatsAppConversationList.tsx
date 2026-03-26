@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDownUp, ArrowDown, Lock, ArrowUpFromLine, ArrowDownToLine, Users, UserCheck } from 'lucide-react';
+import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDownUp, ArrowDown, Lock, ArrowUpFromLine, ArrowDownToLine, Users, UserCheck, FileText } from 'lucide-react';
 import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -38,6 +38,7 @@ interface Props {
 type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups';
 type SortMode = 'alpha' | 'last_received' | 'last_sent';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
+type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
 
 export function WhatsAppConversationList({ conversations, loading, selectedPhone, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones }: Props) {
   const [search, setSearch] = useState('');
@@ -49,10 +50,13 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
   const [checklistPopoverOpen, setChecklistPopoverOpen] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('last_received');
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all');
+  const [docFilter, setDocFilter] = useState<DocFilter>('all');
 
   const [phonesWithCalls, setPhonesWithCalls] = useState<Set<string>>(new Set());
   const [leadInfoMap, setLeadInfoMap] = useState<Map<string, LeadInfo>>(new Map());
   const [checklistTemplates, setChecklistTemplates] = useState<{ id: string; name: string; items: { id: string; label: string }[] }[]>([]);
+  // lead_id -> 'signed' | 'unsigned' (has doc but not signed) | undefined (no doc)
+  const [leadDocStatus, setLeadDocStatus] = useState<Map<string, 'signed' | 'unsigned'>>(new Map());
 
   // Track lead IDs to avoid unnecessary re-fetches
   const prevLeadIdsRef = useRef<string>('');
@@ -80,7 +84,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
         return;
       }
 
-      const [leadsRes, stageRes, checklistInstancesRes, templatesRes] = await Promise.all([
+      const [leadsRes, stageRes, checklistInstancesRes, templatesRes, docsRes] = await Promise.all([
         supabase.from('leads').select('id, board_id').in('id', leadIds),
         supabase.from('lead_stage_history')
           .select('lead_id, to_stage, changed_at')
@@ -90,7 +94,23 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
           .select('lead_id, checklist_template_id, is_completed, items')
           .in('lead_id', leadIds),
         supabase.from('checklist_templates').select('id, name, items').order('name'),
+        supabase.from('zapsign_documents')
+          .select('lead_id, status, signed_at')
+          .in('lead_id', leadIds),
       ]);
+
+      // Build doc status map
+      const docMap = new Map<string, 'signed' | 'unsigned'>();
+      for (const doc of (docsRes.data || [])) {
+        if (!doc.lead_id) continue;
+        const current = docMap.get(doc.lead_id);
+        if (doc.signed_at || doc.status === 'signed') {
+          docMap.set(doc.lead_id, 'signed');
+        } else if (!current) {
+          docMap.set(doc.lead_id, 'unsigned');
+        }
+      }
+      setLeadDocStatus(docMap);
 
       const map = new Map<string, LeadInfo>();
       for (const lead of (leadsRes.data || [])) {
@@ -201,8 +221,17 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
       if (!allChecked) return false;
     }
 
+    // Document filter
+    if (docFilter !== 'all') {
+      const docStatus = c.lead_id ? leadDocStatus.get(c.lead_id) : undefined;
+      if (docFilter === 'has_doc' && !docStatus) return false;
+      if (docFilter === 'signed' && docStatus !== 'signed') return false;
+      if (docFilter === 'unsigned' && docStatus !== 'unsigned') return false;
+      if (docFilter === 'no_doc' && docStatus) return false;
+    }
+
     return true;
-  }), [conversations, search, quickFilter, directionFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, phonesWithCalls]);
+  }), [conversations, search, quickFilter, directionFilter, docFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, leadDocStatus, phonesWithCalls]);
 
   // Sort conversations based on mode
   const sortedFiltered = useMemo(() => {
@@ -474,6 +503,23 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
             </PopoverContent>
           </Popover>
         )}
+
+        {/* Documentos filter */}
+        <Select value={docFilter} onValueChange={v => setDocFilter(v as DocFilter)}>
+          <SelectTrigger className="h-7 text-xs">
+            <div className="flex items-center gap-1.5">
+              <FileText className="h-3 w-3 text-muted-foreground" />
+              <SelectValue placeholder="Documentos" />
+            </div>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos (documentos)</SelectItem>
+            <SelectItem value="has_doc">Com documento</SelectItem>
+            <SelectItem value="signed">Assinado</SelectItem>
+            <SelectItem value="unsigned">Não assinado</SelectItem>
+            <SelectItem value="no_doc">Sem documento</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Count */}
