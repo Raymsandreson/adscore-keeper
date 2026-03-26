@@ -107,6 +107,8 @@ export function BoardGroupInstancesConfig() {
     forward_document_types: [],
     send_audio_message: false,
     audio_voice_id: '',
+    auto_close_lead_on_sign: false,
+    auto_create_group_on_sign: false,
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
