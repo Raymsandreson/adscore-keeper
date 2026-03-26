@@ -342,6 +342,41 @@ export function BoardGroupInstancesConfig() {
     }
   };
 
+  const handleRefinePreview = async () => {
+    if (!refineInput.trim() || !previewMessage) return;
+    setRefineLoading(true);
+    try {
+      const boardName = boards.find(b => b.id === selectedBoard)?.name || 'Funil';
+      const participants = linkedInstances.map(id => {
+        const inst = instances.find(i => i.id === id);
+        const config = instanceConfigs[id] || { role_title: '', role_description: '' };
+        return `- ${inst?.instance_name || 'Instância'}: ${config.role_title || 'Sem cargo'} (${config.role_description || 'Sem descrição'})`;
+      }).join('\n');
+
+      const { data, error } = await supabase.functions.invoke('generate-group-message-preview', {
+        body: {
+          board_name: boardName,
+          board_id: selectedBoard,
+          instructions: settings.initial_message_template || '',
+          participants,
+          lead_fields: settings.lead_fields,
+          refinement: refineInput.trim(),
+          current_message: previewMessage,
+        },
+      });
+
+      if (error) throw error;
+      setPreviewMessage(data?.message || previewMessage);
+      setRefineInput('');
+      toast.success('Modelo refinado com IA!');
+    } catch (e: any) {
+      toast.error('Erro ao refinar modelo');
+      console.error(e);
+    } finally {
+      setRefineLoading(false);
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
   return (
