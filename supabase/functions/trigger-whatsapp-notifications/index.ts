@@ -699,10 +699,27 @@ async function buildPersonalizedReport(
     const todayStartCL = new Date(Date.UTC(brNowDate2.getFullYear(), brNowDate2.getMonth(), brNowDate2.getDate(), 3, 0, 0, 0))
     const sinceCL = todayStartCL.toISOString()
 
-    const { data: checklists } = await supabase
+    // Get user's lead IDs for filtering checklist
+    let clLeadIds: string[] | null = null
+    if (userId) {
+      const { data: userLeads } = await supabase
+        .from('leads')
+        .select('id')
+        .eq('assigned_to', userId)
+        .limit(500)
+      clLeadIds = (userLeads || []).map((l: any) => l.id)
+    }
+
+    let clQuery = supabase
       .from('lead_checklist_instances')
       .select('items, updated_at')
       .gte('updated_at', sinceCL)
+    if (clLeadIds && clLeadIds.length > 0) {
+      clQuery = clQuery.in('lead_id', clLeadIds)
+    } else if (userId && (!clLeadIds || clLeadIds.length === 0)) {
+      clQuery = clQuery.eq('lead_id', '00000000-0000-0000-0000-000000000000')
+    }
+    const { data: checklists } = await clQuery
 
     let totalSteps = 0
     let completedSteps = 0
