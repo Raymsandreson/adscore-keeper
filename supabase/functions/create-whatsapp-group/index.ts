@@ -165,6 +165,8 @@ Deno.serve(async (req) => {
       groupName = parts.join(' ')
     }
 
+    groupName = normalizeGroupName(groupName)
+
     // Build participant list
     const participants: string[] = []
     const normalizedContact = (contact_phone || phone || '').replace(/\D/g, '')
