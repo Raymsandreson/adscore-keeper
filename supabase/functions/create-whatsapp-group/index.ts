@@ -580,22 +580,29 @@ Gere uma mensagem profissional e organizada com emojis, destacando os dados prin
 
     if (messageText) {
       // Send text message
-      await fetch(`${baseUrl}/message/send-text`, {
+      const sendTextRes = await fetch(`${baseUrl}/send/text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-        body: JSON.stringify({ phone: groupId, message: messageText }),
+        body: JSON.stringify({ number: groupId, text: messageText }),
       })
-      console.log('Initial message sent to group')
+      if (!sendTextRes.ok) {
+        console.error('Failed to send initial message:', sendTextRes.status, await sendTextRes.text())
+      } else {
+        console.log('Initial message sent to group')
+      }
+
+      await sleep(1000)
 
       // Send activity links separately (so they're clickable but not in audio)
       if (activitiesLinks.length > 0) {
         const linksMessage = '📎 *Links das atividades:*\n\n' + activitiesLinks.join('\n')
-        await fetch(`${baseUrl}/message/send-text`, {
+        await fetch(`${baseUrl}/send/text`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-          body: JSON.stringify({ phone: groupId, message: linksMessage }),
+          body: JSON.stringify({ number: groupId, text: linksMessage }),
         })
         console.log('Activity links sent to group')
+        await sleep(1000)
       }
 
       // Generate and send audio if configured
@@ -732,12 +739,13 @@ async function forwardDocuments(
       const docLabel = doc.template_name || docLabels['zapsign_signed']
       const fileName = `${docLabel} - ${leadName}.pdf`
       try {
-        await fetch(`${baseUrl}/message/send-document`, {
+        await fetch(`${baseUrl}/send/media`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-          body: JSON.stringify({ phone: groupId, document: doc.signed_file_url, fileName, caption: `📄 ${docLabel} - ${leadName}` }),
+          body: JSON.stringify({ number: groupId, media: doc.signed_file_url, type: 'document', fileName, caption: `📄 ${docLabel} - ${leadName}` }),
         })
         console.log(`Sent signed doc: ${fileName}`)
+        await sleep(800)
       } catch (e) {
         console.error(`Error sending signed doc:`, e)
       }
@@ -755,12 +763,13 @@ async function forwardDocuments(
             const label = docLabels[docType] || docType
             const fileName = `${label} - ${leadName}.pdf`
             try {
-              await fetch(`${baseUrl}/message/send-document`, {
+              await fetch(`${baseUrl}/send/media`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-                body: JSON.stringify({ phone: groupId, document: docUrl, fileName, caption: `📄 ${label} - ${leadName}` }),
+                body: JSON.stringify({ number: groupId, media: docUrl, type: 'document', fileName, caption: `📄 ${label} - ${leadName}` }),
               })
               console.log(`Sent doc: ${fileName}`)
+              await sleep(800)
             } catch (e) {
               console.error(`Error sending doc ${docType}:`, e)
             }
@@ -783,12 +792,13 @@ async function forwardDocuments(
             const label = doc.document_name || docLabels[docType] || 'Documento'
             const fileName = `${label} - ${leadName}.pdf`
             try {
-              await fetch(`${baseUrl}/message/send-document`, {
+              await fetch(`${baseUrl}/send/media`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-                body: JSON.stringify({ phone: groupId, document: doc.file_url, fileName, caption: `📄 ${label} - ${leadName}` }),
+                body: JSON.stringify({ number: groupId, media: doc.file_url, type: 'document', fileName, caption: `📄 ${label} - ${leadName}` }),
               })
               console.log(`Sent lead doc: ${fileName}`)
+              await sleep(800)
             } catch (e) {
               console.error(`Error sending lead doc:`, e)
             }
