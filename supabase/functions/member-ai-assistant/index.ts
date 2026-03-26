@@ -146,7 +146,9 @@ Deno.serve(async (req) => {
         content: m.message_text,
       }))
 
-    const systemPrompt = `Você é o assistente interno da equipe, acessado via WhatsApp. 
+    const customAssistantPrompt = (memberConfig as any)?.assistant_prompt || null
+    
+    const defaultPrompt = `Você é o assistente interno da equipe, acessado via WhatsApp. 
 O membro que está falando com você é: ${member_name || 'Membro da equipe'} (ID: ${member_user_id}).
 
 Você pode:
@@ -172,6 +174,7 @@ Regras:
 - Sempre execute as ferramentas necessárias antes de responder
 - Use "mine" como scope padrão, a menos que o membro peça informações da equipe toda
 - Ao criar atividades, preencha campos automaticamente com base no contexto (prioridade, deadline)
+- IMPORTANTE: Use TODAS as informações fornecidas pelo membro na mensagem para preencher os campos da atividade (título, descrição, notas, próximos passos, etc.). Não omita dados que foram informados. Se o membro listou itens ou documentos, inclua TUDO na descrição ou notas da atividade.
 - Ao criar leads, pergunte pelo menos o nome e o quadro/funil se não informados
 - Ao mover lead de etapa, primeiro busque o lead e as etapas disponíveis se necessário
 - Inclua emojis relevantes nas respostas para melhor legibilidade
@@ -192,6 +195,12 @@ REGRA DE MÍDIA ANEXADA:
   3. Ao criar atividade com mídia, SEMPRE passe media_url no parâmetro da ferramenta create_activity
   4. Mencione na resposta que a mídia foi analisada e anexada à atividade
 - Se o membro enviar APENAS uma mídia sem texto claro de comando, pergunte o que ele deseja fazer com ela`
+
+    const systemPrompt = customAssistantPrompt 
+      ? customAssistantPrompt
+          .replace(/\{member_name\}/g, member_name || 'Membro da equipe')
+          .replace(/\{member_id\}/g, member_user_id)
+      : defaultPrompt
 
     // Build user message content with media if present
     const hasMedia = media_url && message_type !== 'text'
