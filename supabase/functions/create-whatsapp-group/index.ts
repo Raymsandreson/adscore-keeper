@@ -5,6 +5,60 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const MAX_GROUP_NAME_LENGTH = 95
+const RATE_LIMIT_RETRIES = 3
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function normalizeGroupName(rawName: string): string {
+  const cleaned = (rawName || '')
+    .replace(/[\n\r\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!cleaned) return 'Grupo de Atendimento'
+
+  if (cleaned.length <= MAX_GROUP_NAME_LENGTH) return cleaned
+
+  const shortened = cleaned.slice(0, MAX_GROUP_NAME_LENGTH).trim()
+  console.warn(`Group name too long (${cleaned.length}), truncating to ${MAX_GROUP_NAME_LENGTH}:`, shortened)
+  return shortened
+}
+
+function isRateLimited(status: number, bodyText: string): boolean {
+  return status === 429 || /rate[-_ ]?overlimit|too\s+many\s+requests|429/i.test(bodyText || '')
+}
+
+async function postUazApiWithRetry(
+  baseUrl: string,
+  token: string,
+  endpoint: string,
+  payload: Record<string, unknown>,
+  retries = RATE_LIMIT_RETRIES,
+): Promise<Response> {
+  let attempt = 0
+
+  while (true) {
+    const res = await fetch(`${baseUrl}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', token },
+      body: JSON.stringify(payload),
+    })
+
+    if (res.ok) return res
+
+    const bodyText = await res.clone().text()
+    const shouldRetry = isRateLimited(res.status, bodyText) && attempt < retries
+
+    if (!shouldRetry) return res
+
+    const delayMs = 1200 * Math.pow(2, attempt)
+    console.warn(`UazAPI rate limit on ${endpoint} (attempt ${attempt + 1}/${retries + 1}). Retrying in ${delayMs}ms...`)
+    await sleep(delayMs)
+    attempt++
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
