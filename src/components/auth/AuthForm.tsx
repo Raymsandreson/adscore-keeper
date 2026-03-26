@@ -8,6 +8,31 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Loader2, LogIn, UserPlus, Eye, EyeOff } from 'lucide-react';
 
+const PasswordInput = ({ id, value, onChange, show, onToggle, placeholder = '••••••••' }: {
+  id: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  show: boolean; onToggle: () => void; placeholder?: string;
+}) => (
+  <div className="relative">
+    <Input
+      id={id}
+      type={show ? 'text' : 'password'}
+      placeholder={placeholder}
+      value={value}
+      onChange={onChange}
+      required
+      className="pr-10"
+    />
+    <button
+      type="button"
+      onClick={onToggle}
+      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1"
+      tabIndex={-1}
+    >
+      {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+    </button>
+  </div>
+);
+
 export const AuthForm = () => {
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -106,31 +131,6 @@ export const AuthForm = () => {
       setForgotLoading(false);
     }
   };
-
-  const PasswordInput = ({ id, value, onChange, show, onToggle, placeholder = '••••••••' }: {
-    id: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    show: boolean; onToggle: () => void; placeholder?: string;
-  }) => (
-    <div className="relative">
-      <Input
-        id={id}
-        type={show ? 'text' : 'password'}
-        placeholder={placeholder}
-        value={value}
-        onChange={onChange}
-        required
-        className="pr-10"
-      />
-      <button
-        type="button"
-        onClick={onToggle}
-        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1"
-        tabIndex={-1}
-      >
-        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-      </button>
-    </div>
-  );
 
   if (showForgotPassword) {
     return (
