@@ -38,6 +38,8 @@ interface Props {
 type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups';
 type SortMode = 'alpha' | 'last_received' | 'last_sent';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
+type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
+type DirectionFilter = 'all' | 'inbound' | 'outbound';
 
 export function WhatsAppConversationList({ conversations, loading, selectedPhone, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones }: Props) {
   const [search, setSearch] = useState('');
