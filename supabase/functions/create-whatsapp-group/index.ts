@@ -136,17 +136,13 @@ Deno.serve(async (req) => {
       leadData = data
     }
 
+    let nextSeq: number | null = null
+
     if (settings) {
-      // Increment sequence
-      const nextSeq = Math.max(
+      nextSeq = Math.max(
         (settings.current_sequence || 0) + 1,
         settings.sequence_start || 1
       )
-
-      await supabase
-        .from('board_group_settings')
-        .update({ current_sequence: nextSeq, updated_at: new Date().toISOString() })
-        .eq('board_id', board_id)
 
       // Build name parts
       const parts: string[] = []
@@ -163,6 +159,19 @@ Deno.serve(async (req) => {
       }
 
       groupName = parts.join(' ')
+    }
+
+    // Idempotência: se o lead já possui grupo, não cria novamente e não consome sequência
+    if (leadData?.whatsapp_group_id) {
+      return new Response(JSON.stringify({
+        success: true,
+        existing: true,
+        group_id: leadData.whatsapp_group_id,
+        group_name: groupName,
+        participants_count: 0,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
     groupName = normalizeGroupName(groupName)
@@ -243,6 +252,8 @@ Deno.serve(async (req) => {
     console.log(`Valid participants for group: ${validParticipants.length}/${participants.length}`, JSON.stringify(validParticipants))
 
     // Create group - try with valid participants first, fallback to creating empty group
+    let createdWithoutParticipants = false
+
     let createRes = await postUazApiWithRetry(
       baseUrl,
       creatorInstance.instance_token,
@@ -277,6 +288,8 @@ Deno.serve(async (req) => {
 
         throw new Error(`Erro ao criar grupo: ${createRes.status} - ${errText2}`)
       }
+
+      createdWithoutParticipants = true
     }
 
     const groupData = await createRes.json()
@@ -286,6 +299,27 @@ Deno.serve(async (req) => {
     let groupId = groupData?.group?.JID || groupData?.id || groupData?.jid || groupData?.data?.id || groupData?.gid || null
     console.log('Resolved groupId:', groupId)
 
+    // Só confirma incremento de sequência após criação bem-sucedida
+    if (groupId && settings && board_id && nextSeq !== null) {
+      const { error: sequenceError } = await supabase
+        .from('board_group_settings')
+        .update({ current_sequence: nextSeq, updated_at: new Date().toISOString() })
+        .eq('board_id', board_id)
+        .or(`current_sequence.is.null,current_sequence.lte.${nextSeq}`)
+
+      if (sequenceError) {
+        console.error('Error updating board sequence after group creation:', sequenceError)
+      }
+    }
+
+    if (groupId && leadData?.id) {
+      await supabase
+        .from('leads')
+        .update({ whatsapp_group_id: groupId } as any)
+        .eq('id', leadData.id)
+        .is('whatsapp_group_id', null)
+    }
+
     if (!groupId) {
       console.error('Could not resolve group ID from response:', JSON.stringify(groupData).substring(0, 300))
     }
@@ -294,15 +328,15 @@ Deno.serve(async (req) => {
     await new Promise(resolve => setTimeout(resolve, 3000))
 
     // If group was created empty, add participants one by one
-    if (groupId && validParticipants.length > 0) {
+    if (groupId && createdWithoutParticipants && validParticipants.length > 0) {
       const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
       for (const p of validParticipants) {
         try {
           const addRes = await postUazApiWithRetry(
             baseUrl,
             creatorInstance.instance_token,
-            '/group/addParticipant',
-            { id: groupJid, participants: [p] },
+            '/group/updateParticipants',
+            { groupjid: groupJid, action: 'add', participants: [p] },
           )
 
           if (!addRes.ok) {
@@ -319,28 +353,36 @@ Deno.serve(async (req) => {
     if (groupId) {
       // Collect all phones to promote (all instances except creator who is already admin)
       const phonesToPromote: string[] = []
+      const normalizedLeadContact = (contact_phone || phone || '').replace(/\D/g, '')
 
       for (const inst of boardInstances) {
         if (inst.id === creatorInstance.id) continue
         if (!inst.owner_phone) continue
         const instPhone = inst.owner_phone.replace(/\D/g, '')
-        if (instPhone && !phonesToPromote.includes(instPhone)) {
+        if (instPhone && instPhone !== normalizedLeadContact && !phonesToPromote.includes(instPhone)) {
           phonesToPromote.push(instPhone)
         }
       }
 
       if (phonesToPromote.length > 0) {
+        const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
         try {
           console.log(`Promoting ${phonesToPromote.length} participants as admin:`, phonesToPromote)
-          const promoteRes = await postUazApiWithRetry(
-            baseUrl,
-            creatorInstance.instance_token,
-            '/group/promote',
-            { id: groupId, participants: phonesToPromote },
-          )
 
-          const promoteResult = await promoteRes.text()
-          console.log('Promote result:', promoteResult)
+          for (const participant of phonesToPromote) {
+            const promoteRes = await postUazApiWithRetry(
+              baseUrl,
+              creatorInstance.instance_token,
+              '/group/updateParticipants',
+              { groupjid: groupJid, action: 'promote', participants: [participant] },
+            )
+
+            if (!promoteRes.ok) {
+              console.warn(`Failed to promote ${participant} as admin:`, await promoteRes.text())
+            }
+
+            await sleep(400)
+          }
         } catch (e) {
           console.error('Error promoting instances as admin:', e)
         }
