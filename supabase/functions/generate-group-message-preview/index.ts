@@ -99,7 +99,12 @@ FUNIL: ${board_name || 'Não informado'}
 ${instructions ? `INSTRUÇÕES ADICIONAIS DO USUÁRIO:\n${instructions}` : ''}
 ${instructionFieldAnalysis}
 
-Gere a mensagem COMPLETA formatada para WhatsApp usando *negrito*, emojis e organização clara. Use TODOS os dados fictícios acima para mostrar como ficará na prática. A mensagem deve ser EXTENSA e DETALHADA, incluindo todas as seções solicitadas nas instruções.`;
+REGRAS IMPORTANTES:
+1. Gere a mensagem COMPLETA formatada para WhatsApp usando *negrito*, emojis e organização clara.
+2. Use TODOS os dados fictícios acima para mostrar como ficará na prática.
+3. A mensagem deve ser EXTENSA e DETALHADA, incluindo todas as seções solicitadas nas instruções.
+4. NÃO inclua observações para o administrador DENTRO da mensagem. Se houver campos faltantes, coloque-os APÓS o separador "---ADMIN_NOTES---" no final. A mensagem do grupo deve vir ANTES desse separador.
+5. Se não houver observações, NÃO inclua o separador.`;
 
     const messages: { role: string; content: string }[] = [
       { role: 'system', content: systemPrompt },
