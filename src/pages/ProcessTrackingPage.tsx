@@ -226,7 +226,7 @@ const ProcessTrackingPage = () => {
       {/* Data Table */}
       <Card>
         <CardContent className="p-0">
-          <ScrollArea className="w-full">
+          <div className="overflow-x-auto w-full">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -311,7 +311,7 @@ const ProcessTrackingPage = () => {
                 )}
               </TableBody>
             </Table>
-          </ScrollArea>
+          </div>
         </CardContent>
       </Card>
 
