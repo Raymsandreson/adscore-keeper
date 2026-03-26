@@ -155,22 +155,66 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`Creating group "${groupName}" via instance ${creatorInstance.instance_name} with ${participants.length} participants`)
+    console.log(`Creating group "${groupName}" via instance ${creatorInstance.instance_name} with ${participants.length} participants:`, JSON.stringify(participants))
 
-    // Create group via UazAPI
-    const createRes = await fetch(`${baseUrl}/group/create`, {
+    // First try: validate numbers on WhatsApp before creating group
+    const validParticipants: string[] = []
+    for (const p of participants) {
+      try {
+        const checkRes = await fetch(`${baseUrl}/contact/check`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+          body: JSON.stringify({ number: p }),
+        })
+        if (checkRes.ok) {
+          const checkData = await checkRes.json()
+          const isValid = checkData?.exists || checkData?.numberExists || checkData?.onWhatsApp || checkData?.result === 'exists' || checkData?.jid
+          if (isValid) {
+            validParticipants.push(p)
+          } else {
+            console.warn(`Number ${p} not found on WhatsApp, skipping from group creation`)
+          }
+        } else {
+          // If check fails, include the participant anyway
+          validParticipants.push(p)
+        }
+      } catch (e) {
+        // If check fails, include the participant anyway
+        validParticipants.push(p)
+      }
+    }
+
+    console.log(`Valid participants for group: ${validParticipants.length}/${participants.length}`, JSON.stringify(validParticipants))
+
+    // Create group - try with valid participants first, fallback to creating empty group
+    let createRes = await fetch(`${baseUrl}/group/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
       body: JSON.stringify({
         name: groupName,
-        participants: participants,
+        participants: validParticipants,
       }),
     })
 
+    // If creation fails with participants, try creating with no participants then adding them
     if (!createRes.ok) {
       const errText = await createRes.text()
-      console.error('Group create error:', createRes.status, errText)
-      throw new Error(`Erro ao criar grupo: ${createRes.status} - ${errText}`)
+      console.warn('Group create with participants failed:', createRes.status, errText, '- Trying empty group creation')
+      
+      createRes = await fetch(`${baseUrl}/group/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+        body: JSON.stringify({
+          name: groupName,
+          participants: [],
+        }),
+      })
+
+      if (!createRes.ok) {
+        const errText2 = await createRes.text()
+        console.error('Empty group create also failed:', createRes.status, errText2)
+        throw new Error(`Erro ao criar grupo: ${createRes.status} - ${errText2}`)
+      }
     }
 
     const groupData = await createRes.json()
