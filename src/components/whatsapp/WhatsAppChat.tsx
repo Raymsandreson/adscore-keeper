@@ -264,7 +264,71 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
     }
   };
 
-  // Fetch call records for this phone
+  const handleCreateGroup = async () => {
+    if (!conversation.phone || creatingGroup) return;
+    setCreatingGroup(true);
+    try {
+      const normalizedPhone = conversation.phone.replace(/\D/g, '');
+      let leadName = conversation.contact_name || normalizedPhone;
+      let boardId: string | undefined;
+      let leadId: string | undefined;
+
+      const { data: lead } = await (supabase as any)
+        .from('leads')
+        .select('id, lead_name, board_id')
+        .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${normalizedPhone.slice(-8)}%`)
+        .limit(1)
+        .maybeSingle();
+
+      if (lead) {
+        leadName = lead.lead_name || leadName;
+        boardId = lead.board_id || undefined;
+        leadId = lead.id;
+      }
+
+      let instanceId: string | undefined;
+      if (conversation.instance_name) {
+        const { data: inst } = await (supabase as any)
+          .from('whatsapp_instances')
+          .select('id')
+          .eq('instance_name', conversation.instance_name)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (inst) instanceId = inst.id;
+      }
+
+      const { data, error } = await supabase.functions.invoke('create-whatsapp-group', {
+        body: {
+          phone: normalizedPhone,
+          lead_name: leadName,
+          board_id: boardId,
+          contact_phone: normalizedPhone,
+          creator_instance_id: instanceId,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Erro ao criar grupo');
+
+      if (leadId && data.group_id) {
+        await (supabase as any).from('leads').update({ whatsapp_group_id: data.group_id }).eq('id', leadId);
+      }
+      if (data.group_id) {
+        const { data: contact } = await supabase.from('contacts').select('id').eq('phone', normalizedPhone).maybeSingle();
+        if (contact) {
+          await supabase.from('contacts').update({ whatsapp_group_id: data.group_id } as any).eq('id', contact.id);
+        }
+      }
+
+      toast.success(`Grupo "${leadName}" criado com ${data.participants_count} participantes!`);
+    } catch (e: any) {
+      console.error('Error creating group:', e);
+      toast.error(e.message || 'Erro ao criar grupo');
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
   useEffect(() => {
     const phone = conversation.phone;
     if (!phone) return;
