@@ -59,6 +59,7 @@ const emptyForm: FormData = {
 export function WhatsAppInstanceManager() {
   const [instances, setInstances] = useState<Instance[]>([]);
   const [agents, setAgents] = useState<AgentOption[]>([]);
+  const [voices, setVoices] = useState<VoiceOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
