@@ -334,8 +334,10 @@ async function buildPersonalizedReport(
 
   // ── Daily Summary ──
   if (config.notify_daily_summary) {
-    const todayStart = new Date(now)
-    todayStart.setHours(0, 0, 0, 0)
+    // Use São Paulo timezone for "today" start
+    const brStr = now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })
+    const brD = new Date(brStr)
+    const todayStart = new Date(Date.UTC(brD.getFullYear(), brD.getMonth(), brD.getDate(), 3, 0, 0, 0))
 
     let actCreatedQ = supabase
       .from('lead_activities')
@@ -377,9 +379,15 @@ async function buildPersonalizedReport(
 
   // ── WhatsApp Dashboard Report ──
   if (config.notify_whatsapp_dashboard) {
-    const todayStart = new Date(now)
-    todayStart.setHours(0, 0, 0, 0)
-    const sinceIso = todayStart.toISOString()
+    // Use São Paulo timezone for "today" start
+    const brNowStr = now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })
+    const brNowDate = new Date(brNowStr)
+    const brYear = brNowDate.getFullYear()
+    const brMonth = brNowDate.getMonth()
+    const brDay = brNowDate.getDate()
+    // Midnight in São Paulo = +3h in UTC
+    const todayStartBR = new Date(Date.UTC(brYear, brMonth, brDay, 3, 0, 0, 0))
+    const sinceIso = todayStartBR.toISOString()
 
     // Use the user's own instance(s) for filtering, not the global config list
     const userInstances = recipient.instanceNames.length > 0
