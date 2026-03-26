@@ -161,6 +161,10 @@ export default function CasesPage() {
         <div className="flex items-center gap-3 mb-3">
           <Briefcase className="h-5 w-5 text-primary" />
           <h1 className="text-lg font-semibold">Setor Processual — Casos</h1>
+          <Button variant="outline" size="sm" className="ml-auto" onClick={() => setShowExportDialog(true)}>
+            <Upload className="h-4 w-4 mr-1" />
+            Exportar
+          </Button>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
