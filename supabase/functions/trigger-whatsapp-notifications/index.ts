@@ -49,8 +49,8 @@ Deno.serve(async (req) => {
       const currentTime = `${currentHH}:${currentMM}`
       const currentDay = brNow.getDay()
 
-      const scheduleTimes: string[] = (config as any).dashboard_schedule_times || []
-      const scheduleDays: number[] = (config as any).dashboard_schedule_days || [1, 2, 3, 4, 5]
+      const scheduleTimes: string[] = (config as any).schedule_times || (config as any).dashboard_schedule_times || []
+      const scheduleDays: number[] = (config as any).schedule_days || (config as any).dashboard_schedule_days || [1, 2, 3, 4, 5]
 
       const timeMatch = scheduleTimes.some((t: string) => t === currentTime)
       const dayMatch = scheduleDays.includes(currentDay)
@@ -548,11 +548,12 @@ async function buildPersonalizedReport(
     if (userId) allLeadsQ = allLeadsQ.eq('assigned_to', userId)
     const { data: allLeadsToday, count: totalLeadsToday } = await allLeadsQ
 
-    // Leads by time of day (São Paulo timezone)
+    // Distribution by time of day based on NEW CONVERSATIONS (first inbound message from each phone)
     let manha = 0, tarde = 0, noite = 0, madrugada = 0
-    for (const lead of (allLeadsToday || [])) {
-      const leadBR = new Date(new Date(lead.created_at).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
-      const h = leadBR.getHours()
+    for (const [phone, firstMsg] of phoneFirstInbound) {
+      // Only count truly new conversations (no prior history)
+      const msgBR = new Date(new Date(firstMsg.created_at).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+      const h = msgBR.getHours()
       if (h >= 6 && h < 12) manha++
       else if (h >= 12 && h < 18) tarde++
       else if (h >= 18 && h < 24) noite++
@@ -564,6 +565,8 @@ async function buildPersonalizedReport(
     sections.push(`  • ✅ Fechados: ${closedToday || 0}`)
     sections.push(`  • ❌ Recusados: ${refusedToday || 0}`)
     sections.push(`  • 🔄 Em andamento: ${inProgressToday || 0}`)
+    sections.push(``)
+    sections.push(`📥 *Conversas Novas por Período*`)
     sections.push(`  • 🌅 Manhã (6h-12h): ${manha}`)
     sections.push(`  • ☀️ Tarde (12h-18h): ${tarde}`)
     sections.push(`  • 🌙 Noite (18h-00h): ${noite}`)
@@ -589,6 +592,36 @@ async function buildPersonalizedReport(
         sections.push(`  ${fLabels[k] || k}: ${v}`)
       }
     }
+    sections.push('')
+  }
+
+  // ── Checklist Steps ──
+  if (config.notify_checklist_steps) {
+    // Count checklist items completed today by checking updated_at on lead_checklist_instances
+    // Items are stored as JSONB array; we need to count checked items
+    const brNowStr2 = now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })
+    const brNowDate2 = new Date(brNowStr2)
+    const todayStartCL = new Date(Date.UTC(brNowDate2.getFullYear(), brNowDate2.getMonth(), brNowDate2.getDate(), 3, 0, 0, 0))
+    const sinceCL = todayStartCL.toISOString()
+
+    const { data: checklists } = await supabase
+      .from('lead_checklist_instances')
+      .select('items, updated_at')
+      .gte('updated_at', sinceCL)
+
+    let totalSteps = 0
+    let completedSteps = 0
+    for (const cl of (checklists || [])) {
+      const items = Array.isArray(cl.items) ? cl.items : []
+      for (const item of items) {
+        totalSteps++
+        if ((item as any).checked || (item as any).completed) completedSteps++
+      }
+    }
+
+    sections.push(`✅ *Passos Dados (Checklist): ${completedSteps}*`)
+    sections.push(`  • Total de passos em checklists atualizados: ${totalSteps}`)
+    sections.push(`  • Concluídos hoje: ${completedSteps}`)
     sections.push('')
   }
 
