@@ -594,6 +594,7 @@ ${scrapeData.content || ''}
         }
       }
 
+      console.log('[handleSave] Calling onSave with updates...');
       // Save all fields
       await onSave(lead.id, {
         lead_name: leadName.trim(),
