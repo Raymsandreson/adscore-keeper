@@ -43,6 +43,8 @@ interface NotificationConfig {
   notify_session_reminder: boolean;
   notify_whatsapp_dashboard: boolean;
   notify_checklist_steps: boolean;
+  notify_zapsign_documents: boolean;
+  notify_callface_calls: boolean;
   dashboard_instance_names: string[];
   schedule_times: string[];
   schedule_days: number[];
@@ -63,6 +65,8 @@ const DEFAULT_CONFIG: NotificationConfig = {
   notify_session_reminder: false,
   notify_whatsapp_dashboard: false,
   notify_checklist_steps: false,
+  notify_zapsign_documents: false,
+  notify_callface_calls: false,
   dashboard_instance_names: [],
   schedule_times: ['08:00', '18:00'],
   schedule_days: [1, 2, 3, 4, 5],
@@ -110,6 +114,8 @@ export function WhatsAppNotificationSettings() {
         notify_session_reminder: d.notify_session_reminder ?? false,
         notify_whatsapp_dashboard: d.notify_whatsapp_dashboard ?? false,
         notify_checklist_steps: d.notify_checklist_steps ?? false,
+        notify_zapsign_documents: d.notify_zapsign_documents ?? false,
+        notify_callface_calls: d.notify_callface_calls ?? false,
         dashboard_instance_names: d.dashboard_instance_names || [],
         schedule_times: d.schedule_times || d.dashboard_schedule_times || ['08:00', '18:00'],
         schedule_days: d.schedule_days || d.dashboard_schedule_days || [1, 2, 3, 4, 5],
@@ -142,6 +148,8 @@ export function WhatsAppNotificationSettings() {
         notify_session_reminder: config.notify_session_reminder,
         notify_whatsapp_dashboard: config.notify_whatsapp_dashboard,
         notify_checklist_steps: config.notify_checklist_steps,
+        notify_zapsign_documents: config.notify_zapsign_documents,
+        notify_callface_calls: config.notify_callface_calls,
         dashboard_instance_names: config.dashboard_instance_names,
         schedule_times: config.schedule_times,
         schedule_days: config.schedule_days,
@@ -348,6 +356,8 @@ export function WhatsAppNotificationSettings() {
             { key: 'notify_session_reminder', icon: <Clock className="h-4 w-4 text-orange-500" />, label: 'Lembrete de Sessão', desc: 'Aviso quando trabalhador está offline há muito tempo' },
             { key: 'notify_whatsapp_dashboard', icon: <Bell className="h-4 w-4 text-teal-500" />, label: 'Relatório Dashboard WhatsApp', desc: 'Métricas automáticas das instâncias de WhatsApp' },
             { key: 'notify_checklist_steps', icon: <Target className="h-4 w-4 text-cyan-500" />, label: 'Passos Dados (Checklist)', desc: 'Quantidade de itens de checklist concluídos no dia' },
+            { key: 'notify_zapsign_documents', icon: <CalendarDays className="h-4 w-4 text-indigo-500" />, label: 'Documentos ZapSign', desc: 'Documentos gerados e assinados no dia' },
+            { key: 'notify_callface_calls', icon: <Clock className="h-4 w-4 text-rose-500" />, label: 'Ligações CallFace', desc: 'Quantidade de ligações, atendidas, não atendidas e tempo total' },
           ].map(({ key, icon, label, desc }) => (
             <div key={key} className="flex items-center justify-between gap-4 py-2 border-b last:border-0">
               <div className="flex items-center gap-3">
