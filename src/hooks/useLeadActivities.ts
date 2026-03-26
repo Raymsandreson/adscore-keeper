@@ -145,6 +145,33 @@ export function useLeadActivities() {
       }
 
       toast.success('Atividade criada!');
+
+      // Send WhatsApp notification to assigned user (best-effort, silent)
+      if (data) {
+        supabase.functions.invoke('notify-activity-created', {
+          body: {
+            activity_id: data.id,
+            title: activity.title,
+            description: activity.description,
+            activity_type: activity.activity_type,
+            status: 'pendente',
+            priority: activity.priority,
+            assigned_to: activity.assigned_to || user?.id,
+            assigned_to_name: activity.assigned_to_name,
+            created_by: user?.id,
+            deadline: activity.deadline,
+            lead_name: activity.lead_name,
+            lead_id: activity.lead_id,
+            contact_name: activity.contact_name,
+            contact_id: activity.contact_id,
+            what_was_done: activity.what_was_done,
+            next_steps: activity.next_steps,
+            current_status_notes: activity.current_status_notes,
+            notes: activity.notes,
+          },
+        }).catch(() => {});
+      }
+
       return data;
     } catch (error) {
       console.error('Error creating activity:', error);
