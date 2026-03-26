@@ -221,8 +221,17 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
       if (!allChecked) return false;
     }
 
+    // Document filter
+    if (docFilter !== 'all') {
+      const docStatus = c.lead_id ? leadDocStatus.get(c.lead_id) : undefined;
+      if (docFilter === 'has_doc' && !docStatus) return false;
+      if (docFilter === 'signed' && docStatus !== 'signed') return false;
+      if (docFilter === 'unsigned' && docStatus !== 'unsigned') return false;
+      if (docFilter === 'no_doc' && docStatus) return false;
+    }
+
     return true;
-  }), [conversations, search, quickFilter, directionFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, phonesWithCalls]);
+  }), [conversations, search, quickFilter, directionFilter, docFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, leadDocStatus, phonesWithCalls]);
 
   // Sort conversations based on mode
   const sortedFiltered = useMemo(() => {
