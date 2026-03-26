@@ -309,6 +309,36 @@ export function BoardGroupInstancesConfig() {
 
   const allVoices = [...VOICE_OPTIONS, ...customVoices];
 
+  const generatePreview = async () => {
+    setPreviewLoading(true);
+    setPreviewMessage(null);
+    try {
+      const boardName = boards.find(b => b.id === selectedBoard)?.name || 'Funil';
+      const participants = linkedInstances.map(id => {
+        const inst = instances.find(i => i.id === id);
+        const config = instanceConfigs[id] || { role_title: '', role_description: '' };
+        return `- ${inst?.instance_name || 'Instância'}: ${config.role_title || 'Sem cargo'} (${config.role_description || 'Sem descrição'})`;
+      }).join('\n');
+
+      const { data, error } = await supabase.functions.invoke('generate-group-message-preview', {
+        body: {
+          board_name: boardName,
+          instructions: settings.initial_message_template || '',
+          participants,
+          lead_fields: settings.lead_fields,
+        },
+      });
+
+      if (error) throw error;
+      setPreviewMessage(data?.message || 'Não foi possível gerar a pré-visualização.');
+    } catch (e: any) {
+      toast.error('Erro ao gerar pré-visualização');
+      console.error(e);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
   return (
