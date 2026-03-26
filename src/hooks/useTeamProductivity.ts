@@ -248,11 +248,15 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       });
 
       // Count leads closed per user - use stage history to detect closed stages
-      const CLOSED_STAGE_IDS = ['closed', 'fechado', 'done'];
+      const CLOSED_PATTERNS = ['closed', 'fechado', 'fechados', 'done'];
+      const isClosedStageId = (id: string) => {
+        const lower = id.toLowerCase();
+        return CLOSED_PATTERNS.some(p => lower === p || lower.startsWith(p + '_'));
+      };
       stageHistory.forEach(s => {
         const changedBy = (s as any).changed_by;
         const toStage = (s as any).to_stage;
-        if (changedBy && toStage && CLOSED_STAGE_IDS.includes(toStage)) {
+        if (changedBy && toStage && isClosedStageId(toStage)) {
           getUser(changedBy).leadsClosed++;
         }
       });
