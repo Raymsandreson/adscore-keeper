@@ -58,6 +58,7 @@ const ProcessTrackingPage = () => {
   const [conflictDecisions, setConflictDecisions] = useState<Record<number, 'overwrite' | 'skip'>>({});
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [detailRecord, setDetailRecord] = useState<ProcessTracking | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const topScrollRef = useRef<HTMLDivElement>(null);
   const bottomScrollRef = useRef<HTMLDivElement>(null);
