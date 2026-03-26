@@ -8,6 +8,36 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+function normalizeText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+function inferAssigneeNameFromCommand(text: string | null | undefined): string | null {
+  if (!text) return null
+  const clean = text.replace(/\n/g, ' ')
+  if (/\b(para mim|pra mim)\b/i.test(clean)) return null
+
+  const match =
+    clean.match(/\b(?:atividade|atv|tarefa)\s+(?:para|pra)\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2})/i) ||
+    clean.match(/\b(?:criar|crie|fazer|faça)\s+(?:atividade|atv|tarefa)\s+(?:para|pra)\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2})/i) ||
+    clean.match(/\b(?:para|pra)\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2})\b/i)
+
+  if (!match?.[1]) return null
+
+  const candidate = match[1]
+    .replace(/\b(?:e|mandar|enviar|avisar|com|obs|observacao|observação)\b.*$/i, '')
+    .trim()
+
+  if (!candidate) return null
+  const normalized = normalizeText(candidate)
+  if (normalized === 'mim' || normalized === 'eu') return null
+  return candidate
+}
+
 function formatDatePtBr(dateValue: string | null | undefined) {
   if (!dateValue) return 'Não informado'
   const d = new Date(dateValue)
@@ -98,6 +128,7 @@ Deno.serve(async (req) => {
 
     const inst = instResult.data
     const activityTypes = (activityTypesResult.data || []) as any[]
+    const activityTypeLabelByKey = new Map(activityTypes.map((t: any) => [String(t.key), String(t.label)]))
     const activityTypesListText = activityTypes.map((t: any) => `• "${t.key}" = ${t.label}`).join('\n')
 
     if (!inst) {
@@ -275,6 +306,12 @@ REGRA DE MÍDIA ANEXADA:
       for (const toolCall of assistantMessage.tool_calls) {
         const fnName = toolCall.function?.name
         const fnArgs = JSON.parse(toolCall.function?.arguments || '{}')
+
+        if (fnName === 'create_activity' && !fnArgs.assigned_to_name) {
+          const inferredAssignee = inferAssigneeNameFromCommand(currentText)
+          if (inferredAssignee) fnArgs.assigned_to_name = inferredAssignee
+        }
+
         console.log('Executing tool:', fnName, 'with args:', fnArgs)
 
         if (ADMIN_TOOLS.has(fnName)) usedAdminTool = true
@@ -298,13 +335,18 @@ REGRA DE MÍDIA ANEXADA:
         if (result?.link) collectedLinks.push(result.link)
 
         if (fnName === 'create_activity' && result?.success) {
+          const resolvedTypeLabel = result.activity_type
+            ? (activityTypeLabelByKey.get(String(result.activity_type)) || result.activity_type)
+            : 'Não informado'
+
           createdActivitySummaries.push(
             [
               '📌 *Atividade criada*',
               `• Título: ${result.title || 'Não informado'}`,
+              `• Para: ${result.assigned_to_name || 'Não informado'}`,
               result.description ? `• Descrição: ${result.description}` : null,
               `• Data de criação: ${formatDatePtBr(result.created_at)}`,
-              `• Tipo: ${result.activity_type || 'tarefa'}`,
+              `• Tipo: ${resolvedTypeLabel}`,
               `• Status: ${result.status || 'pendente'}`,
               `• O que foi feito: ${result.what_was_done || 'Não informado'}`,
               `• Próximo passo: ${result.next_steps || 'Não informado'}`,
