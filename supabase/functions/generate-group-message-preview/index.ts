@@ -125,10 +125,15 @@ REGRAS IMPORTANTES:
       max_tokens: 8192,
     });
 
-    const message = result.choices?.[0]?.message?.content || 'Não foi possível gerar a mensagem.';
+    const fullResponse = result.choices?.[0]?.message?.content || 'Não foi possível gerar a mensagem.';
+    
+    // Split message from admin notes
+    const parts = fullResponse.split('---ADMIN_NOTES---');
+    const message = parts[0].trim();
+    const adminNotes = parts[1]?.trim() || null;
 
     return new Response(
-      JSON.stringify({ success: true, message }),
+      JSON.stringify({ success: true, message, admin_notes: adminNotes }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
