@@ -103,6 +103,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
   const [showGroupMembers, setShowGroupMembers] = useState(false);
   const [showZapSign, setShowZapSign] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [linkedGroupId, setLinkedGroupId] = useState<string | null>(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
