@@ -102,7 +102,35 @@ export function WhatsAppInstanceManager() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchInstances(); }, [fetchInstances]);
+  // Fetch available voices
+  useEffect(() => {
+    const fetchVoices = async () => {
+      const presetVoices: VoiceOption[] = [
+        { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura (pt-BR)', type: 'preset' },
+        { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', type: 'preset' },
+        { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', type: 'preset' },
+        { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', type: 'preset' },
+        { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam', type: 'preset' },
+        { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily', type: 'preset' },
+        { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica', type: 'preset' },
+        { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', type: 'preset' },
+        { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger', type: 'preset' },
+        { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda', type: 'preset' },
+      ];
+      // Fetch custom cloned voices
+      const { data: customVoices } = await supabase
+        .from('custom_voices')
+        .select('id, name, elevenlabs_voice_id')
+        .eq('status', 'ready');
+      const custom: VoiceOption[] = (customVoices || []).map((v: any) => ({
+        id: v.elevenlabs_voice_id,
+        name: `🎤 ${v.name}`,
+        type: 'custom' as const,
+      })).filter((v: VoiceOption) => v.id);
+      setVoices([...presetVoices, ...custom]);
+    };
+    fetchVoices();
+  }, []);
 
   const openCreate = () => {
     setEditingId(null);
