@@ -350,6 +350,7 @@ export function WhatsAppNotificationSettings() {
             { key: 'notify_daily_summary', icon: <CalendarDays className="h-4 w-4 text-green-500" />, label: 'Resumo Diário', desc: 'Relatório com produtividade do dia' },
             { key: 'notify_weekly_summary', icon: <CalendarDays className="h-4 w-4 text-purple-500" />, label: 'Resumo Semanal', desc: 'Relatório consolidado da semana' },
             { key: 'notify_session_reminder', icon: <Clock className="h-4 w-4 text-orange-500" />, label: 'Lembrete de Sessão', desc: 'Aviso quando trabalhador está offline há muito tempo' },
+            { key: 'notify_whatsapp_dashboard', icon: <Bell className="h-4 w-4 text-teal-500" />, label: 'Relatório Dashboard WhatsApp', desc: 'Métricas automáticas das instâncias de WhatsApp' },
           ].map(({ key, icon, label, desc }) => (
             <div key={key} className="flex items-center justify-between gap-4 py-2 border-b last:border-0">
               <div className="flex items-center gap-3">
@@ -365,6 +366,92 @@ export function WhatsAppNotificationSettings() {
               />
             </div>
           ))}
+
+          {/* Dashboard WhatsApp config details - shown inline when enabled */}
+          {config.notify_whatsapp_dashboard && (
+            <div className="ml-7 pl-4 border-l-2 border-teal-200 space-y-4 pt-2">
+              <div className="space-y-2">
+                <Label className="text-sm">Instâncias a monitorar</Label>
+                <div className="flex flex-wrap gap-2">
+                  {instances.map((inst) => {
+                    const isSelected = config.dashboard_instance_names.includes(inst.instance_name);
+                    return (
+                      <label key={inst.instance_name} className="flex items-center gap-1.5 cursor-pointer">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={(checked) => {
+                            setConfig(prev => ({
+                              ...prev,
+                              dashboard_instance_names: checked
+                                ? [...prev.dashboard_instance_names, inst.instance_name]
+                                : prev.dashboard_instance_names.filter((n: string) => n !== inst.instance_name),
+                            }));
+                          }}
+                        />
+                        <span className="text-sm">{inst.instance_name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {config.dashboard_instance_names.length === 0 && (
+                  <p className="text-xs text-amber-600">⚠️ Nenhuma instância selecionada — o relatório incluirá todas.</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm">Horários do relatório</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="time"
+                    value={newTime}
+                    onChange={(e) => setNewTime(e.target.value)}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (newTime && !config.dashboard_schedule_times.includes(newTime)) {
+                        setConfig(prev => ({ ...prev, dashboard_schedule_times: [...prev.dashboard_schedule_times, newTime].sort() }));
+                        setNewTime('');
+                      }
+                    }}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {config.dashboard_schedule_times.map((time) => (
+                    <Badge key={time} variant="outline" className="gap-1 text-sm">
+                      🕐 {time}
+                      <X className="h-3 w-3 cursor-pointer" onClick={() => setConfig(prev => ({ ...prev, dashboard_schedule_times: prev.dashboard_schedule_times.filter(t => t !== time) }))} />
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm">Dias da semana</Label>
+                <div className="flex gap-1.5">
+                  {DAYS_OF_WEEK.map(({ value, label }) => (
+                    <Button
+                      key={value}
+                      size="sm"
+                      variant={config.dashboard_schedule_days.includes(value) ? 'default' : 'outline'}
+                      className="h-8 w-10 text-xs"
+                      onClick={() => setConfig(prev => ({
+                        ...prev,
+                        dashboard_schedule_days: prev.dashboard_schedule_days.includes(value)
+                          ? prev.dashboard_schedule_days.filter(d => d !== value)
+                          : [...prev.dashboard_schedule_days, value].sort(),
+                      }))}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -444,115 +531,7 @@ export function WhatsAppNotificationSettings() {
         </CardContent>
       </Card>
 
-      {/* WhatsApp Dashboard Report */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-base flex items-center gap-2">
-                📊 Relatório do Dashboard WhatsApp
-              </CardTitle>
-              <CardDescription>Receba um relatório automático com as métricas do dashboard de WhatsApp</CardDescription>
-            </div>
-            <Switch
-              checked={config.notify_whatsapp_dashboard}
-              onCheckedChange={(v) => setConfig(prev => ({ ...prev, notify_whatsapp_dashboard: v }))}
-            />
-          </div>
-        </CardHeader>
-        {config.notify_whatsapp_dashboard && (
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Instâncias a monitorar</Label>
-              <p className="text-xs text-muted-foreground">Selecione quais instâncias serão incluídas no relatório</p>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {instances.map((inst) => {
-                  const isSelected = config.dashboard_instance_names.includes(inst.instance_name);
-                  return (
-                    <label
-                      key={inst.instance_name}
-                      className="flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={(checked) => {
-                          setConfig(prev => ({
-                            ...prev,
-                            dashboard_instance_names: checked
-                              ? [...prev.dashboard_instance_names, inst.instance_name]
-                              : prev.dashboard_instance_names.filter((n: string) => n !== inst.instance_name),
-                          }));
-                        }}
-                      />
-                      <span className="text-sm">{inst.instance_name}</span>
-                    </label>
-                  );
-                })}
-              </div>
-              {config.dashboard_instance_names.length === 0 && (
-                <p className="text-xs text-amber-600">⚠️ Nenhuma instância selecionada — o relatório incluirá todas.</p>
-              )}
-            </div>
 
-            <div className="space-y-2">
-              <Label>Horários de envio do relatório</Label>
-              <div className="flex gap-2">
-                <Input
-                  type="time"
-                  value={newTime}
-                  onChange={(e) => setNewTime(e.target.value)}
-                  placeholder="Ex: 08:00"
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    if (newTime && !config.dashboard_schedule_times.includes(newTime)) {
-                      setConfig(prev => ({ ...prev, dashboard_schedule_times: [...prev.dashboard_schedule_times, newTime].sort() }));
-                      setNewTime('');
-                    }
-                  }}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {config.dashboard_schedule_times.map((time) => (
-                  <Badge key={time} variant="outline" className="gap-1 text-sm">
-                    🕐 {time}
-                    <X
-                      className="h-3 w-3 cursor-pointer"
-                      onClick={() => setConfig(prev => ({ ...prev, dashboard_schedule_times: prev.dashboard_schedule_times.filter(t => t !== time) }))}
-                    />
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Dias da semana</Label>
-              <div className="flex gap-1.5">
-                {DAYS_OF_WEEK.map(({ value, label }) => (
-                  <Button
-                    key={value}
-                    size="sm"
-                    variant={config.dashboard_schedule_days.includes(value) ? 'default' : 'outline'}
-                    className="h-9 w-11 text-xs"
-                    onClick={() => setConfig(prev => ({
-                      ...prev,
-                      dashboard_schedule_days: prev.dashboard_schedule_days.includes(value)
-                        ? prev.dashboard_schedule_days.filter(d => d !== value)
-                        : [...prev.dashboard_schedule_days, value].sort(),
-                    }))}
-                  >
-                    {label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        )}
-      </Card>
 
       <div className="flex justify-between gap-3">
         <Button
