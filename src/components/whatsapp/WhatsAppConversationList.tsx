@@ -503,6 +503,23 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
             </PopoverContent>
           </Popover>
         )}
+
+        {/* Documentos filter */}
+        <Select value={docFilter} onValueChange={v => setDocFilter(v as DocFilter)}>
+          <SelectTrigger className="h-7 text-xs">
+            <div className="flex items-center gap-1.5">
+              <FileText className="h-3 w-3 text-muted-foreground" />
+              <SelectValue placeholder="Documentos" />
+            </div>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos (documentos)</SelectItem>
+            <SelectItem value="has_doc">Com documento</SelectItem>
+            <SelectItem value="signed">Assinado</SelectItem>
+            <SelectItem value="unsigned">Não assinado</SelectItem>
+            <SelectItem value="no_doc">Sem documento</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Count */}
