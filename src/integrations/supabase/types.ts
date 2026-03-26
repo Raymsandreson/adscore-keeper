@@ -590,31 +590,40 @@ export type Database = {
           board_id: string
           created_at: string
           current_sequence: number | null
+          forward_document_types: string[] | null
           group_name_prefix: string | null
           id: string
+          initial_message_template: string | null
           lead_fields: string[] | null
           sequence_start: number | null
           updated_at: string
+          use_ai_message: boolean | null
         }
         Insert: {
           board_id: string
           created_at?: string
           current_sequence?: number | null
+          forward_document_types?: string[] | null
           group_name_prefix?: string | null
           id?: string
+          initial_message_template?: string | null
           lead_fields?: string[] | null
           sequence_start?: number | null
           updated_at?: string
+          use_ai_message?: boolean | null
         }
         Update: {
           board_id?: string
           created_at?: string
           current_sequence?: number | null
+          forward_document_types?: string[] | null
           group_name_prefix?: string | null
           id?: string
+          initial_message_template?: string | null
           lead_fields?: string[] | null
           sequence_start?: number | null
           updated_at?: string
+          use_ai_message?: boolean | null
         }
         Relationships: [
           {
