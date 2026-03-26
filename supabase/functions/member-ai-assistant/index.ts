@@ -286,13 +286,14 @@ REGRA DE MÍDIA ANEXADA:
             [
               '📌 *Atividade criada*',
               `• Título: ${result.title || 'Não informado'}`,
+              result.description ? `• Descrição: ${result.description}` : null,
               `• Data de criação: ${formatDatePtBr(result.created_at)}`,
               `• Tipo: ${result.activity_type || 'tarefa'}`,
               `• Status: ${result.status || 'pendente'}`,
               `• O que foi feito: ${result.what_was_done || 'Não informado'}`,
               `• Próximo passo: ${result.next_steps || 'Não informado'}`,
               `• Observação: ${result.current_status_notes || result.notes || 'Não informado'}`,
-            ].join('\n')
+            ].filter(Boolean).join('\n')
           )
         }
 
