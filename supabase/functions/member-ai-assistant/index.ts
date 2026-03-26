@@ -81,13 +81,24 @@ Deno.serve(async (req) => {
       console.log(`Member batching delay complete: processing accumulated messages for ${phone}`)
     }
 
-    // Get instance credentials for sending reply
-    const { data: inst } = await supabase
-      .from('whatsapp_instances')
-      .select('id, instance_name, instance_token, base_url')
-      .eq('instance_name', instance_name)
-      .eq('is_active', true)
-      .single()
+    // Get instance credentials and activity types in parallel
+    const [instResult, activityTypesResult] = await Promise.all([
+      supabase
+        .from('whatsapp_instances')
+        .select('id, instance_name, instance_token, base_url')
+        .eq('instance_name', instance_name)
+        .eq('is_active', true)
+        .single(),
+      supabase
+        .from('activity_types')
+        .select('key, label')
+        .eq('is_active', true)
+        .order('display_order'),
+    ])
+
+    const inst = instResult.data
+    const activityTypes = (activityTypesResult.data || []) as any[]
+    const activityTypesListText = activityTypes.map((t: any) => `• "${t.key}" = ${t.label}`).join('\n')
 
     if (!inst) {
       console.error('No active instance found:', instance_name)
