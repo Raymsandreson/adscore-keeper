@@ -500,6 +500,7 @@ async function buildPersonalizedReport(
     }
 
     sections.push(`📱 *Relatório WhatsApp* ${instanceLabel}`)
+    sections.push(`  • Conversas: ${totalConversations}`)
     sections.push(`  • Conversas novas: ${newConversations}`)
     sections.push(`  • Respondidas: ${respondedCount} | Aguardando: ${waitingCount}`)
     sections.push(`  • Tempo médio de resposta: ${responseCount > 0 ? fmtTime(avgResponseMin) : 'N/A'}`)
