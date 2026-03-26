@@ -974,16 +974,48 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           <div className="space-y-4">
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Lead</label>
-              <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
-                <SelectTrigger><SelectValue placeholder="Selecione um lead..." /></SelectTrigger>
-                <SelectContent>
-                  {leads.map(lead => (
-                    <SelectItem key={lead.id} value={lead.id}>
-                      {lead.lead_name || 'Lead sem nome'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar lead por nome..."
+                  value={leadSearchQuery}
+                  onChange={(e) => setLeadSearchQuery(e.target.value)}
+                  className="pl-8 h-9"
+                />
+              </div>
+              {selectedLeadId && (
+                <div className="flex items-center gap-2 p-2 rounded-md bg-primary/10 border border-primary/30">
+                  <span className="text-sm flex-1 truncate">
+                    {leads.find(l => l.id === selectedLeadId)?.lead_name || 'Lead selecionado'}
+                  </span>
+                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setSelectedLeadId('')}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              <ScrollArea className="max-h-[200px]">
+                <div className="space-y-0.5">
+                  {leads
+                    .filter(l => !leadSearchQuery || (l.lead_name || '').toLowerCase().includes(leadSearchQuery.toLowerCase()))
+                    .map(lead => (
+                      <button
+                        key={lead.id}
+                        type="button"
+                        className={cn(
+                          "w-full flex items-center gap-2 p-2 rounded-md text-left text-sm transition-colors",
+                          selectedLeadId === lead.id ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
+                        )}
+                        onClick={() => setSelectedLeadId(lead.id)}
+                      >
+                        <span className="truncate">{lead.lead_name || 'Lead sem nome'}</span>
+                      </button>
+                    ))
+                  }
+                  {leads.filter(l => !leadSearchQuery || (l.lead_name || '').toLowerCase().includes(leadSearchQuery.toLowerCase())).length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-4">Nenhum lead encontrado</p>
+                  )}
+                </div>
+              </ScrollArea>
             </div>
 
             {/* Group participant selector */}
