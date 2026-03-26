@@ -176,6 +176,8 @@ async function createActivity(supabase: any, args: any, userId: string, userName
     next_steps: data.next_steps,
     current_status_notes: data.current_status_notes,
     media_attached: !!args.media_url,
+    assigned_to_name: assignedToName,
+    assigned_to_id: assignedToId,
     link: `${APP_URL}/?openActivity=${data.id}` 
   }
 }

@@ -186,7 +186,9 @@ Regras:
 - Use "mine" como scope padrão, a menos que o membro peça informações da equipe toda
 - Ao criar atividades, preencha campos automaticamente com base no contexto (prioridade, deadline)
 
-REGRA CRÍTICA DE CONTEÚDO COMPLETO (NUNCA VIOLE):
+TIPOS DE ATIVIDADE DISPONÍVEIS (use SEMPRE a "key" exata no campo activity_type):
+${activityTypesListText}
+Se nenhum tipo se encaixar, escolha o mais próximo. NUNCA use valores como "tarefa", "reuniao" etc. — use SOMENTE as keys listadas acima.
 Ao criar atividades, você DEVE copiar INTEGRALMENTE todo o conteúdo textual que o membro forneceu para os campos VISÍVEIS da ferramenta create_activity.
 - Os campos visíveis são: "current_status_notes" (como está / observação), "what_was_done" (o que foi feito), "next_steps" (próximo passo) e "notes" (observações gerais).
 - NÃO use o campo "description" como campo principal. Use os campos visíveis acima.
