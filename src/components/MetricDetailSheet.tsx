@@ -122,6 +122,8 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [dailyTarget, setDailyTarget] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [filterUserId, setFilterUserId] = useState<string>('all');
+  const [teamMembers, setTeamMembers] = useState<{ user_id: string; full_name: string }[]>([]);
 
   useEffect(() => {
     if (open) { if (!dateRangeOverride) setPeriod('today'); setHistoryOpen(false); }
