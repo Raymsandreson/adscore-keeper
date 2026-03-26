@@ -298,18 +298,20 @@ Deno.serve(async (req) => {
       const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
       for (const p of validParticipants) {
         try {
-          const addRes = await fetch(`${baseUrl}/group/addParticipant`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-            body: JSON.stringify({ id: groupJid, participants: [p] }),
-          })
+          const addRes = await postUazApiWithRetry(
+            baseUrl,
+            creatorInstance.instance_token,
+            '/group/addParticipant',
+            { id: groupJid, participants: [p] },
+          )
+
           if (!addRes.ok) {
             console.warn(`Failed to add ${p} to group:`, await addRes.text())
           }
         } catch (e) {
           console.warn(`Error adding ${p} to group:`, e)
         }
-        await new Promise(resolve => setTimeout(resolve, 500))
+        await sleep(600)
       }
     }
 
@@ -330,11 +332,13 @@ Deno.serve(async (req) => {
       if (phonesToPromote.length > 0) {
         try {
           console.log(`Promoting ${phonesToPromote.length} participants as admin:`, phonesToPromote)
-          const promoteRes = await fetch(`${baseUrl}/group/promote`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-            body: JSON.stringify({ id: groupId, participants: phonesToPromote }),
-          })
+          const promoteRes = await postUazApiWithRetry(
+            baseUrl,
+            creatorInstance.instance_token,
+            '/group/promote',
+            { id: groupId, participants: phonesToPromote },
+          )
+
           const promoteResult = await promoteRes.text()
           console.log('Promote result:', promoteResult)
         } catch (e) {
