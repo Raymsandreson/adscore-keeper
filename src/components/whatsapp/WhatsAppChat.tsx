@@ -905,7 +905,12 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
               <DropdownMenuItem onClick={() => setShowZapSign(true)} className="gap-2">
                 <FileSignature className="h-4 w-4" /> Gerar Documento para Assinatura
               </DropdownMenuItem>
-              {!isGroup && (
+              {!isGroup && linkedGroupId && (
+                <DropdownMenuItem onClick={() => onOpenChat?.(linkedGroupId)} className="gap-2">
+                  <Users className="h-4 w-4" /> Acessar Grupo
+                </DropdownMenuItem>
+              )}
+              {!isGroup && !linkedGroupId && (
                 <DropdownMenuItem onClick={handleCreateGroup} disabled={creatingGroup} className="gap-2">
                   {creatingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
                   Criar Grupo WhatsApp
