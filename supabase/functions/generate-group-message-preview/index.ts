@@ -127,10 +127,19 @@ REGRAS IMPORTANTES:
 
     const fullResponse = result.choices?.[0]?.message?.content || 'Não foi possível gerar a mensagem.';
     
-    // Split message from admin notes
+    // Split message from admin notes using separator
     const parts = fullResponse.split('---ADMIN_NOTES---');
-    const message = parts[0].trim();
-    const adminNotes = parts[1]?.trim() || null;
+    let message = parts[0].trim();
+    let adminNotes = parts[1]?.trim() || null;
+
+    // Fallback: strip admin observation sections that AI may have embedded in the message
+    const obsRegex = /\n*⚠️\s*OBSERVA[ÇC][ÃA]O[^\n]*(?:\n(?![\n]*[🔹🔸📌✅❌🎯👥📋💰📞🏠📎📄🔗💡🗓️📝📍📊📢⚖️🏛️📱💬🤝👨‍⚖️👩‍⚖️🧑‍⚖️]).*)*/gi;
+    const obsMatch = message.match(obsRegex);
+    if (obsMatch) {
+      const extractedNotes = obsMatch.map(m => m.trim()).join('\n\n');
+      message = message.replace(obsRegex, '').trim();
+      if (!adminNotes) adminNotes = extractedNotes.replace(/^⚠️\s*OBSERVA[ÇC][ÃA]O[^:]*:\s*/i, '').trim();
+    }
 
     return new Response(
       JSON.stringify({ success: true, message, admin_notes: adminNotes }),
