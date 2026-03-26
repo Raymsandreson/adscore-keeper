@@ -72,6 +72,7 @@ interface DynamicKanbanBoardProps {
   onEditLead?: (lead: Lead) => void;
   onManageContacts?: (lead: Lead) => void;
   availableBoards?: KanbanBoard[];
+  onChangeLeadStatus?: (leadId: string, newStatus: 'active' | 'closed' | 'refused') => void;
 }
 
 export function DynamicKanbanBoard({
@@ -85,6 +86,7 @@ export function DynamicKanbanBoard({
   onEditLead,
   onManageContacts,
   availableBoards = [],
+  onChangeLeadStatus,
 }: DynamicKanbanBoardProps) {
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
