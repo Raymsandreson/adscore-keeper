@@ -41,6 +41,10 @@ interface NotificationConfig {
   notify_daily_summary: boolean;
   notify_weekly_summary: boolean;
   notify_session_reminder: boolean;
+  notify_whatsapp_dashboard: boolean;
+  dashboard_instance_names: string[];
+  dashboard_schedule_times: string[];
+  dashboard_schedule_days: number[];
   schedule_times: string[];
   schedule_days: number[];
   overdue_threshold_hours: number;
