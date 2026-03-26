@@ -214,58 +214,65 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
           break;
         }
         case 'leadsClosed': {
-          // Query stage history for closed events within the date range
-          const CLOSED_PATTERNS = ['closed', 'fechado', 'fechados', 'done'];
-          const effectiveUserId = filterUserId !== 'all' ? filterUserId : userId;
-          let query = supabase.from('lead_stage_history')
-            .select('id, lead_id, to_stage, changed_at, changed_by')
-            .gte('changed_at', startDate).lte('changed_at', endDate)
-            .order('changed_at', { ascending: false });
+          // Query leads that are currently closed, filtered by updated_at (when they were closed)
+          const { data: closedLeads } = await supabase.from('leads')
+            .select('id, lead_name, board_id, updated_at, lead_status')
+            .eq('lead_status', 'closed')
+            .gte('updated_at', startDate).lte('updated_at', endDate)
+            .order('updated_at', { ascending: false });
           
-          if (filterUserId !== 'all') {
-            query = query.eq('changed_by', effectiveUserId);
-          } else if (!targetUserId) {
-            // No filter selected and no target user override - show all
-          } else {
-            query = query.eq('changed_by', effectiveUserId);
-          }
+          let filteredLeads = closedLeads || [];
           
-          const { data: closedHistory } = await query;
-          
-          const closedEntries = (closedHistory || []).filter(h => {
-            const lower = (h.to_stage || '').toLowerCase();
-            return CLOSED_PATTERNS.some(p => lower === p || lower.startsWith(p + '_'));
-          });
-          
-          // Get lead details
-          const closedLeadIds = [...new Set(closedEntries.map(h => h.lead_id))];
-          let closedLeadDetails: Record<string, { name: string; board_id: string | null }> = {};
-          if (closedLeadIds.length > 0) {
-            const { data: leadsData } = await supabase.from('leads')
-              .select('id, lead_name, board_id').in('id', closedLeadIds);
-            (leadsData || []).forEach(l => {
-              closedLeadDetails[l.id] = { name: l.lead_name || 'Sem nome', board_id: l.board_id };
-            });
+          // If filtering by user, check who closed the lead via stage history
+          if (filterUserId !== 'all' || targetUserId) {
+            const effectiveUserId = filterUserId !== 'all' ? filterUserId : userId;
+            const leadIds = filteredLeads.map(l => l.id);
+            if (leadIds.length > 0) {
+              const { data: historyData } = await supabase.from('lead_stage_history')
+                .select('lead_id, changed_by')
+                .in('lead_id', leadIds)
+                .eq('to_stage', 'closed');
+              const closedByUser = new Set(
+                (historyData || []).filter(h => h.changed_by === effectiveUserId).map(h => h.lead_id)
+              );
+              filteredLeads = filteredLeads.filter(l => closedByUser.has(l.id));
+            }
           }
 
-          // Get user names for subtitle
-          const changedByIds = [...new Set(closedEntries.map(h => h.changed_by).filter(Boolean))];
+          // Get user names for who closed each lead (for "all" view)
           let userNamesMap: Record<string, string> = {};
-          if (changedByIds.length > 0) {
-            const { data: profiles } = await supabase.from('profiles')
-              .select('user_id, full_name').in('user_id', changedByIds);
-            (profiles || []).forEach(p => { userNamesMap[p.user_id] = p.full_name || 'Usuário'; });
+          if (filterUserId === 'all' && filteredLeads.length > 0) {
+            const leadIds = filteredLeads.map(l => l.id);
+            const { data: historyData } = await supabase.from('lead_stage_history')
+              .select('lead_id, changed_by')
+              .in('lead_id', leadIds)
+              .eq('to_stage', 'closed');
+            
+            const leadCloserMap: Record<string, string> = {};
+            (historyData || []).forEach(h => {
+              if (h.changed_by) leadCloserMap[h.lead_id] = h.changed_by;
+            });
+            
+            const closerIds = [...new Set(Object.values(leadCloserMap))];
+            if (closerIds.length > 0) {
+              const { data: profiles } = await supabase.from('profiles')
+                .select('user_id, full_name').in('user_id', closerIds);
+              (profiles || []).forEach(p => { userNamesMap[p.user_id] = p.full_name || 'Usuário'; });
+            }
+            
+            // Attach closer name to each lead
+            filteredLeads = filteredLeads.map(l => ({ ...l, _closerName: userNamesMap[leadCloserMap[l.id]] })) as any;
           }
           
-          result = closedEntries.map(h => ({
-            id: h.id, 
-            title: closedLeadDetails[h.lead_id]?.name || 'Lead removido',
-            subtitle: filterUserId === 'all' && h.changed_by ? `👤 ${userNamesMap[h.changed_by] || 'Usuário'}` : undefined,
+          result = filteredLeads.map((l: any) => ({
+            id: l.id, 
+            title: l.lead_name || 'Sem nome',
+            subtitle: filterUserId === 'all' && l._closerName ? `👤 ${l._closerName}` : undefined,
             badge: '✓ Fechado', badgeVariant: 'default' as const,
-            navigateTo: closedLeadDetails[h.lead_id]?.board_id 
-              ? `/leads?board=${closedLeadDetails[h.lead_id].board_id}&openLead=${h.lead_id}` 
-              : `/leads?openLead=${h.lead_id}`,
-            date: h.changed_at ? format(new Date(h.changed_at), 'yyyy-MM-dd') : undefined,
+            navigateTo: l.board_id 
+              ? `/leads?board=${l.board_id}&openLead=${l.id}` 
+              : `/leads?openLead=${l.id}`,
+            date: l.updated_at ? format(new Date(l.updated_at), 'yyyy-MM-dd') : undefined,
           }));
           break;
         }
