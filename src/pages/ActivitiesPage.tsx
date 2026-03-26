@@ -494,13 +494,34 @@ const ActivitiesPage = () => {
   useEffect(() => {
     const openActivityId = searchParams.get('openActivity');
     if (openActivityId && activities.length > 0) {
+      const clearOpenActivityParam = () => {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete('openActivity');
+        setSearchParams(newParams, { replace: true });
+      };
+
       const activity = activities.find(a => a.id === openActivityId);
       if (activity) {
         handleOpenEdit(activity);
+        clearOpenActivityParam();
+        return;
       }
-      const newParams = new URLSearchParams(searchParams);
-      newParams.delete('openActivity');
-      setSearchParams(newParams, { replace: true });
+
+      supabase
+        .from('lead_activities')
+        .select('*')
+        .eq('id', openActivityId)
+        .maybeSingle()
+        .then(({ data, error }) => {
+          if (error || !data) {
+            toast.error('Não foi possível abrir a atividade do link.');
+            clearOpenActivityParam();
+            return;
+          }
+
+          handleOpenEdit(data as LeadActivity);
+          clearOpenActivityParam();
+        });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activities.length, searchParams]);
