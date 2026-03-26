@@ -541,6 +541,25 @@ export function BoardGroupInstancesConfig() {
                       className="w-full p-3 pt-1 text-xs bg-transparent border-0 outline-none resize-y min-h-[120px] max-h-[400px] whitespace-pre-wrap font-sans"
                       rows={12}
                     />
+                    <div className="flex gap-2 px-3 pb-3">
+                      <Input
+                        placeholder="Refine com IA: ex. mais formal, adicione seção de documentos pendentes..."
+                        value={refineInput}
+                        onChange={e => setRefineInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && !refineLoading && handleRefinePreview()}
+                        className="text-xs flex-1"
+                        disabled={refineLoading}
+                      />
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="shrink-0 h-9 w-9"
+                        onClick={handleRefinePreview}
+                        disabled={!refineInput.trim() || refineLoading}
+                      >
+                        {refineLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
                   </div>
                 )}
               </>
