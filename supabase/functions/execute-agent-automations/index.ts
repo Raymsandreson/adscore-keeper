@@ -238,12 +238,22 @@ Deno.serve(async (req) => {
             // Get lead name
             const { data: leadForGroup } = await supabase
               .from('leads')
-              .select('lead_name, board_id')
+              .select('lead_name, board_id, whatsapp_group_id')
               .eq('id', createdLeadId)
               .single();
 
             const groupBoardId = boardId || leadForGroup?.board_id;
             const groupName = leadForGroup?.lead_name || contact_name || normalizedPhone;
+
+            if (leadForGroup?.whatsapp_group_id) {
+              results.push({
+                type: 'create_group',
+                ok: true,
+                skipped: 'already_has_group',
+                group_id: leadForGroup.whatsapp_group_id,
+              });
+              break;
+            }
 
             // Get creator instance
             let creatorInstanceId: string | null = null;
@@ -270,6 +280,7 @@ Deno.serve(async (req) => {
                 board_id: groupBoardId,
                 contact_phone: normalizedPhone,
                 creator_instance_id: creatorInstanceId,
+                lead_id: createdLeadId,
               }),
             });
 
