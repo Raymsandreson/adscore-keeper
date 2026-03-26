@@ -213,14 +213,19 @@ export function DynamicKanbanBoard({
     fetchLeadContacts();
   }, [leads]);
 
-  // Group leads by stage
+  // Separate leads by business status
+  const activeLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'active' || !(l as any).lead_status), [leads]);
+  const closedLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'closed'), [leads]);
+  const refusedLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'refused'), [leads]);
+
+  // Group active leads by stage
   const leadsByStage = useMemo(() => {
     const grouped: Record<string, Lead[]> = {};
     board.stages.forEach(stage => {
       grouped[stage.id] = [];
     });
     
-    leads.forEach(lead => {
+    activeLeads.forEach(lead => {
       const stageId = lead.status || board.stages[0]?.id;
       if (grouped[stageId]) {
         grouped[stageId].push(lead);
@@ -231,7 +236,7 @@ export function DynamicKanbanBoard({
     });
     
     return grouped;
-  }, [leads, board.stages]);
+  }, [activeLeads, board.stages]);
 
   const getInitials = (name: string | null) => {
     if (!name) return '?';
