@@ -50,10 +50,13 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
   const [checklistPopoverOpen, setChecklistPopoverOpen] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('last_received');
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all');
+  const [docFilter, setDocFilter] = useState<DocFilter>('all');
 
   const [phonesWithCalls, setPhonesWithCalls] = useState<Set<string>>(new Set());
   const [leadInfoMap, setLeadInfoMap] = useState<Map<string, LeadInfo>>(new Map());
   const [checklistTemplates, setChecklistTemplates] = useState<{ id: string; name: string; items: { id: string; label: string }[] }[]>([]);
+  // lead_id -> 'signed' | 'unsigned' (has doc but not signed) | undefined (no doc)
+  const [leadDocStatus, setLeadDocStatus] = useState<Map<string, 'signed' | 'unsigned'>>(new Map());
 
   // Track lead IDs to avoid unnecessary re-fetches
   const prevLeadIdsRef = useRef<string>('');
