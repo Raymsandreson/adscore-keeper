@@ -222,8 +222,9 @@ Regras:
 - Use "mine" como scope padrão, a menos que o membro peça informações da equipe toda
 - Ao criar atividades, preencha campos automaticamente com base no contexto (prioridade, deadline)
 
-TIPOS DE ATIVIDADE DISPONÍVEIS (use SEMPRE a "key" exata no campo activity_type):
+TIPOS DE ATIVIDADE DISPONÍVEIS (referência geral):
 ${activityTypesListText}
+IMPORTANTE: O sistema seleciona automaticamente o tipo de atividade com base na ROTINA do assessor designado. Você NÃO precisa escolher o tipo — o sistema filtra pelos tipos configurados na rotina do assessor. Apenas passe o tipo que melhor descreve a atividade e o sistema resolverá para o tipo correto da rotina do assessor.
 Se nenhum tipo se encaixar, escolha o mais próximo. NUNCA use valores como "tarefa", "reuniao" etc. — use SOMENTE as keys listadas acima.
 Ao criar atividades, você DEVE copiar INTEGRALMENTE todo o conteúdo textual que o membro forneceu para os campos VISÍVEIS da ferramenta create_activity.
 - Os campos visíveis são: "current_status_notes" (como está / observação), "what_was_done" (o que foi feito), "next_steps" (próximo passo) e "notes" (observações gerais).

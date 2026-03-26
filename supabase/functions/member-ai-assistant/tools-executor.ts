@@ -216,22 +216,42 @@ async function createActivity(supabase: any, args: any, userId: string, userName
   const assignedToId = assigneeResolution.assignedToId
   const assignedToName = assigneeResolution.assignedToName
 
-  // Resolve activity type to an active key (UI expects key, not free text)
+  // Resolve activity type: prioritize assignee's routine types
   const requestedActivityType = typeof args.activity_type === 'string' ? args.activity_type.trim() : ''
   const rawCommandText = typeof args.raw_command_text === 'string' ? args.raw_command_text.trim() : ''
   let resolvedActivityType = requestedActivityType
-  const { data: activeActivityTypes } = await supabase
-    .from('activity_types')
-    .select('key, label')
-    .or('is_active.eq.true,is_active.is.null')
-    .order('display_order')
-    .limit(200)
 
-  if (activeActivityTypes && activeActivityTypes.length > 0) {
+  // Fetch assignee's routine (time block settings) and all active types in parallel
+  const [routineResult, allTypesResult] = await Promise.all([
+    supabase
+      .from('user_timeblock_settings')
+      .select('activity_type')
+      .eq('user_id', assignedToId),
+    supabase
+      .from('activity_types')
+      .select('key, label')
+      .or('is_active.eq.true,is_active.is.null')
+      .order('display_order')
+      .limit(200),
+  ])
+
+  const allActiveTypes = (allTypesResult.data || []) as any[]
+  const routineTypeKeys = new Set(
+    (routineResult.data || []).map((r: any) => r.activity_type)
+  )
+
+  // Filter to only types present in the assignee's routine
+  const assigneeTypes = routineTypeKeys.size > 0
+    ? allActiveTypes.filter((t: any) => routineTypeKeys.has(t.key))
+    : allActiveTypes // fallback: if no routine configured, use all types
+
+  const typesToSearch = assigneeTypes.length > 0 ? assigneeTypes : allActiveTypes
+
+  if (typesToSearch.length > 0) {
     const normalizedType = normalizeText(requestedActivityType)
-    const exactKey = activeActivityTypes.find((t: any) => normalizeText(t.key || '') === normalizedType)
-    const byLabel = activeActivityTypes.find((t: any) => normalizeText(t.label || '') === normalizedType)
-    const fuzzyLabel = activeActivityTypes.find((t: any) => {
+    const exactKey = typesToSearch.find((t: any) => normalizeText(t.key || '') === normalizedType)
+    const byLabel = typesToSearch.find((t: any) => normalizeText(t.label || '') === normalizedType)
+    const fuzzyLabel = typesToSearch.find((t: any) => {
       const label = normalizeText(t.label || '')
       const key = normalizeText(t.key || '')
       return normalizedType && (
@@ -254,7 +274,7 @@ async function createActivity(supabase: any, args: any, userId: string, userName
     const contextTokens = Array.from(new Set(typeContextText.split(/[^a-z0-9]+/).filter((t) => t.length > 2)))
 
     const contextualMatch = !normalizedType && contextTokens.length > 0
-      ? activeActivityTypes
+      ? typesToSearch
           .map((t: any) => {
             const labelTokens = Array.from(new Set(normalizeText(t.label || '').split(/[^a-z0-9]+/).filter((x) => x.length > 2)))
             const keyTokens = Array.from(new Set(normalizeText(t.key || '').split(/[^a-z0-9]+/).filter((x) => x.length > 2 && !/^custom\d+$/.test(x))))
@@ -265,7 +285,7 @@ async function createActivity(supabase: any, args: any, userId: string, userName
           .sort((a: any, b: any) => b.overlap - a.overlap)[0]
       : null
 
-    const preferredFallback = activeActivityTypes.find((t: any) => {
+    const preferredFallback = typesToSearch.find((t: any) => {
       const normalizedLabelAndKey = normalizeText(`${t.label || ''} ${t.key || ''}`)
       return /follow\s*up|followup|tarefa|atividade|geral/.test(normalizedLabelAndKey)
     })
@@ -276,7 +296,7 @@ async function createActivity(supabase: any, args: any, userId: string, userName
       fuzzyLabel?.key ||
       (contextualMatch && contextualMatch.overlap > 0 ? contextualMatch.key : undefined) ||
       preferredFallback?.key ||
-      activeActivityTypes[0].key
+      typesToSearch[0].key
   }
 
   if (!resolvedActivityType) resolvedActivityType = 'tarefa'
