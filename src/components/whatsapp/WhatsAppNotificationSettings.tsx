@@ -97,22 +97,27 @@ export function WhatsAppNotificationSettings() {
     setInstances(instRes.data || []);
     setProfiles((profilesRes.data as UserProfile[]) || []);
     if (configRes.data) {
+      const d = configRes.data as any;
       setConfig({
-        id: configRes.data.id,
-        is_active: configRes.data.is_active ?? true,
-        name: configRes.data.name || 'Notificações Gerais',
-        instance_name: configRes.data.instance_name || '',
-        recipient_phones: configRes.data.recipient_phones || [],
-        recipient_user_ids: (configRes.data as any).recipient_user_ids || [],
-        notify_overdue_tasks: configRes.data.notify_overdue_tasks ?? true,
-        notify_goal_progress: configRes.data.notify_goal_progress ?? true,
-        notify_daily_summary: configRes.data.notify_daily_summary ?? true,
-        notify_weekly_summary: configRes.data.notify_weekly_summary ?? false,
-        notify_session_reminder: configRes.data.notify_session_reminder ?? false,
-        schedule_times: configRes.data.schedule_times || ['08:00', '18:00'],
-        schedule_days: configRes.data.schedule_days || [1, 2, 3, 4, 5],
-        overdue_threshold_hours: configRes.data.overdue_threshold_hours ?? 24,
-        goal_alert_percent: configRes.data.goal_alert_percent ?? 50,
+        id: d.id,
+        is_active: d.is_active ?? true,
+        name: d.name || 'Notificações Gerais',
+        instance_name: d.instance_name || '',
+        recipient_phones: d.recipient_phones || [],
+        recipient_user_ids: d.recipient_user_ids || [],
+        notify_overdue_tasks: d.notify_overdue_tasks ?? true,
+        notify_goal_progress: d.notify_goal_progress ?? true,
+        notify_daily_summary: d.notify_daily_summary ?? true,
+        notify_weekly_summary: d.notify_weekly_summary ?? false,
+        notify_session_reminder: d.notify_session_reminder ?? false,
+        notify_whatsapp_dashboard: d.notify_whatsapp_dashboard ?? false,
+        dashboard_instance_names: d.dashboard_instance_names || [],
+        dashboard_schedule_times: d.dashboard_schedule_times || ['08:00', '18:00'],
+        dashboard_schedule_days: d.dashboard_schedule_days || [1, 2, 3, 4, 5],
+        schedule_times: d.schedule_times || ['08:00', '18:00'],
+        schedule_days: d.schedule_days || [1, 2, 3, 4, 5],
+        overdue_threshold_hours: d.overdue_threshold_hours ?? 24,
+        goal_alert_percent: d.goal_alert_percent ?? 50,
       });
     }
     setLoading(false);
