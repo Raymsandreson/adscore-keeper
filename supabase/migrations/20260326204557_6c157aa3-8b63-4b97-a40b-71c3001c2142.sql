@@ -1,0 +1,1 @@
+UPDATE board_group_settings SET current_sequence = 601 WHERE board_id = 'c8e8c466-c441-43a9-88d2-8197324c47a4';
