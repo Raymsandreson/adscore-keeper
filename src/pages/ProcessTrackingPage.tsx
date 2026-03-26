@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,7 +58,45 @@ const ProcessTrackingPage = () => {
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [detailRecord, setDetailRecord] = useState<ProcessTracking | null>(null);
 
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const bottomScrollRef = useRef<HTMLDivElement>(null);
+  const tableContentRef = useRef<HTMLDivElement>(null);
+  const [tableWidth, setTableWidth] = useState(0);
+
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
+
+  // Sync scroll between top and bottom scrollbars
+  const syncing = useRef(false);
+  const handleTopScroll = useCallback(() => {
+    if (syncing.current) return;
+    syncing.current = true;
+    if (bottomScrollRef.current && topScrollRef.current) {
+      bottomScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+    }
+    syncing.current = false;
+  }, []);
+
+  const handleBottomScroll = useCallback(() => {
+    if (syncing.current) return;
+    syncing.current = true;
+    if (topScrollRef.current && bottomScrollRef.current) {
+      topScrollRef.current.scrollLeft = bottomScrollRef.current.scrollLeft;
+    }
+    syncing.current = false;
+  }, []);
+
+  // Measure table width for the top scrollbar
+  useEffect(() => {
+    if (tableContentRef.current) {
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          setTableWidth(entry.target.scrollWidth);
+        }
+      });
+      observer.observe(tableContentRef.current);
+      return () => observer.disconnect();
+    }
+  }, [records]);
 
   const filteredRecords = records.filter(r => {
     if (!searchTerm) return true;
@@ -226,7 +264,22 @@ const ProcessTrackingPage = () => {
       {/* Data Table */}
       <Card>
         <CardContent className="p-0">
-          <div className="overflow-x-auto w-full">
+          {/* Top scrollbar */}
+          <div
+            ref={topScrollRef}
+            onScroll={handleTopScroll}
+            className="overflow-x-auto w-full"
+            style={{ height: 16 }}
+          >
+            <div style={{ width: tableWidth, height: 1 }} />
+          </div>
+          {/* Table with bottom scrollbar */}
+          <div
+            ref={bottomScrollRef}
+            onScroll={handleBottomScroll}
+            className="overflow-x-auto w-full"
+          >
+            <div ref={tableContentRef}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -311,6 +364,7 @@ const ProcessTrackingPage = () => {
                 )}
               </TableBody>
             </Table>
+            </div>
           </div>
         </CardContent>
       </Card>
