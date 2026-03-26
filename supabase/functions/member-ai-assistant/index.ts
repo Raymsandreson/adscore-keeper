@@ -299,7 +299,7 @@ REGRA DE MÍDIA ANEXADA:
     const ADMIN_TOOLS = new Set(['manage_conversation_agent'])
     let usedAdminTool = false
     const collectedLinks: string[] = []
-    const createdActivitySummaries: string[] = []
+    const createdSummaries: string[] = []  // Verified summaries for ALL tool actions
     let hasCreatedActivityInRequest = false
 
     // Process tool calls if any (support multi-turn)
