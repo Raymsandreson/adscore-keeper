@@ -42,9 +42,8 @@ interface NotificationConfig {
   notify_weekly_summary: boolean;
   notify_session_reminder: boolean;
   notify_whatsapp_dashboard: boolean;
+  notify_checklist_steps: boolean;
   dashboard_instance_names: string[];
-  dashboard_schedule_times: string[];
-  dashboard_schedule_days: number[];
   schedule_times: string[];
   schedule_days: number[];
   overdue_threshold_hours: number;
@@ -63,9 +62,8 @@ const DEFAULT_CONFIG: NotificationConfig = {
   notify_weekly_summary: false,
   notify_session_reminder: false,
   notify_whatsapp_dashboard: false,
+  notify_checklist_steps: false,
   dashboard_instance_names: [],
-  dashboard_schedule_times: ['08:00', '18:00'],
-  dashboard_schedule_days: [1, 2, 3, 4, 5],
   schedule_times: ['08:00', '18:00'],
   schedule_days: [1, 2, 3, 4, 5],
   overdue_threshold_hours: 24,
@@ -111,11 +109,10 @@ export function WhatsAppNotificationSettings() {
         notify_weekly_summary: d.notify_weekly_summary ?? false,
         notify_session_reminder: d.notify_session_reminder ?? false,
         notify_whatsapp_dashboard: d.notify_whatsapp_dashboard ?? false,
+        notify_checklist_steps: d.notify_checklist_steps ?? false,
         dashboard_instance_names: d.dashboard_instance_names || [],
-        dashboard_schedule_times: d.dashboard_schedule_times || ['08:00', '18:00'],
-        dashboard_schedule_days: d.dashboard_schedule_days || [1, 2, 3, 4, 5],
-        schedule_times: d.schedule_times || ['08:00', '18:00'],
-        schedule_days: d.schedule_days || [1, 2, 3, 4, 5],
+        schedule_times: d.schedule_times || d.dashboard_schedule_times || ['08:00', '18:00'],
+        schedule_days: d.schedule_days || d.dashboard_schedule_days || [1, 2, 3, 4, 5],
         overdue_threshold_hours: d.overdue_threshold_hours ?? 24,
         goal_alert_percent: d.goal_alert_percent ?? 50,
       });
@@ -144,9 +141,8 @@ export function WhatsAppNotificationSettings() {
         notify_weekly_summary: config.notify_weekly_summary,
         notify_session_reminder: config.notify_session_reminder,
         notify_whatsapp_dashboard: config.notify_whatsapp_dashboard,
+        notify_checklist_steps: config.notify_checklist_steps,
         dashboard_instance_names: config.dashboard_instance_names,
-        dashboard_schedule_times: config.dashboard_schedule_times,
-        dashboard_schedule_days: config.dashboard_schedule_days,
         schedule_times: config.schedule_times,
         schedule_days: config.schedule_days,
         overdue_threshold_hours: config.overdue_threshold_hours,
