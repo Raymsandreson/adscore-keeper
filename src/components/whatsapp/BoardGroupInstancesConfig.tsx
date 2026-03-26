@@ -493,12 +493,17 @@ export function BoardGroupInstancesConfig() {
                   Pré-visualizar Mensagem
                 </Button>
                 {previewMessage && (
-                  <div className="p-3 rounded-lg border bg-background text-xs whitespace-pre-wrap max-h-[300px] overflow-y-auto">
-                    <div className="flex items-center gap-1.5 mb-2 text-[10px] text-muted-foreground font-medium">
+                  <div className="rounded-lg border bg-background">
+                    <div className="flex items-center gap-1.5 px-3 pt-3 pb-1 text-[10px] text-muted-foreground font-medium">
                       <Eye className="h-3 w-3" />
-                      Modelo de mensagem gerado pela IA (com dados fictícios):
+                      ✏️ Modelo editável — altere diretamente o texto abaixo:
                     </div>
-                    {previewMessage}
+                    <textarea
+                      value={previewMessage}
+                      onChange={e => setPreviewMessage(e.target.value)}
+                      className="w-full p-3 pt-1 text-xs bg-transparent border-0 outline-none resize-y min-h-[120px] max-h-[400px] whitespace-pre-wrap font-sans"
+                      rows={12}
+                    />
                   </div>
                 )}
               </>
