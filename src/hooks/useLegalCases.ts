@@ -112,7 +112,7 @@ export function useLegalCases(leadId?: string) {
         if (caseData.lead_id) {
           const { data: ld } = await supabase
             .from('leads')
-            .select('lead_name, cpf, senha_gov, benefit_type, acolhedor')
+            .select('lead_name, acolhedor, case_type')
             .eq('id', caseData.lead_id)
             .maybeSingle();
           leadData = ld;
