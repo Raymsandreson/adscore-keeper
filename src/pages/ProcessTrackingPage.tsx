@@ -355,32 +355,66 @@ const ProcessTrackingPage = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Upload className="h-4 w-4 text-primary" />
-            Importar da Planilha
+            Importar Dados
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="md:col-span-2 space-y-1">
-              <Label>URL da Planilha Google</Label>
-              <Input
-                value={sheetUrl}
-                onChange={e => setSheetUrl(e.target.value)}
-                placeholder="https://docs.google.com/spreadsheets/d/..."
+        <CardContent>
+          <Tabs defaultValue="csv" className="w-full">
+            <TabsList className="mb-4">
+              <TabsTrigger value="csv" className="gap-2">
+                <FileUp className="h-4 w-4" />
+                Arquivo CSV
+              </TabsTrigger>
+              <TabsTrigger value="sheets" className="gap-2">
+                <FileSpreadsheet className="h-4 w-4" />
+                Google Sheets
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="csv" className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Selecione um arquivo CSV com as colunas correspondentes (Cliente, Caso, CPF, etc.)
+              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={handleCSVImport}
+                className="hidden"
               />
-            </div>
-            <div className="space-y-1">
-              <Label>Nome da Aba (opcional)</Label>
-              <Input
-                value={sheetName}
-                onChange={e => setSheetName(e.target.value)}
-                placeholder="Ex: Previdenciário"
-              />
-            </div>
-          </div>
-          <Button onClick={handleFetchSheet} disabled={importing} className="gap-2">
-            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {importing ? 'Lendo planilha...' : 'Importar Dados'}
-          </Button>
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importing}
+                className="gap-2"
+              >
+                {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+                {importing ? 'Lendo CSV...' : 'Selecionar CSV'}
+              </Button>
+            </TabsContent>
+            <TabsContent value="sheets" className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="md:col-span-2 space-y-1">
+                  <Label>URL da Planilha Google</Label>
+                  <Input
+                    value={sheetUrl}
+                    onChange={e => setSheetUrl(e.target.value)}
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Nome da Aba (opcional)</Label>
+                  <Input
+                    value={sheetName}
+                    onChange={e => setSheetName(e.target.value)}
+                    placeholder="Ex: Previdenciário"
+                  />
+                </div>
+              </div>
+              <Button onClick={handleFetchSheet} disabled={importing} className="gap-2">
+                {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {importing ? 'Lendo planilha...' : 'Importar Dados'}
+              </Button>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
