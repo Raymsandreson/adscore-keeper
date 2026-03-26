@@ -4267,6 +4267,7 @@ export type Database = {
           lead_email: string | null
           lead_name: string | null
           lead_phone: string | null
+          lead_status: string
           legal_viability: string | null
           liability_type: string | null
           main_company: string | null
@@ -4334,6 +4335,7 @@ export type Database = {
           lead_email?: string | null
           lead_name?: string | null
           lead_phone?: string | null
+          lead_status?: string
           legal_viability?: string | null
           liability_type?: string | null
           main_company?: string | null
@@ -4401,6 +4403,7 @@ export type Database = {
           lead_email?: string | null
           lead_name?: string | null
           lead_phone?: string | null
+          lead_status?: string
           legal_viability?: string | null
           liability_type?: string | null
           main_company?: string | null

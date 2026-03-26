@@ -5,6 +5,7 @@ import { facebookCAPI } from '@/services/facebookCAPI';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'not_qualified' | 'converted' | 'lost' | 'comment';
+export type LeadBusinessStatus = 'active' | 'closed' | 'refused';
 export type SyncStatus = 'local' | 'synced' | 'syncing' | 'error';
 export type ClientClassification = 'client' | 'non_client' | 'prospect' | null;
 
@@ -74,6 +75,7 @@ export interface Lead {
   liability_type: string | null;
   legal_viability: string | null;
   group_link: string | null;
+  lead_status: LeadBusinessStatus;
 }
 
 export interface LeadStats {
