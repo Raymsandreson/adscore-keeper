@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText } from 'lucide-react';
+import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Instance {
@@ -21,6 +21,11 @@ interface Board {
   name: string;
 }
 
+interface InstanceConfig {
+  role_title: string;
+  role_description: string;
+}
+
 interface GroupSettings {
   group_name_prefix: string;
   sequence_start: number;
@@ -29,6 +34,8 @@ interface GroupSettings {
   initial_message_template: string;
   use_ai_message: boolean;
   forward_document_types: string[];
+  send_audio_message: boolean;
+  audio_voice_id: string;
 }
 
 const LEAD_FIELD_OPTIONS = [
@@ -70,13 +77,24 @@ const MESSAGE_VARIABLES = [
   { var: '{board_name}', label: 'Nome do Funil' },
 ];
 
+const VOICE_OPTIONS = [
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah (Feminina)' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George (Masculina)' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel (Masculina)' },
+  { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily (Feminina)' },
+  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda (Feminina)' },
+  { id: 'bIHbv24MWmeRgasZH58o', name: 'Will (Masculina)' },
+];
+
 export function BoardGroupInstancesConfig() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedBoard, setSelectedBoard] = useState<string>('');
   const [linkedInstances, setLinkedInstances] = useState<string[]>([]);
+  const [instanceConfigs, setInstanceConfigs] = useState<Record<string, InstanceConfig>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [customVoices, setCustomVoices] = useState<{id: string; name: string}[]>([]);
   const [settings, setSettings] = useState<GroupSettings>({
     group_name_prefix: '',
     sequence_start: 1,
@@ -85,6 +103,8 @@ export function BoardGroupInstancesConfig() {
     initial_message_template: '',
     use_ai_message: false,
     forward_document_types: [],
+    send_audio_message: false,
+    audio_voice_id: '',
   });
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -101,10 +121,14 @@ export function BoardGroupInstancesConfig() {
 
   const fetchData = async () => {
     setLoading(true);
-    const boardsRes = await (supabase as any).from('kanban_boards').select('id, name').order('display_order');
-    const instancesRes = await (supabase as any).from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true);
+    const [boardsRes, instancesRes, voicesRes] = await Promise.all([
+      (supabase as any).from('kanban_boards').select('id, name').order('display_order'),
+      (supabase as any).from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true),
+      (supabase as any).from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
+    ]);
     setBoards((boardsRes.data as any[]) || []);
     setInstances((instancesRes.data as any[]) || []);
+    setCustomVoices((voicesRes.data || []).map((v: any) => ({ id: v.elevenlabs_voice_id, name: `🎤 ${v.name}` })));
     if (boardsRes.data && boardsRes.data.length > 0) {
       setSelectedBoard(boardsRes.data[0].id);
     }
@@ -114,9 +138,17 @@ export function BoardGroupInstancesConfig() {
   const fetchLinked = async () => {
     const { data } = await (supabase as any)
       .from('board_group_instances')
-      .select('instance_id')
+      .select('instance_id, role_title, role_description')
       .eq('board_id', selectedBoard);
     setLinkedInstances((data || []).map((d: any) => d.instance_id));
+    const configs: Record<string, InstanceConfig> = {};
+    (data || []).forEach((d: any) => {
+      configs[d.instance_id] = {
+        role_title: d.role_title || '',
+        role_description: d.role_description || '',
+      };
+    });
+    setInstanceConfigs(configs);
   };
 
   const fetchSettings = async () => {
@@ -134,11 +166,14 @@ export function BoardGroupInstancesConfig() {
         initial_message_template: data.initial_message_template || '',
         use_ai_message: data.use_ai_message || false,
         forward_document_types: data.forward_document_types || [],
+        send_audio_message: data.send_audio_message || false,
+        audio_voice_id: data.audio_voice_id || '',
       });
     } else {
       setSettings({
         group_name_prefix: '', sequence_start: 1, current_sequence: 0, lead_fields: ['lead_name'],
         initial_message_template: '', use_ai_message: false, forward_document_types: [],
+        send_audio_message: false, audio_voice_id: '',
       });
     }
   };
@@ -153,6 +188,11 @@ export function BoardGroupInstancesConfig() {
           .eq('board_id', selectedBoard)
           .eq('instance_id', instanceId);
         setLinkedInstances(prev => prev.filter(id => id !== instanceId));
+        setInstanceConfigs(prev => {
+          const next = { ...prev };
+          delete next[instanceId];
+          return next;
+        });
       } else {
         await (supabase as any)
           .from('board_group_instances')
@@ -167,9 +207,17 @@ export function BoardGroupInstancesConfig() {
     }
   };
 
+  const updateInstanceConfig = (instanceId: string, field: keyof InstanceConfig, value: string) => {
+    setInstanceConfigs(prev => ({
+      ...prev,
+      [instanceId]: { ...(prev[instanceId] || { role_title: '', role_description: '' }), [field]: value },
+    }));
+  };
+
   const saveSettings = async () => {
     setSavingSettings(true);
     try {
+      // Save group settings
       const { data: existing } = await (supabase as any)
         .from('board_group_settings')
         .select('id')
@@ -183,6 +231,8 @@ export function BoardGroupInstancesConfig() {
         initial_message_template: settings.initial_message_template || null,
         use_ai_message: settings.use_ai_message,
         forward_document_types: settings.forward_document_types,
+        send_audio_message: settings.send_audio_message,
+        audio_voice_id: settings.audio_voice_id || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -200,6 +250,22 @@ export function BoardGroupInstancesConfig() {
             current_sequence: settings.sequence_start > 1 ? settings.sequence_start - 1 : 0,
           });
       }
+
+      // Save instance configs (role_title, role_description)
+      for (const instanceId of linkedInstances) {
+        const config = instanceConfigs[instanceId];
+        if (config) {
+          await (supabase as any)
+            .from('board_group_instances')
+            .update({
+              role_title: config.role_title || null,
+              role_description: config.role_description || null,
+            })
+            .eq('board_id', selectedBoard)
+            .eq('instance_id', instanceId);
+        }
+      }
+
       toast.success('Configuração salva!');
     } catch (e: any) {
       toast.error('Erro ao salvar configuração');
@@ -238,6 +304,8 @@ export function BoardGroupInstancesConfig() {
     parts.push(fieldLabels.join(' '));
     return parts.join(' ');
   };
+
+  const allVoices = [...VOICE_OPTIONS, ...customVoices];
 
   if (loading) return <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
@@ -375,6 +443,55 @@ export function BoardGroupInstancesConfig() {
                 </div>
               </div>
             )}
+
+            {settings.use_ai_message && (
+              <p className="text-[10px] text-muted-foreground">
+                ℹ️ A IA usará APENAS dados do banco de dados (campos do lead, campos personalizados, atividades abertas e participantes do grupo). Nenhuma informação será inventada.
+              </p>
+            )}
+          </div>
+
+          {/* Audio Message */}
+          <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
+            <div className="flex items-center gap-2">
+              <Volume2 className="h-4 w-4 text-primary" />
+              <h4 className="font-medium text-xs">Áudio da Mensagem</h4>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="send_audio_message"
+                checked={settings.send_audio_message}
+                onCheckedChange={(checked) => setSettings(prev => ({ ...prev, send_audio_message: !!checked }))}
+              />
+              <Label htmlFor="send_audio_message" className="text-xs cursor-pointer">
+                Gerar e enviar áudio da mensagem inicial
+              </Label>
+            </div>
+
+            {settings.send_audio_message && (
+              <>
+                <div className="space-y-1">
+                  <Label className="text-[11px] text-muted-foreground">Voz para o áudio</Label>
+                  <Select
+                    value={settings.audio_voice_id}
+                    onValueChange={(v) => setSettings(prev => ({ ...prev, audio_voice_id: v }))}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Selecione uma voz" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allVoices.map(v => (
+                        <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  ⚠️ Links e URLs não serão incluídos no áudio, apenas no texto.
+                </p>
+              </>
+            )}
           </div>
 
           {/* Document Forwarding */}
@@ -425,27 +542,52 @@ export function BoardGroupInstancesConfig() {
               <Users className="h-4 w-4 text-primary" />
               <h4 className="font-medium text-xs">Instâncias Participantes</h4>
             </div>
+            <p className="text-[10px] text-muted-foreground">
+              Defina o cargo e a descrição de cada instância para identificar os responsáveis na mensagem do grupo.
+            </p>
             {instances.length === 0 ? (
               <p className="text-xs text-muted-foreground">Nenhuma instância ativa encontrada.</p>
             ) : (
-              instances.map(inst => (
-                <label key={inst.id} className="flex items-center gap-3 p-2.5 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors">
-                  <Checkbox
-                    checked={linkedInstances.includes(inst.id)}
-                    onCheckedChange={() => toggleInstance(inst.id)}
-                    disabled={saving}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{inst.instance_name}</p>
-                    {inst.owner_phone && (
-                      <p className="text-[11px] text-muted-foreground">{inst.owner_phone}</p>
+              instances.map(inst => {
+                const isLinked = linkedInstances.includes(inst.id);
+                const config = instanceConfigs[inst.id] || { role_title: '', role_description: '' };
+                return (
+                  <div key={inst.id} className="rounded-lg border hover:bg-muted/50 transition-colors">
+                    <label className="flex items-center gap-3 p-2.5 cursor-pointer">
+                      <Checkbox
+                        checked={isLinked}
+                        onCheckedChange={() => toggleInstance(inst.id)}
+                        disabled={saving}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{inst.instance_name}</p>
+                        {inst.owner_phone && (
+                          <p className="text-[11px] text-muted-foreground">{inst.owner_phone}</p>
+                        )}
+                      </div>
+                      {isLinked && (
+                        <Badge variant="secondary" className="text-[10px] shrink-0">Incluída</Badge>
+                      )}
+                    </label>
+                    {isLinked && (
+                      <div className="px-2.5 pb-2.5 space-y-1.5 border-t pt-2 mx-2.5">
+                        <Input
+                          value={config.role_title}
+                          onChange={e => updateInstanceConfig(inst.id, 'role_title', e.target.value)}
+                          placeholder="Cargo (ex: Advogado, Assistente, Perito)"
+                          className="h-7 text-[11px]"
+                        />
+                        <Input
+                          value={config.role_description}
+                          onChange={e => updateInstanceConfig(inst.id, 'role_description', e.target.value)}
+                          placeholder="Descrição (ex: Responsável pela análise processual)"
+                          className="h-7 text-[11px]"
+                        />
+                      </div>
                     )}
                   </div>
-                  {linkedInstances.includes(inst.id) && (
-                    <Badge variant="secondary" className="text-[10px] shrink-0">Incluída</Badge>
-                  )}
-                </label>
-              ))
+                );
+              })
             )}
           </div>
         </>

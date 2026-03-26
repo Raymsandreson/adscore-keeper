@@ -555,18 +555,24 @@ export type Database = {
           created_at: string
           id: string
           instance_id: string
+          role_description: string | null
+          role_title: string | null
         }
         Insert: {
           board_id: string
           created_at?: string
           id?: string
           instance_id: string
+          role_description?: string | null
+          role_title?: string | null
         }
         Update: {
           board_id?: string
           created_at?: string
           id?: string
           instance_id?: string
+          role_description?: string | null
+          role_title?: string | null
         }
         Relationships: [
           {
@@ -587,6 +593,7 @@ export type Database = {
       }
       board_group_settings: {
         Row: {
+          audio_voice_id: string | null
           board_id: string
           created_at: string
           current_sequence: number | null
@@ -595,11 +602,13 @@ export type Database = {
           id: string
           initial_message_template: string | null
           lead_fields: string[] | null
+          send_audio_message: boolean | null
           sequence_start: number | null
           updated_at: string
           use_ai_message: boolean | null
         }
         Insert: {
+          audio_voice_id?: string | null
           board_id: string
           created_at?: string
           current_sequence?: number | null
@@ -608,11 +617,13 @@ export type Database = {
           id?: string
           initial_message_template?: string | null
           lead_fields?: string[] | null
+          send_audio_message?: boolean | null
           sequence_start?: number | null
           updated_at?: string
           use_ai_message?: boolean | null
         }
         Update: {
+          audio_voice_id?: string | null
           board_id?: string
           created_at?: string
           current_sequence?: number | null
@@ -621,6 +632,7 @@ export type Database = {
           id?: string
           initial_message_template?: string | null
           lead_fields?: string[] | null
+          send_audio_message?: boolean | null
           sequence_start?: number | null
           updated_at?: string
           use_ai_message?: boolean | null

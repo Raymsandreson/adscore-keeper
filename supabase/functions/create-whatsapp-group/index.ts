@@ -118,12 +118,12 @@ Deno.serve(async (req) => {
       participants.push(normalizedContact)
     }
 
-    // Get configured instances for this board
+    // Get configured instances for this board with roles
     let boardInstances: any[] = []
     if (board_id) {
       const { data: bgi } = await supabase
         .from('board_group_instances')
-        .select('instance_id')
+        .select('instance_id, role_title, role_description')
         .eq('board_id', board_id)
 
       if (bgi && bgi.length > 0) {
@@ -134,7 +134,14 @@ Deno.serve(async (req) => {
           .in('id', instanceIds)
           .eq('is_active', true)
 
-        boardInstances = instances || []
+        boardInstances = (instances || []).map((inst: any) => {
+          const config = bgi.find((b: any) => b.instance_id === inst.id)
+          return {
+            ...inst,
+            role_title: config?.role_title || null,
+            role_description: config?.role_description || null,
+          }
+        })
       }
     }
 
@@ -194,7 +201,7 @@ Deno.serve(async (req) => {
 
     // Send initial message if configured
     if (groupId && settings) {
-      await sendInitialMessage(supabase, settings, leadData, lead_name, groupName, groupId, baseUrl, creatorInstance, board_id)
+      await sendInitialMessage(supabase, settings, leadData, lead_name, groupName, groupId, baseUrl, creatorInstance, board_id, boardInstances)
     }
 
     // Forward documents if configured
@@ -221,34 +228,111 @@ Deno.serve(async (req) => {
 
 async function sendInitialMessage(
   supabase: any, settings: any, leadData: any, lead_name: string,
-  groupName: string, groupId: string, baseUrl: string, creatorInstance: any, boardId: string
+  groupName: string, groupId: string, baseUrl: string, creatorInstance: any, boardId: string, boardInstances: any[]
 ) {
   try {
     let messageText = ''
 
+    // Get board name
+    let boardName = ''
+    if (boardId) {
+      const { data: board } = await supabase.from('kanban_boards').select('name').eq('id', boardId).maybeSingle()
+      boardName = board?.name || ''
+    }
+
+    // Get custom fields for this lead
+    let customFieldsText = ''
+    if (leadData?.id) {
+      try {
+        const { data: customFields } = await supabase
+          .from('lead_custom_field_values')
+          .select('definition:lead_custom_field_definitions(label, field_type), value')
+          .eq('lead_id', leadData.id)
+
+        if (customFields && customFields.length > 0) {
+          const fieldLines = customFields
+            .filter((cf: any) => cf.value && cf.definition)
+            .map((cf: any) => `${cf.definition.label}: ${cf.value}`)
+          if (fieldLines.length > 0) {
+            customFieldsText = '\n\nCampos personalizados:\n' + fieldLines.join('\n')
+          }
+        }
+      } catch (e) {
+        console.log('Custom fields not available:', e)
+      }
+    }
+
+    // Get open activities for this lead
+    let activitiesText = ''
+    let activitiesLinks: string[] = []
+    if (leadData?.id) {
+      try {
+        const { data: activities } = await supabase
+          .from('lead_activities')
+          .select('id, title, activity_type, status, due_date, assigned_to_name')
+          .eq('lead_id', leadData.id)
+          .in('status', ['pendente', 'em_andamento'])
+          .order('due_date', { ascending: true })
+          .limit(10)
+
+        if (activities && activities.length > 0) {
+          const actLines = activities.map((a: any) => {
+            const dueStr = a.due_date ? ` (prazo: ${new Date(a.due_date).toLocaleDateString('pt-BR')})` : ''
+            const assignee = a.assigned_to_name ? ` → ${a.assigned_to_name}` : ''
+            return `• ${a.title}${dueStr}${assignee}`
+          })
+          activitiesText = '\n\nAtividades abertas:\n' + actLines.join('\n')
+
+          activitiesLinks = activities.map((a: any) =>
+            `🔗 ${a.title}: https://adscore-keeper.lovable.app/?openActivity=${a.id}`
+          )
+        }
+      } catch (e) {
+        console.log('Activities not available:', e)
+      }
+    }
+
+    // Build participants info
+    let participantsText = ''
+    if (boardInstances && boardInstances.length > 0) {
+      const participantLines = boardInstances.map((inst: any, idx: number) => {
+        const num = idx + 1
+        const role = inst.role_title ? ` - ${inst.role_title}` : ''
+        const desc = inst.role_description ? `: ${inst.role_description}` : ''
+        return `${num}. ${inst.instance_name}${role}${desc}`
+      })
+      participantsText = '\n\nParticipantes do grupo:\n' + participantLines.join('\n')
+    }
+
     if (settings.use_ai_message) {
-      // Generate message with AI
+      // Build comprehensive lead info from DB only
       const leadInfo = leadData ? Object.entries(leadData)
         .filter(([k, v]) => v && !['id', 'created_at', 'updated_at', 'created_by', 'assigned_to'].includes(k))
         .map(([k, v]) => `${k}: ${v}`)
         .join('\n') : `Nome: ${lead_name}`
 
-      // Get board name
-      let boardName = ''
-      if (boardId) {
-        const { data: board } = await supabase.from('kanban_boards').select('name').eq('id', boardId).maybeSingle()
-        boardName = board?.name || ''
-      }
+      const aiPrompt = `Gere uma mensagem de boas-vindas para um grupo de WhatsApp de acompanhamento de caso.
 
-      const aiPrompt = `Gere uma mensagem de boas-vindas para um grupo de WhatsApp de acompanhamento de caso jurídico.
+REGRA FUNDAMENTAL: Use APENAS os dados fornecidos abaixo. NÃO invente, complete ou suponha nenhuma informação que não esteja explicitamente nos dados. Se um campo está vazio ou ausente, mencione que a informação ainda não foi registrada.
+
 Dados do lead/caso:
 ${leadInfo}
+${customFieldsText}
+${activitiesText}
+${participantsText}
+
 Funil: ${boardName}
 Nome do grupo: ${groupName}
 
 ${settings.initial_message_template ? `Instruções adicionais: ${settings.initial_message_template}` : ''}
 
-Gere uma mensagem profissional e organizada com emojis, destacando os dados principais do caso. Use formatação do WhatsApp (*negrito*, _itálico_). Não inclua IDs ou dados técnicos.`
+Gere uma mensagem profissional e organizada com emojis, destacando os dados principais do caso. Use formatação do WhatsApp (*negrito*, _itálico_). 
+- NÃO inclua IDs ou dados técnicos.
+- NÃO invente valores para campos não fornecidos.
+- Se houver campos personalizados, inclua-os.
+- Se houver atividades abertas, liste-as com responsável e prazo.
+- Se houver participantes configurados, apresente cada um com seu número, cargo e descrição.
+- NÃO inclua links na mensagem (eles serão adicionados separadamente).`
 
       try {
         const aiRes = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/lovable-ai`, {
@@ -260,7 +344,7 @@ Gere uma mensagem profissional e organizada com emojis, destacando os dados prin
           body: JSON.stringify({
             model: 'google/gemini-2.5-flash',
             messages: [{ role: 'user', content: aiPrompt }],
-            max_tokens: 1024,
+            max_tokens: 2048,
           }),
         })
 
@@ -278,13 +362,6 @@ Gere uma mensagem profissional e organizada com emojis, destacando os dados prin
     } else if (settings.initial_message_template) {
       // Use template with variable substitution
       messageText = settings.initial_message_template
-
-      // Get board name for substitution
-      let boardName = ''
-      if (boardId) {
-        const { data: board } = await supabase.from('kanban_boards').select('name').eq('id', boardId).maybeSingle()
-        boardName = board?.name || ''
-      }
 
       const replacements: Record<string, string> = {
         '{lead_name}': leadData?.lead_name || lead_name || '',
@@ -306,15 +383,110 @@ Gere uma mensagem profissional e organizada com emojis, destacando os dados prin
     }
 
     if (messageText) {
+      // Send text message
       await fetch(`${baseUrl}/message/send-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
         body: JSON.stringify({ phone: groupId, message: messageText }),
       })
       console.log('Initial message sent to group')
+
+      // Send activity links separately (so they're clickable but not in audio)
+      if (activitiesLinks.length > 0) {
+        const linksMessage = '📎 *Links das atividades:*\n\n' + activitiesLinks.join('\n')
+        await fetch(`${baseUrl}/message/send-text`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+          body: JSON.stringify({ phone: groupId, message: linksMessage }),
+        })
+        console.log('Activity links sent to group')
+      }
+
+      // Generate and send audio if configured
+      if (settings.send_audio_message && settings.audio_voice_id && messageText) {
+        await sendAudioMessage(supabase, messageText, settings.audio_voice_id, groupId, baseUrl, creatorInstance)
+      }
     }
   } catch (err) {
     console.error('Error sending initial message:', err)
+  }
+}
+
+async function sendAudioMessage(
+  supabase: any, text: string, voiceId: string, groupId: string,
+  baseUrl: string, creatorInstance: any
+) {
+  try {
+    // Remove links/URLs from text for audio
+    const audioText = text
+      .replace(/https?:\/\/[^\s]+/g, '')
+      .replace(/🔗[^\n]*/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+
+    if (!audioText) return
+
+    const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY')
+    if (!ELEVENLABS_API_KEY) {
+      console.log('ElevenLabs API key not configured, skipping audio')
+      return
+    }
+
+    // Generate TTS
+    const ttsRes = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
+      {
+        method: 'POST',
+        headers: {
+          'xi-api-key': ELEVENLABS_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: audioText,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+        }),
+      }
+    )
+
+    if (!ttsRes.ok) {
+      console.error('TTS error:', ttsRes.status)
+      return
+    }
+
+    const audioBuffer = await ttsRes.arrayBuffer()
+    const audioBytes = new Uint8Array(audioBuffer)
+
+    // Upload to storage
+    const fileName = `group-audio/${Date.now()}.mp3`
+    const { error: uploadError } = await supabase.storage
+      .from('whatsapp-media')
+      .upload(fileName, audioBytes, { contentType: 'audio/mpeg' })
+
+    if (uploadError) {
+      console.error('Upload error:', uploadError)
+      return
+    }
+
+    const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(fileName)
+    const audioUrl = urlData?.publicUrl
+
+    if (!audioUrl) return
+
+    // Send audio to group
+    await fetch(`${baseUrl}/send/media`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+      body: JSON.stringify({
+        phone: groupId,
+        media: audioUrl,
+        type: 'audio',
+        ptt: true,
+      }),
+    })
+    console.log('Audio message sent to group')
+  } catch (err) {
+    console.error('Error sending audio message:', err)
   }
 }
 
@@ -325,7 +497,6 @@ async function forwardDocuments(
   try {
     const docTypes = settings.forward_document_types || []
     const leadName = leadData.lead_name || leadData.victim_name || 'Lead'
-    const leadPhone = (leadData.lead_phone || '').replace(/\D/g, '')
 
     // Get collected documents from whatsapp collection sessions
     const { data: sessions } = await supabase
@@ -346,7 +517,6 @@ async function forwardDocuments(
       signedDocs = data || []
     }
 
-    // Map document type to label for naming
     const docLabels: Record<string, string> = {
       'procuracao': 'Procuração',
       'rg': 'RG',
@@ -365,17 +535,11 @@ async function forwardDocuments(
       if (!doc.signed_file_url) continue
       const docLabel = doc.template_name || docLabels['zapsign_signed']
       const fileName = `${docLabel} - ${leadName}.pdf`
-
       try {
         await fetch(`${baseUrl}/message/send-document`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-          body: JSON.stringify({
-            phone: groupId,
-            document: doc.signed_file_url,
-            fileName: fileName,
-            caption: `📄 ${docLabel} - ${leadName}`,
-          }),
+          body: JSON.stringify({ phone: groupId, document: doc.signed_file_url, fileName, caption: `📄 ${docLabel} - ${leadName}` }),
         })
         console.log(`Sent signed doc: ${fileName}`)
       } catch (e) {
@@ -387,27 +551,18 @@ async function forwardDocuments(
     if (sessions) {
       for (const session of sessions) {
         const collected = session.collected_data || {}
-
         for (const docType of docTypes) {
-          if (docType === 'zapsign_signed') continue // already handled
-
-          // Check collected_data for document URLs
+          if (docType === 'zapsign_signed') continue
           const docKey = docType + '_url'
           const docUrl = collected[docKey] || collected[docType]
           if (docUrl && typeof docUrl === 'string' && (docUrl.startsWith('http') || docUrl.startsWith('/'))) {
             const label = docLabels[docType] || docType
             const fileName = `${label} - ${leadName}.pdf`
-
             try {
               await fetch(`${baseUrl}/message/send-document`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-                body: JSON.stringify({
-                  phone: groupId,
-                  document: docUrl,
-                  fileName: fileName,
-                  caption: `📄 ${label} - ${leadName}`,
-                }),
+                body: JSON.stringify({ phone: groupId, document: docUrl, fileName, caption: `📄 ${label} - ${leadName}` }),
               })
               console.log(`Sent doc: ${fileName}`)
             } catch (e) {
@@ -418,7 +573,7 @@ async function forwardDocuments(
       }
     }
 
-    // Also check lead_documents table if it exists
+    // Check lead_documents table
     try {
       const { data: leadDocs } = await supabase
         .from('lead_documents')
@@ -431,17 +586,11 @@ async function forwardDocuments(
           if (docTypes.some((dt: string) => docType.includes(dt) || dt === 'outros')) {
             const label = doc.document_name || docLabels[docType] || 'Documento'
             const fileName = `${label} - ${leadName}.pdf`
-
             try {
               await fetch(`${baseUrl}/message/send-document`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-                body: JSON.stringify({
-                  phone: groupId,
-                  document: doc.file_url,
-                  fileName: fileName,
-                  caption: `📄 ${label} - ${leadName}`,
-                }),
+                body: JSON.stringify({ phone: groupId, document: doc.file_url, fileName, caption: `📄 ${label} - ${leadName}` }),
               })
               console.log(`Sent lead doc: ${fileName}`)
             } catch (e) {
@@ -451,7 +600,6 @@ async function forwardDocuments(
         }
       }
     } catch (e) {
-      // lead_documents table may not exist
       console.log('lead_documents table not available')
     }
   } catch (err) {
