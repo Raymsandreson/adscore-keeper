@@ -36,6 +36,8 @@ interface GroupSettings {
   forward_document_types: string[];
   send_audio_message: boolean;
   audio_voice_id: string;
+  auto_close_lead_on_sign: boolean;
+  auto_create_group_on_sign: boolean;
 }
 
 const LEAD_FIELD_OPTIONS = [
@@ -105,6 +107,8 @@ export function BoardGroupInstancesConfig() {
     forward_document_types: [],
     send_audio_message: false,
     audio_voice_id: '',
+    auto_close_lead_on_sign: false,
+    auto_create_group_on_sign: false,
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -173,12 +177,15 @@ export function BoardGroupInstancesConfig() {
         forward_document_types: data.forward_document_types || [],
         send_audio_message: data.send_audio_message || false,
         audio_voice_id: data.audio_voice_id || '',
+        auto_close_lead_on_sign: data.auto_close_lead_on_sign || false,
+        auto_create_group_on_sign: data.auto_create_group_on_sign || false,
       });
     } else {
       setSettings({
         group_name_prefix: '', sequence_start: 1, current_sequence: 0, lead_fields: ['lead_name'],
         initial_message_template: '', use_ai_message: false, forward_document_types: [],
         send_audio_message: false, audio_voice_id: '',
+        auto_close_lead_on_sign: false, auto_create_group_on_sign: false,
       });
     }
   };
@@ -238,6 +245,8 @@ export function BoardGroupInstancesConfig() {
         forward_document_types: settings.forward_document_types,
         send_audio_message: settings.send_audio_message,
         audio_voice_id: settings.audio_voice_id || null,
+        auto_close_lead_on_sign: settings.auto_close_lead_on_sign,
+        auto_create_group_on_sign: settings.auto_create_group_on_sign,
         updated_at: new Date().toISOString(),
       };
 
@@ -615,6 +624,45 @@ export function BoardGroupInstancesConfig() {
                   ⚠️ Links e URLs não serão incluídos no áudio, apenas no texto.
                 </p>
               </>
+            )}
+          </div>
+
+          {/* Post-Signature Automation */}
+          <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary" />
+              <h4 className="font-medium text-xs">Automações ao Assinar Documento</h4>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Configure ações automáticas quando o documento ZapSign for assinado por leads deste funil.
+            </p>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="auto_close_lead_on_sign"
+                checked={settings.auto_close_lead_on_sign}
+                onCheckedChange={(checked) => setSettings(prev => ({ ...prev, auto_close_lead_on_sign: !!checked }))}
+              />
+              <Label htmlFor="auto_close_lead_on_sign" className="text-xs cursor-pointer">
+                ✅ Marcar lead como <strong>Fechado</strong> automaticamente
+              </Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="auto_create_group_on_sign"
+                checked={settings.auto_create_group_on_sign}
+                onCheckedChange={(checked) => setSettings(prev => ({ ...prev, auto_create_group_on_sign: !!checked }))}
+              />
+              <Label htmlFor="auto_create_group_on_sign" className="text-xs cursor-pointer">
+                📱 Criar <strong>grupo WhatsApp</strong> automaticamente
+              </Label>
+            </div>
+
+            {settings.auto_create_group_on_sign && (
+              <p className="text-[10px] text-muted-foreground ml-6">
+                ⚠️ Usará as configurações de grupo deste funil (instâncias, nome, mensagem, documentos).
+              </p>
             )}
           </div>
 

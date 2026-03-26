@@ -472,6 +472,119 @@ Deno.serve(async (req) => {
     }
 
     // ====================================================
+    // BOARD-LEVEL POST-SIGNATURE AUTOMATIONS
+    // ====================================================
+    if (isDocFullySigned && localDoc.lead_id) {
+      try {
+        // Get lead's board_id
+        const { data: leadForBoard } = await supabase
+          .from('leads')
+          .select('board_id, lead_phone, lead_name, whatsapp_group_id')
+          .eq('id', localDoc.lead_id)
+          .single()
+
+        if (leadForBoard?.board_id) {
+          // Check board_group_settings for post-signature automations
+          const { data: boardSettings } = await supabase
+            .from('board_group_settings')
+            .select('auto_close_lead_on_sign, auto_create_group_on_sign')
+            .eq('board_id', leadForBoard.board_id)
+            .maybeSingle()
+
+          if (boardSettings) {
+            // Auto-close lead
+            if (boardSettings.auto_close_lead_on_sign) {
+              console.log(`[zapsign-webhook] Auto-closing lead ${localDoc.lead_id} (board setting)`)
+              
+              // Get the last stage of the board to move lead there
+              const { data: boardData } = await supabase
+                .from('kanban_boards')
+                .select('stages')
+                .eq('id', leadForBoard.board_id)
+                .single()
+
+              const stages = (boardData?.stages as any[]) || []
+              const lastStage = stages.length > 0 ? stages[stages.length - 1] : null
+
+              const updatePayload: any = { status: 'closed' }
+              if (lastStage?.id) updatePayload.stage = lastStage.id
+
+              await supabase
+                .from('leads')
+                .update(updatePayload)
+                .eq('id', localDoc.lead_id)
+
+              // Create legal case if none exists
+              const { data: existingCase } = await supabase
+                .from('legal_cases')
+                .select('id')
+                .eq('lead_id', localDoc.lead_id)
+                .maybeSingle()
+
+              if (!existingCase) {
+                const { data: caseNumber } = await supabase.rpc('generate_case_number', {
+                  p_nucleus_id: null,
+                })
+
+                await supabase.from('legal_cases').insert({
+                  case_number: caseNumber,
+                  title: `Caso - ${leadForBoard.lead_name || 'Novo'}`,
+                  lead_id: localDoc.lead_id,
+                  status: 'em_andamento',
+                })
+
+                console.log(`[zapsign-webhook] Legal case created: ${caseNumber}`)
+              }
+            }
+
+            // Auto-create WhatsApp group
+            if (boardSettings.auto_create_group_on_sign && !leadForBoard.whatsapp_group_id) {
+              console.log(`[zapsign-webhook] Auto-creating group for lead ${localDoc.lead_id} (board setting)`)
+              
+              const leadPhone = (leadForBoard.lead_phone || localDoc.whatsapp_phone || '').replace(/\D/g, '')
+              
+              // Find the first linked instance for this board
+              const { data: boardInst } = await supabase
+                .from('board_group_instances')
+                .select('instance_id')
+                .eq('board_id', leadForBoard.board_id)
+                .limit(1)
+                .maybeSingle()
+
+              const groupRes = await fetch(`${supabaseUrl}/functions/v1/create-whatsapp-group`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${supabaseKey}`,
+                },
+                body: JSON.stringify({
+                  phone: leadPhone,
+                  lead_name: leadForBoard.lead_name || 'Lead',
+                  board_id: leadForBoard.board_id,
+                  contact_phone: leadPhone,
+                  creator_instance_id: boardInst?.instance_id || null,
+                }),
+              })
+
+              const groupData = await groupRes.json()
+              if (groupData.success && groupData.group_id) {
+                await supabase
+                  .from('leads')
+                  .update({ whatsapp_group_id: groupData.group_id } as any)
+                  .eq('id', localDoc.lead_id)
+                console.log(`[zapsign-webhook] Group created: ${groupData.group_id}`)
+              } else {
+                console.error(`[zapsign-webhook] Group creation failed:`, groupData.error)
+              }
+            }
+          }
+        }
+      } catch (boardAutoErr) {
+        console.error('[zapsign-webhook] Board automation error:', boardAutoErr)
+      }
+    }
+
+    // ====================================================
     // TRIGGER AGENT AUTOMATIONS (on_document_signed)
     // ====================================================
     if (isDocFullySigned && localDoc.whatsapp_phone) {

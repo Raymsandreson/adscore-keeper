@@ -594,6 +594,8 @@ export type Database = {
       board_group_settings: {
         Row: {
           audio_voice_id: string | null
+          auto_close_lead_on_sign: boolean | null
+          auto_create_group_on_sign: boolean | null
           board_id: string
           created_at: string
           current_sequence: number | null
@@ -609,6 +611,8 @@ export type Database = {
         }
         Insert: {
           audio_voice_id?: string | null
+          auto_close_lead_on_sign?: boolean | null
+          auto_create_group_on_sign?: boolean | null
           board_id: string
           created_at?: string
           current_sequence?: number | null
@@ -624,6 +628,8 @@ export type Database = {
         }
         Update: {
           audio_voice_id?: string | null
+          auto_close_lead_on_sign?: boolean | null
+          auto_create_group_on_sign?: boolean | null
           board_id?: string
           created_at?: string
           current_sequence?: number | null
