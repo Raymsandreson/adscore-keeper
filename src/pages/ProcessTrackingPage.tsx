@@ -311,7 +311,7 @@ const ProcessTrackingPage = () => {
                 )}
               </TableBody>
             </Table>
-          </ScrollArea>
+          </div>
         </CardContent>
       </Card>
 
