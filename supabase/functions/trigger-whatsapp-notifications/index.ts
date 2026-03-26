@@ -15,11 +15,13 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Parse optional target_user_id for per-user sending
+    // Parse body
     let targetUserId: string | null = null
+    let isScheduled = false
     try {
       const body = await req.json()
       targetUserId = body?.target_user_id || null
+      isScheduled = body?.scheduled === true
     } catch {
       // No body or invalid JSON — send to all
     }
