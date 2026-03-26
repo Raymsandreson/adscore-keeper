@@ -569,11 +569,13 @@ ${scrapeData.content || ''}
       return;
     }
 
+    console.log('[handleSave] Starting save for lead:', lead.id);
     setSaving(true);
     try {
       // Resolve WhatsApp group link to JID if it's a link (non-blocking)
       let resolvedGroupId = whatsappGroupId || null;
       if (whatsappGroupId && whatsappGroupId.includes('chat.whatsapp.com')) {
+        console.log('[handleSave] Resolving WhatsApp group link...');
         try {
           const { data: resolveData } = await supabase.functions.invoke('send-whatsapp', {
             body: { action: 'resolve_group_link', group_link: whatsappGroupId },
@@ -592,6 +594,7 @@ ${scrapeData.content || ''}
         }
       }
 
+      console.log('[handleSave] Calling onSave with updates...');
       // Save all fields
       await onSave(lead.id, {
         lead_name: leadName.trim(),
@@ -677,8 +680,8 @@ ${scrapeData.content || ''}
       toast.success('Lead atualizado com sucesso!');
       onOpenChange(false);
     } catch (error) {
-      console.error('Error saving lead:', error);
-      toast.error('Erro ao salvar lead');
+      console.error('[handleSave] Error saving lead:', error);
+      toast.error('Erro ao salvar lead: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
     } finally {
       setSaving(false);
     }
