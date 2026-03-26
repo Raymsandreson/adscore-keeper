@@ -307,6 +307,7 @@ Deno.serve(async (req) => {
             results.push({ type: 'create_group', ok: true, group_id: groupData.group_id });
             break;
           }
+      }
       } catch (actionError: any) {
         console.error(`[agent-automations] Action ${action.type} failed:`, actionError.message);
         results.push({ type: action.type, error: actionError.message });
