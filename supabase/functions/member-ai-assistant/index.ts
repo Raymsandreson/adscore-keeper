@@ -356,7 +356,7 @@ REGRA DE MÍDIA ANEXADA:
             ? (activityTypeLabelByKey.get(String(result.activity_type)) || result.activity_type)
             : 'Não informado'
 
-          createdActivitySummaries.push(
+          createdSummaries.push(
             [
               '📌 *Atividade criada*',
               `• Título: ${result.title || 'Não informado'}`,
@@ -367,6 +367,27 @@ REGRA DE MÍDIA ANEXADA:
               `• O que foi feito: ${result.what_was_done || 'Não informado'}`,
               `• Próximo passo: ${result.next_steps || 'Não informado'}`,
               `• Observação: ${result.current_status_notes || result.notes || 'Não informado'}`,
+            ].filter(Boolean).join('\n')
+          )
+        }
+
+        // Verified summary for lead creation
+        if (fnName === 'create_lead' && result?.success) {
+          createdSummaries.push(
+            [
+              '📋 *Lead criado*',
+              `• Nome: ${result.lead_name || 'Não informado'}`,
+              `• Estágio: ${result.stage || 'Não informado'}`,
+            ].filter(Boolean).join('\n')
+          )
+        }
+
+        // Verified summary for contact creation
+        if (fnName === 'create_contact' && result?.success) {
+          createdSummaries.push(
+            [
+              '👤 *Contato criado*',
+              `• Nome: ${result.full_name || 'Não informado'}`,
             ].filter(Boolean).join('\n')
           )
         }
