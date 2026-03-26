@@ -511,6 +511,52 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Export to Google Sheets Dialog */}
+      <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Exportar para Google Sheets</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>URL ou ID da planilha *</Label>
+              <Input
+                value={spreadsheetId}
+                onChange={e => setSpreadsheetId(e.target.value)}
+                placeholder="Cole a URL ou ID da planilha do Google Sheets"
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Ex: https://docs.google.com/spreadsheets/d/1WQC...
+              </p>
+            </div>
+            <div>
+              <Label>Nome da aba (opcional)</Label>
+              <Input
+                value={sheetName}
+                onChange={e => setSheetName(e.target.value)}
+                placeholder="Ex: PREVIDENCIÁRIO"
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Se não informado, usa a primeira aba da planilha
+              </p>
+            </div>
+            {nucleusFilter !== 'all' && (
+              <p className="text-sm text-muted-foreground">
+                📌 Filtrando por núcleo selecionado: apenas casos do filtro ativo serão exportados
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowExportDialog(false)}>Cancelar</Button>
+            <Button onClick={handleExportToSheets} disabled={exporting || !spreadsheetId.trim()}>
+              {exporting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Exportando...</> : 'Exportar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
