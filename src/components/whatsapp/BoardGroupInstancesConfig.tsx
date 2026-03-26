@@ -477,9 +477,30 @@ export function BoardGroupInstancesConfig() {
             )}
 
             {settings.use_ai_message && (
-              <p className="text-[10px] text-muted-foreground">
-                ℹ️ A IA usará APENAS dados do banco de dados (campos do lead, campos personalizados, atividades abertas e participantes do grupo). Nenhuma informação será inventada.
-              </p>
+              <>
+                <p className="text-[10px] text-muted-foreground">
+                  ℹ️ A IA usará APENAS dados do banco de dados (campos do lead, campos personalizados, atividades abertas e participantes do grupo). Nenhuma informação será inventada.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs h-7"
+                  onClick={generatePreview}
+                  disabled={previewLoading}
+                >
+                  {previewLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                  Pré-visualizar Mensagem
+                </Button>
+                {previewMessage && (
+                  <div className="p-3 rounded-lg border bg-background text-xs whitespace-pre-wrap max-h-[300px] overflow-y-auto">
+                    <div className="flex items-center gap-1.5 mb-2 text-[10px] text-muted-foreground font-medium">
+                      <Eye className="h-3 w-3" />
+                      Modelo de mensagem gerado pela IA (com dados fictícios):
+                    </div>
+                    {previewMessage}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
