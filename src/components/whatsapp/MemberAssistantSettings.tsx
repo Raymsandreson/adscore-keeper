@@ -41,6 +41,54 @@ const MODELS = [
   { value: 'openai/gpt-5', label: 'GPT-5 (avançado)' },
 ];
 
+const DEFAULT_ASSISTANT_PROMPT = `Você é o assistente interno da equipe, acessado via WhatsApp. 
+O membro que está falando com você é: {member_name} (ID: {member_id}).
+
+Você pode:
+- Buscar tarefas atrasadas (do membro ou da equipe)
+- Gerar resumos de produtividade do dia
+- Consultar leads e seus status
+- Criar novas atividades/tarefas
+- Consultar progresso de metas
+- *Criar leads* no sistema (funis de vendas ou fluxos de trabalho)
+- *Editar/atualizar leads* existentes (nome, valor, responsável, etapa, etc.)
+- *Criar contatos* no sistema
+- *Vincular contatos a leads* existentes
+- *Mudar a etapa/fase* de um lead no funil
+- *Buscar leads por localização* (cidade/estado) — encontrar leads próximos
+- *Ver detalhes completos* de um lead (campos customizados, valor, etapa, etc.)
+- *Resumo de contatos* vinculados a um lead (relacionamento, ligações, atividades)
+- *Gerenciar agentes de IA* em conversas WhatsApp (ativar, desativar, verificar status)
+
+Regras:
+- Responda de forma concisa e direta, formatado para WhatsApp (use *negrito* e listas com •)
+- Quando o usuário pedir algo vago como "resumo", use a ferramenta get_daily_summary
+- Quando perguntar sobre tarefas, use get_overdue_tasks
+- Sempre execute as ferramentas necessárias antes de responder
+- Use "mine" como scope padrão, a menos que o membro peça informações da equipe toda
+- Ao criar atividades, preencha campos automaticamente com base no contexto (prioridade, deadline)
+- IMPORTANTE: Use TODAS as informações fornecidas pelo membro na mensagem para preencher os campos da atividade (título, descrição, notas, próximos passos, etc.). Não omita dados que foram informados.
+- Ao criar leads, pergunte pelo menos o nome e o quadro/funil se não informados
+- Ao mover lead de etapa, primeiro busque o lead e as etapas disponíveis se necessário
+- Inclua emojis relevantes nas respostas para melhor legibilidade
+- Quando o membro pedir para criar contato e vincular a lead, execute ambas ferramentas em sequência
+
+REGRA OBRIGATÓRIA DE LINKS:
+Quando uma ferramenta retornar um campo "link" no resultado, você DEVE incluir esse link na sua resposta final. 
+Formato obrigatório: coloque o link em uma linha separada no final da resposta, assim:
+🔗 *Acessar:* <cole aqui o valor do campo link>
+Se a ferramenta retornou link, sua resposta PRECISA conter esse link. Não resuma, não omita, não substitua.
+- Para gerenciar agentes: quando o membro pedir "desativar assistente na conversa com X", use manage_conversation_agent com action=deactivate e contact_name=X
+- Sempre busque o contato pelo nome quando o membro não informar o telefone diretamente
+
+REGRA DE MÍDIA ANEXADA:
+- Quando o membro enviar uma mensagem junto com uma imagem ou documento (indicado por [MÍDIA ANEXADA]), você DEVE:
+  1. Analisar o conteúdo da mídia (a descrição já foi extraída para você)
+  2. Usar as informações da mídia para preencher campos da atividade (descrição, notas, etc.)
+  3. Ao criar atividade com mídia, SEMPRE passe media_url no parâmetro da ferramenta create_activity
+  4. Mencione na resposta que a mídia foi analisada e anexada à atividade
+- Se o membro enviar APENAS uma mídia sem texto claro de comando, pergunte o que ele deseja fazer com ela`;
+
 export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReload }: MemberAssistantSettingsProps) {
   const [isActive, setIsActive] = useState(true);
   const [instanceId, setInstanceId] = useState<string | null>(null);
@@ -52,6 +100,9 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
   const [showPromptEditor, setShowPromptEditor] = useState(false);
   const [savingPrompt, setSavingPrompt] = useState(false);
   const [batchDelaySeconds, setBatchDelaySeconds] = useState(6);
+  const [assistantPrompt, setAssistantPrompt] = useState('');
+  const [showAssistantPromptEditor, setShowAssistantPromptEditor] = useState(false);
+  const [savingAssistantPrompt, setSavingAssistantPrompt] = useState(false);
 
   // Internal command form
   const [showForm, setShowForm] = useState(false);
@@ -80,6 +131,7 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
       setInstanceId((configRes.data as any).instance_id || null);
       setCommandProcessorPrompt((configRes.data as any).command_processor_prompt || '');
       setBatchDelaySeconds((configRes.data as any).batch_delay_seconds ?? 6);
+      setAssistantPrompt((configRes.data as any).assistant_prompt || '');
     }
     setLoading(false);
   };
@@ -240,7 +292,70 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
         </CardContent>
       </Card>
 
-      {/* PROMPT DO PROCESSADOR ## */}
+      {/* PROMPT DO ASSISTENTE DE MEMBROS (mensagens diretas) */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Bot className="h-5 w-5" />
+                Prompt do Assistente (mensagens diretas)
+              </CardTitle>
+              <CardDescription>
+                Prompt de sistema usado pela IA quando membros enviam mensagens diretas (sem ##)
+              </CardDescription>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setShowAssistantPromptEditor(!showAssistantPromptEditor)}>
+              <Pencil className="h-3.5 w-3.5 mr-1" /> {showAssistantPromptEditor ? 'Fechar' : 'Editar'}
+            </Button>
+          </div>
+        </CardHeader>
+        {showAssistantPromptEditor && (
+          <CardContent className="space-y-3">
+            <div className="rounded-lg border p-3 bg-muted/50">
+              <p className="text-xs text-muted-foreground">
+                Deixe em branco para usar o prompt padrão. Variáveis disponíveis: <code>{'{member_name}'}</code>, <code>{'{member_id}'}</code>. 
+                O prompt padrão atual está pré-carregado abaixo para referência.
+              </p>
+            </div>
+            {!assistantPrompt && (
+              <div className="flex justify-end">
+                <Button size="sm" variant="outline" onClick={() => setAssistantPrompt(DEFAULT_ASSISTANT_PROMPT)}>
+                  Carregar prompt padrão para edição
+                </Button>
+              </div>
+            )}
+            <Textarea
+              placeholder="Deixe vazio para usar o prompt padrão..."
+              value={assistantPrompt}
+              onChange={e => setAssistantPrompt(e.target.value)}
+              className="min-h-[350px] text-xs font-mono"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button size="sm" variant="ghost" onClick={() => setAssistantPrompt('')}>Limpar (usar padrão)</Button>
+              <Button size="sm" disabled={savingAssistantPrompt} onClick={async () => {
+                setSavingAssistantPrompt(true);
+                try {
+                  const payload = { assistant_prompt: assistantPrompt || null, updated_at: new Date().toISOString() };
+                  if (configId) {
+                    const { error } = await supabase.from('member_assistant_config').update(payload).eq('id', configId);
+                    if (error) throw error;
+                  } else {
+                    const { data, error } = await supabase.from('member_assistant_config').insert(payload).select('id').single();
+                    if (error) throw error;
+                    setConfigId(data.id);
+                  }
+                  toast.success('Prompt do assistente salvo!');
+                } catch (e: any) { toast.error(e.message); } finally { setSavingAssistantPrompt(false); }
+              }}>
+                {savingAssistantPrompt ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                <span className="ml-1">Salvar Prompt</span>
+              </Button>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
