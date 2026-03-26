@@ -94,7 +94,9 @@ export function CustomFieldInput({ field, value, onChange }: CustomFieldInputPro
           type="date"
           value={(currentValue as string) || ''}
           onChange={(e) => handleChange(e.target.value || null)}
-          className="mt-1"
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="mt-1 pointer-events-auto relative z-50"
         />
       )}
 
