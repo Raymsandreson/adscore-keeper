@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
 
     const { data: memberConfig } = await supabase
       .from('member_assistant_config')
-      .select('batch_delay_seconds')
+      .select('batch_delay_seconds, assistant_prompt')
       .limit(1)
       .maybeSingle()
 
