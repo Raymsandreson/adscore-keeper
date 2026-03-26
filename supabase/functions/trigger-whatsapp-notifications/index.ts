@@ -595,10 +595,82 @@ async function buildPersonalizedReport(
     sections.push('')
   }
 
+  // ── ZapSign Documents ──
+  if (config.notify_zapsign_documents) {
+    const brNowStrZ = now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })
+    const brNowDateZ = new Date(brNowStrZ)
+    const todayStartZ = new Date(Date.UTC(brNowDateZ.getFullYear(), brNowDateZ.getMonth(), brNowDateZ.getDate(), 3, 0, 0, 0))
+    const sinceZ = todayStartZ.toISOString()
+
+    const { count: docsGenerated } = await supabase
+      .from('zapsign_documents')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', sinceZ)
+
+    const { count: docsSigned } = await supabase
+      .from('zapsign_documents')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'signed')
+      .gte('updated_at', sinceZ)
+
+    const { count: docsPending } = await supabase
+      .from('zapsign_documents')
+      .select('id', { count: 'exact', head: true })
+      .in('status', ['pending', 'sent'])
+      .gte('created_at', sinceZ)
+
+    sections.push(`📝 *Documentos ZapSign*`)
+    sections.push(`  • Gerados hoje: ${docsGenerated || 0}`)
+    sections.push(`  • Assinados: ${docsSigned || 0}`)
+    sections.push(`  • Pendentes: ${docsPending || 0}`)
+    sections.push('')
+  }
+
+  // ── CallFace Calls ──
+  if (config.notify_callface_calls) {
+    const brNowStrC = now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })
+    const brNowDateC = new Date(brNowStrC)
+    const todayStartC = new Date(Date.UTC(brNowDateC.getFullYear(), brNowDateC.getMonth(), brNowDateC.getDate(), 3, 0, 0, 0))
+    const sinceC = todayStartC.toISOString()
+
+    let callsQ = supabase
+      .from('call_records')
+      .select('call_result, duration_seconds')
+      .gte('created_at', sinceC)
+    if (userId) callsQ = callsQ.eq('user_id', userId)
+    const { data: calls } = await callsQ
+
+    const totalCalls = (calls || []).length
+    let answered = 0, notAnswered = 0, totalSeconds = 0
+    for (const c of (calls || [])) {
+      if (c.call_result === 'completed' || c.call_result === 'answered') {
+        answered++
+      } else {
+        notAnswered++
+      }
+      totalSeconds += (c.duration_seconds || 0)
+    }
+
+    const fmtDuration = (secs: number) => {
+      if (secs < 60) return `${secs}s`
+      const mins = Math.floor(secs / 60)
+      const s = secs % 60
+      if (mins < 60) return s > 0 ? `${mins}m${s}s` : `${mins}m`
+      const h = Math.floor(mins / 60)
+      const m = mins % 60
+      return m > 0 ? `${h}h${m}m` : `${h}h`
+    }
+
+    sections.push(`📞 *Ligações CallFace*`)
+    sections.push(`  • Total: ${totalCalls}`)
+    sections.push(`  • ✅ Atendidas: ${answered}`)
+    sections.push(`  • ❌ Não atendidas: ${notAnswered}`)
+    sections.push(`  • ⏱️ Tempo total: ${fmtDuration(totalSeconds)}`)
+    sections.push('')
+  }
+
   // ── Checklist Steps ──
   if (config.notify_checklist_steps) {
-    // Count checklist items completed today by checking updated_at on lead_checklist_instances
-    // Items are stored as JSONB array; we need to count checked items
     const brNowStr2 = now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })
     const brNowDate2 = new Date(brNowStr2)
     const todayStartCL = new Date(Date.UTC(brNowDate2.getFullYear(), brNowDate2.getMonth(), brNowDate2.getDate(), 3, 0, 0, 0))
