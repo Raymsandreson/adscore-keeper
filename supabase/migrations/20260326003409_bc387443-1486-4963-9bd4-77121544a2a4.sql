@@ -1,0 +1,1 @@
+ALTER TABLE public.member_assistant_config ADD COLUMN IF NOT EXISTS assistant_prompt text DEFAULT NULL;

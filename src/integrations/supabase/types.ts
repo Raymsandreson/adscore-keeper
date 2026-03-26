@@ -4519,6 +4519,7 @@ export type Database = {
       }
       member_assistant_config: {
         Row: {
+          assistant_prompt: string | null
           batch_delay_seconds: number
           command_processor_prompt: string | null
           created_at: string
@@ -4529,6 +4530,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          assistant_prompt?: string | null
           batch_delay_seconds?: number
           command_processor_prompt?: string | null
           created_at?: string
@@ -4539,6 +4541,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          assistant_prompt?: string | null
           batch_delay_seconds?: number
           command_processor_prompt?: string | null
           created_at?: string
