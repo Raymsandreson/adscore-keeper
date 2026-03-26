@@ -111,6 +111,7 @@ export function BoardGroupInstancesConfig() {
   const [previewMessage, setPreviewMessage] = useState<string | null>(null);
   const [refineInput, setRefineInput] = useState('');
   const [refineLoading, setRefineLoading] = useState(false);
+  const [adminNotes, setAdminNotes] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -334,6 +335,7 @@ export function BoardGroupInstancesConfig() {
 
       if (error) throw error;
       setPreviewMessage(data?.message || 'Não foi possível gerar a pré-visualização.');
+      setAdminNotes(data?.admin_notes || null);
     } catch (e: any) {
       toast.error('Erro ao gerar pré-visualização');
       console.error(e);
@@ -367,6 +369,7 @@ export function BoardGroupInstancesConfig() {
 
       if (error) throw error;
       setPreviewMessage(data?.message || previewMessage);
+      setAdminNotes(data?.admin_notes || null);
       setRefineInput('');
       toast.success('Modelo refinado com IA!');
     } catch (e: any) {
