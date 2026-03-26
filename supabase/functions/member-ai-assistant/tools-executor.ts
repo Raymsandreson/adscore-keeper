@@ -206,6 +206,7 @@ async function createActivity(supabase: any, args: any, userId: string, userName
 
   // Resolve activity type to an active key (UI expects key, not free text)
   const requestedActivityType = typeof args.activity_type === 'string' ? args.activity_type.trim() : ''
+  const rawCommandText = typeof args.raw_command_text === 'string' ? args.raw_command_text.trim() : ''
   let resolvedActivityType = requestedActivityType
   const { data: activeActivityTypes } = await supabase
     .from('activity_types')
@@ -215,7 +216,7 @@ async function createActivity(supabase: any, args: any, userId: string, userName
     .limit(200)
 
   if (activeActivityTypes && activeActivityTypes.length > 0) {
-    const normalizedType = normalizeText(resolvedActivityType)
+    const normalizedType = normalizeText(requestedActivityType)
     const exactKey = activeActivityTypes.find((t: any) => normalizeText(t.key || '') === normalizedType)
     const byLabel = activeActivityTypes.find((t: any) => normalizeText(t.label || '') === normalizedType)
     const fuzzyLabel = activeActivityTypes.find((t: any) => {
@@ -229,12 +230,45 @@ async function createActivity(supabase: any, args: any, userId: string, userName
       )
     })
 
-    resolvedActivityType = exactKey?.key || byLabel?.key || fuzzyLabel?.key || activeActivityTypes[0].key
+    const typeContextText = normalizeText([
+      args.title,
+      rawCommandText,
+      args.current_status_notes,
+      args.notes,
+      args.next_steps,
+      args.what_was_done,
+    ].filter((v: any) => typeof v === 'string' && v.trim()).join(' '))
+
+    const contextTokens = Array.from(new Set(typeContextText.split(/[^a-z0-9]+/).filter((t) => t.length > 2)))
+
+    const contextualMatch = !normalizedType && contextTokens.length > 0
+      ? activeActivityTypes
+          .map((t: any) => {
+            const labelTokens = Array.from(new Set(normalizeText(t.label || '').split(/[^a-z0-9]+/).filter((x) => x.length > 2)))
+            const keyTokens = Array.from(new Set(normalizeText(t.key || '').split(/[^a-z0-9]+/).filter((x) => x.length > 2 && !/^custom\d+$/.test(x))))
+            const tokens = Array.from(new Set([...labelTokens, ...keyTokens]))
+            const overlap = tokens.filter((token) => contextTokens.includes(token)).length
+            return { key: t.key, overlap }
+          })
+          .sort((a: any, b: any) => b.overlap - a.overlap)[0]
+      : null
+
+    const preferredFallback = activeActivityTypes.find((t: any) => {
+      const normalizedLabelAndKey = normalizeText(`${t.label || ''} ${t.key || ''}`)
+      return /follow\s*up|followup|tarefa|atividade|geral/.test(normalizedLabelAndKey)
+    })
+
+    resolvedActivityType =
+      exactKey?.key ||
+      byLabel?.key ||
+      fuzzyLabel?.key ||
+      (contextualMatch && contextualMatch.overlap > 0 ? contextualMatch.key : undefined) ||
+      preferredFallback?.key ||
+      activeActivityTypes[0].key
   }
 
   if (!resolvedActivityType) resolvedActivityType = 'tarefa'
 
-  const rawCommandText = typeof args.raw_command_text === 'string' ? args.raw_command_text.trim() : ''
   const commandWithoutMediaMarker = rawCommandText.replace(/\[MÍDIA ANEXADA:[^\]]+\]\s*/gi, '').trim()
   const descriptionText = typeof args.description === 'string' ? args.description.trim() : ''
   const providedCurrentStatus = typeof args.current_status_notes === 'string' ? args.current_status_notes.trim() : ''
