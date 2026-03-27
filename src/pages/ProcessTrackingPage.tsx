@@ -13,8 +13,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
   FileSpreadsheet, Upload, Loader2, Search, AlertTriangle, Check,
-  X, RefreshCw, FileUp, Briefcase, Shield,
+  X, RefreshCw, FileUp, Briefcase, Shield, Plus,
 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ProcessTrackingTable } from '@/components/process-tracking/ProcessTrackingTable';
 
@@ -59,6 +60,9 @@ const ProcessTrackingPage = () => {
   const [conflictDecisions, setConflictDecisions] = useState<Record<number, 'overwrite' | 'skip'>>({});
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [activeTab, setActiveTab] = useState('trabalhista');
+  const [showNewRecordDialog, setShowNewRecordDialog] = useState(false);
+  const [newRecord, setNewRecord] = useState<Partial<ProcessTracking>>({});
+  const [savingNew, setSavingNew] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
@@ -81,6 +85,27 @@ const ProcessTrackingPage = () => {
     } catch {
       toast.error('Erro ao atualizar registro');
       throw new Error();
+    }
+  };
+
+  const handleCreateRecord = async () => {
+    if (!newRecord.cliente?.trim()) {
+      toast.error('Informe o nome do cliente');
+      return;
+    }
+    setSavingNew(true);
+    try {
+      // Auto-set caso prefix based on active tab
+      const prefix = activeTab === 'previdenciario' ? 'PREV' : 'CASO';
+      const caso = newRecord.caso?.trim() || prefix;
+      await upsertRecord({ ...newRecord, caso });
+      toast.success('Registro criado com sucesso');
+      setShowNewRecordDialog(false);
+      setNewRecord({});
+    } catch {
+      toast.error('Erro ao criar registro');
+    } finally {
+      setSavingNew(false);
     }
   };
 
@@ -337,10 +362,16 @@ const ProcessTrackingPage = () => {
         </CardContent>
       </Card>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input className="pl-9" placeholder="Buscar por cliente, caso, CPF ou nº processo..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+      {/* Search + New */}
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input className="pl-9" placeholder="Buscar por cliente, caso, CPF ou nº processo..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+        </div>
+        <Button onClick={() => { setNewRecord({}); setShowNewRecordDialog(true); }} className="gap-2">
+          <Plus className="h-4 w-4" />
+          Novo Registro
+        </Button>
       </div>
 
       {/* Tabs: Trabalhista / Previdenciário */}
@@ -487,6 +518,87 @@ const ProcessTrackingPage = () => {
             <Button onClick={handleResolveConflicts} disabled={Object.keys(conflictDecisions).length < conflicts.length} className="gap-2">
               <Check className="h-4 w-4" />
               Continuar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* New Record Dialog */}
+      <Dialog open={showNewRecordDialog} onOpenChange={setShowNewRecordDialog}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-primary" />
+              Novo Registro Processual
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label>Cliente *</Label>
+              <Input value={newRecord.cliente || ''} onChange={e => setNewRecord(p => ({ ...p, cliente: e.target.value }))} placeholder="Nome do cliente" />
+            </div>
+            <div className="space-y-1">
+              <Label>Caso</Label>
+              <Input value={newRecord.caso || ''} onChange={e => setNewRecord(p => ({ ...p, caso: e.target.value }))} placeholder="Ex: CASO-0001 ou PREV-0001" />
+            </div>
+            <div className="space-y-1">
+              <Label>CPF</Label>
+              <Input value={newRecord.cpf || ''} onChange={e => setNewRecord(p => ({ ...p, cpf: e.target.value }))} placeholder="000.000.000-00" />
+            </div>
+            <div className="space-y-1">
+              <Label>Senha Gov</Label>
+              <Input value={newRecord.senha_gov || ''} onChange={e => setNewRecord(p => ({ ...p, senha_gov: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Nº Processo</Label>
+              <Input value={newRecord.numero_processo || ''} onChange={e => setNewRecord(p => ({ ...p, numero_processo: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Tipo</Label>
+              <Input value={newRecord.tipo || ''} onChange={e => setNewRecord(p => ({ ...p, tipo: e.target.value }))} placeholder="Tipo de benefício" />
+            </div>
+            <div className="space-y-1">
+              <Label>Pendência</Label>
+              <Input value={newRecord.pendencia || ''} onChange={e => setNewRecord(p => ({ ...p, pendencia: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Status do Processo</Label>
+              <Select value={newRecord.status_processo || ''} onValueChange={v => setNewRecord(p => ({ ...p, status_processo: v }))}>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Em análise">Em análise</SelectItem>
+                  <SelectItem value="Em andamento">Em andamento</SelectItem>
+                  <SelectItem value="Deferido">Deferido</SelectItem>
+                  <SelectItem value="Indeferido">Indeferido</SelectItem>
+                  <SelectItem value="Concluído">Concluído</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Acolhedor</Label>
+              <Input value={newRecord.acolhedor || ''} onChange={e => setNewRecord(p => ({ ...p, acolhedor: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Data Criação Grupo</Label>
+              <Input type="date" value={newRecord.data_criacao || ''} onChange={e => setNewRecord(p => ({ ...p, data_criacao: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Protocolado</Label>
+              <Input value={newRecord.protocolado || ''} onChange={e => setNewRecord(p => ({ ...p, protocolado: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Data Nasc. Bebê</Label>
+              <Input type="date" value={newRecord.data_nascimento_bebe || ''} onChange={e => setNewRecord(p => ({ ...p, data_nascimento_bebe: e.target.value }))} />
+            </div>
+            <div className="md:col-span-2 space-y-1">
+              <Label>Observação</Label>
+              <Input value={newRecord.observacao || ''} onChange={e => setNewRecord(p => ({ ...p, observacao: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNewRecordDialog(false)}>Cancelar</Button>
+            <Button onClick={handleCreateRecord} disabled={savingNew} className="gap-2">
+              {savingNew ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              Criar Registro
             </Button>
           </DialogFooter>
         </DialogContent>
