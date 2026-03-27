@@ -715,12 +715,17 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
     }
   };
 
-  const fetchLeads = async () => {
-    const { data } = await supabase
+  const fetchLeads = async (search?: string) => {
+    let query = supabase
       .from('leads')
       .select('id, lead_name')
-      .order('created_at', { ascending: false })
-      .limit(100);
+      .order('created_at', { ascending: false });
+    
+    if (search && search.trim().length >= 2) {
+      query = query.ilike('lead_name', `%${search.trim()}%`);
+    }
+    
+    const { data } = await query.limit(50);
     setLeads(data || []);
   };
 
@@ -978,9 +983,12 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar lead por nome..."
+                  placeholder="Buscar lead por nome, cidade..."
                   value={leadSearchQuery}
-                  onChange={(e) => setLeadSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setLeadSearchQuery(e.target.value);
+                    fetchLeads(e.target.value);
+                  }}
                   className="pl-8 h-9"
                 />
               </div>
@@ -997,7 +1005,12 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
               <ScrollArea className="max-h-[200px]">
                 <div className="space-y-0.5">
                   {leads
-                    .filter(l => !leadSearchQuery || (l.lead_name || '').toLowerCase().includes(leadSearchQuery.toLowerCase()))
+                    .filter(l => {
+                      if (!leadSearchQuery) return true;
+                      const normalize = (v?: string | null) => (v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+                      const q = normalize(leadSearchQuery);
+                      return normalize(l.lead_name).includes(q);
+                    })
                     .map(lead => (
                       <button
                         key={lead.id}
@@ -1012,7 +1025,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                       </button>
                     ))
                   }
-                  {leads.filter(l => !leadSearchQuery || (l.lead_name || '').toLowerCase().includes(leadSearchQuery.toLowerCase())).length === 0 && (
+                  {leads.length === 0 && leadSearchQuery.length >= 2 && (
                     <p className="text-xs text-muted-foreground text-center py-4">Nenhum lead encontrado</p>
                   )}
                 </div>
