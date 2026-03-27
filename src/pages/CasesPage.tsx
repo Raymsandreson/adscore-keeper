@@ -28,6 +28,7 @@ import { CopyableText } from '@/components/ui/copyable-text';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
+import ProcessDetailSheet from '@/components/cases/ProcessDetailSheet';
 import { CaseWorkflowBoard } from '@/components/cases/CaseWorkflowBoard';
 import {
   Dialog,
@@ -289,6 +290,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showAddProcess, setShowAddProcess] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [selectedProcess, setSelectedProcess] = useState<any>(null);
   const [editCaseNumber, setEditCaseNumber] = useState(legalCase.case_number || '');
   const [editTitle, setEditTitle] = useState(legalCase.title || '');
   const [editDescription, setEditDescription] = useState(legalCase.description || '');
@@ -480,7 +482,11 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                 )}
                 <div className="space-y-2">
                   {processes.map(p => (
-                    <div key={p.id} className="border rounded-lg p-2.5 bg-card space-y-1">
+                    <div
+                      key={p.id}
+                      className="border rounded-lg p-2.5 bg-card space-y-1 cursor-pointer hover:bg-muted/50 transition-colors"
+                      onClick={() => setSelectedProcess(p)}
+                    >
                       <div className="flex items-center gap-2">
                         {p.process_type === 'judicial' ? (
                           <Gavel className="h-3.5 w-3.5 text-orange-500" />
@@ -500,6 +506,12 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                       )}
                       {p.workflow_name && (
                         <CopyableText as="p" copyValue={p.workflow_name} label="Fluxo" showIcon={false} className="text-[10px] text-muted-foreground">Fluxo de Trabalho: {p.workflow_name}</CopyableText>
+                      )}
+                      {p.orgao_julgador && (
+                        <p className="text-[10px] text-muted-foreground">🏛️ {p.orgao_julgador}</p>
+                      )}
+                      {p.situacao && (
+                        <Badge variant="outline" className="text-[9px]">{p.situacao}</Badge>
                       )}
                     </div>
                   ))}
@@ -557,6 +569,12 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ProcessDetailSheet
+        open={!!selectedProcess}
+        onOpenChange={(open) => { if (!open) setSelectedProcess(null); }}
+        process={selectedProcess}
+      />
     </>
   );
 }

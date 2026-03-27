@@ -250,15 +250,20 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           }
         }
 
-        const fonte = fullResult.fontes?.[0] || result.fontes?.[0];
-        const title = fonte?.classe?.nome || 
+        const fonte: any = fullResult.fontes?.[0] || result.fontes?.[0] || {};
+        const capa: any = fonte?.capa || {};
+        const title = capa?.classe || fonte?.classe?.nome || 
           `${fullResult.titulo_polo_ativo || result.titulo_polo_ativo || 'Autor'} vs ${fullResult.titulo_polo_passivo || result.titulo_polo_passivo || 'Réu'}`;
         const description = [
-          fonte?.area?.nome && `Área: ${fonte.area.nome}`,
+          capa?.area && `Área: ${capa.area}`,
           fonte?.nome && `Fonte: ${fonte.nome}`,
-          fonte?.grau && `Grau: ${fonte.grau}`,
-          fonte?.assuntos?.length && `Assuntos: ${fonte.assuntos.map(a => a.nome).join(', ')}`,
+          fonte?.grau_formatado && `Grau: ${fonte.grau_formatado}`,
+          capa?.assuntos_normalizados?.length && `Assuntos: ${capa.assuntos_normalizados.map((a: any) => a.nome).join(', ')}`,
         ].filter(Boolean).join('\n');
+
+        const estadoOrigem = (fullResult as any).estado_origem || (result as any).estado_origem;
+        const unidadeOrigem = (fullResult as any).unidade_origem || (result as any).unidade_origem;
+        const valorCausa = capa?.valor_causa || {};
 
         const { data: insertedProcess, error } = await supabase
           .from('lead_processes')
@@ -273,22 +278,50 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             polo_ativo: fullResult.titulo_polo_ativo || result.titulo_polo_ativo || null,
             polo_passivo: fullResult.titulo_polo_passivo || result.titulo_polo_passivo || null,
             ano_inicio: fullResult.ano_inicio || result.ano_inicio || null,
-            tribunal: fonte?.tribunal || fonte?.nome || null,
-            grau: fonte?.grau || null,
-            classe: fonte?.classe?.nome || null,
-            area: fonte?.area?.nome || null,
-            assuntos: fonte?.assuntos?.map((a: any) => a.nome) || null,
-            valor_causa: (fullResult as any).valor_causa || (result as any).valor_causa || null,
+            tribunal: fonte?.tribunal?.nome || fonte?.nome || null,
+            tribunal_sigla: fonte?.tribunal?.sigla || fonte?.sigla || null,
+            grau: fonte?.grau_formatado || fonte?.grau || null,
+            classe: capa?.classe || fonte?.classe?.nome || null,
+            area: capa?.area || fonte?.area?.nome || null,
+            assuntos: capa?.assuntos_normalizados?.map((a: any) => a.nome) || fonte?.assuntos?.map((a: any) => a.nome) || null,
+            assunto_principal: capa?.assunto_principal_normalizado?.nome || null,
+            valor_causa: valorCausa?.valor ? parseFloat(valorCausa.valor) : ((fullResult as any).valor_causa || (result as any).valor_causa || null),
+            valor_causa_formatado: valorCausa?.valor_formatado || null,
+            moeda: valorCausa?.moeda || null,
             envolvidos: fonte?.envolvidos || null,
             movimentacoes: movimentacoes.length > 0 ? movimentacoes : ((fonte as any)?.movimentacoes || null),
             fonte_nome: fonte?.nome || null,
             fonte_tipo: fonte?.tipo || null,
             fonte_data_inicio: fonte?.data_inicio || null,
-            fonte_data_fim: fonte?.data_fim || null,
+            fonte_data_fim: fonte?.data_ultima_movimentacao || null,
             escavador_raw: fullResult,
             workflow_id: workflowId || null,
             workflow_name: selectedBoard?.name || null,
             created_by: user?.id,
+            // New Escavador fields
+            estado_origem: estadoOrigem?.nome || null,
+            estado_origem_sigla: estadoOrigem?.sigla || null,
+            unidade_origem: unidadeOrigem?.nome || null,
+            unidade_origem_endereco: unidadeOrigem?.endereco || null,
+            unidade_origem_classificacao: unidadeOrigem?.classificacao || null,
+            unidade_origem_cidade: unidadeOrigem?.cidade || null,
+            data_ultima_movimentacao: (fullResult as any).data_ultima_movimentacao || null,
+            quantidade_movimentacoes: (fullResult as any).quantidade_movimentacoes || null,
+            data_ultima_verificacao: (fullResult as any).data_ultima_verificacao || null,
+            processos_relacionados: (fullResult as any).processos_relacionados || null,
+            segredo_justica: fonte?.segredo_justica || null,
+            arquivado: fonte?.arquivado || null,
+            status_predito: fonte?.status_predito || null,
+            fisico: fonte?.fisico || null,
+            sistema: fonte?.sistema || null,
+            url_tribunal: fonte?.url || null,
+            orgao_julgador: capa?.orgao_julgador || null,
+            situacao: capa?.situacao || null,
+            data_distribuicao: capa?.data_distribuicao || null,
+            data_arquivamento: capa?.data_arquivamento || null,
+            informacoes_complementares: capa?.informacoes_complementares || null,
+            audiencias: fonte?.audiencias || null,
+            data_inicio: (fullResult as any).data_inicio || null,
           } as any)
           .select('id')
           .single();

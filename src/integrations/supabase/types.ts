@@ -4063,36 +4063,63 @@ export type Database = {
         Row: {
           ano_inicio: number | null
           area: string | null
+          arquivado: boolean | null
+          assunto_principal: string | null
           assuntos: string[] | null
+          audiencias: Json | null
           case_id: string | null
           classe: string | null
           created_at: string
           created_by: string | null
+          data_arquivamento: string | null
+          data_distribuicao: string | null
+          data_inicio: string | null
+          data_ultima_movimentacao: string | null
+          data_ultima_verificacao: string | null
           description: string | null
           envolvidos: Json | null
           escavador_raw: Json | null
+          estado_origem: string | null
+          estado_origem_sigla: string | null
           estimated_fee_value: number | null
           fee_percentage: number | null
           finished_at: string | null
+          fisico: boolean | null
           fonte_data_fim: string | null
           fonte_data_inicio: string | null
           fonte_nome: string | null
           fonte_tipo: string | null
           grau: string | null
           id: string
+          informacoes_complementares: string | null
           lead_id: string
+          moeda: string | null
           movimentacoes: Json | null
           notes: string | null
+          orgao_julgador: string | null
           polo_ativo: string | null
           polo_passivo: string | null
           process_number: string | null
           process_type: string
+          processos_relacionados: Json | null
+          quantidade_movimentacoes: number | null
+          segredo_justica: boolean | null
+          sistema: string | null
+          situacao: string | null
           started_at: string | null
           status: string
+          status_predito: string | null
           title: string
           tribunal: string | null
+          tribunal_sigla: string | null
+          unidade_origem: string | null
+          unidade_origem_cidade: string | null
+          unidade_origem_classificacao: string | null
+          unidade_origem_endereco: string | null
           updated_at: string
+          url_tribunal: string | null
           valor_causa: number | null
+          valor_causa_formatado: string | null
           workflow_id: string | null
           workflow_name: string | null
           workflow_stage_id: string | null
@@ -4100,36 +4127,63 @@ export type Database = {
         Insert: {
           ano_inicio?: number | null
           area?: string | null
+          arquivado?: boolean | null
+          assunto_principal?: string | null
           assuntos?: string[] | null
+          audiencias?: Json | null
           case_id?: string | null
           classe?: string | null
           created_at?: string
           created_by?: string | null
+          data_arquivamento?: string | null
+          data_distribuicao?: string | null
+          data_inicio?: string | null
+          data_ultima_movimentacao?: string | null
+          data_ultima_verificacao?: string | null
           description?: string | null
           envolvidos?: Json | null
           escavador_raw?: Json | null
+          estado_origem?: string | null
+          estado_origem_sigla?: string | null
           estimated_fee_value?: number | null
           fee_percentage?: number | null
           finished_at?: string | null
+          fisico?: boolean | null
           fonte_data_fim?: string | null
           fonte_data_inicio?: string | null
           fonte_nome?: string | null
           fonte_tipo?: string | null
           grau?: string | null
           id?: string
+          informacoes_complementares?: string | null
           lead_id: string
+          moeda?: string | null
           movimentacoes?: Json | null
           notes?: string | null
+          orgao_julgador?: string | null
           polo_ativo?: string | null
           polo_passivo?: string | null
           process_number?: string | null
           process_type?: string
+          processos_relacionados?: Json | null
+          quantidade_movimentacoes?: number | null
+          segredo_justica?: boolean | null
+          sistema?: string | null
+          situacao?: string | null
           started_at?: string | null
           status?: string
+          status_predito?: string | null
           title: string
           tribunal?: string | null
+          tribunal_sigla?: string | null
+          unidade_origem?: string | null
+          unidade_origem_cidade?: string | null
+          unidade_origem_classificacao?: string | null
+          unidade_origem_endereco?: string | null
           updated_at?: string
+          url_tribunal?: string | null
           valor_causa?: number | null
+          valor_causa_formatado?: string | null
           workflow_id?: string | null
           workflow_name?: string | null
           workflow_stage_id?: string | null
@@ -4137,36 +4191,63 @@ export type Database = {
         Update: {
           ano_inicio?: number | null
           area?: string | null
+          arquivado?: boolean | null
+          assunto_principal?: string | null
           assuntos?: string[] | null
+          audiencias?: Json | null
           case_id?: string | null
           classe?: string | null
           created_at?: string
           created_by?: string | null
+          data_arquivamento?: string | null
+          data_distribuicao?: string | null
+          data_inicio?: string | null
+          data_ultima_movimentacao?: string | null
+          data_ultima_verificacao?: string | null
           description?: string | null
           envolvidos?: Json | null
           escavador_raw?: Json | null
+          estado_origem?: string | null
+          estado_origem_sigla?: string | null
           estimated_fee_value?: number | null
           fee_percentage?: number | null
           finished_at?: string | null
+          fisico?: boolean | null
           fonte_data_fim?: string | null
           fonte_data_inicio?: string | null
           fonte_nome?: string | null
           fonte_tipo?: string | null
           grau?: string | null
           id?: string
+          informacoes_complementares?: string | null
           lead_id?: string
+          moeda?: string | null
           movimentacoes?: Json | null
           notes?: string | null
+          orgao_julgador?: string | null
           polo_ativo?: string | null
           polo_passivo?: string | null
           process_number?: string | null
           process_type?: string
+          processos_relacionados?: Json | null
+          quantidade_movimentacoes?: number | null
+          segredo_justica?: boolean | null
+          sistema?: string | null
+          situacao?: string | null
           started_at?: string | null
           status?: string
+          status_predito?: string | null
           title?: string
           tribunal?: string | null
+          tribunal_sigla?: string | null
+          unidade_origem?: string | null
+          unidade_origem_cidade?: string | null
+          unidade_origem_classificacao?: string | null
+          unidade_origem_endereco?: string | null
           updated_at?: string
+          url_tribunal?: string | null
           valor_causa?: number | null
+          valor_causa_formatado?: string | null
           workflow_id?: string | null
           workflow_name?: string | null
           workflow_stage_id?: string | null
