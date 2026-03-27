@@ -115,6 +115,10 @@ export function normalizeIncomingField(field: any, catalog: TemplateFieldRef[]):
 
 export function applyDefaults(fields: any[]) {
   for (const f of fields) {
+    // Ensure all `de` values are wrapped in {{}} for ZapSign API
+    if (f.de && !f.de.startsWith("{{")) {
+      f.de = `{{${f.de.replace(/\{\{|\}\}/g, "").trim()}}}`;
+    }
     const key = (f.de || "").replace(/\{\{|\}\}/g, "").toUpperCase().trim();
     if (key.includes("EMAIL") && !f.para) f.para = "contato@prudencioadv.com";
     if (key.includes("WHATSAPP") && !f.para) f.para = "(86)99447-3226";
