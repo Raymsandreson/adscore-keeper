@@ -4,9 +4,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, LogIn, UserPlus, Eye, EyeOff } from 'lucide-react';
+import { Loader2, LogIn, UserPlus, Eye, EyeOff, Scale } from 'lucide-react';
+
+const UF_OPTIONS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
 const PasswordInput = ({ id, value, onChange, show, onToggle, placeholder = '••••••••' }: {
   id: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
