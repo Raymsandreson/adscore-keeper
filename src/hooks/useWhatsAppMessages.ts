@@ -727,6 +727,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
                   messages: [...c.messages, newMsg],
                   contact_name: newMsg.contact_name || c.contact_name,
                 };
+                // Update cache if this is the active conversation
+                if (activePhoneRef.current === newMsg.phone && fullConvCacheRef.current[newMsg.phone]) {
+                  fullConvCacheRef.current[newMsg.phone] = [...fullConvCacheRef.current[newMsg.phone], newMsg];
+                }
+                return updated;
               }).sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
             } else {
               // New conversation
