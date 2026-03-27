@@ -11,7 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
-  Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil
+  Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw
 } from 'lucide-react';
 
 interface ProcessDetailSheetProps {
@@ -89,6 +89,87 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     setDirty(true);
   }, []);
 
+  const handleReExtract = async () => {
+    const raw = form.escavador_raw;
+    if (!raw) {
+      toast.error('Dados brutos do Escavador não encontrados');
+      return;
+    }
+    const fonte: any = raw.fontes?.[0] || {};
+    const capa: any = fonte?.capa || {};
+    const valorCausa = capa?.valor_causa || {};
+    const estadoOrigem = raw.estado_origem || {};
+    const unidadeOrigem = raw.unidade_origem || {};
+
+    const extracted: Record<string, any> = {
+      classe: capa?.classe || fonte?.classe?.nome || null,
+      area: capa?.area || fonte?.area?.nome || null,
+      assunto_principal: capa?.assunto_principal_normalizado?.nome || null,
+      assuntos: capa?.assuntos_normalizados?.map((a: any) => a.nome) || fonte?.assuntos?.map((a: any) => a.nome) || null,
+      orgao_julgador: capa?.orgao_julgador || null,
+      valor_causa: valorCausa?.valor ? parseFloat(valorCausa.valor) : (raw.valor_causa || null),
+      valor_causa_formatado: valorCausa?.valor_formatado || null,
+      moeda: valorCausa?.moeda || null,
+      situacao: capa?.situacao || null,
+      data_distribuicao: capa?.data_distribuicao || null,
+      data_arquivamento: capa?.data_arquivamento || null,
+      informacoes_complementares: capa?.informacoes_complementares || null,
+      tribunal: fonte?.tribunal?.nome || fonte?.nome || null,
+      tribunal_sigla: fonte?.tribunal?.sigla || fonte?.sigla || null,
+      grau: fonte?.grau_formatado || fonte?.grau || null,
+      sistema: fonte?.sistema || null,
+      url_tribunal: fonte?.url || null,
+      segredo_justica: fonte?.segredo_justica || null,
+      arquivado: fonte?.arquivado || null,
+      status_predito: fonte?.status_predito || null,
+      fisico: fonte?.fisico || null,
+      estado_origem: estadoOrigem?.nome || null,
+      estado_origem_sigla: estadoOrigem?.sigla || null,
+      unidade_origem: unidadeOrigem?.nome || null,
+      unidade_origem_endereco: unidadeOrigem?.endereco || null,
+      unidade_origem_classificacao: unidadeOrigem?.classificacao || null,
+      unidade_origem_cidade: unidadeOrigem?.cidade || null,
+      polo_ativo: raw.titulo_polo_ativo || null,
+      polo_passivo: raw.titulo_polo_passivo || null,
+      ano_inicio: raw.ano_inicio || null,
+      data_inicio: raw.data_inicio || null,
+      data_ultima_movimentacao: raw.data_ultima_movimentacao || null,
+      quantidade_movimentacoes: raw.quantidade_movimentacoes || null,
+      data_ultima_verificacao: raw.data_ultima_verificacao || null,
+      audiencias: fonte?.audiencias || null,
+      envolvidos: fonte?.envolvidos || null,
+    };
+
+    // Only fill fields that are currently empty
+    const updates: Record<string, any> = {};
+    let count = 0;
+    for (const [key, val] of Object.entries(extracted)) {
+      if (val != null && val !== '' && (form[key] == null || form[key] === '')) {
+        updates[key] = val;
+        count++;
+      }
+    }
+
+    if (count === 0) {
+      toast.info('Todos os campos já estão preenchidos');
+      return;
+    }
+
+    // Save directly to DB
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('lead_processes').update(updates).eq('id', process.id);
+      if (error) throw error;
+      setForm(prev => ({ ...prev, ...updates }));
+      toast.success(`${count} campos preenchidos a partir dos dados do Escavador`);
+      onUpdated?.();
+    } catch (err: any) {
+      toast.error('Erro: ' + (err.message || ''));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!process?.id) return;
     setSaving(true);
@@ -152,12 +233,20 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             <Pencil className="h-4 w-4 text-primary" />
             Detalhes do Processo
           </SheetTitle>
-          {dirty && (
-            <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs gap-1">
-              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Salvar
-            </Button>
-          )}
+          <div className="flex items-center gap-1">
+            {form.escavador_raw && (
+              <Button size="sm" variant="outline" onClick={handleReExtract} disabled={saving} className="h-7 text-xs gap-1">
+                <RefreshCw className="h-3 w-3" />
+                Re-extrair
+              </Button>
+            )}
+            {dirty && (
+              <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs gap-1">
+                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                Salvar
+              </Button>
+            )}
+          </div>
         </SheetHeader>
 
         {/* Process info */}
