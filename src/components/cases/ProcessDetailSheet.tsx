@@ -89,6 +89,87 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     setDirty(true);
   }, []);
 
+  const handleReExtract = async () => {
+    const raw = form.escavador_raw;
+    if (!raw) {
+      toast.error('Dados brutos do Escavador não encontrados');
+      return;
+    }
+    const fonte: any = raw.fontes?.[0] || {};
+    const capa: any = fonte?.capa || {};
+    const valorCausa = capa?.valor_causa || {};
+    const estadoOrigem = raw.estado_origem || {};
+    const unidadeOrigem = raw.unidade_origem || {};
+
+    const extracted: Record<string, any> = {
+      classe: capa?.classe || fonte?.classe?.nome || null,
+      area: capa?.area || fonte?.area?.nome || null,
+      assunto_principal: capa?.assunto_principal_normalizado?.nome || null,
+      assuntos: capa?.assuntos_normalizados?.map((a: any) => a.nome) || fonte?.assuntos?.map((a: any) => a.nome) || null,
+      orgao_julgador: capa?.orgao_julgador || null,
+      valor_causa: valorCausa?.valor ? parseFloat(valorCausa.valor) : (raw.valor_causa || null),
+      valor_causa_formatado: valorCausa?.valor_formatado || null,
+      moeda: valorCausa?.moeda || null,
+      situacao: capa?.situacao || null,
+      data_distribuicao: capa?.data_distribuicao || null,
+      data_arquivamento: capa?.data_arquivamento || null,
+      informacoes_complementares: capa?.informacoes_complementares || null,
+      tribunal: fonte?.tribunal?.nome || fonte?.nome || null,
+      tribunal_sigla: fonte?.tribunal?.sigla || fonte?.sigla || null,
+      grau: fonte?.grau_formatado || fonte?.grau || null,
+      sistema: fonte?.sistema || null,
+      url_tribunal: fonte?.url || null,
+      segredo_justica: fonte?.segredo_justica || null,
+      arquivado: fonte?.arquivado || null,
+      status_predito: fonte?.status_predito || null,
+      fisico: fonte?.fisico || null,
+      estado_origem: estadoOrigem?.nome || null,
+      estado_origem_sigla: estadoOrigem?.sigla || null,
+      unidade_origem: unidadeOrigem?.nome || null,
+      unidade_origem_endereco: unidadeOrigem?.endereco || null,
+      unidade_origem_classificacao: unidadeOrigem?.classificacao || null,
+      unidade_origem_cidade: unidadeOrigem?.cidade || null,
+      polo_ativo: raw.titulo_polo_ativo || null,
+      polo_passivo: raw.titulo_polo_passivo || null,
+      ano_inicio: raw.ano_inicio || null,
+      data_inicio: raw.data_inicio || null,
+      data_ultima_movimentacao: raw.data_ultima_movimentacao || null,
+      quantidade_movimentacoes: raw.quantidade_movimentacoes || null,
+      data_ultima_verificacao: raw.data_ultima_verificacao || null,
+      audiencias: fonte?.audiencias || null,
+      envolvidos: fonte?.envolvidos || null,
+    };
+
+    // Only fill fields that are currently empty
+    const updates: Record<string, any> = {};
+    let count = 0;
+    for (const [key, val] of Object.entries(extracted)) {
+      if (val != null && val !== '' && (form[key] == null || form[key] === '')) {
+        updates[key] = val;
+        count++;
+      }
+    }
+
+    if (count === 0) {
+      toast.info('Todos os campos já estão preenchidos');
+      return;
+    }
+
+    // Save directly to DB
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('lead_processes').update(updates).eq('id', process.id);
+      if (error) throw error;
+      setForm(prev => ({ ...prev, ...updates }));
+      toast.success(`${count} campos preenchidos a partir dos dados do Escavador`);
+      onUpdated?.();
+    } catch (err: any) {
+      toast.error('Erro: ' + (err.message || ''));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!process?.id) return;
     setSaving(true);
