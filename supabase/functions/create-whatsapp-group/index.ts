@@ -320,6 +320,92 @@ Deno.serve(async (req) => {
         .is('whatsapp_group_id', null)
     }
 
+    // Extract conversation data and update lead
+    if (leadData?.id && normalizedContact) {
+      try {
+        console.log('Extracting conversation data for lead', leadData.id)
+        // Fetch recent messages from WhatsApp conversation
+        const { data: recentMessages } = await supabase
+          .from('whatsapp_messages')
+          .select('direction, message_text, created_at')
+          .or(`phone.eq.${normalizedContact},phone.ilike.%${normalizedContact.slice(-8)}%`)
+          .order('created_at', { ascending: true })
+          .limit(100)
+
+        if (recentMessages && recentMessages.length > 0) {
+          console.log(`Found ${recentMessages.length} messages for extraction`)
+          
+          // Call extract-conversation-data
+          const extractRes = await fetch(`${supabaseUrl}/functions/v1/extract-conversation-data`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+            },
+            body: JSON.stringify({
+              messages: recentMessages,
+              targetType: 'lead',
+            }),
+          })
+
+          if (extractRes.ok) {
+            const extractData = await extractRes.json()
+            const extracted = extractData?.data || {}
+            console.log('Extracted data:', JSON.stringify(extracted).substring(0, 500))
+
+            // Map extracted fields to lead columns
+            const leadUpdate: Record<string, any> = {}
+            const fieldMap: Record<string, string> = {
+              victim_name: 'victim_name',
+              lead_email: 'lead_email',
+              city: 'city',
+              state: 'state',
+              neighborhood: 'neighborhood',
+              main_company: 'main_company',
+              contractor_company: 'contractor_company',
+              accident_address: 'accident_address',
+              accident_date: 'accident_date',
+              damage_description: 'damage_description',
+              case_number: 'case_number',
+              case_type: 'case_type',
+              sector: 'sector',
+              liability_type: 'liability_type',
+              news_link: 'news_link',
+              notes: 'notes',
+              visit_city: 'visit_city',
+              visit_state: 'visit_state',
+              visit_address: 'visit_address',
+            }
+
+            for (const [extractKey, leadKey] of Object.entries(fieldMap)) {
+              if (extracted[extractKey] && !leadData[leadKey]) {
+                leadUpdate[leadKey] = extracted[extractKey]
+              }
+            }
+
+            // Special: lead_phone from extraction
+            if (extracted.lead_phone && !leadData.lead_phone) {
+              leadUpdate.lead_phone = extracted.lead_phone
+            }
+
+            if (Object.keys(leadUpdate).length > 0) {
+              console.log('Updating lead with extracted data:', Object.keys(leadUpdate))
+              await supabase.from('leads').update(leadUpdate).eq('id', leadData.id)
+              // Refresh leadData for initial message
+              const { data: refreshed } = await supabase.from('leads').select('*').eq('id', leadData.id).maybeSingle()
+              if (refreshed) leadData = refreshed
+            }
+          } else {
+            console.error('Extract conversation data failed:', extractRes.status, await extractRes.text())
+          }
+        } else {
+          console.log('No messages found for extraction')
+        }
+      } catch (extractErr) {
+        console.error('Error extracting conversation data:', extractErr)
+      }
+    }
+
     if (!groupId) {
       console.error('Could not resolve group ID from response:', JSON.stringify(groupData).substring(0, 300))
     }
