@@ -696,7 +696,7 @@ ${scrapeData.content || ''}
               finalCaseNumber = generatedNumber || 'CASO-0001';
             }
             
-            await supabase
+            const { data: insertedCase, error: insertError } = await supabase
               .from('legal_cases')
               .insert({
                 lead_id: lead.id,
@@ -705,13 +705,20 @@ ${scrapeData.content || ''}
                 title: leadName.trim() || lead.lead_name || 'Novo Caso',
                 status: 'em_andamento',
                 created_by: user?.id,
-              } as any);
+              } as any)
+              .select('id, case_number')
+              .single();
             
-            toast.success(`Caso ${finalCaseNumber} criado automaticamente! Cadastre os processos na aba Casos.`);
-            // Switch to Casos tab so user can add processes
-            setActiveTab('casos');
-            setSaving(false);
-            return; // Keep dialog open for process registration
+            if (insertError) {
+              console.error('Error inserting legal case:', insertError);
+              toast.error(`Erro ao criar caso: ${insertError.message}`);
+            } else {
+              toast.success(`Caso ${insertedCase?.case_number || finalCaseNumber} criado! Cadastre os processos na aba Casos.`);
+              // Switch to Casos tab so user can add processes
+              setActiveTab('casos');
+              setSaving(false);
+              return; // Keep dialog open for process registration
+            }
           }
         } catch (caseErr) {
           console.error('Error auto-creating case:', caseErr);
