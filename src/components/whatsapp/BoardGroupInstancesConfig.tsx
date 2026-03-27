@@ -33,6 +33,7 @@ interface GroupSettings {
   lead_fields: string[];
   initial_message_template: string;
   use_ai_message: boolean;
+  ai_generated_message: string;
   forward_document_types: string[];
   send_audio_message: boolean;
   audio_voice_id: string;
@@ -104,6 +105,7 @@ export function BoardGroupInstancesConfig() {
     lead_fields: ['lead_name'],
     initial_message_template: '',
     use_ai_message: false,
+    ai_generated_message: '',
     forward_document_types: [],
     send_audio_message: false,
     audio_voice_id: '',
@@ -174,19 +176,28 @@ export function BoardGroupInstancesConfig() {
         lead_fields: data.lead_fields || ['lead_name'],
         initial_message_template: data.initial_message_template || '',
         use_ai_message: data.use_ai_message || false,
+        ai_generated_message: data.ai_generated_message || '',
         forward_document_types: data.forward_document_types || [],
         send_audio_message: data.send_audio_message || false,
         audio_voice_id: data.audio_voice_id || '',
         auto_close_lead_on_sign: data.auto_close_lead_on_sign || false,
         auto_create_group_on_sign: data.auto_create_group_on_sign || false,
       });
+      // Load saved AI message model into preview
+      if (data.ai_generated_message) {
+        setPreviewMessage(data.ai_generated_message);
+      } else {
+        setPreviewMessage(null);
+      }
     } else {
       setSettings({
         group_name_prefix: '', sequence_start: 1, current_sequence: 0, lead_fields: ['lead_name'],
-        initial_message_template: '', use_ai_message: false, forward_document_types: [],
+        initial_message_template: '', use_ai_message: false, ai_generated_message: '',
+        forward_document_types: [],
         send_audio_message: false, audio_voice_id: '',
         auto_close_lead_on_sign: false, auto_create_group_on_sign: false,
       });
+      setPreviewMessage(null);
     }
   };
 
@@ -242,6 +253,7 @@ export function BoardGroupInstancesConfig() {
         lead_fields: settings.lead_fields,
         initial_message_template: settings.initial_message_template || null,
         use_ai_message: settings.use_ai_message,
+        ai_generated_message: settings.use_ai_message && previewMessage ? previewMessage : null,
         forward_document_types: settings.forward_document_types,
         send_audio_message: settings.send_audio_message,
         audio_voice_id: settings.audio_voice_id || null,
@@ -529,7 +541,7 @@ export function BoardGroupInstancesConfig() {
             {settings.use_ai_message && (
               <>
                 <p className="text-[10px] text-muted-foreground">
-                  ℹ️ A IA usará APENAS dados do banco de dados (campos do lead, campos personalizados, atividades abertas e participantes do grupo). Nenhuma informação será inventada.
+                  ℹ️ A IA gerará um modelo de mensagem com dados fictícios. Este modelo será salvo e usado como base para a mensagem real de cada grupo, preenchendo com os dados reais do lead.
                 </p>
                 <Button
                   variant="outline"
@@ -539,20 +551,23 @@ export function BoardGroupInstancesConfig() {
                   disabled={previewLoading}
                 >
                   {previewLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                  Pré-visualizar Mensagem
+                  {previewMessage ? 'Regenerar Modelo com IA' : 'Gerar Modelo com IA'}
                 </Button>
-                {previewMessage && (
-                  <div className="rounded-lg border bg-background">
-                    <div className="flex items-center gap-1.5 px-3 pt-3 pb-1 text-[10px] text-muted-foreground font-medium">
-                      <Eye className="h-3 w-3" />
-                      ✏️ Modelo editável — altere diretamente o texto abaixo:
-                    </div>
-                    <textarea
-                      value={previewMessage}
-                      onChange={e => setPreviewMessage(e.target.value)}
-                      className="w-full p-3 pt-1 text-xs bg-transparent border-0 outline-none resize-y min-h-[120px] max-h-[400px] whitespace-pre-wrap font-sans"
-                      rows={12}
-                    />
+                <div className="rounded-lg border bg-background">
+                  <div className="flex items-center gap-1.5 px-3 pt-3 pb-1 text-[10px] text-muted-foreground font-medium">
+                    <Eye className="h-3 w-3" />
+                    {previewMessage 
+                      ? '✏️ Modelo editável — altere diretamente o texto abaixo (salve para aplicar):' 
+                      : '📝 Clique em "Gerar Modelo com IA" para criar o modelo da mensagem inicial'}
+                  </div>
+                  <textarea
+                    value={previewMessage || ''}
+                    onChange={e => setPreviewMessage(e.target.value)}
+                    className="w-full p-3 pt-1 text-xs bg-transparent border-0 outline-none resize-y min-h-[120px] max-h-[400px] whitespace-pre-wrap font-sans"
+                    rows={12}
+                    placeholder="O modelo gerado pela IA aparecerá aqui. Você pode editá-lo manualmente ou gerar um novo."
+                  />
+                  {previewMessage && (
                     <div className="flex gap-2 px-3 pb-3">
                       <Input
                         placeholder="Refine com IA: ex. mais formal, adicione seção de documentos pendentes..."
@@ -572,8 +587,8 @@ export function BoardGroupInstancesConfig() {
                         {refineLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                       </Button>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
                 {adminNotes && (
                   <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-xs text-yellow-800 dark:bg-yellow-950/30 dark:text-yellow-200 dark:border-yellow-700">
                     <div className="font-medium mb-1">⚠️ Observação para o Administrador:</div>

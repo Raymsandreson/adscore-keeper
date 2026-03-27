@@ -501,15 +501,70 @@ async function sendInitialMessage(
     }
 
     if (settings.use_ai_message) {
-      // Build comprehensive lead info from DB only
-      const leadInfo = leadData ? Object.entries(leadData)
-        .filter(([k, v]) => v && !['id', 'created_at', 'updated_at', 'created_by', 'assigned_to'].includes(k))
-        .map(([k, v]) => `${k}: ${v}`)
-        .join('\n') : `Nome: ${lead_name}`
+      // Check if there's a saved AI-generated message model
+      if (settings.ai_generated_message) {
+        console.log('Using saved AI message model with real data substitution')
+        // Use the saved model and ask AI to fill in real data
+        const leadInfo = leadData ? Object.entries(leadData)
+          .filter(([k, v]) => v && !['id', 'created_at', 'updated_at', 'created_by', 'assigned_to'].includes(k))
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('\n') : `Nome: ${lead_name}`
 
-      const aiPrompt = `Gere uma mensagem de boas-vindas para um grupo de WhatsApp de acompanhamento de caso.
+        const aiPrompt = `Você tem um MODELO de mensagem de grupo de WhatsApp criado com dados fictícios. Sua tarefa é reescrever este modelo substituindo TODOS os dados fictícios pelos dados REAIS do lead fornecidos abaixo, mantendo EXATAMENTE a mesma estrutura, formatação, emojis e seções do modelo.
 
-REGRA FUNDAMENTAL: Use APENAS os dados fornecidos abaixo. NÃO invente, complete ou suponha nenhuma informação que não esteja explicitamente nos dados. Se um campo está vazio ou ausente, mencione que a informação ainda não foi registrada.
+MODELO DA MENSAGEM (com dados fictícios):
+${settings.ai_generated_message}
+
+DADOS REAIS DO LEAD/CASO:
+${leadInfo}
+${customFieldsText}
+${activitiesText}
+${participantsText}
+
+Funil: ${boardName}
+Nome do grupo: ${groupName}
+
+REGRAS:
+1. Mantenha a MESMA estrutura e formatação do modelo original.
+2. Substitua TODOS os dados fictícios pelos dados reais correspondentes.
+3. Se um dado real não estiver disponível, coloque "Não informado" ou omita a linha.
+4. NÃO adicione seções que não existam no modelo original.
+5. NÃO inclua links na mensagem (serão adicionados separadamente).
+6. NÃO inclua observações administrativas ou técnicas.
+7. Retorne APENAS a mensagem final, sem explicações.`
+
+        try {
+          const aiRes = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/lovable-ai`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+            },
+            body: JSON.stringify({
+              model: 'google/gemini-2.5-flash',
+              messages: [{ role: 'user', content: aiPrompt }],
+              max_tokens: 4096,
+            }),
+          })
+
+          if (aiRes.ok) {
+            const aiData = await aiRes.json()
+            messageText = aiData?.choices?.[0]?.message?.content || aiData?.content || ''
+          }
+        } catch (aiErr) {
+          console.error('AI message substitution error:', aiErr)
+        }
+      } else {
+        // Fallback: generate from scratch (legacy behavior)
+        console.log('No saved AI model, generating from scratch')
+        const leadInfo = leadData ? Object.entries(leadData)
+          .filter(([k, v]) => v && !['id', 'created_at', 'updated_at', 'created_by', 'assigned_to'].includes(k))
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('\n') : `Nome: ${lead_name}`
+
+        const aiPrompt = `Gere uma mensagem de boas-vindas para um grupo de WhatsApp de acompanhamento de caso.
+
+REGRA FUNDAMENTAL: Use APENAS os dados fornecidos abaixo. NÃO invente, complete ou suponha nenhuma informação que não esteja explicitamente nos dados.
 
 Dados do lead/caso:
 ${leadInfo}
@@ -522,34 +577,29 @@ Nome do grupo: ${groupName}
 
 ${settings.initial_message_template ? `Instruções adicionais: ${settings.initial_message_template}` : ''}
 
-Gere uma mensagem profissional e organizada com emojis, destacando os dados principais do caso. Use formatação do WhatsApp (*negrito*, _itálico_). 
-- NÃO inclua IDs ou dados técnicos.
-- NÃO invente valores para campos não fornecidos.
-- Se houver campos personalizados, inclua-os.
-- Se houver atividades abertas, liste-as com responsável e prazo.
-- Se houver participantes configurados, apresente cada um com seu número, cargo e descrição.
-- NÃO inclua links na mensagem (eles serão adicionados separadamente).`
+Gere uma mensagem profissional e organizada com emojis, usando formatação do WhatsApp (*negrito*, _itálico_). NÃO inclua links.`
 
-      try {
-        const aiRes = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/lovable-ai`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-          },
-          body: JSON.stringify({
-            model: 'google/gemini-2.5-flash',
-            messages: [{ role: 'user', content: aiPrompt }],
-            max_tokens: 2048,
-          }),
-        })
+        try {
+          const aiRes = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/lovable-ai`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+            },
+            body: JSON.stringify({
+              model: 'google/gemini-2.5-flash',
+              messages: [{ role: 'user', content: aiPrompt }],
+              max_tokens: 2048,
+            }),
+          })
 
-        if (aiRes.ok) {
-          const aiData = await aiRes.json()
-          messageText = aiData?.choices?.[0]?.message?.content || aiData?.content || ''
+          if (aiRes.ok) {
+            const aiData = await aiRes.json()
+            messageText = aiData?.choices?.[0]?.message?.content || aiData?.content || ''
+          }
+        } catch (aiErr) {
+          console.error('AI message generation error:', aiErr)
         }
-      } catch (aiErr) {
-        console.error('AI message generation error:', aiErr)
       }
 
       if (!messageText) {
