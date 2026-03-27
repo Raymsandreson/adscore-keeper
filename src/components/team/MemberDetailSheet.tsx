@@ -519,9 +519,28 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            {/* OAB entries list */}
+            {oabEntries.length > 0 && (
               <div className="space-y-2">
-                <Label className="flex items-center gap-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">OABs cadastradas</Label>
+                <div className="space-y-1.5">
+                  {oabEntries.map((entry, idx) => (
+                    <div key={`${entry.oab_number}-${entry.oab_uf}-${idx}`} className="flex items-center gap-2 bg-muted/50 rounded-md px-3 py-1.5">
+                      <Scale className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-sm font-medium flex-1">OAB {entry.oab_number}/{entry.oab_uf}</span>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => removeOabEntry(idx)}>
+                        <X className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Add OAB manually */}
+            <div className="grid grid-cols-[1fr_80px_auto] gap-2 items-end">
+              <div className="space-y-1">
+                <Label className="flex items-center gap-1.5 text-xs">
                   <FileText className="h-3.5 w-3.5" />
                   Nº OAB
                 </Label>
@@ -529,20 +548,26 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
                   value={oabNumber}
                   onChange={(e) => setOabNumber(e.target.value)}
                   placeholder="Ex: 12345"
+                  className="h-9"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>UF da OAB</Label>
+              <div className="space-y-1">
+                <Label className="text-xs">UF</Label>
                 <Input
                   value={oabUf}
                   onChange={(e) => setOabUf(e.target.value.toUpperCase())}
-                  placeholder="Ex: PI"
+                  placeholder="PI"
                   maxLength={2}
+                  className="h-9"
                 />
               </div>
+              <Button variant="outline" size="sm" className="h-9 gap-1" onClick={addManualOab}>
+                <Plus className="h-3.5 w-3.5" />
+                Adicionar
+              </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Busque pelo nome ou preencha manualmente. Usado para identificar advogados internos ao importar processos.
+              Busque pelo nome ou adicione manualmente. Você pode cadastrar múltiplas OABs por membro.
             </p>
 
             <div className="space-y-2">
