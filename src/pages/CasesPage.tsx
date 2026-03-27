@@ -569,6 +569,12 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ProcessDetailSheet
+        open={!!selectedProcess}
+        onOpenChange={(open) => { if (!open) setSelectedProcess(null); }}
+        process={selectedProcess}
+      />
     </>
   );
 }
