@@ -115,6 +115,7 @@ const sectors = [
 
 export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMembers = [], classifications = [] }: AccidentLeadFormProps) {
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
+  const { sources: leadSources } = useLeadSources();
   const { loading: geoLoading, fetchLocation } = useGeolocation();
 
   const handleAutoLocation = async () => {
