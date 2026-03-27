@@ -390,7 +390,15 @@ const WorkflowProgressPage = () => {
         </DialogContent>
       </Dialog>
       {/* Workflow config */}
-      <WorkflowBuilder open={showConfig} onOpenChange={setShowConfig} onWorkflowSaved={fetchData} />
+      <WorkflowBuilder
+        open={showConfig}
+        onOpenChange={(open) => {
+          setShowConfig(open);
+          if (!open) setEditingWorkflow(null);
+        }}
+        onWorkflowSaved={fetchData}
+        initialEditBoardId={editingWorkflow?.id || null}
+      />
     </div>
   );
 };
