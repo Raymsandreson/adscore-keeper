@@ -19,6 +19,7 @@ import {
   SidebarHeader,
   SidebarFooter,
   SidebarSeparator,
+  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
@@ -160,7 +161,8 @@ export function AppSidebar() {
   return (
     <>
       <Sidebar collapsible="icon">
-        <SidebarHeader className="p-2">
+        <SidebarHeader className="p-2 flex flex-col gap-2">
+          <SidebarTrigger className="w-full flex items-center justify-center" />
           {!collapsed && (
             <button
               onClick={openCommandPalette}
