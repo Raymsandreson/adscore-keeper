@@ -253,6 +253,7 @@ export function BoardGroupInstancesConfig() {
         lead_fields: settings.lead_fields,
         initial_message_template: settings.initial_message_template || null,
         use_ai_message: settings.use_ai_message,
+        ai_generated_message: settings.use_ai_message && previewMessage ? previewMessage : null,
         forward_document_types: settings.forward_document_types,
         send_audio_message: settings.send_audio_message,
         audio_voice_id: settings.audio_voice_id || null,
