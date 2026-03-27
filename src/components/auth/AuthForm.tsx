@@ -70,6 +70,9 @@ export const AuthForm = () => {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [signupConfirmPassword, setSignupConfirmPassword] = useState('');
+  const [isLawyer, setIsLawyer] = useState(false);
+  const [oabNumber, setOabNumber] = useState('');
+  const [oabUf, setOabUf] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
