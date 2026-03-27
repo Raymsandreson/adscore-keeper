@@ -17,6 +17,7 @@ import { UserProductivityBanner } from "@/components/UserProductivityBanner";
 import { CallFieldSuggestionsBanner } from "@/components/CallFieldSuggestionsBanner";
 import { FloatingWhatsAppCall } from "@/components/FloatingWhatsAppCall";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
+import { MobileHeader } from "@/components/MobileHeader";
 
 // Helper: retry dynamic import once per module on failure (stale chunk after deploy)
 function lazyRetry<T extends ComponentType<any>>(
@@ -148,6 +149,7 @@ function AppRoutes() {
       <div className="min-h-screen flex w-full">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
+          <MobileHeader />
           <main className="flex-1">
             <PageTracker />
             <GlobalDatabaseSearch />
