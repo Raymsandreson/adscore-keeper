@@ -10,7 +10,8 @@ import { SessionProvider } from "@/contexts/SessionContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { PageTracker } from "@/components/PageTracker";
-import { FloatingNav } from "@/components/FloatingNav";
+import { AppSidebar } from "@/components/AppSidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { GlobalDatabaseSearch } from "@/components/GlobalDatabaseSearch";
 import { UserProductivityBanner } from "@/components/UserProductivityBanner";
 import { CallFieldSuggestionsBanner } from "@/components/CallFieldSuggestionsBanner";
@@ -143,46 +144,53 @@ const App = () => (
 // Separate component to use hooks inside BrowserRouter
 function AppRoutes() {
   return (
-    <>
-      <PageTracker />
-      <GlobalDatabaseSearch />
-      <UserProductivityBanner />
-      <CallFieldSuggestionsBanner />
-      <FloatingWhatsAppCall />
-      <PWAInstallBanner />
-      <FloatingNav />
-      <Suspense fallback={<PageLoading />}>
-        <Routes>
-          <Route path="/" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
-          <Route path="/index" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<Index />} />
-          <Route path="/leads" element={<ProtectedRoute><LeadsCenter /></ProtectedRoute>} />
-          
-          <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
-          <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
-          <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
-          <Route path="/workflow" element={<ProtectedRoute><WorkflowPage /></ProtectedRoute>} />
-          <Route path="/workflow-progress" element={<ProtectedRoute><WorkflowProgressPage /></ProtectedRoute>} />
-          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-          <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
-          <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
-          <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
-          <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
-          <Route path="/instagram" element={<ProtectedRoute><InstagramPage /></ProtectedRoute>} />
-          <Route path="/contacts" element={<ProtectedRoute><ContactsPage /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-          <Route path="/cases" element={<ProtectedRoute><CasesPage /></ProtectedRoute>} />
-          <Route path="/nuclei" element={<ProtectedRoute><NucleiPage /></ProtectedRoute>} />
-          <Route path="/cost-organization" element={<ProtectedRoute><CostOrganizationPage /></ProtectedRoute>} />
-          <Route path="/process-tracking" element={<ProtectedRoute><ProcessTrackingPage /></ProtectedRoute>} />
-           <Route path="/privacy" element={<PrivacyPolicyPage />} />
-           <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route path="/install" element={<InstallPage />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Suspense>
-    </>
+    <SidebarProvider>
+      <div className="min-h-screen flex w-full">
+        <AppSidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="h-10 flex items-center border-b border-border/40 bg-background/80 backdrop-blur-sm sticky top-0 z-30">
+            <SidebarTrigger className="ml-2" />
+          </header>
+          <main className="flex-1">
+            <PageTracker />
+            <GlobalDatabaseSearch />
+            <UserProductivityBanner />
+            <CallFieldSuggestionsBanner />
+            <FloatingWhatsAppCall />
+            <PWAInstallBanner />
+            <Suspense fallback={<PageLoading />}>
+              <Routes>
+                <Route path="/" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
+                <Route path="/index" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={<Index />} />
+                <Route path="/leads" element={<ProtectedRoute><LeadsCenter /></ProtectedRoute>} />
+                <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
+                <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
+                <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
+                <Route path="/workflow" element={<ProtectedRoute><WorkflowPage /></ProtectedRoute>} />
+                <Route path="/workflow-progress" element={<ProtectedRoute><WorkflowProgressPage /></ProtectedRoute>} />
+                <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+                <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
+                <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
+                <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
+                <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
+                <Route path="/instagram" element={<ProtectedRoute><InstagramPage /></ProtectedRoute>} />
+                <Route path="/contacts" element={<ProtectedRoute><ContactsPage /></ProtectedRoute>} />
+                <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+                <Route path="/cases" element={<ProtectedRoute><CasesPage /></ProtectedRoute>} />
+                <Route path="/nuclei" element={<ProtectedRoute><NucleiPage /></ProtectedRoute>} />
+                <Route path="/cost-organization" element={<ProtectedRoute><CostOrganizationPage /></ProtectedRoute>} />
+                <Route path="/process-tracking" element={<ProtectedRoute><ProcessTrackingPage /></ProtectedRoute>} />
+                <Route path="/privacy" element={<PrivacyPolicyPage />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
+                <Route path="/install" element={<InstallPage />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
   );
 }
 
