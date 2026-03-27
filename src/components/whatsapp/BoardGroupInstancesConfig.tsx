@@ -541,7 +541,7 @@ export function BoardGroupInstancesConfig() {
             {settings.use_ai_message && (
               <>
                 <p className="text-[10px] text-muted-foreground">
-                  ℹ️ A IA usará APENAS dados do banco de dados (campos do lead, campos personalizados, atividades abertas e participantes do grupo). Nenhuma informação será inventada.
+                  ℹ️ A IA gerará um modelo de mensagem com dados fictícios. Este modelo será salvo e usado como base para a mensagem real de cada grupo, preenchendo com os dados reais do lead.
                 </p>
                 <Button
                   variant="outline"
@@ -551,20 +551,23 @@ export function BoardGroupInstancesConfig() {
                   disabled={previewLoading}
                 >
                   {previewLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                  Pré-visualizar Mensagem
+                  {previewMessage ? 'Regenerar Modelo com IA' : 'Gerar Modelo com IA'}
                 </Button>
-                {previewMessage && (
-                  <div className="rounded-lg border bg-background">
-                    <div className="flex items-center gap-1.5 px-3 pt-3 pb-1 text-[10px] text-muted-foreground font-medium">
-                      <Eye className="h-3 w-3" />
-                      ✏️ Modelo editável — altere diretamente o texto abaixo:
-                    </div>
-                    <textarea
-                      value={previewMessage}
-                      onChange={e => setPreviewMessage(e.target.value)}
-                      className="w-full p-3 pt-1 text-xs bg-transparent border-0 outline-none resize-y min-h-[120px] max-h-[400px] whitespace-pre-wrap font-sans"
-                      rows={12}
-                    />
+                <div className="rounded-lg border bg-background">
+                  <div className="flex items-center gap-1.5 px-3 pt-3 pb-1 text-[10px] text-muted-foreground font-medium">
+                    <Eye className="h-3 w-3" />
+                    {previewMessage 
+                      ? '✏️ Modelo editável — altere diretamente o texto abaixo (salve para aplicar):' 
+                      : '📝 Clique em "Gerar Modelo com IA" para criar o modelo da mensagem inicial'}
+                  </div>
+                  <textarea
+                    value={previewMessage || ''}
+                    onChange={e => setPreviewMessage(e.target.value)}
+                    className="w-full p-3 pt-1 text-xs bg-transparent border-0 outline-none resize-y min-h-[120px] max-h-[400px] whitespace-pre-wrap font-sans"
+                    rows={12}
+                    placeholder="O modelo gerado pela IA aparecerá aqui. Você pode editá-lo manualmente ou gerar um novo."
+                  />
+                  {previewMessage && (
                     <div className="flex gap-2 px-3 pb-3">
                       <Input
                         placeholder="Refine com IA: ex. mais formal, adicione seção de documentos pendentes..."
@@ -584,8 +587,8 @@ export function BoardGroupInstancesConfig() {
                         {refineLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                       </Button>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
                 {adminNotes && (
                   <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-xs text-yellow-800 dark:bg-yellow-950/30 dark:text-yellow-200 dark:border-yellow-700">
                     <div className="font-medium mb-1">⚠️ Observação para o Administrador:</div>
