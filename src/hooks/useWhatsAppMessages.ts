@@ -775,15 +775,26 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   // Load all messages for a specific conversation (when selected)
   const fetchFullConversation = useCallback(async (phone: string) => {
     try {
-      const { data, error } = await supabase
-        .from('whatsapp_messages')
-        .select('*')
-        .eq('phone', phone)
-        .order('created_at', { ascending: false })
-        .limit(1000);
+      // Paginate to get ALL messages for this phone (up to 3000)
+      const allMsgs: WhatsAppMessage[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      const maxPages = 3;
 
-      if (error) throw error;
-      const allMsgs = (data || []) as WhatsAppMessage[];
+      for (let page = 0; page < maxPages; page++) {
+        const { data, error } = await supabase
+          .from('whatsapp_messages')
+          .select('*')
+          .eq('phone', phone)
+          .order('created_at', { ascending: false })
+          .range(from, from + pageSize - 1);
+
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allMsgs.push(...(data as WhatsAppMessage[]));
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
 
       // Deduplicate group messages (same messageid from different instances)
       const deduped: WhatsAppMessage[] = [];
@@ -799,19 +810,14 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
       setConversations(prev => prev.map(c => {
         if (c.phone !== phone) return c;
-        const existingIds = new Set(c.messages.map(m => m.id));
-        const existingMsgKeys = new Set(c.messages.map(m => {
-          const mid = m.external_message_id?.split(':').pop();
-          return mid ? `${mid}_${m.created_at}` : m.id;
-        }));
-        const newMsgs = deduped.filter(m => {
-          if (existingIds.has(m.id)) return false;
-          const mid = m.external_message_id?.split(':').pop();
-          const key = mid ? `${mid}_${m.created_at}` : m.id;
-          return !existingMsgKeys.has(key);
-        });
-        if (newMsgs.length === 0) return c;
-        return { ...c, messages: [...c.messages, ...newMsgs] };
+        // Replace messages entirely with the full history
+        return {
+          ...c,
+          messages: deduped,
+          contact_name: deduped.find(m => m.contact_name)?.contact_name || c.contact_name,
+          contact_id: deduped.find(m => m.contact_id)?.contact_id || c.contact_id,
+          lead_id: deduped.find(m => m.lead_id)?.lead_id || c.lead_id,
+        };
       }));
     } catch (error) {
       console.error('Error fetching full conversation:', error);
