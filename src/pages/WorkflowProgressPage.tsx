@@ -395,10 +395,11 @@ const WorkflowProgressPage = () => {
         open={showConfig}
         onOpenChange={(open) => {
           setShowConfig(open);
-          if (!open) setEditingWorkflow(null);
+          if (!open) { setEditingWorkflow(null); setCreateNewMode(false); }
         }}
         onWorkflowSaved={fetchData}
         initialEditBoardId={editingWorkflow?.id || null}
+        initialCreateNew={createNewMode}
       />
     </div>
   );
