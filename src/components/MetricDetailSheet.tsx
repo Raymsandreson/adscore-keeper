@@ -275,16 +275,24 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
             filteredLeads = filteredLeads.map(l => ({ ...l, _closerName: userNamesMap[leadCloserMap[l.id]] })) as any;
           }
           
-          result = filteredLeads.map((l: any) => ({
-            id: l.id, 
-            title: l.lead_name || 'Sem nome',
-            subtitle: filterUserId === 'all' && l._closerName ? `👤 ${l._closerName}` : undefined,
-            badge: '✓ Fechado', badgeVariant: 'default' as const,
-            navigateTo: l.board_id 
-              ? `/leads?board=${l.board_id}&openLead=${l.id}` 
-              : `/leads?openLead=${l.id}`,
-            date: l.updated_at ? format(new Date(l.updated_at), 'yyyy-MM-dd') : undefined,
-          }));
+          const AD_SOURCES_SET = new Set(['facebook', 'facebook_leads', 'instagram']);
+          result = filteredLeads.map((l: any) => {
+            const isAd = AD_SOURCES_SET.has(l.source);
+            const sourceLabel = isAd ? '📢 Anúncio' : '🤝 Acolhedor';
+            const subtitleParts = [];
+            if (filterUserId === 'all' && l._closerName) subtitleParts.push(`👤 ${l._closerName}`);
+            if (filterSource === 'all') subtitleParts.push(sourceLabel);
+            return {
+              id: l.id, 
+              title: l.lead_name || 'Sem nome',
+              subtitle: subtitleParts.length > 0 ? subtitleParts.join(' • ') : undefined,
+              badge: '✓ Fechado', badgeVariant: 'default' as const,
+              navigateTo: l.board_id 
+                ? `/leads?board=${l.board_id}&openLead=${l.id}` 
+                : `/leads?openLead=${l.id}`,
+              date: l.updated_at ? format(new Date(l.updated_at), 'yyyy-MM-dd') : undefined,
+            };
+          });
           break;
         }
         case 'commentReplies': {
