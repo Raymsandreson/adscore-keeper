@@ -563,6 +563,10 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
   const [showMonitorDialog, setShowMonitorDialog] = useState(false);
 
   useEffect(() => {
+    fetchParties();
+  }, []);
+
+  useEffect(() => {
     if (showParties) fetchParties();
   }, [showParties]);
 
