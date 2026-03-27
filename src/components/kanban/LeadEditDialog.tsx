@@ -168,6 +168,11 @@ export function LeadEditDialog({
   const [notes, setNotes] = useState('');
   const [acolhedor, setAcolhedor] = useState('');
   const profiles = useProfilesList();
+  const { sources: leadSources, addSource: addLeadSource, updateSource: updateLeadSource, deleteSource: deleteLeadSource } = useLeadSources();
+  const [showSourceManager, setShowSourceManager] = useState(false);
+  const [newSourceLabel, setNewSourceLabel] = useState('');
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  const [editingSourceLabel, setEditingSourceLabel] = useState('');
   const [groupLink, setGroupLink] = useState('');
   const [whatsappGroupId, setWhatsappGroupId] = useState('');
   const [clientClassification, setClientClassification] = useState<string>('');
