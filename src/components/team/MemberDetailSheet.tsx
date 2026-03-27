@@ -91,7 +91,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   const [oabSearchResults, setOabSearchResults] = useState<Array<{ name: string; oab_number: string; oab_uf: string }>>([]);
   const [oabSearching, setOabSearching] = useState(false);
   const [showOabDropdown, setShowOabDropdown] = useState(false);
-  const oabSearchTimeout = useRef<NodeJS.Timeout | null>(null);
+  const oabSearchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const oabDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
