@@ -655,9 +655,10 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
         await sleep(1000)
       }
 
-      // Generate and send audio if configured
-      if (settings.send_audio_message && settings.audio_voice_id && messageText) {
-        await sendAudioMessage(supabase, messageText, settings.audio_voice_id, groupId, baseUrl, creatorInstance)
+      // Generate and send audio if configured - use creator instance voice, fallback to settings voice
+      const audioVoiceId = creatorInstance.voice_id || settings.audio_voice_id
+      if (settings.send_audio_message && audioVoiceId && messageText) {
+        await sendAudioMessage(supabase, messageText, audioVoiceId, groupId, baseUrl, creatorInstance)
       }
     }
   } catch (err) {
