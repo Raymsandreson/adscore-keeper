@@ -60,6 +60,16 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
 
   const [aiSuggestingType, setAiSuggestingType] = useState(false);
 
+  // New activity creation state
+  const [showNewSheet, setShowNewSheet] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newType, setNewType] = useState('tarefa');
+  const [newPriority, setNewPriority] = useState('normal');
+  const [newDeadline, setNewDeadline] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const [newSaving, setNewSaving] = useState(false);
+  const [newAiSuggesting, setNewAiSuggesting] = useState(false);
+
   const { types: activityTypes } = useActivityTypes();
   const { configs: timeBlockSettings } = useTimeBlockSettings();
 
