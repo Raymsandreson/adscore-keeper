@@ -233,12 +233,20 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             <Pencil className="h-4 w-4 text-primary" />
             Detalhes do Processo
           </SheetTitle>
-          {dirty && (
-            <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs gap-1">
-              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Salvar
-            </Button>
-          )}
+          <div className="flex items-center gap-1">
+            {form.escavador_raw && (
+              <Button size="sm" variant="outline" onClick={handleReExtract} disabled={saving} className="h-7 text-xs gap-1">
+                <RefreshCw className="h-3 w-3" />
+                Re-extrair
+              </Button>
+            )}
+            {dirty && (
+              <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs gap-1">
+                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                Salvar
+              </Button>
+            )}
+          </div>
         </SheetHeader>
 
         {/* Process info */}
