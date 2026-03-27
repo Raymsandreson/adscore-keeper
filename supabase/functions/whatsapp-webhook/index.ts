@@ -1919,26 +1919,40 @@ Deno.serve(async (req) => {
             if (direction === 'outbound') {
               console.log(`#limpar command: clearing conversation for phoneCandidates=${JSON.stringify(phoneCandidates)}, instance=${instanceName}`)
 
-              // 1. Delete all messages for ALL phone candidates across ALL instances
-              // This handles mirrored webhooks where conversation spans multiple instances
+              // 1. Delete all messages for ALL phone candidates
+              // Also delete specifically for this instance_name to handle owner-testing scenario
               let totalDeleted = 0
               for (const p of phoneCandidates) {
+                // Delete across all instances for this phone
                 const { count: c1 } = await supabase
                   .from('whatsapp_messages')
                   .delete({ count: 'exact' })
                   .eq('phone', p)
                 if (c1) totalDeleted += c1
               }
-              console.log(`#limpar: deleted ${totalDeleted} messages across all instances for phones: ${phoneCandidates.join(', ')}`)
+              // Also delete by instance_name in case phone didn't match (owner testing own instance)
+              const { count: c2 } = await supabase
+                .from('whatsapp_messages')
+                .delete({ count: 'exact' })
+                .eq('instance_name', instanceName)
+                .eq('phone', phone)
+              if (c2) totalDeleted += c2
+              console.log(`#limpar: deleted ${totalDeleted} messages for phones: ${phoneCandidates.join(', ')}, instance: ${instanceName}`)
 
-              // 2. Cancel active collection sessions for all phone candidates
+              // 2. Cancel active collection sessions for all phone candidates AND this instance
               for (const p of phoneCandidates) {
                 await supabase
                   .from('wjia_collection_sessions')
                   .update({ status: 'cancelled' })
                   .eq('phone', p)
-                  .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready'])
+                  .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready', 'generated'])
               }
+              // Also cancel by instance
+              await supabase
+                .from('wjia_collection_sessions')
+                .update({ status: 'cancelled' })
+                .eq('instance_name', instanceName)
+                .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready', 'generated'])
 
               // 3. Deactivate conversation agents for all phone candidates
               for (const p of phoneCandidates) {
@@ -1949,7 +1963,7 @@ Deno.serve(async (req) => {
                   .eq('is_active', true)
               }
 
-              // 4. Send confirmation and ghost-delete it after 3s
+              // 4. Send confirmation and ghost-delete it
               const creds = await getInstanceCreds()
               if (creds.token && creds.baseUrl) {
                 try {
@@ -1962,17 +1976,27 @@ Deno.serve(async (req) => {
                   const confirmMsgId = confirmData?.key?.id || confirmData?.messageId
                   console.log(`#limpar confirmation sent, msgId: ${confirmMsgId}`)
                   if (confirmMsgId) {
-                    // Wait 3s then delete the confirmation from WhatsApp
-                    await new Promise(r => setTimeout(r, 3000))
-                    const delRes = await fetch(`${creds.baseUrl}/message/delete`, {
+                    // Wait 4s then delete from WhatsApp (retry once)
+                    await new Promise(r => setTimeout(r, 4000))
+                    let delRes = await fetch(`${creds.baseUrl}/message/delete`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json', 'token': creds.token },
                       body: JSON.stringify({ id: confirmMsgId }),
                     })
                     console.log(`#limpar confirmation delete status: ${delRes.status}`)
+                    // Retry once if failed
+                    if (!delRes.ok) {
+                      await new Promise(r => setTimeout(r, 2000))
+                      delRes = await fetch(`${creds.baseUrl}/message/delete`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'token': creds.token },
+                        body: JSON.stringify({ id: confirmMsgId }),
+                      })
+                      console.log(`#limpar confirmation delete retry status: ${delRes.status}`)
+                    }
                   }
-                  // Also delete any confirmation message that got saved to DB
-                  await new Promise(r => setTimeout(r, 1000))
+                  // Cleanup any confirmation that got saved to DB
+                  await new Promise(r => setTimeout(r, 2000))
                   for (const p of phoneCandidates) {
                     await supabase
                       .from('whatsapp_messages')
@@ -1980,6 +2004,12 @@ Deno.serve(async (req) => {
                       .eq('phone', p)
                       .ilike('message_text', '%conversa limpa%')
                   }
+                  // Also delete by instance
+                  await supabase
+                    .from('whatsapp_messages')
+                    .delete()
+                    .eq('instance_name', instanceName)
+                    .ilike('message_text', '%conversa limpa%')
                 } catch (e) {
                   console.error('Error sending/deleting #limpar confirmation:', e)
                 }
