@@ -1025,7 +1025,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                       </button>
                     ))
                   }
-                  {leads.filter(l => !leadSearchQuery || (l.lead_name || '').toLowerCase().includes(leadSearchQuery.toLowerCase())).length === 0 && (
+                  {leads.length === 0 && leadSearchQuery.length >= 2 && (
                     <p className="text-xs text-muted-foreground text-center py-4">Nenhum lead encontrado</p>
                   )}
                 </div>
