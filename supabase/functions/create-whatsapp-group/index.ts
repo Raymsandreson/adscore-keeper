@@ -696,6 +696,9 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
     }
 
     if (messageText) {
+      // Clean admin notes from AI output
+      messageText = messageText.replace(/⚠️\s*OBSERV[AÇ]+[ÃO]+[:\s].*$/gims, '').trim()
+      
       // Send text message
       const sendTextRes = await fetch(`${baseUrl}/send/text`, {
         method: 'POST',
