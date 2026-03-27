@@ -703,6 +703,50 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           </TabsContent>
         </Tabs>
       </DialogContent>
+
+      {/* Sheet para criar novo fluxo de trabalho */}
+      <Sheet open={showNewWorkflow} onOpenChange={setShowNewWorkflow}>
+        <SheetContent side="right" className="w-[380px] sm:max-w-[380px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-primary" />
+              Novo Fluxo de Trabalho
+            </SheetTitle>
+          </SheetHeader>
+          <div className="space-y-4 mt-6">
+            <div>
+              <Label className="text-sm font-semibold">Nome *</Label>
+              <Input
+                value={newWorkflowName}
+                onChange={e => setNewWorkflowName(e.target.value)}
+                placeholder="Ex: Auxílio Doença"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-sm font-semibold">Descrição</Label>
+              <Textarea
+                value={newWorkflowDesc}
+                onChange={e => setNewWorkflowDesc(e.target.value)}
+                placeholder="Descreva as etapas deste fluxo..."
+                rows={3}
+                className="mt-1"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              As etapas do fluxo poderão ser configuradas depois em Configurações → Fluxos de Trabalho.
+            </p>
+            <Button
+              onClick={handleCreateWorkflow}
+              disabled={creatingWorkflow || !newWorkflowName.trim()}
+              className="w-full"
+            >
+              {creatingWorkflow ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+              Criar Fluxo
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
     </Dialog>
   );
 }
