@@ -216,11 +216,21 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
         }
         case 'leadsClosed': {
           // Query leads that are currently closed, filtered by updated_at (when they were closed)
-          const { data: closedLeads } = await supabase.from('leads')
-            .select('id, lead_name, board_id, updated_at, lead_status')
+          let closedQuery = supabase.from('leads')
+            .select('id, lead_name, board_id, updated_at, lead_status, source')
             .eq('lead_status', 'closed')
             .gte('updated_at', startDate).lte('updated_at', endDate)
             .order('updated_at', { ascending: false });
+
+          // Filter by source origin
+          const AD_SOURCES = ['facebook', 'facebook_leads', 'instagram'];
+          if (filterSource === 'anuncio') {
+            closedQuery = closedQuery.in('source', AD_SOURCES);
+          } else if (filterSource === 'acolhedor') {
+            closedQuery = closedQuery.or(`source.not.in.(${AD_SOURCES.join(',')}),source.is.null`);
+          }
+
+          const { data: closedLeads } = await closedQuery;
           
           let filteredLeads = closedLeads || [];
           
