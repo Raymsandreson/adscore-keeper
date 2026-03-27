@@ -64,6 +64,47 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
   // Common fields - always asked
   const [processType, setProcessType] = useState<'judicial' | 'administrativo'>('judicial');
   const [workflowId, setWorkflowId] = useState('');
+  const [showNewWorkflow, setShowNewWorkflow] = useState(false);
+  const [newWorkflowName, setNewWorkflowName] = useState('');
+  const [newWorkflowDesc, setNewWorkflowDesc] = useState('');
+  const [creatingWorkflow, setCreatingWorkflow] = useState(false);
+
+  const handleCreateWorkflow = async () => {
+    if (!newWorkflowName.trim()) {
+      toast.error('Informe o nome do fluxo');
+      return;
+    }
+    setCreatingWorkflow(true);
+    try {
+      const { data, error } = await supabase
+        .from('kanban_boards')
+        .insert([{
+          name: newWorkflowName.trim(),
+          description: newWorkflowDesc.trim() || null,
+          stages: [],
+          color: '#3b82f6',
+          icon: 'layout-grid',
+          is_default: false,
+          display_order: activeBoards.length,
+          board_type: 'workflow',
+        } as any])
+        .select()
+        .single();
+      if (error) throw error;
+      const newBoard = { ...data, board_type: 'workflow', stages: [] } as any;
+      setLoadedBoards(prev => [...prev, newBoard]);
+      setWorkflowId(data.id);
+      setShowNewWorkflow(false);
+      setNewWorkflowName('');
+      setNewWorkflowDesc('');
+      toast.success('Fluxo de trabalho criado!');
+    } catch (err: any) {
+      console.error('Error creating workflow:', err);
+      toast.error('Erro ao criar fluxo');
+    } finally {
+      setCreatingWorkflow(false);
+    }
+  };
 
   // Manual form state
   const [manualForm, setManualForm] = useState({
