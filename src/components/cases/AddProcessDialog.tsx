@@ -261,8 +261,8 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           capa?.assuntos_normalizados?.length && `Assuntos: ${capa.assuntos_normalizados.map((a: any) => a.nome).join(', ')}`,
         ].filter(Boolean).join('\n');
 
-        const estadoOrigem = fullResult.estado_origem || (result as any).estado_origem;
-        const unidadeOrigem = fullResult.unidade_origem || (result as any).unidade_origem;
+        const estadoOrigem = (fullResult as any).estado_origem || (result as any).estado_origem;
+        const unidadeOrigem = (fullResult as any).unidade_origem || (result as any).unidade_origem;
         const valorCausa = capa?.valor_causa || {};
 
         const { data: insertedProcess, error } = await supabase
