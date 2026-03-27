@@ -177,7 +177,7 @@ const WorkflowProgressPage = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg font-semibold">Fluxos de trabalho</h2>
-                  <Button size="icon" onClick={() => setShowConfig(true)} title="Criar novo fluxo">
+                  <Button size="icon" onClick={() => { setCreateNewMode(true); setEditingWorkflow(null); setShowConfig(true); }} title="Criar novo fluxo">
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>
