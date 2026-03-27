@@ -173,7 +173,7 @@ export function CustomFieldsConfigPanel({
 
   const handleScopeConfirm = async () => {
     if (!pendingFieldData) return;
-
+    console.log('📝 handleScopeConfirm called', { pendingFieldData, scopeChoice, currentBoardId });
     try {
       if (editingField && pendingFieldData.id) {
         // Update existing field
