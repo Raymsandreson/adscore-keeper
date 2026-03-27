@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Volume2 } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -84,6 +85,9 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   const [oabEntries, setOabEntries] = useState<Array<{ id?: string; oab_number: string; oab_uf: string }>>([]);
   const [defaultInstanceId, setDefaultInstanceId] = useState('');
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
+  const [voiceId, setVoiceId] = useState('');
+  const [voiceName, setVoiceName] = useState('');
+  const [voices, setVoices] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
@@ -98,14 +102,26 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   const oabDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Fetch WhatsApp instances once
     const fetchInstances = async () => {
-      const { data } = await supabase
-        .from('whatsapp_instances')
-        .select('id, instance_name')
-        .eq('is_active', true)
-        .order('instance_name');
-      setInstances(data || []);
+      const [instRes, presetRes, customRes] = await Promise.all([
+        supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+        Promise.resolve([
+          { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura' },
+          { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger' },
+          { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah' },
+          { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie' },
+          { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George' },
+          { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel' },
+          { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian' },
+          { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam' },
+          { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily' },
+          { id: 'SAz9YHcvj6GT2YYXdXww', name: 'River' },
+        ]),
+        supabase.from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
+      ]);
+      setInstances(instRes.data || []);
+      const customVoices = (customRes.data || []).map((v: any) => ({ id: v.elevenlabs_voice_id, name: `🎤 ${v.name}` }));
+      setVoices([...presetRes, ...customVoices]);
     };
     fetchInstances();
   }, []);
@@ -123,13 +139,15 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     if (!member) return;
     const { data } = await supabase
       .from('profiles')
-      .select('phone, default_instance_id, oab_number, oab_uf')
+      .select('phone, default_instance_id, oab_number, oab_uf, voice_id, voice_name')
       .eq('user_id', member.user_id)
       .single();
     setPhone(data?.phone || '');
     setOabNumber((data as any)?.oab_number || '');
     setOabUf((data as any)?.oab_uf || '');
     setDefaultInstanceId(data?.default_instance_id || '');
+    setVoiceId((data as any)?.voice_id || '');
+    setVoiceName((data as any)?.voice_name || '');
 
     // Fetch multiple OAB entries
     const { data: oabs } = await supabase
@@ -314,6 +332,8 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
           oab_number: primaryOab.oab_number || null,
           oab_uf: primaryOab.oab_uf || null,
           default_instance_id: defaultInstanceId && defaultInstanceId !== 'none' ? defaultInstanceId : null,
+          voice_id: voiceId && voiceId !== 'none' ? voiceId : null,
+          voice_name: voiceId && voiceId !== 'none' ? (voices.find(v => v.id === voiceId)?.name || null) : null,
         } as any)
         .eq('user_id', member.user_id);
 
@@ -590,6 +610,30 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
               </Select>
               <p className="text-xs text-muted-foreground">
                 Instância padrão para envio de mensagens
+              </p>
+            </div>
+
+            {/* Voice Selector */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Volume2 className="h-3.5 w-3.5" />
+                Voz (TTS)
+              </Label>
+              <Select value={voiceId || 'none'} onValueChange={setVoiceId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma voz" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhuma (usar padrão)</SelectItem>
+                  {voices.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Voz personalizada para áudios enviados por este membro
               </p>
             </div>
 

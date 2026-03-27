@@ -340,41 +340,7 @@ export function WhatsAppInstanceManager() {
                         </Select>
                       </div>
                     )}
-                    {/* Voice Selector */}
-                    {voices.length > 0 && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <Volume2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <span className="text-xs text-muted-foreground shrink-0">Voz (TTS):</span>
-                        <Select
-                          value={inst.voice_id || 'none'}
-                          onValueChange={async (v) => {
-                            const newVoiceId = v === 'none' ? null : v;
-                            const newVoiceName = newVoiceId ? voices.find(vo => vo.id === newVoiceId)?.name || null : null;
-                            setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, voice_id: newVoiceId, voice_name: newVoiceName } : i));
-                            const { error } = await supabase
-                              .from('whatsapp_instances')
-                              .update({ voice_id: newVoiceId, voice_name: newVoiceName } as any)
-                              .eq('id', inst.id);
-                            if (error) {
-                              toast.error('Erro ao salvar voz');
-                              setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, voice_id: inst.voice_id, voice_name: inst.voice_name } : i));
-                            } else {
-                              toast.success(newVoiceId ? `🔊 Voz "${newVoiceName}" definida` : 'Voz removida');
-                            }
-                          }}
-                        >
-                          <SelectTrigger className="h-7 text-xs w-48">
-                            <SelectValue placeholder="Nenhuma" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Nenhuma (usar padrão)</SelectItem>
-                            {voices.map(v => (
-                              <SelectItem key={v.id} value={v.id} className="text-xs">{v.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
+                    {/* Voice moved to team member profile */}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="flex items-center gap-1.5">

@@ -741,8 +741,20 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
         await sleep(1000)
       }
 
-      // Generate and send audio if configured - use creator instance voice, fallback to settings voice
-      const audioVoiceId = creatorInstance.voice_id || settings.audio_voice_id
+      // Generate and send audio if configured - get voice from member profile (instance owner)
+      let audioVoiceId = settings.audio_voice_id
+      if (creatorInstance.owner_phone) {
+        const ownerPhone = creatorInstance.owner_phone.replace(/\D/g, '')
+        const { data: ownerProfile } = await supabase
+          .from('profiles')
+          .select('voice_id')
+          .eq('phone', ownerPhone)
+          .maybeSingle()
+        if (ownerProfile?.voice_id) {
+          audioVoiceId = ownerProfile.voice_id
+          console.log('Using member voice:', audioVoiceId)
+        }
+      }
       if (settings.send_audio_message && audioVoiceId && messageText) {
         await sendAudioMessage(supabase, messageText, audioVoiceId, groupId, baseUrl, creatorInstance)
       }
