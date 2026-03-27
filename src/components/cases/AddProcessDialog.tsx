@@ -465,21 +465,33 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             </div>
             <div>
               <Label className="text-xs font-semibold">Fluxo de Trabalho *</Label>
-              <Select value={workflowId} onValueChange={setWorkflowId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um fluxo..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeBoards.map(b => (
-                    <SelectItem key={b.id} value={b.id}>
-                      <span className="flex items-center gap-2">
-                        <ClipboardList className="h-3 w-3" />
-                        {b.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-1.5">
+                <Select value={workflowId} onValueChange={setWorkflowId}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Selecione um fluxo..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeBoards.map(b => (
+                      <SelectItem key={b.id} value={b.id}>
+                        <span className="flex items-center gap-2">
+                          <ClipboardList className="h-3 w-3" />
+                          {b.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0"
+                  onClick={() => setShowNewWorkflow(true)}
+                  title="Criar novo fluxo"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>
