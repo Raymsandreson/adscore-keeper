@@ -13,7 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
   FileSpreadsheet, Upload, Loader2, Search, AlertTriangle, Check,
-  X, RefreshCw, FileUp, Briefcase, Shield, Plus,
+  X, RefreshCw, FileUp, Briefcase, Shield, Plus, FileText,
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -64,6 +64,7 @@ const ProcessTrackingPage = () => {
   const [newRecord, setNewRecord] = useState<Partial<ProcessTracking>>({});
   const [savingNew, setSavingNew] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
 
