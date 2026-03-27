@@ -406,6 +406,10 @@ const ProcessTrackingPage = () => {
                 <FileSpreadsheet className="h-4 w-4" />
                 Google Sheets
               </TabsTrigger>
+              <TabsTrigger value="pdf" className="gap-2">
+                <FileText className="h-4 w-4" />
+                PDF
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="csv" className="space-y-3">
               <p className="text-sm text-muted-foreground">
@@ -431,6 +435,16 @@ const ProcessTrackingPage = () => {
               <Button onClick={handleFetchSheet} disabled={importing} className="gap-2">
                 {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                 {importing ? 'Lendo planilha...' : 'Importar Dados'}
+              </Button>
+            </TabsContent>
+            <TabsContent value="pdf" className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Envie um PDF com dados de processos. A IA irá extrair automaticamente as informações das tabelas e textos.
+              </p>
+              <input ref={pdfInputRef} type="file" accept=".pdf" onChange={handlePDFImport} className="hidden" />
+              <Button onClick={() => pdfInputRef.current?.click()} disabled={importing} className="gap-2">
+                {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                {importing ? 'Processando PDF...' : 'Selecionar PDF'}
               </Button>
             </TabsContent>
           </Tabs>
