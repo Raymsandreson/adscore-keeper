@@ -11,6 +11,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Plus, CheckCircle2, Clock, AlertCircle, Loader2, ListTodo, Save, Trash2, Play, MessageCircle, Sparkles } from 'lucide-react';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
+import { useProfilesList } from '@/hooks/useProfilesList';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
@@ -69,8 +70,11 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   const [newDescription, setNewDescription] = useState('');
   const [newSaving, setNewSaving] = useState(false);
   const [newAiSuggesting, setNewAiSuggesting] = useState(false);
+  const [newAssignedTo, setNewAssignedTo] = useState('');
+  const [newAssignedToName, setNewAssignedToName] = useState('');
 
   const { types: activityTypes } = useActivityTypes();
+  const profiles = useProfilesList();
   const { configs: timeBlockSettings } = useTimeBlockSettings();
 
   const allowedTypes = timeBlockSettings.length > 0
@@ -129,6 +133,8 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
         priority: newPriority,
         deadline: newDeadline || null,
         description: newDescription || null,
+        assigned_to: newAssignedTo || user?.id || null,
+        assigned_to_name: newAssignedToName || null,
         created_by: user?.id || null,
       } as any);
       if (error) throw error;
@@ -139,6 +145,8 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
       setNewPriority('normal');
       setNewDeadline('');
       setNewDescription('');
+      setNewAssignedTo('');
+      setNewAssignedToName('');
       await fetchActivities();
     } catch {
       toast.error('Erro ao criar atividade');
@@ -572,6 +580,23 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div>
+                <Label className="text-xs">Responsável</Label>
+                <Select value={newAssignedTo} onValueChange={(val) => {
+                  setNewAssignedTo(val);
+                  const p = profiles.find(p => p.user_id === val);
+                  setNewAssignedToName(p?.full_name || '');
+                }}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {profiles.map(p => (
+                      <SelectItem key={p.user_id} value={p.user_id}>
+                        {p.full_name || p.email || 'Sem nome'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label className="text-xs">Prazo</Label>
