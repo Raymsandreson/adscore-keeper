@@ -74,7 +74,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const activePhoneRef = useRef<string | null>(null);
   const fullConvCacheRef = useRef<Record<string, WhatsAppMessage[]>>({});
 
-  const AUTO_REFRESH_INTERVAL_MS = 60000; // 1 min fallback polling
+  const AUTO_REFRESH_INTERVAL_MS = 30000; // 30s fallback polling
 
   const fetchInstances = async () => {
     if (!user) return;
