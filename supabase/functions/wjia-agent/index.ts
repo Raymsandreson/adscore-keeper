@@ -338,6 +338,7 @@ REGRAS:
         status: initialStatus, triggered_by: command,
         notify_on_signature: notifyOnSignature, send_signed_pdf: sendSignedPdf,
         request_documents: requestDocuments, document_types: documentTypes,
+        shortcut_name: matchedShortcut?.shortcut_name || null,
       })
       .select().single();
 
