@@ -146,7 +146,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       valor_causa: valorCausa?.valor ? parseFloat(valorCausa.valor) : (raw.valor_causa || null),
       valor_causa_formatado: valorCausa?.valor_formatado || null,
       moeda: valorCausa?.moeda || null,
-      situacao: capa?.situacao || null,
+      situacao: capa?.situacao || fonte?.situacao || fonte?.status_predito || null,
       data_distribuicao: capa?.data_distribuicao || null,
       data_arquivamento: capa?.data_arquivamento || null,
       informacoes_complementares: capa?.informacoes_complementares || null,

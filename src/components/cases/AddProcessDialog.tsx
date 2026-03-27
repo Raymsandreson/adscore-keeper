@@ -325,7 +325,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             sistema: fonte?.sistema || null,
             url_tribunal: fonte?.url || null,
             orgao_julgador: capa?.orgao_julgador || null,
-            situacao: capa?.situacao || null,
+            situacao: capa?.situacao || fonte?.situacao || fonte?.status_predito || null,
             data_distribuicao: capa?.data_distribuicao || null,
             data_arquivamento: capa?.data_arquivamento || null,
             informacoes_complementares: capa?.informacoes_complementares || null,
