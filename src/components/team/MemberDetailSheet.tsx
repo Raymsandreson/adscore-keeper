@@ -179,11 +179,43 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   };
 
   const selectOabResult = (result: { name: string; oab_number: string; oab_uf: string }) => {
-    setOabNumber(result.oab_number);
-    setOabUf(result.oab_uf);
-    setOabSearchQuery(result.name);
+    // Check if already exists
+    const exists = oabEntries.some(e => e.oab_number === result.oab_number && e.oab_uf === result.oab_uf);
+    if (exists) {
+      toast.info('Esta OAB já foi adicionada');
+      setShowOabDropdown(false);
+      return;
+    }
+    // Add to entries list
+    setOabEntries(prev => [...prev, { oab_number: result.oab_number, oab_uf: result.oab_uf }]);
+    // Also set the primary fields for backward compat
+    if (!oabNumber) {
+      setOabNumber(result.oab_number);
+      setOabUf(result.oab_uf);
+    }
+    setOabSearchQuery('');
     setShowOabDropdown(false);
-    toast.success(`OAB ${result.oab_number}/${result.oab_uf} selecionada`);
+    toast.success(`OAB ${result.oab_number}/${result.oab_uf} adicionada`);
+  };
+
+  const addManualOab = () => {
+    if (!oabNumber.trim() || !oabUf.trim()) {
+      toast.error('Preencha o número e UF da OAB');
+      return;
+    }
+    const exists = oabEntries.some(e => e.oab_number === oabNumber.trim() && e.oab_uf === oabUf.trim().toUpperCase());
+    if (exists) {
+      toast.info('Esta OAB já foi adicionada');
+      return;
+    }
+    setOabEntries(prev => [...prev, { oab_number: oabNumber.trim(), oab_uf: oabUf.trim().toUpperCase() }]);
+    setOabNumber('');
+    setOabUf('');
+    toast.success('OAB adicionada à lista');
+  };
+
+  const removeOabEntry = (index: number) => {
+    setOabEntries(prev => prev.filter((_, i) => i !== index));
   };
 
   const fetchMemberData = async () => {
