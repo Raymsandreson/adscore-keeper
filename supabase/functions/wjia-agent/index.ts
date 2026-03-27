@@ -554,17 +554,18 @@ async function handleFollowUp(opts: {
   // GENERATED SESSION — resend real link or regenerate if needed
   // ============================================================
   if (session.status === "generated") {
-    const msgLower = (message_text || "").toLowerCase().trim();
-    const wantsLink = msgLower.includes("link") || msgLower.includes("assinar") || msgLower.includes("documento") || msgLower.includes("não deu") || msgLower.includes("nao deu") || msgLower.includes("outro") || msgLower.includes("errado") || msgLower.includes("expirou") || msgLower.includes("não funciona") || msgLower.includes("nao funciona") || msgLower.includes("não abriu") || msgLower.includes("nao abriu") || msgLower.includes("mande") || msgLower.includes("reenviar") || msgLower.includes("de novo") || msgLower.includes("novamente");
-
-    if (wantsLink && session.sign_url) {
+    // ALWAYS handle generated sessions here — NEVER fall through to AI agent phase
+    // This prevents the AI from hallucinating fake URLs
+    if (session.sign_url) {
       const signerName = (session.collected_data?.signer_name || "").split(" ")[0] || "Cliente";
       const resendMsg = `📝 Aqui está o link para assinatura do documento *${session.template_name}*:\n\n👉 ${session.sign_url}\n\nÉ só clicar e seguir as instruções! 🙏`;
       await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, resendMsg, session.contact_id, session.lead_id, "wjia_resend_link");
       return new Response(JSON.stringify({ active_session: true, processed: true, resent_link: true, session_id: session.id }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    // For other messages on generated sessions, let them fall through to normal AI
+    // No sign_url available — end session silently, don't let AI respond
+    return new Response(JSON.stringify({ active_session: true, processed: true, session_id: session.id }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
   // ============================================================
   // DOCUMENT UPLOAD HANDLING (collecting_docs phase)
