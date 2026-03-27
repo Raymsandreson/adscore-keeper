@@ -975,7 +975,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 </Button>
               )}
               <div className="flex gap-2 ml-auto">
-                <Button variant="outline" onClick={resetForm}>Cancelar</Button>
+                <Button variant="outline" onClick={() => {
+                  if (initialEditBoardId || initialCreateNew) {
+                    onOpenChange(false);
+                  } else {
+                    resetForm();
+                  }
+                }}>Cancelar</Button>
                 <Button onClick={handleSave} disabled={!formName.trim() || phases.length === 0 || saving}>
                   {saving ? 'Salvando...' : 'Salvar'}
                 </Button>
