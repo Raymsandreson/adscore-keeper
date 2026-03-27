@@ -155,11 +155,130 @@ const WorkflowProgressPage = () => {
       {/* Content */}
       <div className="max-w-3xl mx-auto p-4">
         {!selectedLead ? (
-          <div className="text-center py-20 space-y-4">
-            <Search className="h-12 w-12 mx-auto text-muted-foreground/40" />
-            <p className="text-muted-foreground">Selecione um lead para ver o fluxo de trabalho</p>
-            <Button onClick={() => setShowLeadPicker(true)}>Selecionar Lead</Button>
-          </div>
+          (() => {
+            const workflowBoards = boards.filter(b => (b as any).board_type === 'workflow');
+            const filteredWorkflows = workflowSearch
+              ? workflowBoards.filter(b => b.name.toLowerCase().includes(workflowSearch.toLowerCase()))
+              : workflowBoards;
+            const totalPages = Math.max(1, Math.ceil(filteredWorkflows.length / WORKFLOWS_PER_PAGE));
+            const currentPage = Math.min(workflowPage, totalPages);
+            const paged = filteredWorkflows.slice((currentPage - 1) * WORKFLOWS_PER_PAGE, currentPage * WORKFLOWS_PER_PAGE);
+
+            const handleDeleteWorkflow = async (boardId: string) => {
+              if (!confirm('Tem certeza que deseja excluir este fluxo?')) return;
+              const { error } = await supabase.from('kanban_boards').delete().eq('id', boardId);
+              if (error) { toast.error('Erro ao excluir'); return; }
+              toast.success('Fluxo excluído');
+              fetchData();
+            };
+
+            return (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">Fluxos de trabalho</h2>
+                  <Button size="icon" onClick={() => setShowConfig(true)} title="Criar novo fluxo">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="relative max-w-sm">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar fluxos de trabalho..."
+                    value={workflowSearch}
+                    onChange={e => { setWorkflowSearch(e.target.value); setWorkflowPage(1); }}
+                    className="pl-9"
+                  />
+                </div>
+
+                {filteredWorkflows.length === 0 ? (
+                  <p className="text-center py-10 text-muted-foreground text-sm">Nenhum fluxo encontrado</p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {paged.map(board => (
+                        <div key={board.id} className="border rounded-lg p-4 bg-card hover:shadow-sm transition-shadow">
+                          <h3 className="font-semibold text-sm truncate">{board.name}</h3>
+                          {board.description && (
+                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{board.description}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-3 pt-2 border-t">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex-1 text-xs h-8"
+                              onClick={() => { setEditingWorkflow(board); setShowConfig(true); }}
+                            >
+                              <Pencil className="h-3 w-3 mr-1" /> Editar
+                            </Button>
+                            <div className="w-px h-5 bg-border" />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex-1 text-xs h-8 text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteWorkflow(board.id)}
+                            >
+                              <Trash2 className="h-3 w-3 mr-1" /> Excluir
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {totalPages > 1 && (
+                      <Pagination>
+                        <PaginationContent>
+                          <PaginationItem>
+                            <PaginationPrevious
+                              onClick={() => setWorkflowPage(p => Math.max(1, p - 1))}
+                              className={currentPage <= 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                            />
+                          </PaginationItem>
+                          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                            let page: number;
+                            if (totalPages <= 5) page = i + 1;
+                            else if (currentPage <= 3) page = i + 1;
+                            else if (currentPage >= totalPages - 2) page = totalPages - 4 + i;
+                            else page = currentPage - 2 + i;
+                            return (
+                              <PaginationItem key={page}>
+                                <PaginationLink
+                                  isActive={page === currentPage}
+                                  onClick={() => setWorkflowPage(page)}
+                                  className="cursor-pointer"
+                                >
+                                  {page}
+                                </PaginationLink>
+                              </PaginationItem>
+                            );
+                          })}
+                          {totalPages > 5 && currentPage < totalPages - 2 && (
+                            <>
+                              <PaginationItem><PaginationEllipsis /></PaginationItem>
+                              <PaginationItem>
+                                <PaginationLink onClick={() => setWorkflowPage(totalPages)} className="cursor-pointer">
+                                  {totalPages}
+                                </PaginationLink>
+                              </PaginationItem>
+                            </>
+                          )}
+                          <PaginationItem>
+                            <PaginationNext
+                              onClick={() => setWorkflowPage(p => Math.min(totalPages, p + 1))}
+                              className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                            />
+                          </PaginationItem>
+                        </PaginationContent>
+                        <div className="flex justify-center mt-2">
+                          <span className="text-xs text-muted-foreground">{WORKFLOWS_PER_PAGE} / página</span>
+                        </div>
+                      </Pagination>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })()
         ) : !selectedBoard ? (
           <div className="text-center py-20 text-muted-foreground">
             <p>Nenhum quadro kanban encontrado para este lead</p>
