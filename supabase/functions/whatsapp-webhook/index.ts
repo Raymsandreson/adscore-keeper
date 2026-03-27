@@ -1917,33 +1917,39 @@ Deno.serve(async (req) => {
             }
           } else if (resolvedControlCommand === '#limpar') {
             if (direction === 'outbound') {
-              console.log(`#limpar command: clearing conversation for phone=${phone}, instance=${instanceName}`)
+              console.log(`#limpar command: clearing conversation for phoneCandidates=${JSON.stringify(phoneCandidates)}, instance=${instanceName}`)
 
-              // 1. Delete all messages for this phone+instance
-              const { error: delErr, count: delCount } = await supabase
-                .from('whatsapp_messages')
-                .delete({ count: 'exact' })
-                .eq('phone', phone)
-                .eq('instance_name', instanceName)
-              console.log(`Deleted ${delCount ?? 0} messages, error:`, delErr)
+              // 1. Delete all messages for ALL phone candidates across ALL instances
+              // This handles mirrored webhooks where conversation spans multiple instances
+              let totalDeleted = 0
+              for (const p of phoneCandidates) {
+                const { count: c1 } = await supabase
+                  .from('whatsapp_messages')
+                  .delete({ count: 'exact' })
+                  .eq('phone', p)
+                if (c1) totalDeleted += c1
+              }
+              console.log(`#limpar: deleted ${totalDeleted} messages across all instances for phones: ${phoneCandidates.join(', ')}`)
 
-              // 2. Cancel active collection sessions
-              await supabase
-                .from('wjia_collection_sessions')
-                .update({ status: 'cancelled' })
-                .eq('phone', phone)
-                .eq('instance_name', instanceName)
-                .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready'])
+              // 2. Cancel active collection sessions for all phone candidates
+              for (const p of phoneCandidates) {
+                await supabase
+                  .from('wjia_collection_sessions')
+                  .update({ status: 'cancelled' })
+                  .eq('phone', p)
+                  .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready'])
+              }
 
-              // 3. Deactivate conversation agents
-              await supabase
-                .from('whatsapp_conversation_agents')
-                .update({ is_active: false })
-                .eq('phone', phone)
-                .eq('instance_name', instanceName)
-                .eq('is_active', true)
+              // 3. Deactivate conversation agents for all phone candidates
+              for (const p of phoneCandidates) {
+                await supabase
+                  .from('whatsapp_conversation_agents')
+                  .update({ is_active: false })
+                  .eq('phone', p)
+                  .eq('is_active', true)
+              }
 
-              // 4. Send confirmation and delete it after 2s
+              // 4. Send confirmation and ghost-delete it after 3s
               const creds = await getInstanceCreds()
               if (creds.token && creds.baseUrl) {
                 try {
@@ -1954,14 +1960,25 @@ Deno.serve(async (req) => {
                   })
                   const confirmData = await confirmResp.json()
                   const confirmMsgId = confirmData?.key?.id || confirmData?.messageId
+                  console.log(`#limpar confirmation sent, msgId: ${confirmMsgId}`)
                   if (confirmMsgId) {
-                    // Wait 2s then delete the confirmation message
-                    await new Promise(r => setTimeout(r, 2000))
-                    await fetch(`${creds.baseUrl}/message/delete`, {
+                    // Wait 3s then delete the confirmation from WhatsApp
+                    await new Promise(r => setTimeout(r, 3000))
+                    const delRes = await fetch(`${creds.baseUrl}/message/delete`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json', 'token': creds.token },
                       body: JSON.stringify({ id: confirmMsgId }),
                     })
+                    console.log(`#limpar confirmation delete status: ${delRes.status}`)
+                  }
+                  // Also delete any confirmation message that got saved to DB
+                  await new Promise(r => setTimeout(r, 1000))
+                  for (const p of phoneCandidates) {
+                    await supabase
+                      .from('whatsapp_messages')
+                      .delete()
+                      .eq('phone', p)
+                      .ilike('message_text', '%conversa limpa%')
                   }
                 } catch (e) {
                   console.error('Error sending/deleting #limpar confirmation:', e)
