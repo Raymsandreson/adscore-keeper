@@ -60,6 +60,16 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
 
   const [aiSuggestingType, setAiSuggestingType] = useState(false);
 
+  // New activity creation state
+  const [showNewSheet, setShowNewSheet] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newType, setNewType] = useState('tarefa');
+  const [newPriority, setNewPriority] = useState('normal');
+  const [newDeadline, setNewDeadline] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const [newSaving, setNewSaving] = useState(false);
+  const [newAiSuggesting, setNewAiSuggesting] = useState(false);
+
   const { types: activityTypes } = useActivityTypes();
   const { configs: timeBlockSettings } = useTimeBlockSettings();
 
@@ -85,6 +95,57 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     } catch { /* silent */ }
     setAiSuggestingType(false);
   }, [activityTypes, allowedTypes]);
+
+  const suggestNewActivityType = useCallback(async (title: string) => {
+    if (!title || title.trim().length < 5) return;
+    setNewAiSuggesting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('suggest-activity-type', { body: { title } });
+      if (!error && data?.suggested_type) {
+        const match = activityTypes.find(t => t.key === data.suggested_type);
+        if (match) {
+          const allowed = allowedTypes.length > 0 ? allowedTypes : activityTypes;
+          if (allowed.some(t => t.key === match.key)) {
+            setNewType(match.key);
+            toast.info(`Tipo sugerido pela IA: ${match.label}`, { duration: 2000 });
+          }
+        }
+      }
+    } catch { /* silent */ }
+    setNewAiSuggesting(false);
+  }, [activityTypes, allowedTypes]);
+
+  const handleCreateActivity = async () => {
+    if (!newTitle.trim()) { toast.error('Informe o título'); return; }
+    setNewSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase.from('lead_activities').insert({
+        title: newTitle,
+        lead_id: leadId,
+        lead_name: leadName,
+        activity_type: newType,
+        status: 'pendente',
+        priority: newPriority,
+        deadline: newDeadline || null,
+        description: newDescription || null,
+        created_by: user?.id || null,
+      } as any);
+      if (error) throw error;
+      toast.success('Atividade criada!');
+      setShowNewSheet(false);
+      setNewTitle('');
+      setNewType('tarefa');
+      setNewPriority('normal');
+      setNewDeadline('');
+      setNewDescription('');
+      await fetchActivities();
+    } catch {
+      toast.error('Erro ao criar atividade');
+    } finally {
+      setNewSaving(false);
+    }
+  };
 
   const fetchActivities = useCallback(async () => {
     setLoading(true);
@@ -276,7 +337,10 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
         <div className="flex items-center gap-1.5">
           <TeamChatButton entityType="lead" entityId={leadId} entityName={leadName} variant="icon" />
           <Button size="sm" variant="outline" onClick={() => setShowChatSheet(true)} className="gap-1">
-            <MessageCircle className="h-3 w-3" />
+            <Sparkles className="h-3 w-3" />
+            IA
+          </Button>
+          <Button size="sm" onClick={() => setShowNewSheet(true)} className="gap-1">
             <Plus className="h-3 w-3" />
             Nova
           </Button>
@@ -453,6 +517,82 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
             </Button>
             <Button size="sm" variant="destructive" className="gap-1 ml-auto" onClick={handleDeleteEdit} disabled={editSaving}>
               <Trash2 className="h-3 w-3" /> Excluir
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* New Activity Creation Sheet */}
+      <Sheet open={showNewSheet} onOpenChange={setShowNewSheet}>
+        <SheetContent className="w-full sm:max-w-md flex flex-col p-0">
+          <SheetHeader className="px-4 pt-4 pb-2 shrink-0">
+            <SheetTitle className="text-base">Nova Atividade</SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="flex-1 px-4">
+            <div className="space-y-3 pb-4">
+              <div>
+                <Label className="text-xs">Título *</Label>
+                <Input
+                  value={newTitle}
+                  onChange={e => setNewTitle(e.target.value)}
+                  onBlur={() => suggestNewActivityType(newTitle)}
+                  placeholder="Ex: Ligar para cliente, Preparar documentação..."
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs flex items-center gap-1">
+                    Tipo
+                    {newAiSuggesting && <Sparkles className="h-3 w-3 animate-pulse text-amber-500" />}
+                  </Label>
+                  <Select value={newType} onValueChange={setNewType}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {allowedTypes.map(t => (
+                        <SelectItem key={t.key} value={t.key}>
+                          <span className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />
+                            {t.label}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Prioridade</Label>
+                  <Select value={newPriority} onValueChange={setNewPriority}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="baixa">Baixa</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="alta">Alta</SelectItem>
+                      <SelectItem value="urgente">Urgente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Prazo</Label>
+                <Input type="datetime-local" value={newDeadline} onChange={e => setNewDeadline(e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Descrição</Label>
+                <textarea
+                  value={newDescription}
+                  onChange={e => setNewDescription(e.target.value)}
+                  placeholder="Detalhes da atividade..."
+                  className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+              </div>
+            </div>
+          </ScrollArea>
+          <div className="shrink-0 border-t p-3 flex gap-2 justify-end">
+            <Button size="sm" variant="outline" onClick={() => setShowNewSheet(false)}>Cancelar</Button>
+            <Button size="sm" onClick={handleCreateActivity} disabled={newSaving} className="gap-1">
+              {newSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              Criar Atividade
             </Button>
           </div>
         </SheetContent>
