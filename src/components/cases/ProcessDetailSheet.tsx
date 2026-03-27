@@ -53,9 +53,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process }: Proc
         <SheetHeader className="p-4 pb-2">
           <SheetTitle className="text-sm flex items-center gap-2">
             {p.process_type === 'judicial' ? (
-              <Gavel className="h-4 w-4 text-orange-500" />
+              <Gavel className="h-4 w-4 text-primary" />
             ) : (
-              <FileText className="h-4 w-4 text-blue-500" />
+              <FileText className="h-4 w-4 text-primary" />
             )}
             Detalhes do Processo
           </SheetTitle>
