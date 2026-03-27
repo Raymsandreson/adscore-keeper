@@ -11,7 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
-  Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil
+  Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw
 } from 'lucide-react';
 
 interface ProcessDetailSheetProps {
