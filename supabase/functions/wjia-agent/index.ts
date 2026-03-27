@@ -543,6 +543,18 @@ async function handleFollowUp(opts: {
     console.log(`WJIA batching delay complete for ${normalizedPhone}`);
   }
 
+  // Load split message settings from shortcut config
+  let splitOpts: { splitMessages?: boolean; splitDelaySeconds?: number } | undefined;
+  if (session.shortcut_name) {
+    const { data: scSplit } = await supabase.from("wjia_command_shortcuts")
+      .select("split_messages, split_delay_seconds")
+      .eq("shortcut_name", session.shortcut_name).maybeSingle();
+    if (scSplit?.split_messages) {
+      splitOpts = { splitMessages: true, splitDelaySeconds: scSplit.split_delay_seconds || 3 };
+      console.log(`WJIA split enabled: delay=${splitOpts.splitDelaySeconds}s`);
+    }
+  }
+
   const { data: inst } = await supabase.from("whatsapp_instances").select("instance_token, base_url").eq("instance_name", instance_name).maybeSingle();
   const catalog = buildTemplateFieldCatalog(session);
   const collectedData = session.collected_data || { fields: [] };
