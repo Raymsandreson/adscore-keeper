@@ -123,10 +123,11 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
   const [dailyTarget, setDailyTarget] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [filterUserId, setFilterUserId] = useState<string>('all');
+  const [filterSource, setFilterSource] = useState<string>('all');
   const [teamMembers, setTeamMembers] = useState<{ user_id: string; full_name: string }[]>([]);
 
   useEffect(() => {
-    if (open) { if (!dateRangeOverride) setPeriod('today'); setHistoryOpen(false); setFilterUserId('all'); }
+    if (open) { if (!dateRangeOverride) setPeriod('today'); setHistoryOpen(false); setFilterUserId('all'); setFilterSource('all'); }
   }, [open, dateRangeOverride]);
 
   useEffect(() => {
@@ -146,7 +147,7 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
   useEffect(() => {
     if (!open || !metricKey || (!user && !targetUserId)) return;
     fetchItems(metricKey);
-  }, [open, metricKey, user, targetUserId, dateRange, filterUserId]);
+  }, [open, metricKey, user, targetUserId, dateRange, filterUserId, filterSource]);
 
   useEffect(() => {
     if (!open || !metricKey || !user) return;
@@ -215,11 +216,21 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
         }
         case 'leadsClosed': {
           // Query leads that are currently closed, filtered by updated_at (when they were closed)
-          const { data: closedLeads } = await supabase.from('leads')
-            .select('id, lead_name, board_id, updated_at, lead_status')
+          let closedQuery = supabase.from('leads')
+            .select('id, lead_name, board_id, updated_at, lead_status, source')
             .eq('lead_status', 'closed')
             .gte('updated_at', startDate).lte('updated_at', endDate)
             .order('updated_at', { ascending: false });
+
+          // Filter by source origin
+          const AD_SOURCES = ['facebook', 'facebook_leads', 'instagram'];
+          if (filterSource === 'anuncio') {
+            closedQuery = closedQuery.in('source', AD_SOURCES);
+          } else if (filterSource === 'acolhedor') {
+            closedQuery = closedQuery.or(`source.not.in.(${AD_SOURCES.join(',')}),source.is.null`);
+          }
+
+          const { data: closedLeads } = await closedQuery;
           
           let filteredLeads = closedLeads || [];
           
@@ -264,16 +275,24 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
             filteredLeads = filteredLeads.map(l => ({ ...l, _closerName: userNamesMap[leadCloserMap[l.id]] })) as any;
           }
           
-          result = filteredLeads.map((l: any) => ({
-            id: l.id, 
-            title: l.lead_name || 'Sem nome',
-            subtitle: filterUserId === 'all' && l._closerName ? `👤 ${l._closerName}` : undefined,
-            badge: '✓ Fechado', badgeVariant: 'default' as const,
-            navigateTo: l.board_id 
-              ? `/leads?board=${l.board_id}&openLead=${l.id}` 
-              : `/leads?openLead=${l.id}`,
-            date: l.updated_at ? format(new Date(l.updated_at), 'yyyy-MM-dd') : undefined,
-          }));
+          const AD_SOURCES_SET = new Set(['facebook', 'facebook_leads', 'instagram']);
+          result = filteredLeads.map((l: any) => {
+            const isAd = AD_SOURCES_SET.has(l.source);
+            const sourceLabel = isAd ? '📢 Anúncio' : '🤝 Acolhedor';
+            const subtitleParts = [];
+            if (filterUserId === 'all' && l._closerName) subtitleParts.push(`👤 ${l._closerName}`);
+            if (filterSource === 'all') subtitleParts.push(sourceLabel);
+            return {
+              id: l.id, 
+              title: l.lead_name || 'Sem nome',
+              subtitle: subtitleParts.length > 0 ? subtitleParts.join(' • ') : undefined,
+              badge: '✓ Fechado', badgeVariant: 'default' as const,
+              navigateTo: l.board_id 
+                ? `/leads?board=${l.board_id}&openLead=${l.id}` 
+                : `/leads?openLead=${l.id}`,
+              date: l.updated_at ? format(new Date(l.updated_at), 'yyyy-MM-dd') : undefined,
+            };
+          });
           break;
         }
         case 'commentReplies': {
@@ -522,6 +541,22 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
                     {teamMembers.map(m => (
                       <SelectItem key={m.user_id} value={m.user_id}>{m.full_name}</SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {metricKey === 'leadsClosed' && (
+              <div className="flex items-center gap-2">
+                <Briefcase className="h-4 w-4 text-muted-foreground" />
+                <Select value={filterSource} onValueChange={setFilterSource}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Filtrar por origem" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as origens</SelectItem>
+                    <SelectItem value="anuncio">📢 Anúncio</SelectItem>
+                    <SelectItem value="acolhedor">🤝 Acolhedor</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
