@@ -315,6 +315,23 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         instance_name: s.instance_name,
       }));
 
+      // Preserve full message history for the active conversation
+      const activePhone = activePhoneRef.current;
+      if (activePhone && fullConvCacheRef.current[activePhone]) {
+        const cachedMsgs = fullConvCacheRef.current[activePhone];
+        const activeConvIdx = convList.findIndex(c => c.phone === activePhone);
+        if (activeConvIdx >= 0) {
+          // Merge any new realtime messages into the cached full history
+          const cachedIds = new Set(cachedMsgs.map(m => m.id));
+          const newMsgs = convList[activeConvIdx].messages.filter(m => !cachedIds.has(m.id) && !m.id.startsWith('summary-'));
+          convList[activeConvIdx] = {
+            ...convList[activeConvIdx],
+            messages: [...cachedMsgs, ...newMsgs],
+          };
+          fullConvCacheRef.current[activePhone] = convList[activeConvIdx].messages;
+        }
+      }
+
       conversationsRef.current = convList;
       setConversations(convList);
       setMessages(convList.map(c => c.messages[0]));
