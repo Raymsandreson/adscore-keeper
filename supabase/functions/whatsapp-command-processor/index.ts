@@ -246,6 +246,15 @@ serve(async (req) => {
       });
     }
 
+    // Anti-loop: skip messages that are the bot's own responses
+    const trimmedText = (message_text || '').trim();
+    if (trimmedText.startsWith('🤖 *WhatsJUD IA*') || trimmedText.startsWith('🤖 WhatsJUD IA')) {
+      console.log('Anti-loop: skipping bot\'s own message in command processor');
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'bot_own_message' }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);

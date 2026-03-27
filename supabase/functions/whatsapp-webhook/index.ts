@@ -1289,6 +1289,11 @@ Deno.serve(async (req) => {
         }
 
         if (cmdConfig) {
+          // Anti-loop: skip bot's own outbound messages to prevent re-triggering
+          const trimmedMsgText = (messageText || '').trim()
+          if (trimmedMsgText.startsWith('🤖 *WhatsJUD IA*') || trimmedMsgText.startsWith('🤖 WhatsJUD IA')) {
+            console.log('Anti-loop: skipping bot own message from command routing:', phone)
+          } else {
           console.log('Authorized command phone detected, routing to command processor:', cmdLookupPhone, isGroup ? `(group: ${phone})` : '')
           const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
           const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
@@ -1327,6 +1332,7 @@ Deno.serve(async (req) => {
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
         }
+        } // end anti-loop else
       } catch (e) {
         console.error('Command config check error:', e)
       }
