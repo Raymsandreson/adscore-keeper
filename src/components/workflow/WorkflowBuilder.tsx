@@ -115,6 +115,16 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     }
   }, [open]);
 
+  // Auto-open specific workflow for editing
+  useEffect(() => {
+    if (open && initialEditBoardId && boards.length > 0 && viewMode === 'list') {
+      const board = boards.find(b => b.id === initialEditBoardId);
+      if (board) {
+        handleEditWorkflow(board);
+      }
+    }
+  }, [open, initialEditBoardId, boards.length]);
+
   const resetForm = () => {
     setFormName('');
     setFormDescription('');
