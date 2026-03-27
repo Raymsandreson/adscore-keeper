@@ -469,7 +469,7 @@ async function handleFollowUp(opts: {
   const { data: sessionRaw } = await supabase
     .from("wjia_collection_sessions").select("*")
     .eq("phone", normalizedPhone).eq("instance_name", instance_name)
-    .in("status", ["collecting", "collecting_docs", "processing_docs", "ready"])
+    .in("status", ["collecting", "collecting_docs", "processing_docs", "ready", "generated"])
     .order("created_at", { ascending: false }).limit(1).maybeSingle();
 
   if (!sessionRaw) {
