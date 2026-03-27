@@ -226,7 +226,7 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {sources.map((s) => (
+                  {leadSources.map((s) => (
                     <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
                   ))}
                 </SelectContent>
