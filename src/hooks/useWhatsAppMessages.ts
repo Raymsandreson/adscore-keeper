@@ -855,6 +855,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     }
   }, []);
 
+  const clearActivePhone = useCallback(() => {
+    activePhoneRef.current = null;
+  }, []);
+
   return {
     messages,
     conversations,
@@ -873,5 +877,6 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     refetch: fetchMessages,
     refetchStats: fetchInstanceStats,
     fetchFullConversation,
+    clearActivePhone,
   };
 }
