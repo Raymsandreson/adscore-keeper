@@ -255,6 +255,80 @@ const ProcessTrackingPage = () => {
     }
   };
 
+  const handlePDFImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
+      toast.error('Selecione um arquivo PDF válido');
+      return;
+    }
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const { data, error } = await supabase.functions.invoke('extract-pdf-process-tracking', {
+        body: formData,
+      });
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+      const rawRows = data.rows as any[];
+      if (!rawRows.length) {
+        toast.info('Nenhum registro encontrado no PDF');
+        return;
+      }
+      const rows: ImportRow[] = rawRows.map((r: any) => {
+        const row: ImportRow = {
+          cliente: r.cliente || null,
+          caso: r.caso || null,
+          cpf: r.cpf || null,
+          senha_gov: r.senha_gov || null,
+          data_criacao: r.data_criacao || null,
+          tipo: r.tipo || null,
+          acolhedor: r.acolhedor || null,
+          numero_processo: r.numero_processo || null,
+          pendencia: r.pendencia || null,
+          data_gerar_guia: r.data_gerar_guia || null,
+          data_nascimento_bebe: r.data_nascimento_bebe || null,
+          protocolado: r.protocolado || null,
+          data_protocolo_cancelamento: r.data_protocolo_cancelamento || null,
+          tempo_dias: r.tempo_dias ? parseInt(r.tempo_dias) || null : null,
+          status_processo: r.status_processo || null,
+          data_decisao_final: r.data_decisao_final || null,
+          motivo_indeferimento: r.motivo_indeferimento || null,
+          observacao: r.observacao || null,
+          cliente_no_grupo: r.cliente_no_grupo || null,
+          atividade_criada: r.atividade_criada || null,
+          pago_acolhedor: r.pago_acolhedor || null,
+          data_pagamento: r.data_pagamento || null,
+          existing_id: null,
+          has_conflict: false,
+          import_source: 'pdf',
+        };
+        if (row.cpf) {
+          const existing = records.find(rec => rec.cpf === row.cpf);
+          if (existing) { row.existing_id = existing.id; row.has_conflict = true; }
+        }
+        return row;
+      });
+      const withConflicts = rows.filter(r => r.has_conflict);
+      setImportData(rows);
+      if (withConflicts.length > 0) {
+        setConflicts(withConflicts);
+        setConflictDecisions({});
+        setShowConflictDialog(true);
+      } else {
+        setSelectedRows(new Set(rows.map((_, i) => i)));
+        setShowImportDialog(true);
+      }
+      toast.success(`${rows.length} registros extraídos do PDF`);
+    } catch (err: any) {
+      toast.error('Erro ao processar PDF: ' + (err.message || ''));
+    } finally {
+      setImporting(false);
+      if (pdfInputRef.current) pdfInputRef.current.value = '';
+    }
+  };
+
   const handleResolveConflicts = () => {
     setShowConflictDialog(false);
     if (importData) {
