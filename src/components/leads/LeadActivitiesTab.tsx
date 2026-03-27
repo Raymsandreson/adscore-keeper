@@ -337,7 +337,10 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
         <div className="flex items-center gap-1.5">
           <TeamChatButton entityType="lead" entityId={leadId} entityName={leadName} variant="icon" />
           <Button size="sm" variant="outline" onClick={() => setShowChatSheet(true)} className="gap-1">
-            <MessageCircle className="h-3 w-3" />
+            <Sparkles className="h-3 w-3" />
+            IA
+          </Button>
+          <Button size="sm" onClick={() => setShowNewSheet(true)} className="gap-1">
             <Plus className="h-3 w-3" />
             Nova
           </Button>
