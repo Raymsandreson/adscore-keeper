@@ -621,23 +621,13 @@ REGRAS:
 7. Retorne APENAS a mensagem final, sem explicações.`
 
         try {
-          const aiRes = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/lovable-ai`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-            },
-            body: JSON.stringify({
-              model: 'google/gemini-2.5-flash',
-              messages: [{ role: 'user', content: aiPrompt }],
-              max_tokens: 4096,
-            }),
+          const aiResult = await geminiChat({
+            model: 'google/gemini-2.5-flash',
+            messages: [{ role: 'user', content: aiPrompt }],
+            max_tokens: 4096,
           })
-
-          if (aiRes.ok) {
-            const aiData = await aiRes.json()
-            messageText = aiData?.choices?.[0]?.message?.content || aiData?.content || ''
-          }
+          messageText = aiResult?.choices?.[0]?.message?.content || ''
+          console.log('AI message substitution result length:', messageText.length)
         } catch (aiErr) {
           console.error('AI message substitution error:', aiErr)
         }
@@ -667,23 +657,13 @@ ${settings.initial_message_template ? `Instruções adicionais: ${settings.initi
 Gere uma mensagem profissional e organizada com emojis, usando formatação do WhatsApp (*negrito*, _itálico_). NÃO inclua links.`
 
         try {
-          const aiRes = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/lovable-ai`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-            },
-            body: JSON.stringify({
-              model: 'google/gemini-2.5-flash',
-              messages: [{ role: 'user', content: aiPrompt }],
-              max_tokens: 2048,
-            }),
+          const aiResult = await geminiChat({
+            model: 'google/gemini-2.5-flash',
+            messages: [{ role: 'user', content: aiPrompt }],
+            max_tokens: 2048,
           })
-
-          if (aiRes.ok) {
-            const aiData = await aiRes.json()
-            messageText = aiData?.choices?.[0]?.message?.content || aiData?.content || ''
-          }
+          messageText = aiResult?.choices?.[0]?.message?.content || ''
+          console.log('AI message generation result length:', messageText.length)
         } catch (aiErr) {
           console.error('AI message generation error:', aiErr)
         }
