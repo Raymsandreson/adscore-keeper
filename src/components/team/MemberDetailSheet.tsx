@@ -102,14 +102,26 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   const oabDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Fetch WhatsApp instances once
     const fetchInstances = async () => {
-      const { data } = await supabase
-        .from('whatsapp_instances')
-        .select('id, instance_name')
-        .eq('is_active', true)
-        .order('instance_name');
-      setInstances(data || []);
+      const [instRes, presetRes, customRes] = await Promise.all([
+        supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+        Promise.resolve([
+          { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura' },
+          { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger' },
+          { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah' },
+          { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie' },
+          { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George' },
+          { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel' },
+          { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian' },
+          { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam' },
+          { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily' },
+          { id: 'SAz9YHcvj6GT2YYXdXww', name: 'River' },
+        ]),
+        supabase.from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
+      ]);
+      setInstances(instRes.data || []);
+      const customVoices = (customRes.data || []).map((v: any) => ({ id: v.elevenlabs_voice_id, name: `🎤 ${v.name}` }));
+      setVoices([...presetRes, ...customVoices]);
     };
     fetchInstances();
   }, []);
