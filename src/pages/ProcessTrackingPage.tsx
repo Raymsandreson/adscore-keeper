@@ -60,6 +60,9 @@ const ProcessTrackingPage = () => {
   const [conflictDecisions, setConflictDecisions] = useState<Record<number, 'overwrite' | 'skip'>>({});
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [activeTab, setActiveTab] = useState('trabalhista');
+  const [showNewRecordDialog, setShowNewRecordDialog] = useState(false);
+  const [newRecord, setNewRecord] = useState<Partial<ProcessTracking>>({});
+  const [savingNew, setSavingNew] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
