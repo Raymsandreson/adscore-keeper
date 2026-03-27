@@ -192,12 +192,12 @@ function normalizeVoiceCommandText(value: string): string {
     .trim();
 }
 
-function resolveAgentControlCommand(text: string | null, messageType: string): '#parar' | '#ativar' | '#status' | null {
+function resolveAgentControlCommand(text: string | null, messageType: string): '#parar' | '#ativar' | '#status' | '#limpar' | null {
   const raw = (text || '').trim().toLowerCase();
   if (!raw) return null;
 
-  if (raw === '#parar' || raw === '#ativar' || raw === '#status') {
-    return raw as '#parar' | '#ativar' | '#status';
+  if (raw === '#parar' || raw === '#ativar' || raw === '#status' || raw === '#limpar') {
+    return raw as '#parar' | '#ativar' | '#status' | '#limpar';
   }
 
   if (messageType !== 'audio') return null;
@@ -206,6 +206,7 @@ function resolveAgentControlCommand(text: string | null, messageType: string): '
   if (/^#?\s*(parar|pare|desativar|desative)\b/.test(cleaned)) return '#parar';
   if (/^#?\s*(ativar|ative|retomar|retome)\b/.test(cleaned)) return '#ativar';
   if (/^#?\s*(status|situacao|situa[çc][aã]o|como\s+esta)\b/.test(cleaned)) return '#status';
+  if (/^#?\s*(limpar|limpe|apagar\s+conversa|limpar\s+conversa)\b/.test(cleaned)) return '#limpar';
 
   return null;
 }
@@ -1543,7 +1544,7 @@ Deno.serve(async (req) => {
       const trimmedCmd = (messageText || '').trim()
       const hashNameMatch = trimmedCmd.match(/^#([a-z0-9_]+)$/i)
       // Skip control commands handled below (#parar, #ativar, #status)
-      const controlCommands = ['parar', 'ativar', 'status']
+      const controlCommands = ['parar', 'ativar', 'status', 'limpar']
       
       if (hashNameMatch && !controlCommands.includes(hashNameMatch[1].toLowerCase())) {
         const shortcutName = hashNameMatch[1].toLowerCase()
