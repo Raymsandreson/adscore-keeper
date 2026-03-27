@@ -983,9 +983,12 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar lead por nome..."
+                  placeholder="Buscar lead por nome, cidade..."
                   value={leadSearchQuery}
-                  onChange={(e) => setLeadSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setLeadSearchQuery(e.target.value);
+                    fetchLeads(e.target.value);
+                  }}
                   className="pl-8 h-9"
                 />
               </div>
