@@ -15,25 +15,11 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Check if processing a specific session (event-driven mode)
     let body: any = {};
     try { body = await req.json(); } catch { /* empty body ok */ }
     const targetSessionId = body?.session_id || null;
 
-    // Get active rules
-    const { data: rules } = await supabase
-      .from("wjia_followup_rules")
-      .select("*")
-      .eq("is_active", true)
-      .order("display_order");
-
-    if (!rules?.length) {
-      return new Response(JSON.stringify({ message: "No active followup rules" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Get target session(s)
+    // Get target session(s) with status 'generated'
     let sessionsQuery = supabase
       .from("wjia_collection_sessions")
       .select("*")
@@ -54,16 +40,22 @@ serve(async (req) => {
     let actionsExecuted = 0;
 
     for (const session of sessions) {
-      // Check human_reply_pause_minutes: if a human replied recently, pause followup
+      // Load followup_steps from the shortcut linked to this session
       const { data: shortcutData } = await supabase
         .from("wjia_command_shortcuts")
-        .select("human_reply_pause_minutes")
+        .select("followup_steps, human_reply_pause_minutes")
         .eq("shortcut_name", session.shortcut_name)
         .maybeSingle();
 
+      const steps = (shortcutData?.followup_steps || []) as any[];
+      if (!steps.length) {
+        console.log(`No followup steps for session ${session.id} (shortcut: ${session.shortcut_name})`);
+        continue;
+      }
+
+      // Check human_reply_pause_minutes
       const pauseMinutes = shortcutData?.human_reply_pause_minutes || 0;
       if (pauseMinutes > 0) {
-        // Check if there's a human outbound message within the pause window
         const pauseSince = new Date(Date.now() - pauseMinutes * 60 * 1000).toISOString();
         const { data: humanReply } = await supabase
           .from("whatsapp_messages")
@@ -78,7 +70,6 @@ serve(async (req) => {
           .maybeSingle();
 
         if (humanReply) {
-          // Reschedule for when the pause expires
           const replyTime = new Date(humanReply.created_at).getTime();
           const resumeAt = replyTime + pauseMinutes * 60 * 1000;
           const remainingMinutes = Math.max(1, Math.ceil((resumeAt - Date.now()) / 60000));
@@ -91,12 +82,6 @@ serve(async (req) => {
         }
       }
 
-      const rule = rules.find((r: any) => r.trigger_status === "generated") || rules[0];
-      if (!rule) continue;
-
-      const steps = (rule.steps || []) as any[];
-      if (!steps.length) continue;
-
       // Get last executed step for this session
       const { data: lastLog } = await supabase
         .from("wjia_followup_log")
@@ -107,8 +92,6 @@ serve(async (req) => {
         .maybeSingle();
 
       const nextStepIndex = lastLog ? (lastLog.step_index + 1) : 0;
-      
-      // For infinite followup: wrap around to beginning when all steps done
       const effectiveStepIndex = nextStepIndex % steps.length;
       const step = steps[effectiveStepIndex];
       const delayMinutes = step.delay_minutes || 60;
@@ -119,7 +102,6 @@ serve(async (req) => {
       const delayMs = delayMinutes * 60 * 1000;
 
       if (timeSince < delayMs) {
-        // Not time yet — schedule for later (remaining time)
         const remainingMinutes = Math.max(1, Math.ceil((delayMs - timeSince) / 60000));
         await supabase.rpc("schedule_followup_for_session", {
           p_session_id: session.id,
@@ -132,7 +114,6 @@ serve(async (req) => {
 
       let actionResult = "executed";
 
-      // Get instance details
       const { data: inst } = await supabase
         .from("whatsapp_instances")
         .select("instance_token, base_url")
@@ -145,7 +126,6 @@ serve(async (req) => {
           const collectedData = session.collected_data || {};
           const signerName = collectedData.signer_name || "Cliente";
           
-          // Generate contextual follow-up message using the shortcut's prompt
           const msg = `Olá ${signerName.split(" ")[0]}! 📝\n\nNotamos que o documento *${session.template_name}* ainda não foi assinado.\n\n👉 ${session.sign_url}\n\nPrecisa de ajuda? Estamos à disposição! 🙏`;
 
           await fetch(`${baseUrl}/send/text`, {
@@ -184,7 +164,6 @@ serve(async (req) => {
         let assignedTo = step.assigned_to || null;
         let assignedName = null;
         
-        // __self__ means assign to the authorized user of this instance
         if (assignedTo === "__self__") {
           const { data: configUser } = await supabase
             .from("wjia_command_configs")
@@ -221,16 +200,16 @@ serve(async (req) => {
       // Log the execution
       await supabase.from("wjia_followup_log").insert({
         session_id: session.id,
-        rule_id: rule.id,
-        step_index: nextStepIndex, // keep absolute index for tracking
+        rule_id: null,
+        step_index: nextStepIndex,
         action_type: step.action_type,
         action_result: actionResult,
-        next_execution_at: null, // will be set by the scheduled job
+        next_execution_at: null,
       });
 
       actionsExecuted++;
 
-      // Schedule the NEXT step via DB trigger (event-driven, no polling)
+      // Schedule the NEXT step
       const nextNextIndex = (nextStepIndex + 1) % steps.length;
       const nextStep = steps[nextNextIndex];
       const nextDelay = nextStep?.delay_minutes || 60;
