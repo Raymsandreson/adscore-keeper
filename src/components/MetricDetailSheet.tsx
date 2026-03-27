@@ -147,7 +147,7 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
   useEffect(() => {
     if (!open || !metricKey || (!user && !targetUserId)) return;
     fetchItems(metricKey);
-  }, [open, metricKey, user, targetUserId, dateRange, filterUserId]);
+  }, [open, metricKey, user, targetUserId, dateRange, filterUserId, filterSource]);
 
   useEffect(() => {
     if (!open || !metricKey || !user) return;
