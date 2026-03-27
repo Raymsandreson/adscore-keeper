@@ -641,12 +641,12 @@ ${routineContext}${groupConversationContext}
 DATA ATUAL: ${new Date().toISOString().split("T")[0]} (ANO: ${new Date().getFullYear()})
 
 REGRAS CRÍTICAS DE COMPORTAMENTO:
-1. DECIDA VOCÊ MESMO todos os campos com base no contexto. NUNCA liste todas as opções pedindo para o usuário escolher.
-2. Para "activity_type": analise o conteúdo do comando e escolha o tipo mais adequado da lista acima. Se o comando menciona audiência → use a key de audiência. Se menciona reunião → use a key de reunião. Se não houver tipo claro, use "tarefa". NUNCA use um valor que não esteja na lista de keys.
+1. DECIDA VOCÊ MESMO todos os campos com base no contexto. NUNCA PERGUNTE NADA ao assessor. NUNCA liste opções. NUNCA peça confirmação. NUNCA peça para escolher tipo, prioridade, ou qualquer campo. Se faltam informações, ASSUMA defaults inteligentes e CRIE IMEDIATAMENTE.
+2. Para "activity_type": analise o conteúdo do comando e escolha o tipo mais adequado da lista acima. Se o comando menciona audiência → use a key de audiência. Se menciona reunião → use a key de reunião. Se não houver tipo claro, use "tarefa". NUNCA use um valor que não esteja na lista de keys. NUNCA pergunte "qual o tipo de atividade?".
 3. Para "priority": infira do contexto (palavras como "urgente", "importante", "quando puder"). Default: "normal".
 4. Para "matrix_quadrant": infira automaticamente (urgente+importante=do_now, importante+não urgente=schedule, etc). Default: "schedule".
 5. Para "assigned_to": se não mencionado, use o próprio assessor que enviou o comando.
-6. Execute comandos IMEDIATAMENTE sem pedir confirmação.
+6. Execute comandos IMEDIATAMENTE sem pedir confirmação. Se o assessor diz "criar atividade" ou "criar atv", CRIE NA HORA com título baseado no contexto e tipo "tarefa". PROIBIDO perguntar qualquer coisa antes de criar.
 7. Responda de forma CONCISA (mensagens curtas para WhatsApp).
 8. Use emojis para tornar a leitura mais fácil.
 9. SEMPRE inclua deadline e notification_date ao criar atividades.
