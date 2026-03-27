@@ -88,6 +88,27 @@ const ProcessTrackingPage = () => {
     }
   };
 
+  const handleCreateRecord = async () => {
+    if (!newRecord.cliente?.trim()) {
+      toast.error('Informe o nome do cliente');
+      return;
+    }
+    setSavingNew(true);
+    try {
+      // Auto-set caso prefix based on active tab
+      const prefix = activeTab === 'previdenciario' ? 'PREV' : 'CASO';
+      const caso = newRecord.caso?.trim() || prefix;
+      await upsertRecord({ ...newRecord, caso });
+      toast.success('Registro criado com sucesso');
+      setShowNewRecordDialog(false);
+      setNewRecord({});
+    } catch {
+      toast.error('Erro ao criar registro');
+    } finally {
+      setSavingNew(false);
+    }
+  };
+
   // Import logic (same as before)
   const handleFetchSheet = async () => {
     if (!sheetUrl.trim()) { toast.error('Cole a URL da planilha'); return; }
