@@ -96,6 +96,57 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     setAiSuggestingType(false);
   }, [activityTypes, allowedTypes]);
 
+  const suggestNewActivityType = useCallback(async (title: string) => {
+    if (!title || title.trim().length < 5) return;
+    setNewAiSuggesting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('suggest-activity-type', { body: { title } });
+      if (!error && data?.suggested_type) {
+        const match = activityTypes.find(t => t.key === data.suggested_type);
+        if (match) {
+          const allowed = allowedTypes.length > 0 ? allowedTypes : activityTypes;
+          if (allowed.some(t => t.key === match.key)) {
+            setNewType(match.key);
+            toast.info(`Tipo sugerido pela IA: ${match.label}`, { duration: 2000 });
+          }
+        }
+      }
+    } catch { /* silent */ }
+    setNewAiSuggesting(false);
+  }, [activityTypes, allowedTypes]);
+
+  const handleCreateActivity = async () => {
+    if (!newTitle.trim()) { toast.error('Informe o título'); return; }
+    setNewSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase.from('lead_activities').insert({
+        title: newTitle,
+        lead_id: leadId,
+        lead_name: leadName,
+        activity_type: newType,
+        status: 'pendente',
+        priority: newPriority,
+        deadline: newDeadline || null,
+        description: newDescription || null,
+        created_by: user?.id || null,
+      } as any);
+      if (error) throw error;
+      toast.success('Atividade criada!');
+      setShowNewSheet(false);
+      setNewTitle('');
+      setNewType('tarefa');
+      setNewPriority('normal');
+      setNewDeadline('');
+      setNewDescription('');
+      await fetchActivities();
+    } catch {
+      toast.error('Erro ao criar atividade');
+    } finally {
+      setNewSaving(false);
+    }
+  };
+
   const fetchActivities = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
