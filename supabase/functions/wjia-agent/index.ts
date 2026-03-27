@@ -759,7 +759,10 @@ REGRAS:
 8. Nome parcial = confirmação se já existe nome completo
 9. Use nomes EXATOS dos campos do template
 10. Aceite bairros/locais sem questionar
-11. ENDERECO_COMPLETO: rua + número + bairro`;
+11. ENDERECO_COMPLETO: rua + número + bairro
+12. NUNCA INVENTE LINKS OU URLs. Não inclua nenhum link na sua resposta. O sistema envia o link real automaticamente após gerar o documento. Se o cliente confirmar, diga apenas que vai preparar/gerar o documento.
+13. Quando o cliente confirmar (SIM/ok/certo), NÃO mencione link. Diga apenas algo como "Perfeito! Vou gerar o documento agora. Em instantes você recebe o link para assinar."`;
+
 
   const tools = [{
     type: "function",
@@ -807,7 +810,15 @@ REGRAS:
 
   console.log("Agent result:", JSON.stringify(result));
 
-  // Apply extracted/corrected fields
+  // Sanitize AI reply: strip any hallucinated URLs (real links are sent by the system)
+  if (result.reply_to_client) {
+    result.reply_to_client = result.reply_to_client
+      .replace(/https?:\/\/[^\s\])}]+/gi, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+
   for (const field of (result.newly_extracted || [])) {
     const normalized = normalizeIncomingField(field, catalog);
     if (!normalized) continue;
