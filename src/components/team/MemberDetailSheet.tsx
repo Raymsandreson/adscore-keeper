@@ -79,6 +79,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   const [phone, setPhone] = useState('');
   const [oabNumber, setOabNumber] = useState('');
   const [oabUf, setOabUf] = useState('');
+  const [oabEntries, setOabEntries] = useState<Array<{ id?: string; oab_number: string; oab_uf: string }>>([]);
   const [defaultInstanceId, setDefaultInstanceId] = useState('');
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
   const [saving, setSaving] = useState(false);
