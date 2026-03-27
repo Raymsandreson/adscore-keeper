@@ -17,6 +17,7 @@ import { UserProductivityBanner } from "@/components/UserProductivityBanner";
 import { CallFieldSuggestionsBanner } from "@/components/CallFieldSuggestionsBanner";
 import { FloatingWhatsAppCall } from "@/components/FloatingWhatsAppCall";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
+import { MobileHeader } from "@/components/MobileHeader";
 
 // Helper: retry dynamic import once per module on failure (stale chunk after deploy)
 function lazyRetry<T extends ComponentType<any>>(
