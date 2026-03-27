@@ -932,25 +932,27 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
             <p className="text-[10px] text-muted-foreground text-center py-1">Nenhuma parte cadastrada.</p>
           )}
 
-          {parties.map(party => (
-            <div key={party.id} className="flex items-center justify-between text-xs p-1.5 border rounded">
-              <div className="flex items-center gap-1 min-w-0 flex-1">
-                <button
-                  className="font-medium text-left hover:text-primary hover:underline truncate transition-colors"
-                  onClick={() => onViewContact?.(party.contact_id)}
-                  title="Abrir contato"
-                >
-                  {party.contact_name}
-                </button>
-                <Badge variant="outline" className="ml-1 text-[9px] shrink-0">
-                  {partyRoleLabels[party.role] || party.role}
-                </Badge>
+          <div className="max-h-[200px] overflow-y-auto space-y-1.5">
+            {parties.map(party => (
+              <div key={party.id} className="flex items-center justify-between text-xs p-1.5 border rounded">
+                <div className="flex items-center gap-1 min-w-0 flex-1">
+                  <button
+                    className="font-medium text-left hover:text-primary hover:underline truncate transition-colors"
+                    onClick={() => onViewContact?.(party.contact_id)}
+                    title="Abrir contato"
+                  >
+                    {party.contact_name}
+                  </button>
+                  <Badge variant="outline" className="ml-1 text-[9px] shrink-0">
+                    {partyRoleLabels[party.role] || party.role}
+                  </Badge>
+                </div>
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0 shrink-0" onClick={() => removeParty(party.id)}>
+                  <XCircle className="h-3 w-3 text-destructive" />
+                </Button>
               </div>
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0 shrink-0" onClick={() => removeParty(party.id)}>
-                <XCircle className="h-3 w-3 text-destructive" />
-              </Button>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
