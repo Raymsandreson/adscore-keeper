@@ -43,11 +43,16 @@ export const AuthForm = () => {
     return { error };
   };
 
-  const signUp = async (email: string, password: string, fullName: string) => {
+  const signUp = async (email: string, password: string, fullName: string, oab?: { number: string; uf: string }) => {
+    const metadata: any = { full_name: fullName };
+    if (oab?.number) {
+      metadata.oab_number = oab.number;
+      metadata.oab_uf = oab.uf;
+    }
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: window.location.origin, data: { full_name: fullName } },
+      options: { emailRedirectTo: window.location.origin, data: metadata },
     });
     return { error };
   };
