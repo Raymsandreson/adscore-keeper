@@ -215,12 +215,14 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
           break;
         }
         case 'leadsClosed': {
-          // Query leads that are currently closed, filtered by updated_at (when they were closed)
+          // Query leads that are currently closed, filtered by became_client_date (actual closing date)
           let closedQuery = supabase.from('leads')
-            .select('id, lead_name, board_id, updated_at, lead_status, source')
+            .select('id, lead_name, board_id, updated_at, lead_status, source, became_client_date')
             .eq('lead_status', 'closed')
-            .gte('updated_at', startDate).lte('updated_at', endDate)
-            .order('updated_at', { ascending: false });
+            .not('became_client_date', 'is', null)
+            .gte('became_client_date', startDate.slice(0, 10))
+            .lte('became_client_date', endDate.slice(0, 10))
+            .order('became_client_date', { ascending: false });
 
           // Filter by source origin
           const AD_SOURCES = ['facebook', 'facebook_leads', 'instagram'];
@@ -290,7 +292,7 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
               navigateTo: l.board_id 
                 ? `/leads?board=${l.board_id}&openLead=${l.id}` 
                 : `/leads?openLead=${l.id}`,
-              date: l.updated_at ? format(new Date(l.updated_at), 'yyyy-MM-dd') : undefined,
+              date: l.became_client_date || (l.updated_at ? format(new Date(l.updated_at), 'yyyy-MM-dd') : undefined),
             };
           });
           break;
