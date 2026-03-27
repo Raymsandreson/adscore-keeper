@@ -237,15 +237,14 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     }
   }, []);
 
-  const fetchMessages = useCallback(async (silent = false) => {
+  const fetchMessages = useCallback(async (silent = false, triggerSync = false) => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
 
-    if (!silent) setLoading(true);
+    // Only show loading spinner on first load, never on silent/polling refreshes
+    if (!silent && !hasLoaded) setLoading(true);
 
     try {
-      // Use the efficient DB function to get conversation summaries
-      // This returns ALL conversations, not just the most recent N messages
       const targetInstances = (!selectedInstanceId || selectedInstanceId === 'all')
         ? instances
         : instances.filter(i => i.id === selectedInstanceId);
@@ -255,23 +254,22 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         return;
       }
 
-      // Trigger sync for selected instance
-      if (selectedInstanceId && selectedInstanceId !== 'all') {
+      // Only trigger sync on explicit manual refresh, NOT on polling/realtime
+      if (triggerSync && selectedInstanceId && selectedInstanceId !== 'all') {
         const inst = instances.find(i => i.id === selectedInstanceId);
         if (inst) {
-          await syncRecentMessages(inst, !realtimeHealthy);
+          // Fire and forget - don't block the UI
+          syncRecentMessages(inst, true).catch(() => {});
         }
       }
 
       const instanceNames = targetInstances.map(i => i.instance_name);
 
-      // Use the DB function to get conversation summaries efficiently
       const { data: summaries, error: sumError } = await supabase
         .rpc('get_conversation_summaries', { p_instance_names: instanceNames });
 
       if (sumError) {
         console.error('Error fetching conversation summaries:', sumError);
-        // Fallback to old approach
         const fallbackQuery = supabase
           .from('whatsapp_messages')
           .select('*')
@@ -284,7 +282,6 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         return;
       }
 
-      // Build conversations from summaries - each summary IS the latest message per phone
       const convList: WhatsAppConversation[] = (summaries || []).map((s: any) => ({
         phone: s.phone,
         contact_name: s.contact_name,
@@ -321,7 +318,6 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         const cachedMsgs = fullConvCacheRef.current[activePhone];
         const activeConvIdx = convList.findIndex(c => c.phone === activePhone);
         if (activeConvIdx >= 0) {
-          // Merge any new realtime messages into the cached full history
           const cachedIds = new Set(cachedMsgs.map(m => m.id));
           const newMsgs = convList[activeConvIdx].messages.filter(m => !cachedIds.has(m.id) && !m.id.startsWith('summary-'));
           convList[activeConvIdx] = {
@@ -347,9 +343,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       }
     } finally {
       isFetchingRef.current = false;
-      if (!silent) setLoading(false);
+      if (!silent && !hasLoaded) setLoading(false);
     }
-  }, [instances, selectedInstanceId, processMessages, syncRecentMessages, realtimeHealthy]);
+  }, [instances, selectedInstanceId, processMessages, syncRecentMessages, hasLoaded]);
 
   const sendMessage = async (
     phone: string,
@@ -905,7 +901,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     markAsRead,
     linkToLead,
     linkToContact,
-    refetch: fetchMessages,
+    refetch: (silent?: boolean) => fetchMessages(silent, true),
     refetchStats: fetchInstanceStats,
     fetchFullConversation,
     clearActivePhone,
