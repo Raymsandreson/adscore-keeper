@@ -305,7 +305,16 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             unidade_origem_endereco: unidadeOrigem?.endereco || null,
             unidade_origem_classificacao: unidadeOrigem?.classificacao || null,
             unidade_origem_cidade: unidadeOrigem?.cidade || null,
-            data_ultima_movimentacao: (fullResult as any).data_ultima_movimentacao || null,
+            data_ultima_movimentacao: (() => {
+              const allMovs = movimentacoes.length > 0 ? movimentacoes : ((fonte as any)?.movimentacoes || []);
+              if (Array.isArray(allMovs) && allMovs.length > 0) {
+                const sorted = [...allMovs].sort((a: any, b: any) => 
+                  new Date(b.data || b.data_hora || '').getTime() - new Date(a.data || a.data_hora || '').getTime()
+                );
+                return sorted[0]?.data || sorted[0]?.data_hora?.split('T')[0] || null;
+              }
+              return (fullResult as any).data_ultima_movimentacao || null;
+            })(),
             quantidade_movimentacoes: (fullResult as any).quantidade_movimentacoes || null,
             data_ultima_verificacao: (fullResult as any).data_ultima_verificacao || null,
             processos_relacionados: (fullResult as any).processos_relacionados || null,
