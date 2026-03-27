@@ -44,7 +44,7 @@ export function useProcessTracking() {
       const { data, error } = await supabase
         .from('case_process_tracking')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('caso', { ascending: true, nullsFirst: false });
       if (error) throw error;
       setRecords((data || []) as ProcessTracking[]);
     } catch (e) {
