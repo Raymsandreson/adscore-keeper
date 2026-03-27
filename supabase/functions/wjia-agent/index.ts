@@ -810,7 +810,15 @@ REGRAS:
 
   console.log("Agent result:", JSON.stringify(result));
 
-  // Apply extracted/corrected fields
+  // Sanitize AI reply: strip any hallucinated URLs (real links are sent by the system)
+  if (result.reply_to_client) {
+    result.reply_to_client = result.reply_to_client
+      .replace(/https?:\/\/[^\s\])}]+/gi, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+
   for (const field of (result.newly_extracted || [])) {
     const normalized = normalizeIncomingField(field, catalog);
     if (!normalized) continue;
