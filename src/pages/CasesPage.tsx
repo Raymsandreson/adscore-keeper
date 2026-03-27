@@ -290,6 +290,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showAddProcess, setShowAddProcess] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [selectedProcess, setSelectedProcess] = useState<any>(null);
   const [editCaseNumber, setEditCaseNumber] = useState(legalCase.case_number || '');
   const [editTitle, setEditTitle] = useState(legalCase.title || '');
   const [editDescription, setEditDescription] = useState(legalCase.description || '');
