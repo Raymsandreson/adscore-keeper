@@ -732,7 +732,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                         <p className="text-[10px] text-muted-foreground animate-pulse">Carregando campos do modelo...</p>
                       )}
                       {templateFields.length > 0 && (
-                        <div className="border rounded-lg p-2 bg-muted/20 space-y-1">
+                        <div className="border rounded-lg p-2 bg-muted/20 space-y-2">
                           <p className="text-[10px] font-medium text-muted-foreground">📋 Campos do modelo ({templateFields.length}):</p>
                           <div className="flex flex-wrap gap-1">
                             {templateFields.map((f, i) => (
@@ -742,6 +742,28 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                               </span>
                             ))}
                           </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-full text-[10px] h-7"
+                            onClick={() => {
+                              const fieldsList = templateFields
+                                .map(f => `- ${f.variable.replace(/\{\{|\}\}/g, '')} (${f.label || 'sem label'})${f.required ? ' [OBRIGATÓRIO]' : ' [opcional]'}`)
+                                .join('\n');
+                              const block = `\n\n=== CAMPOS DO DOCUMENTO ZAPSIGN ===\nEstes são os ÚNICOS campos que você precisa coletar do cliente para preencher o documento "${form.template_name || 'Procuração'}":\n${fieldsList}\n\nREGRAS IMPORTANTES:\n- Pergunte SOMENTE os campos listados acima. NÃO peça dados extras como nome da mãe, RG, etc. que não estejam na lista.\n- Campos como DATA_ASSINATURA ou DATA_PROCURACAO são preenchidos automaticamente com a data de hoje — NÃO pergunte.\n- NUNCA invente ou gere links de assinatura. O link será gerado automaticamente pelo sistema após a coleta.\n- Quando tiver todos os dados obrigatórios, confirme com o cliente e diga que vai preparar o documento.\n=== FIM DOS CAMPOS ===`;
+                              
+                              // Remove existing block if present
+                              const existing = form.prompt_instructions || '';
+                              const cleaned = existing.replace(/\n?\n?=== CAMPOS DO DOCUMENTO ZAPSIGN ===[\s\S]*?=== FIM DOS CAMPOS ===/g, '').trimEnd();
+                              setForm(f => ({ ...f, prompt_instructions: cleaned + block }));
+                              toast.success('Bloco de campos ZapSign inserido no prompt!');
+                            }}
+                          >
+                            {(form.prompt_instructions || '').includes('=== CAMPOS DO DOCUMENTO ZAPSIGN ===')
+                              ? '🔄 Atualizar bloco de campos no prompt'
+                              : '📥 Inserir campos no prompt'}
+                          </Button>
                         </div>
                       )}
                     </div>
