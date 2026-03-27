@@ -110,6 +110,7 @@ const ActivitiesPage = () => {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [leadSearch, setLeadSearch] = useState('');
+  const [searchedLeads, setSearchedLeads] = useState<LeadOption[]>([]);
 
   // Form state
   const [formTitle, setFormTitle] = useState('');
@@ -933,9 +934,25 @@ const ActivitiesPage = () => {
     return teamMembers.find(m => m.user_id === userId)?.full_name || null;
   };
 
-  const filteredLeads = leadSearch
-    ? leads.filter(l => l.lead_name?.toLowerCase().includes(leadSearch.toLowerCase()))
-    : leads.slice(0, 20);
+  useEffect(() => {
+    if (!leadSearch.trim()) {
+      setSearchedLeads(leads.slice(0, 20));
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const term = leadSearch.trim();
+      const { data } = await supabase
+        .from('leads')
+        .select('id, lead_name')
+        .ilike('lead_name', `%${term}%`)
+        .order('lead_name')
+        .limit(20);
+      setSearchedLeads(data || []);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [leadSearch, leads]);
+
+  const filteredLeads = searchedLeads;
 
   // Use the assignee's routine for filtering activity types in the form
   const activeRoutine = (formAssignedTo && formAssignedTo !== user?.id) ? assigneeTimeBlockSettings : timeBlockSettings;
