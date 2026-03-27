@@ -1546,8 +1546,8 @@ Deno.serve(async (req) => {
       // Skip control commands handled below (#parar, #ativar, #status)
       const controlCommands = ['parar', 'ativar', 'status', 'limpar']
       
-      if (hashNameMatch && !controlCommands.includes(hashNameMatch[1].toLowerCase())) {
-        const shortcutName = hashNameMatch[1].toLowerCase()
+      if (hashNameMatch && !controlCommands.includes(hashNameMatch[1].trim().toLowerCase())) {
+        const shortcutName = hashNameMatch[1].trim().toLowerCase()
         console.log('#name command detected:', shortcutName, 'phone:', phone, 'instance:', instanceName)
         
         // Validate against wjia_command_shortcuts table — only client-scope shortcuts
