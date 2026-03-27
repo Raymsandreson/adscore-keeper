@@ -14,7 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Gavel, FileText, Loader2, AlertCircle, CheckCircle2, ClipboardList } from 'lucide-react';
+import { Search, Gavel, FileText, Loader2, AlertCircle, CheckCircle2, ClipboardList, Plus } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
