@@ -250,8 +250,8 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           }
         }
 
-        const fonte = fullResult.fontes?.[0] || result.fontes?.[0];
-        const capa = fonte?.capa || {};
+        const fonte: any = fullResult.fontes?.[0] || result.fontes?.[0] || {};
+        const capa: any = fonte?.capa || {};
         const title = capa?.classe || fonte?.classe?.nome || 
           `${fullResult.titulo_polo_ativo || result.titulo_polo_ativo || 'Autor'} vs ${fullResult.titulo_polo_passivo || result.titulo_polo_passivo || 'Réu'}`;
         const description = [
