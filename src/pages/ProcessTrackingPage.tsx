@@ -13,8 +13,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
   FileSpreadsheet, Upload, Loader2, Search, AlertTriangle, Check,
-  X, RefreshCw, FileUp, Briefcase, Shield,
+  X, RefreshCw, FileUp, Briefcase, Shield, Plus,
 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ProcessTrackingTable } from '@/components/process-tracking/ProcessTrackingTable';
 
