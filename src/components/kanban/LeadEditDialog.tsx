@@ -641,11 +641,13 @@ ${scrapeData.content || ''}
         await saveAllFieldValues(lead.id, localFieldValues);
       }
 
-      // Auto-create legal case when lead is newly marked as closed
+      // Auto-create legal case when lead is marked as closed (or was already closed but has no case yet)
       const wasAlreadyClosed = !!(lead as any).became_client_date;
-      if (leadOutcome === 'closed' && !wasAlreadyClosed) {
-        // Also update lead_status
-        await supabase.from('leads').update({ lead_status: 'closed' } as any).eq('id', lead.id);
+      if (leadOutcome === 'closed') {
+        if (!wasAlreadyClosed) {
+          // Also update lead_status
+          await supabase.from('leads').update({ lead_status: 'closed' } as any).eq('id', lead.id);
+        }
 
         try {
           const { data: existingCases } = await supabase
@@ -696,7 +698,7 @@ ${scrapeData.content || ''}
               finalCaseNumber = generatedNumber || 'CASO-0001';
             }
             
-            await supabase
+            const { data: insertedCase, error: insertError } = await supabase
               .from('legal_cases')
               .insert({
                 lead_id: lead.id,
@@ -705,13 +707,20 @@ ${scrapeData.content || ''}
                 title: leadName.trim() || lead.lead_name || 'Novo Caso',
                 status: 'em_andamento',
                 created_by: user?.id,
-              } as any);
+              } as any)
+              .select('id, case_number')
+              .single();
             
-            toast.success(`Caso ${finalCaseNumber} criado automaticamente! Cadastre os processos na aba Casos.`);
-            // Switch to Casos tab so user can add processes
-            setActiveTab('casos');
-            setSaving(false);
-            return; // Keep dialog open for process registration
+            if (insertError) {
+              console.error('Error inserting legal case:', insertError);
+              toast.error(`Erro ao criar caso: ${insertError.message}`);
+            } else {
+              toast.success(`Caso ${insertedCase?.case_number || finalCaseNumber} criado! Cadastre os processos na aba Casos.`);
+              // Switch to Casos tab so user can add processes
+              setActiveTab('casos');
+              setSaving(false);
+              return; // Keep dialog open for process registration
+            }
           }
         } catch (caseErr) {
           console.error('Error auto-creating case:', caseErr);
@@ -719,7 +728,7 @@ ${scrapeData.content || ''}
         }
       } else if (leadOutcome === 'refused') {
         await supabase.from('leads').update({ lead_status: 'refused' } as any).eq('id', lead.id);
-      } else if (leadOutcome !== 'closed' && (lead as any).became_client_date) {
+      } else if ((lead as any).became_client_date) {
         // Was closed, now reopened
         await supabase.from('leads').update({ lead_status: 'active' } as any).eq('id', lead.id);
       }
