@@ -81,6 +81,9 @@ import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { Contact as ContactType } from '@/hooks/useContacts';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useLeadSources } from '@/hooks/useLeadSources';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Pencil, Trash2 } from 'lucide-react';
 
 interface LeadEditDialogProps {
   open: boolean;
@@ -145,17 +148,7 @@ const sectors = [
   'Outro',
 ];
 
-const sources = [
-  { value: 'manual', label: 'Manual' },
-  { value: 'instagram', label: 'Instagram' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'form', label: 'Formulário' },
-  { value: 'referral', label: 'Indicação' },
-  { value: 'facebook', label: 'Facebook' },
-  { value: 'noticia', label: 'Notícia' },
-  { value: 'prospecção', label: 'Prospecção Ativa' },
-  { value: 'cat_import', label: 'CAT' },
-];
+// Sources are now loaded from the database via useLeadSources
 
 export function LeadEditDialog({
   open,
