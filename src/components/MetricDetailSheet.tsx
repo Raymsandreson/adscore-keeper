@@ -545,6 +545,22 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
                 </Select>
               </div>
             )}
+
+            {metricKey === 'leadsClosed' && (
+              <div className="flex items-center gap-2">
+                <Briefcase className="h-4 w-4 text-muted-foreground" />
+                <Select value={filterSource} onValueChange={setFilterSource}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Filtrar por origem" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as origens</SelectItem>
+                    <SelectItem value="anuncio">📢 Anúncio</SelectItem>
+                    <SelectItem value="acolhedor">🤝 Acolhedor</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           )}
           {dateRangeOverride && (
