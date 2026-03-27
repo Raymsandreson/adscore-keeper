@@ -759,7 +759,10 @@ REGRAS:
 8. Nome parcial = confirmação se já existe nome completo
 9. Use nomes EXATOS dos campos do template
 10. Aceite bairros/locais sem questionar
-11. ENDERECO_COMPLETO: rua + número + bairro`;
+11. ENDERECO_COMPLETO: rua + número + bairro
+12. NUNCA INVENTE LINKS OU URLs. Não inclua nenhum link na sua resposta. O sistema envia o link real automaticamente após gerar o documento. Se o cliente confirmar, diga apenas que vai preparar/gerar o documento.
+13. Quando o cliente confirmar (SIM/ok/certo), NÃO mencione link. Diga apenas algo como "Perfeito! Vou gerar o documento agora. Em instantes você recebe o link para assinar."`;
+
 
   const tools = [{
     type: "function",
