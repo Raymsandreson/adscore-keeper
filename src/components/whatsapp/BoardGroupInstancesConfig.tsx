@@ -618,27 +618,11 @@ export function BoardGroupInstancesConfig() {
             </div>
 
             {settings.send_audio_message && (
-              <>
-                <div className="space-y-1">
-                  <Label className="text-[11px] text-muted-foreground">Voz para o áudio</Label>
-                  <Select
-                    value={settings.audio_voice_id}
-                    onValueChange={(v) => setSettings(prev => ({ ...prev, audio_voice_id: v }))}
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Selecione uma voz" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {allVoices.map(v => (
-                        <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  ⚠️ Links e URLs não serão incluídos no áudio, apenas no texto.
-                </p>
-              </>
+              <p className="text-[10px] text-muted-foreground">
+                🎤 A voz utilizada será a configurada na instância que criou o grupo.
+                <br />
+                ⚠️ Links e URLs não serão incluídos no áudio, apenas no texto.
+              </p>
             )}
           </div>
 
