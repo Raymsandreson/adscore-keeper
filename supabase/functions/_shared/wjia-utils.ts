@@ -348,7 +348,7 @@ export async function sendWhatsApp(
 
   // Split message into parts at double-newline boundaries
   let parts: string[] = [text];
-  if (shouldSplit && text.length > 200) {
+  if (shouldSplit && text.includes("\n\n")) {
     const rawParts = text.split(/\n\n+/).filter(p => p.trim());
     if (rawParts.length > 1) {
       // Group very short parts together (min ~80 chars per message)
