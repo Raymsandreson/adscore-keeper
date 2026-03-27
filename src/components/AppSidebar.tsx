@@ -19,7 +19,6 @@ import {
   SidebarHeader,
   SidebarFooter,
   SidebarSeparator,
-  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
@@ -162,19 +161,25 @@ export function AppSidebar() {
     <>
       <Sidebar collapsible="icon">
         <SidebarHeader className="p-2">
-          <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-2")}>
-            <SidebarTrigger className="h-8 w-8" />
-            {!collapsed && (
-              <button
-                onClick={openCommandPalette}
-                className="flex-1 flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-accent rounded-md transition-colors"
-              >
-                <Search className="h-4 w-4" />
-                <span>Buscar...</span>
-                <kbd className="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">⌘K</kbd>
-              </button>
-            )}
-          </div>
+          {!collapsed && (
+            <button
+              onClick={openCommandPalette}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-accent rounded-md transition-colors"
+            >
+              <Search className="h-4 w-4" />
+              <span>Buscar...</span>
+              <kbd className="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">⌘K</kbd>
+            </button>
+          )}
+          {collapsed && (
+            <button
+              onClick={openCommandPalette}
+              className="w-full flex items-center justify-center py-2 text-muted-foreground hover:bg-accent rounded-md transition-colors"
+              title="Buscar (⌘K)"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+          )}
         </SidebarHeader>
 
         <SidebarContent>
