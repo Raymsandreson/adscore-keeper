@@ -36,6 +36,8 @@ import {
   Smartphone,
   Search,
   Scale,
+  Plus,
+  X,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -79,6 +81,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   const [phone, setPhone] = useState('');
   const [oabNumber, setOabNumber] = useState('');
   const [oabUf, setOabUf] = useState('');
+  const [oabEntries, setOabEntries] = useState<Array<{ id?: string; oab_number: string; oab_uf: string }>>([]);
   const [defaultInstanceId, setDefaultInstanceId] = useState('');
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
   const [saving, setSaving] = useState(false);
@@ -127,6 +130,14 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     setOabNumber((data as any)?.oab_number || '');
     setOabUf((data as any)?.oab_uf || '');
     setDefaultInstanceId(data?.default_instance_id || '');
+
+    // Fetch multiple OAB entries
+    const { data: oabs } = await supabase
+      .from('profile_oab_entries')
+      .select('id, oab_number, oab_uf')
+      .eq('user_id', member.user_id)
+      .order('created_at');
+    setOabEntries(oabs || []);
   };
 
   // Close dropdown on outside click
@@ -170,11 +181,43 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   };
 
   const selectOabResult = (result: { name: string; oab_number: string; oab_uf: string }) => {
-    setOabNumber(result.oab_number);
-    setOabUf(result.oab_uf);
-    setOabSearchQuery(result.name);
+    // Check if already exists
+    const exists = oabEntries.some(e => e.oab_number === result.oab_number && e.oab_uf === result.oab_uf);
+    if (exists) {
+      toast.info('Esta OAB já foi adicionada');
+      setShowOabDropdown(false);
+      return;
+    }
+    // Add to entries list
+    setOabEntries(prev => [...prev, { oab_number: result.oab_number, oab_uf: result.oab_uf }]);
+    // Also set the primary fields for backward compat
+    if (!oabNumber) {
+      setOabNumber(result.oab_number);
+      setOabUf(result.oab_uf);
+    }
+    setOabSearchQuery('');
     setShowOabDropdown(false);
-    toast.success(`OAB ${result.oab_number}/${result.oab_uf} selecionada`);
+    toast.success(`OAB ${result.oab_number}/${result.oab_uf} adicionada`);
+  };
+
+  const addManualOab = () => {
+    if (!oabNumber.trim() || !oabUf.trim()) {
+      toast.error('Preencha o número e UF da OAB');
+      return;
+    }
+    const exists = oabEntries.some(e => e.oab_number === oabNumber.trim() && e.oab_uf === oabUf.trim().toUpperCase());
+    if (exists) {
+      toast.info('Esta OAB já foi adicionada');
+      return;
+    }
+    setOabEntries(prev => [...prev, { oab_number: oabNumber.trim(), oab_uf: oabUf.trim().toUpperCase() }]);
+    setOabNumber('');
+    setOabUf('');
+    toast.success('OAB adicionada à lista');
+  };
+
+  const removeOabEntry = (index: number) => {
+    setOabEntries(prev => prev.filter((_, i) => i !== index));
   };
 
   const fetchMemberData = async () => {
@@ -259,19 +302,30 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
 
     setSaving(true);
     try {
+      // Save primary OAB (first entry or manual)
+      const primaryOab = oabEntries.length > 0 ? oabEntries[0] : { oab_number: oabNumber.trim(), oab_uf: oabUf.trim().toUpperCase() };
+      
       const { error } = await supabase
         .from('profiles')
         .update({
           full_name: fullName.trim(),
           email: email.trim(),
           phone: normalizedPhone || null,
-          oab_number: oabNumber.trim() || null,
-          oab_uf: oabUf.trim().toUpperCase() || null,
+          oab_number: primaryOab.oab_number || null,
+          oab_uf: primaryOab.oab_uf || null,
           default_instance_id: defaultInstanceId && defaultInstanceId !== 'none' ? defaultInstanceId : null,
         } as any)
         .eq('user_id', member.user_id);
 
       if (error) throw error;
+
+      // Sync OAB entries
+      await supabase.from('profile_oab_entries').delete().eq('user_id', member.user_id);
+      if (oabEntries.length > 0) {
+        await supabase.from('profile_oab_entries').insert(
+          oabEntries.map(e => ({ user_id: member.user_id, oab_number: e.oab_number, oab_uf: e.oab_uf }))
+        );
+      }
 
       toast.success('Perfil atualizado!');
       onUpdate();
@@ -465,9 +519,28 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            {/* OAB entries list */}
+            {oabEntries.length > 0 && (
               <div className="space-y-2">
-                <Label className="flex items-center gap-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">OABs cadastradas</Label>
+                <div className="space-y-1.5">
+                  {oabEntries.map((entry, idx) => (
+                    <div key={`${entry.oab_number}-${entry.oab_uf}-${idx}`} className="flex items-center gap-2 bg-muted/50 rounded-md px-3 py-1.5">
+                      <Scale className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-sm font-medium flex-1">OAB {entry.oab_number}/{entry.oab_uf}</span>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => removeOabEntry(idx)}>
+                        <X className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Add OAB manually */}
+            <div className="grid grid-cols-[1fr_80px_auto] gap-2 items-end">
+              <div className="space-y-1">
+                <Label className="flex items-center gap-1.5 text-xs">
                   <FileText className="h-3.5 w-3.5" />
                   Nº OAB
                 </Label>
@@ -475,20 +548,26 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
                   value={oabNumber}
                   onChange={(e) => setOabNumber(e.target.value)}
                   placeholder="Ex: 12345"
+                  className="h-9"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>UF da OAB</Label>
+              <div className="space-y-1">
+                <Label className="text-xs">UF</Label>
                 <Input
                   value={oabUf}
                   onChange={(e) => setOabUf(e.target.value.toUpperCase())}
-                  placeholder="Ex: PI"
+                  placeholder="PI"
                   maxLength={2}
+                  className="h-9"
                 />
               </div>
+              <Button variant="outline" size="sm" className="h-9 gap-1" onClick={addManualOab}>
+                <Plus className="h-3.5 w-3.5" />
+                Adicionar
+              </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Busque pelo nome ou preencha manualmente. Usado para identificar advogados internos ao importar processos.
+              Busque pelo nome ou adicione manualmente. Você pode cadastrar múltiplas OABs por membro.
             </p>
 
             <div className="space-y-2">

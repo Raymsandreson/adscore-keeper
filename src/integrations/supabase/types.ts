@@ -5374,6 +5374,30 @@ export type Database = {
           },
         ]
       }
+      profile_oab_entries: {
+        Row: {
+          created_at: string
+          id: string
+          oab_number: string
+          oab_uf: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          oab_number: string
+          oab_uf: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          oab_number?: string
+          oab_uf?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
