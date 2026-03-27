@@ -1915,8 +1915,6 @@ Deno.serve(async (req) => {
               })
               console.log('Status sent to conversation:', phone)
             }
-          }
-
           } else if (resolvedControlCommand === '#limpar') {
             if (direction === 'outbound') {
               console.log(`#limpar command: clearing conversation for phone=${phone}, instance=${instanceName}`)
