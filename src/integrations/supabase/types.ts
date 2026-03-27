@@ -7863,6 +7863,21 @@ export type Database = {
         Returns: undefined
       }
       generate_case_number: { Args: { p_nucleus_id: string }; Returns: string }
+      get_conversation_summaries: {
+        Args: { p_instance_names: string[] }
+        Returns: {
+          contact_id: string
+          contact_name: string
+          instance_name: string
+          last_direction: string
+          last_message_at: string
+          last_message_text: string
+          lead_id: string
+          message_count: number
+          phone: string
+          unread_count: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
