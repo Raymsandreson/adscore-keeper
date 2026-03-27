@@ -71,6 +71,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const realtimeRetryTimerRef = useRef<number | null>(null);
   const syncInFlightRef = useRef(false);
   const lastSyncAtRef = useRef<Record<string, number>>({});
+  const activePhoneRef = useRef<string | null>(null);
+  const fullConvCacheRef = useRef<Record<string, WhatsAppMessage[]>>({});
 
   const AUTO_REFRESH_INTERVAL_MS = 60000; // 1 min fallback polling
 
