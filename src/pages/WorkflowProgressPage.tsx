@@ -35,6 +35,10 @@ const WorkflowProgressPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showLeadPicker, setShowLeadPicker] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+  const [workflowSearch, setWorkflowSearch] = useState('');
+  const [workflowPage, setWorkflowPage] = useState(1);
+  const [editingWorkflow, setEditingWorkflow] = useState<KanbanBoard | null>(null);
+  const WORKFLOWS_PER_PAGE = 6;
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
