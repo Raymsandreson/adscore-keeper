@@ -121,6 +121,7 @@ export function CustomFieldsConfigPanel({
   };
 
   const openNewField = () => {
+    console.log('📝 openNewField called, opening dialog');
     resetFieldForm();
     setFieldDialogOpen(true);
   };
