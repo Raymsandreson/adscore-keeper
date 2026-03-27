@@ -945,6 +945,7 @@ export function WhatsAppInbox() {
                 setPrivateConvs((data || []) as PrivateConv[]);
               }}
               onOpenChat={(phone) => setSelectedPhone(phone)}
+              onClearConversation={clearConversation}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center bg-muted/20">

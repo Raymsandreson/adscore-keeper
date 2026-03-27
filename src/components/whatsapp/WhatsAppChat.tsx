@@ -923,6 +923,18 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                   Criar Grupo WhatsApp
                 </DropdownMenuItem>
               )}
+              {onClearConversation && (
+                <DropdownMenuItem
+                  onClick={async () => {
+                    if (confirm('Tem certeza que deseja limpar todos os dados desta conversa? Esta ação não pode ser desfeita.')) {
+                      await onClearConversation(conversation.phone, conversation.instance_name);
+                    }
+                  }}
+                  className="gap-2 text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" /> Limpar Conversa
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
           <WhatsAppCallRecorder
