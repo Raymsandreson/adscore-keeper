@@ -1332,6 +1332,7 @@ Deno.serve(async (req) => {
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
         }
+        } // end anti-loop else
       } catch (e) {
         console.error('Command config check error:', e)
       }
