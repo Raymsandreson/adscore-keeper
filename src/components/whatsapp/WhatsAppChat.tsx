@@ -715,12 +715,17 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
     }
   };
 
-  const fetchLeads = async () => {
-    const { data } = await supabase
+  const fetchLeads = async (search?: string) => {
+    let query = supabase
       .from('leads')
       .select('id, lead_name')
-      .order('created_at', { ascending: false })
-      .limit(100);
+      .order('created_at', { ascending: false });
+    
+    if (search && search.trim().length >= 2) {
+      query = query.ilike('lead_name', `%${search.trim()}%`);
+    }
+    
+    const { data } = await query.limit(50);
     setLeads(data || []);
   };
 
