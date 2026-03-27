@@ -134,7 +134,16 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       polo_passivo: raw.titulo_polo_passivo || null,
       ano_inicio: raw.ano_inicio || null,
       data_inicio: raw.data_inicio || null,
-      data_ultima_movimentacao: raw.data_ultima_movimentacao || fonte?.data_ultima_movimentacao || null,
+      data_ultima_movimentacao: (() => {
+        const allMovs = raw.movimentacoes || fonte?.movimentacoes || [];
+        if (Array.isArray(allMovs) && allMovs.length > 0) {
+          const sorted = [...allMovs].sort((a: any, b: any) => 
+            new Date(b.data || b.data_hora || '').getTime() - new Date(a.data || a.data_hora || '').getTime()
+          );
+          return sorted[0]?.data || sorted[0]?.data_hora?.split('T')[0] || null;
+        }
+        return raw.data_ultima_movimentacao || fonte?.data_ultima_movimentacao || null;
+      })(),
       quantidade_movimentacoes: raw.quantidade_movimentacoes || null,
       data_ultima_verificacao: raw.data_ultima_verificacao || null,
       audiencias: fonte?.audiencias || null,
