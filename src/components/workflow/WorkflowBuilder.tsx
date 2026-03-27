@@ -109,29 +109,31 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [aiMode, setAiMode] = useState<'create' | 'edit'>('create');
   const [aiChangelog, setAiChangelog] = useState<Array<{ action: string; location: string; detail: string }> | null>(null);
 
+  // Reset viewMode when sheet opens based on props
   useEffect(() => {
-    if (open) {
-      fetchBoards();
-      fetchTemplates();
+    if (!open) {
+      // Reset on close
+      resetForm();
+      return;
     }
+
+    fetchBoards();
+    fetchTemplates();
   }, [open]);
 
-  // Auto-open specific workflow for editing
+  // Handle initialEditBoardId or initialCreateNew after boards load
   useEffect(() => {
-    if (open && initialEditBoardId && boards.length > 0 && viewMode === 'list') {
+    if (!open || boards.length === 0) return;
+
+    if (initialEditBoardId) {
       const board = boards.find(b => b.id === initialEditBoardId);
-      if (board) {
+      if (board && viewMode === 'list') {
         handleEditWorkflow(board);
       }
-    }
-  }, [open, initialEditBoardId, boards.length]);
-
-  // Auto-open new workflow creation
-  useEffect(() => {
-    if (open && initialCreateNew && viewMode === 'list' && !initialEditBoardId) {
+    } else if (initialCreateNew && viewMode === 'list') {
       handleNewWorkflow();
     }
-  }, [open, initialCreateNew]);
+  }, [open, initialEditBoardId, initialCreateNew, boards.length]);
 
   const resetForm = () => {
     setFormName('');
