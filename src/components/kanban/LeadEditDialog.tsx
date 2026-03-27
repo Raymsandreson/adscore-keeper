@@ -644,6 +644,9 @@ ${scrapeData.content || ''}
       // Auto-create legal case when lead is newly marked as closed
       const wasAlreadyClosed = !!(lead as any).became_client_date;
       if (leadOutcome === 'closed' && !wasAlreadyClosed) {
+        // Also update lead_status
+        await supabase.from('leads').update({ lead_status: 'closed' } as any).eq('id', lead.id);
+
         try {
           const { data: existingCases } = await supabase
             .from('legal_cases')
@@ -653,19 +656,58 @@ ${scrapeData.content || ''}
           
           if (!existingCases || existingCases.length === 0) {
             const { data: { user } } = await supabase.auth.getUser();
-            const { data: generatedNumber } = await supabase
-              .rpc('generate_case_number', { p_nucleus_id: null });
+
+            // Try to match case_type to a specialized nucleus for proper numbering
+            let matchedNucleusId: string | null = null;
+            if (caseType) {
+              const caseTypeLower = caseType.toLowerCase();
+              const { data: nuclei } = await supabase
+                .from('specialized_nuclei')
+                .select('id, name, prefix');
+              
+              if (nuclei) {
+                const match = nuclei.find(n => {
+                  const nameLower = n.name.toLowerCase();
+                  return caseTypeLower.includes(nameLower) || nameLower.includes(caseTypeLower) ||
+                    // Common mappings
+                    (caseTypeLower.includes('maternidade') && nameLower.includes('maternidade')) ||
+                    (caseTypeLower.includes('trabalho') && nameLower.includes('trabalho')) ||
+                    (caseTypeLower.includes('trânsito') && nameLower.includes('trânsito')) ||
+                    (caseTypeLower.includes('transito') && nameLower.includes('trânsito')) ||
+                    (caseTypeLower.includes('doença') && nameLower.includes('doença')) ||
+                    (caseTypeLower.includes('consumo') && nameLower.includes('consumo')) ||
+                    (caseTypeLower.includes('profissional') && nameLower.includes('profission')) ||
+                    (caseTypeLower.includes('grave') && nameLower.includes('grave')) ||
+                    (caseTypeLower.includes('bpc') && nameLower.includes('grave')) ||
+                    (caseTypeLower.includes('loas') && nameLower.includes('grave')) ||
+                    (caseTypeLower.includes('inss') && nameLower.includes('grave')) ||
+                    (caseTypeLower.includes('benefício') && nameLower.includes('grave')) ||
+                    (caseTypeLower.includes('beneficio') && nameLower.includes('grave'));
+                });
+                if (match) matchedNucleusId = match.id;
+              }
+            }
+
+            // Use case_number from UI if provided, otherwise generate
+            let finalCaseNumber = caseNumber?.trim() || null;
+            if (!finalCaseNumber) {
+              const { data: generatedNumber } = await supabase
+                .rpc('generate_case_number', { p_nucleus_id: matchedNucleusId });
+              finalCaseNumber = generatedNumber || 'CASO-0001';
+            }
             
             await supabase
               .from('legal_cases')
               .insert({
                 lead_id: lead.id,
-                case_number: generatedNumber || 'CASO-0001',
+                nucleus_id: matchedNucleusId,
+                case_number: finalCaseNumber,
                 title: leadName.trim() || lead.lead_name || 'Novo Caso',
+                status: 'em_andamento',
                 created_by: user?.id,
               } as any);
             
-            toast.success(`Caso ${generatedNumber} criado automaticamente! Cadastre os processos na aba Casos.`);
+            toast.success(`Caso ${finalCaseNumber} criado automaticamente! Cadastre os processos na aba Casos.`);
             // Switch to Casos tab so user can add processes
             setActiveTab('casos');
             setSaving(false);
@@ -675,6 +717,11 @@ ${scrapeData.content || ''}
           console.error('Error auto-creating case:', caseErr);
           // Don't block the save
         }
+      } else if (leadOutcome === 'refused') {
+        await supabase.from('leads').update({ lead_status: 'refused' } as any).eq('id', lead.id);
+      } else if (leadOutcome !== 'closed' && (lead as any).became_client_date) {
+        // Was closed, now reopened
+        await supabase.from('leads').update({ lead_status: 'active' } as any).eq('id', lead.id);
       }
 
       toast.success('Lead atualizado com sucesso!');

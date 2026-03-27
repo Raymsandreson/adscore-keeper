@@ -605,7 +605,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
               // Get current lead data for history
               const { data: currentLead } = await supabase
                 .from('leads')
-                .select('status, board_id, lead_status')
+                .select('status, board_id, lead_status, lead_name, case_type')
                 .eq('id', leadId)
                 .single();
 
@@ -624,7 +624,68 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
                 notes: newStatus === 'closed' ? 'Lead fechado' : newStatus === 'refused' ? 'Lead recusado' : 'Lead reativado',
               } as any);
 
-              toast.success(newStatus === 'closed' ? 'Lead marcado como Fechado' : newStatus === 'refused' ? 'Lead marcado como Recusado' : 'Lead reativado');
+              // Auto-create legal case when closing
+              if (newStatus === 'closed') {
+                // Set became_client_date
+                await supabase.from('leads').update({
+                  became_client_date: new Date().toISOString().slice(0, 10),
+                } as any).eq('id', leadId);
+
+                const { data: existingCases } = await supabase
+                  .from('legal_cases')
+                  .select('id')
+                  .eq('lead_id', leadId)
+                  .limit(1);
+
+                if (!existingCases || existingCases.length === 0) {
+                  // Try to match case_type to nucleus
+                  let matchedNucleusId: string | null = null;
+                  const caseType = (currentLead as any)?.case_type;
+                  if (caseType) {
+                    const caseTypeLower = caseType.toLowerCase();
+                    const { data: nuclei } = await supabase
+                      .from('specialized_nuclei')
+                      .select('id, name');
+                    
+                    if (nuclei) {
+                      const match = nuclei.find((n: any) => {
+                        const nameLower = n.name.toLowerCase();
+                        return caseTypeLower.includes(nameLower) || nameLower.includes(caseTypeLower) ||
+                          (caseTypeLower.includes('maternidade') && nameLower.includes('maternidade')) ||
+                          (caseTypeLower.includes('trabalho') && nameLower.includes('trabalho')) ||
+                          (caseTypeLower.includes('trânsito') && nameLower.includes('trânsito')) ||
+                          (caseTypeLower.includes('transito') && nameLower.includes('trânsito')) ||
+                          (caseTypeLower.includes('doença') && nameLower.includes('doença')) ||
+                          (caseTypeLower.includes('consumo') && nameLower.includes('consumo')) ||
+                          (caseTypeLower.includes('bpc') && nameLower.includes('grave')) ||
+                          (caseTypeLower.includes('loas') && nameLower.includes('grave')) ||
+                          (caseTypeLower.includes('inss') && nameLower.includes('grave')) ||
+                          (caseTypeLower.includes('benefício') && nameLower.includes('grave')) ||
+                          (caseTypeLower.includes('beneficio') && nameLower.includes('grave'));
+                      });
+                      if (match) matchedNucleusId = match.id;
+                    }
+                  }
+
+                  const { data: caseNumber } = await supabase
+                    .rpc('generate_case_number', { p_nucleus_id: matchedNucleusId });
+
+                  await supabase.from('legal_cases').insert({
+                    lead_id: leadId,
+                    nucleus_id: matchedNucleusId,
+                    case_number: caseNumber || 'CASO-0001',
+                    title: `Caso - ${currentLead?.lead_name || 'Novo'}`,
+                    status: 'em_andamento',
+                    created_by: user?.id,
+                  } as any);
+
+                  toast.success(`Lead fechado! Caso ${caseNumber} criado automaticamente.`);
+                } else {
+                  toast.success('Lead marcado como Fechado');
+                }
+              } else {
+                toast.success(newStatus === 'refused' ? 'Lead marcado como Recusado' : 'Lead reativado');
+              }
               fetchLeads();
             } catch (e) {
               toast.error('Erro ao alterar status');
