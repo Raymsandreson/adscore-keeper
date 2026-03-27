@@ -21,16 +21,51 @@ interface ProcessDetailSheetProps {
   onUpdated?: () => void;
 }
 
-function EditableField({ label, value, onChange, type = 'text', icon: Icon }: {
-  label: string; value: string; onChange: (v: string) => void; type?: string; icon?: any;
+function formatDateBR(val: string): string {
+  if (!val) return '';
+  const match = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+  return val;
+}
+
+function parseDateBR(val: string): string {
+  const match = val.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+  return val;
+}
+
+function EditableField({ label, value, onChange, type = 'text', icon: Icon, isDate = false }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string; icon?: any; isDate?: boolean;
 }) {
+  const displayValue = isDate ? formatDateBR(value) : value;
   return (
     <div className="space-y-1">
       <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium flex items-center gap-1">
         {Icon && <Icon className="h-3 w-3" />}
         {label}
       </Label>
-      <Input value={value} onChange={e => onChange(e.target.value)} className="h-8 text-xs" type={type} />
+      <Input
+        value={displayValue}
+        onChange={e => {
+          if (isDate) {
+            const raw = e.target.value;
+            if (raw.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+              onChange(parseDateBR(raw));
+            } else {
+              onChange(raw);
+            }
+          } else {
+            onChange(e.target.value);
+          }
+        }}
+        onBlur={isDate ? (e) => {
+          const parsed = parseDateBR(e.target.value);
+          if (parsed !== e.target.value) onChange(parsed);
+        } : undefined}
+        className="h-8 text-xs"
+        type={type}
+        placeholder={isDate ? 'DD/MM/AAAA' : undefined}
+      />
     </div>
   );
 }
@@ -361,13 +396,13 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             {activeTab === 'datas' && (
               <>
                 <EditableField label="Ano de Início" value={form.ano_inicio != null ? String(form.ano_inicio) : ''} onChange={v => set('ano_inicio', v)} type="number" />
-                <EditableField label="Data de Início" value={form.data_inicio || ''} onChange={v => set('data_inicio', v)} />
-                <EditableField label="Data de Distribuição" value={form.data_distribuicao || ''} onChange={v => set('data_distribuicao', v)} />
-                <EditableField label="Data Início na Fonte" value={form.fonte_data_inicio || ''} onChange={v => set('fonte_data_inicio', v)} />
-                <EditableField label="Data Fim na Fonte" value={form.fonte_data_fim || ''} onChange={v => set('fonte_data_fim', v)} />
-                <EditableField label="Última Movimentação" value={form.data_ultima_movimentacao || ''} onChange={v => set('data_ultima_movimentacao', v)} />
-                <EditableField label="Data de Arquivamento" value={form.data_arquivamento || ''} onChange={v => set('data_arquivamento', v)} />
-                <EditableField label="Última Verificação" value={form.data_ultima_verificacao || ''} onChange={v => set('data_ultima_verificacao', v)} />
+                <EditableField label="Data de Início" value={form.data_inicio || ''} onChange={v => set('data_inicio', v)} isDate />
+                <EditableField label="Data de Distribuição" value={form.data_distribuicao || ''} onChange={v => set('data_distribuicao', v)} isDate />
+                <EditableField label="Data Início na Fonte" value={form.fonte_data_inicio || ''} onChange={v => set('fonte_data_inicio', v)} isDate />
+                <EditableField label="Data Fim na Fonte" value={form.fonte_data_fim || ''} onChange={v => set('fonte_data_fim', v)} isDate />
+                <EditableField label="Última Movimentação" value={form.data_ultima_movimentacao || ''} onChange={v => set('data_ultima_movimentacao', v)} isDate />
+                <EditableField label="Data de Arquivamento" value={form.data_arquivamento || ''} onChange={v => set('data_arquivamento', v)} isDate />
+                <EditableField label="Última Verificação" value={form.data_ultima_verificacao || ''} onChange={v => set('data_ultima_verificacao', v)} isDate />
                 <EditableField label="Qtd. Movimentações" value={form.quantidade_movimentacoes != null ? String(form.quantidade_movimentacoes) : ''} onChange={v => set('quantidade_movimentacoes', v)} type="number" icon={Hash} />
               </>
             )}
