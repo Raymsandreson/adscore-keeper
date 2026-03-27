@@ -218,6 +218,36 @@ Deno.serve(async (req) => {
     }
 
     // ========================
+    // CLEAR CONVERSATION (delete all messages for a phone+instance)
+    // ========================
+    if (action === 'clear_conversation') {
+      const { phone: clearPhone, instance_name } = body
+
+      if (!clearPhone) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'phone is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      let query = supabase.from('whatsapp_messages').delete().eq('phone', clearPhone)
+      if (instance_name) {
+        query = query.eq('instance_name', instance_name)
+      }
+
+      const { error, count } = await query
+
+      if (error) throw error
+
+      console.log(`Cleared conversation for phone ${clearPhone} instance ${instance_name || 'all'}: ${count} messages deleted`)
+
+      return new Response(
+        JSON.stringify({ success: true, deleted: count }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // ========================
     // SEND MEDIA (image, audio, document, video)
     // ========================
     if (action === 'send_media') {
