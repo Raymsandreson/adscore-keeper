@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -34,6 +34,8 @@ import {
   UserPlus,
   Phone,
   Smartphone,
+  Search,
+  Scale,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -83,6 +85,14 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+  
+  // OAB search state
+  const [oabSearchQuery, setOabSearchQuery] = useState('');
+  const [oabSearchResults, setOabSearchResults] = useState<Array<{ name: string; oab_number: string; oab_uf: string }>>([]);
+  const [oabSearching, setOabSearching] = useState(false);
+  const [showOabDropdown, setShowOabDropdown] = useState(false);
+  const oabSearchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const oabDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Fetch WhatsApp instances once
@@ -117,6 +127,54 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     setOabNumber((data as any)?.oab_number || '');
     setOabUf((data as any)?.oab_uf || '');
     setDefaultInstanceId(data?.default_instance_id || '');
+  };
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (oabDropdownRef.current && !oabDropdownRef.current.contains(e.target as Node)) {
+        setShowOabDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const searchOabLawyer = useCallback(async (query: string) => {
+    if (query.trim().length < 3) {
+      setOabSearchResults([]);
+      setShowOabDropdown(false);
+      return;
+    }
+    setOabSearching(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('search-oab-lawyer', {
+        body: { name: query.trim(), uf: '' },
+      });
+      if (error) throw error;
+      const results = data?.lawyers || [];
+      setOabSearchResults(results);
+      setShowOabDropdown(results.length > 0);
+    } catch (err) {
+      console.error('OAB search error:', err);
+      setOabSearchResults([]);
+    } finally {
+      setOabSearching(false);
+    }
+  }, []);
+
+  const handleOabSearchChange = (value: string) => {
+    setOabSearchQuery(value);
+    if (oabSearchTimeout.current) clearTimeout(oabSearchTimeout.current);
+    oabSearchTimeout.current = setTimeout(() => searchOabLawyer(value), 500);
+  };
+
+  const selectOabResult = (result: { name: string; oab_number: string; oab_uf: string }) => {
+    setOabNumber(result.oab_number);
+    setOabUf(result.oab_uf);
+    setOabSearchQuery(result.name);
+    setShowOabDropdown(false);
+    toast.success(`OAB ${result.oab_number}/${result.oab_uf} selecionada`);
   };
 
   const fetchMemberData = async () => {
@@ -364,6 +422,49 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
               </p>
             </div>
 
+            {/* OAB Search */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Scale className="h-3.5 w-3.5" />
+                Buscar advogado (OAB)
+              </Label>
+              <div className="relative" ref={oabDropdownRef}>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={oabSearchQuery}
+                    onChange={(e) => handleOabSearchChange(e.target.value)}
+                    onFocus={() => oabSearchResults.length > 0 && setShowOabDropdown(true)}
+                    placeholder="Digite o nome do advogado..."
+                    className="pl-9"
+                  />
+                  {oabSearching && (
+                    <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                </div>
+                {showOabDropdown && oabSearchResults.length > 0 && (
+                  <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg max-h-48 overflow-auto">
+                    {oabSearchResults.map((result, idx) => (
+                      <button
+                        key={`${result.oab_number}-${result.oab_uf}-${idx}`}
+                        type="button"
+                        className="w-full text-left px-3 py-2 hover:bg-accent text-sm flex justify-between items-center border-b last:border-b-0"
+                        onClick={() => selectOabResult(result)}
+                      >
+                        <span className="truncate font-medium">{result.name}</span>
+                        <Badge variant="outline" className="ml-2 shrink-0">
+                          OAB {result.oab_number}/{result.oab_uf}
+                        </Badge>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {oabSearchQuery.length > 0 && oabSearchQuery.length < 3 && (
+                <p className="text-xs text-muted-foreground">Digite pelo menos 3 caracteres</p>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label className="flex items-center gap-1.5">
@@ -387,7 +488,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Usado para identificar advogados internos ao importar processos do Escavador
+              Busque pelo nome ou preencha manualmente. Usado para identificar advogados internos ao importar processos.
             </p>
 
             <div className="space-y-2">
