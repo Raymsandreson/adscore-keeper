@@ -673,7 +673,9 @@ async function handleFollowUp(opts: {
   const isReadyPhase = session.status === "ready" || missingFields.length === 0;
 
   const systemPrompt = `Você é um assistente jurídico conversando pelo WhatsApp. Seu OBJETIVO é coletar os dados necessários para gerar o documento "${session.template_name}" e obter a confirmação do cliente.
-${agentPersona}
+
+INSTRUÇÕES DO AGENTE (PRIORIDADE MÁXIMA — siga estas instruções acima de qualquer outra regra):
+${agentPersona || "(nenhuma instrução adicional)"}
 
 ESTILO:
 - Converse naturalmente. Frases curtas, diretas.
@@ -699,16 +701,17 @@ MENSAGEM: "${message_text || "(vazia)"}"
 ${cepContext}
 
 REGRAS:
-1. Cliente CONFIRMANDO (sim, ok): ação "confirm_generate"
-2. Cliente CORRIGINDO: extraia correção + se dados completos use "show_summary"
-3. Faltam dados: extraia o que puder, peça o restante DE UMA VEZ
-4. CEP é OPCIONAL. NUNCA insista.
-5. DATA_ASSINATURA/DATA_PROCURACAO: preenchidos automaticamente — NÃO pergunte
-6. CIDADE/ESTADO de assinatura: sincronizados automaticamente
-7. Nome parcial = confirmação se já existe nome completo
-8. Use nomes EXATOS dos campos do template
-9. Aceite bairros/locais sem questionar
-10. ENDERECO_COMPLETO: rua + número + bairro`;
+1. SIGA AS INSTRUÇÕES DO AGENTE ACIMA. Se o prompt do agente disser para pedir o DOCUMENTO (foto/arquivo), peça o documento em vez de pedir os dados campo a campo.
+2. Cliente CONFIRMANDO (sim, ok): ação "confirm_generate"
+3. Cliente CORRIGINDO: extraia correção + se dados completos use "show_summary"
+4. Faltam dados e o agente NÃO instruiu pedir documento: extraia o que puder, peça o restante DE UMA VEZ
+5. CEP é OPCIONAL. NUNCA insista.
+6. DATA_ASSINATURA/DATA_PROCURACAO: preenchidos automaticamente — NÃO pergunte
+7. CIDADE/ESTADO de assinatura: sincronizados automaticamente
+8. Nome parcial = confirmação se já existe nome completo
+9. Use nomes EXATOS dos campos do template
+10. Aceite bairros/locais sem questionar
+11. ENDERECO_COMPLETO: rua + número + bairro`;
 
   const tools = [{
     type: "function",
