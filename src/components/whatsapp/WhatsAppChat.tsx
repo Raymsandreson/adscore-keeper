@@ -1006,7 +1006,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                       if (!leadSearchQuery) return true;
                       const normalize = (v?: string | null) => (v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
                       const q = normalize(leadSearchQuery);
-                      return [l.lead_name, l.lead_phone, l.notes].some(v => normalize(v).includes(q));
+                      return normalize(l.lead_name).includes(q);
                     })
                     .map(lead => (
                       <button
