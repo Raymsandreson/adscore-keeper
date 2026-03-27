@@ -192,12 +192,12 @@ function normalizeVoiceCommandText(value: string): string {
     .trim();
 }
 
-function resolveAgentControlCommand(text: string | null, messageType: string): '#parar' | '#ativar' | '#status' | null {
+function resolveAgentControlCommand(text: string | null, messageType: string): '#parar' | '#ativar' | '#status' | '#limpar' | null {
   const raw = (text || '').trim().toLowerCase();
   if (!raw) return null;
 
-  if (raw === '#parar' || raw === '#ativar' || raw === '#status') {
-    return raw as '#parar' | '#ativar' | '#status';
+  if (raw === '#parar' || raw === '#ativar' || raw === '#status' || raw === '#limpar') {
+    return raw as '#parar' | '#ativar' | '#status' | '#limpar';
   }
 
   if (messageType !== 'audio') return null;
@@ -206,6 +206,7 @@ function resolveAgentControlCommand(text: string | null, messageType: string): '
   if (/^#?\s*(parar|pare|desativar|desative)\b/.test(cleaned)) return '#parar';
   if (/^#?\s*(ativar|ative|retomar|retome)\b/.test(cleaned)) return '#ativar';
   if (/^#?\s*(status|situacao|situa[çc][aã]o|como\s+esta)\b/.test(cleaned)) return '#status';
+  if (/^#?\s*(limpar|limpe|apagar\s+conversa|limpar\s+conversa)\b/.test(cleaned)) return '#limpar';
 
   return null;
 }
@@ -1543,7 +1544,7 @@ Deno.serve(async (req) => {
       const trimmedCmd = (messageText || '').trim()
       const hashNameMatch = trimmedCmd.match(/^#([a-z0-9_]+)$/i)
       // Skip control commands handled below (#parar, #ativar, #status)
-      const controlCommands = ['parar', 'ativar', 'status']
+      const controlCommands = ['parar', 'ativar', 'status', 'limpar']
       
       if (hashNameMatch && !controlCommands.includes(hashNameMatch[1].toLowerCase())) {
         const shortcutName = hashNameMatch[1].toLowerCase()
@@ -1913,6 +1914,59 @@ Deno.serve(async (req) => {
                 body: JSON.stringify({ number: phone, text: statusText }),
               })
               console.log('Status sent to conversation:', phone)
+            }
+          } else if (resolvedControlCommand === '#limpar') {
+            if (direction === 'outbound') {
+              console.log(`#limpar command: clearing conversation for phone=${phone}, instance=${instanceName}`)
+
+              // 1. Delete all messages for this phone+instance
+              const { error: delErr, count: delCount } = await supabase
+                .from('whatsapp_messages')
+                .delete({ count: 'exact' })
+                .eq('phone', phone)
+                .eq('instance_name', instanceName)
+              console.log(`Deleted ${delCount ?? 0} messages, error:`, delErr)
+
+              // 2. Cancel active collection sessions
+              await supabase
+                .from('wjia_collection_sessions')
+                .update({ status: 'cancelled' })
+                .eq('phone', phone)
+                .eq('instance_name', instanceName)
+                .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready'])
+
+              // 3. Deactivate conversation agents
+              await supabase
+                .from('whatsapp_conversation_agents')
+                .update({ is_active: false })
+                .eq('phone', phone)
+                .eq('instance_name', instanceName)
+                .eq('is_active', true)
+
+              // 4. Send confirmation and delete it after 2s
+              const creds = await getInstanceCreds()
+              if (creds.token && creds.baseUrl) {
+                try {
+                  const confirmResp = await fetch(`${creds.baseUrl}/send/text`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'token': creds.token },
+                    body: JSON.stringify({ number: phone, text: '✅ Conversa limpa.' }),
+                  })
+                  const confirmData = await confirmResp.json()
+                  const confirmMsgId = confirmData?.key?.id || confirmData?.messageId
+                  if (confirmMsgId) {
+                    // Wait 2s then delete the confirmation message
+                    await new Promise(r => setTimeout(r, 2000))
+                    await fetch(`${creds.baseUrl}/message/delete`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'token': creds.token },
+                      body: JSON.stringify({ id: confirmMsgId }),
+                    })
+                  }
+                } catch (e) {
+                  console.error('Error sending/deleting #limpar confirmation:', e)
+                }
+              }
             }
           }
 
