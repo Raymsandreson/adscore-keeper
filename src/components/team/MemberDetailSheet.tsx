@@ -139,13 +139,15 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     if (!member) return;
     const { data } = await supabase
       .from('profiles')
-      .select('phone, default_instance_id, oab_number, oab_uf')
+      .select('phone, default_instance_id, oab_number, oab_uf, voice_id, voice_name')
       .eq('user_id', member.user_id)
       .single();
     setPhone(data?.phone || '');
     setOabNumber((data as any)?.oab_number || '');
     setOabUf((data as any)?.oab_uf || '');
     setDefaultInstanceId(data?.default_instance_id || '');
+    setVoiceId((data as any)?.voice_id || '');
+    setVoiceName((data as any)?.voice_name || '');
 
     // Fetch multiple OAB entries
     const { data: oabs } = await supabase
@@ -330,6 +332,8 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
           oab_number: primaryOab.oab_number || null,
           oab_uf: primaryOab.oab_uf || null,
           default_instance_id: defaultInstanceId && defaultInstanceId !== 'none' ? defaultInstanceId : null,
+          voice_id: voiceId && voiceId !== 'none' ? voiceId : null,
+          voice_name: voiceId && voiceId !== 'none' ? (voices.find(v => v.id === voiceId)?.name || null) : null,
         } as any)
         .eq('user_id', member.user_id);
 
