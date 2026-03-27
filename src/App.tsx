@@ -11,7 +11,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { PageTracker } from "@/components/PageTracker";
 import { AppSidebar } from "@/components/AppSidebar";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { GlobalDatabaseSearch } from "@/components/GlobalDatabaseSearch";
 import { UserProductivityBanner } from "@/components/UserProductivityBanner";
 import { CallFieldSuggestionsBanner } from "@/components/CallFieldSuggestionsBanner";
@@ -148,9 +148,6 @@ function AppRoutes() {
       <div className="min-h-screen flex w-full">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-10 flex items-center border-b border-border/40 bg-background/80 backdrop-blur-sm sticky top-0 z-30">
-            <SidebarTrigger className="ml-2" />
-          </header>
           <main className="flex-1">
             <PageTracker />
             <GlobalDatabaseSearch />
