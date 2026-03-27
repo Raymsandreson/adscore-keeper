@@ -930,13 +930,80 @@ ${scrapeData.content || ''}
                 {/* Telefone e Email ficam no Contato, não no Lead */}
 
                 <div>
-                  <Label>Origem</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>Origem</Label>
+                    <Popover open={showSourceManager} onOpenChange={setShowSourceManager}>
+                      <PopoverTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-muted-foreground">
+                          <Settings className="h-3 w-3 mr-1" /> Gerenciar
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 p-3" align="start">
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold text-muted-foreground mb-2">Gerenciar Origens</p>
+                          <div className="max-h-48 overflow-y-auto space-y-1">
+                            {leadSources.map(s => (
+                              <div key={s.id} className="flex items-center gap-1 group">
+                                {editingSourceId === s.id ? (
+                                  <>
+                                    <Input
+                                      value={editingSourceLabel}
+                                      onChange={e => setEditingSourceLabel(e.target.value)}
+                                      className="h-7 text-xs flex-1"
+                                      autoFocus
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') {
+                                          updateLeadSource(s.id, editingSourceLabel);
+                                          setEditingSourceId(null);
+                                        }
+                                        if (e.key === 'Escape') setEditingSourceId(null);
+                                      }}
+                                    />
+                                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => { updateLeadSource(s.id, editingSourceLabel); setEditingSourceId(null); }}>
+                                      <CheckCircle className="h-3 w-3 text-green-500" />
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="text-sm flex-1 truncate">{s.label}</span>
+                                    <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => { setEditingSourceId(s.id); setEditingSourceLabel(s.label); }}>
+                                      <Pencil className="h-3 w-3" />
+                                    </Button>
+                                    <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100 text-destructive" onClick={() => deleteLeadSource(s.id)}>
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex gap-1 pt-1 border-t">
+                            <Input
+                              value={newSourceLabel}
+                              onChange={e => setNewSourceLabel(e.target.value)}
+                              placeholder="Nova origem..."
+                              className="h-7 text-xs flex-1"
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' && newSourceLabel.trim()) {
+                                  addLeadSource(newSourceLabel.trim());
+                                  setNewSourceLabel('');
+                                }
+                              }}
+                            />
+                            <Button size="sm" className="h-7 px-2" disabled={!newSourceLabel.trim()} onClick={() => { addLeadSource(newSourceLabel.trim()); setNewSourceLabel(''); }}>
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                   <Select value={source} onValueChange={setSource}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {sources.map((s) => (
+                      {leadSources.map((s) => (
                         <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
                       ))}
                     </SelectContent>
