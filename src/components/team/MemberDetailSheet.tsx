@@ -613,6 +613,30 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
               </p>
             </div>
 
+            {/* Voice Selector */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Volume2 className="h-3.5 w-3.5" />
+                Voz (TTS)
+              </Label>
+              <Select value={voiceId || 'none'} onValueChange={setVoiceId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma voz" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhuma (usar padrão)</SelectItem>
+                  {voices.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Voz personalizada para áudios enviados por este membro
+              </p>
+            </div>
+
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" />
