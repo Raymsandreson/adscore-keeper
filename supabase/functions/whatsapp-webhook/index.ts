@@ -1542,12 +1542,12 @@ Deno.serve(async (req) => {
     // Works for both outbound (fromMe) messages. Uses the shortcuts table as single source of truth.
     if (direction === 'outbound' && instanceName && phone && messageText) {
       const trimmedCmd = (messageText || '').trim()
-      const hashNameMatch = trimmedCmd.match(/^#([a-z0-9_]+)$/i)
+      const hashNameMatch = trimmedCmd.match(/^#([a-z0-9_ ]+)$/i)
       // Skip control commands handled below (#parar, #ativar, #status)
       const controlCommands = ['parar', 'ativar', 'status', 'limpar']
       
-      if (hashNameMatch && !controlCommands.includes(hashNameMatch[1].toLowerCase())) {
-        const shortcutName = hashNameMatch[1].toLowerCase()
+      if (hashNameMatch && !controlCommands.includes(hashNameMatch[1].trim().toLowerCase())) {
+        const shortcutName = hashNameMatch[1].trim().toLowerCase()
         console.log('#name command detected:', shortcutName, 'phone:', phone, 'instance:', instanceName)
         
         // Validate against wjia_command_shortcuts table — only client-scope shortcuts
