@@ -4,9 +4,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, LogIn, UserPlus, Eye, EyeOff } from 'lucide-react';
+import { Loader2, LogIn, UserPlus, Eye, EyeOff, Scale } from 'lucide-react';
+
+const UF_OPTIONS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
 const PasswordInput = ({ id, value, onChange, show, onToggle, placeholder = '••••••••' }: {
   id: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -39,11 +43,16 @@ export const AuthForm = () => {
     return { error };
   };
 
-  const signUp = async (email: string, password: string, fullName: string) => {
+  const signUp = async (email: string, password: string, fullName: string, oab?: { number: string; uf: string }) => {
+    const metadata: any = { full_name: fullName };
+    if (oab?.number) {
+      metadata.oab_number = oab.number;
+      metadata.oab_uf = oab.uf;
+    }
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: window.location.origin, data: { full_name: fullName } },
+      options: { emailRedirectTo: window.location.origin, data: metadata },
     });
     return { error };
   };
@@ -66,6 +75,9 @@ export const AuthForm = () => {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [signupConfirmPassword, setSignupConfirmPassword] = useState('');
+  const [isLawyer, setIsLawyer] = useState(false);
+  const [oabNumber, setOabNumber] = useState('');
+  const [oabUf, setOabUf] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,7 +109,8 @@ export const AuthForm = () => {
     
     setIsLoading(true);
     
-    const { error } = await signUp(signupEmail, signupPassword, signupName);
+    const oab = isLawyer && oabNumber.trim() ? { number: oabNumber.trim(), uf: oabUf } : undefined;
+    const { error } = await signUp(signupEmail, signupPassword, signupName, oab);
     
     if (error) {
       toast.error('Erro ao criar conta', { description: error.message });
@@ -270,6 +283,43 @@ export const AuthForm = () => {
                     onToggle={() => setShowSignupConfirm(!showSignupConfirm)}
                   />
                 </div>
+
+                {/* Advogado / OAB */}
+                <div className="space-y-3 rounded-md border border-border p-3">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="is-lawyer"
+                      checked={isLawyer}
+                      onCheckedChange={(checked) => setIsLawyer(checked === true)}
+                    />
+                    <Label htmlFor="is-lawyer" className="flex items-center gap-1.5 cursor-pointer text-sm">
+                      <Scale className="h-4 w-4" />
+                      Sou advogado(a)
+                    </Label>
+                  </div>
+                  {isLawyer && (
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="col-span-2">
+                        <Input
+                          placeholder="Número da OAB"
+                          value={oabNumber}
+                          onChange={(e) => setOabNumber(e.target.value)}
+                        />
+                      </div>
+                      <Select value={oabUf} onValueChange={setOabUf}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="UF" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {UF_OPTIONS.map(uf => (
+                            <SelectItem key={uf} value={uf}>{uf}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
