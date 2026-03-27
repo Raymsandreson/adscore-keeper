@@ -489,11 +489,58 @@ async function handleFollowUp(opts: {
     }
   }
 
-  // Load agent persona
+  // Load agent config for persona and delay settings
   let agentPersona = "";
-  if ((session as any).agent_id) {
-    const { data: agent } = await supabase.from("whatsapp_ai_agents").select("name, base_prompt").eq("id", (session as any).agent_id).maybeSingle();
-    if (agent) agentPersona = `\nPERSONA: ${agent.name}\n${agent.base_prompt || ""}\n`;
+  let batchDelaySeconds = 0;
+  
+  // Try to get agent from conversation_agents assignment
+  const { data: convAgent } = await supabase
+    .from("whatsapp_conversation_agents")
+    .select("agent_id")
+    .eq("phone", normalizedPhone)
+    .eq("instance_name", instance_name)
+    .eq("is_active", true)
+    .maybeSingle();
+  
+  const agentId = convAgent?.agent_id || (session as any).agent_id;
+  
+  if (agentId) {
+    const { data: agent } = await supabase.from("whatsapp_ai_agents")
+      .select("name, base_prompt, response_delay_seconds")
+      .eq("id", agentId).maybeSingle();
+    if (agent) {
+      agentPersona = `\nPERSONA: ${agent.name}\n${agent.base_prompt || ""}\n`;
+      batchDelaySeconds = (agent as any).response_delay_seconds || 0;
+    }
+  }
+
+  // ========== MESSAGE BATCHING DELAY ==========
+  if (batchDelaySeconds > 0) {
+    console.log(`WJIA batching delay: waiting ${batchDelaySeconds}s for more messages from ${normalizedPhone}`);
+    await new Promise(resolve => setTimeout(resolve, batchDelaySeconds * 1000));
+
+    // Check if newer inbound messages arrived during the delay
+    const cutoffTime = new Date(Date.now() - batchDelaySeconds * 1000).toISOString();
+    const { data: newerMessages } = await supabase
+      .from("whatsapp_messages")
+      .select("id, created_at")
+      .eq("phone", normalizedPhone)
+      .eq("instance_name", instance_name)
+      .eq("direction", "inbound")
+      .gt("created_at", cutoffTime)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (newerMessages && newerMessages.length > 0) {
+      const newestMsgTime = new Date(newerMessages[0].created_at).getTime();
+      const freshThresholdMs = batchDelaySeconds * 800;
+      if (Date.now() - newestMsgTime < freshThresholdMs) {
+        console.log(`WJIA batching: newer message detected, skipping this invocation`);
+        return new Response(JSON.stringify({ skipped: true, reason: "Batching: newer message will handle" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+    console.log(`WJIA batching delay complete for ${normalizedPhone}`);
   }
 
   const { data: inst } = await supabase.from("whatsapp_instances").select("instance_token, base_url").eq("instance_name", instance_name).maybeSingle();
