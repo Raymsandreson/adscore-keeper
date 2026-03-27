@@ -1,0 +1,1 @@
+ALTER TABLE public.board_group_settings ADD COLUMN IF NOT EXISTS ai_generated_message text;

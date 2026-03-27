@@ -593,6 +593,7 @@ export type Database = {
       }
       board_group_settings: {
         Row: {
+          ai_generated_message: string | null
           audio_voice_id: string | null
           auto_close_lead_on_sign: boolean | null
           auto_create_group_on_sign: boolean | null
@@ -610,6 +611,7 @@ export type Database = {
           use_ai_message: boolean | null
         }
         Insert: {
+          ai_generated_message?: string | null
           audio_voice_id?: string | null
           auto_close_lead_on_sign?: boolean | null
           auto_create_group_on_sign?: boolean | null
@@ -627,6 +629,7 @@ export type Database = {
           use_ai_message?: boolean | null
         }
         Update: {
+          ai_generated_message?: string | null
           audio_voice_id?: string | null
           auto_close_lead_on_sign?: boolean | null
           auto_create_group_on_sign?: boolean | null
