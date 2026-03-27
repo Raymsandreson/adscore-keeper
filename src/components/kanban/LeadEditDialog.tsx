@@ -641,11 +641,13 @@ ${scrapeData.content || ''}
         await saveAllFieldValues(lead.id, localFieldValues);
       }
 
-      // Auto-create legal case when lead is newly marked as closed
+      // Auto-create legal case when lead is marked as closed (or was already closed but has no case yet)
       const wasAlreadyClosed = !!(lead as any).became_client_date;
-      if (leadOutcome === 'closed' && !wasAlreadyClosed) {
-        // Also update lead_status
-        await supabase.from('leads').update({ lead_status: 'closed' } as any).eq('id', lead.id);
+      if (leadOutcome === 'closed') {
+        if (!wasAlreadyClosed) {
+          // Also update lead_status
+          await supabase.from('leads').update({ lead_status: 'closed' } as any).eq('id', lead.id);
+        }
 
         try {
           const { data: existingCases } = await supabase
