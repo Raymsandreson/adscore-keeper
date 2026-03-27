@@ -832,9 +832,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         }
       }
 
+      // Cache the full conversation
+      fullConvCacheRef.current[phone] = deduped;
+
       setConversations(prev => prev.map(c => {
         if (c.phone !== phone) return c;
-        // Replace messages entirely with the full history
         return {
           ...c,
           messages: deduped,
