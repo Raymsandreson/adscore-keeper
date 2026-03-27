@@ -110,6 +110,7 @@ const ActivitiesPage = () => {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [leadSearch, setLeadSearch] = useState('');
+  const [searchedLeads, setSearchedLeads] = useState<LeadOption[]>([]);
 
   // Form state
   const [formTitle, setFormTitle] = useState('');
