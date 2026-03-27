@@ -75,6 +75,8 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [oabNumber, setOabNumber] = useState('');
+  const [oabUf, setOabUf] = useState('');
   const [defaultInstanceId, setDefaultInstanceId] = useState('');
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
   const [saving, setSaving] = useState(false);
@@ -108,10 +110,12 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     if (!member) return;
     const { data } = await supabase
       .from('profiles')
-      .select('phone, default_instance_id')
+      .select('phone, default_instance_id, oab_number, oab_uf')
       .eq('user_id', member.user_id)
       .single();
     setPhone(data?.phone || '');
+    setOabNumber((data as any)?.oab_number || '');
+    setOabUf((data as any)?.oab_uf || '');
     setDefaultInstanceId(data?.default_instance_id || '');
   };
 
@@ -203,8 +207,10 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
           full_name: fullName.trim(),
           email: email.trim(),
           phone: normalizedPhone || null,
+          oab_number: oabNumber.trim() || null,
+          oab_uf: oabUf.trim().toUpperCase() || null,
           default_instance_id: defaultInstanceId && defaultInstanceId !== 'none' ? defaultInstanceId : null,
-        })
+        } as any)
         .eq('user_id', member.user_id);
 
       if (error) throw error;
@@ -357,6 +363,32 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
                 Usado para receber notificações via WhatsApp
               </p>
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5" />
+                  Nº OAB
+                </Label>
+                <Input
+                  value={oabNumber}
+                  onChange={(e) => setOabNumber(e.target.value)}
+                  placeholder="Ex: 12345"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>UF da OAB</Label>
+                <Input
+                  value={oabUf}
+                  onChange={(e) => setOabUf(e.target.value.toUpperCase())}
+                  placeholder="Ex: PI"
+                  maxLength={2}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Usado para identificar advogados internos ao importar processos do Escavador
+            </p>
 
             <div className="space-y-2">
               <Label className="flex items-center gap-1.5">
