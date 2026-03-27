@@ -129,6 +129,54 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     setDefaultInstanceId(data?.default_instance_id || '');
   };
 
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (oabDropdownRef.current && !oabDropdownRef.current.contains(e.target as Node)) {
+        setShowOabDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const searchOabLawyer = useCallback(async (query: string) => {
+    if (query.trim().length < 3) {
+      setOabSearchResults([]);
+      setShowOabDropdown(false);
+      return;
+    }
+    setOabSearching(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('search-oab-lawyer', {
+        body: { name: query.trim(), uf: '' },
+      });
+      if (error) throw error;
+      const results = data?.lawyers || [];
+      setOabSearchResults(results);
+      setShowOabDropdown(results.length > 0);
+    } catch (err) {
+      console.error('OAB search error:', err);
+      setOabSearchResults([]);
+    } finally {
+      setOabSearching(false);
+    }
+  }, []);
+
+  const handleOabSearchChange = (value: string) => {
+    setOabSearchQuery(value);
+    if (oabSearchTimeout.current) clearTimeout(oabSearchTimeout.current);
+    oabSearchTimeout.current = setTimeout(() => searchOabLawyer(value), 500);
+  };
+
+  const selectOabResult = (result: { name: string; oab_number: string; oab_uf: string }) => {
+    setOabNumber(result.oab_number);
+    setOabUf(result.oab_uf);
+    setOabSearchQuery(result.name);
+    setShowOabDropdown(false);
+    toast.success(`OAB ${result.oab_number}/${result.oab_uf} selecionada`);
+  };
+
   const fetchMemberData = async () => {
     if (!member) return;
     
