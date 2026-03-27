@@ -128,6 +128,14 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     setOabNumber((data as any)?.oab_number || '');
     setOabUf((data as any)?.oab_uf || '');
     setDefaultInstanceId(data?.default_instance_id || '');
+
+    // Fetch multiple OAB entries
+    const { data: oabs } = await supabase
+      .from('profile_oab_entries')
+      .select('id, oab_number, oab_uf')
+      .eq('user_id', member.user_id)
+      .order('created_at');
+    setOabEntries(oabs || []);
   };
 
   // Close dropdown on outside click
