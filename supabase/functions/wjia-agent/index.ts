@@ -813,18 +813,29 @@ REGRAS:
   // Sanitize AI reply: strip any hallucinated URLs (real links are sent by the system)
   if (result.reply_to_client) {
     result.reply_to_client = result.reply_to_client
-      // Remove full URLs (http/https)
-      .replace(/https?:\/\/[^\s\])}>,]+/gi, '')
-      // Remove partial URLs like www.something.com or domain.com/path
-      .replace(/(?:www\.)[^\s\])}>,]+/gi, '')
-      // Remove zapsign-like fake URLs
-      .replace(/zapsign\.[^\s\])}>,]*/gi, '')
+      // Remove full URLs (http/https) — aggressively match anything after protocol
+      .replace(/https?:\/\/\S+/gi, '')
+      // Remove partial URLs like www.something.com
+      .replace(/www\.\S+/gi, '')
+      // Remove any domain-like patterns (word.com/path, word.com.br/path)
+      .replace(/[a-z0-9-]+\.(?:com|org|net|br|io|app|dev|link|me|co)[^\s]*/gi, '')
       // Remove any remaining markdown links [text](url)
       .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
       // Clean up leftover artifacts
       .replace(/\(\s*\)/g, '')
+      .replace(/:\s*\n/g, '.\n') // "Aqui está o link:\n" → "Aqui está o link.\n"
       .replace(/\n{3,}/g, '\n\n')
       .trim();
+
+    // If sanitization left the reply mostly empty or broken, replace with safe fallback
+    const cleanText = result.reply_to_client.replace(/[^\w]/g, '');
+    if (cleanText.length < 10) {
+      if (result.action === "confirm_generate") {
+        result.reply_to_client = "Perfeito! Vou gerar o documento agora. Em instantes você recebe o link para assinar. 📄";
+      } else {
+        result.reply_to_client = "";
+      }
+    }
   }
 
 
