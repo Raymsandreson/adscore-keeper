@@ -950,3 +950,103 @@ async function forwardDocuments(
     console.error('Error forwarding documents:', err)
   }
 }
+
+async function forwardConversationMedia(
+  supabase: any, leadData: any, phone: string, groupId: string,
+  baseUrl: string, creatorInstance: any
+) {
+  try {
+    const leadName = leadData.lead_name || leadData.victim_name || 'Lead'
+    const sentUrls = new Set<string>()
+
+    // 1. Forward ZapSign signed documents
+    const { data: signedDocs } = await supabase
+      .from('zapsign_documents')
+      .select('template_name, signed_file_url')
+      .eq('lead_id', leadData.id)
+      .not('signed_file_url', 'is', null)
+
+    if (signedDocs && signedDocs.length > 0) {
+      for (const doc of signedDocs) {
+        if (!doc.signed_file_url || sentUrls.has(doc.signed_file_url)) continue
+        sentUrls.add(doc.signed_file_url)
+        const docLabel = doc.template_name || 'Procuração Assinada'
+        const fileName = `${docLabel} - ${leadName}.pdf`
+        try {
+          await fetch(`${baseUrl}/send/media`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+            body: JSON.stringify({ number: groupId, media: doc.signed_file_url, type: 'document', fileName, caption: `📄 ${docLabel} - ${leadName}` }),
+          })
+          console.log(`[conv-media] Sent signed doc: ${fileName}`)
+          await sleep(800)
+        } catch (e) {
+          console.error(`[conv-media] Error sending signed doc:`, e)
+        }
+      }
+    }
+
+    // 2. Forward inbound media from WhatsApp conversation (images, documents, PDFs)
+    if (!phone) {
+      console.log('[conv-media] No phone to search conversation media')
+      return
+    }
+
+    const phoneSuffix = phone.slice(-8)
+    const { data: mediaMessages } = await supabase
+      .from('whatsapp_messages')
+      .select('media_url, message_type, message_text, contact_name')
+      .or(`phone.eq.${phone},phone.ilike.%${phoneSuffix}%`)
+      .eq('direction', 'inbound')
+      .in('message_type', ['image', 'document', 'video', 'sticker'])
+      .not('media_url', 'is', null)
+      .order('created_at', { ascending: true })
+      .limit(50)
+
+    if (!mediaMessages || mediaMessages.length === 0) {
+      console.log('[conv-media] No inbound media found in conversation')
+      return
+    }
+
+    console.log(`[conv-media] Found ${mediaMessages.length} inbound media messages to forward`)
+
+    let mediaCount = 0
+    for (const msg of mediaMessages) {
+      if (!msg.media_url || sentUrls.has(msg.media_url)) continue
+      sentUrls.add(msg.media_url)
+
+      const isDoc = msg.message_type === 'document'
+      const mediaType = isDoc ? 'document' : (msg.message_type === 'video' ? 'video' : 'image')
+      const caption = msg.message_text ? `📎 ${msg.message_text}` : `📎 Documento do cliente - ${leadName}`
+      
+      // Determine file extension based on type
+      const ext = isDoc ? 'pdf' : (msg.message_type === 'video' ? 'mp4' : 'jpg')
+      const fileName = isDoc ? `Documento_${mediaCount + 1}_${leadName}.${ext}` : undefined
+
+      try {
+        const payload: any = { number: groupId, media: msg.media_url, type: mediaType }
+        if (isDoc && fileName) {
+          payload.fileName = fileName
+        }
+        if (caption) {
+          payload.caption = caption
+        }
+
+        await fetch(`${baseUrl}/send/media`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+          body: JSON.stringify(payload),
+        })
+        mediaCount++
+        console.log(`[conv-media] Sent ${mediaType}: ${msg.media_url.substring(0, 80)}...`)
+        await sleep(800)
+      } catch (e) {
+        console.error(`[conv-media] Error sending media:`, e)
+      }
+    }
+
+    console.log(`[conv-media] Forwarded ${mediaCount} media items to group`)
+  } catch (err) {
+    console.error('[conv-media] Error forwarding conversation media:', err)
+  }
+}
