@@ -522,6 +522,87 @@ const ProcessTrackingPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* New Record Dialog */}
+      <Dialog open={showNewRecordDialog} onOpenChange={setShowNewRecordDialog}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-primary" />
+              Novo Registro Processual
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label>Cliente *</Label>
+              <Input value={newRecord.cliente || ''} onChange={e => setNewRecord(p => ({ ...p, cliente: e.target.value }))} placeholder="Nome do cliente" />
+            </div>
+            <div className="space-y-1">
+              <Label>Caso</Label>
+              <Input value={newRecord.caso || ''} onChange={e => setNewRecord(p => ({ ...p, caso: e.target.value }))} placeholder="Ex: CASO-0001 ou PREV-0001" />
+            </div>
+            <div className="space-y-1">
+              <Label>CPF</Label>
+              <Input value={newRecord.cpf || ''} onChange={e => setNewRecord(p => ({ ...p, cpf: e.target.value }))} placeholder="000.000.000-00" />
+            </div>
+            <div className="space-y-1">
+              <Label>Senha Gov</Label>
+              <Input value={newRecord.senha_gov || ''} onChange={e => setNewRecord(p => ({ ...p, senha_gov: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Nº Processo</Label>
+              <Input value={newRecord.numero_processo || ''} onChange={e => setNewRecord(p => ({ ...p, numero_processo: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Tipo</Label>
+              <Input value={newRecord.tipo || ''} onChange={e => setNewRecord(p => ({ ...p, tipo: e.target.value }))} placeholder="Tipo de benefício" />
+            </div>
+            <div className="space-y-1">
+              <Label>Pendência</Label>
+              <Input value={newRecord.pendencia || ''} onChange={e => setNewRecord(p => ({ ...p, pendencia: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Status do Processo</Label>
+              <Select value={newRecord.status_processo || ''} onValueChange={v => setNewRecord(p => ({ ...p, status_processo: v }))}>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Em análise">Em análise</SelectItem>
+                  <SelectItem value="Em andamento">Em andamento</SelectItem>
+                  <SelectItem value="Deferido">Deferido</SelectItem>
+                  <SelectItem value="Indeferido">Indeferido</SelectItem>
+                  <SelectItem value="Concluído">Concluído</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Acolhedor</Label>
+              <Input value={newRecord.acolhedor || ''} onChange={e => setNewRecord(p => ({ ...p, acolhedor: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Data Criação Grupo</Label>
+              <Input type="date" value={newRecord.data_criacao || ''} onChange={e => setNewRecord(p => ({ ...p, data_criacao: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Protocolado</Label>
+              <Input value={newRecord.protocolado || ''} onChange={e => setNewRecord(p => ({ ...p, protocolado: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Data Nasc. Bebê</Label>
+              <Input type="date" value={newRecord.data_nascimento_bebe || ''} onChange={e => setNewRecord(p => ({ ...p, data_nascimento_bebe: e.target.value }))} />
+            </div>
+            <div className="md:col-span-2 space-y-1">
+              <Label>Observação</Label>
+              <Input value={newRecord.observacao || ''} onChange={e => setNewRecord(p => ({ ...p, observacao: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNewRecordDialog(false)}>Cancelar</Button>
+            <Button onClick={handleCreateRecord} disabled={savingNew} className="gap-2">
+              {savingNew ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              Criar Registro
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
