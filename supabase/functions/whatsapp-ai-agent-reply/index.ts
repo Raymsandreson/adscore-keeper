@@ -430,6 +430,96 @@ REGRAS DE ENDEREÇO E CEP:
         });
       }
 
+      // ========== SHORTCUT DOCUMENT HANDOFF ==========
+      // If this agent is a shortcut with a template_token, detect when data collection
+      // is complete and trigger wjia-agent to actually generate the document
+      if ((agent as any).is_shortcut && (agent as any).template_token) {
+        const templateToken = (agent as any).template_token;
+        
+        // Check if there's already an active wjia session for this phone+instance
+        const { data: existingSession } = await supabase
+          .from("wjia_collection_sessions")
+          .select("id, status, sign_url")
+          .eq("phone", phone.replace(/\D/g, "").replace(/^0+/, ""))
+          .eq("instance_name", instance_name)
+          .in("status", ["collecting", "collecting_docs", "processing_docs", "ready", "generated"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingSession?.status === "generated" && existingSession?.sign_url) {
+          // Session already generated — send real link instead of AI's reply
+          reply = `📝 Aqui está o link para assinatura do documento:\n\n👉 ${existingSession.sign_url}\n\nÉ só clicar e seguir as instruções! 🙏`;
+        } else if (!existingSession) {
+          // No active session — check if AI reply indicates data is ready or client confirmed
+          const replyLower = reply.toLowerCase();
+          const indicatesReady = replyLower.includes("procuração") || replyLower.includes("documento");
+          const indicatesWillSend = replyLower.includes("link") || replyLower.includes("preparar") || replyLower.includes("gerar") || replyLower.includes("finaliz");
+          
+          if (indicatesReady && indicatesWillSend) {
+            // The AI thinks it can generate the document — trigger wjia-agent
+            const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
+            const shortcutName = (agent as any).name?.replace(/^#/, "") || "";
+            
+            console.log(`Shortcut handoff: triggering wjia-agent for ${normalizedPhone} with command #${shortcutName}`);
+            
+            // Get contact_id and lead_id from recent messages
+            const { data: recentMsg } = await supabase
+              .from("whatsapp_messages")
+              .select("contact_id, lead_id")
+              .eq("phone", phone)
+              .eq("instance_name", instance_name)
+              .not("contact_id", "is", null)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            
+            const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+            const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+            
+            // Fire wjia-agent to create session and start/continue collection
+            fetch(`${supabaseUrl}/functions/v1/wjia-agent`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseAnonKey}`,
+              },
+              body: JSON.stringify({
+                phone: normalizedPhone,
+                instance_name,
+                command: `#${shortcutName}`,
+                contact_id: recentMsg?.contact_id || null,
+                lead_id: recentMsg?.lead_id || lead_id || null,
+                reset_memory: false,
+              }),
+            }).catch(err => console.error("WJIA handoff error:", err));
+
+            // Sanitize the AI reply — remove link promises since wjia-agent will handle it
+            reply = reply
+              .replace(/[Dd]aqui a pouquinho.*?link.*?\./g, "")
+              .replace(/[Jj]á te (mando|envio).*?link.*?\./g, "")
+              .replace(/[Aa]ssim que.*?link.*?\./g, "")
+              .replace(/[Vv]ou.*?mandar.*?link.*?\./g, "")
+              .replace(/\n{3,}/g, "\n\n")
+              .trim();
+            
+            if (!reply) {
+              reply = "Perfeito! Vou preparar o documento agora. Em instantes você recebe o link para assinar. 📄";
+            }
+          }
+        }
+        
+        // Always sanitize any hallucinated URLs from shortcut agent replies
+        reply = reply
+          .replace(/https?:\/\/\S+/gi, "")
+          .replace(/www\.\S+/gi, "")
+          .replace(/[a-z0-9-]+\.(?:com|org|net|br|io|app|dev|link|me|co)[^\s]*/gi, "")
+          .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+          .replace(/\(\s*\)/g, "")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+      }
+
       // Split message into parts if enabled, then add signature to last part
       const splitMessages = (agent as any).split_messages === true;
       let messageParts: string[] = [];
