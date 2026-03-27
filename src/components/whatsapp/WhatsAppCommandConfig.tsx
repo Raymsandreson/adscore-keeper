@@ -481,7 +481,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Nome do Agente *</Label>
-                    <Input placeholder="procuracao" value={form.shortcut_name} onChange={e => setForm(f => ({ ...f, shortcut_name: e.target.value.replace(/\s/g, '').toLowerCase() }))} className="h-9" />
+                    <Input placeholder="Procuração Geral" value={form.shortcut_name} onChange={e => setForm(f => ({ ...f, shortcut_name: e.target.value }))} className="h-9" />
                     <p className="text-[10px] text-muted-foreground">Acionado por <strong>#nome</strong> no WhatsApp</p>
                   </div>
                   <div className="space-y-1">
