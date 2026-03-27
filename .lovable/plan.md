@@ -1,40 +1,23 @@
 
 
-## Plano: Implementar comando `#limpar`
+## Plano: Adicionar campo "Assessor responsável" no formulário de nova atividade do lead
 
 ### Resumo
-Adicionar o comando `#limpar` ao webhook do WhatsApp. Quando enviado (outbound), limpa todas as mensagens daquela conversa (phone + instance), cancela sessões e desativa agentes. Apaga o comando e a confirmação do WhatsApp.
+Adicionar um select de assessor (membro da equipe) no formulário de criação de atividade dentro do card do lead (`LeadActivitiesTab`), usando o hook `useProfilesList` já existente.
 
-### Alterações em `supabase/functions/whatsapp-webhook/index.ts`
+### Alterações em `src/components/leads/LeadActivitiesTab.tsx`
 
-**1. Função `resolveAgentControlCommand` (linha 195)**
-- Alterar tipo de retorno para incluir `'#limpar'`
-- Adicionar reconhecimento de `#limpar` no texto exato e variantes de voz (limpar, limpe, apagar conversa)
+1. **Importar** `useProfilesList` de `@/hooks/useProfilesList`
 
-**2. Lista `controlCommands` (linha 1546)**
-- Adicionar `'limpar'` ao array para que não seja tratado como shortcut de agente
+2. **Adicionar estado** para o assessor selecionado:
+   - `newAssignedTo` (user_id) e `newAssignedToName` (nome do assessor)
 
-**3. Novo bloco após `#status` (após linha 1917)**
-- `else if (resolvedControlCommand === '#limpar')`:
-  - Apenas para `direction === 'outbound'`
-  - Deletar todas as mensagens em `whatsapp_messages` com `phone` + `instance_name`
-  - Cancelar sessões ativas em `wjia_collection_sessions` (update status → cancelled)
-  - Desativar agentes em `whatsapp_conversation_agents` (update is_active → false)
-  - Enviar confirmação "✅ Conversa limpa." via API
-  - Aguardar 2s e apagar a mensagem de confirmação via `/message/delete`
+3. **Adicionar select** entre Prioridade e Prazo no formulário de criação:
+   - Label "Responsável"
+   - Select com lista de perfis da equipe
+   - Ao selecionar, armazena `user_id` e `full_name`
 
-### Fluxo
-```text
-Usuário envia "#limpar" (outbound)
-  → resolveAgentControlCommand retorna '#limpar'
-  → Webhook apaga #limpar do WhatsApp (bloco existente linha 1726)
-  → Apaga #limpar do DB (bloco existente linha 1751)
-  → Deleta whatsapp_messages WHERE phone=X AND instance_name=Y
-  → Cancela sessões + desativa agentes
-  → Envia "✅ Conversa limpa." → aguarda 2s → apaga confirmação
-```
+4. **Incluir no insert** os campos `assigned_to` e `assigned_to_name` ao criar a atividade
 
-### Segurança
-- Apenas `direction === 'outbound'` pode disparar (mensagens inbound ignoradas)
-- Escopo restrito a `phone + instance_name` — não afeta outras conversas
+5. **Resetar** os campos ao fechar/criar
 
