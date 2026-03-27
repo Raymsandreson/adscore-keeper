@@ -14,7 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Gavel, FileText, Loader2, AlertCircle, CheckCircle2, ClipboardList } from 'lucide-react';
+import { Search, Gavel, FileText, Loader2, AlertCircle, CheckCircle2, ClipboardList, Plus } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
@@ -63,6 +64,47 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
   // Common fields - always asked
   const [processType, setProcessType] = useState<'judicial' | 'administrativo'>('judicial');
   const [workflowId, setWorkflowId] = useState('');
+  const [showNewWorkflow, setShowNewWorkflow] = useState(false);
+  const [newWorkflowName, setNewWorkflowName] = useState('');
+  const [newWorkflowDesc, setNewWorkflowDesc] = useState('');
+  const [creatingWorkflow, setCreatingWorkflow] = useState(false);
+
+  const handleCreateWorkflow = async () => {
+    if (!newWorkflowName.trim()) {
+      toast.error('Informe o nome do fluxo');
+      return;
+    }
+    setCreatingWorkflow(true);
+    try {
+      const { data, error } = await supabase
+        .from('kanban_boards')
+        .insert([{
+          name: newWorkflowName.trim(),
+          description: newWorkflowDesc.trim() || null,
+          stages: [],
+          color: '#3b82f6',
+          icon: 'layout-grid',
+          is_default: false,
+          display_order: activeBoards.length,
+          board_type: 'workflow',
+        } as any])
+        .select()
+        .single();
+      if (error) throw error;
+      const newBoard = { ...data, board_type: 'workflow', stages: [] } as any;
+      setLoadedBoards(prev => [...prev, newBoard]);
+      setWorkflowId(data.id);
+      setShowNewWorkflow(false);
+      setNewWorkflowName('');
+      setNewWorkflowDesc('');
+      toast.success('Fluxo de trabalho criado!');
+    } catch (err: any) {
+      console.error('Error creating workflow:', err);
+      toast.error('Erro ao criar fluxo');
+    } finally {
+      setCreatingWorkflow(false);
+    }
+  };
 
   // Manual form state
   const [manualForm, setManualForm] = useState({
@@ -423,21 +465,33 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             </div>
             <div>
               <Label className="text-xs font-semibold">Fluxo de Trabalho *</Label>
-              <Select value={workflowId} onValueChange={setWorkflowId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um fluxo..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeBoards.map(b => (
-                    <SelectItem key={b.id} value={b.id}>
-                      <span className="flex items-center gap-2">
-                        <ClipboardList className="h-3 w-3" />
-                        {b.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-1.5">
+                <Select value={workflowId} onValueChange={setWorkflowId}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Selecione um fluxo..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeBoards.map(b => (
+                      <SelectItem key={b.id} value={b.id}>
+                        <span className="flex items-center gap-2">
+                          <ClipboardList className="h-3 w-3" />
+                          {b.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0"
+                  onClick={() => setShowNewWorkflow(true)}
+                  title="Criar novo fluxo"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -649,6 +703,50 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           </TabsContent>
         </Tabs>
       </DialogContent>
+
+      {/* Sheet para criar novo fluxo de trabalho */}
+      <Sheet open={showNewWorkflow} onOpenChange={setShowNewWorkflow}>
+        <SheetContent side="right" className="w-[380px] sm:max-w-[380px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-primary" />
+              Novo Fluxo de Trabalho
+            </SheetTitle>
+          </SheetHeader>
+          <div className="space-y-4 mt-6">
+            <div>
+              <Label className="text-sm font-semibold">Nome *</Label>
+              <Input
+                value={newWorkflowName}
+                onChange={e => setNewWorkflowName(e.target.value)}
+                placeholder="Ex: Auxílio Doença"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-sm font-semibold">Descrição</Label>
+              <Textarea
+                value={newWorkflowDesc}
+                onChange={e => setNewWorkflowDesc(e.target.value)}
+                placeholder="Descreva as etapas deste fluxo..."
+                rows={3}
+                className="mt-1"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              As etapas do fluxo poderão ser configuradas depois em Configurações → Fluxos de Trabalho.
+            </p>
+            <Button
+              onClick={handleCreateWorkflow}
+              disabled={creatingWorkflow || !newWorkflowName.trim()}
+              className="w-full"
+            >
+              {creatingWorkflow ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+              Criar Fluxo
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
     </Dialog>
   );
 }
