@@ -300,19 +300,30 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
 
     setSaving(true);
     try {
+      // Save primary OAB (first entry or manual)
+      const primaryOab = oabEntries.length > 0 ? oabEntries[0] : { oab_number: oabNumber.trim(), oab_uf: oabUf.trim().toUpperCase() };
+      
       const { error } = await supabase
         .from('profiles')
         .update({
           full_name: fullName.trim(),
           email: email.trim(),
           phone: normalizedPhone || null,
-          oab_number: oabNumber.trim() || null,
-          oab_uf: oabUf.trim().toUpperCase() || null,
+          oab_number: primaryOab.oab_number || null,
+          oab_uf: primaryOab.oab_uf || null,
           default_instance_id: defaultInstanceId && defaultInstanceId !== 'none' ? defaultInstanceId : null,
         } as any)
         .eq('user_id', member.user_id);
 
       if (error) throw error;
+
+      // Sync OAB entries
+      await supabase.from('profile_oab_entries').delete().eq('user_id', member.user_id);
+      if (oabEntries.length > 0) {
+        await supabase.from('profile_oab_entries').insert(
+          oabEntries.map(e => ({ user_id: member.user_id, oab_number: e.oab_number, oab_uf: e.oab_uf }))
+        );
+      }
 
       toast.success('Perfil atualizado!');
       onUpdate();
