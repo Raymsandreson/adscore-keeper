@@ -38,6 +38,7 @@ const WorkflowProgressPage = () => {
   const [workflowSearch, setWorkflowSearch] = useState('');
   const [workflowPage, setWorkflowPage] = useState(1);
   const [editingWorkflow, setEditingWorkflow] = useState<KanbanBoard | null>(null);
+  const [createNewMode, setCreateNewMode] = useState(false);
   const WORKFLOWS_PER_PAGE = 6;
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -176,7 +177,7 @@ const WorkflowProgressPage = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg font-semibold">Fluxos de trabalho</h2>
-                  <Button size="icon" onClick={() => setShowConfig(true)} title="Criar novo fluxo">
+                  <Button size="icon" onClick={() => { setCreateNewMode(true); setEditingWorkflow(null); setShowConfig(true); }} title="Criar novo fluxo">
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>
@@ -394,10 +395,11 @@ const WorkflowProgressPage = () => {
         open={showConfig}
         onOpenChange={(open) => {
           setShowConfig(open);
-          if (!open) setEditingWorkflow(null);
+          if (!open) { setEditingWorkflow(null); setCreateNewMode(false); }
         }}
         onWorkflowSaved={fetchData}
         initialEditBoardId={editingWorkflow?.id || null}
+        initialCreateNew={createNewMode}
       />
     </div>
   );

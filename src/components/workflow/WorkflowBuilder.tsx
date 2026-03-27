@@ -52,6 +52,7 @@ interface WorkflowBuilderProps {
   onOpenChange: (open: boolean) => void;
   onWorkflowSaved?: () => void;
   initialEditBoardId?: string | null;
+  initialCreateNew?: boolean;
 }
 
 interface PhaseObjective {
@@ -74,7 +75,7 @@ interface PhaseConfig {
 
 type ViewMode = 'list' | 'edit';
 
-export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEditBoardId }: WorkflowBuilderProps) {
+export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEditBoardId, initialCreateNew }: WorkflowBuilderProps) {
   const { boards: allBoards, fetchBoards, createBoard, updateBoard, deleteBoard } = useKanbanBoards();
   const boards = allBoards.filter(b => b.board_type === 'workflow');
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
@@ -124,6 +125,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       }
     }
   }, [open, initialEditBoardId, boards.length]);
+
+  // Auto-open new workflow creation
+  useEffect(() => {
+    if (open && initialCreateNew && viewMode === 'list' && !initialEditBoardId) {
+      handleNewWorkflow();
+    }
+  }, [open, initialCreateNew]);
 
   const resetForm = () => {
     setFormName('');
