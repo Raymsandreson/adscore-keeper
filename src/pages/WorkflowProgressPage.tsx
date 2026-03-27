@@ -6,7 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Search, X, RefreshCw, Settings2 } from 'lucide-react';
+import { ArrowLeft, Search, X, RefreshCw, Settings2, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis } from '@/components/ui/pagination';
 import { ShareMenu } from '@/components/ShareMenu';
 import { WorkflowProgressView } from '@/components/workflow/WorkflowProgressView';
 import { WorkflowBuilder } from '@/components/workflow/WorkflowBuilder';
