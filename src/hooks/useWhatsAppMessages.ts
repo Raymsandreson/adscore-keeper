@@ -71,8 +71,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const realtimeRetryTimerRef = useRef<number | null>(null);
   const syncInFlightRef = useRef(false);
   const lastSyncAtRef = useRef<Record<string, number>>({});
+  const activePhoneRef = useRef<string | null>(null);
+  const fullConvCacheRef = useRef<Record<string, WhatsAppMessage[]>>({});
 
-  const AUTO_REFRESH_INTERVAL_MS = 60000; // 1 min fallback polling
+  const AUTO_REFRESH_INTERVAL_MS = 30000; // 30s fallback polling
 
   const fetchInstances = async () => {
     if (!user) return;
@@ -312,6 +314,23 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         }] as WhatsAppMessage[],
         instance_name: s.instance_name,
       }));
+
+      // Preserve full message history for the active conversation
+      const activePhone = activePhoneRef.current;
+      if (activePhone && fullConvCacheRef.current[activePhone]) {
+        const cachedMsgs = fullConvCacheRef.current[activePhone];
+        const activeConvIdx = convList.findIndex(c => c.phone === activePhone);
+        if (activeConvIdx >= 0) {
+          // Merge any new realtime messages into the cached full history
+          const cachedIds = new Set(cachedMsgs.map(m => m.id));
+          const newMsgs = convList[activeConvIdx].messages.filter(m => !cachedIds.has(m.id) && !m.id.startsWith('summary-'));
+          convList[activeConvIdx] = {
+            ...convList[activeConvIdx],
+            messages: [...cachedMsgs, ...newMsgs],
+          };
+          fullConvCacheRef.current[activePhone] = convList[activeConvIdx].messages;
+        }
+      }
 
       conversationsRef.current = convList;
       setConversations(convList);
@@ -698,6 +717,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
               // Also check by id
               if (existing.messages.some(m => m.id === newMsg.id)) return prev;
 
+              // Update cache if this is the active conversation
+              if (activePhoneRef.current === newMsg.phone && fullConvCacheRef.current[newMsg.phone]) {
+                fullConvCacheRef.current[newMsg.phone] = [...fullConvCacheRef.current[newMsg.phone], newMsg];
+              }
+
               return prev.map(c => {
                 if (c.phone !== newMsg.phone) return c;
                 return {
@@ -778,6 +802,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
   // Load all messages for a specific conversation (when selected)
   const fetchFullConversation = useCallback(async (phone: string) => {
+    activePhoneRef.current = phone;
     try {
       // Paginate to get ALL messages for this phone (up to 3000)
       const allMsgs: WhatsAppMessage[] = [];
@@ -812,9 +837,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         }
       }
 
+      // Cache the full conversation
+      fullConvCacheRef.current[phone] = deduped;
+
       setConversations(prev => prev.map(c => {
         if (c.phone !== phone) return c;
-        // Replace messages entirely with the full history
         return {
           ...c,
           messages: deduped,
@@ -826,6 +853,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     } catch (error) {
       console.error('Error fetching full conversation:', error);
     }
+  }, []);
+
+  const clearActivePhone = useCallback(() => {
+    activePhoneRef.current = null;
   }, []);
 
   return {
@@ -846,5 +877,6 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     refetch: fetchMessages,
     refetchStats: fetchInstanceStats,
     fetchFullConversation,
+    clearActivePhone,
   };
 }
