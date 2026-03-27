@@ -522,6 +522,82 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
         </SheetContent>
       </Sheet>
 
+      {/* New Activity Creation Sheet */}
+      <Sheet open={showNewSheet} onOpenChange={setShowNewSheet}>
+        <SheetContent className="w-full sm:max-w-md flex flex-col p-0">
+          <SheetHeader className="px-4 pt-4 pb-2 shrink-0">
+            <SheetTitle className="text-base">Nova Atividade</SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="flex-1 px-4">
+            <div className="space-y-3 pb-4">
+              <div>
+                <Label className="text-xs">Título *</Label>
+                <Input
+                  value={newTitle}
+                  onChange={e => setNewTitle(e.target.value)}
+                  onBlur={() => suggestNewActivityType(newTitle)}
+                  placeholder="Ex: Ligar para cliente, Preparar documentação..."
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs flex items-center gap-1">
+                    Tipo
+                    {newAiSuggesting && <Sparkles className="h-3 w-3 animate-pulse text-amber-500" />}
+                  </Label>
+                  <Select value={newType} onValueChange={setNewType}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {allowedTypes.map(t => (
+                        <SelectItem key={t.key} value={t.key}>
+                          <span className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />
+                            {t.label}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Prioridade</Label>
+                  <Select value={newPriority} onValueChange={setNewPriority}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="baixa">Baixa</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="alta">Alta</SelectItem>
+                      <SelectItem value="urgente">Urgente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Prazo</Label>
+                <Input type="datetime-local" value={newDeadline} onChange={e => setNewDeadline(e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Descrição</Label>
+                <textarea
+                  value={newDescription}
+                  onChange={e => setNewDescription(e.target.value)}
+                  placeholder="Detalhes da atividade..."
+                  className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+              </div>
+            </div>
+          </ScrollArea>
+          <div className="shrink-0 border-t p-3 flex gap-2 justify-end">
+            <Button size="sm" variant="outline" onClick={() => setShowNewSheet(false)}>Cancelar</Button>
+            <Button size="sm" onClick={handleCreateActivity} disabled={newSaving} className="gap-1">
+              {newSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              Criar Atividade
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
       {/* AI Chat for creating activities */}
       <ActivityChatSheet
         open={showChatSheet}
