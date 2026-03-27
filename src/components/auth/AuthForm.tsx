@@ -283,6 +283,43 @@ export const AuthForm = () => {
                     onToggle={() => setShowSignupConfirm(!showSignupConfirm)}
                   />
                 </div>
+
+                {/* Advogado / OAB */}
+                <div className="space-y-3 rounded-md border border-border p-3">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="is-lawyer"
+                      checked={isLawyer}
+                      onCheckedChange={(checked) => setIsLawyer(checked === true)}
+                    />
+                    <Label htmlFor="is-lawyer" className="flex items-center gap-1.5 cursor-pointer text-sm">
+                      <Scale className="h-4 w-4" />
+                      Sou advogado(a)
+                    </Label>
+                  </div>
+                  {isLawyer && (
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="col-span-2">
+                        <Input
+                          placeholder="Número da OAB"
+                          value={oabNumber}
+                          onChange={(e) => setOabNumber(e.target.value)}
+                        />
+                      </div>
+                      <Select value={oabUf} onValueChange={setOabUf}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="UF" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {UF_OPTIONS.map(uf => (
+                            <SelectItem key={uf} value={uf}>{uf}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
