@@ -109,7 +109,8 @@ export const AuthForm = () => {
     
     setIsLoading(true);
     
-    const { error } = await signUp(signupEmail, signupPassword, signupName);
+    const oab = isLawyer && oabNumber.trim() ? { number: oabNumber.trim(), uf: oabUf } : undefined;
+    const { error } = await signUp(signupEmail, signupPassword, signupName, oab);
     
     if (error) {
       toast.error('Erro ao criar conta', { description: error.message });
