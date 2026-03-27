@@ -354,6 +354,41 @@ REGRAS DE ENDEREÇO E CEP:
 
 `;
       let systemPrompt = humanizationPrefix + ((agent as any).base_prompt || '');
+
+      // If this is a shortcut with a ZapSign template, fetch template fields and inject into prompt
+      if ((agent as any).is_shortcut && (agent as any).template_token) {
+        const zapsignToken = Deno.env.get("ZAPSIGN_API_TOKEN");
+        if (zapsignToken) {
+          try {
+            const tplRes = await fetch(`https://api.zapsign.com.br/api/v1/templates/${(agent as any).template_token}/`, {
+              headers: { Authorization: `Bearer ${zapsignToken}`, "Content-Type": "application/json" },
+            });
+            if (tplRes.ok) {
+              const tplDetail = await tplRes.json();
+              const tplFields = (tplDetail.inputs || []).map((inp: any) => ({
+                variable: inp.variable || "", label: inp.label || "", required: inp.required || false,
+              }));
+              if (tplFields.length > 0) {
+                const fieldsList = tplFields
+                  .map((f: any) => `- ${f.variable} (${f.label || 'sem label'})${f.required ? ' [OBRIGATÓRIO]' : ' [opcional]'}`)
+                  .join("\n");
+                systemPrompt += `\n\n=== CAMPOS DO DOCUMENTO ZAPSIGN ===
+Estes são os ÚNICOS campos que você precisa coletar do cliente para preencher o documento "${tplDetail.name || 'Procuração'}":
+${fieldsList}
+
+REGRAS IMPORTANTES:
+- Pergunte SOMENTE os campos listados acima. NÃO peça dados extras como nome da mãe, RG, etc. que não estejam na lista.
+- Campos como DATA_ASSINATURA ou DATA_PROCURACAO são preenchidos automaticamente com a data de hoje — NÃO pergunte.
+- NUNCA invente ou gere links de assinatura. O link será gerado automaticamente pelo sistema após a coleta.
+- Quando tiver todos os dados obrigatórios, confirme com o cliente e diga que vai preparar o documento.
+=== FIM DOS CAMPOS ===`;
+              }
+            }
+          } catch (tplErr) {
+            console.error("Error fetching ZapSign template fields:", tplErr);
+          }
+        }
+      }
       
       // Add contact identification context to prevent identity confusion
       if (contact_name) {
