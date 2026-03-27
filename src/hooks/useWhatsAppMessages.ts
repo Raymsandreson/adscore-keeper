@@ -759,8 +759,14 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           setRealtimeHealthy(false);
-          console.warn(`Realtime channel status: ${status}, forcing refetch/reconnect`);
-          fetchMessages(true);
+          // Throttle: only refetch if last error-driven fetch was > 30s ago
+          const now = Date.now();
+          const lastErrorFetch = (window as any).__lastRealtimeErrorFetch || 0;
+          if (now - lastErrorFetch > 30000) {
+            (window as any).__lastRealtimeErrorFetch = now;
+            console.warn(`Realtime channel status: ${status}, refetching`);
+            fetchMessages(true);
+          }
           scheduleRetry();
         }
       });
