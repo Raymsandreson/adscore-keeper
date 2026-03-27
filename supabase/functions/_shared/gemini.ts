@@ -38,8 +38,8 @@ function cleanParametersForGoogle(params: any): any {
     }
     cleaned.properties = newProps;
   }
-  // Remove additionalProperties as Google may not support it
-  // delete cleaned.additionalProperties; // Actually Google does support this
+  // Remove additionalProperties — Google Gemini rejects it
+  delete cleaned.additionalProperties;
   return cleaned;
 }
 
