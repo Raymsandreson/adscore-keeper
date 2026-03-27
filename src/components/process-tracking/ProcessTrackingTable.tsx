@@ -147,6 +147,9 @@ export function ProcessTrackingTable({ records, loading, searchTerm, onUpdate }:
 
   return (
     <div className="p-0">
+      <div className="px-3 py-2 text-xs text-muted-foreground border-b border-border">
+        Dica: dê duplo clique em uma linha para editar manualmente os campos.
+      </div>
       <div
         ref={topScrollRef}
         onScroll={handleTopScroll}
@@ -160,11 +163,11 @@ export function ProcessTrackingTable({ records, loading, searchTerm, onUpdate }:
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="min-w-[180px] sticky left-0 bg-background z-10">Cliente</TableHead>
+                <TableHead className="min-w-[180px] sticky left-0 bg-background z-20">Cliente</TableHead>
                 {COLUMNS.slice(1).map(col => (
                   <TableHead key={col.key} style={{ minWidth: col.minW }}>{col.label}</TableHead>
                 ))}
-                <TableHead className="w-20">Ações</TableHead>
+                <TableHead className="w-20 sticky right-0 bg-background z-20 border-l">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -182,14 +185,18 @@ export function ProcessTrackingTable({ records, loading, searchTerm, onUpdate }:
                 </TableRow>
               ) : (
                 filteredRecords.map(record => (
-                  <TableRow key={record.id} className="hover:bg-muted/50">
+                  <TableRow
+                    key={record.id}
+                    className="hover:bg-muted/50"
+                    onDoubleClick={() => editingId !== record.id && startEdit(record)}
+                  >
                     <TableCell className="font-medium sticky left-0 bg-background z-10">
                       {renderCell(record, COLUMNS[0])}
                     </TableCell>
                     {COLUMNS.slice(1).map(col => (
                       <TableCell key={col.key}>{renderCell(record, col)}</TableCell>
                     ))}
-                    <TableCell>
+                    <TableCell className="sticky right-0 bg-background z-10 border-l">
                       {editingId === record.id ? (
                         <div className="flex gap-1">
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={saveEdit} disabled={saving}>
