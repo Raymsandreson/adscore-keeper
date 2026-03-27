@@ -1542,7 +1542,7 @@ Deno.serve(async (req) => {
     // Works for both outbound (fromMe) messages. Uses the shortcuts table as single source of truth.
     if (direction === 'outbound' && instanceName && phone && messageText) {
       const trimmedCmd = (messageText || '').trim()
-      const hashNameMatch = trimmedCmd.match(/^#([a-z0-9_]+)$/i)
+      const hashNameMatch = trimmedCmd.match(/^#([a-z0-9_ ]+)$/i)
       // Skip control commands handled below (#parar, #ativar, #status)
       const controlCommands = ['parar', 'ativar', 'status', 'limpar']
       
