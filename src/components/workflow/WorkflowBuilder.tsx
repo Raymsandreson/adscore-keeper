@@ -126,6 +126,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     }
   }, [open, initialEditBoardId, boards.length]);
 
+  // Auto-open new workflow creation
+  useEffect(() => {
+    if (open && initialCreateNew && viewMode === 'list' && !initialEditBoardId) {
+      handleNewWorkflow();
+    }
+  }, [open, initialCreateNew]);
+
   const resetForm = () => {
     setFormName('');
     setFormDescription('');
