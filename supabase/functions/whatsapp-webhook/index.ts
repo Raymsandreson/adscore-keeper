@@ -1970,7 +1970,7 @@ Deno.serve(async (req) => {
             }
           }
 
-
+          const respData = {
             success: true,
             message_id: message.id,
             agent_command: resolvedControlCommand,
