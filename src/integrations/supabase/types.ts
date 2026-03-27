@@ -7463,6 +7463,7 @@ export type Database = {
       }
       wjia_collection_sessions: {
         Row: {
+          agent_id: string | null
           collected_data: Json | null
           contact_id: string | null
           created_at: string | null
@@ -7479,6 +7480,7 @@ export type Database = {
           request_documents: boolean | null
           required_fields: Json | null
           send_signed_pdf: boolean
+          shortcut_name: string | null
           sign_url: string | null
           status: string | null
           template_name: string | null
@@ -7487,6 +7489,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          agent_id?: string | null
           collected_data?: Json | null
           contact_id?: string | null
           created_at?: string | null
@@ -7503,6 +7506,7 @@ export type Database = {
           request_documents?: boolean | null
           required_fields?: Json | null
           send_signed_pdf?: boolean
+          shortcut_name?: string | null
           sign_url?: string | null
           status?: string | null
           template_name?: string | null
@@ -7511,6 +7515,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          agent_id?: string | null
           collected_data?: Json | null
           contact_id?: string | null
           created_at?: string | null
@@ -7527,6 +7532,7 @@ export type Database = {
           request_documents?: boolean | null
           required_fields?: Json | null
           send_signed_pdf?: boolean
+          shortcut_name?: string | null
           sign_url?: string | null
           status?: string | null
           template_name?: string | null
