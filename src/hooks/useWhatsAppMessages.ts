@@ -634,6 +634,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   useEffect(() => {
     if (instances.length > 0) {
       fetchInstanceStats();
+      // Auto-load conversations when instances are ready
+      if (!hasLoaded) {
+        fetchMessages(true);
+      }
     }
   }, [instances, fetchInstanceStats]);
 
