@@ -797,6 +797,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
   // Load all messages for a specific conversation (when selected)
   const fetchFullConversation = useCallback(async (phone: string) => {
+    activePhoneRef.current = phone;
     try {
       // Paginate to get ALL messages for this phone (up to 3000)
       const allMsgs: WhatsAppMessage[] = [];
