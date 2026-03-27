@@ -1917,7 +1917,62 @@ Deno.serve(async (req) => {
             }
           }
 
-          const respData = {
+          } else if (resolvedControlCommand === '#limpar') {
+            if (direction === 'outbound') {
+              console.log(`#limpar command: clearing conversation for phone=${phone}, instance=${instanceName}`)
+
+              // 1. Delete all messages for this phone+instance
+              const { error: delErr, count: delCount } = await supabase
+                .from('whatsapp_messages')
+                .delete({ count: 'exact' })
+                .eq('phone', phone)
+                .eq('instance_name', instanceName)
+              console.log(`Deleted ${delCount ?? 0} messages, error:`, delErr)
+
+              // 2. Cancel active collection sessions
+              await supabase
+                .from('wjia_collection_sessions')
+                .update({ status: 'cancelled' })
+                .eq('phone', phone)
+                .eq('instance_name', instanceName)
+                .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready'])
+
+              // 3. Deactivate conversation agents
+              await supabase
+                .from('whatsapp_conversation_agents')
+                .update({ is_active: false })
+                .eq('phone', phone)
+                .eq('instance_name', instanceName)
+                .eq('is_active', true)
+
+              // 4. Send confirmation and delete it after 2s
+              const creds = await getInstanceCreds()
+              if (creds.token && creds.baseUrl) {
+                try {
+                  const confirmResp = await fetch(`${creds.baseUrl}/send/text`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'token': creds.token },
+                    body: JSON.stringify({ number: phone, text: '✅ Conversa limpa.' }),
+                  })
+                  const confirmData = await confirmResp.json()
+                  const confirmMsgId = confirmData?.key?.id || confirmData?.messageId
+                  if (confirmMsgId) {
+                    // Wait 2s then delete the confirmation message
+                    await new Promise(r => setTimeout(r, 2000))
+                    await fetch(`${creds.baseUrl}/message/delete`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'token': creds.token },
+                      body: JSON.stringify({ id: confirmMsgId }),
+                    })
+                  }
+                } catch (e) {
+                  console.error('Error sending/deleting #limpar confirmation:', e)
+                }
+              }
+            }
+          }
+
+
             success: true,
             message_id: message.id,
             agent_command: resolvedControlCommand,
