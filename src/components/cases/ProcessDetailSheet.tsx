@@ -396,13 +396,13 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             {activeTab === 'datas' && (
               <>
                 <EditableField label="Ano de Início" value={form.ano_inicio != null ? String(form.ano_inicio) : ''} onChange={v => set('ano_inicio', v)} type="number" />
-                <EditableField label="Data de Início" value={form.data_inicio || ''} onChange={v => set('data_inicio', v)} />
-                <EditableField label="Data de Distribuição" value={form.data_distribuicao || ''} onChange={v => set('data_distribuicao', v)} />
-                <EditableField label="Data Início na Fonte" value={form.fonte_data_inicio || ''} onChange={v => set('fonte_data_inicio', v)} />
-                <EditableField label="Data Fim na Fonte" value={form.fonte_data_fim || ''} onChange={v => set('fonte_data_fim', v)} />
-                <EditableField label="Última Movimentação" value={form.data_ultima_movimentacao || ''} onChange={v => set('data_ultima_movimentacao', v)} />
-                <EditableField label="Data de Arquivamento" value={form.data_arquivamento || ''} onChange={v => set('data_arquivamento', v)} />
-                <EditableField label="Última Verificação" value={form.data_ultima_verificacao || ''} onChange={v => set('data_ultima_verificacao', v)} />
+                <EditableField label="Data de Início" value={form.data_inicio || ''} onChange={v => set('data_inicio', v)} isDate />
+                <EditableField label="Data de Distribuição" value={form.data_distribuicao || ''} onChange={v => set('data_distribuicao', v)} isDate />
+                <EditableField label="Data Início na Fonte" value={form.fonte_data_inicio || ''} onChange={v => set('fonte_data_inicio', v)} isDate />
+                <EditableField label="Data Fim na Fonte" value={form.fonte_data_fim || ''} onChange={v => set('fonte_data_fim', v)} isDate />
+                <EditableField label="Última Movimentação" value={form.data_ultima_movimentacao || ''} onChange={v => set('data_ultima_movimentacao', v)} isDate />
+                <EditableField label="Data de Arquivamento" value={form.data_arquivamento || ''} onChange={v => set('data_arquivamento', v)} isDate />
+                <EditableField label="Última Verificação" value={form.data_ultima_verificacao || ''} onChange={v => set('data_ultima_verificacao', v)} isDate />
                 <EditableField label="Qtd. Movimentações" value={form.quantidade_movimentacoes != null ? String(form.quantidade_movimentacoes) : ''} onChange={v => set('quantidade_movimentacoes', v)} type="number" icon={Hash} />
               </>
             )}
