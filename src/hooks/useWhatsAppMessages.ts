@@ -242,45 +242,84 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     if (!silent) setLoading(true);
 
     try {
-      // When viewing all instances, fetch per-instance to avoid one busy instance
-      // pushing out messages from quieter ones
-      if (!selectedInstanceId || selectedInstanceId === 'all') {
-        const perInstanceLimit = Math.max(500, Math.floor(2000 / Math.max(instances.length, 1)));
-        const allResults = await Promise.all(
-          instances.map(inst =>
-            supabase
-              .from('whatsapp_messages')
-              .select('*')
-              .ilike('instance_name', inst.instance_name)
-              .order('created_at', { ascending: false })
-              .limit(perInstanceLimit)
-              .then(r => r.data || [])
-          )
-        );
-        const data = allResults.flat().sort((a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
-        processMessages(data as WhatsAppMessage[], silent);
-      } else {
-        const inst = instances.find(i => i.id === selectedInstanceId);
+      // Use the efficient DB function to get conversation summaries
+      // This returns ALL conversations, not just the most recent N messages
+      const targetInstances = (!selectedInstanceId || selectedInstanceId === 'all')
+        ? instances
+        : instances.filter(i => i.id === selectedInstanceId);
 
+      if (targetInstances.length === 0) {
+        processMessages([], silent);
+        return;
+      }
+
+      // Trigger sync for selected instance
+      if (selectedInstanceId && selectedInstanceId !== 'all') {
+        const inst = instances.find(i => i.id === selectedInstanceId);
         if (inst) {
           await syncRecentMessages(inst, !realtimeHealthy);
         }
+      }
 
-        let query = supabase
+      const instanceNames = targetInstances.map(i => i.instance_name);
+
+      // Use the DB function to get conversation summaries efficiently
+      const { data: summaries, error: sumError } = await supabase
+        .rpc('get_conversation_summaries', { p_instance_names: instanceNames });
+
+      if (sumError) {
+        console.error('Error fetching conversation summaries:', sumError);
+        // Fallback to old approach
+        const fallbackQuery = supabase
           .from('whatsapp_messages')
           .select('*')
+          .in('instance_name', instanceNames)
           .order('created_at', { ascending: false })
           .limit(2000);
-
-        if (inst) {
-          query = query.ilike('instance_name', inst.instance_name);
-        }
-
-        const { data, error } = await query;
+        const { data, error } = await fallbackQuery;
         if (error) throw error;
         processMessages((data || []) as WhatsAppMessage[], silent);
+        return;
+      }
+
+      // Build conversations from summaries - each summary IS the latest message per phone
+      const convList: WhatsAppConversation[] = (summaries || []).map((s: any) => ({
+        phone: s.phone,
+        contact_name: s.contact_name,
+        contact_id: s.contact_id,
+        lead_id: s.lead_id,
+        last_message: s.last_message_text,
+        last_message_at: s.last_message_at,
+        unread_count: Number(s.unread_count) || 0,
+        messages: [{
+          id: `summary-${s.phone}-${s.instance_name}`,
+          phone: s.phone,
+          contact_name: s.contact_name,
+          message_text: s.last_message_text,
+          message_type: 'text',
+          media_url: null,
+          media_type: null,
+          direction: s.last_direction || 'inbound',
+          status: 'received',
+          contact_id: s.contact_id,
+          lead_id: s.lead_id,
+          external_message_id: null,
+          metadata: null,
+          created_at: s.last_message_at,
+          read_at: null,
+          instance_name: s.instance_name,
+          instance_token: null,
+        }] as WhatsAppMessage[],
+        instance_name: s.instance_name,
+      }));
+
+      conversationsRef.current = convList;
+      setConversations(convList);
+      setMessages(convList.map(c => c.messages[0]));
+      setHasLoaded(true);
+
+      if (!silent && convList.length > 0) {
+        toast.success(`${convList.length} conversas carregadas`);
       }
     } catch (error) {
       console.error('Error fetching WhatsApp messages:', error);
