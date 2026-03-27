@@ -492,6 +492,11 @@ Deno.serve(async (req) => {
       console.log('Skipping document forwarding. groupId:', groupId, 'docTypes:', settings?.forward_document_types, 'hasLead:', !!leadData)
     }
 
+    // Always forward conversation media (inbound images/documents) + signed ZapSign docs to the group
+    if (groupId && leadData) {
+      await forwardConversationMedia(supabase, leadData, normalizedPhone || (contact_phone || phone || '').replace(/\D/g, ''), groupId, baseUrl, creatorInstance)
+    }
+
     return new Response(JSON.stringify({
       success: true,
       group_id: groupId,
