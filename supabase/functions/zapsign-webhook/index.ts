@@ -543,13 +543,44 @@ Deno.serve(async (req) => {
               
               const leadPhone = (leadForBoard.lead_phone || localDoc.whatsapp_phone || '').replace(/\D/g, '')
               
-              // Find the first linked instance for this board
-              const { data: boardInst } = await supabase
-                .from('board_group_instances')
-                .select('instance_id')
-                .eq('board_id', leadForBoard.board_id)
-                .limit(1)
-                .maybeSingle()
+              // Resolve the correct instance: prefer the one that originated the conversation (created_by user's default instance)
+              let creatorInstanceId: string | null = null
+
+              // 1. Try to resolve from the document's instance_name
+              if (localDoc.instance_name) {
+                const { data: docInst } = await supabase
+                  .from('whatsapp_instances')
+                  .select('id')
+                  .eq('instance_name', localDoc.instance_name)
+                  .eq('is_active', true)
+                  .maybeSingle()
+                if (docInst) creatorInstanceId = docInst.id
+              }
+
+              // 2. Fallback: resolve from the document creator's default_instance_id
+              if (!creatorInstanceId && localDoc.created_by) {
+                const { data: creatorProfile } = await supabase
+                  .from('profiles')
+                  .select('default_instance_id')
+                  .eq('user_id', localDoc.created_by)
+                  .maybeSingle()
+                if (creatorProfile?.default_instance_id) {
+                  creatorInstanceId = creatorProfile.default_instance_id
+                }
+              }
+
+              // 3. Final fallback: first board instance
+              if (!creatorInstanceId) {
+                const { data: boardInst } = await supabase
+                  .from('board_group_instances')
+                  .select('instance_id')
+                  .eq('board_id', leadForBoard.board_id)
+                  .limit(1)
+                  .maybeSingle()
+                creatorInstanceId = boardInst?.instance_id || null
+              }
+
+              console.log(`[zapsign-webhook] Resolved creator instance: ${creatorInstanceId} (from doc instance_name: ${localDoc.instance_name}, created_by: ${localDoc.created_by})`)
 
               const groupRes = await fetch(`${supabaseUrl}/functions/v1/create-whatsapp-group`, {
                 method: 'POST',
@@ -562,7 +593,7 @@ Deno.serve(async (req) => {
                   lead_name: leadForBoard.lead_name || 'Lead',
                   board_id: leadForBoard.board_id,
                   contact_phone: leadPhone,
-                  creator_instance_id: boardInst?.instance_id || null,
+                  creator_instance_id: creatorInstanceId,
                   lead_id: localDoc.lead_id,
                 }),
               })
