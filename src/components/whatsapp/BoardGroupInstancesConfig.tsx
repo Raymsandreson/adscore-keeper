@@ -33,6 +33,7 @@ interface GroupSettings {
   lead_fields: string[];
   initial_message_template: string;
   use_ai_message: boolean;
+  ai_generated_message: string;
   forward_document_types: string[];
   send_audio_message: boolean;
   audio_voice_id: string;
@@ -104,6 +105,7 @@ export function BoardGroupInstancesConfig() {
     lead_fields: ['lead_name'],
     initial_message_template: '',
     use_ai_message: false,
+    ai_generated_message: '',
     forward_document_types: [],
     send_audio_message: false,
     audio_voice_id: '',
@@ -174,19 +176,28 @@ export function BoardGroupInstancesConfig() {
         lead_fields: data.lead_fields || ['lead_name'],
         initial_message_template: data.initial_message_template || '',
         use_ai_message: data.use_ai_message || false,
+        ai_generated_message: data.ai_generated_message || '',
         forward_document_types: data.forward_document_types || [],
         send_audio_message: data.send_audio_message || false,
         audio_voice_id: data.audio_voice_id || '',
         auto_close_lead_on_sign: data.auto_close_lead_on_sign || false,
         auto_create_group_on_sign: data.auto_create_group_on_sign || false,
       });
+      // Load saved AI message model into preview
+      if (data.ai_generated_message) {
+        setPreviewMessage(data.ai_generated_message);
+      } else {
+        setPreviewMessage(null);
+      }
     } else {
       setSettings({
         group_name_prefix: '', sequence_start: 1, current_sequence: 0, lead_fields: ['lead_name'],
-        initial_message_template: '', use_ai_message: false, forward_document_types: [],
+        initial_message_template: '', use_ai_message: false, ai_generated_message: '',
+        forward_document_types: [],
         send_audio_message: false, audio_voice_id: '',
         auto_close_lead_on_sign: false, auto_create_group_on_sign: false,
       });
+      setPreviewMessage(null);
     }
   };
 
