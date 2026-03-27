@@ -362,10 +362,16 @@ const ProcessTrackingPage = () => {
         </CardContent>
       </Card>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input className="pl-9" placeholder="Buscar por cliente, caso, CPF ou nº processo..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+      {/* Search + New */}
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input className="pl-9" placeholder="Buscar por cliente, caso, CPF ou nº processo..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+        </div>
+        <Button onClick={() => { setNewRecord({}); setShowNewRecordDialog(true); }} className="gap-2">
+          <Plus className="h-4 w-4" />
+          Novo Registro
+        </Button>
       </div>
 
       {/* Tabs: Trabalhista / Previdenciário */}
