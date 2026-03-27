@@ -859,6 +859,30 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     activePhoneRef.current = null;
   }, []);
 
+  const clearConversation = async (phone: string, instanceName?: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+        body: {
+          action: 'clear_conversation',
+          phone,
+          instance_name: instanceName || undefined,
+        },
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      // Remove from local state
+      setMessages(prev => prev.filter(m => m.phone !== phone));
+      setConversations(prev => prev.filter(c => c.phone !== phone));
+      toast.success('Conversa limpa com sucesso!');
+      return true;
+    } catch (error: any) {
+      console.error('Error clearing conversation:', error);
+      toast.error('Erro ao limpar conversa: ' + (error.message || 'Erro desconhecido'));
+      return false;
+    }
+  };
+
   return {
     messages,
     conversations,
@@ -871,6 +895,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     sendMedia,
     sendLocation,
     deleteMessage,
+    clearConversation,
     markAsRead,
     linkToLead,
     linkToContact,

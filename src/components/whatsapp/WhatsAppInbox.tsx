@@ -59,7 +59,7 @@ interface ConvShare {
 // Force clean rebuild
 export function WhatsAppInbox() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
-  const { conversations, loading, instances, instanceStats, statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, markAsRead, linkToLead, linkToContact, refetch, refetchStats, fetchFullConversation } = useWhatsAppMessages(selectedInstanceId);
+  const { conversations, loading, instances, instanceStats, statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, linkToLead, linkToContact, refetch, refetchStats, fetchFullConversation } = useWhatsAppMessages(selectedInstanceId);
   const { statuses, disconnectedInstances, loading: statusLoading, refetchStatus } = useWhatsAppInstanceStatus(instances.length > 0);
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const [reconnectInstance, setReconnectInstance] = useState<{ id: string; name: string } | null>(null);
@@ -945,6 +945,7 @@ export function WhatsAppInbox() {
                 setPrivateConvs((data || []) as PrivateConv[]);
               }}
               onOpenChat={(phone) => setSelectedPhone(phone)}
+              onClearConversation={clearConversation}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center bg-muted/20">

@@ -81,9 +81,10 @@ interface Props {
   shareInfo?: ConvShareInfo | null;
   onUpdateWithAI?: () => void;
   onOpenChat?: (phone: string) => void;
+  onClearConversation?: (phone: string, instanceName?: string) => Promise<boolean>;
 }
 
-export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat }: Props) {
+export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation }: Props) {
   const { profile } = useAuthContext();
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -920,6 +921,18 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                 <DropdownMenuItem onClick={handleCreateGroup} disabled={creatingGroup} className="gap-2">
                   {creatingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
                   Criar Grupo WhatsApp
+                </DropdownMenuItem>
+              )}
+              {onClearConversation && (
+                <DropdownMenuItem
+                  onClick={async () => {
+                    if (confirm('Tem certeza que deseja limpar todos os dados desta conversa? Esta ação não pode ser desfeita.')) {
+                      await onClearConversation(conversation.phone, conversation.instance_name);
+                    }
+                  }}
+                  className="gap-2 text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" /> Limpar Conversa
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
