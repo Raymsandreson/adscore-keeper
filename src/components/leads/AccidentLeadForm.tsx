@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLeadSources } from '@/hooks/useLeadSources';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -110,20 +111,11 @@ const sectors = [
   'Outro',
 ];
 
-const sources = [
-  { value: 'manual', label: 'Manual' },
-  { value: 'instagram', label: 'Instagram' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'form', label: 'Formulário' },
-  { value: 'referral', label: 'Indicação' },
-  { value: 'facebook', label: 'Facebook' },
-  { value: 'noticia', label: 'Notícia' },
-  { value: 'prospecção', label: 'Prospecção Ativa' },
-  { value: 'cat_import', label: 'CAT' },
-];
+// Sources are now loaded from the database via useLeadSources
 
 export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMembers = [], classifications = [] }: AccidentLeadFormProps) {
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
+  const { sources: leadSources } = useLeadSources();
   const { loading: geoLoading, fetchLocation } = useGeolocation();
 
   const handleAutoLocation = async () => {
@@ -234,7 +226,7 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {sources.map((s) => (
+                  {leadSources.map((s) => (
                     <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
                   ))}
                 </SelectContent>

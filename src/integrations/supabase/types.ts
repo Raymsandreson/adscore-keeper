@@ -4188,6 +4188,33 @@ export type Database = {
           },
         ]
       }
+      lead_sources: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          is_active: boolean
+          label: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          label: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          label?: string
+          value?: string
+        }
+        Relationships: []
+      }
       lead_stage_history: {
         Row: {
           changed_at: string
