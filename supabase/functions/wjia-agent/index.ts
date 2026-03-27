@@ -813,7 +813,16 @@ REGRAS:
   // Sanitize AI reply: strip any hallucinated URLs (real links are sent by the system)
   if (result.reply_to_client) {
     result.reply_to_client = result.reply_to_client
-      .replace(/https?:\/\/[^\s\])}]+/gi, '')
+      // Remove full URLs (http/https)
+      .replace(/https?:\/\/[^\s\])}>,]+/gi, '')
+      // Remove partial URLs like www.something.com or domain.com/path
+      .replace(/(?:www\.)[^\s\])}>,]+/gi, '')
+      // Remove zapsign-like fake URLs
+      .replace(/zapsign\.[^\s\])}>,]*/gi, '')
+      // Remove any remaining markdown links [text](url)
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      // Clean up leftover artifacts
+      .replace(/\(\s*\)/g, '')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
   }
