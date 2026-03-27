@@ -28,6 +28,7 @@ import { CopyableText } from '@/components/ui/copyable-text';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
+import ProcessDetailSheet from '@/components/cases/ProcessDetailSheet';
 import { CaseWorkflowBoard } from '@/components/cases/CaseWorkflowBoard';
 import {
   Dialog,
