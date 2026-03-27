@@ -1,0 +1,2 @@
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS voice_id text DEFAULT NULL;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS voice_name text DEFAULT NULL;
