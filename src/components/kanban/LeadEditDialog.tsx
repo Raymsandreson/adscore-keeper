@@ -728,7 +728,7 @@ ${scrapeData.content || ''}
         }
       } else if (leadOutcome === 'refused') {
         await supabase.from('leads').update({ lead_status: 'refused' } as any).eq('id', lead.id);
-      } else if (leadOutcome !== 'closed' && leadOutcome !== 'refused' && (lead as any).became_client_date) {
+      } else if ((lead as any).became_client_date) {
         // Was closed, now reopened
         await supabase.from('leads').update({ lead_status: 'active' } as any).eq('id', lead.id);
       }
