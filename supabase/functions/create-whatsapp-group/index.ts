@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { geminiChat } from '../_shared/gemini.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -340,7 +341,7 @@ Deno.serve(async (req) => {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+              'Authorization': `Bearer ${supabaseKey}`,
             },
             body: JSON.stringify({
               messages: recentMessages,
@@ -620,23 +621,13 @@ REGRAS:
 7. Retorne APENAS a mensagem final, sem explicações.`
 
         try {
-          const aiRes = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/lovable-ai`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-            },
-            body: JSON.stringify({
-              model: 'google/gemini-2.5-flash',
-              messages: [{ role: 'user', content: aiPrompt }],
-              max_tokens: 4096,
-            }),
+          const aiResult = await geminiChat({
+            model: 'google/gemini-2.5-flash',
+            messages: [{ role: 'user', content: aiPrompt }],
+            max_tokens: 4096,
           })
-
-          if (aiRes.ok) {
-            const aiData = await aiRes.json()
-            messageText = aiData?.choices?.[0]?.message?.content || aiData?.content || ''
-          }
+          messageText = aiResult?.choices?.[0]?.message?.content || ''
+          console.log('AI message substitution result length:', messageText.length)
         } catch (aiErr) {
           console.error('AI message substitution error:', aiErr)
         }
@@ -666,23 +657,13 @@ ${settings.initial_message_template ? `Instruções adicionais: ${settings.initi
 Gere uma mensagem profissional e organizada com emojis, usando formatação do WhatsApp (*negrito*, _itálico_). NÃO inclua links.`
 
         try {
-          const aiRes = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/lovable-ai`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-            },
-            body: JSON.stringify({
-              model: 'google/gemini-2.5-flash',
-              messages: [{ role: 'user', content: aiPrompt }],
-              max_tokens: 2048,
-            }),
+          const aiResult = await geminiChat({
+            model: 'google/gemini-2.5-flash',
+            messages: [{ role: 'user', content: aiPrompt }],
+            max_tokens: 2048,
           })
-
-          if (aiRes.ok) {
-            const aiData = await aiRes.json()
-            messageText = aiData?.choices?.[0]?.message?.content || aiData?.content || ''
-          }
+          messageText = aiResult?.choices?.[0]?.message?.content || ''
+          console.log('AI message generation result length:', messageText.length)
         } catch (aiErr) {
           console.error('AI message generation error:', aiErr)
         }
@@ -715,6 +696,9 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
     }
 
     if (messageText) {
+      // Clean admin notes from AI output
+      messageText = messageText.replace(/⚠️\s*OBSERV[AÇ]+[ÃO]+[:\s].*$/gims, '').trim()
+      
       // Send text message
       const sendTextRes = await fetch(`${baseUrl}/send/text`, {
         method: 'POST',
