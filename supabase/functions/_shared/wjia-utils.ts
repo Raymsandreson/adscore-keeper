@@ -335,19 +335,50 @@ export async function convertImageToPdf(fileBuffer: ArrayBuffer, contentType: st
 // WHATSAPP MESSAGING
 // ============================================================
 
-export async function sendWhatsApp(supabase: any, inst: any, phone: string, instanceName: string, text: string, contactId?: string, leadId?: string, msgIdPrefix = "wjia") {
+export async function sendWhatsApp(
+  supabase: any, inst: any, phone: string, instanceName: string, text: string,
+  contactId?: string, leadId?: string, msgIdPrefix = "wjia",
+  options?: { splitMessages?: boolean; splitDelaySeconds?: number }
+) {
   if (!inst?.instance_token) return;
   const baseUrl = inst.base_url || "https://abraci.uazapi.com";
-  await fetch(`${baseUrl}/send/text`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", token: inst.instance_token },
-    body: JSON.stringify({ number: phone, text }),
-  }).catch(e => console.error("Send error:", e));
-  await supabase.from("whatsapp_messages").insert({
-    phone, instance_name: instanceName, message_text: text, message_type: "text", direction: "outbound",
-    contact_id: contactId || null, lead_id: leadId || null,
-    external_message_id: `${msgIdPrefix}_${Date.now()}`,
-  });
+
+  const shouldSplit = options?.splitMessages === true;
+  const splitDelay = (options?.splitDelaySeconds || 3) * 1000;
+
+  // Split message into parts at double-newline boundaries
+  let parts: string[] = [text];
+  if (shouldSplit && text.length > 200) {
+    const rawParts = text.split(/\n\n+/).filter(p => p.trim());
+    if (rawParts.length > 1) {
+      // Group very short parts together (min ~80 chars per message)
+      parts = [];
+      let buf = "";
+      for (const p of rawParts) {
+        if (buf && (buf.length + p.length) > 300) {
+          parts.push(buf.trim());
+          buf = p;
+        } else {
+          buf = buf ? buf + "\n\n" + p : p;
+        }
+      }
+      if (buf.trim()) parts.push(buf.trim());
+    }
+  }
+
+  for (let i = 0; i < parts.length; i++) {
+    if (i > 0) await new Promise(r => setTimeout(r, splitDelay));
+    await fetch(`${baseUrl}/send/text`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", token: inst.instance_token },
+      body: JSON.stringify({ number: phone, text: parts[i] }),
+    }).catch(e => console.error("Send error:", e));
+    await supabase.from("whatsapp_messages").insert({
+      phone, instance_name: instanceName, message_text: parts[i], message_type: "text", direction: "outbound",
+      contact_id: contactId || null, lead_id: leadId || null,
+      external_message_id: `${msgIdPrefix}_${Date.now()}_${i}`,
+    });
+  }
 }
 
 // ============================================================

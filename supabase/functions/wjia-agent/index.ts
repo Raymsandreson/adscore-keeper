@@ -543,6 +543,18 @@ async function handleFollowUp(opts: {
     console.log(`WJIA batching delay complete for ${normalizedPhone}`);
   }
 
+  // Load split message settings from shortcut config
+  let splitOpts: { splitMessages?: boolean; splitDelaySeconds?: number } | undefined;
+  if (session.shortcut_name) {
+    const { data: scSplit } = await supabase.from("wjia_command_shortcuts")
+      .select("split_messages, split_delay_seconds")
+      .eq("shortcut_name", session.shortcut_name).maybeSingle();
+    if (scSplit?.split_messages) {
+      splitOpts = { splitMessages: true, splitDelaySeconds: scSplit.split_delay_seconds || 3 };
+      console.log(`WJIA split enabled: delay=${splitOpts.splitDelaySeconds}s`);
+    }
+  }
+
   const { data: inst } = await supabase.from("whatsapp_instances").select("instance_token, base_url").eq("instance_name", instance_name).maybeSingle();
   const catalog = buildTemplateFieldCatalog(session);
   const collectedData = session.collected_data || { fields: [] };
@@ -559,7 +571,7 @@ async function handleFollowUp(opts: {
     if (session.sign_url) {
       const signerName = (session.collected_data?.signer_name || "").split(" ")[0] || "Cliente";
       const resendMsg = `📝 Aqui está o link para assinatura do documento *${session.template_name}*:\n\n👉 ${session.sign_url}\n\nÉ só clicar e seguir as instruções! 🙏`;
-      await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, resendMsg, session.contact_id, session.lead_id, "wjia_resend_link");
+      await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, resendMsg, session.contact_id, session.lead_id, "wjia_resend_link", splitOpts);
       return new Response(JSON.stringify({ active_session: true, processed: true, resent_link: true, session_id: session.id }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -658,7 +670,7 @@ async function handleFollowUp(opts: {
 
         await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
           `💬 Dados recebidos!\n\n📎 Ainda preciso que envie: *${pendingRequired.map(t => DOC_TYPE_LABELS[t] || t).join(", ")}*.\n\nSe não tiver, digite *pular*.`,
-          session.contact_id, session.lead_id, "wjia_remind");
+          session.contact_id, session.lead_id, "wjia_remind", splitOpts);
         return new Response(JSON.stringify({ active_session: true, processed: true, session_id: session.id }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } else {
@@ -672,7 +684,7 @@ async function handleFollowUp(opts: {
         }
         await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
           `${reminderParts.join("\n\n")}\n\nSe não tiver, digite *pular*.`,
-          session.contact_id, session.lead_id, "wjia_remind");
+          session.contact_id, session.lead_id, "wjia_remind", splitOpts);
         return new Response(JSON.stringify({ active_session: true, processed: true, session_id: session.id }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
@@ -906,7 +918,7 @@ REGRAS:
       updated_at: new Date().toISOString(),
     }).eq("id", session.id);
 
-    await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, replyMsg, session.contact_id, session.lead_id, "wjia_summary");
+    await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, replyMsg, session.contact_id, session.lead_id, "wjia_summary", splitOpts);
 
     return new Response(JSON.stringify({
       active_session: true, processed: true, all_collected: true, session_id: session.id,
@@ -920,7 +932,7 @@ REGRAS:
   }).eq("id", session.id);
 
   if (result.reply_to_client) {
-    await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, result.reply_to_client, session.contact_id, session.lead_id, "wjia_collect");
+    await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, result.reply_to_client, session.contact_id, session.lead_id, "wjia_collect", splitOpts);
   }
 
   return new Response(JSON.stringify({
@@ -951,7 +963,7 @@ async function handleDocumentUpload(opts: {
   if (classification.type === "invalido") {
     await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
       `⚠️ Não reconheci como documento válido. Envie: *${pendingTypes.map(t => DOC_TYPE_LABELS[t] || t).join(", ")}*`,
-      session.contact_id, session.lead_id, "wjia_invalid");
+      session.contact_id, session.lead_id, "wjia_invalid", splitOpts);
     return new Response(JSON.stringify({ active_session: true, processed: true, session_id: session.id }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
@@ -959,7 +971,7 @@ async function handleDocumentUpload(opts: {
   if (!pendingTypes.includes(classification.type) && receivedDocs.some(d => d.type === classification.type)) {
     await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
       `⚠️ Já recebi *${DOC_TYPE_LABELS[classification.type] || classification.type}*. Preciso: *${pendingTypes.map(t => DOC_TYPE_LABELS[t] || t).join(", ")}*`,
-      session.contact_id, session.lead_id, "wjia_dup");
+      session.contact_id, session.lead_id, "wjia_dup", splitOpts);
     return new Response(JSON.stringify({ active_session: true, processed: true, session_id: session.id }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
@@ -975,7 +987,7 @@ async function handleDocumentUpload(opts: {
     }).eq("id", session.id);
     await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
       `✅ *${DOC_TYPE_LABELS[assignedType] || assignedType}* recebido!\n\nAinda falta: *${newPending.map(t => DOC_TYPE_LABELS[t] || t).join(", ")}*`,
-      session.contact_id, session.lead_id, "wjia_ack");
+      session.contact_id, session.lead_id, "wjia_ack", splitOpts);
     return new Response(JSON.stringify({ active_session: true, processed: true, session_id: session.id }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
@@ -1031,7 +1043,7 @@ async function runDocExtraction(opts: {
     updated_at: new Date().toISOString(),
   }).eq("id", session.id);
 
-  await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, msg, session.contact_id, session.lead_id, "wjia_extract");
+  await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, msg, session.contact_id, session.lead_id, "wjia_extract", splitOpts);
 
   return new Response(JSON.stringify({ active_session: true, processed: true, session_id: session.id }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } });
