@@ -51,6 +51,7 @@ interface WorkflowBuilderProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onWorkflowSaved?: () => void;
+  initialEditBoardId?: string | null;
 }
 
 interface PhaseObjective {
