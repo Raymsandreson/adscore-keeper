@@ -127,7 +127,7 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
   const [teamMembers, setTeamMembers] = useState<{ user_id: string; full_name: string }[]>([]);
 
   useEffect(() => {
-    if (open) { if (!dateRangeOverride) setPeriod('today'); setHistoryOpen(false); setFilterUserId('all'); }
+    if (open) { if (!dateRangeOverride) setPeriod('today'); setHistoryOpen(false); setFilterUserId('all'); setFilterSource('all'); }
   }, [open, dateRangeOverride]);
 
   useEffect(() => {
