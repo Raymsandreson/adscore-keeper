@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -34,6 +34,8 @@ import {
   UserPlus,
   Phone,
   Smartphone,
+  Search,
+  Scale,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
