@@ -482,7 +482,11 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                 )}
                 <div className="space-y-2">
                   {processes.map(p => (
-                    <div key={p.id} className="border rounded-lg p-2.5 bg-card space-y-1">
+                    <div
+                      key={p.id}
+                      className="border rounded-lg p-2.5 bg-card space-y-1 cursor-pointer hover:bg-muted/50 transition-colors"
+                      onClick={() => setSelectedProcess(p)}
+                    >
                       <div className="flex items-center gap-2">
                         {p.process_type === 'judicial' ? (
                           <Gavel className="h-3.5 w-3.5 text-orange-500" />
@@ -502,6 +506,12 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                       )}
                       {p.workflow_name && (
                         <CopyableText as="p" copyValue={p.workflow_name} label="Fluxo" showIcon={false} className="text-[10px] text-muted-foreground">Fluxo de Trabalho: {p.workflow_name}</CopyableText>
+                      )}
+                      {p.orgao_julgador && (
+                        <p className="text-[10px] text-muted-foreground">🏛️ {p.orgao_julgador}</p>
+                      )}
+                      {p.situacao && (
+                        <Badge variant="outline" className="text-[9px]">{p.situacao}</Badge>
                       )}
                     </div>
                   ))}
