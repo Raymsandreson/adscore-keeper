@@ -244,6 +244,7 @@ serve(async (req) => {
           reply_voice_id: (shortcut as any).reply_voice_id || null,
           human_reply_pause_minutes: (shortcut as any).human_reply_pause_minutes || 10,
           is_shortcut: true,
+          template_token: (shortcut as any).template_token || null,
         };
         console.log(`Using command shortcut "${agent.name}" as agent for instance default`);
       }
