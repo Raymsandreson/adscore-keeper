@@ -105,11 +105,36 @@ Deno.serve(async (req) => {
       .select('*')
       .single()
 
-    console.log('Updated local doc:', localDoc?.id, 'status:', docData.status, 'whatsapp_phone:', localDoc?.whatsapp_phone || 'NONE')
+    console.log('Updated local doc:', localDoc?.id, 'status:', docData.status, 'whatsapp_phone:', localDoc?.whatsapp_phone || 'NONE', 'lead_id:', localDoc?.lead_id || 'NONE')
 
     if (!localDoc) {
       console.log('No local doc found for token:', docToken)
       return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    // ====================================================
+    // AUTO-RESOLVE lead_id if missing (match by whatsapp_phone)
+    // ====================================================
+    if (!localDoc.lead_id && localDoc.whatsapp_phone) {
+      const cleanPhone = localDoc.whatsapp_phone.replace(/\D/g, '')
+      console.log(`[zapsign-webhook] lead_id is NULL, trying to resolve by phone: ${cleanPhone}`)
+      
+      const { data: matchedLead } = await supabase
+        .from('leads')
+        .select('id')
+        .eq('lead_phone', cleanPhone)
+        .maybeSingle()
+
+      if (matchedLead) {
+        localDoc.lead_id = matchedLead.id
+        await supabase
+          .from('zapsign_documents')
+          .update({ lead_id: matchedLead.id })
+          .eq('id', localDoc.id)
+        console.log(`[zapsign-webhook] Resolved lead_id: ${matchedLead.id} from phone ${cleanPhone}`)
+      } else {
+        console.log(`[zapsign-webhook] No lead found for phone ${cleanPhone}`)
+      }
     }
 
     // ====================================================
