@@ -17,6 +17,7 @@ import { WhatsAppNotificationSettings } from './WhatsAppNotificationSettings';
 import { VoiceSettings } from '@/components/voice/VoiceSettings';
 import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
 import { NucleiSettings } from './NucleiSettings';
+import { AgentAutomationsTab } from './AgentAutomationsTab';
 
 interface Tab {
   id: string;
@@ -87,6 +88,15 @@ const tabs: Tab[] = [
     badge: '🆕 Novo',
     badgeVariant: 'default',
     accentColor: 'text-violet-500',
+  },
+  {
+    id: 'automations',
+    label: 'Automações',
+    icon: <Zap className="h-5 w-5" />,
+    description: 'Automações por agente IA',
+    badge: '⚡ Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-amber-500',
   },
   {
     id: 'nuclei',
@@ -240,6 +250,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'reports' && <WhatsAppReportSettings />}
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
             {activeTab === 'groups' && <BoardGroupInstancesConfig />}
+            {activeTab === 'automations' && <AgentAutomationsTab />}
             {activeTab === 'nuclei' && <NucleiSettings />}
             {activeTab === 'integration' && <WhatsAppSetupGuide />}
             {activeTab === 'logs' && <WebhookLogsViewer />}

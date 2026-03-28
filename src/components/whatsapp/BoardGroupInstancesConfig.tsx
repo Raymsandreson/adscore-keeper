@@ -7,9 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText, Volume2, Sparkles, Send, Bot, Zap } from 'lucide-react';
+import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText, Volume2, Sparkles, Send, Zap } from 'lucide-react';
 import { toast } from 'sonner';
-import { AgentAutomationRules } from './AgentAutomationRules';
 
 interface Instance {
   id: string;
@@ -99,8 +98,6 @@ export function BoardGroupInstancesConfig() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [customVoices, setCustomVoices] = useState<{id: string; name: string}[]>([]);
-  const [agents, setAgents] = useState<{id: string; name: string}[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [settings, setSettings] = useState<GroupSettings>({
     group_name_prefix: '',
     sequence_start: 1,
@@ -135,16 +132,14 @@ export function BoardGroupInstancesConfig() {
 
   const fetchData = async () => {
     setLoading(true);
-    const [boardsRes, instancesRes, voicesRes, agentsRes] = await Promise.all([
+    const [boardsRes, instancesRes, voicesRes] = await Promise.all([
       (supabase as any).from('kanban_boards').select('id, name').order('display_order'),
       (supabase as any).from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true),
       (supabase as any).from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
-      (supabase as any).from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
     ]);
     setBoards((boardsRes.data as any[]) || []);
     setInstances((instancesRes.data as any[]) || []);
     setCustomVoices((voicesRes.data || []).map((v: any) => ({ id: v.elevenlabs_voice_id, name: `🎤 ${v.name}` })));
-    setAgents((agentsRes.data as any[]) || []);
     if (boardsRes.data && boardsRes.data.length > 0) {
       setSelectedBoard(boardsRes.data[0].id);
     }
@@ -670,50 +665,6 @@ export function BoardGroupInstancesConfig() {
             )}
           </div>
 
-          {/* Agent Automations */}
-          <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
-            <div className="flex items-center gap-2">
-              <Bot className="h-4 w-4 text-primary" />
-              <h4 className="font-medium text-xs">Automações por Agente IA</h4>
-            </div>
-            <p className="text-[10px] text-muted-foreground">
-              Configure ações automáticas por agente (criar lead, contato, caso, mover etapa) com os dados coletados na conversa.
-            </p>
-
-            <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue placeholder="Selecione um agente IA..." />
-              </SelectTrigger>
-              <SelectContent>
-                {agents.map(a => (
-                  <SelectItem key={a.id} value={a.id} className="text-xs">
-                    <span className="flex items-center gap-1.5">
-                      <Bot className="h-3 w-3" />
-                      {a.name}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {selectedAgentId && (
-              <div className="border rounded-lg p-2 bg-background">
-                <AgentAutomationRules agentId={selectedAgentId} />
-              </div>
-            )}
-
-            {!selectedAgentId && agents.length > 0 && (
-              <p className="text-[10px] text-muted-foreground text-center py-2">
-                Selecione um agente acima para configurar suas automações
-              </p>
-            )}
-
-            {agents.length === 0 && (
-              <p className="text-[10px] text-muted-foreground text-center py-2">
-                Nenhum agente IA ativo encontrado
-              </p>
-            )}
-          </div>
 
           <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
             <div className="flex items-center gap-2">
