@@ -46,6 +46,7 @@ interface ConvShareInfo {
 
 interface Props {
   conversation: WhatsAppConversation;
+  onBack?: () => void;
   onSendMessage: (
     phone: string,
     message: string,
@@ -84,7 +85,7 @@ interface Props {
   onClearConversation?: (phone: string, instanceName?: string) => Promise<boolean>;
 }
 
-export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation }: Props) {
+export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation }: Props) {
   const { profile } = useAuthContext();
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
