@@ -944,6 +944,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         <div className="flex items-center gap-1 shrink-0">
           {isPrivate && <Lock className="h-4 w-4 text-amber-500" />}
           {conversation.lead_id && <Badge variant="outline" className="text-[10px] gap-1 text-blue-600 px-1.5 py-0"><Link2 className="h-3 w-3" /> Lead</Badge>}
+          {agentEnabled && activeAgentName && (
+            <Badge variant="default" className="text-[9px] gap-1 bg-emerald-600 hover:bg-emerald-700 px-1.5 py-0 cursor-pointer" onClick={handleAgentToggle}>
+              <Bot className="h-3 w-3" /> {activeAgentName}
+            </Badge>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8">
