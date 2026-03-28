@@ -650,7 +650,7 @@ export function WhatsAppInbox() {
           </Select>
         )}
 
-        <div className="w-full md:w-auto md:ml-auto flex flex-wrap md:flex-nowrap gap-1 items-center justify-end">
+        <div className="w-full md:w-auto md:ml-auto flex flex-wrap md:flex-nowrap gap-0.5 md:gap-1 items-center justify-end">
           {disconnectedInstances.length > 0 && (
             <Button
               variant="destructive"
