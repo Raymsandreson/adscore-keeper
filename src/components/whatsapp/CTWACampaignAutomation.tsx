@@ -71,7 +71,7 @@ export function CTWACampaignAutomation() {
     setLoadingCampaigns(true);
     try {
       const { data, error } = await supabase.functions.invoke('list-meta-ads', {
-        body: { accessToken, adAccountId, limit: 100 },
+        body: { accessToken, adAccountId, limit: 100, status: ['ACTIVE', 'PAUSED'] },
       });
       if (error) throw error;
       const campaigns: MetaCampaign[] = (data?.campaigns || []).map((c: any) => ({
