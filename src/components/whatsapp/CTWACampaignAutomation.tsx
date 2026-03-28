@@ -628,11 +628,10 @@ export function CTWACampaignAutomation() {
                     variant="ghost" 
                     size="sm" 
                     className="h-7 px-2 text-[10px] gap-1"
-                    onClick={() => handleToggleExpand(link)}
+                    onClick={() => handleOpenConversations(link)}
                   >
                     <MessageSquare className="h-3 w-3" />
                     {convCount > 0 && <span>{convCount}</span>}
-                    {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                   </Button>
                   {/* Pause/Resume */}
                   <Button 
@@ -649,63 +648,6 @@ export function CTWACampaignAutomation() {
                     <X className="h-3.5 w-3.5 text-destructive" />
                   </Button>
                 </div>
-              </div>
-
-              {/* Conversations panel */}
-              {isExpanded && (
-                <div className="bg-muted/50 rounded-md p-3 space-y-2">
-                  <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                    <Users className="h-3 w-3" /> Conversas ativas com este agente
-                  </div>
-                  {loadingConversations === link.id ? (
-                    <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" /> Carregando...
-                    </div>
-                  ) : conversations.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-1">Nenhuma conversa ativa.</p>
-                  ) : (
-                    <div className="space-y-1 max-h-40 overflow-y-auto">
-                      {conversations.map((conv, i) => (
-                        <div key={i} className="flex items-center justify-between bg-background rounded px-2 py-1.5">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className={`h-2 w-2 rounded-full shrink-0 ${conv.is_agent_active ? 'bg-green-500' : 'bg-muted-foreground'}`} />
-                            <span className="text-xs truncate">{conv.contact_name || conv.phone}</span>
-                          </div>
-                          <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
-                            {formatTimeAgo(conv.last_message_at)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  
-                  {/* Bulk create leads button */}
-                  <div className="pt-1 border-t border-border/50">
-                    {bulkCreating === link.id && bulkProgress ? (
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Brain className="h-3 w-3 animate-pulse" /> Analisando conversas com IA...
-                          </span>
-                          <span>{bulkProgress.created} criados / {bulkProgress.total} total</span>
-                        </div>
-                        <Progress value={bulkProgress.total > 0 ? (bulkProgress.current / bulkProgress.total) * 100 : 0} className="h-1.5" />
-                      </div>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-[10px] gap-1 w-full"
-                        onClick={() => handleBulkCreateLeads(link)}
-                        disabled={!!bulkCreating}
-                      >
-                        <UserPlus className="h-3 w-3" />
-                        Criar leads e contatos via IA (análise de conversas)
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )}
 
               {isActive && (
                 <>
