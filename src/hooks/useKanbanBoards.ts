@@ -88,6 +88,7 @@ export const useKanbanBoards = (adAccountId?: string) => {
           display_order: boards.length,
           ad_account_id: adAccountId || null,
           board_type: board.board_type || 'funnel',
+          product_service_id: board.product_service_id || null,
         } as any])
         .select()
         .single();
