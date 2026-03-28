@@ -89,7 +89,7 @@ export function CTWACampaignAutomation() {
   const [useManualInput, setUseManualInput] = useState(false);
   const [showPaused, setShowPaused] = useState(false);
   const [applyToExisting, setApplyToExisting] = useState(false);
-  const [expandedLink, setExpandedLink] = useState<string | null>(null);
+  
   const [linkConversations, setLinkConversations] = useState<Record<string, ConversationInfo[]>>({});
   const [conversationCounts, setConversationCounts] = useState<Record<string, number>>({});
   const [loadingConversations, setLoadingConversations] = useState<string | null>(null);
@@ -589,8 +589,6 @@ export function CTWACampaignAutomation() {
           const selectedBoard = boards.find(b => b.id === linkAny.board_id);
           const boardStages = selectedBoard?.stages || [];
           const isActive = linkAny.is_active !== false;
-          const isExpanded = expandedLink === link.id;
-          const conversations = linkConversations[link.id] || [];
           const convCount = conversationCounts[link.id] || 0;
 
           return (
