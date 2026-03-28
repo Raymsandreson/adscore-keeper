@@ -43,7 +43,7 @@ export function CTWACampaignAutomation() {
     setLoading(true);
     const linksRes = await supabase.from('whatsapp_agent_campaign_links').select('*');
     const agentsRes = await supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true);
-    const boardsRes = await supabase.from('kanban_boards').select('id, name, stages').eq('is_active', true);
+    const boardsRes = await supabase.from('kanban_boards').select('id, name, stages').eq('is_active', true) as any;
 
     setLinks((linksRes.data as any[]) || []);
     setAgents((agentsRes.data as Agent[]) || []);
@@ -53,35 +53,6 @@ export function CTWACampaignAutomation() {
     ((linksRes.data as any[]) || []).forEach((l: any) => {
       uniqueCampaigns.set(l.campaign_id, l.campaign_name || l.campaign_id);
     });
-
-    try {
-      const { data: instances } = await supabase
-        .from('whatsapp_instances')
-        .select('ad_account_id')
-        .eq('is_active', true)
-        .not('ad_account_id', 'is', null);
-      
-      const { data: settings } = await supabase
-        .from('whatsapp_settings')
-        .select('meta_access_token')
-        .limit(1)
-        .single();
-
-      if (instances && settings && (settings as any).meta_access_token) {
-        for (const inst of instances) {
-          try {
-            const { data } = await supabase.functions.invoke('list-meta-ads', {
-              body: { accessToken: (settings as any).meta_access_token, adAccountId: (inst as any).ad_account_id, limit: 50 }
-            });
-            if (data?.campaigns) {
-              data.campaigns.forEach((c: any) => {
-                uniqueCampaigns.set(c.campaign_id, c.campaign_name);
-              });
-            }
-          } catch { /* ignore */ }
-        }
-      }
-    } catch { /* ignore */ }
 
     setAvailableCampaigns(Array.from(uniqueCampaigns.entries()).map(([id, name]) => ({ campaign_id: id, campaign_name: name })));
     setLoading(false);
