@@ -124,6 +124,13 @@ export function CTWACampaignAutomation() {
       supabase.from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true).order('instance_name'),
     ]);
 
+    console.log('CTWA fetchData results:', { 
+      links: linksRes.data?.length, 
+      agents: agentsRes.data?.length, 
+      agentsError: agentsRes.error,
+      boards: boardsRes.data?.length, 
+      instances: instancesRes.data?.length 
+    });
     setLinks((linksRes.data as any[]) || []);
     setAgents((agentsRes.data as Agent[]) || []);
     setBoards((boardsRes.data as Board[]) || []);
@@ -181,12 +188,17 @@ export function CTWACampaignAutomation() {
       campaignName = camp?.campaign_name || addingCampaign;
     }
 
+    // Auto-detect instance from campaign destination phone
+    const camp = metaCampaigns.find(c => c.campaign_id === campaignId);
+    const detectedInstance = camp?.destination_phone ? findInstanceByPhone(camp.destination_phone) : undefined;
+
     const payload: any = {
       agent_id: addingAgent,
       campaign_id: campaignId,
       campaign_name: campaignName,
     };
-    if (addingInstance) payload.instance_id = addingInstance;
+    if (detectedInstance) payload.instance_id = detectedInstance.id;
+    else if (addingInstance) payload.instance_id = addingInstance;
 
     const { error } = await supabase.from('whatsapp_agent_campaign_links').upsert(payload, { onConflict: 'campaign_id' });
 
@@ -451,38 +463,45 @@ export function CTWACampaignAutomation() {
               </div>
             )}
 
-            {/* Instance + Agent in a row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-[10px]">Instância WhatsApp</Label>
-                <Select value={addingInstance} onValueChange={setAddingInstance}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar instância..." /></SelectTrigger>
-                  <SelectContent>
-                    {instances.map(inst => (
-                      <SelectItem key={inst.id} value={inst.id}>
-                        <span>{inst.instance_name}</span>
-                        {inst.owner_phone && <span className="text-[10px] text-muted-foreground ml-1">({inst.owner_phone})</span>}
-                      </SelectItem>
-                    ))}
-                    {instances.length === 0 && (
-                      <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhuma instância ativa</div>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+            {/* Instance info (auto-detected) */}
+            {(() => {
+              const selectedCamp = metaCampaigns.find(c => c.campaign_id === addingCampaign);
+              const detectedInstance = selectedCamp?.destination_phone ? findInstanceByPhone(selectedCamp.destination_phone) : undefined;
+              return selectedCamp?.destination_phone ? (
+                <div className="space-y-1 bg-muted/50 rounded-md p-2">
+                  <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                    <Phone className="h-3 w-3" /> Instância detectada
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium">
+                      {detectedInstance ? (
+                        <span className="flex items-center gap-1 text-green-600">
+                          ✅ {detectedInstance.instance_name} ({detectedInstance.owner_phone})
+                        </span>
+                      ) : (
+                        <span className="text-amber-600 text-xs">
+                          ⚠️ Nenhuma instância com o número {selectedCamp.destination_phone}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              ) : null;
+            })()}
 
-              <div className="space-y-1">
-                <Label className="text-[10px]">Agente IA</Label>
-                <Select value={addingAgent} onValueChange={setAddingAgent}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar agente..." /></SelectTrigger>
-                  <SelectContent>
-                    {agents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                    {agents.length === 0 && (
-                      <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum agente ativo</div>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+            {/* Agent selector */}
+            <div className="space-y-1">
+              <Label className="text-[10px]">Agente IA (exclusivo para leads desta campanha)</Label>
+              <Select value={addingAgent} onValueChange={setAddingAgent}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar agente..." /></SelectTrigger>
+                <SelectContent>
+                  {agents.length > 0 ? (
+                    agents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)
+                  ) : (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum agente ativo</div>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <Button
