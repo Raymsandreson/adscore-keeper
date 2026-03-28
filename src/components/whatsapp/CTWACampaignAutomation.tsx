@@ -619,8 +619,8 @@ export function CTWACampaignAutomation() {
                   <div className="flex items-center gap-1 text-[10px] text-muted-foreground py-1">
                     <Loader2 className="h-3 w-3 animate-spin" /> Buscando campanhas...
                   </div>
-                )
-                <Input
+                )}
+
                   className="h-8 text-xs"
                   placeholder="Ex: 123456789"
                   value={manualCampaignId}
