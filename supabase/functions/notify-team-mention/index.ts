@@ -86,9 +86,9 @@ serve(async (req) => {
     const appUrl = "https://adscore-keeper.lovable.app";
     let deepLink = appUrl;
     if (entity_type === "lead" && entity_id) {
-      deepLink = `${appUrl}/leads?openLead=${entity_id}&tab=chat-equipe`;
+      deepLink = `${appUrl}/leads?openLead=${entity_id}&tab=team_chat`;
     } else if (entity_type === "contact" && entity_id) {
-      deepLink = `${appUrl}/contacts?openContact=${entity_id}&tab=chat-equipe`;
+      deepLink = `${appUrl}/contacts?openContact=${entity_id}&tab=team_chat`;
     } else if (entity_type === "activity" && entity_id) {
       deepLink = `${appUrl}/activities?openActivity=${entity_id}`;
     }
