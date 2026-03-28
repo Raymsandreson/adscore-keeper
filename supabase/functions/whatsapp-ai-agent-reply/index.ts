@@ -153,7 +153,109 @@ serve(async (req) => {
       }
     }
 
-    // 6) If no assignment, check instance-level default agent
+    // 6) If no assignment, check campaign links by instance (for CTWA messages without explicit campaign_id)
+    if (!assignment) {
+      try {
+        // Resolve instance ID from instance_name
+        const { data: instLookup } = await supabase
+          .from("whatsapp_instances")
+          .select("id")
+          .eq("instance_name", instance_name)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (instLookup?.id) {
+          const { data: campaignLink } = await supabase
+            .from("whatsapp_agent_campaign_links")
+            .select("agent_id, campaign_name, board_id, stage_id, auto_create_lead, auto_create_contact")
+            .eq("instance_id", instLookup.id)
+            .limit(1)
+            .maybeSingle();
+
+          if (campaignLink?.agent_id) {
+            await supabase.from("whatsapp_conversation_agents").upsert({
+              phone,
+              instance_name,
+              agent_id: campaignLink.agent_id,
+              is_active: true,
+              activated_by: "campaign_instance_auto",
+            }, { onConflict: "phone,instance_name" });
+            assignment = { agent_id: campaignLink.agent_id, is_active: true };
+            console.log(`Auto-assigned agent ${campaignLink.agent_id} via campaign link for instance ${instance_name}`);
+
+            // Auto-create lead if configured and no lead exists
+            if (campaignLink.auto_create_lead && !lead_id && campaignLink.board_id) {
+              try {
+                let stageId = campaignLink.stage_id;
+                if (!stageId) {
+                  const { data: board } = await supabase
+                    .from("kanban_boards")
+                    .select("stages")
+                    .eq("id", campaignLink.board_id)
+                    .single();
+                  const stages = (board as any)?.stages || [];
+                  if (stages.length > 0) stageId = stages[0].id;
+                }
+
+                const leadName = contact_name || `WhatsApp ${phone}`;
+                const { data: newLead } = await supabase
+                  .from("leads")
+                  .insert({
+                    lead_name: leadName,
+                    lead_phone: phone,
+                    board_id: campaignLink.board_id,
+                    status: stageId || "new",
+                    source: "ctwa_whatsapp",
+                    ad_name: campaignLink.campaign_name || null,
+                  })
+                  .select("id")
+                  .single();
+
+                if (newLead) {
+                  console.log(`Auto-created lead ${newLead.id} via campaign instance link`);
+                  
+                  // Auto-create contact if configured
+                  if (campaignLink.auto_create_contact) {
+                    const { data: newContact } = await supabase
+                      .from("contacts")
+                      .insert({
+                        full_name: leadName,
+                        phone,
+                        lead_id: newLead.id,
+                        classification: "lead",
+                      })
+                      .select("id")
+                      .single();
+
+                    if (newContact) {
+                      // Link contact to lead
+                      await supabase.from("contact_leads").insert({
+                        contact_id: newContact.id,
+                        lead_id: newLead.id,
+                        relationship_to_victim: "Vítima",
+                      });
+                      // Update message with contact_id
+                      await supabase.from("whatsapp_messages")
+                        .update({ contact_id: newContact.id, lead_id: newLead.id })
+                        .eq("phone", phone)
+                        .eq("instance_name", instance_name)
+                        .is("contact_id", null);
+                      console.log(`Auto-created contact ${newContact.id} via campaign instance link`);
+                    }
+                  }
+                }
+              } catch (autoErr) {
+                console.error("Campaign auto-create lead error:", autoErr);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Campaign instance lookup error:", e);
+      }
+    }
+
+    // 7) If no assignment, check instance-level default agent
     if (!assignment) {
       const { data: instanceData } = await supabase
         .from("whatsapp_instances")
