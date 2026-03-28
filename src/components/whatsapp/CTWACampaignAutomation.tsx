@@ -7,10 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Megaphone, Target, Sparkles, FolderKanban, Plus, X, Loader2, RefreshCw, Phone, 
-  Pause, Play, ChevronDown, ChevronUp, MessageSquare, Users, UserPlus, Brain 
+  Pause, Play, ChevronDown, ChevronUp, MessageSquare, Users, UserPlus, Brain, ExternalLink 
 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
@@ -57,7 +58,18 @@ interface ConversationInfo {
   contact_name: string | null;
   last_message_at: string | null;
   is_agent_active: boolean;
+  has_lead: boolean;
+  has_contact: boolean;
+  lead_status: string | null;
+  lead_name: string | null;
+  instance_name: string | null;
+  was_responded: boolean;
+  response_time_minutes: number | null;
+  message_count: number;
 }
+
+type ConvResponseFilter = 'all' | 'responded' | 'waiting';
+type ConvLeadFilter = 'all' | 'has_lead' | 'no_lead' | 'closed' | 'refused' | 'funnel';
 
 export function CTWACampaignAutomation() {
   const [links, setLinks] = useState<CampaignLink[]>([]);
