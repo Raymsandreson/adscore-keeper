@@ -135,14 +135,16 @@ export function BoardGroupInstancesConfig() {
 
   const fetchData = async () => {
     setLoading(true);
-    const [boardsRes, instancesRes, voicesRes] = await Promise.all([
+    const [boardsRes, instancesRes, voicesRes, agentsRes] = await Promise.all([
       (supabase as any).from('kanban_boards').select('id, name').order('display_order'),
       (supabase as any).from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true),
       (supabase as any).from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
+      (supabase as any).from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
     ]);
     setBoards((boardsRes.data as any[]) || []);
     setInstances((instancesRes.data as any[]) || []);
     setCustomVoices((voicesRes.data || []).map((v: any) => ({ id: v.elevenlabs_voice_id, name: `🎤 ${v.name}` })));
+    setAgents((agentsRes.data as any[]) || []);
     if (boardsRes.data && boardsRes.data.length > 0) {
       setSelectedBoard(boardsRes.data[0].id);
     }
