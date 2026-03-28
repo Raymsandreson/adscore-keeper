@@ -124,6 +124,13 @@ export function CTWACampaignAutomation() {
       supabase.from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true).order('instance_name'),
     ]);
 
+    console.log('CTWA fetchData results:', { 
+      links: linksRes.data?.length, 
+      agents: agentsRes.data?.length, 
+      agentsError: agentsRes.error,
+      boards: boardsRes.data?.length, 
+      instances: instancesRes.data?.length 
+    });
     setLinks((linksRes.data as any[]) || []);
     setAgents((agentsRes.data as Agent[]) || []);
     setBoards((boardsRes.data as Board[]) || []);
