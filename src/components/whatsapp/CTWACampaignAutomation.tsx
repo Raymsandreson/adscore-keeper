@@ -56,8 +56,13 @@ export function CTWACampaignAutomation() {
         const selectedIds = localStorage.getItem('meta_selected_account_ids');
         const selectedId = selectedIds ? JSON.parse(selectedIds)?.[0] : localStorage.getItem('meta_selected_account');
         const selected = accounts.find((a: any) => a.id === selectedId) || accounts[0];
-        return { accessToken: selected?.accessToken, adAccountId: selected?.adAccountId };
-      } catch { /* fall through */ }
+        if (selected) {
+          // accountId is the property name used by useMultiAccountSelection hook
+          const adAccountId = selected.accountId || selected.adAccountId || selected.ad_account_id;
+          console.log('CTWA credentials found:', { hasToken: !!selected.accessToken, adAccountId });
+          return { accessToken: selected.accessToken, adAccountId };
+        }
+      } catch (e) { console.error('CTWA: Error parsing saved accounts:', e); }
     }
     return {
       accessToken: localStorage.getItem('meta_access_token'),
