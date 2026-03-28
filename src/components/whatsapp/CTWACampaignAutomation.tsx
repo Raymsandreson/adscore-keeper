@@ -277,14 +277,14 @@ export function CTWACampaignAutomation() {
         // Get last messages for response detection
         const { data: msgs } = await supabase
           .from('whatsapp_messages')
-          .select('contact_name, created_at, from_me, instance_name')
+          .select('contact_name, created_at, direction, instance_name')
           .eq('phone', info.phone)
           .order('created_at', { ascending: false })
           .limit(50);
 
         const msgCount = msgs?.length || 0;
-        const firstInbound = msgs ? [...msgs].reverse().find(m => !m.from_me) : null;
-        const firstOutbound = msgs ? [...msgs].reverse().find(m => m.from_me) : null;
+        const firstInbound = msgs ? [...msgs].reverse().find(m => m.direction === 'inbound') : null;
+        const firstOutbound = msgs ? [...msgs].reverse().find(m => m.direction === 'outbound') : null;
         
         let wasResponded = false;
         let responseTimeMins: number | null = null;
