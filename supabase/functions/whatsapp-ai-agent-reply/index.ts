@@ -40,6 +40,7 @@ serve(async (req) => {
         .from("whatsapp_agent_campaign_links")
         .select("agent_id")
         .eq("campaign_id", campaign_id)
+        .eq("is_active", true)
         .maybeSingle();
 
       if (campaignLink) {
@@ -69,6 +70,7 @@ serve(async (req) => {
           .from("whatsapp_agent_campaign_links")
           .select("agent_id")
           .eq("campaign_id", lead.campaign_id)
+          .eq("is_active", true)
           .maybeSingle();
 
         if (campaignLink) {
