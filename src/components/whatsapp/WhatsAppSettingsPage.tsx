@@ -101,6 +101,15 @@ const tabs: Tab[] = [
     accentColor: 'text-amber-500',
   },
   {
+    id: 'enrichment',
+    label: 'Enriquecimento IA',
+    icon: <Brain className="h-5 w-5" />,
+    description: 'Extração automática de dados',
+    badge: '🧠 IA',
+    badgeVariant: 'default',
+    accentColor: 'text-indigo-500',
+  },
+  {
     id: 'nuclei',
     label: 'Núcleos',
     icon: <Network className="h-5 w-5" />,
@@ -254,6 +263,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'groups' && <BoardGroupInstancesConfig />}
             {activeTab === 'automations' && <AgentAutomationsTab />}
             {activeTab === 'nuclei' && <NucleiSettings />}
+            {activeTab === 'enrichment' && <EnrichmentSettings />}
             {activeTab === 'integration' && <WhatsAppSetupGuide />}
             {activeTab === 'logs' && <WebhookLogsViewer />}
           </div>
