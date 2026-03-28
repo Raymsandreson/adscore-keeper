@@ -359,14 +359,12 @@ export function CTWACampaignAutomation() {
     fetchMetaCampaigns();
   }, []);
 
-  const handleToggleExpand = (link: CampaignLink) => {
-    if (expandedLink === link.id) {
-      setExpandedLink(null);
-    } else {
-      setExpandedLink(link.id);
-      if (!linkConversations[link.id]) {
-        fetchLinkConversations(link);
-      }
+  const handleOpenConversations = (link: CampaignLink) => {
+    setSheetLink(link);
+    setConvResponseFilter('all');
+    setConvLeadFilter('all');
+    if (!linkConversations[link.id]) {
+      fetchLinkConversations(link);
     }
   };
 
