@@ -683,8 +683,12 @@ Deno.serve(async (req) => {
                 sector: extractedData.sector || null,
                 liability_type: extractedData.liability_type || null,
                 news_link: extractedData.news_link || null,
+                campaign_id: campaignId || null,
+                campaign_name: campaignName || null,
                 action_source: 'system',
-                action_source_detail: 'Lead criado automaticamente ao assinar documento (ZapSign)',
+                action_source_detail: campaignId 
+                  ? `Lead criado automaticamente ao assinar documento (ZapSign) - Campanha: ${campaignName || campaignId}`
+                  : 'Lead criado automaticamente ao assinar documento (ZapSign)',
               })
               .select('id')
               .single()
