@@ -261,6 +261,10 @@ export const useContacts = () => {
           tags: contact.tags || [],
           city: contact.city || null,
           state: contact.state || null,
+          neighborhood: contact.neighborhood || null,
+          street: contact.street || null,
+          cep: contact.cep || null,
+          profession: contact.profession || null,
           follower_status: followerStatus,
           created_by: currentUser?.id || null,
         }])
