@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_agent_campaign_links ADD COLUMN IF NOT EXISTS instance_id UUID REFERENCES public.whatsapp_instances(id) ON DELETE SET NULL;
