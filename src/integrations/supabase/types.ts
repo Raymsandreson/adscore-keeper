@@ -4060,6 +4060,51 @@ export type Database = {
           },
         ]
       }
+      lead_enrichment_log: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          fields_updated: Json | null
+          id: string
+          instance_name: string
+          lead_id: string | null
+          phone: string
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          fields_updated?: Json | null
+          id?: string
+          instance_name: string
+          lead_id?: string | null
+          phone: string
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          fields_updated?: Json | null
+          id?: string
+          instance_name?: string
+          lead_id?: string | null
+          phone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_enrichment_log_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_enrichment_log_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_followups: {
         Row: {
           created_at: string
