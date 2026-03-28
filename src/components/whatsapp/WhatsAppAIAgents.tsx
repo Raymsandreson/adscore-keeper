@@ -153,6 +153,11 @@ export function WhatsAppAIAgents() {
     setInstances((data as any[]) || []);
   };
 
+  const fetchBoards = async () => {
+    const { data } = await supabase.from('kanban_boards').select('id, name, stages').eq('is_active', true).order('display_order');
+    setBoards((data as any[]) || []);
+  };
+
   const fetchCallQueueCount = async () => {
     const { count } = await supabase.from('whatsapp_call_queue').select('id', { count: 'exact', head: true }).eq('status', 'pending');
     setCallQueueCount(count || 0);
