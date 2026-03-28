@@ -304,6 +304,60 @@ export function CTWACampaignAutomation() {
     }
   };
 
+  const handleBulkCreateLeads = async (link: CampaignLink) => {
+    const linkAny = link as any;
+    if (!linkAny.board_id) {
+      toast.error('Configure um funil de destino antes de criar leads em massa');
+      return;
+    }
+    
+    setBulkCreating(link.id);
+    setBulkProgress({ current: 0, total: 0, created: 0 });
+    
+    let offset = 0;
+    let totalCreated = 0;
+    const batchSize = 5;
+    
+    try {
+      while (true) {
+        const { data, error } = await supabase.functions.invoke('bulk-create-leads-from-campaign', {
+          body: {
+            campaign_id: link.campaign_id,
+            board_id: linkAny.board_id,
+            stage_id: linkAny.stage_id || null,
+            batch_size: batchSize,
+            offset,
+          },
+        });
+
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+
+        totalCreated += data.processed || 0;
+        setBulkProgress({
+          current: Math.min(offset + batchSize, data.total_new),
+          total: data.total_new,
+          created: totalCreated,
+        });
+
+        if (data.done) break;
+        offset = data.offset;
+        
+        // Small delay between batches
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      toast.success(`${totalCreated} leads e contatos criados com sucesso!`);
+      fetchData();
+    } catch (err) {
+      console.error('Bulk create error:', err);
+      toast.error('Erro na criação em massa: ' + String(err));
+    } finally {
+      setBulkCreating(null);
+      setBulkProgress(null);
+    }
+  };
+
   const handleTogglePause = async (link: CampaignLink) => {
     const linkAny = link as any;
     const newActive = !(linkAny.is_active !== false);
