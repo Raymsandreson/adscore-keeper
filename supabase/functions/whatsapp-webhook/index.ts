@@ -1260,8 +1260,8 @@ Deno.serve(async (req) => {
             else console.log('CTWA context + campaign_id saved for lead:', leadId, 'campaign:', detectedCampaignId)
           }
           
-          // Auto-create lead if none exists and campaign link has auto_create_lead enabled
-          if (!leadId && instanceName && matchedCampaignLink && matchedCampaignLink.auto_create_lead && matchedCampaignLink.board_id) {
+          // Auto-create lead if none exists and campaign link is ACTIVE with auto_create_lead enabled
+          if (!leadId && instanceName && matchedCampaignLink && isCampaignLinkActive && matchedCampaignLink.auto_create_lead && matchedCampaignLink.board_id) {
             try {
               const autoLink = matchedCampaignLink
               
