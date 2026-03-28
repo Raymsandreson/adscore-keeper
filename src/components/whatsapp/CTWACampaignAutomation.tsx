@@ -175,6 +175,8 @@ export function CTWACampaignAutomation() {
 
   const linkedCampaignIds = new Set(links.map(l => l.campaign_id));
   const unlinkedCampaigns = metaCampaigns.filter(c => !linkedCampaignIds.has(c.campaign_id));
+  const activeCampaigns = unlinkedCampaigns.filter(c => c.status === 'ACTIVE');
+  const pausedCampaigns = unlinkedCampaigns.filter(c => c.status !== 'ACTIVE');
 
   return (
     <Card>
