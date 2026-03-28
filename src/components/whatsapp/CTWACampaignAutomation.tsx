@@ -181,12 +181,17 @@ export function CTWACampaignAutomation() {
       campaignName = camp?.campaign_name || addingCampaign;
     }
 
+    // Auto-detect instance from campaign destination phone
+    const camp = metaCampaigns.find(c => c.campaign_id === campaignId);
+    const detectedInstance = camp?.destination_phone ? findInstanceByPhone(camp.destination_phone) : undefined;
+
     const payload: any = {
       agent_id: addingAgent,
       campaign_id: campaignId,
       campaign_name: campaignName,
     };
-    if (addingInstance) payload.instance_id = addingInstance;
+    if (detectedInstance) payload.instance_id = detectedInstance.id;
+    else if (addingInstance) payload.instance_id = addingInstance;
 
     const { error } = await supabase.from('whatsapp_agent_campaign_links').upsert(payload, { onConflict: 'campaign_id' });
 
