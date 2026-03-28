@@ -925,6 +925,200 @@ export function CTWACampaignAutomation() {
           </Button>
         </div>
       </CardContent>
+
+      {/* Conversations Sheet */}
+      <Sheet open={!!sheetLink} onOpenChange={(open) => { if (!open) setSheetLink(null); }}>
+        <SheetContent className="w-[400px] sm:w-[450px] p-0 flex flex-col">
+          <SheetHeader className="p-4 pb-2">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <MessageSquare className="h-5 w-5 text-primary" />
+              Conversas da Campanha
+              {sheetLink && (() => {
+                const convs = linkConversations[sheetLink.id] || [];
+                return ` (${convs.length})`;
+              })()}
+            </SheetTitle>
+            {sheetLink && (
+              <p className="text-xs text-muted-foreground truncate">{sheetLink.campaign_name}</p>
+            )}
+          </SheetHeader>
+
+          {/* Response filters */}
+          <div className="px-4 space-y-2">
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { key: 'all' as ConvResponseFilter, label: 'Todas' },
+                { key: 'responded' as ConvResponseFilter, label: '✓ Respondidas' },
+                { key: 'waiting' as ConvResponseFilter, label: '⏳ Aguardando' },
+              ].map(f => {
+                const convs = sheetLink ? (linkConversations[sheetLink.id] || []) : [];
+                const count = f.key === 'all' ? convs.length :
+                  f.key === 'responded' ? convs.filter(c => c.was_responded).length :
+                  convs.filter(c => !c.was_responded).length;
+                return (
+                  <button
+                    key={f.key}
+                    onClick={() => setConvResponseFilter(f.key)}
+                    className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
+                      convResponseFilter === f.key
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-muted/50 text-muted-foreground border-border hover:bg-accent'
+                    }`}
+                  >
+                    {f.label} ({count})
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Lead status filters */}
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { key: 'all' as ConvLeadFilter, label: '📋 Todos' },
+                { key: 'has_lead' as ConvLeadFilter, label: '🎯 Com Lead' },
+                { key: 'no_lead' as ConvLeadFilter, label: '❌ Sem Lead' },
+                { key: 'funnel' as ConvLeadFilter, label: '🔄 Em Andamento' },
+                { key: 'closed' as ConvLeadFilter, label: '✅ Fechado' },
+                { key: 'refused' as ConvLeadFilter, label: '🚫 Recusado' },
+              ].map(f => {
+                const convs = sheetLink ? (linkConversations[sheetLink.id] || []) : [];
+                const count = f.key === 'all' ? convs.length :
+                  f.key === 'has_lead' ? convs.filter(c => c.has_lead).length :
+                  f.key === 'no_lead' ? convs.filter(c => !c.has_lead).length :
+                  f.key === 'funnel' ? convs.filter(c => c.has_lead && c.lead_status === 'active').length :
+                  f.key === 'closed' ? convs.filter(c => c.has_lead && c.lead_status === 'closed').length :
+                  convs.filter(c => c.has_lead && c.lead_status === 'refused').length;
+                return (
+                  <button
+                    key={f.key}
+                    onClick={() => setConvLeadFilter(f.key)}
+                    className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                      convLeadFilter === f.key
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-muted/50 text-muted-foreground border-border hover:bg-accent'
+                    }`}
+                  >
+                    {f.label} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Conversations list */}
+          <ScrollArea className="flex-1 px-4 pb-4 mt-2">
+            {sheetLink && loadingConversations === sheetLink.id ? (
+              <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm">Carregando conversas...</span>
+              </div>
+            ) : sheetLink && (linkConversations[sheetLink.id] || []).length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">Nenhuma conversa encontrada.</p>
+            ) : (
+              <div className="space-y-2">
+                {sheetLink && (linkConversations[sheetLink.id] || [])
+                  .filter(conv => {
+                    if (convResponseFilter === 'responded' && !conv.was_responded) return false;
+                    if (convResponseFilter === 'waiting' && conv.was_responded) return false;
+                    if (convLeadFilter === 'has_lead' && !conv.has_lead) return false;
+                    if (convLeadFilter === 'no_lead' && conv.has_lead) return false;
+                    if (convLeadFilter === 'funnel' && !(conv.has_lead && conv.lead_status === 'active')) return false;
+                    if (convLeadFilter === 'closed' && !(conv.has_lead && conv.lead_status === 'closed')) return false;
+                    if (convLeadFilter === 'refused' && !(conv.has_lead && conv.lead_status === 'refused')) return false;
+                    return true;
+                  })
+                  .map((conv, i) => {
+                    const displayName = conv.lead_name || conv.contact_name || conv.phone;
+                    const formatWait = (mins: number | null) => {
+                      if (mins === null) return '';
+                      if (mins < 60) return `${mins}min`;
+                      const h = Math.floor(mins / 60);
+                      const m = mins % 60;
+                      return m > 0 ? `${h}h${m}min` : `${h}h`;
+                    };
+                    const waitingMinutes = conv.was_responded
+                      ? conv.response_time_minutes
+                      : conv.last_message_at ? Math.floor((Date.now() - new Date(conv.last_message_at).getTime()) / 60000) : null;
+                    
+                    return (
+                      <div
+                        key={`${conv.phone}-${i}`}
+                        className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
+                        onClick={() => {
+                          const params = new URLSearchParams(window.location.search);
+                          params.set('openChat', conv.phone);
+                          window.history.pushState({}, '', `${window.location.pathname}?${params}`);
+                          window.dispatchEvent(new PopStateEvent('popstate'));
+                        }}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-sm font-medium truncate">{displayName}</p>
+                            {conv.has_lead && conv.lead_status === 'closed' && <Badge variant="default" className="text-[8px] px-1 py-0 h-3.5 shrink-0 bg-emerald-600">Fechado</Badge>}
+                            {conv.has_lead && conv.lead_status === 'refused' && <Badge variant="destructive" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Recusado</Badge>}
+                            {conv.has_lead && conv.lead_status === 'active' && <Badge variant="default" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Lead</Badge>}
+                            {conv.has_contact && !conv.has_lead && <Badge variant="secondary" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Contato</Badge>}
+                            {!conv.has_lead && !conv.has_contact && <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 shrink-0 text-muted-foreground">Sem vínculo</Badge>}
+                          </div>
+                          <p className="text-xs text-muted-foreground" data-callface-ignore="true">{conv.phone}</p>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            {conv.instance_name && <span className="text-[10px] text-muted-foreground">{conv.instance_name}</span>}
+                            {conv.was_responded ? (
+                              <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 bg-emerald-50 text-emerald-700 border-emerald-200">
+                                ✓ Respondido em {formatWait(conv.response_time_minutes)}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 bg-amber-50 text-amber-700 border-amber-200">
+                                ⏳ Aguardando há {formatWait(waitingMinutes)}
+                              </Badge>
+                            )}
+                            {conv.message_count > 0 && (
+                              <span className="text-[10px] text-muted-foreground">{conv.message_count} msgs</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0 ml-2 flex flex-col items-end gap-1">
+                          <span className="text-xs text-muted-foreground">
+                            {formatTimeAgo(conv.last_message_at)}
+                          </span>
+                          <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+
+            {/* Bulk create leads button */}
+            {sheetLink && (
+              <div className="mt-4 pt-3 border-t border-border/50">
+                {bulkCreating === sheetLink.id && bulkProgress ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Brain className="h-3 w-3 animate-pulse" /> Analisando conversas com IA...
+                      </span>
+                      <span>{bulkProgress.created} criados / {bulkProgress.total} total</span>
+                    </div>
+                    <Progress value={bulkProgress.total > 0 ? (bulkProgress.current / bulkProgress.total) * 100 : 0} className="h-1.5" />
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs gap-1.5 w-full"
+                    onClick={() => handleBulkCreateLeads(sheetLink)}
+                    disabled={!!bulkCreating}
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
+                    Criar leads e contatos via IA (análise de conversas)
+                  </Button>
+                )}
+              </div>
+            )}
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </Card>
   );
 }
