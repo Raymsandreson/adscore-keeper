@@ -240,8 +240,8 @@ export function LeadEditDialog({
     if (lead && open) {
       const leadAny = lead as any;
       
-      // Reset tab
-      setActiveTab('basic');
+      // Reset tab (use initialTab if provided, e.g. from deep link)
+      setActiveTab(initialTab || 'basic');
       // Basic fields
       setLeadName(lead.lead_name || '');
       setLeadPhone(lead.lead_phone || '');
