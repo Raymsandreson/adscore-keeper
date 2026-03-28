@@ -17,6 +17,13 @@ interface CampaignLink {
   auto_create_lead?: boolean;
   board_id?: string | null;
   stage_id?: string | null;
+  instance_id?: string | null;
+}
+
+interface Instance {
+  id: string;
+  instance_name: string;
+  owner_phone?: string;
 }
 
 interface Agent {
