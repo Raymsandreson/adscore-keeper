@@ -381,6 +381,7 @@ export async function sendWhatsApp(
       phone, instance_name: instanceName, message_text: parts[i], message_type: "text", direction: "outbound",
       contact_id: contactId || null, lead_id: leadId || null,
       external_message_id: `${msgIdPrefix}_${Date.now()}_${i}`,
+      action_source: 'system', action_source_detail: 'WJIA Agent (comando)',
     });
   }
 }

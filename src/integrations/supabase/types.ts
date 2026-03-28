@@ -2040,6 +2040,8 @@ export type Database = {
       }
       contacts: {
         Row: {
+          action_source: string | null
+          action_source_detail: string | null
           cep: string | null
           city: string | null
           classification: string | null
@@ -2068,6 +2070,8 @@ export type Database = {
           whatsapp_group_id: string | null
         }
         Insert: {
+          action_source?: string | null
+          action_source_detail?: string | null
           cep?: string | null
           city?: string | null
           classification?: string | null
@@ -2096,6 +2100,8 @@ export type Database = {
           whatsapp_group_id?: string | null
         }
         Update: {
+          action_source?: string | null
+          action_source_detail?: string | null
           cep?: string | null
           city?: string | null
           classification?: string | null
@@ -3779,6 +3785,8 @@ export type Database = {
       }
       lead_activities: {
         Row: {
+          action_source: string | null
+          action_source_detail: string | null
           activity_type: string
           assigned_to: string | null
           assigned_to_name: string | null
@@ -3811,6 +3819,8 @@ export type Database = {
           what_was_done: string | null
         }
         Insert: {
+          action_source?: string | null
+          action_source_detail?: string | null
           activity_type?: string
           assigned_to?: string | null
           assigned_to_name?: string | null
@@ -3843,6 +3853,8 @@ export type Database = {
           what_was_done?: string | null
         }
         Update: {
+          action_source?: string | null
+          action_source_detail?: string | null
           activity_type?: string
           assigned_to?: string | null
           assigned_to_name?: string | null
@@ -4421,6 +4433,8 @@ export type Database = {
           accident_address: string | null
           accident_date: string | null
           acolhedor: string | null
+          action_source: string | null
+          action_source_detail: string | null
           ad_account_id: string | null
           ad_name: string | null
           ad_spend_at_conversion: number | null
@@ -4491,6 +4505,8 @@ export type Database = {
           accident_address?: string | null
           accident_date?: string | null
           acolhedor?: string | null
+          action_source?: string | null
+          action_source_detail?: string | null
           ad_account_id?: string | null
           ad_name?: string | null
           ad_spend_at_conversion?: number | null
@@ -4561,6 +4577,8 @@ export type Database = {
           accident_address?: string | null
           accident_date?: string | null
           acolhedor?: string | null
+          action_source?: string | null
+          action_source_detail?: string | null
           ad_account_id?: string | null
           ad_name?: string | null
           ad_spend_at_conversion?: number | null
@@ -4654,6 +4672,8 @@ export type Database = {
       legal_cases: {
         Row: {
           acolhedor: string | null
+          action_source: string | null
+          action_source_detail: string | null
           assigned_to: string | null
           benefit_type: string | null
           case_number: string
@@ -4673,6 +4693,8 @@ export type Database = {
         }
         Insert: {
           acolhedor?: string | null
+          action_source?: string | null
+          action_source_detail?: string | null
           assigned_to?: string | null
           benefit_type?: string | null
           case_number: string
@@ -4692,6 +4714,8 @@ export type Database = {
         }
         Update: {
           acolhedor?: string | null
+          action_source?: string | null
+          action_source_detail?: string | null
           assigned_to?: string | null
           benefit_type?: string | null
           case_number?: string
@@ -7229,6 +7253,10 @@ export type Database = {
       }
       whatsapp_messages: {
         Row: {
+          action_source: string | null
+          action_source_detail: string | null
+          campaign_id: string | null
+          campaign_name: string | null
           contact_id: string | null
           contact_name: string | null
           created_at: string
@@ -7248,6 +7276,10 @@ export type Database = {
           status: string
         }
         Insert: {
+          action_source?: string | null
+          action_source_detail?: string | null
+          campaign_id?: string | null
+          campaign_name?: string | null
           contact_id?: string | null
           contact_name?: string | null
           created_at?: string
@@ -7267,6 +7299,10 @@ export type Database = {
           status?: string
         }
         Update: {
+          action_source?: string | null
+          action_source_detail?: string | null
+          campaign_id?: string | null
+          campaign_name?: string | null
           contact_id?: string | null
           contact_name?: string | null
           created_at?: string

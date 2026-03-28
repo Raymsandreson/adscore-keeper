@@ -783,6 +783,10 @@ REGRAS IMPORTANTES:
       await supabase.from("whatsapp_messages").insert({
         phone, instance_name, direction: "outbound",
         message_text: reply, metadata: { ai_agent: (agent as any).name, ai_agent_id: (agent as any).id, split_count: messageParts.length },
+        campaign_id: campaign_id || null,
+        campaign_name: null,
+        action_source: 'agent',
+        action_source_detail: `Agente: ${(agent as any).name}`,
       });
 
       // ========== SCHEDULE FOLLOW-UP ==========

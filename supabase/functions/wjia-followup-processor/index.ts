@@ -155,6 +155,7 @@ serve(async (req) => {
             contact_id: session.contact_id || null,
             lead_id: session.lead_id || null,
             external_message_id: `wjia_followup_${Date.now()}`,
+            action_source: 'system', action_source_detail: 'Follow-up automático',
           });
         }
       } else if (step.action_type === "call") {
