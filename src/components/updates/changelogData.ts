@@ -24,9 +24,9 @@ export const changelog: ChangelogEntry[] = [
     features: [
       {
         title: "Auto-criação de Lead e Contato na assinatura",
-        description: "Quando um documento é assinado via ZapSign e não há lead vinculado, o sistema cria automaticamente o contato e o lead, extraindo dados da conversa via IA.",
+        description: "Quando um documento é assinado via ZapSign e não há lead vinculado, o sistema cria automaticamente o contato e o lead, extraindo dados da conversa via IA. O funil é determinado automaticamente pela campanha CTWA de origem.",
         icon: "📝",
-        howToUse: "Funciona automaticamente! Ao assinar um documento, se não houver lead vinculado, o sistema busca o histórico da conversa, extrai nome, cidade, empresa e outros dados via IA e cria o lead com todas as informações enriquecidas.",
+        howToUse: "Funciona automaticamente! O sistema identifica a campanha CTWA da conversa, usa o funil configurado nela, extrai dados via IA e cria lead + contato com todas as informações enriquecidas.",
       },
     ],
   },
