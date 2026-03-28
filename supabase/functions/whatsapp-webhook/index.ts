@@ -1230,9 +1230,11 @@ Deno.serve(async (req) => {
             }
           }
           
+          const isCampaignLinkActive = matchedCampaignLink?.is_active === true
           if (matchedCampaignLink) {
             detectedCampaignId = matchedCampaignLink.campaign_id
             detectedCampaignName = matchedCampaignLink.campaign_name || null
+            console.log('CTWA campaign link found, active:', isCampaignLinkActive)
           }
           
           console.log('CTWA resolved campaign:', detectedCampaignId, detectedCampaignName)
