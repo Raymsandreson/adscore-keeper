@@ -153,16 +153,20 @@ export function CTWACampaignAutomation() {
       campaignName = camp?.campaign_name || addingCampaign;
     }
 
-    const { error } = await supabase.from('whatsapp_agent_campaign_links').upsert({
+    const payload: any = {
       agent_id: addingAgent,
       campaign_id: campaignId,
       campaign_name: campaignName,
-    } as any, { onConflict: 'campaign_id' });
+    };
+    if (addingInstance) payload.instance_id = addingInstance;
+
+    const { error } = await supabase.from('whatsapp_agent_campaign_links').upsert(payload, { onConflict: 'campaign_id' });
 
     if (error) { toast.error('Erro ao vincular'); return; }
     toast.success('Campanha vinculada!');
     setAddingAgent('');
     setAddingCampaign('');
+    setAddingInstance('');
     setManualCampaignId('');
     setManualCampaignName('');
     fetchData();
