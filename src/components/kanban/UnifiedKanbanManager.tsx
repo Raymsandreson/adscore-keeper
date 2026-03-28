@@ -757,7 +757,12 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       {/* Lead Edit Dialog */}
       <LeadEditDialog
         open={!!editingLead}
-        onOpenChange={(open) => !open && setEditingLeadId(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingLeadId(null);
+            setInitialLeadTab(undefined);
+          }
+        }}
         lead={editingLead}
         onSave={async (leadId, updates) => {
           await updateLead(leadId, updates);
@@ -765,6 +770,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         }}
         adAccountId={adAccountId}
         boards={boards}
+        initialTab={initialLeadTab}
       />
 
       {/* Kanban Report Dialog */}
