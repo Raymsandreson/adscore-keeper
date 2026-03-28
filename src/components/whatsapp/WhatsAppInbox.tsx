@@ -609,7 +609,7 @@ export function WhatsAppInbox() {
   return (
     <div className="h-screen h-[100dvh] flex flex-col relative overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b bg-card shrink-0 flex-wrap md:flex-nowrap">
+      <div className={`flex items-center gap-2 md:gap-3 p-3 md:p-4 border-b bg-card shrink-0 flex-wrap md:flex-nowrap ${selectedPhone ? 'hidden md:flex' : 'flex'}`}>
         <MessageSquare className="h-6 w-6 text-green-600" />
         <h1 className="text-lg font-semibold">WhatsApp</h1>
         {totalUnread > 0 && (
@@ -650,7 +650,7 @@ export function WhatsAppInbox() {
           </Select>
         )}
 
-        <div className="w-full md:w-auto md:ml-auto flex flex-wrap md:flex-nowrap gap-1 items-center justify-end">
+        <div className="w-full md:w-auto md:ml-auto flex flex-wrap md:flex-nowrap gap-0.5 md:gap-1 items-center justify-end">
           {disconnectedInstances.length > 0 && (
             <Button
               variant="destructive"
@@ -893,8 +893,8 @@ export function WhatsAppInbox() {
 
       {/* Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Conversation List */}
-        <div className="w-80 border-r flex-shrink-0 overflow-y-auto bg-card">
+        {/* Conversation List - hidden on mobile when chat is open */}
+        <div className={`${selectedPhone ? 'hidden md:flex' : 'flex'} w-full md:w-80 border-r flex-shrink-0 overflow-y-auto bg-card flex-col`}>
           <WhatsAppConversationList
             conversations={visibleConversations}
             loading={loading}
@@ -910,11 +910,12 @@ export function WhatsAppInbox() {
           />
         </div>
 
-        {/* Chat Area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Chat Area - full width on mobile when chat is open */}
+        <div className={`${selectedPhone ? 'flex' : 'hidden md:flex'} flex-1 flex-col overflow-hidden`}>
           {selectedConversation ? (
             <WhatsAppChat
               conversation={selectedConversation}
+              onBack={() => setSelectedPhone(null)}
               onSendMessage={(() => {
                 const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
                 if (share) {
