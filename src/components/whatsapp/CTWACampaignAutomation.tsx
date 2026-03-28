@@ -34,6 +34,7 @@ interface MetaCampaign {
   campaign_id: string;
   campaign_name: string;
   status?: string;
+  destination_phone?: string | null;
 }
 
 export function CTWACampaignAutomation() {
