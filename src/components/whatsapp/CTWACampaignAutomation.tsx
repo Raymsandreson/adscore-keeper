@@ -253,16 +253,6 @@ export function CTWACampaignAutomation() {
             <Plus className="h-3.5 w-3.5" /> Vincular nova campanha
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label className="text-[10px]">Agente IA</Label>
-              <Select value={addingAgent} onValueChange={setAddingAgent}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar agente..." /></SelectTrigger>
-                <SelectContent>
-                  {agents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
             {useManualInput ? (
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
@@ -314,6 +304,21 @@ export function CTWACampaignAutomation() {
                 </Select>
               </div>
             )}
+
+            <div className="space-y-1">
+              <Label className="text-[10px]">Agente IA</Label>
+              <Select value={addingAgent} onValueChange={setAddingAgent}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar agente..." /></SelectTrigger>
+                <SelectContent>
+                  {agents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                  {agents.length === 0 && (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                      Nenhum agente cadastrado
+                    </div>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <Button
             size="sm"
