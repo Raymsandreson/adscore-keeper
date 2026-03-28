@@ -58,35 +58,110 @@ serve(async (req) => {
           // Fetch ads to get destination phone number (CTWA)
           let destinationPhone: string | null = null;
           try {
-            const adsUrl = `https://graph.facebook.com/v21.0/${campaign.id}/ads?fields=creative{object_story_spec,asset_feed_spec}&limit=5&access_token=${accessToken}`;
+            const adsUrl = `https://graph.facebook.com/v21.0/${campaign.id}/ads?fields=creative{object_story_spec,asset_feed_spec,url_tags}&limit=5&access_token=${accessToken}`;
             const adsRes = await fetch(adsUrl);
             const adsData = await adsRes.json();
             const ads = adsData.data || [];
             
             for (const ad of ads) {
+              if (destinationPhone) break;
               const creative = ad.creative;
-              // Check object_story_spec for whatsapp_number
-              const spec = creative?.object_story_spec;
-              if (spec?.link_data?.call_to_action?.value?.whatsapp_number) {
-                destinationPhone = spec.link_data.call_to_action.value.whatsapp_number;
-                break;
-              }
-              if (spec?.video_data?.call_to_action?.value?.whatsapp_number) {
-                destinationPhone = spec.video_data.call_to_action.value.whatsapp_number;
-                break;
-              }
+              if (!creative) continue;
+              
+              // Helper to extract phone from various spec locations
+              const extractPhone = (spec: any): string | null => {
+                if (!spec) return null;
+                // Check link_data CTA
+                const linkCta = spec.link_data?.call_to_action?.value;
+                if (linkCta?.whatsapp_number) return linkCta.whatsapp_number;
+                if (linkCta?.app_destination === 'WHATSAPP' && linkCta?.link) {
+                  const m = linkCta.link.match(/wa\.me\/(\d+)/);
+                  if (m) return m[1];
+                }
+                // Check video_data CTA
+                const videoCta = spec.video_data?.call_to_action?.value;
+                if (videoCta?.whatsapp_number) return videoCta.whatsapp_number;
+                if (videoCta?.app_destination === 'WHATSAPP' && videoCta?.link) {
+                  const m = videoCta.link.match(/wa\.me\/(\d+)/);
+                  if (m) return m[1];
+                }
+                // Check page_welcome_message (common in CTWA)
+                const pwm = spec.page_welcome_message;
+                if (pwm) {
+                  try {
+                    const parsed = typeof pwm === 'string' ? JSON.parse(pwm) : pwm;
+                    if (parsed?.ctwa_clid || parsed?.type === 'WHATSAPP') {
+                      // Phone might be in referral or not directly here
+                    }
+                  } catch {}
+                }
+                return null;
+              };
+
+              // Check object_story_spec
+              destinationPhone = extractPhone(creative.object_story_spec);
+              
               // Check asset_feed_spec
-              const assetFeed = creative?.asset_feed_spec;
-              if (assetFeed?.call_to_action_types && assetFeed?.link_urls) {
-                for (const linkUrl of assetFeed.link_urls) {
-                  if (linkUrl?.website_url?.includes('wa.me/')) {
-                    const match = linkUrl.website_url.match(/wa\.me\/(\d+)/);
-                    if (match) { destinationPhone = match[1]; break; }
+              if (!destinationPhone && creative.asset_feed_spec) {
+                const assetFeed = creative.asset_feed_spec;
+                // Check call_to_actions array
+                if (assetFeed.call_to_actions) {
+                  for (const cta of assetFeed.call_to_actions) {
+                    if (cta?.value?.whatsapp_number) {
+                      destinationPhone = cta.value.whatsapp_number;
+                      break;
+                    }
+                    if (cta?.value?.link?.includes('wa.me/')) {
+                      const m = cta.value.link.match(/wa\.me\/(\d+)/);
+                      if (m) { destinationPhone = m[1]; break; }
+                    }
                   }
                 }
-                if (destinationPhone) break;
+                // Check link_urls
+                if (!destinationPhone && assetFeed.link_urls) {
+                  for (const linkUrl of assetFeed.link_urls) {
+                    const url = linkUrl?.website_url || linkUrl?.display_url || '';
+                    if (url.includes('wa.me/')) {
+                      const m = url.match(/wa\.me\/(\d+)/);
+                      if (m) { destinationPhone = m[1]; break; }
+                    }
+                  }
+                }
+              }
+              
+              // Check url_tags for phone hints
+              if (!destinationPhone && creative.url_tags) {
+                const m = creative.url_tags.match(/wa\.me\/(\d+)/);
+                if (m) destinationPhone = m[1];
               }
             }
+
+            // If still no phone, try fetching ad-level promoted_object
+            if (!destinationPhone && ads.length > 0) {
+              try {
+                const adDetailUrl = `https://graph.facebook.com/v21.0/${ads[0].id}?fields=promoted_object&access_token=${accessToken}`;
+                const adDetailRes = await fetch(adDetailUrl);
+                const adDetail = await adDetailRes.json();
+                if (adDetail?.promoted_object?.page_id) {
+                  // It's a CTWA ad but phone might be in the page's whatsapp number
+                }
+              } catch {}
+            }
+
+            // Try campaign-level promoted_object
+            if (!destinationPhone) {
+              try {
+                const campDetailUrl = `https://graph.facebook.com/v21.0/${campaign.id}?fields=promoted_object&access_token=${accessToken}`;
+                const campDetailRes = await fetch(campDetailUrl);
+                const campDetail = await campDetailRes.json();
+                // Some CTWA campaigns have the phone in promoted_object
+                if (campDetail?.promoted_object?.whatsapp_phone_number) {
+                  destinationPhone = campDetail.promoted_object.whatsapp_phone_number;
+                }
+              } catch {}
+            }
+
+            console.log(`Campaign ${campaign.name}: destination_phone=${destinationPhone}`);
           } catch (e) {
             console.error('Error fetching ads for destination phone:', e);
           }
