@@ -26,6 +26,18 @@ Deno.serve(async (req) => {
 
     console.log(`[auto-enrich] phone=${phone} instance=${instance_name} lead=${lead_id} contact=${contact_id}`)
 
+    // Read configurable threshold from system_settings
+    let INBOUND_THRESHOLD = DEFAULT_INBOUND_THRESHOLD
+    const { data: thresholdSetting } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'enrich_message_threshold')
+      .single()
+    
+    if (thresholdSetting?.value) {
+      INBOUND_THRESHOLD = parseInt(thresholdSetting.value, 10) || DEFAULT_INBOUND_THRESHOLD
+    }
+
     // Check if we already enriched recently (within 2 hours)
     const phoneSuffix = phone.replace(/\D/g, '').slice(-8)
     
