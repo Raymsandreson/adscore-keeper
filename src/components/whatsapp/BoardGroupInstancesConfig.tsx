@@ -132,7 +132,7 @@ export function BoardGroupInstancesConfig() {
 
   const fetchData = async () => {
     setLoading(true);
-    const [boardsRes, instancesRes, voicesRes, agentsRes] = await Promise.all([
+    const [boardsRes, instancesRes, voicesRes] = await Promise.all([
       (supabase as any).from('kanban_boards').select('id, name').order('display_order'),
       (supabase as any).from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true),
       (supabase as any).from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
