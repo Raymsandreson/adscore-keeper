@@ -288,12 +288,14 @@ export function CTWACampaignAutomation() {
 
       for (const [norm, info] of phoneMap) {
         // Get last messages for response detection
-        const { data: msgs } = await supabase
+        let msgQuery = supabase
           .from('whatsapp_messages')
           .select('contact_name, created_at, direction, instance_name')
           .eq('phone', info.phone)
+          .eq('instance_name', info.instance_name)
           .order('created_at', { ascending: false })
           .limit(50);
+        const { data: msgs } = await msgQuery;
 
         const msgCount = msgs?.length || 0;
         const firstInbound = msgs ? [...msgs].reverse().find(m => m.direction === 'inbound') : null;
