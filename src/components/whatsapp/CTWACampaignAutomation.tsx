@@ -311,10 +311,30 @@ export function CTWACampaignAutomation() {
                 <Select value={addingCampaign} onValueChange={setAddingCampaign}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar campanha..." /></SelectTrigger>
                   <SelectContent>
-                    {unlinkedCampaigns.map(c => (
+                    {activeCampaigns.length > 0 && (
+                      <div className="px-2 py-1 text-[10px] font-semibold text-green-600 uppercase tracking-wider">🟢 Ativas</div>
+                    )}
+                    {activeCampaigns.map(c => (
                       <SelectItem key={c.campaign_id} value={c.campaign_id}>{c.campaign_name}</SelectItem>
                     ))}
-                    {unlinkedCampaigns.length === 0 && (
+                    {showPaused && pausedCampaigns.length > 0 && (
+                      <>
+                        <div className="my-1 border-t border-border" />
+                        <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">⏸ Pausadas</div>
+                        {pausedCampaigns.map(c => (
+                          <SelectItem key={c.campaign_id} value={c.campaign_id}>{c.campaign_name}</SelectItem>
+                        ))}
+                      </>
+                    )}
+                    {!showPaused && pausedCampaigns.length > 0 && (
+                      <div
+                        className="px-2 py-1.5 text-[10px] text-primary cursor-pointer hover:bg-accent rounded"
+                        onPointerDown={(e) => { e.preventDefault(); setShowPaused(true); }}
+                      >
+                        Mostrar {pausedCampaigns.length} campanha(s) pausada(s)
+                      </div>
+                    )}
+                    {activeCampaigns.length === 0 && pausedCampaigns.length === 0 && (
                       <div className="px-2 py-1.5 text-xs text-muted-foreground">
                         Nenhuma campanha disponível
                       </div>
