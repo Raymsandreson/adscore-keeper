@@ -154,7 +154,7 @@ export function WhatsAppAIAgents() {
   };
 
   const fetchBoards = async () => {
-    const { data } = await supabase.from('kanban_boards').select('id, name, stages').eq('is_active', true).order('display_order');
+    const { data } = await supabase.from('kanban_boards').select('id, name, stages' as any).eq('is_active', true).order('display_order');
     setBoards((data as any[]) || []);
   };
 
