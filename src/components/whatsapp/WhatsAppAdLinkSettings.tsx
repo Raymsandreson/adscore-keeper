@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Megaphone, Phone, Save, PauseCircle, PlayCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { CTWACampaignAutomation } from './CTWACampaignAutomation';
 
 interface InstanceAdConfig {
   id: string;
@@ -92,7 +93,9 @@ export function WhatsAppAdLinkSettings() {
   }
 
   return (
-    <Card>
+    <div className="space-y-6">
+      <CTWACampaignAutomation />
+      <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <Megaphone className="h-5 w-5 text-primary" />
@@ -184,5 +187,6 @@ export function WhatsAppAdLinkSettings() {
         )}
       </CardContent>
     </Card>
+    </div>
   );
 }
