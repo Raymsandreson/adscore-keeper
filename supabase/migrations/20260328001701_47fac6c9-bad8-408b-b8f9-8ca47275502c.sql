@@ -1,0 +1,1 @@
+ALTER TABLE public.wjia_command_shortcuts ADD COLUMN IF NOT EXISTS followup_repeat_forever boolean NOT NULL DEFAULT false;

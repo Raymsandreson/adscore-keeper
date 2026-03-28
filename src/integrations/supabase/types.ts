@@ -7553,6 +7553,7 @@ export type Database = {
           display_order: number | null
           document_type_modes: Json | null
           document_types: string[] | null
+          followup_repeat_forever: boolean
           followup_steps: Json | null
           human_reply_pause_minutes: number | null
           id: string
@@ -7587,6 +7588,7 @@ export type Database = {
           display_order?: number | null
           document_type_modes?: Json | null
           document_types?: string[] | null
+          followup_repeat_forever?: boolean
           followup_steps?: Json | null
           human_reply_pause_minutes?: number | null
           id?: string
@@ -7621,6 +7623,7 @@ export type Database = {
           display_order?: number | null
           document_type_modes?: Json | null
           document_types?: string[] | null
+          followup_repeat_forever?: boolean
           followup_steps?: Json | null
           human_reply_pause_minutes?: number | null
           id?: string
