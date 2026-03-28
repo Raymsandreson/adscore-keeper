@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Megaphone, Target, Sparkles, FolderKanban, Plus, X, Loader2, RefreshCw } from 'lucide-react';
+import { Megaphone, Target, Sparkles, FolderKanban, Plus, X, Loader2, RefreshCw, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface CampaignLink {
