@@ -142,6 +142,68 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
 
+  // Fetch agent state for this conversation
+  useEffect(() => {
+    const fetchAgentState = async () => {
+      const [{ data: agentsData }, { data: assignment }] = await Promise.all([
+        supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
+        supabase.from('whatsapp_conversation_agents').select('agent_id, is_active')
+          .eq('phone', conversation.phone).eq('instance_name', conversation.instance_name).maybeSingle()
+      ]);
+      setAvailableAgents((agentsData as any[]) || []);
+      if (assignment) {
+        setActiveAgentId((assignment as any).agent_id);
+        setAgentEnabled((assignment as any).is_active);
+        const agent = (agentsData as any[])?.find((a: any) => a.id === (assignment as any).agent_id);
+        setActiveAgentName(agent?.name || null);
+      } else {
+        setActiveAgentId(null);
+        setAgentEnabled(false);
+        setActiveAgentName(null);
+      }
+    };
+    fetchAgentState();
+  }, [conversation.phone, conversation.instance_name]);
+
+  const handleAgentToggle = async () => {
+    if (!activeAgentId) return;
+    setAgentLoading(true);
+    try {
+      const newState = !agentEnabled;
+      await supabase.from('whatsapp_conversation_agents')
+        .update({ is_active: newState } as any)
+        .eq('phone', conversation.phone).eq('instance_name', conversation.instance_name);
+      setAgentEnabled(newState);
+      toast.success(newState ? `🤖 Agente "${activeAgentName}" ativado` : 'Agente desativado');
+    } catch (e: any) { toast.error('Erro: ' + e.message); }
+    finally { setAgentLoading(false); }
+  };
+
+  const handleSelectAgent = async (agentId: string) => {
+    setAgentLoading(true);
+    try {
+      const agent = availableAgents.find(a => a.id === agentId);
+      await supabase.from('whatsapp_conversation_agents')
+        .upsert({ phone: conversation.phone, instance_name: conversation.instance_name, agent_id: agentId, is_active: true } as any, { onConflict: 'phone,instance_name' });
+      setActiveAgentId(agentId);
+      setActiveAgentName(agent?.name || null);
+      setAgentEnabled(true);
+      toast.success(`🤖 Agente "${agent?.name}" ativado`);
+    } catch (e: any) { toast.error('Erro: ' + e.message); }
+    finally { setAgentLoading(false); }
+  };
+
+  const handleRemoveAgent = async () => {
+    setAgentLoading(true);
+    try {
+      await supabase.from('whatsapp_conversation_agents')
+        .delete().eq('phone', conversation.phone).eq('instance_name', conversation.instance_name);
+      setActiveAgentId(null); setActiveAgentName(null); setAgentEnabled(false);
+      toast.success('Agente removido');
+    } catch (e: any) { toast.error('Erro: ' + e.message); }
+    finally { setAgentLoading(false); }
+  };
+
   // Detect if this is a group conversation
   const isGroup = messages.some(msg => {
     const meta = msg.metadata;
