@@ -1142,12 +1142,17 @@ Deno.serve(async (req) => {
     if (direction === 'inbound') {
       try {
         const msg = body.message || body.chat?.message || {}
-        const contextInfo = msg.extendedTextMessage?.contextInfo || msg.contextInfo || msg.imageMessage?.contextInfo || msg.videoMessage?.contextInfo || {}
+        // UazAPI stores content nested: message.content.contextInfo
+        const msgContent = msg.content || msg.extendedTextMessage || {}
+        const contextInfo = msgContent.contextInfo || msg.contextInfo || msg.imageMessage?.contextInfo || msg.videoMessage?.contextInfo || {}
         const externalAdReply = contextInfo.externalAdReply || null
         
         if (externalAdReply) {
-          const ctwaSourceId = contextInfo.ctwaContext?.sourceId || null
+          // UazAPI uses sourceID (capital D) in externalAdReply, not ctwaContext.sourceId
+          const ctwaSourceId = externalAdReply.sourceID || externalAdReply.sourceId || contextInfo.ctwaContext?.sourceId || null
           const ctwaClid = contextInfo.ctwaContext?.ctwaClid || contextInfo.ctwaClid || null
+          
+          console.log('CTWA sourceID resolved:', ctwaSourceId, 'from externalAdReply.sourceID:', externalAdReply.sourceID)
           
           const ctwaData = {
             title: externalAdReply.title || null,
