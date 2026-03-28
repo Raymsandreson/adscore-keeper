@@ -2473,6 +2473,7 @@ Deno.serve(async (req) => {
             message_text: messageText,
             message_type: messageType,
             lead_id: leadId || null,
+            campaign_id: detectedCampaignId || null,
             is_group: isGroup,
             contact_name: contactName || null,
           }),
