@@ -103,13 +103,17 @@ export function CTWACampaignAutomation() {
 
   const fetchMetaCampaigns = async () => {
     const { accessToken, adAccountId } = getMetaCredentials();
+    console.log('CTWA: credentials check', { hasToken: !!accessToken, hasAccount: !!adAccountId });
     if (!accessToken || !adAccountId) {
+      console.warn('CTWA: No Meta credentials found in localStorage. Keys present:', 
+        Object.keys(localStorage).filter(k => k.includes('meta')));
       setUseManualInput(true);
       return;
     }
     setLoadingCampaigns(true);
     try {
       const formattedAdAccountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+      console.log('CTWA: Fetching campaigns for', formattedAdAccountId);
       const { data, error } = await supabase.functions.invoke('list-meta-ads', {
         body: { accessToken, adAccountId: formattedAdAccountId, limit: 100, status: ['ACTIVE', 'PAUSED'] },
       });
@@ -121,6 +125,7 @@ export function CTWACampaignAutomation() {
         status: c.status || 'ACTIVE',
         destination_phone: c.destination_phone || null,
       }));
+      console.log('CTWA: Found', campaigns.length, 'campaigns');
       setMetaCampaigns(campaigns);
       if (campaigns.length === 0) setUseManualInput(true);
       else setUseManualInput(false);
