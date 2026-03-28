@@ -907,7 +907,15 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                           <Input
                             type="number" min={5}
                             value={step.delay_minutes}
-                            onChange={e => updateStep(idx, 'delay_minutes', parseInt(e.target.value) || 60)}
+                            onChange={e => {
+                              const val = e.target.value;
+                              updateStep(idx, 'delay_minutes', val === '' ? '' : (parseInt(val) || 0));
+                            }}
+                            onBlur={() => {
+                              if (!step.delay_minutes || step.delay_minutes < 1) {
+                                updateStep(idx, 'delay_minutes', 5);
+                              }
+                            }}
                             className="h-8 text-xs"
                           />
                         </div>
