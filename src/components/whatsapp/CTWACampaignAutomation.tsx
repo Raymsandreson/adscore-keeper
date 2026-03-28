@@ -317,7 +317,14 @@ export function CTWACampaignAutomation() {
                       <div className="px-2 py-1 text-[10px] font-semibold text-green-600 uppercase tracking-wider">🟢 Ativas</div>
                     )}
                     {activeCampaigns.map(c => (
-                      <SelectItem key={c.campaign_id} value={c.campaign_id}>{c.campaign_name}</SelectItem>
+                      <SelectItem key={c.campaign_id} value={c.campaign_id}>
+                        <div className="flex flex-col">
+                          <span>{c.campaign_name}</span>
+                          {c.destination_phone && (
+                            <span className="text-[10px] text-muted-foreground">📞 {c.destination_phone}</span>
+                          )}
+                        </div>
+                      </SelectItem>
                     ))}
                     {showPaused && pausedCampaigns.length > 0 && (
                       <>
