@@ -247,8 +247,15 @@ REGRAS:
       }
     }
 
-    // Mark enrichment done (invisible marker to prevent re-runs)
-    // We use a metadata approach - store in a lightweight table or just log
+    // Log the enrichment
+    await supabase.from('lead_enrichment_log').insert({
+      phone,
+      instance_name,
+      lead_id: lead_id || null,
+      contact_id: contact_id || null,
+      fields_updated: cleaned,
+    })
+
     console.log(`[auto-enrich] Enrichment complete for phone=${phone}`)
 
     return new Response(JSON.stringify({ ok: true, enriched: cleaned }), {
