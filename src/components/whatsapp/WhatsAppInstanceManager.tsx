@@ -421,6 +421,16 @@ export function WhatsAppInstanceManager() {
               />
               <p className="text-[11px] text-muted-foreground">Número com DDI+DDD, sem espaços ou traços.</p>
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="inst-owner-name">Nome do Dono (Identidade do Agente IA)</Label>
+              <Input
+                id="inst-owner-name"
+                placeholder="Ex: Dr. João Silva"
+                value={form.owner_name}
+                onChange={e => setForm(f => ({ ...f, owner_name: e.target.value }))}
+              />
+              <p className="text-[11px] text-muted-foreground">O agente IA se apresentará com este nome ao responder por esta instância.</p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
