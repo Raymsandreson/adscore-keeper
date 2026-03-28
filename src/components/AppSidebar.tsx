@@ -87,31 +87,26 @@ export function AppSidebar() {
     { id: "whatsapp", label: "WhatsApp", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp", color: "text-green-500" },
     { id: "instagram", label: "Instagram", icon: <AtSign className="h-4 w-4" />, path: "/instagram", color: "text-pink-500" },
     { id: "contacts", label: "Contatos", icon: <Users className="h-4 w-4" />, path: "/contacts", color: "text-primary" },
+    { id: "dashboard", label: "Visão Geral", icon: <LayoutDashboard className="h-4 w-4" />, path: "/dashboard" },
   ];
 
   const sections: NavSection[] = [
     {
-      id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" />,
+      id: "marketing", label: "Marketing", icon: <Megaphone className="h-4 w-4" />,
       items: [
-        { id: "dashboard-main", label: "Visão Geral", icon: <LayoutDashboard className="h-3.5 w-3.5" />, path: "/dashboard" },
         { id: "organic", label: "Orgânico", icon: <Heart className="h-3.5 w-3.5" />, path: "/dashboard?tab=organic", color: "text-pink-500" },
-        { id: "goals", label: "Metas", icon: <Target className="h-3.5 w-3.5" />, path: "/dashboard?tab=goals", color: "text-emerald-500" },
-      ],
-    },
-    {
-      id: "ads", label: "Anúncios", icon: <Megaphone className="h-4 w-4" />,
-      items: [
-        { id: "paid", label: "Campanhas", icon: <Megaphone className="h-3.5 w-3.5" />, path: "/dashboard?tab=paid", color: "text-blue-500" },
-      ],
-    },
-    {
-      id: "automation", label: "Automação", icon: <Bot className="h-4 w-4" />,
-      items: [
-        { id: "automation-main", label: "Painel", icon: <Bot className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation", color: "text-purple-500" },
-        { id: "manychat", label: "ManyChat", icon: <MessagesSquare className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=manychat", color: "text-blue-500" },
+        { id: "paid", label: "Anúncios", icon: <Megaphone className="h-3.5 w-3.5" />, path: "/dashboard?tab=paid", color: "text-blue-500" },
         { id: "comments", label: "Comentários", icon: <MessageCircle className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=comments", color: "text-primary" },
+        { id: "manychat", label: "ManyChat", icon: <MessagesSquare className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=manychat", color: "text-blue-500" },
         { id: "funnel", label: "Funil", icon: <Filter className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=funnel", color: "text-orange-500" },
+      ],
+    },
+    {
+      id: "sales", label: "Vendas", icon: <Zap className="h-4 w-4" />,
+      items: [
         { id: "workflow", label: "Funil de Vendas", icon: <Zap className="h-3.5 w-3.5" />, path: "/workflow", color: "text-yellow-500" },
+        { id: "goals", label: "Metas", icon: <Target className="h-3.5 w-3.5" />, path: "/dashboard?tab=goals", color: "text-emerald-500" },
+        { id: "leaderboard", label: "Ranking", icon: <Trophy className="h-3.5 w-3.5" />, path: "/leaderboard", color: "text-yellow-500" },
       ],
     },
     {
@@ -131,11 +126,10 @@ export function AppSidebar() {
       ],
     },
     {
-      id: "more", label: "Gestão", icon: <TrendingUp className="h-4 w-4" />,
+      id: "team", label: "Equipe", icon: <UsersRound className="h-4 w-4" />,
       items: [
+        { id: "team-main", label: "Equipe", icon: <UsersRound className="h-3.5 w-3.5" />, path: "/team", color: "text-emerald-500" },
         { id: "analytics", label: "Analytics", icon: <TrendingUp className="h-3.5 w-3.5" />, path: "/analytics" },
-        { id: "leaderboard", label: "Ranking", icon: <Trophy className="h-3.5 w-3.5" />, path: "/leaderboard", color: "text-yellow-500" },
-        { id: "team", label: "Equipe", icon: <UsersRound className="h-3.5 w-3.5" />, path: "/team", color: "text-emerald-500" },
       ],
     },
   ];
