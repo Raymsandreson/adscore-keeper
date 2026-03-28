@@ -90,6 +90,7 @@ export function CTWACampaignAutomation() {
       const campaigns: MetaCampaign[] = (data?.campaigns || []).map((c: any) => ({
         campaign_id: c.campaign_id,
         campaign_name: c.campaign_name,
+        status: c.status || 'ACTIVE',
       }));
       console.log('CTWA: Loaded', campaigns.length, 'campaigns from Meta');
       setMetaCampaigns(campaigns);
