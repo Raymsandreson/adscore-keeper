@@ -128,11 +128,12 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
 
       await supabase.from('team_chat_mentions').insert(mentions);
 
-      // Send WhatsApp notification to mentioned users
+      // Send WhatsApp notification to mentioned users (using sender's instance)
       supabase.functions.invoke('notify-team-mention', {
         body: {
           mentioned_user_ids: mentionedUserIds,
           message_content: content,
+          sender_id: user.id,
           sender_name: senderName,
           entity_type: entityType,
           entity_id: entityId,
