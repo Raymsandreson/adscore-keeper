@@ -6646,6 +6646,7 @@ export type Database = {
           created_at: string
           id: string
           instance_id: string | null
+          is_active: boolean
           lead_source_label: string | null
           stage_id: string | null
         }
@@ -6659,6 +6660,7 @@ export type Database = {
           created_at?: string
           id?: string
           instance_id?: string | null
+          is_active?: boolean
           lead_source_label?: string | null
           stage_id?: string | null
         }
@@ -6672,6 +6674,7 @@ export type Database = {
           created_at?: string
           id?: string
           instance_id?: string | null
+          is_active?: boolean
           lead_source_label?: string | null
           stage_id?: string | null
         }

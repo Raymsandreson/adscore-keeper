@@ -1180,6 +1180,7 @@ Deno.serve(async (req) => {
                 .from('whatsapp_agent_campaign_links')
                 .select('*')
                 .eq('auto_create_lead', true)
+                .eq('is_active', true)
               
               if (campaignLinks && campaignLinks.length > 0) {
                 const autoLink = (campaignLinks as any[]).find(l => l.board_id)
