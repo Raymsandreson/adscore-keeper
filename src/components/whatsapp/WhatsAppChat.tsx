@@ -997,6 +997,42 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   Criar Grupo WhatsApp
                 </DropdownMenuItem>
               )}
+              {availableAgents.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  {agentEnabled && activeAgentId ? (
+                    <DropdownMenuItem onClick={handleAgentToggle} disabled={agentLoading} className="gap-2">
+                      <BotOff className="h-4 w-4" /> Desativar Agente ({activeAgentName})
+                    </DropdownMenuItem>
+                  ) : activeAgentId && !agentEnabled ? (
+                    <DropdownMenuItem onClick={handleAgentToggle} disabled={agentLoading} className="gap-2">
+                      <Bot className="h-4 w-4" /> Reativar Agente ({activeAgentName})
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger className="gap-2">
+                      <Bot className="h-4 w-4" /> {activeAgentId ? 'Trocar Agente' : 'Ativar Agente IA'}
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      {availableAgents.map(agent => (
+                        <DropdownMenuItem key={agent.id} onClick={() => handleSelectAgent(agent.id)} className="gap-2">
+                          <Bot className="h-3.5 w-3.5" />
+                          <span className="flex-1">{agent.name}</span>
+                          {activeAgentId === agent.id && <Badge variant="default" className="text-[9px] h-4 px-1">ativo</Badge>}
+                        </DropdownMenuItem>
+                      ))}
+                      {activeAgentId && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={handleRemoveAgent} className="gap-2 text-destructive">
+                            <BotOff className="h-3.5 w-3.5" /> Remover agente
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                </>
+              )}
               {onClearConversation && (
                 <DropdownMenuItem
                   onClick={async () => {
