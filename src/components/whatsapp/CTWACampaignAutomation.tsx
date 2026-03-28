@@ -393,7 +393,15 @@ export function CTWACampaignAutomation() {
                     </Button>
                   </div>
                 </div>
-                <Select value={addingCampaign} onValueChange={setAddingCampaign}>
+                <Select value={addingCampaign} onValueChange={(val) => {
+                  setAddingCampaign(val);
+                  // Auto-fill instance based on destination_phone
+                  const camp = metaCampaigns.find(c => c.campaign_id === val);
+                  if (camp?.destination_phone) {
+                    const matched = findInstanceByPhone(camp.destination_phone);
+                    if (matched) setAddingInstance(matched.id);
+                  }
+                }}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar campanha..." /></SelectTrigger>
                   <SelectContent>
                     {activeCampaigns.length > 0 && (
