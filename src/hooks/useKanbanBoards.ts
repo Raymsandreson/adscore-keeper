@@ -20,6 +20,7 @@ export interface KanbanBoard {
   display_order: number;
   ad_account_id: string | null;
   board_type: 'funnel' | 'workflow';
+  product_service_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -120,6 +121,7 @@ export const useKanbanBoards = (adAccountId?: string) => {
       if (updates.display_order !== undefined) updatePayload.display_order = updates.display_order;
       if (updates.board_type !== undefined) updatePayload.board_type = updates.board_type;
       if (updates.stages !== undefined) updatePayload.stages = JSON.parse(JSON.stringify(updates.stages));
+      if (updates.product_service_id !== undefined) updatePayload.product_service_id = updates.product_service_id;
 
       const { data, error } = await supabase
         .from('kanban_boards')

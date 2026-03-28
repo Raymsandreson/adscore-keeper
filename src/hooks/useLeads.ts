@@ -76,6 +76,7 @@ export interface Lead {
   legal_viability: string | null;
   group_link: string | null;
   lead_status: LeadBusinessStatus;
+  product_service_id: string | null;
 }
 
 export interface LeadStats {
