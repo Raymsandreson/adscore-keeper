@@ -131,6 +131,34 @@ export function CTWACampaignAutomation() {
     setLoading(false);
   };
 
+  // Helper to match destination_phone to an instance by owner_phone
+  const normalizePhone = (phone: string) => phone.replace(/\D/g, '').slice(-8);
+  
+  const findInstanceByPhone = (destPhone: string): Instance | undefined => {
+    if (!destPhone) return undefined;
+    const normDest = normalizePhone(destPhone);
+    return instances.find(inst => {
+      if (!inst.owner_phone) return false;
+      return normalizePhone(inst.owner_phone) === normDest;
+    });
+  };
+
+  // Auto-assign instance_id when campaigns and instances are loaded
+  useEffect(() => {
+    if (metaCampaigns.length === 0 || instances.length === 0 || links.length === 0) return;
+    
+    links.forEach(link => {
+      const linkAny = link as any;
+      if (linkAny.instance_id) return; // already assigned
+      const camp = metaCampaigns.find(c => c.campaign_id === link.campaign_id);
+      if (!camp?.destination_phone) return;
+      const matchedInst = findInstanceByPhone(camp.destination_phone);
+      if (matchedInst) {
+        handleUpdate(link.id, { instance_id: matchedInst.id } as any);
+      }
+    });
+  }, [metaCampaigns, instances, links.length]);
+
   useEffect(() => {
     fetchData();
     fetchMetaCampaigns();
@@ -230,11 +258,20 @@ export function CTWACampaignAutomation() {
                   </div>
                   {(() => {
                     const camp = metaCampaigns.find(c => c.campaign_id === link.campaign_id);
-                    return camp?.destination_phone ? (
-                      <span className="text-[10px] text-muted-foreground flex items-center gap-1 ml-6">
-                        <Phone className="h-3 w-3" /> {camp.destination_phone}
-                      </span>
-                    ) : null;
+                    if (!camp?.destination_phone) return null;
+                    const matchedInst = findInstanceByPhone(camp.destination_phone);
+                    return (
+                      <div className="ml-6 space-y-0.5">
+                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                          <Phone className="h-3 w-3" /> {camp.destination_phone}
+                        </span>
+                        {matchedInst && (
+                          <span className="text-[10px] text-green-600 flex items-center gap-1">
+                            ✅ Instância detectada: {matchedInst.instance_name}
+                          </span>
+                        )}
+                      </div>
+                    );
                   })()}
                 </div>
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(link.id)}>
