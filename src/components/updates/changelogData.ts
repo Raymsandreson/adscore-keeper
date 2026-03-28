@@ -18,6 +18,48 @@ export interface ChangelogEntry {
  */
 export const changelog: ChangelogEntry[] = [
   {
+    version: "3.2.0",
+    date: "2026-03-28",
+    title: "Automações de Campanha e Melhorias",
+    features: [
+      {
+        title: "Agente IA por campanha CTWA",
+        description: "Vincule um agente de IA a uma campanha Click-to-WhatsApp. O agente responde automaticamente as conversas que chegam pelo anúncio.",
+        icon: "🤖",
+        howToUse: "Vá em WhatsApp → Agentes IA → aba 'Campanhas CTWA'. Clique em 'Vincular Agente', escolha o agente, a instância e a campanha. O agente passará a responder conversas novas daquela campanha.",
+      },
+      {
+        title: "Pausar/retomar agente na campanha",
+        description: "Agora você pode pausar o agente vinculado a uma campanha sem perder o vínculo, e reativá-lo quando quiser.",
+        icon: "⏸️",
+        howToUse: "Na lista de vínculos de campanha, use o botão de pausar/retomar ao lado de cada vínculo.",
+      },
+      {
+        title: "Agente usa nome da instância",
+        description: "O agente de IA agora se identifica automaticamente com o nome do usuário da instância WhatsApp pela qual está respondendo.",
+        icon: "👤",
+        howToUse: "Configure o nome do usuário na instância WhatsApp. O agente usará esse nome ao se apresentar nas conversas.",
+      },
+      {
+        title: "Rastreabilidade de campanha nas mensagens",
+        description: "Cada mensagem e ação agora registra o campaign_id e se foi feita pelo sistema ou por um membro da equipe.",
+        icon: "🏷️",
+        howToUse: "Ao visualizar mensagens ou histórico de ações, você verá indicadores de origem (sistema vs membro) e qual campanha gerou a conversa.",
+      },
+      {
+        title: "Atualização de conversas ao trocar de chat",
+        description: "As conversas do WhatsApp agora atualizam ao abrir ou trocar de chat, em vez de polling a cada 30s.",
+        icon: "⚡",
+        howToUse: "Basta abrir uma conversa — as mensagens mais recentes serão carregadas automaticamente.",
+      },
+      {
+        title: "Troca de instância corrigida",
+        description: "Ao trocar de instância no WhatsApp, as conversas agora atualizam corretamente mostrando os dados da instância selecionada.",
+        icon: "🔄",
+      },
+    ],
+  },
+  {
     version: "3.1.0",
     date: "2026-03-19",
     title: "WhatsApp: Atividades e Notas no Chat",
