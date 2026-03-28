@@ -3733,6 +3733,7 @@ export type Database = {
           id: string
           is_default: boolean | null
           name: string
+          product_service_id: string | null
           stages: Json
           updated_at: string
         }
@@ -3747,6 +3748,7 @@ export type Database = {
           id?: string
           is_default?: boolean | null
           name: string
+          product_service_id?: string | null
           stages?: Json
           updated_at?: string
         }
@@ -3761,10 +3763,19 @@ export type Database = {
           id?: string
           is_default?: boolean | null
           name?: string
+          product_service_id?: string | null
           stages?: Json
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "kanban_boards_product_service_id_fkey"
+            columns: ["product_service_id"]
+            isOneToOne: false
+            referencedRelation: "products_services"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       lead_activities: {
         Row: {
@@ -4414,6 +4425,7 @@ export type Database = {
           neighborhood: string | null
           news_link: string | null
           notes: string | null
+          product_service_id: string | null
           qualified_at: string | null
           sector: string | null
           source: string | null
@@ -4483,6 +4495,7 @@ export type Database = {
           neighborhood?: string | null
           news_link?: string | null
           notes?: string | null
+          product_service_id?: string | null
           qualified_at?: string | null
           sector?: string | null
           source?: string | null
@@ -4552,6 +4565,7 @@ export type Database = {
           neighborhood?: string | null
           news_link?: string | null
           notes?: string | null
+          product_service_id?: string | null
           qualified_at?: string | null
           sector?: string | null
           source?: string | null
@@ -4581,6 +4595,13 @@ export type Database = {
             columns: ["instagram_comment_id"]
             isOneToOne: false
             referencedRelation: "instagram_comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_product_service_id_fkey"
+            columns: ["product_service_id"]
+            isOneToOne: false
+            referencedRelation: "products_services"
             referencedColumns: ["id"]
           },
         ]
