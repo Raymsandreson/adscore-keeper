@@ -33,6 +33,7 @@ interface Board {
 interface MetaCampaign {
   campaign_id: string;
   campaign_name: string;
+  status?: string;
 }
 
 export function CTWACampaignAutomation() {
@@ -47,6 +48,7 @@ export function CTWACampaignAutomation() {
   const [manualCampaignId, setManualCampaignId] = useState('');
   const [manualCampaignName, setManualCampaignName] = useState('');
   const [useManualInput, setUseManualInput] = useState(false);
+  const [showPaused, setShowPaused] = useState(false);
 
   const getMetaCredentials = () => {
     const savedAccounts = localStorage.getItem('meta_saved_accounts');
@@ -88,6 +90,7 @@ export function CTWACampaignAutomation() {
       const campaigns: MetaCampaign[] = (data?.campaigns || []).map((c: any) => ({
         campaign_id: c.campaign_id,
         campaign_name: c.campaign_name,
+        status: c.status || 'ACTIVE',
       }));
       console.log('CTWA: Loaded', campaigns.length, 'campaigns from Meta');
       setMetaCampaigns(campaigns);
@@ -172,6 +175,8 @@ export function CTWACampaignAutomation() {
 
   const linkedCampaignIds = new Set(links.map(l => l.campaign_id));
   const unlinkedCampaigns = metaCampaigns.filter(c => !linkedCampaignIds.has(c.campaign_id));
+  const activeCampaigns = unlinkedCampaigns.filter(c => c.status === 'ACTIVE');
+  const pausedCampaigns = unlinkedCampaigns.filter(c => c.status !== 'ACTIVE');
 
   return (
     <Card>
@@ -306,10 +311,30 @@ export function CTWACampaignAutomation() {
                 <Select value={addingCampaign} onValueChange={setAddingCampaign}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar campanha..." /></SelectTrigger>
                   <SelectContent>
-                    {unlinkedCampaigns.map(c => (
+                    {activeCampaigns.length > 0 && (
+                      <div className="px-2 py-1 text-[10px] font-semibold text-green-600 uppercase tracking-wider">🟢 Ativas</div>
+                    )}
+                    {activeCampaigns.map(c => (
                       <SelectItem key={c.campaign_id} value={c.campaign_id}>{c.campaign_name}</SelectItem>
                     ))}
-                    {unlinkedCampaigns.length === 0 && (
+                    {showPaused && pausedCampaigns.length > 0 && (
+                      <>
+                        <div className="my-1 border-t border-border" />
+                        <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">⏸ Pausadas</div>
+                        {pausedCampaigns.map(c => (
+                          <SelectItem key={c.campaign_id} value={c.campaign_id}>{c.campaign_name}</SelectItem>
+                        ))}
+                      </>
+                    )}
+                    {!showPaused && pausedCampaigns.length > 0 && (
+                      <div
+                        className="px-2 py-1.5 text-[10px] text-primary cursor-pointer hover:bg-accent rounded"
+                        onPointerDown={(e) => { e.preventDefault(); setShowPaused(true); }}
+                      >
+                        Mostrar {pausedCampaigns.length} campanha(s) pausada(s)
+                      </div>
+                    )}
+                    {activeCampaigns.length === 0 && pausedCampaigns.length === 0 && (
                       <div className="px-2 py-1.5 text-xs text-muted-foreground">
                         Nenhuma campanha disponível
                       </div>
