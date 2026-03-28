@@ -296,11 +296,12 @@ export function CTWACampaignAutomation() {
           <p className="text-xs font-medium flex items-center gap-1.5">
             <Plus className="h-3.5 w-3.5" /> Vincular nova campanha
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-3">
+            {/* Campaign selector - first */}
             {useManualInput ? (
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <Label className="text-[10px]">ID da Campanha</Label>
+                  <Label className="text-[10px]">Campanha</Label>
                   {metaCampaigns.length > 0 && (
                     <button className="text-[10px] text-primary underline" onClick={() => setUseManualInput(false)}>
                       Selecionar da lista
@@ -383,19 +384,38 @@ export function CTWACampaignAutomation() {
               </div>
             )}
 
-            <div className="space-y-1">
-              <Label className="text-[10px]">Agente IA</Label>
-              <Select value={addingAgent} onValueChange={setAddingAgent}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar agente..." /></SelectTrigger>
-                <SelectContent>
-                  {agents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                  {agents.length === 0 && (
-                    <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                      Nenhum agente cadastrado
-                    </div>
-                  )}
-                </SelectContent>
-              </Select>
+            {/* Instance + Agent in a row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-[10px]">Instância WhatsApp</Label>
+                <Select value={addingInstance} onValueChange={setAddingInstance}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar instância..." /></SelectTrigger>
+                  <SelectContent>
+                    {instances.map(inst => (
+                      <SelectItem key={inst.id} value={inst.id}>
+                        <span>{inst.instance_name}</span>
+                        {inst.owner_phone && <span className="text-[10px] text-muted-foreground ml-1">({inst.owner_phone})</span>}
+                      </SelectItem>
+                    ))}
+                    {instances.length === 0 && (
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhuma instância ativa</div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-[10px]">Agente IA</Label>
+                <Select value={addingAgent} onValueChange={setAddingAgent}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar agente..." /></SelectTrigger>
+                  <SelectContent>
+                    {agents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                    {agents.length === 0 && (
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum agente ativo</div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
           <Button
