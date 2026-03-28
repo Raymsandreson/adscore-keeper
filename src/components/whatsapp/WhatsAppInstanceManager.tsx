@@ -19,6 +19,7 @@ interface Instance {
   instance_token: string;
   base_url: string | null;
   owner_phone: string | null;
+  owner_name: string | null;
   is_active: boolean | null;
   is_paused: boolean;
   receive_leads: boolean | null;
