@@ -507,10 +507,10 @@ Deno.serve(async (req) => {
         try {
           console.log(`[zapsign-webhook] No lead linked, auto-creating contact+lead for phone: ${cleanPhone}`)
 
-          // 1. Fetch conversation messages for AI extraction
+          // 1. Fetch conversation messages for AI extraction (also grab campaign_id)
           const { data: convMessages } = await supabase
             .from('whatsapp_messages')
-            .select('message_text, direction, created_at')
+            .select('message_text, direction, created_at, campaign_id')
             .eq('phone', cleanPhone)
             .order('created_at', { ascending: true })
             .limit(100)
@@ -579,12 +579,36 @@ Deno.serve(async (req) => {
             }
           }
 
-          // 4. Determine board - use first available board or from document shortcut
+          // 4. Determine board - PRIORITY: campaign CTWA > shortcut config > fallback
           let boardId: string | null = null
           let stageId: string | null = null
+          let campaignId: string | null = null
+          let campaignName: string | null = null
 
-          // Try to find board from shortcut config
-          if (localDoc.shortcut_name) {
+          // 4a. Try to resolve from CTWA campaign (highest priority)
+          if (convMessages && convMessages.length > 0) {
+            const msgWithCampaign = convMessages.find(m => m.campaign_id)
+            if (msgWithCampaign) {
+              campaignId = msgWithCampaign.campaign_id
+              console.log(`[zapsign-webhook] Found campaign_id from messages: ${campaignId}`)
+
+              const { data: campaignLink } = await supabase
+                .from('whatsapp_agent_campaign_links')
+                .select('board_id, stage_id, campaign_name')
+                .eq('campaign_id', campaignId)
+                .maybeSingle()
+
+              if (campaignLink?.board_id) {
+                boardId = campaignLink.board_id
+                stageId = campaignLink.stage_id || null
+                campaignName = campaignLink.campaign_name || null
+                console.log(`[zapsign-webhook] Board resolved from CTWA campaign: ${boardId}, stage: ${stageId}`)
+              }
+            }
+          }
+
+          // 4b. Fallback: try from shortcut automation rules
+          if (!boardId && localDoc.shortcut_name) {
             const { data: shortcut } = await supabase
               .from('wjia_command_shortcuts')
               .select('id')
@@ -592,7 +616,6 @@ Deno.serve(async (req) => {
               .maybeSingle()
 
             if (shortcut) {
-              // Check if there's an automation rule for this agent
               const { data: rule } = await supabase
                 .from('agent_automation_rules')
                 .select('actions')
@@ -611,7 +634,7 @@ Deno.serve(async (req) => {
             }
           }
 
-          // Fallback: get first kanban board
+          // 4c. Final fallback: first kanban board
           if (!boardId) {
             const { data: firstBoard } = await supabase
               .from('kanban_boards')
@@ -660,8 +683,12 @@ Deno.serve(async (req) => {
                 sector: extractedData.sector || null,
                 liability_type: extractedData.liability_type || null,
                 news_link: extractedData.news_link || null,
+                campaign_id: campaignId || null,
+                campaign_name: campaignName || null,
                 action_source: 'system',
-                action_source_detail: 'Lead criado automaticamente ao assinar documento (ZapSign)',
+                action_source_detail: campaignId 
+                  ? `Lead criado automaticamente ao assinar documento (ZapSign) - Campanha: ${campaignName || campaignId}`
+                  : 'Lead criado automaticamente ao assinar documento (ZapSign)',
               })
               .select('id')
               .single()
