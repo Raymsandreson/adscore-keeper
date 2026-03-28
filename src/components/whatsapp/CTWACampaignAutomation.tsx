@@ -620,7 +620,7 @@ export function CTWACampaignAutomation() {
                     <Loader2 className="h-3 w-3 animate-spin" /> Buscando campanhas...
                   </div>
                 )}
-
+                <Input
                   className="h-8 text-xs"
                   placeholder="Ex: 123456789"
                   value={manualCampaignId}
