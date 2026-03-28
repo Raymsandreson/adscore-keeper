@@ -26,17 +26,15 @@ Deno.serve(async (req) => {
 
     console.log(`[auto-enrich] phone=${phone} instance=${instance_name} lead=${lead_id} contact=${contact_id}`)
 
-    // Check if we already enriched recently (within 1 hour)
+    // Check if we already enriched recently (within 2 hours)
     const phoneSuffix = phone.replace(/\D/g, '').slice(-8)
     
     const { data: recentEnrich } = await supabase
-      .from('whatsapp_messages')
+      .from('lead_enrichment_log')
       .select('id')
-      .eq('instance_name', instance_name)
       .ilike('phone', `%${phoneSuffix}`)
-      .eq('direction', 'outbound')
-      .like('message_text', '%[ENRICH]%')
-      .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString())
+      .eq('instance_name', instance_name)
+      .gte('created_at', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
       .limit(1)
 
     if (recentEnrich && recentEnrich.length > 0) {
