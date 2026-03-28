@@ -18,6 +18,19 @@ export interface ChangelogEntry {
  */
 export const changelog: ChangelogEntry[] = [
   {
+    version: "3.3.0",
+    date: "2026-03-28",
+    title: "Criação automática de Lead ao assinar documento",
+    features: [
+      {
+        title: "Auto-criação de Lead e Contato na assinatura",
+        description: "Quando um documento é assinado via ZapSign e não há lead vinculado, o sistema cria automaticamente o contato e o lead, extraindo dados da conversa via IA.",
+        icon: "📝",
+        howToUse: "Funciona automaticamente! Ao assinar um documento, se não houver lead vinculado, o sistema busca o histórico da conversa, extrai nome, cidade, empresa e outros dados via IA e cria o lead com todas as informações enriquecidas.",
+      },
+    ],
+  },
+  {
     version: "3.2.0",
     date: "2026-03-28",
     title: "Automações de Campanha e Melhorias",
