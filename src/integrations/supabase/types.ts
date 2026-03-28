@@ -6506,6 +6506,7 @@ export type Database = {
           campaign_name: string | null
           created_at: string
           id: string
+          instance_id: string | null
           lead_source_label: string | null
           stage_id: string | null
         }
@@ -6518,6 +6519,7 @@ export type Database = {
           campaign_name?: string | null
           created_at?: string
           id?: string
+          instance_id?: string | null
           lead_source_label?: string | null
           stage_id?: string | null
         }
@@ -6530,6 +6532,7 @@ export type Database = {
           campaign_name?: string | null
           created_at?: string
           id?: string
+          instance_id?: string | null
           lead_source_label?: string | null
           stage_id?: string | null
         }
@@ -6546,6 +6549,13 @@ export type Database = {
             columns: ["board_id"]
             isOneToOne: false
             referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_agent_campaign_links_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
             referencedColumns: ["id"]
           },
         ]

@@ -17,6 +17,13 @@ interface CampaignLink {
   auto_create_lead?: boolean;
   board_id?: string | null;
   stage_id?: string | null;
+  instance_id?: string | null;
+}
+
+interface Instance {
+  id: string;
+  instance_name: string;
+  owner_phone?: string;
 }
 
 interface Agent {
@@ -41,11 +48,13 @@ export function CTWACampaignAutomation() {
   const [links, setLinks] = useState<CampaignLink[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [boards, setBoards] = useState<Board[]>([]);
+  const [instances, setInstances] = useState<Instance[]>([]);
   const [metaCampaigns, setMetaCampaigns] = useState<MetaCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [addingAgent, setAddingAgent] = useState('');
   const [addingCampaign, setAddingCampaign] = useState('');
+  const [addingInstance, setAddingInstance] = useState('');
   const [manualCampaignId, setManualCampaignId] = useState('');
   const [manualCampaignName, setManualCampaignName] = useState('');
   const [useManualInput, setUseManualInput] = useState(false);
@@ -108,13 +117,17 @@ export function CTWACampaignAutomation() {
 
   const fetchData = async () => {
     setLoading(true);
-    const linksRes: any = await supabase.from('whatsapp_agent_campaign_links' as any).select('*');
-    const agentsRes: any = await supabase.from('whatsapp_ai_agents').select('id, name, is_active').order('name');
-    const boardsRes: any = await supabase.from('kanban_boards' as any).select('id, name, stages');
+    const [linksRes, agentsRes, boardsRes, instancesRes]: any[] = await Promise.all([
+      supabase.from('whatsapp_agent_campaign_links' as any).select('*'),
+      supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
+      supabase.from('kanban_boards' as any).select('id, name, stages'),
+      supabase.from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true).order('instance_name'),
+    ]);
 
     setLinks((linksRes.data as any[]) || []);
     setAgents((agentsRes.data as Agent[]) || []);
     setBoards((boardsRes.data as Board[]) || []);
+    setInstances((instancesRes.data as Instance[]) || []);
     setLoading(false);
   };
 
@@ -140,16 +153,20 @@ export function CTWACampaignAutomation() {
       campaignName = camp?.campaign_name || addingCampaign;
     }
 
-    const { error } = await supabase.from('whatsapp_agent_campaign_links').upsert({
+    const payload: any = {
       agent_id: addingAgent,
       campaign_id: campaignId,
       campaign_name: campaignName,
-    } as any, { onConflict: 'campaign_id' });
+    };
+    if (addingInstance) payload.instance_id = addingInstance;
+
+    const { error } = await supabase.from('whatsapp_agent_campaign_links').upsert(payload, { onConflict: 'campaign_id' });
 
     if (error) { toast.error('Erro ao vincular'); return; }
     toast.success('Campanha vinculada!');
     setAddingAgent('');
     setAddingCampaign('');
+    setAddingInstance('');
     setManualCampaignId('');
     setManualCampaignName('');
     fetchData();
@@ -225,7 +242,23 @@ export function CTWACampaignAutomation() {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                    <Phone className="h-3 w-3" /> Instância
+                  </Label>
+                  <Select value={linkAny.instance_id || ''} onValueChange={v => handleUpdate(link.id, { instance_id: v || null } as any)}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                    <SelectContent>
+                      {instances.map(inst => (
+                        <SelectItem key={inst.id} value={inst.id}>
+                          {inst.instance_name} {inst.owner_phone ? `(${inst.owner_phone})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="space-y-1">
                   <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
                     <Sparkles className="h-3 w-3" /> Agente IA
@@ -237,7 +270,9 @@ export function CTWACampaignAutomation() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
                     <FolderKanban className="h-3 w-3" /> Funil
@@ -283,11 +318,12 @@ export function CTWACampaignAutomation() {
           <p className="text-xs font-medium flex items-center gap-1.5">
             <Plus className="h-3.5 w-3.5" /> Vincular nova campanha
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-3">
+            {/* Campaign selector - first */}
             {useManualInput ? (
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <Label className="text-[10px]">ID da Campanha</Label>
+                  <Label className="text-[10px]">Campanha</Label>
                   {metaCampaigns.length > 0 && (
                     <button className="text-[10px] text-primary underline" onClick={() => setUseManualInput(false)}>
                       Selecionar da lista
@@ -370,19 +406,38 @@ export function CTWACampaignAutomation() {
               </div>
             )}
 
-            <div className="space-y-1">
-              <Label className="text-[10px]">Agente IA</Label>
-              <Select value={addingAgent} onValueChange={setAddingAgent}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar agente..." /></SelectTrigger>
-                <SelectContent>
-                  {agents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                  {agents.length === 0 && (
-                    <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                      Nenhum agente cadastrado
-                    </div>
-                  )}
-                </SelectContent>
-              </Select>
+            {/* Instance + Agent in a row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-[10px]">Instância WhatsApp</Label>
+                <Select value={addingInstance} onValueChange={setAddingInstance}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar instância..." /></SelectTrigger>
+                  <SelectContent>
+                    {instances.map(inst => (
+                      <SelectItem key={inst.id} value={inst.id}>
+                        <span>{inst.instance_name}</span>
+                        {inst.owner_phone && <span className="text-[10px] text-muted-foreground ml-1">({inst.owner_phone})</span>}
+                      </SelectItem>
+                    ))}
+                    {instances.length === 0 && (
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhuma instância ativa</div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-[10px]">Agente IA</Label>
+                <Select value={addingAgent} onValueChange={setAddingAgent}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar agente..." /></SelectTrigger>
+                  <SelectContent>
+                    {agents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                    {agents.length === 0 && (
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum agente ativo</div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
           <Button
