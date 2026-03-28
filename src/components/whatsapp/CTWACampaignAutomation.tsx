@@ -51,10 +51,13 @@ export function CTWACampaignAutomation() {
   const getMetaCredentials = () => {
     const savedAccounts = localStorage.getItem('meta_saved_accounts');
     if (savedAccounts) {
-      const accounts = JSON.parse(savedAccounts);
-      const selectedId = localStorage.getItem('meta_selected_account');
-      const selected = accounts.find((a: any) => a.id === selectedId) || accounts[0];
-      return { accessToken: selected?.accessToken, adAccountId: selected?.adAccountId };
+      try {
+        const accounts = JSON.parse(savedAccounts);
+        const selectedIds = localStorage.getItem('meta_selected_account_ids');
+        const selectedId = selectedIds ? JSON.parse(selectedIds)?.[0] : localStorage.getItem('meta_selected_account');
+        const selected = accounts.find((a: any) => a.id === selectedId) || accounts[0];
+        return { accessToken: selected?.accessToken, adAccountId: selected?.adAccountId };
+      } catch { /* fall through */ }
     }
     return {
       accessToken: localStorage.getItem('meta_access_token'),
