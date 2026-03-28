@@ -1298,6 +1298,8 @@ Deno.serve(async (req) => {
         metadata: body,
         instance_name: instanceName,
         instance_token: instanceToken,
+        campaign_id: detectedCampaignId || null,
+        campaign_name: detectedCampaignName || null,
       })
       .select()
       .single()
