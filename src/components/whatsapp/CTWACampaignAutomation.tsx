@@ -28,7 +28,9 @@ interface Instance {
 
 interface Agent {
   id: string;
-  name: string;
+  shortcut_name: string;
+  description: string | null;
+}
 }
 
 interface Board {
