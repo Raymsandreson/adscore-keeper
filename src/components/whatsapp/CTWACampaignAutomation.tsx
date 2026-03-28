@@ -28,7 +28,8 @@ interface Instance {
 
 interface Agent {
   id: string;
-  name: string;
+  shortcut_name: string;
+  description: string | null;
 }
 
 interface Board {
@@ -119,7 +120,7 @@ export function CTWACampaignAutomation() {
     setLoading(true);
     const [linksRes, agentsRes, boardsRes, instancesRes]: any[] = await Promise.all([
       supabase.from('whatsapp_agent_campaign_links' as any).select('*'),
-      supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
+      supabase.from('wjia_command_shortcuts').select('id, shortcut_name, description').eq('is_active', true).order('shortcut_name'),
       supabase.from('kanban_boards' as any).select('id, name, stages'),
       supabase.from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true).order('instance_name'),
     ]);
@@ -315,7 +316,7 @@ export function CTWACampaignAutomation() {
                   <Select value={link.agent_id} onValueChange={v => handleUpdate(link.id, { agent_id: v })}>
                     <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {agents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                      {agents.map(a => <SelectItem key={a.id} value={a.id}>#{a.shortcut_name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -496,7 +497,7 @@ export function CTWACampaignAutomation() {
                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar agente..." /></SelectTrigger>
                 <SelectContent>
                   {agents.length > 0 ? (
-                    agents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)
+                    agents.map(a => <SelectItem key={a.id} value={a.id}>#{a.shortcut_name}</SelectItem>)
                   ) : (
                     <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum agente ativo</div>
                   )}
