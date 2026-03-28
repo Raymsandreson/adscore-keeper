@@ -150,6 +150,7 @@ export function WhatsAppInstanceManager() {
       instance_token: inst.instance_token,
       base_url: inst.base_url || 'https://abraci.uazapi.com',
       owner_phone: inst.owner_phone || '',
+      owner_name: (inst as any).owner_name || '',
     });
     setDialogOpen(true);
   };
@@ -169,6 +170,7 @@ export function WhatsAppInstanceManager() {
             instance_token: form.instance_token.trim(),
             base_url: form.base_url.trim() || null,
             owner_phone: form.owner_phone.trim() || null,
+            owner_name: form.owner_name.trim() || null,
           } as any)
           .eq('id', editingId);
         if (error) throw error;
@@ -181,7 +183,8 @@ export function WhatsAppInstanceManager() {
             instance_token: form.instance_token.trim(),
             base_url: form.base_url.trim() || null,
             owner_phone: form.owner_phone.trim() || null,
-          });
+            owner_name: form.owner_name.trim() || null,
+          } as any);
         if (error) throw error;
         toast.success('Instância criada com sucesso!');
       }
