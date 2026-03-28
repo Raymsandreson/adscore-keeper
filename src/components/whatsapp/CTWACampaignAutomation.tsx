@@ -10,8 +10,9 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   Megaphone, Target, Sparkles, FolderKanban, Plus, X, Loader2, RefreshCw, Phone, 
-  Pause, Play, ChevronDown, ChevronUp, MessageSquare, Users 
+  Pause, Play, ChevronDown, ChevronUp, MessageSquare, Users, UserPlus, Brain 
 } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 
 interface CampaignLink {
@@ -80,6 +81,8 @@ export function CTWACampaignAutomation() {
   const [linkConversations, setLinkConversations] = useState<Record<string, ConversationInfo[]>>({});
   const [conversationCounts, setConversationCounts] = useState<Record<string, number>>({});
   const [loadingConversations, setLoadingConversations] = useState<string | null>(null);
+  const [bulkCreating, setBulkCreating] = useState<string | null>(null);
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number; created: number } | null>(null);
 
   const getMetaCredentials = () => {
     const savedAccounts = localStorage.getItem('meta_saved_accounts');
@@ -298,6 +301,60 @@ export function CTWACampaignAutomation() {
       if (!linkConversations[link.id]) {
         fetchLinkConversations(link);
       }
+    }
+  };
+
+  const handleBulkCreateLeads = async (link: CampaignLink) => {
+    const linkAny = link as any;
+    if (!linkAny.board_id) {
+      toast.error('Configure um funil de destino antes de criar leads em massa');
+      return;
+    }
+    
+    setBulkCreating(link.id);
+    setBulkProgress({ current: 0, total: 0, created: 0 });
+    
+    let offset = 0;
+    let totalCreated = 0;
+    const batchSize = 5;
+    
+    try {
+      while (true) {
+        const { data, error } = await supabase.functions.invoke('bulk-create-leads-from-campaign', {
+          body: {
+            campaign_id: link.campaign_id,
+            board_id: linkAny.board_id,
+            stage_id: linkAny.stage_id || null,
+            batch_size: batchSize,
+            offset,
+          },
+        });
+
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+
+        totalCreated += data.processed || 0;
+        setBulkProgress({
+          current: Math.min(offset + batchSize, data.total_new),
+          total: data.total_new,
+          created: totalCreated,
+        });
+
+        if (data.done) break;
+        offset = data.offset;
+        
+        // Small delay between batches
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      toast.success(`${totalCreated} leads e contatos criados com sucesso!`);
+      fetchData();
+    } catch (err) {
+      console.error('Bulk create error:', err);
+      toast.error('Erro na criação em massa: ' + String(err));
+    } finally {
+      setBulkCreating(null);
+      setBulkProgress(null);
     }
   };
 
@@ -557,6 +614,32 @@ export function CTWACampaignAutomation() {
                       ))}
                     </div>
                   )}
+                  
+                  {/* Bulk create leads button */}
+                  <div className="pt-1 border-t border-border/50">
+                    {bulkCreating === link.id && bulkProgress ? (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Brain className="h-3 w-3 animate-pulse" /> Analisando conversas com IA...
+                          </span>
+                          <span>{bulkProgress.created} criados / {bulkProgress.total} total</span>
+                        </div>
+                        <Progress value={bulkProgress.total > 0 ? (bulkProgress.current / bulkProgress.total) * 100 : 0} className="h-1.5" />
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-[10px] gap-1 w-full"
+                        onClick={() => handleBulkCreateLeads(link)}
+                        disabled={!!bulkCreating}
+                      >
+                        <UserPlus className="h-3 w-3" />
+                        Criar leads e contatos via IA (análise de conversas)
+                      </Button>
+                    )}
+                  </div>
                 </div>
               )}
 
