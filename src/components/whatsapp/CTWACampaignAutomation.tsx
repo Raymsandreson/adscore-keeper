@@ -604,10 +604,22 @@ export function CTWACampaignAutomation() {
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <Label className="text-[10px]">Campanha</Label>
-                  {metaCampaigns.length > 0 && (
-                    <button className="text-[10px] text-primary underline" onClick={() => setUseManualInput(false)}>
-                      Selecionar da lista
+                  <div className="flex items-center gap-1">
+                    <button className="text-[10px] text-primary underline" onClick={() => fetchMetaCampaigns()}>
+                      Buscar campanhas
                     </button>
+                    {metaCampaigns.length > 0 && (
+                      <button className="text-[10px] text-primary underline" onClick={() => setUseManualInput(false)}>
+                        Selecionar da lista
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {loadingCampaigns && (
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground py-1">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Buscando campanhas...
+                  </div>
+                )}
                   )}
                 </div>
                 <Input
