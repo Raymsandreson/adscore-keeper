@@ -93,6 +93,7 @@ interface LeadEditDialogProps {
   adAccountId?: string;
   boards?: KanbanBoard[];
   mode?: 'dialog' | 'sheet';
+  initialTab?: string;
 }
 
 const brazilianStates = [
