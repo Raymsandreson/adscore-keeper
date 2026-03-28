@@ -161,10 +161,31 @@ export function CTWACampaignAutomation() {
   const fetchConversationCounts = async (currentLinks: CampaignLink[]) => {
     const counts: Record<string, number> = {};
     for (const link of currentLinks) {
+      // Only count conversations that came from THIS campaign (not all agent conversations)
+      const { data: campaignLeads } = await supabase
+        .from('leads')
+        .select('lead_phone')
+        .eq('campaign_id', link.campaign_id);
+      
+      if (!campaignLeads?.length) {
+        counts[link.id] = 0;
+        continue;
+      }
+
+      const campaignPhones = campaignLeads
+        .map(l => l.lead_phone?.replace(/\D/g, ''))
+        .filter(Boolean);
+
+      if (!campaignPhones.length) {
+        counts[link.id] = 0;
+        continue;
+      }
+
       const { count } = await supabase
         .from('whatsapp_conversation_agents' as any)
         .select('*', { count: 'exact', head: true })
-        .eq('agent_id', link.agent_id);
+        .eq('agent_id', link.agent_id)
+        .in('phone', campaignPhones);
       counts[link.id] = count || 0;
     }
     setConversationCounts(counts);
@@ -173,11 +194,27 @@ export function CTWACampaignAutomation() {
   const fetchLinkConversations = async (link: CampaignLink) => {
     setLoadingConversations(link.id);
     try {
-      // Get conversations where this agent is assigned
+      // First get phones that came from THIS campaign
+      const { data: campaignLeads } = await supabase
+        .from('leads')
+        .select('lead_phone')
+        .eq('campaign_id', link.campaign_id);
+
+      const campaignPhones = (campaignLeads || [])
+        .map(l => l.lead_phone?.replace(/\D/g, ''))
+        .filter(Boolean) as string[];
+
+      if (!campaignPhones.length) {
+        setLinkConversations(prev => ({ ...prev, [link.id]: [] }));
+        return;
+      }
+
+      // Get conversations where this agent is assigned AND phone came from campaign
       const { data: convAgents } = await supabase
         .from('whatsapp_conversation_agents' as any)
         .select('phone, instance_name, is_active, activated_by')
-        .eq('agent_id', link.agent_id);
+        .eq('agent_id', link.agent_id)
+        .in('phone', campaignPhones);
 
       if (!convAgents?.length) {
         setLinkConversations(prev => ({ ...prev, [link.id]: [] }));
