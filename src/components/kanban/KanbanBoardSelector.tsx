@@ -621,6 +621,26 @@ export function KanbanBoardSelector({
               />
             </div>
 
+            <div>
+              <Label>Produto/Serviço vinculado</Label>
+              <Select value={formProductServiceId || '__none__'} onValueChange={(v) => setFormProductServiceId(v === '__none__' ? null : v)}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Nenhum produto vinculado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nenhum</SelectItem>
+                  {products.filter(p => p.is_active).map(p => (
+                    <SelectItem key={p.id} value={p.id}>
+                      📦 {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Leads que entrarem neste funil herdarão automaticamente este produto
+              </p>
+            </div>
+
             <div className="flex gap-4">
               <div className="flex-1">
                 <Label>Cor</Label>
