@@ -1010,6 +1010,29 @@ ${scrapeData.content || ''}
                       ))}
                     </SelectContent>
                   </Select>
+                  {/* CTWA Ad Source Badge */}
+                  {(lead as any)?.ctwa_context && (
+                    <div className="mt-2 p-2 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+                      <p className="text-xs font-medium text-blue-700 dark:text-blue-300 flex items-center gap-1">
+                        📢 Veio de anúncio Click-to-WhatsApp
+                      </p>
+                      {(lead as any).ctwa_context.title && (
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 truncate">
+                          {(lead as any).ctwa_context.title}
+                        </p>
+                      )}
+                      {(lead as any).ctwa_context.source_url && (
+                        <a 
+                          href={(lead as any).ctwa_context.source_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-500 underline mt-0.5 block truncate"
+                        >
+                          {(lead as any).ctwa_context.source_url}
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div>

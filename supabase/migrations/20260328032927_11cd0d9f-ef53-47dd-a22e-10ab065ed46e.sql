@@ -1,0 +1,1 @@
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS ctwa_context JSONB DEFAULT NULL;

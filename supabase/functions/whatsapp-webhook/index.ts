@@ -1136,6 +1136,45 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ========== CTWA AD TRACKING ==========
+    // Extract Click-to-WhatsApp Ad referral data from first inbound message
+    if (direction === 'inbound' && leadId) {
+      try {
+        const msg = body.message || body.chat?.message || {}
+        const contextInfo = msg.extendedTextMessage?.contextInfo || msg.contextInfo || msg.imageMessage?.contextInfo || msg.videoMessage?.contextInfo || {}
+        const externalAdReply = contextInfo.externalAdReply || null
+        
+        if (externalAdReply) {
+          const ctwaData = {
+            title: externalAdReply.title || null,
+            body: externalAdReply.body || null,
+            source_url: externalAdReply.sourceUrl || externalAdReply.mediaUrl || null,
+            thumbnail_url: externalAdReply.thumbnailUrl || null,
+            ctwa_clid: contextInfo.ctwaContext?.ctwaClid || contextInfo.ctwaClid || null,
+            source_id: contextInfo.ctwaContext?.sourceId || null,
+            captured_at: new Date().toISOString(),
+          }
+          
+          console.log('CTWA Ad data detected:', JSON.stringify(ctwaData))
+          
+          // Update lead with CTWA context
+          const { error: ctwaErr } = await supabase
+            .from('leads')
+            .update({ 
+              ctwa_context: ctwaData,
+              source: 'ctwa_whatsapp',
+            })
+            .eq('id', leadId)
+            .is('ctwa_context', null) // Only set on first message, don't overwrite
+          
+          if (ctwaErr) console.error('Error saving CTWA context:', ctwaErr)
+          else console.log('CTWA context saved for lead:', leadId)
+        }
+      } catch (ctwaErr) {
+        console.error('CTWA extraction error:', ctwaErr)
+      }
+    }
+
     // ========== DEDUPLICATION ==========
     if (externalMessageId) {
       const dedupeQuery = supabase
