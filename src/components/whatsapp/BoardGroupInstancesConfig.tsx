@@ -98,8 +98,6 @@ export function BoardGroupInstancesConfig() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [customVoices, setCustomVoices] = useState<{id: string; name: string}[]>([]);
-  const [agents, setAgents] = useState<{id: string; name: string}[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [settings, setSettings] = useState<GroupSettings>({
     group_name_prefix: '',
     sequence_start: 1,
