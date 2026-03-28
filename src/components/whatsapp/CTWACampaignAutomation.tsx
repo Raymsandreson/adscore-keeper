@@ -194,49 +194,55 @@ export function CTWACampaignAutomation() {
   const fetchLinkConversations = async (link: CampaignLink) => {
     setLoadingConversations(link.id);
     try {
-      // First get phones that came from THIS campaign
-      const { data: campaignLeads } = await supabase
-        .from('leads')
-        .select('lead_phone')
-        .eq('campaign_id', link.campaign_id);
+      // Get unique phones from messages tagged with this campaign_id
+      const { data: campaignMessages } = await supabase
+        .from('whatsapp_messages')
+        .select('phone, contact_name, instance_name')
+        .eq('campaign_id', link.campaign_id)
+        .not('phone', 'like', '%@g.us');
 
-      const campaignPhones = (campaignLeads || [])
-        .map(l => l.lead_phone?.replace(/\D/g, ''))
-        .filter(Boolean) as string[];
+      // Deduplicate by phone
+      const phoneMap = new Map<string, { phone: string; contact_name: string | null; instance_name: string }>();
+      (campaignMessages || []).forEach((m: any) => {
+        const norm = m.phone?.replace(/\D/g, '');
+        if (norm && !phoneMap.has(norm)) {
+          phoneMap.set(norm, { phone: m.phone, contact_name: m.contact_name, instance_name: m.instance_name });
+        }
+      });
 
-      if (!campaignPhones.length) {
+      if (!phoneMap.size) {
         setLinkConversations(prev => ({ ...prev, [link.id]: [] }));
         return;
       }
 
-      // Get conversations where this agent is assigned AND phone came from campaign
+      // Check agent assignment status for these phones
+      const phones = Array.from(phoneMap.keys());
       const { data: convAgents } = await supabase
         .from('whatsapp_conversation_agents' as any)
-        .select('phone, instance_name, is_active, activated_by')
+        .select('phone, is_active')
         .eq('agent_id', link.agent_id)
-        .in('phone', campaignPhones);
+        .in('phone', phones);
 
-      if (!convAgents?.length) {
-        setLinkConversations(prev => ({ ...prev, [link.id]: [] }));
-        return;
-      }
+      const agentMap = new Map<string, boolean>();
+      (convAgents as any[] || []).forEach((ca: any) => {
+        agentMap.set(ca.phone?.replace(/\D/g, ''), ca.is_active);
+      });
 
-      // Get last message info for each conversation
+      // Build conversations list with last message time
       const conversations: ConversationInfo[] = [];
-      for (const conv of convAgents as any[]) {
+      for (const [norm, info] of phoneMap) {
         const { data: msg } = await supabase
           .from('whatsapp_messages')
           .select('contact_name, created_at')
-          .eq('phone', conv.phone)
-          .eq('instance_name', conv.instance_name)
+          .eq('phone', info.phone)
           .order('created_at', { ascending: false })
           .limit(1);
 
         conversations.push({
-          phone: conv.phone,
-          contact_name: msg?.[0]?.contact_name || conv.phone,
+          phone: info.phone,
+          contact_name: msg?.[0]?.contact_name || info.contact_name || info.phone,
           last_message_at: msg?.[0]?.created_at || null,
-          is_agent_active: conv.is_active,
+          is_agent_active: agentMap.get(norm) ?? false,
         });
       }
 
