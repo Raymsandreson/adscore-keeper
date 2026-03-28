@@ -16,7 +16,8 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body = await req.json();
-    const { agent_id, trigger_type, phone, instance_name, contact_name, lead_id } = body;
+    const { agent_id, trigger_type, phone, instance_name, contact_name, lead_id, campaign_id, campaign_name } = body;
+    const agentLabel = `Agente IA (automação: ${trigger_type})`;
 
     console.log(`[agent-automations] trigger=${trigger_type} agent=${agent_id} phone=${phone}`);
 
@@ -72,6 +73,8 @@ Deno.serve(async (req) => {
               .insert({
                 full_name: contact_name || normalizedPhone,
                 phone: normalizedPhone,
+                action_source: 'system',
+                action_source_detail: agentLabel,
               })
               .select('id')
               .single();
@@ -123,6 +126,9 @@ Deno.serve(async (req) => {
                 stage: stageId,
                 status: 'new',
                 source: 'whatsapp_automation',
+                campaign_id: campaign_id || null,
+                action_source: 'system',
+                action_source_detail: agentLabel,
               })
               .select('id')
               .single();
@@ -160,6 +166,8 @@ Deno.serve(async (req) => {
               priority: action.config?.priority || 'normal',
               status: 'pendente',
               deadline: new Date().toISOString().split('T')[0],
+              action_source: 'system',
+              action_source_detail: agentLabel,
             });
 
             if (error) throw error;
@@ -189,6 +197,8 @@ Deno.serve(async (req) => {
               lead_id: createdLeadId,
               nucleus_id: nucleusId,
               status: 'em_andamento',
+              action_source: 'system',
+              action_source_detail: agentLabel,
             });
 
             if (error) throw error;
