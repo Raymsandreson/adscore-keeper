@@ -614,6 +614,32 @@ export function CTWACampaignAutomation() {
                       ))}
                     </div>
                   )}
+                  
+                  {/* Bulk create leads button */}
+                  <div className="pt-1 border-t border-border/50">
+                    {bulkCreating === link.id && bulkProgress ? (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Brain className="h-3 w-3 animate-pulse" /> Analisando conversas com IA...
+                          </span>
+                          <span>{bulkProgress.created} criados / {bulkProgress.total} total</span>
+                        </div>
+                        <Progress value={bulkProgress.total > 0 ? (bulkProgress.current / bulkProgress.total) * 100 : 0} className="h-1.5" />
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-[10px] gap-1 w-full"
+                        onClick={() => handleBulkCreateLeads(link)}
+                        disabled={!!bulkCreating}
+                      >
+                        <UserPlus className="h-3 w-3" />
+                        Criar leads e contatos via IA (análise de conversas)
+                      </Button>
+                    )}
+                  </div>
                 </div>
               )}
 
