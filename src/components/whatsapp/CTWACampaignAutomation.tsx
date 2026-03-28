@@ -42,7 +42,7 @@ export function CTWACampaignAutomation() {
   const fetchData = async () => {
     setLoading(true);
     const linksRes = await supabase.from('whatsapp_agent_campaign_links').select('*');
-    const agentsRes = await supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true);
+    const agentsRes = await supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true) as any;
     const boardsRes = await supabase.from('kanban_boards').select('id, name, stages').eq('is_active', true) as any;
 
     setLinks((linksRes.data as any[]) || []);
