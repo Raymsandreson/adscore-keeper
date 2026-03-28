@@ -115,6 +115,7 @@ export function WhatsAppAIAgents() {
   const [callQueueCount, setCallQueueCount] = useState(0);
   const [teamMembers, setTeamMembers] = useState<{ user_id: string; full_name: string }[]>([]);
   const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string; type: 'builtin' | 'custom' }[]>([]);
+  const [boards, setBoards] = useState<{ id: string; name: string; stages: any[] }[]>([]);
 
   useEffect(() => {
     fetchAgents();
@@ -122,6 +123,7 @@ export function WhatsAppAIAgents() {
     fetchCallQueueCount();
     fetchTeamMembers();
     fetchVoices();
+    fetchBoards();
   }, []);
 
   const fetchAgents = async () => {
