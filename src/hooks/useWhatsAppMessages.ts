@@ -74,7 +74,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const activePhoneRef = useRef<string | null>(null);
   const fullConvCacheRef = useRef<Record<string, WhatsAppMessage[]>>({});
 
-  const AUTO_REFRESH_INTERVAL_MS = 30000; // 30s fallback polling
+  
 
   const fetchInstances = async () => {
     if (!user) return;
@@ -779,18 +779,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     };
   }, [hasLoaded, selectedInstanceId, instances, fetchMessages, realtimeRetryNonce]);
 
-  // Fallback auto-refresh + refresh on tab visibility
+  // Refresh conversation list when tab becomes visible (catches missed realtime events)
   useEffect(() => {
     if (!hasLoaded) return;
 
-    const fallbackIntervalMs = realtimeHealthy ? AUTO_REFRESH_INTERVAL_MS : 15000;
-
-    const intervalId = setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      fetchMessages(true);
-    }, fallbackIntervalMs);
-
-    // Refresh when tab becomes visible again (catches missed realtime events)
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         fetchMessages(true);
@@ -799,14 +791,16 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
-      clearInterval(intervalId);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [hasLoaded, fetchMessages, realtimeHealthy]);
+  }, [hasLoaded, fetchMessages]);
 
   // Load all messages for a specific conversation (when selected)
+  // Also refreshes the conversation list for up-to-date sidebar
   const fetchFullConversation = useCallback(async (phone: string) => {
     activePhoneRef.current = phone;
+    // Refresh conversation list in background when opening/switching chats
+    fetchMessages(true);
     try {
       // Paginate to get ALL messages for this phone (up to 3000)
       const allMsgs: WhatsAppMessage[] = [];
