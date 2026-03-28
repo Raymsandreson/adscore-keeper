@@ -209,23 +209,36 @@ export function CTWACampaignAutomation() {
     setConversationCounts(counts);
   };
 
-  const fetchLinkConversations = async (link: CampaignLink) => {
+   const fetchLinkConversations = async (link: CampaignLink) => {
     setLoadingConversations(link.id);
     try {
+      // Resolve instance_name for this link
+      const linkedInstance = instances.find(i => i.id === (link as any).instance_id);
+      const instanceName = linkedInstance?.instance_name;
+
       // Get unique phones from messages tagged with this campaign_id
-      const { data: campaignMessages } = await supabase
+      let query = supabase
         .from('whatsapp_messages')
         .select('phone, contact_name, instance_name')
         .eq('campaign_id', link.campaign_id)
-        .not('phone', 'like', '%@g.us');
+        .not('phone', 'like', '%@g.us')
+        .not('phone', 'like', '%@s.whatsapp.net');
+      
+      // Filter by instance if linked
+      if (instanceName) {
+        query = query.eq('instance_name', instanceName);
+      }
 
-      // Deduplicate by phone
+      const { data: campaignMessages } = await query;
+
+      // Deduplicate by phone, excluding group-like IDs (start with 120363)
       const phoneMap = new Map<string, { phone: string; contact_name: string | null; instance_name: string }>();
       (campaignMessages || []).forEach((m: any) => {
         const norm = m.phone?.replace(/\D/g, '');
-        if (norm && !phoneMap.has(norm)) {
-          phoneMap.set(norm, { phone: m.phone, contact_name: m.contact_name, instance_name: m.instance_name });
-        }
+        // Skip group JIDs (typically 18+ digits starting with 120)
+        if (!norm || phoneMap.has(norm)) return;
+        if (norm.length > 15 && norm.startsWith('120')) return;
+        phoneMap.set(norm, { phone: m.phone, contact_name: m.contact_name, instance_name: m.instance_name });
       });
 
       if (!phoneMap.size) {
