@@ -242,7 +242,23 @@ export function CTWACampaignAutomation() {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                    <Phone className="h-3 w-3" /> Instância
+                  </Label>
+                  <Select value={linkAny.instance_id || ''} onValueChange={v => handleUpdate(link.id, { instance_id: v || null } as any)}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                    <SelectContent>
+                      {instances.map(inst => (
+                        <SelectItem key={inst.id} value={inst.id}>
+                          {inst.instance_name} {inst.owner_phone ? `(${inst.owner_phone})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="space-y-1">
                   <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
                     <Sparkles className="h-3 w-3" /> Agente IA
@@ -254,7 +270,9 @@ export function CTWACampaignAutomation() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
                     <FolderKanban className="h-3 w-3" /> Funil
