@@ -659,9 +659,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   // If conversations were already loaded, re-fetch when instance filter changes
   useEffect(() => {
     if (!hasLoaded) return;
+    // Clear caches so stale data from previous instance doesn't leak
+    fullConvCacheRef.current = {};
+    activePhoneRef.current = null;
     // Reset fetching guard so instance switch always triggers a fresh load
     isFetchingRef.current = false;
-    fetchMessages();
+    fetchMessages(true);
   }, [selectedInstanceId, hasLoaded, fetchMessages]);
 
   // Realtime subscription with reconnection resilience
