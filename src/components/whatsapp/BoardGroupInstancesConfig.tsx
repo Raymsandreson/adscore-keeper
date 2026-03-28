@@ -670,50 +670,6 @@ export function BoardGroupInstancesConfig() {
             )}
           </div>
 
-          {/* Agent Automations */}
-          <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
-            <div className="flex items-center gap-2">
-              <Bot className="h-4 w-4 text-primary" />
-              <h4 className="font-medium text-xs">Automações por Agente IA</h4>
-            </div>
-            <p className="text-[10px] text-muted-foreground">
-              Configure ações automáticas por agente (criar lead, contato, caso, mover etapa) com os dados coletados na conversa.
-            </p>
-
-            <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue placeholder="Selecione um agente IA..." />
-              </SelectTrigger>
-              <SelectContent>
-                {agents.map(a => (
-                  <SelectItem key={a.id} value={a.id} className="text-xs">
-                    <span className="flex items-center gap-1.5">
-                      <Bot className="h-3 w-3" />
-                      {a.name}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {selectedAgentId && (
-              <div className="border rounded-lg p-2 bg-background">
-                <AgentAutomationRules agentId={selectedAgentId} />
-              </div>
-            )}
-
-            {!selectedAgentId && agents.length > 0 && (
-              <p className="text-[10px] text-muted-foreground text-center py-2">
-                Selecione um agente acima para configurar suas automações
-              </p>
-            )}
-
-            {agents.length === 0 && (
-              <p className="text-[10px] text-muted-foreground text-center py-2">
-                Nenhum agente IA ativo encontrado
-              </p>
-            )}
-          </div>
 
           <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
             <div className="flex items-center gap-2">
