@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useLeadCustomFields, FieldType } from '@/hooks/useLeadCustomFields';
 import { useFieldStageRequirements } from '@/hooks/useFieldStageRequirements';
+import { useProductsServices } from '@/hooks/useProductsServices';
 import { StageAgentSelector } from './StageAgentSelector';
 import { Pencil, Trash2 as Trash2Fields } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -240,6 +241,7 @@ export function KanbanBoardSelector({
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingBoard, setEditingBoard] = useState<KanbanBoard | null>(null);
+  const { products } = useProductsServices();
   
   // Form state
   const [formName, setFormName] = useState('');
@@ -250,6 +252,7 @@ export function KanbanBoardSelector({
   const [newStageName, setNewStageName] = useState('');
   const [newStageColor, setNewStageColor] = useState('#3b82f6');
   const [formBoardType, setFormBoardType] = useState<'funnel' | 'workflow'>('funnel');
+  const [formProductServiceId, setFormProductServiceId] = useState<string | null>(null);
 
   const resetForm = () => {
     setFormName('');
@@ -260,6 +263,7 @@ export function KanbanBoardSelector({
     setNewStageName('');
     setNewStageColor('#3b82f6');
     setFormBoardType('funnel');
+    setFormProductServiceId(null);
   };
 
   const handleOpenCreate = () => {
@@ -281,6 +285,7 @@ export function KanbanBoardSelector({
     setFormIcon(board.icon);
     setFormStages([...board.stages]);
     setFormBoardType(board.board_type || 'funnel');
+    setFormProductServiceId(board.product_service_id || null);
     setShowEditDialog(true);
   };
 
@@ -294,6 +299,7 @@ export function KanbanBoardSelector({
       icon: formIcon,
       stages: formStages,
       board_type: formBoardType,
+      product_service_id: formProductServiceId,
     } as Partial<KanbanBoard>);
     
     setShowCreateDialog(false);
@@ -309,6 +315,7 @@ export function KanbanBoardSelector({
       color: formColor,
       icon: formIcon,
       stages: formStages,
+      product_service_id: formProductServiceId,
     });
     
     setShowEditDialog(false);
