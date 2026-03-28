@@ -73,13 +73,17 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
   const [checklistFilteredIds, setChecklistFilteredIds] = useState<Set<string> | null>(null);
 
   // Handle URL param to auto-open a lead
+  const [initialLeadTab, setInitialLeadTab] = useState<string | undefined>();
   useEffect(() => {
     const openLeadId = searchParams.get('openLead');
     if (openLeadId) {
       setEditingLeadId(openLeadId);
-      // Clean up URL param
+      const tabParam = searchParams.get('tab');
+      if (tabParam) setInitialLeadTab(tabParam);
+      // Clean up URL params
       const newParams = new URLSearchParams(searchParams);
       newParams.delete('openLead');
+      newParams.delete('tab');
       setSearchParams(newParams, { replace: true });
     }
   }, [searchParams, setSearchParams, setEditingLeadId]);
@@ -753,7 +757,12 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       {/* Lead Edit Dialog */}
       <LeadEditDialog
         open={!!editingLead}
-        onOpenChange={(open) => !open && setEditingLeadId(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingLeadId(null);
+            setInitialLeadTab(undefined);
+          }
+        }}
         lead={editingLead}
         onSave={async (leadId, updates) => {
           await updateLead(leadId, updates);
@@ -761,6 +770,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         }}
         adAccountId={adAccountId}
         boards={boards}
+        initialTab={initialLeadTab}
       />
 
       {/* Kanban Report Dialog */}

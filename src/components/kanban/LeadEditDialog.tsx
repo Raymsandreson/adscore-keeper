@@ -93,6 +93,7 @@ interface LeadEditDialogProps {
   adAccountId?: string;
   boards?: KanbanBoard[];
   mode?: 'dialog' | 'sheet';
+  initialTab?: string;
 }
 
 const brazilianStates = [
@@ -158,6 +159,7 @@ export function LeadEditDialog({
   adAccountId,
   boards = [],
   mode = 'dialog',
+  initialTab,
 }: LeadEditDialogProps) {
   // Basic fields state
   const [leadName, setLeadName] = useState('');
@@ -238,8 +240,8 @@ export function LeadEditDialog({
     if (lead && open) {
       const leadAny = lead as any;
       
-      // Reset tab
-      setActiveTab('basic');
+      // Reset tab (use initialTab if provided, e.g. from deep link)
+      setActiveTab(initialTab || 'basic');
       // Basic fields
       setLeadName(lead.lead_name || '');
       setLeadPhone(lead.lead_phone || '');
