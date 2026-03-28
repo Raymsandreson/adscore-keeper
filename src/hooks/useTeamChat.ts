@@ -127,6 +127,18 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
       }));
 
       await supabase.from('team_chat_mentions').insert(mentions);
+
+      // Send WhatsApp notification to mentioned users
+      supabase.functions.invoke('notify-team-mention', {
+        body: {
+          mentioned_user_ids: mentionedUserIds,
+          message_content: content,
+          sender_name: senderName,
+          entity_type: entityType,
+          entity_id: entityId,
+          entity_name: entityName || null,
+        },
+      }).catch(err => console.error('Failed to notify mentions via WhatsApp:', err));
     }
   }, [user, entityType, entityId, entityName]);
 
