@@ -851,7 +851,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     } catch (error) {
       console.error('Error fetching full conversation:', error);
     }
-  }, []);
+  }, [fetchMessages]);
 
   const clearActivePhone = useCallback(() => {
     activePhoneRef.current = null;
