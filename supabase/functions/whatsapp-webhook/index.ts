@@ -1146,45 +1146,205 @@ Deno.serve(async (req) => {
         const externalAdReply = contextInfo.externalAdReply || null
         
         if (externalAdReply) {
+          const ctwaSourceId = contextInfo.ctwaContext?.sourceId || null
+          const ctwaClid = contextInfo.ctwaContext?.ctwaClid || contextInfo.ctwaClid || null
+          
           const ctwaData = {
             title: externalAdReply.title || null,
             body: externalAdReply.body || null,
             source_url: externalAdReply.sourceUrl || externalAdReply.mediaUrl || null,
             thumbnail_url: externalAdReply.thumbnailUrl || null,
-            ctwa_clid: contextInfo.ctwaContext?.ctwaClid || contextInfo.ctwaClid || null,
-            source_id: contextInfo.ctwaContext?.sourceId || null,
+            ctwa_clid: ctwaClid,
+            source_id: ctwaSourceId,
             captured_at: new Date().toISOString(),
           }
           
           console.log('CTWA Ad data detected:', JSON.stringify(ctwaData))
           
+          // ---- Resolve campaign from campaign_links ----
+          // Try matching by source_id (Meta ad ID) or by ad title against campaign_name
+          let matchedCampaignLink: any = null
+          
+          // Fetch all active campaign links
+          const { data: allCampaignLinks } = await supabase
+            .from('whatsapp_agent_campaign_links')
+            .select('*')
+            .eq('is_active', true)
+          
+          if (allCampaignLinks && allCampaignLinks.length > 0) {
+            const links = allCampaignLinks as any[]
+            
+            // Strategy 1: Match source_id to campaign_id (Meta source_id often contains campaign/ad ID)
+            if (ctwaSourceId) {
+              matchedCampaignLink = links.find(l => 
+                l.campaign_id === ctwaSourceId || 
+                ctwaSourceId.includes(l.campaign_id)
+              )
+              if (matchedCampaignLink) {
+                console.log('CTWA: Matched campaign by source_id:', matchedCampaignLink.campaign_id)
+              }
+            }
+            
+            // Strategy 2: Match by ad title against campaign_name
+            if (!matchedCampaignLink && ctwaData.title) {
+              const adTitle = (ctwaData.title || '').toLowerCase().trim()
+              matchedCampaignLink = links.find(l => 
+                l.campaign_name && l.campaign_name.toLowerCase().trim() === adTitle
+              )
+              if (matchedCampaignLink) {
+                console.log('CTWA: Matched campaign by title:', matchedCampaignLink.campaign_name)
+              }
+            }
+            
+            // Strategy 3: If only one active link exists, use it as default
+            if (!matchedCampaignLink && links.length === 1) {
+              matchedCampaignLink = links[0]
+              console.log('CTWA: Single active campaign link, using as default:', matchedCampaignLink.campaign_id)
+            }
+            
+            // Strategy 4: Match by instance (if webhook instance matches link's instance)
+            if (!matchedCampaignLink && instanceName) {
+              const { data: currentInst } = await supabase
+                .from('whatsapp_instances')
+                .select('id')
+                .eq('instance_name', instanceName)
+                .eq('is_active', true)
+                .limit(1)
+                .maybeSingle()
+              
+              if (currentInst) {
+                const instLinks = links.filter(l => l.instance_id === currentInst.id)
+                if (instLinks.length === 1) {
+                  matchedCampaignLink = instLinks[0]
+                  console.log('CTWA: Matched campaign by instance:', matchedCampaignLink.campaign_id)
+                }
+              }
+            }
+          }
+          
+          if (matchedCampaignLink) {
+            detectedCampaignId = matchedCampaignLink.campaign_id
+            detectedCampaignName = matchedCampaignLink.campaign_name || null
+          }
+          
+          console.log('CTWA resolved campaign:', detectedCampaignId, detectedCampaignName)
+          
           if (leadId) {
-            // Update existing lead with CTWA context
+            // Update existing lead with CTWA context + campaign_id
+            const updateData: any = { 
+              ctwa_context: ctwaData,
+              source: 'ctwa_whatsapp',
+            }
+            if (detectedCampaignId) {
+              updateData.campaign_id = detectedCampaignId
+              updateData.ad_name = ctwaData.title || detectedCampaignName || null
+            }
+            
             const { error: ctwaErr } = await supabase
               .from('leads')
-              .update({ 
-                ctwa_context: ctwaData,
-                source: 'ctwa_whatsapp',
-              })
+              .update(updateData)
               .eq('id', leadId)
               .is('ctwa_context', null)
             
             if (ctwaErr) console.error('Error saving CTWA context:', ctwaErr)
-            else console.log('CTWA context saved for lead:', leadId)
+            else console.log('CTWA context + campaign_id saved for lead:', leadId, 'campaign:', detectedCampaignId)
           }
           
           // Auto-create lead if none exists and campaign link has auto_create_lead enabled
-          if (!leadId && instanceName) {
+          if (!leadId && instanceName && matchedCampaignLink && matchedCampaignLink.auto_create_lead && matchedCampaignLink.board_id) {
             try {
-              const { data: campaignLinks } = await supabase
+              const autoLink = matchedCampaignLink
+              
+              let stageId = autoLink.stage_id
+              if (!stageId && autoLink.board_id) {
+                const { data: board } = await supabase
+                  .from('kanban_boards')
+                  .select('stages')
+                  .eq('id', autoLink.board_id)
+                  .single()
+                const stages = (board as any)?.stages || []
+                if (stages.length > 0) stageId = stages[0].id
+              }
+              
+              const leadName = contactName || `WhatsApp ${phone}`
+              
+              const { data: newLead, error: leadErr } = await supabase
+                .from('leads')
+                .insert({
+                  lead_name: leadName,
+                  lead_phone: phone,
+                  board_id: autoLink.board_id,
+                  status: stageId || 'new',
+                  source: 'ctwa_whatsapp',
+                  ctwa_context: ctwaData,
+                  ad_name: ctwaData.title || detectedCampaignName || null,
+                  campaign_id: detectedCampaignId,
+                  action_source: 'system',
+                  action_source_detail: `CTWA Auto-create (campanha: ${detectedCampaignName || 'desconhecida'})`,
+                })
+                .select('id')
+                .single()
+              
+              if (leadErr) {
+                console.error('Error auto-creating lead from CTWA:', leadErr)
+              } else if (newLead) {
+                leadId = (newLead as any).id
+                console.log('Auto-created lead from CTWA:', leadId, 'board:', autoLink.board_id, 'campaign:', detectedCampaignId)
+                
+                // Also create contact
+                if (!contactId && (autoLink.auto_create_contact !== false)) {
+                  const { data: newContact } = await supabase
+                    .from('contacts')
+                    .insert({
+                      full_name: leadName,
+                      phone: phone,
+                      lead_id: leadId,
+                      classification: 'lead',
+                      action_source: 'system',
+                      action_source_detail: `CTWA Auto-create (campanha: ${detectedCampaignName || 'desconhecida'})`,
+                    })
+                    .select('id')
+                    .single()
+                  if (newContact) {
+                    contactId = (newContact as any).id
+                    console.log('Auto-created contact from CTWA:', contactId)
+                  }
+                }
+                
+                // Auto-assign agent from the campaign link
+                if (autoLink.agent_id && instanceName) {
+                  try {
+                    await supabase
+                      .from('whatsapp_conversation_agents')
+                      .upsert({
+                        phone,
+                        instance_name: instanceName,
+                        agent_id: autoLink.agent_id,
+                        is_active: true,
+                        activated_by: 'ctwa_campaign',
+                      }, { onConflict: 'phone,instance_name' })
+                    console.log('Auto-assigned agent from CTWA campaign link:', autoLink.agent_id)
+                  } catch (agentErr) {
+                    console.error('Error auto-assigning agent from CTWA:', agentErr)
+                  }
+                }
+              }
+            } catch (autoErr) {
+              console.error('CTWA auto-create error:', autoErr)
+            }
+          }
+          
+          // Fallback: if no matched campaign link but ad context exists, still try generic auto-create
+          if (!leadId && !matchedCampaignLink && instanceName) {
+            try {
+              const { data: genericLinks } = await supabase
                 .from('whatsapp_agent_campaign_links')
                 .select('*')
                 .eq('auto_create_lead', true)
                 .eq('is_active', true)
               
-              if (campaignLinks && campaignLinks.length > 0) {
-                const autoLink = (campaignLinks as any[]).find(l => l.board_id)
-                
+              if (genericLinks && genericLinks.length > 0) {
+                const autoLink = (genericLinks as any[]).find(l => l.board_id)
                 if (autoLink) {
                   let stageId = autoLink.stage_id
                   if (!stageId && autoLink.board_id) {
@@ -1197,10 +1357,9 @@ Deno.serve(async (req) => {
                     if (stages.length > 0) stageId = stages[0].id
                   }
                   
+                  detectedCampaignId = detectedCampaignId || autoLink.campaign_id || null
+                  detectedCampaignName = detectedCampaignName || autoLink.campaign_name || null
                   const leadName = contactName || `WhatsApp ${phone}`
-                  
-                  detectedCampaignId = autoLink.campaign_id || null;
-                  detectedCampaignName = autoLink.campaign_name || null;
                   
                   const { data: newLead, error: leadErr } = await supabase
                     .from('leads')
@@ -1211,21 +1370,18 @@ Deno.serve(async (req) => {
                       status: stageId || 'new',
                       source: 'ctwa_whatsapp',
                       ctwa_context: ctwaData,
-                      ad_name: ctwaData.title || autoLink.campaign_name || null,
+                      ad_name: ctwaData.title || detectedCampaignName || null,
                       campaign_id: detectedCampaignId,
                       action_source: 'system',
-                      action_source_detail: `CTWA Auto-create (campanha: ${detectedCampaignName || 'desconhecida'})`,
+                      action_source_detail: `CTWA Auto-create fallback (campanha: ${detectedCampaignName || 'desconhecida'})`,
                     })
                     .select('id')
                     .single()
                   
-                  if (leadErr) {
-                    console.error('Error auto-creating lead from CTWA:', leadErr)
-                  } else if (newLead) {
+                  if (!leadErr && newLead) {
                     leadId = (newLead as any).id
-                    console.log('Auto-created lead from CTWA:', leadId, 'board:', autoLink.board_id)
+                    console.log('Auto-created lead from CTWA (fallback):', leadId)
                     
-                    // Also create contact
                     if (!contactId) {
                       const { data: newContact } = await supabase
                         .from('contacts')
@@ -1235,20 +1391,17 @@ Deno.serve(async (req) => {
                           lead_id: leadId,
                           classification: 'lead',
                           action_source: 'system',
-                          action_source_detail: `CTWA Auto-create (campanha: ${detectedCampaignName || 'desconhecida'})`,
+                          action_source_detail: `CTWA Auto-create fallback`,
                         })
                         .select('id')
                         .single()
-                      if (newContact) {
-                        contactId = (newContact as any).id
-                        console.log('Auto-created contact from CTWA:', contactId)
-                      }
+                      if (newContact) contactId = (newContact as any).id
                     }
                   }
                 }
               }
             } catch (autoErr) {
-              console.error('CTWA auto-create error:', autoErr)
+              console.error('CTWA fallback auto-create error:', autoErr)
             }
           }
         }
@@ -2320,6 +2473,7 @@ Deno.serve(async (req) => {
             message_text: messageText,
             message_type: messageType,
             lead_id: leadId || null,
+            campaign_id: detectedCampaignId || null,
             is_group: isGroup,
             contact_name: contactName || null,
           }),
