@@ -1302,6 +1302,30 @@ Deno.serve(async (req) => {
 
     console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName, 'StoredMedia:', storedMediaUrl ? 'yes' : 'no')
 
+    // ========== AUTO-ENRICH LEAD/CONTACT (after X inbound messages) ==========
+    if (direction === 'inbound' && instanceName && phone && (leadId || contactId)) {
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
+        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+        // Fire and forget - don't block webhook response
+        fetch(`${supabaseUrl}/functions/v1/auto-enrich-lead`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({
+            phone,
+            instance_name: instanceName,
+            lead_id: leadId,
+            contact_id: contactId,
+          }),
+        }).catch(e => console.error('[auto-enrich] fire-and-forget error:', e))
+      } catch (e) {
+        console.error('[auto-enrich] trigger error:', e)
+      }
+    }
+
     // ========== HUMAN PAUSE: detect human outbound messages ==========
     if (direction === 'outbound' && instanceName && phone) {
       // Check if this outbound message is from a human (not AI-generated)
