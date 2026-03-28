@@ -80,6 +80,10 @@ export const useLeadContacts = (leadId?: string) => {
     notes?: string | null;
     city?: string | null;
     state?: string | null;
+    neighborhood?: string | null;
+    street?: string | null;
+    cep?: string | null;
+    profession?: string | null;
   }) => {
     if (!leadId) return;
 
@@ -96,6 +100,10 @@ export const useLeadContacts = (leadId?: string) => {
           notes: contact.notes || null,
           city: contact.city || null,
           state: contact.state || null,
+          neighborhood: contact.neighborhood || null,
+          street: contact.street || null,
+          cep: contact.cep || null,
+          profession: contact.profession || null,
           lead_id: leadId,
           created_by: currentUser?.id || null,
         }])
