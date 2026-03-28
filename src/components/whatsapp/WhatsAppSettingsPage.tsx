@@ -4,8 +4,9 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
   Webhook, BarChart3, Megaphone, ArrowLeft, 
-  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network
+  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network, Brain
 } from 'lucide-react';
+
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
 import { WhatsAppAdLinkSettings } from './WhatsAppAdLinkSettings';
@@ -18,6 +19,7 @@ import { VoiceSettings } from '@/components/voice/VoiceSettings';
 import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
 import { NucleiSettings } from './NucleiSettings';
 import { AgentAutomationsTab } from './AgentAutomationsTab';
+import { EnrichmentSettings } from '@/components/settings/EnrichmentSettings';
 
 interface Tab {
   id: string;
@@ -97,6 +99,15 @@ const tabs: Tab[] = [
     badge: '⚡ Novo',
     badgeVariant: 'default',
     accentColor: 'text-amber-500',
+  },
+  {
+    id: 'enrichment',
+    label: 'Enriquecimento IA',
+    icon: <Brain className="h-5 w-5" />,
+    description: 'Extração automática de dados',
+    badge: '🧠 IA',
+    badgeVariant: 'default',
+    accentColor: 'text-indigo-500',
   },
   {
     id: 'nuclei',
@@ -252,6 +263,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'groups' && <BoardGroupInstancesConfig />}
             {activeTab === 'automations' && <AgentAutomationsTab />}
             {activeTab === 'nuclei' && <NucleiSettings />}
+            {activeTab === 'enrichment' && <EnrichmentSettings />}
             {activeTab === 'integration' && <WhatsAppSetupGuide />}
             {activeTab === 'logs' && <WebhookLogsViewer />}
           </div>
