@@ -10,8 +10,9 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   Megaphone, Target, Sparkles, FolderKanban, Plus, X, Loader2, RefreshCw, Phone, 
-  Pause, Play, ChevronDown, ChevronUp, MessageSquare, Users 
+  Pause, Play, ChevronDown, ChevronUp, MessageSquare, Users, UserPlus, Brain 
 } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 
 interface CampaignLink {
