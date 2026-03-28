@@ -51,10 +51,13 @@ export function CTWACampaignAutomation() {
   const getMetaCredentials = () => {
     const savedAccounts = localStorage.getItem('meta_saved_accounts');
     if (savedAccounts) {
-      const accounts = JSON.parse(savedAccounts);
-      const selectedId = localStorage.getItem('meta_selected_account');
-      const selected = accounts.find((a: any) => a.id === selectedId) || accounts[0];
-      return { accessToken: selected?.accessToken, adAccountId: selected?.adAccountId };
+      try {
+        const accounts = JSON.parse(savedAccounts);
+        const selectedIds = localStorage.getItem('meta_selected_account_ids');
+        const selectedId = selectedIds ? JSON.parse(selectedIds)?.[0] : localStorage.getItem('meta_selected_account');
+        const selected = accounts.find((a: any) => a.id === selectedId) || accounts[0];
+        return { accessToken: selected?.accessToken, adAccountId: selected?.adAccountId };
+      } catch { /* fall through */ }
     }
     return {
       accessToken: localStorage.getItem('meta_access_token'),
@@ -65,22 +68,28 @@ export function CTWACampaignAutomation() {
   const fetchMetaCampaigns = async () => {
     const { accessToken, adAccountId } = getMetaCredentials();
     if (!accessToken || !adAccountId) {
+      console.warn('CTWA: No Meta credentials found. accessToken:', !!accessToken, 'adAccountId:', !!adAccountId);
       setUseManualInput(true);
       return;
     }
     setLoadingCampaigns(true);
     try {
+      const formattedAdAccountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
       const { data, error } = await supabase.functions.invoke('list-meta-ads', {
-        body: { accessToken, adAccountId, limit: 100, status: ['ACTIVE', 'PAUSED'] },
+        body: { accessToken, adAccountId: formattedAdAccountId, limit: 100, status: ['ACTIVE', 'PAUSED'] },
       });
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       const campaigns: MetaCampaign[] = (data?.campaigns || []).map((c: any) => ({
         campaign_id: c.campaign_id,
         campaign_name: c.campaign_name,
       }));
+      console.log('CTWA: Loaded', campaigns.length, 'campaigns from Meta');
       setMetaCampaigns(campaigns);
       if (campaigns.length === 0) setUseManualInput(true);
-    } catch {
+      else setUseManualInput(false);
+    } catch (err) {
+      console.error('CTWA: Error fetching campaigns:', err);
       setUseManualInput(true);
     } finally {
       setLoadingCampaigns(false);
