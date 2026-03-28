@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Megaphone, Target, Sparkles, FolderKanban, Plus, X, Loader2 } from 'lucide-react';
+import { Megaphone, Target, Sparkles, FolderKanban, Plus, X, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface CampaignLink {
@@ -30,14 +30,62 @@ interface Board {
   stages: { id: string; name: string }[];
 }
 
+interface MetaCampaign {
+  campaign_id: string;
+  campaign_name: string;
+}
+
 export function CTWACampaignAutomation() {
   const [links, setLinks] = useState<CampaignLink[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [boards, setBoards] = useState<Board[]>([]);
-  const [availableCampaigns, setAvailableCampaigns] = useState<{ campaign_id: string; campaign_name: string }[]>([]);
+  const [metaCampaigns, setMetaCampaigns] = useState<MetaCampaign[]>([]);
   const [loading, setLoading] = useState(true);
-  const [addingAgent, setAddingAgent] = useState<string>('');
-  const [addingCampaign, setAddingCampaign] = useState<string>('');
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+  const [addingAgent, setAddingAgent] = useState('');
+  const [addingCampaign, setAddingCampaign] = useState('');
+  const [manualCampaignId, setManualCampaignId] = useState('');
+  const [manualCampaignName, setManualCampaignName] = useState('');
+  const [useManualInput, setUseManualInput] = useState(false);
+
+  const getMetaCredentials = () => {
+    const savedAccounts = localStorage.getItem('meta_saved_accounts');
+    if (savedAccounts) {
+      const accounts = JSON.parse(savedAccounts);
+      const selectedId = localStorage.getItem('meta_selected_account');
+      const selected = accounts.find((a: any) => a.id === selectedId) || accounts[0];
+      return { accessToken: selected?.accessToken, adAccountId: selected?.adAccountId };
+    }
+    return {
+      accessToken: localStorage.getItem('meta_access_token'),
+      adAccountId: localStorage.getItem('meta_ad_account_id'),
+    };
+  };
+
+  const fetchMetaCampaigns = async () => {
+    const { accessToken, adAccountId } = getMetaCredentials();
+    if (!accessToken || !adAccountId) {
+      setUseManualInput(true);
+      return;
+    }
+    setLoadingCampaigns(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('list-meta-ads', {
+        body: { accessToken, adAccountId, limit: 100 },
+      });
+      if (error) throw error;
+      const campaigns: MetaCampaign[] = (data?.campaigns || []).map((c: any) => ({
+        campaign_id: c.campaign_id,
+        campaign_name: c.campaign_name,
+      }));
+      setMetaCampaigns(campaigns);
+      if (campaigns.length === 0) setUseManualInput(true);
+    } catch {
+      setUseManualInput(true);
+    } finally {
+      setLoadingCampaigns(false);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -48,30 +96,43 @@ export function CTWACampaignAutomation() {
     setLinks((linksRes.data as any[]) || []);
     setAgents((agentsRes.data as Agent[]) || []);
     setBoards((boardsRes.data as Board[]) || []);
-
-    const uniqueCampaigns = new Map<string, string>();
-    ((linksRes.data as any[]) || []).forEach((l: any) => {
-      uniqueCampaigns.set(l.campaign_id, l.campaign_name || l.campaign_id);
-    });
-
-    setAvailableCampaigns(Array.from(uniqueCampaigns.entries()).map(([id, name]) => ({ campaign_id: id, campaign_name: name })));
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    fetchData();
+    fetchMetaCampaigns();
+  }, []);
 
   const handleAddLink = async () => {
-    if (!addingAgent || !addingCampaign) return;
-    const camp = availableCampaigns.find(c => c.campaign_id === addingCampaign);
+    if (!addingAgent) return;
+
+    let campaignId = '';
+    let campaignName = '';
+
+    if (useManualInput) {
+      if (!manualCampaignId) return;
+      campaignId = manualCampaignId;
+      campaignName = manualCampaignName || manualCampaignId;
+    } else {
+      if (!addingCampaign) return;
+      campaignId = addingCampaign;
+      const camp = metaCampaigns.find(c => c.campaign_id === addingCampaign);
+      campaignName = camp?.campaign_name || addingCampaign;
+    }
+
     const { error } = await supabase.from('whatsapp_agent_campaign_links').upsert({
       agent_id: addingAgent,
-      campaign_id: addingCampaign,
-      campaign_name: camp?.campaign_name || addingCampaign,
+      campaign_id: campaignId,
+      campaign_name: campaignName,
     } as any, { onConflict: 'campaign_id' });
+
     if (error) { toast.error('Erro ao vincular'); return; }
     toast.success('Campanha vinculada!');
     setAddingAgent('');
     setAddingCampaign('');
+    setManualCampaignId('');
+    setManualCampaignName('');
     fetchData();
   };
 
@@ -94,6 +155,9 @@ export function CTWACampaignAutomation() {
       </div>
     );
   }
+
+  const linkedCampaignIds = new Set(links.map(l => l.campaign_id));
+  const unlinkedCampaigns = metaCampaigns.filter(c => !linkedCampaignIds.has(c.campaign_id));
 
   return (
     <Card>
@@ -198,19 +262,65 @@ export function CTWACampaignAutomation() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
-              <Label className="text-[10px]">Campanha</Label>
-              <Select value={addingCampaign} onValueChange={setAddingCampaign}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar campanha..." /></SelectTrigger>
-                <SelectContent>
-                  {availableCampaigns
-                    .filter(c => !links.some(l => l.campaign_id === c.campaign_id))
-                    .map(c => <SelectItem key={c.campaign_id} value={c.campaign_id}>{c.campaign_name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+
+            {useManualInput ? (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px]">ID da Campanha</Label>
+                  {metaCampaigns.length > 0 && (
+                    <button className="text-[10px] text-primary underline" onClick={() => setUseManualInput(false)}>
+                      Selecionar da lista
+                    </button>
+                  )}
+                </div>
+                <Input
+                  className="h-8 text-xs"
+                  placeholder="Ex: 123456789"
+                  value={manualCampaignId}
+                  onChange={e => setManualCampaignId(e.target.value)}
+                />
+                <Input
+                  className="h-8 text-xs mt-1"
+                  placeholder="Nome da campanha (opcional)"
+                  value={manualCampaignName}
+                  onChange={e => setManualCampaignName(e.target.value)}
+                />
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px]">Campanha</Label>
+                  <div className="flex items-center gap-1">
+                    <button className="text-[10px] text-primary underline" onClick={() => setUseManualInput(true)}>
+                      Digitar manualmente
+                    </button>
+                    <Button variant="ghost" size="icon" className="h-5 w-5" onClick={fetchMetaCampaigns} disabled={loadingCampaigns}>
+                      <RefreshCw className={`h-3 w-3 ${loadingCampaigns ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </div>
+                </div>
+                <Select value={addingCampaign} onValueChange={setAddingCampaign}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar campanha..." /></SelectTrigger>
+                  <SelectContent>
+                    {unlinkedCampaigns.map(c => (
+                      <SelectItem key={c.campaign_id} value={c.campaign_id}>{c.campaign_name}</SelectItem>
+                    ))}
+                    {unlinkedCampaigns.length === 0 && (
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                        Nenhuma campanha disponível
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
-          <Button size="sm" className="h-8 text-xs" disabled={!addingAgent || !addingCampaign} onClick={handleAddLink}>
+          <Button
+            size="sm"
+            className="h-8 text-xs"
+            disabled={!addingAgent || (useManualInput ? !manualCampaignId : !addingCampaign)}
+            onClick={handleAddLink}
+          >
             <Plus className="h-3.5 w-3.5 mr-1" /> Vincular
           </Button>
         </div>
