@@ -329,6 +329,13 @@ export type Database = {
             referencedRelation: "whatsapp_ai_agents"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "agent_automation_rules_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "wjia_command_shortcuts"
+            referencedColumns: ["id"]
+          },
         ]
       }
       agent_knowledge_documents: {
@@ -376,6 +383,13 @@ export type Database = {
             referencedRelation: "whatsapp_ai_agents"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "agent_knowledge_documents_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "wjia_command_shortcuts"
+            referencedColumns: ["id"]
+          },
         ]
       }
       agent_stage_assignments: {
@@ -406,6 +420,13 @@ export type Database = {
             columns: ["agent_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_ai_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_stage_assignments_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "wjia_command_shortcuts"
             referencedColumns: ["id"]
           },
           {
@@ -687,6 +708,13 @@ export type Database = {
             columns: ["agent_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_ai_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broadcast_list_agents_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "wjia_command_shortcuts"
             referencedColumns: ["id"]
           },
           {
@@ -6538,13 +6566,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "whatsapp_agent_campaign_links_agent_id_fkey"
-            columns: ["agent_id"]
-            isOneToOne: false
-            referencedRelation: "whatsapp_ai_agents"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "whatsapp_agent_campaign_links_board_id_fkey"
             columns: ["board_id"]
             isOneToOne: false
@@ -6593,128 +6614,6 @@ export type Database = {
           scheduled_at?: string
           sent_at?: string | null
           status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "whatsapp_agent_followups_agent_id_fkey"
-            columns: ["agent_id"]
-            isOneToOne: false
-            referencedRelation: "whatsapp_ai_agents"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      whatsapp_ai_agents: {
-        Row: {
-          auto_call_delay_seconds: number
-          auto_call_enabled: boolean
-          auto_call_instance_name: string | null
-          auto_call_mode: string
-          auto_call_no_response_minutes: number
-          base_prompt: string
-          call_assigned_to: string | null
-          created_at: string
-          created_by: string | null
-          followup_enabled: boolean
-          followup_interval_minutes: number
-          followup_max_attempts: number
-          followup_message: string | null
-          followup_prompt: string | null
-          human_pause_minutes: number
-          id: string
-          is_active: boolean
-          max_tokens: number
-          max_tts_chars: number | null
-          model: string
-          name: string
-          provider: string
-          read_messages: boolean
-          reply_voice_id: string | null
-          reply_with_audio: boolean
-          respond_in_groups: boolean
-          response_delay_seconds: number
-          sign_messages: boolean
-          split_delay_seconds: number | null
-          split_messages: boolean | null
-          stt_prompt: string | null
-          temperature: number
-          uazapi_agent_id: string | null
-          uazapi_config: Json | null
-          updated_at: string
-        }
-        Insert: {
-          auto_call_delay_seconds?: number
-          auto_call_enabled?: boolean
-          auto_call_instance_name?: string | null
-          auto_call_mode?: string
-          auto_call_no_response_minutes?: number
-          base_prompt?: string
-          call_assigned_to?: string | null
-          created_at?: string
-          created_by?: string | null
-          followup_enabled?: boolean
-          followup_interval_minutes?: number
-          followup_max_attempts?: number
-          followup_message?: string | null
-          followup_prompt?: string | null
-          human_pause_minutes?: number
-          id?: string
-          is_active?: boolean
-          max_tokens?: number
-          max_tts_chars?: number | null
-          model?: string
-          name: string
-          provider?: string
-          read_messages?: boolean
-          reply_voice_id?: string | null
-          reply_with_audio?: boolean
-          respond_in_groups?: boolean
-          response_delay_seconds?: number
-          sign_messages?: boolean
-          split_delay_seconds?: number | null
-          split_messages?: boolean | null
-          stt_prompt?: string | null
-          temperature?: number
-          uazapi_agent_id?: string | null
-          uazapi_config?: Json | null
-          updated_at?: string
-        }
-        Update: {
-          auto_call_delay_seconds?: number
-          auto_call_enabled?: boolean
-          auto_call_instance_name?: string | null
-          auto_call_mode?: string
-          auto_call_no_response_minutes?: number
-          base_prompt?: string
-          call_assigned_to?: string | null
-          created_at?: string
-          created_by?: string | null
-          followup_enabled?: boolean
-          followup_interval_minutes?: number
-          followup_max_attempts?: number
-          followup_message?: string | null
-          followup_prompt?: string | null
-          human_pause_minutes?: number
-          id?: string
-          is_active?: boolean
-          max_tokens?: number
-          max_tts_chars?: number | null
-          model?: string
-          name?: string
-          provider?: string
-          read_messages?: boolean
-          reply_voice_id?: string | null
-          reply_with_audio?: boolean
-          respond_in_groups?: boolean
-          response_delay_seconds?: number
-          sign_messages?: boolean
-          split_delay_seconds?: number | null
-          split_messages?: boolean | null
-          stt_prompt?: string | null
-          temperature?: number
-          uazapi_agent_id?: string | null
-          uazapi_config?: Json | null
-          updated_at?: string
         }
         Relationships: []
       }
@@ -6845,15 +6744,7 @@ export type Database = {
           status?: string
           updated_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "whatsapp_call_queue_agent_id_fkey"
-            columns: ["agent_id"]
-            isOneToOne: false
-            referencedRelation: "whatsapp_ai_agents"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       whatsapp_campaign_messages: {
         Row: {
@@ -7074,15 +6965,7 @@ export type Database = {
           phone?: string
           updated_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "whatsapp_conversation_agents_agent_id_fkey"
-            columns: ["agent_id"]
-            isOneToOne: false
-            referencedRelation: "whatsapp_ai_agents"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       whatsapp_conversation_shares: {
         Row: {
@@ -7202,6 +7085,13 @@ export type Database = {
           voice_name?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "whatsapp_instances_default_agent_id_fkey"
+            columns: ["default_agent_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_agents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "whatsapp_instances_default_agent_id_fkey"
             columns: ["default_agent_id"]
@@ -8026,7 +7916,120 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      whatsapp_ai_agents: {
+        Row: {
+          auto_call_delay_seconds: number | null
+          auto_call_enabled: boolean | null
+          auto_call_instance_name: string | null
+          auto_call_mode: string | null
+          auto_call_no_response_minutes: number | null
+          base_prompt: string | null
+          call_assigned_to: string | null
+          created_at: string | null
+          created_by: string | null
+          followup_enabled: boolean | null
+          followup_interval_minutes: number | null
+          followup_max_attempts: number | null
+          followup_message: string | null
+          followup_prompt: string | null
+          human_pause_minutes: number | null
+          id: string | null
+          is_active: boolean | null
+          max_tokens: number | null
+          max_tts_chars: number | null
+          model: string | null
+          name: string | null
+          provider: string | null
+          read_messages: boolean | null
+          reply_voice_id: string | null
+          reply_with_audio: boolean | null
+          respond_in_groups: boolean | null
+          response_delay_seconds: number | null
+          sign_messages: boolean | null
+          split_delay_seconds: number | null
+          split_messages: boolean | null
+          stt_prompt: string | null
+          temperature: number | null
+          uazapi_agent_id: string | null
+          uazapi_config: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          auto_call_delay_seconds?: never
+          auto_call_enabled?: never
+          auto_call_instance_name?: never
+          auto_call_mode?: never
+          auto_call_no_response_minutes?: never
+          base_prompt?: never
+          call_assigned_to?: never
+          created_at?: string | null
+          created_by?: never
+          followup_enabled?: never
+          followup_interval_minutes?: never
+          followup_max_attempts?: never
+          followup_message?: never
+          followup_prompt?: never
+          human_pause_minutes?: never
+          id?: string | null
+          is_active?: boolean | null
+          max_tokens?: never
+          max_tts_chars?: number | null
+          model?: never
+          name?: string | null
+          provider?: never
+          read_messages?: never
+          reply_voice_id?: string | null
+          reply_with_audio?: never
+          respond_in_groups?: never
+          response_delay_seconds?: never
+          sign_messages?: never
+          split_delay_seconds?: never
+          split_messages?: never
+          stt_prompt?: never
+          temperature?: never
+          uazapi_agent_id?: never
+          uazapi_config?: never
+          updated_at?: string | null
+        }
+        Update: {
+          auto_call_delay_seconds?: never
+          auto_call_enabled?: never
+          auto_call_instance_name?: never
+          auto_call_mode?: never
+          auto_call_no_response_minutes?: never
+          base_prompt?: never
+          call_assigned_to?: never
+          created_at?: string | null
+          created_by?: never
+          followup_enabled?: never
+          followup_interval_minutes?: never
+          followup_max_attempts?: never
+          followup_message?: never
+          followup_prompt?: never
+          human_pause_minutes?: never
+          id?: string | null
+          is_active?: boolean | null
+          max_tokens?: never
+          max_tts_chars?: number | null
+          model?: never
+          name?: string | null
+          provider?: never
+          read_messages?: never
+          reply_voice_id?: string | null
+          reply_with_audio?: never
+          respond_in_groups?: never
+          response_delay_seconds?: never
+          sign_messages?: never
+          split_delay_seconds?: never
+          split_messages?: never
+          stt_prompt?: never
+          temperature?: never
+          uazapi_agent_id?: never
+          uazapi_config?: never
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       can_view_card: {
