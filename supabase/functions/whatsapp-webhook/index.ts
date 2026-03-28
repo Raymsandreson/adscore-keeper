@@ -1137,6 +1137,8 @@ Deno.serve(async (req) => {
     }
 
     // ========== CTWA AD TRACKING & AUTO-CREATE LEAD ==========
+    let detectedCampaignId: string | null = null;
+    let detectedCampaignName: string | null = null;
     if (direction === 'inbound') {
       try {
         const msg = body.message || body.chat?.message || {}
@@ -1196,6 +1198,9 @@ Deno.serve(async (req) => {
                   
                   const leadName = contactName || `WhatsApp ${phone}`
                   
+                  detectedCampaignId = autoLink.campaign_id || null;
+                  detectedCampaignName = autoLink.campaign_name || null;
+                  
                   const { data: newLead, error: leadErr } = await supabase
                     .from('leads')
                     .insert({
@@ -1206,6 +1211,9 @@ Deno.serve(async (req) => {
                       source: 'ctwa_whatsapp',
                       ctwa_context: ctwaData,
                       ad_name: ctwaData.title || autoLink.campaign_name || null,
+                      campaign_id: detectedCampaignId,
+                      action_source: 'system',
+                      action_source_detail: `CTWA Auto-create (campanha: ${detectedCampaignName || 'desconhecida'})`,
                     })
                     .select('id')
                     .single()
@@ -1225,6 +1233,8 @@ Deno.serve(async (req) => {
                           phone: phone,
                           lead_id: leadId,
                           classification: 'lead',
+                          action_source: 'system',
+                          action_source_detail: `CTWA Auto-create (campanha: ${detectedCampaignName || 'desconhecida'})`,
                         })
                         .select('id')
                         .single()
