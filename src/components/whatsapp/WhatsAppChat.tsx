@@ -126,6 +126,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [mentionUserName, setMentionUserName] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<Array<{ user_id: string; full_name: string | null }>>([]);
   const [showMentionPicker, setShowMentionPicker] = useState(false);
+  const [agentEnabled, setAgentEnabled] = useState(false);
+  const [activeAgentName, setActiveAgentName] = useState<string | null>(null);
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+  const [availableAgents, setAvailableAgents] = useState<Array<{ id: string; name: string }>>([]);
+  const [agentLoading, setAgentLoading] = useState(false);
   const { notes, addNote, deleteNote } = useWhatsAppInternalNotes(conversation.phone);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
