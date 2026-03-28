@@ -4360,6 +4360,7 @@ export type Database = {
           created_by: string | null
           creative_id: string | null
           creative_name: string | null
+          ctwa_context: Json | null
           damage_description: string | null
           expected_birth_date: string | null
           facebook_lead_id: string | null
@@ -4428,6 +4429,7 @@ export type Database = {
           created_by?: string | null
           creative_id?: string | null
           creative_name?: string | null
+          ctwa_context?: Json | null
           damage_description?: string | null
           expected_birth_date?: string | null
           facebook_lead_id?: string | null
@@ -4496,6 +4498,7 @@ export type Database = {
           created_by?: string | null
           creative_id?: string | null
           creative_name?: string | null
+          ctwa_context?: Json | null
           damage_description?: string | null
           expected_birth_date?: string | null
           facebook_lead_id?: string | null
