@@ -206,9 +206,19 @@ export function CTWACampaignAutomation() {
           return (
             <div key={link.id} className="border rounded-lg p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Megaphone className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-medium">{link.campaign_name || link.campaign_id}</span>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-2">
+                    <Megaphone className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">{link.campaign_name || link.campaign_id}</span>
+                  </div>
+                  {(() => {
+                    const camp = metaCampaigns.find(c => c.campaign_id === link.campaign_id);
+                    return camp?.destination_phone ? (
+                      <span className="text-[10px] text-muted-foreground flex items-center gap-1 ml-6">
+                        <Phone className="h-3 w-3" /> {camp.destination_phone}
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(link.id)}>
                   <X className="h-3.5 w-3.5" />
