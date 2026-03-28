@@ -659,9 +659,6 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   // If conversations were already loaded, re-fetch when instance filter changes
   useEffect(() => {
     if (!hasLoaded) return;
-    // Force-clear stale data immediately so UI reflects the switch
-    setConversations([]);
-    conversationsRef.current = [];
     // Reset fetching guard so instance switch always triggers a fresh load
     isFetchingRef.current = false;
     fetchMessages();
