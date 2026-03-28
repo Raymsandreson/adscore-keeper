@@ -48,6 +48,7 @@ interface FormData {
   instance_token: string;
   base_url: string;
   owner_phone: string;
+  owner_name: string;
 }
 
 const emptyForm: FormData = {
@@ -55,6 +56,7 @@ const emptyForm: FormData = {
   instance_token: '',
   base_url: 'https://abraci.uazapi.com',
   owner_phone: '',
+  owner_name: '',
 };
 
 export function WhatsAppInstanceManager() {
