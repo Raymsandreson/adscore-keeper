@@ -497,6 +497,204 @@ Deno.serve(async (req) => {
     }
 
     // ====================================================
+    // AUTO-CREATE CONTACT + LEAD WITH AI CONTEXT ON SIGN
+    // ====================================================
+    if (isDocFullySigned && localDoc.whatsapp_phone) {
+      const cleanPhone = (localDoc.whatsapp_phone || '').replace(/\D/g, '')
+      
+      // Only proceed if no lead is linked yet
+      if (!localDoc.lead_id && cleanPhone) {
+        try {
+          console.log(`[zapsign-webhook] No lead linked, auto-creating contact+lead for phone: ${cleanPhone}`)
+
+          // 1. Fetch conversation messages for AI extraction
+          const { data: convMessages } = await supabase
+            .from('whatsapp_messages')
+            .select('message_text, direction, created_at')
+            .eq('phone', cleanPhone)
+            .order('created_at', { ascending: true })
+            .limit(100)
+
+          // 2. Extract structured data via AI
+          let extractedData: Record<string, any> = {}
+          if (convMessages && convMessages.length > 0) {
+            try {
+              const extractRes = await fetch(`${supabaseUrl}/functions/v1/extract-conversation-data`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${supabaseKey}`,
+                },
+                body: JSON.stringify({
+                  messages: convMessages.map(m => ({
+                    message_text: m.message_text,
+                    direction: m.direction,
+                  })),
+                  targetType: 'lead',
+                }),
+              })
+              const extractResult = await extractRes.json()
+              extractedData = extractResult?.data || {}
+              console.log(`[zapsign-webhook] AI extracted data:`, JSON.stringify(extractedData))
+            } catch (extractErr) {
+              console.error('[zapsign-webhook] AI extraction error:', extractErr)
+            }
+          }
+
+          // 3. Create contact if not exists
+          let contactId: string | null = null
+          const { data: existingContact } = await supabase
+            .from('contacts')
+            .select('id')
+            .eq('phone', cleanPhone)
+            .maybeSingle()
+
+          if (existingContact) {
+            contactId = existingContact.id
+            console.log(`[zapsign-webhook] Contact already exists: ${contactId}`)
+          } else {
+            const contactName = extractedData.lead_name || extractedData.victim_name || localDoc.signer_name || cleanPhone
+            const { data: newContact, error: contactErr } = await supabase
+              .from('contacts')
+              .insert({
+                full_name: contactName,
+                phone: cleanPhone,
+                email: extractedData.lead_email || null,
+                city: extractedData.city || null,
+                state: extractedData.state || null,
+                neighborhood: extractedData.neighborhood || null,
+                profession: extractedData.sector || null,
+                notes: extractedData.notes || null,
+                action_source: 'system',
+                action_source_detail: 'Criado automaticamente ao assinar documento (ZapSign)',
+              })
+              .select('id')
+              .single()
+
+            if (contactErr) {
+              console.error('[zapsign-webhook] Error creating contact:', contactErr)
+            } else {
+              contactId = newContact.id
+              console.log(`[zapsign-webhook] Contact created: ${contactId}`)
+            }
+          }
+
+          // 4. Determine board - use first available board or from document shortcut
+          let boardId: string | null = null
+          let stageId: string | null = null
+
+          // Try to find board from shortcut config
+          if (localDoc.shortcut_name) {
+            const { data: shortcut } = await supabase
+              .from('wjia_command_shortcuts')
+              .select('id')
+              .eq('shortcut_name', localDoc.shortcut_name)
+              .maybeSingle()
+
+            if (shortcut) {
+              // Check if there's an automation rule for this agent
+              const { data: rule } = await supabase
+                .from('agent_automation_rules')
+                .select('actions')
+                .eq('agent_id', shortcut.id)
+                .eq('trigger_type', 'on_document_signed')
+                .eq('is_active', true)
+                .maybeSingle()
+
+              if (rule?.actions) {
+                const createLeadAction = (rule.actions as any[]).find((a: any) => a.type === 'create_lead')
+                if (createLeadAction?.config?.board_id) {
+                  boardId = createLeadAction.config.board_id
+                  stageId = createLeadAction.config?.stage_id || null
+                }
+              }
+            }
+          }
+
+          // Fallback: get first kanban board
+          if (!boardId) {
+            const { data: firstBoard } = await supabase
+              .from('kanban_boards')
+              .select('id')
+              .limit(1)
+              .single()
+            boardId = firstBoard?.id || null
+          }
+
+          // Get first stage if not set
+          if (boardId && !stageId) {
+            const { data: firstStage } = await supabase
+              .from('kanban_stages')
+              .select('id')
+              .eq('board_id', boardId)
+              .order('display_order', { ascending: true })
+              .limit(1)
+              .single()
+            stageId = firstStage?.id || null
+          }
+
+          // 5. Create lead
+          if (boardId) {
+            const leadName = extractedData.lead_name || extractedData.victim_name || localDoc.signer_name || cleanPhone
+            const { data: newLead, error: leadErr } = await supabase
+              .from('leads')
+              .insert({
+                lead_name: leadName,
+                lead_phone: cleanPhone,
+                lead_email: extractedData.lead_email || null,
+                board_id: boardId,
+                stage: stageId,
+                status: 'new',
+                source: 'zapsign',
+                city: extractedData.city || null,
+                state: extractedData.state || null,
+                neighborhood: extractedData.neighborhood || null,
+                main_company: extractedData.main_company || null,
+                contractor_company: extractedData.contractor_company || null,
+                accident_address: extractedData.accident_address || null,
+                accident_date: extractedData.accident_date || null,
+                damage_description: extractedData.damage_description || null,
+                case_number: extractedData.case_number || null,
+                case_type: extractedData.case_type || null,
+                notes: extractedData.notes || null,
+                sector: extractedData.sector || null,
+                liability_type: extractedData.liability_type || null,
+                news_link: extractedData.news_link || null,
+                action_source: 'system',
+                action_source_detail: 'Lead criado automaticamente ao assinar documento (ZapSign)',
+              })
+              .select('id')
+              .single()
+
+            if (leadErr) {
+              console.error('[zapsign-webhook] Error creating lead:', leadErr)
+            } else {
+              localDoc.lead_id = newLead.id
+              console.log(`[zapsign-webhook] Lead created: ${newLead.id}`)
+
+              // Update zapsign_documents with the new lead_id
+              await supabase
+                .from('zapsign_documents')
+                .update({ lead_id: newLead.id })
+                .eq('id', localDoc.id)
+
+              // 6. Link contact to lead
+              if (contactId) {
+                await supabase.from('contact_leads').insert({
+                  contact_id: contactId,
+                  lead_id: newLead.id,
+                })
+                console.log(`[zapsign-webhook] Contact-Lead linked: ${contactId} -> ${newLead.id}`)
+              }
+            }
+          }
+        } catch (autoCreateErr) {
+          console.error('[zapsign-webhook] Auto-create contact+lead error:', autoCreateErr)
+        }
+      }
+    }
+
+    // ====================================================
     // BOARD-LEVEL POST-SIGNATURE AUTOMATIONS
     // ====================================================
     if (isDocFullySigned && localDoc.lead_id) {
