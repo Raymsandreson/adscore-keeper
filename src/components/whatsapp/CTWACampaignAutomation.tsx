@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Megaphone, Target, Sparkles, FolderKanban, Plus, X, Loader2, RefreshCw } from 'lucide-react';
+import { Megaphone, Target, Sparkles, FolderKanban, Plus, X, Loader2, RefreshCw, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface CampaignLink {
@@ -34,6 +34,7 @@ interface MetaCampaign {
   campaign_id: string;
   campaign_name: string;
   status?: string;
+  destination_phone?: string | null;
 }
 
 export function CTWACampaignAutomation() {
@@ -91,6 +92,7 @@ export function CTWACampaignAutomation() {
         campaign_id: c.campaign_id,
         campaign_name: c.campaign_name,
         status: c.status || 'ACTIVE',
+        destination_phone: c.destination_phone || null,
       }));
       console.log('CTWA: Loaded', campaigns.length, 'campaigns from Meta');
       setMetaCampaigns(campaigns);
@@ -204,9 +206,19 @@ export function CTWACampaignAutomation() {
           return (
             <div key={link.id} className="border rounded-lg p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Megaphone className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-medium">{link.campaign_name || link.campaign_id}</span>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-2">
+                    <Megaphone className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">{link.campaign_name || link.campaign_id}</span>
+                  </div>
+                  {(() => {
+                    const camp = metaCampaigns.find(c => c.campaign_id === link.campaign_id);
+                    return camp?.destination_phone ? (
+                      <span className="text-[10px] text-muted-foreground flex items-center gap-1 ml-6">
+                        <Phone className="h-3 w-3" /> {camp.destination_phone}
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(link.id)}>
                   <X className="h-3.5 w-3.5" />
@@ -315,14 +327,28 @@ export function CTWACampaignAutomation() {
                       <div className="px-2 py-1 text-[10px] font-semibold text-green-600 uppercase tracking-wider">🟢 Ativas</div>
                     )}
                     {activeCampaigns.map(c => (
-                      <SelectItem key={c.campaign_id} value={c.campaign_id}>{c.campaign_name}</SelectItem>
+                      <SelectItem key={c.campaign_id} value={c.campaign_id}>
+                        <div className="flex flex-col">
+                          <span>{c.campaign_name}</span>
+                          {c.destination_phone && (
+                            <span className="text-[10px] text-muted-foreground">📞 {c.destination_phone}</span>
+                          )}
+                        </div>
+                      </SelectItem>
                     ))}
                     {showPaused && pausedCampaigns.length > 0 && (
                       <>
                         <div className="my-1 border-t border-border" />
                         <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">⏸ Pausadas</div>
                         {pausedCampaigns.map(c => (
-                          <SelectItem key={c.campaign_id} value={c.campaign_id}>{c.campaign_name}</SelectItem>
+                          <SelectItem key={c.campaign_id} value={c.campaign_id}>
+                            <div className="flex flex-col">
+                              <span>{c.campaign_name}</span>
+                              {c.destination_phone && (
+                                <span className="text-[10px] text-muted-foreground">📞 {c.destination_phone}</span>
+                              )}
+                            </div>
+                          </SelectItem>
                         ))}
                       </>
                     )}
