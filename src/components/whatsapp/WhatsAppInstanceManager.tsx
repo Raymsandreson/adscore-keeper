@@ -19,6 +19,7 @@ interface Instance {
   instance_token: string;
   base_url: string | null;
   owner_phone: string | null;
+  owner_name: string | null;
   is_active: boolean | null;
   is_paused: boolean;
   receive_leads: boolean | null;
@@ -47,6 +48,7 @@ interface FormData {
   instance_token: string;
   base_url: string;
   owner_phone: string;
+  owner_name: string;
 }
 
 const emptyForm: FormData = {
@@ -54,6 +56,7 @@ const emptyForm: FormData = {
   instance_token: '',
   base_url: 'https://abraci.uazapi.com',
   owner_phone: '',
+  owner_name: '',
 };
 
 export function WhatsAppInstanceManager() {
@@ -147,6 +150,7 @@ export function WhatsAppInstanceManager() {
       instance_token: inst.instance_token,
       base_url: inst.base_url || 'https://abraci.uazapi.com',
       owner_phone: inst.owner_phone || '',
+      owner_name: (inst as any).owner_name || '',
     });
     setDialogOpen(true);
   };
@@ -166,6 +170,7 @@ export function WhatsAppInstanceManager() {
             instance_token: form.instance_token.trim(),
             base_url: form.base_url.trim() || null,
             owner_phone: form.owner_phone.trim() || null,
+            owner_name: form.owner_name.trim() || null,
           } as any)
           .eq('id', editingId);
         if (error) throw error;
@@ -178,7 +183,8 @@ export function WhatsAppInstanceManager() {
             instance_token: form.instance_token.trim(),
             base_url: form.base_url.trim() || null,
             owner_phone: form.owner_phone.trim() || null,
-          });
+            owner_name: form.owner_name.trim() || null,
+          } as any);
         if (error) throw error;
         toast.success('Instância criada com sucesso!');
       }
@@ -414,6 +420,16 @@ export function WhatsAppInstanceManager() {
                 onChange={e => setForm(f => ({ ...f, owner_phone: e.target.value }))}
               />
               <p className="text-[11px] text-muted-foreground">Número com DDI+DDD, sem espaços ou traços.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="inst-owner-name">Nome do Dono (Identidade do Agente IA)</Label>
+              <Input
+                id="inst-owner-name"
+                placeholder="Ex: Dr. João Silva"
+                value={form.owner_name}
+                onChange={e => setForm(f => ({ ...f, owner_name: e.target.value }))}
+              />
+              <p className="text-[11px] text-muted-foreground">O agente IA se apresentará com este nome ao responder por esta instância.</p>
             </div>
           </div>
           <DialogFooter>

@@ -174,6 +174,17 @@ serve(async (req) => {
       }
     }
 
+    // Fetch instance owner_name for agent identity
+    let instanceOwnerName: string | null = null;
+    {
+      const { data: instInfo } = await supabase
+        .from("whatsapp_instances")
+        .select("owner_name")
+        .eq("instance_name", instance_name)
+        .maybeSingle();
+      instanceOwnerName = (instInfo as any)?.owner_name || null;
+    }
+
     if (!assignment) {
       return new Response(JSON.stringify({ skipped: true, reason: "No active agent" }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -388,6 +399,11 @@ REGRAS IMPORTANTES:
             console.error("Error fetching ZapSign template fields:", tplErr);
           }
         }
+      }
+      
+      // Add agent identity based on instance owner name
+      if (instanceOwnerName) {
+        systemPrompt += `\n\nSUA IDENTIDADE:\nVocê se chama ${instanceOwnerName}. Quando se apresentar ou assinar mensagens, use esse nome. Se perguntarem seu nome, responda "${instanceOwnerName}". Mantenha essa identidade durante toda a conversa.`;
       }
       
       // Add contact identification context to prevent identity confusion
