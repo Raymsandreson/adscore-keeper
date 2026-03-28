@@ -12,7 +12,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft } from 'lucide-react';
+import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff } from 'lucide-react';
+import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { ZapSignDocumentDialog } from './ZapSignDocumentDialog';
 import { GroupMembersDialog } from './GroupMembersDialog';
@@ -125,6 +126,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [mentionUserName, setMentionUserName] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<Array<{ user_id: string; full_name: string | null }>>([]);
   const [showMentionPicker, setShowMentionPicker] = useState(false);
+  const [agentEnabled, setAgentEnabled] = useState(false);
+  const [activeAgentName, setActiveAgentName] = useState<string | null>(null);
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+  const [availableAgents, setAvailableAgents] = useState<Array<{ id: string; name: string }>>([]);
+  const [agentLoading, setAgentLoading] = useState(false);
   const { notes, addNote, deleteNote } = useWhatsAppInternalNotes(conversation.phone);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -135,6 +141,68 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const messages = [...conversation.messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
+
+  // Fetch agent state for this conversation
+  useEffect(() => {
+    const fetchAgentState = async () => {
+      const [{ data: agentsData }, { data: assignment }] = await Promise.all([
+        supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
+        supabase.from('whatsapp_conversation_agents').select('agent_id, is_active')
+          .eq('phone', conversation.phone).eq('instance_name', conversation.instance_name).maybeSingle()
+      ]);
+      setAvailableAgents((agentsData as any[]) || []);
+      if (assignment) {
+        setActiveAgentId((assignment as any).agent_id);
+        setAgentEnabled((assignment as any).is_active);
+        const agent = (agentsData as any[])?.find((a: any) => a.id === (assignment as any).agent_id);
+        setActiveAgentName(agent?.name || null);
+      } else {
+        setActiveAgentId(null);
+        setAgentEnabled(false);
+        setActiveAgentName(null);
+      }
+    };
+    fetchAgentState();
+  }, [conversation.phone, conversation.instance_name]);
+
+  const handleAgentToggle = async () => {
+    if (!activeAgentId) return;
+    setAgentLoading(true);
+    try {
+      const newState = !agentEnabled;
+      await supabase.from('whatsapp_conversation_agents')
+        .update({ is_active: newState } as any)
+        .eq('phone', conversation.phone).eq('instance_name', conversation.instance_name);
+      setAgentEnabled(newState);
+      toast.success(newState ? `🤖 Agente "${activeAgentName}" ativado` : 'Agente desativado');
+    } catch (e: any) { toast.error('Erro: ' + e.message); }
+    finally { setAgentLoading(false); }
+  };
+
+  const handleSelectAgent = async (agentId: string) => {
+    setAgentLoading(true);
+    try {
+      const agent = availableAgents.find(a => a.id === agentId);
+      await supabase.from('whatsapp_conversation_agents')
+        .upsert({ phone: conversation.phone, instance_name: conversation.instance_name, agent_id: agentId, is_active: true } as any, { onConflict: 'phone,instance_name' });
+      setActiveAgentId(agentId);
+      setActiveAgentName(agent?.name || null);
+      setAgentEnabled(true);
+      toast.success(`🤖 Agente "${agent?.name}" ativado`);
+    } catch (e: any) { toast.error('Erro: ' + e.message); }
+    finally { setAgentLoading(false); }
+  };
+
+  const handleRemoveAgent = async () => {
+    setAgentLoading(true);
+    try {
+      await supabase.from('whatsapp_conversation_agents')
+        .delete().eq('phone', conversation.phone).eq('instance_name', conversation.instance_name);
+      setActiveAgentId(null); setActiveAgentName(null); setAgentEnabled(false);
+      toast.success('Agente removido');
+    } catch (e: any) { toast.error('Erro: ' + e.message); }
+    finally { setAgentLoading(false); }
+  };
 
   // Detect if this is a group conversation
   const isGroup = messages.some(msg => {
@@ -876,6 +944,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         <div className="flex items-center gap-1 shrink-0">
           {isPrivate && <Lock className="h-4 w-4 text-amber-500" />}
           {conversation.lead_id && <Badge variant="outline" className="text-[10px] gap-1 text-blue-600 px-1.5 py-0"><Link2 className="h-3 w-3" /> Lead</Badge>}
+          {agentEnabled && activeAgentName && (
+            <Badge variant="default" className="text-[9px] gap-1 bg-emerald-600 hover:bg-emerald-700 px-1.5 py-0 cursor-pointer" onClick={handleAgentToggle}>
+              <Bot className="h-3 w-3" /> {activeAgentName}
+            </Badge>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -928,6 +1001,42 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   {creatingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
                   Criar Grupo WhatsApp
                 </DropdownMenuItem>
+              )}
+              {availableAgents.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  {agentEnabled && activeAgentId ? (
+                    <DropdownMenuItem onClick={handleAgentToggle} disabled={agentLoading} className="gap-2">
+                      <BotOff className="h-4 w-4" /> Desativar Agente ({activeAgentName})
+                    </DropdownMenuItem>
+                  ) : activeAgentId && !agentEnabled ? (
+                    <DropdownMenuItem onClick={handleAgentToggle} disabled={agentLoading} className="gap-2">
+                      <Bot className="h-4 w-4" /> Reativar Agente ({activeAgentName})
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger className="gap-2">
+                      <Bot className="h-4 w-4" /> {activeAgentId ? 'Trocar Agente' : 'Ativar Agente IA'}
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      {availableAgents.map(agent => (
+                        <DropdownMenuItem key={agent.id} onClick={() => handleSelectAgent(agent.id)} className="gap-2">
+                          <Bot className="h-3.5 w-3.5" />
+                          <span className="flex-1">{agent.name}</span>
+                          {activeAgentId === agent.id && <Badge variant="default" className="text-[9px] h-4 px-1">ativo</Badge>}
+                        </DropdownMenuItem>
+                      ))}
+                      {activeAgentId && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={handleRemoveAgent} className="gap-2 text-destructive">
+                            <BotOff className="h-3.5 w-3.5" /> Remover agente
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                </>
               )}
               {onClearConversation && (
                 <DropdownMenuItem
