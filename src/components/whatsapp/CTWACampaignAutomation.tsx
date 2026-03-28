@@ -48,6 +48,7 @@ export function CTWACampaignAutomation() {
   const [manualCampaignId, setManualCampaignId] = useState('');
   const [manualCampaignName, setManualCampaignName] = useState('');
   const [useManualInput, setUseManualInput] = useState(false);
+  const [showPaused, setShowPaused] = useState(false);
 
   const getMetaCredentials = () => {
     const savedAccounts = localStorage.getItem('meta_saved_accounts');
