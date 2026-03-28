@@ -197,6 +197,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
   const [humanReplyPauseMinutes, setHumanReplyPauseMinutes] = useState(0);
+  const [followupRepeatForever, setFollowupRepeatForever] = useState(false);
   const [zapsignTemplates, setZapsignTemplates] = useState<ZapSignTemplateOption[]>([]);
   const [templateFields, setTemplateFields] = useState<{ variable: string; label: string; required: boolean }[]>([]);
   const [loadingFields, setLoadingFields] = useState(false);
@@ -316,6 +317,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     });
     setFollowupSteps(s.followup_steps || []);
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
+    setFollowupRepeatForever((s as any).followup_repeat_forever ?? false);
     setEditingId(s.id);
     setShowForm(true);
     setFormSection('general');
@@ -344,6 +346,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       media_extraction_prompt: form.media_extraction_prompt || null,
       followup_steps: followupSteps,
       human_reply_pause_minutes: humanReplyPauseMinutes,
+      followup_repeat_forever: followupRepeatForever,
       notify_on_signature: form.notify_on_signature,
       send_signed_pdf: form.send_signed_pdf,
       request_documents: form.request_documents,
@@ -932,7 +935,17 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                 </Button>
 
                 {followupSteps.length > 0 && (
-                  <div className="p-2 rounded-lg border bg-muted/30 space-y-2">
+                  <div className="p-2 rounded-lg border bg-muted/30 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
+                        <div>
+                          <Label className="text-[10px]">Repetir infinitamente</Label>
+                          <p className="text-[9px] text-muted-foreground">Repete as etapas em loop até o contato bloquear ou responder</p>
+                        </div>
+                      </div>
+                      <Switch checked={followupRepeatForever} onCheckedChange={setFollowupRepeatForever} />
+                    </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />

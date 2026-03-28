@@ -43,11 +43,12 @@ serve(async (req) => {
       // Load followup_steps from the shortcut linked to this session
       const { data: shortcutData } = await supabase
         .from("wjia_command_shortcuts")
-        .select("followup_steps, human_reply_pause_minutes")
+        .select("followup_steps, human_reply_pause_minutes, followup_repeat_forever")
         .eq("shortcut_name", session.shortcut_name)
         .maybeSingle();
 
       const steps = (shortcutData?.followup_steps || []) as any[];
+      const repeatForever = shortcutData?.followup_repeat_forever ?? false;
       if (!steps.length) {
         console.log(`No followup steps for session ${session.id} (shortcut: ${session.shortcut_name})`);
         continue;
@@ -92,6 +93,14 @@ serve(async (req) => {
         .maybeSingle();
 
       const nextStepIndex = lastLog ? (lastLog.step_index + 1) : 0;
+      
+      // If not repeat forever and we've completed all steps, mark session done
+      if (!repeatForever && nextStepIndex >= steps.length) {
+        console.log(`All ${steps.length} followup steps completed for session ${session.id}, not repeating.`);
+        await supabase.from("wjia_collection_sessions").update({ status: "followup_done" }).eq("id", session.id);
+        continue;
+      }
+      
       const effectiveStepIndex = nextStepIndex % steps.length;
       const step = steps[effectiveStepIndex];
       const delayMinutes = step.delay_minutes || 60;
