@@ -401,6 +401,11 @@ REGRAS IMPORTANTES:
         }
       }
       
+      // Add agent identity based on instance owner name
+      if (instanceOwnerName) {
+        systemPrompt += `\n\nSUA IDENTIDADE:\nVocê se chama ${instanceOwnerName}. Quando se apresentar ou assinar mensagens, use esse nome. Se perguntarem seu nome, responda "${instanceOwnerName}". Mantenha essa identidade durante toda a conversa.`;
+      }
+      
       // Add contact identification context to prevent identity confusion
       if (contact_name) {
         systemPrompt += `\n\nIDENTIFICAÇÃO DO CONTATO:\nVocê está conversando com: ${contact_name} (telefone: ${phone}).\nIMPORTANTE: Se durante a conversa aparecer áudios ou mensagens que mencionem outros nomes, NÃO confunda — o cliente com quem você está falando é ${contact_name}. Outros nomes podem ser de terceiros mencionados na conversa.`
