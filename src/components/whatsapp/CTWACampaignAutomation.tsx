@@ -103,13 +103,17 @@ export function CTWACampaignAutomation() {
 
   const fetchMetaCampaigns = async () => {
     const { accessToken, adAccountId } = getMetaCredentials();
+    console.log('CTWA: credentials check', { hasToken: !!accessToken, hasAccount: !!adAccountId });
     if (!accessToken || !adAccountId) {
+      console.warn('CTWA: No Meta credentials found in localStorage. Keys present:', 
+        Object.keys(localStorage).filter(k => k.includes('meta')));
       setUseManualInput(true);
       return;
     }
     setLoadingCampaigns(true);
     try {
       const formattedAdAccountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+      console.log('CTWA: Fetching campaigns for', formattedAdAccountId);
       const { data, error } = await supabase.functions.invoke('list-meta-ads', {
         body: { accessToken, adAccountId: formattedAdAccountId, limit: 100, status: ['ACTIVE', 'PAUSED'] },
       });
@@ -121,6 +125,7 @@ export function CTWACampaignAutomation() {
         status: c.status || 'ACTIVE',
         destination_phone: c.destination_phone || null,
       }));
+      console.log('CTWA: Found', campaigns.length, 'campaigns');
       setMetaCampaigns(campaigns);
       if (campaigns.length === 0) setUseManualInput(true);
       else setUseManualInput(false);
@@ -599,12 +604,22 @@ export function CTWACampaignAutomation() {
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <Label className="text-[10px]">Campanha</Label>
-                  {metaCampaigns.length > 0 && (
-                    <button className="text-[10px] text-primary underline" onClick={() => setUseManualInput(false)}>
-                      Selecionar da lista
+                  <div className="flex items-center gap-1">
+                    <button className="text-[10px] text-primary underline" onClick={() => fetchMetaCampaigns()}>
+                      Buscar campanhas
                     </button>
-                  )}
+                    {metaCampaigns.length > 0 && (
+                      <button className="text-[10px] text-primary underline" onClick={() => setUseManualInput(false)}>
+                        Selecionar da lista
+                      </button>
+                    )}
+                  </div>
                 </div>
+                {loadingCampaigns && (
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground py-1">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Buscando campanhas...
+                  </div>
+                )}
                 <Input
                   className="h-8 text-xs"
                   placeholder="Ex: 123456789"
