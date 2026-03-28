@@ -233,34 +233,85 @@ export function CTWACampaignAutomation() {
         return;
       }
 
-      // Check agent assignment status for these phones
-      const phones = Array.from(phoneMap.keys());
+      // Build conversations list with enriched data
+      const conversations: ConversationInfo[] = [];
+      const phonesArr = Array.from(phoneMap.keys());
+      
+      // Check agent assignment
       const { data: convAgents } = await supabase
         .from('whatsapp_conversation_agents' as any)
         .select('phone, is_active')
         .eq('agent_id', link.agent_id)
-        .in('phone', phones);
+        .in('phone', phonesArr);
 
       const agentMap = new Map<string, boolean>();
       (convAgents as any[] || []).forEach((ca: any) => {
         agentMap.set(ca.phone?.replace(/\D/g, ''), ca.is_active);
       });
 
-      // Build conversations list with last message time
-      const conversations: ConversationInfo[] = [];
+      // Check leads for these phones
+      const { data: leads } = await supabase
+        .from('leads')
+        .select('id, lead_name, lead_phone, lead_status')
+        .eq('campaign_id', link.campaign_id);
+
+      const leadMap = new Map<string, { name: string; status: string }>();
+      (leads || []).forEach((l: any) => {
+        const norm = l.lead_phone?.replace(/\D/g, '');
+        if (norm) leadMap.set(norm, { name: l.lead_name, status: l.lead_status || 'active' });
+      });
+
+      // Check contacts
+      const { data: contacts } = await supabase
+        .from('contacts')
+        .select('phone')
+        .in('phone', phonesArr);
+
+      const contactSet = new Set<string>();
+      (contacts || []).forEach((c: any) => {
+        const norm = c.phone?.replace(/\D/g, '');
+        if (norm) contactSet.add(norm);
+      });
+
       for (const [norm, info] of phoneMap) {
-        const { data: msg } = await supabase
+        // Get last messages for response detection
+        const { data: msgs } = await supabase
           .from('whatsapp_messages')
-          .select('contact_name, created_at')
+          .select('contact_name, created_at, from_me, instance_name')
           .eq('phone', info.phone)
           .order('created_at', { ascending: false })
-          .limit(1);
+          .limit(50);
+
+        const msgCount = msgs?.length || 0;
+        const firstInbound = msgs ? [...msgs].reverse().find(m => !m.from_me) : null;
+        const firstOutbound = msgs ? [...msgs].reverse().find(m => m.from_me) : null;
+        
+        let wasResponded = false;
+        let responseTimeMins: number | null = null;
+        if (firstInbound && firstOutbound) {
+          const inTime = new Date(firstInbound.created_at).getTime();
+          const outTime = new Date(firstOutbound.created_at).getTime();
+          if (outTime > inTime) {
+            wasResponded = true;
+            responseTimeMins = Math.floor((outTime - inTime) / 60000);
+          }
+        }
+
+        const leadInfo = leadMap.get(norm);
 
         conversations.push({
           phone: info.phone,
-          contact_name: msg?.[0]?.contact_name || info.contact_name || info.phone,
-          last_message_at: msg?.[0]?.created_at || null,
+          contact_name: msgs?.[0]?.contact_name || info.contact_name || info.phone,
+          last_message_at: msgs?.[0]?.created_at || null,
           is_agent_active: agentMap.get(norm) ?? false,
+          has_lead: !!leadInfo,
+          has_contact: contactSet.has(norm),
+          lead_status: leadInfo?.status || null,
+          lead_name: leadInfo?.name || null,
+          instance_name: msgs?.[0]?.instance_name || info.instance_name,
+          was_responded: wasResponded,
+          response_time_minutes: responseTimeMins,
+          message_count: msgCount,
         });
       }
 
