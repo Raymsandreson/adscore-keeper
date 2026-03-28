@@ -174,6 +174,17 @@ serve(async (req) => {
       }
     }
 
+    // Fetch instance owner_name for agent identity
+    let instanceOwnerName: string | null = null;
+    {
+      const { data: instInfo } = await supabase
+        .from("whatsapp_instances")
+        .select("owner_name")
+        .eq("instance_name", instance_name)
+        .maybeSingle();
+      instanceOwnerName = (instInfo as any)?.owner_name || null;
+    }
+
     if (!assignment) {
       return new Response(JSON.stringify({ skipped: true, reason: "No active agent" }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
