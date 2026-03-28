@@ -6499,24 +6499,39 @@ export type Database = {
       whatsapp_agent_campaign_links: {
         Row: {
           agent_id: string
+          auto_create_contact: boolean | null
+          auto_create_lead: boolean | null
+          board_id: string | null
           campaign_id: string
           campaign_name: string | null
           created_at: string
           id: string
+          lead_source_label: string | null
+          stage_id: string | null
         }
         Insert: {
           agent_id: string
+          auto_create_contact?: boolean | null
+          auto_create_lead?: boolean | null
+          board_id?: string | null
           campaign_id: string
           campaign_name?: string | null
           created_at?: string
           id?: string
+          lead_source_label?: string | null
+          stage_id?: string | null
         }
         Update: {
           agent_id?: string
+          auto_create_contact?: boolean | null
+          auto_create_lead?: boolean | null
+          board_id?: string | null
           campaign_id?: string
           campaign_name?: string | null
           created_at?: string
           id?: string
+          lead_source_label?: string | null
+          stage_id?: string | null
         }
         Relationships: [
           {
@@ -6524,6 +6539,13 @@ export type Database = {
             columns: ["agent_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_ai_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_agent_campaign_links_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "kanban_boards"
             referencedColumns: ["id"]
           },
         ]

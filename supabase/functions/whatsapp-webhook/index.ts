@@ -1136,9 +1136,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ========== CTWA AD TRACKING ==========
-    // Extract Click-to-WhatsApp Ad referral data from first inbound message
-    if (direction === 'inbound' && leadId) {
+    // ========== CTWA AD TRACKING & AUTO-CREATE LEAD ==========
+    if (direction === 'inbound') {
       try {
         const msg = body.message || body.chat?.message || {}
         const contextInfo = msg.extendedTextMessage?.contextInfo || msg.contextInfo || msg.imageMessage?.contextInfo || msg.videoMessage?.contextInfo || {}
@@ -1157,18 +1156,90 @@ Deno.serve(async (req) => {
           
           console.log('CTWA Ad data detected:', JSON.stringify(ctwaData))
           
-          // Update lead with CTWA context
-          const { error: ctwaErr } = await supabase
-            .from('leads')
-            .update({ 
-              ctwa_context: ctwaData,
-              source: 'ctwa_whatsapp',
-            })
-            .eq('id', leadId)
-            .is('ctwa_context', null) // Only set on first message, don't overwrite
+          if (leadId) {
+            // Update existing lead with CTWA context
+            const { error: ctwaErr } = await supabase
+              .from('leads')
+              .update({ 
+                ctwa_context: ctwaData,
+                source: 'ctwa_whatsapp',
+              })
+              .eq('id', leadId)
+              .is('ctwa_context', null)
+            
+            if (ctwaErr) console.error('Error saving CTWA context:', ctwaErr)
+            else console.log('CTWA context saved for lead:', leadId)
+          }
           
-          if (ctwaErr) console.error('Error saving CTWA context:', ctwaErr)
-          else console.log('CTWA context saved for lead:', leadId)
+          // Auto-create lead if none exists and campaign link has auto_create_lead enabled
+          if (!leadId && instanceName) {
+            try {
+              const { data: campaignLinks } = await supabase
+                .from('whatsapp_agent_campaign_links')
+                .select('*')
+                .eq('auto_create_lead', true)
+              
+              if (campaignLinks && campaignLinks.length > 0) {
+                const autoLink = (campaignLinks as any[]).find(l => l.board_id)
+                
+                if (autoLink) {
+                  let stageId = autoLink.stage_id
+                  if (!stageId && autoLink.board_id) {
+                    const { data: board } = await supabase
+                      .from('kanban_boards')
+                      .select('stages')
+                      .eq('id', autoLink.board_id)
+                      .single()
+                    const stages = (board as any)?.stages || []
+                    if (stages.length > 0) stageId = stages[0].id
+                  }
+                  
+                  const leadName = contactName || `WhatsApp ${phone}`
+                  
+                  const { data: newLead, error: leadErr } = await supabase
+                    .from('leads')
+                    .insert({
+                      lead_name: leadName,
+                      lead_phone: phone,
+                      board_id: autoLink.board_id,
+                      status: stageId || 'new',
+                      source: 'ctwa_whatsapp',
+                      ctwa_context: ctwaData,
+                      ad_name: ctwaData.title || autoLink.campaign_name || null,
+                    })
+                    .select('id')
+                    .single()
+                  
+                  if (leadErr) {
+                    console.error('Error auto-creating lead from CTWA:', leadErr)
+                  } else if (newLead) {
+                    leadId = (newLead as any).id
+                    console.log('Auto-created lead from CTWA:', leadId, 'board:', autoLink.board_id)
+                    
+                    // Also create contact
+                    if (!contactId) {
+                      const { data: newContact } = await supabase
+                        .from('contacts')
+                        .insert({
+                          full_name: leadName,
+                          phone: phone,
+                          lead_id: leadId,
+                          classification: 'lead',
+                        })
+                        .select('id')
+                        .single()
+                      if (newContact) {
+                        contactId = (newContact as any).id
+                        console.log('Auto-created contact from CTWA:', contactId)
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (autoErr) {
+              console.error('CTWA auto-create error:', autoErr)
+            }
+          }
         }
       } catch (ctwaErr) {
         console.error('CTWA extraction error:', ctwaErr)

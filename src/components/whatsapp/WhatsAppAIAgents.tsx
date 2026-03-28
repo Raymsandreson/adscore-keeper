@@ -115,6 +115,7 @@ export function WhatsAppAIAgents() {
   const [callQueueCount, setCallQueueCount] = useState(0);
   const [teamMembers, setTeamMembers] = useState<{ user_id: string; full_name: string }[]>([]);
   const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string; type: 'builtin' | 'custom' }[]>([]);
+  const [boards, setBoards] = useState<{ id: string; name: string; stages: any[] }[]>([]);
 
   useEffect(() => {
     fetchAgents();
@@ -122,6 +123,7 @@ export function WhatsAppAIAgents() {
     fetchCallQueueCount();
     fetchTeamMembers();
     fetchVoices();
+    fetchBoards();
   }, []);
 
   const fetchAgents = async () => {
@@ -149,6 +151,11 @@ export function WhatsAppAIAgents() {
   const fetchInstances = async () => {
     const { data } = await supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true);
     setInstances((data as any[]) || []);
+  };
+
+  const fetchBoards = async () => {
+    const { data } = await (supabase.from('kanban_boards') as any).select('id, name, stages').eq('is_active', true).order('display_order');
+    setBoards((data as any[]) || []);
   };
 
   const fetchCallQueueCount = async () => {
@@ -729,21 +736,71 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
               <TabsContent value="campaigns" className="space-y-4 mt-4">
                 <div>
                   <Label>Campanhas vinculadas</Label>
-                  <p className="text-[10px] text-muted-foreground mb-2">Quando um lead chega de uma campanha vinculada, este agente é ativado automaticamente na conversa</p>
+                  <p className="text-[10px] text-muted-foreground mb-2">Quando um lead chega de uma campanha vinculada, este agente é ativado e o lead pode ser criado automaticamente no funil escolhido</p>
                   
                   {editingAgent.id && (
                     <>
-                      {agentCampaigns(editingAgent.id).map(link => (
-                        <div key={link.id} className="flex items-center justify-between p-2 border rounded mb-1">
-                          <div className="flex items-center gap-2">
-                            <Megaphone className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span className="text-sm">{link.campaign_name || link.campaign_id}</span>
+                      {agentCampaigns(editingAgent.id).map(link => {
+                        const linkAny = link as any;
+                        const selectedBoard = boards.find(b => b.id === linkAny.board_id);
+                        const boardStages = selectedBoard?.stages || [];
+                        return (
+                          <div key={link.id} className="p-3 border rounded mb-2 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Megaphone className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="text-sm font-medium">{link.campaign_name || link.campaign_id}</span>
+                              </div>
+                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleUnlinkCampaign(link.id)}>
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                id={`auto-lead-${link.id}`}
+                                checked={linkAny.auto_create_lead || false}
+                                onChange={async (e) => {
+                                  await supabase.from('whatsapp_agent_campaign_links').update({ auto_create_lead: e.target.checked } as any).eq('id', link.id);
+                                  fetchAgents();
+                                }}
+                                className="rounded border-input"
+                              />
+                              <label htmlFor={`auto-lead-${link.id}`} className="text-xs">Criar lead automaticamente</label>
+                            </div>
+
+                            {linkAny.auto_create_lead && (
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <Label className="text-[10px]">Funil</Label>
+                                  <Select value={linkAny.board_id || ''} onValueChange={async (v) => {
+                                    await supabase.from('whatsapp_agent_campaign_links').update({ board_id: v || null, stage_id: null } as any).eq('id', link.id);
+                                    fetchAgents();
+                                  }}>
+                                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar funil..." /></SelectTrigger>
+                                    <SelectContent>
+                                      {boards.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label className="text-[10px]">Etapa inicial</Label>
+                                  <Select value={linkAny.stage_id || ''} onValueChange={async (v) => {
+                                    await supabase.from('whatsapp_agent_campaign_links').update({ stage_id: v || null } as any).eq('id', link.id);
+                                    fetchAgents();
+                                  }}>
+                                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Primeira etapa..." /></SelectTrigger>
+                                    <SelectContent>
+                                      {boardStages.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleUnlinkCampaign(link.id)}>
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ))}
+                        );
+                      })}
                       
                       {availableCampaigns.length > 0 && (
                         <div className="mt-3">
