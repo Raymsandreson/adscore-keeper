@@ -33,6 +33,7 @@ interface Board {
 interface MetaCampaign {
   campaign_id: string;
   campaign_name: string;
+  status?: string;
 }
 
 export function CTWACampaignAutomation() {
