@@ -81,6 +81,8 @@ export function CTWACampaignAutomation() {
   const [linkConversations, setLinkConversations] = useState<Record<string, ConversationInfo[]>>({});
   const [conversationCounts, setConversationCounts] = useState<Record<string, number>>({});
   const [loadingConversations, setLoadingConversations] = useState<string | null>(null);
+  const [bulkCreating, setBulkCreating] = useState<string | null>(null);
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number; created: number } | null>(null);
 
   const getMetaCredentials = () => {
     const savedAccounts = localStorage.getItem('meta_saved_accounts');
