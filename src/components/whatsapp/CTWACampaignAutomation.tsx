@@ -216,29 +216,22 @@ export function CTWACampaignAutomation() {
       const linkedInstance = instances.find(i => i.id === (link as any).instance_id);
       const instanceName = linkedInstance?.instance_name;
 
-      // Get unique phones from messages tagged with this campaign_id
-      let query = supabase
+      // Get unique phones ONLY from messages tagged with this exact campaign_id
+      // No need for instance or group filters — if campaign_id is set, it came from this ad
+      const { data: campaignMessages } = await supabase
         .from('whatsapp_messages')
         .select('phone, contact_name, instance_name')
-        .eq('campaign_id', link.campaign_id)
-        .not('phone', 'like', '%@g.us')
-        .not('phone', 'like', '%@s.whatsapp.net');
-      
-      // Filter by instance if linked
-      if (instanceName) {
-        query = query.eq('instance_name', instanceName);
-      }
+        .eq('campaign_id', link.campaign_id);
 
-      const { data: campaignMessages } = await query;
-
-      // Deduplicate by phone, excluding group-like IDs (start with 120363)
+      // Deduplicate by phone+instance
       const phoneMap = new Map<string, { phone: string; contact_name: string | null; instance_name: string }>();
       (campaignMessages || []).forEach((m: any) => {
         const norm = m.phone?.replace(/\D/g, '');
-        // Skip group JIDs (typically 18+ digits starting with 120)
-        if (!norm || phoneMap.has(norm)) return;
-        if (norm.length > 15 && norm.startsWith('120')) return;
-        phoneMap.set(norm, { phone: m.phone, contact_name: m.contact_name, instance_name: m.instance_name });
+        if (!norm) return;
+        const key = `${norm}_${m.instance_name}`;
+        if (!phoneMap.has(key)) {
+          phoneMap.set(key, { phone: m.phone, contact_name: m.contact_name, instance_name: m.instance_name });
+        }
       });
 
       if (!phoneMap.size) {
