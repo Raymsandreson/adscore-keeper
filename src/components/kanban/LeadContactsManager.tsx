@@ -132,6 +132,11 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
       instagram_username: formInstagram || null,
       classification: formClassification || null,
       notes: formNotes || null,
+      // Inherit location and profession data from lead
+      city: lead?.city || null,
+      state: lead?.state || null,
+      neighborhood: lead?.neighborhood || null,
+      profession: null, // profession is on contact, not inherited from lead directly
     });
 
     resetForm();
