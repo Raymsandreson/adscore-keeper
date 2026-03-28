@@ -16,22 +16,67 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { mentioned_user_ids, message_content, sender_name, entity_type, entity_id, entity_name } = await req.json();
+    const { mentioned_user_ids, message_content, sender_id, sender_name, entity_type, entity_id, entity_name } = await req.json();
 
-    if (!mentioned_user_ids?.length || !message_content) {
+    if (!mentioned_user_ids?.length || !message_content || !sender_id) {
       return new Response(JSON.stringify({ error: "Missing data" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Get mentioned users' profiles with phone and default instance
-    const { data: profiles } = await supabase
+    // Get SENDER's profile to find their default instance
+    const { data: senderProfile } = await supabase
       .from("profiles")
-      .select("user_id, full_name, phone, default_instance_id")
+      .select("user_id, full_name, default_instance_id")
+      .eq("user_id", sender_id)
+      .single();
+
+    if (!senderProfile) {
+      return new Response(JSON.stringify({ sent: 0, reason: "sender profile not found" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Find sender's WhatsApp instance
+    let senderInstance = null;
+    if (senderProfile.default_instance_id) {
+      const { data: inst } = await supabase
+        .from("whatsapp_instances")
+        .select("id, instance_name, instance_token, base_url")
+        .eq("id", senderProfile.default_instance_id)
+        .eq("is_active", true)
+        .single();
+      senderInstance = inst;
+    }
+
+    if (!senderInstance) {
+      // Fallback: any active instance
+      const { data: inst } = await supabase
+        .from("whatsapp_instances")
+        .select("id, instance_name, instance_token, base_url")
+        .eq("is_active", true)
+        .limit(1)
+        .single();
+      senderInstance = inst;
+    }
+
+    if (!senderInstance?.instance_token) {
+      console.log(`No active instance for sender ${senderProfile.full_name}`);
+      return new Response(JSON.stringify({ sent: 0, reason: "no sender instance" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const baseUrl = senderInstance.base_url || "https://abraci.uazapi.com";
+
+    // Get mentioned users' profiles (only need phone)
+    const { data: mentionedProfiles } = await supabase
+      .from("profiles")
+      .select("user_id, full_name, phone")
       .in("user_id", mentioned_user_ids);
 
-    if (!profiles?.length) {
+    if (!mentionedProfiles?.length) {
       return new Response(JSON.stringify({ sent: 0, reason: "no profiles found" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -49,45 +94,16 @@ serve(async (req) => {
     }
 
     let sentCount = 0;
+    const entityLabel = entity_type === "lead" ? "Lead" : entity_type === "contact" ? "Contato" : "Registro";
 
-    for (const profile of profiles) {
+    for (const profile of mentionedProfiles) {
       if (!profile.phone) {
         console.log(`User ${profile.full_name} has no phone, skipping`);
         continue;
       }
 
-      // Find instance to send from - use user's default or any active
-      let instance = null;
-      if (profile.default_instance_id) {
-        const { data: inst } = await supabase
-          .from("whatsapp_instances")
-          .select("id, instance_name, instance_token, base_url")
-          .eq("id", profile.default_instance_id)
-          .eq("is_active", true)
-          .single();
-        instance = inst;
-      }
-
-      if (!instance) {
-        // Fallback: any active instance
-        const { data: inst } = await supabase
-          .from("whatsapp_instances")
-          .select("id, instance_name, instance_token, base_url")
-          .eq("is_active", true)
-          .limit(1)
-          .single();
-        instance = inst;
-      }
-
-      if (!instance?.instance_token) {
-        console.log(`No active instance for user ${profile.full_name}`);
-        continue;
-      }
-
       const phone = profile.phone.replace(/\D/g, "");
-      const baseUrl = instance.base_url || "https://abraci.uazapi.com";
 
-      const entityLabel = entity_type === "lead" ? "Lead" : entity_type === "contact" ? "Contato" : "Registro";
       const message = `💬 *Menção no Chat Equipe*\n\n` +
         `*${sender_name}* mencionou você:\n\n` +
         `"${message_content}"\n\n` +
@@ -99,7 +115,7 @@ serve(async (req) => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "token": instance.instance_token,
+            "token": senderInstance.instance_token,
           },
           body: JSON.stringify({ phone, message }),
           signal: AbortSignal.timeout(10000),
@@ -107,9 +123,10 @@ serve(async (req) => {
 
         if (resp.ok) {
           sentCount++;
-          console.log(`WhatsApp notification sent to ${profile.full_name} (${phone})`);
+          console.log(`WhatsApp notification sent to ${profile.full_name} (${phone}) via sender instance ${senderInstance.instance_name}`);
         } else {
-          console.error(`Failed to send to ${phone}:`, resp.status);
+          const errText = await resp.text().catch(() => "");
+          console.error(`Failed to send to ${phone}:`, resp.status, errText);
         }
       } catch (e) {
         console.error(`Error sending to ${phone}:`, e.message);
