@@ -22,7 +22,7 @@ serve(async (req) => {
 
     // Fetch campaigns with insights
     const fields = [
-      'name', 'status', 'objective', 'daily_budget', 'lifetime_budget',
+      'name', 'status', 'effective_status', 'objective', 'daily_budget', 'lifetime_budget',
       'start_time', 'stop_time', 'created_time', 'updated_time'
     ].join(',');
 
@@ -100,7 +100,7 @@ serve(async (req) => {
           return {
             campaign_id: campaign.id,
             campaign_name: campaign.name,
-            status: campaign.status?.toLowerCase() || 'unknown',
+            status: (campaign.effective_status || campaign.status || 'UNKNOWN').toUpperCase(),
             objective: campaign.objective,
             daily_budget: campaign.daily_budget ? Number(campaign.daily_budget) / 100 : null,
             lifetime_budget: campaign.lifetime_budget ? Number(campaign.lifetime_budget) / 100 : null,
@@ -124,7 +124,7 @@ serve(async (req) => {
           return {
             campaign_id: campaign.id,
             campaign_name: campaign.name,
-            status: campaign.status?.toLowerCase() || 'unknown',
+            status: (campaign.effective_status || campaign.status || 'UNKNOWN').toUpperCase(),
             objective: campaign.objective,
             daily_budget: campaign.daily_budget ? Number(campaign.daily_budget) / 100 : null,
             lifetime_budget: campaign.lifetime_budget ? Number(campaign.lifetime_budget) / 100 : null,
