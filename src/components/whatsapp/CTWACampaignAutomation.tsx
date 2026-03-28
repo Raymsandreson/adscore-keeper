@@ -95,6 +95,9 @@ export function CTWACampaignAutomation() {
   const [loadingConversations, setLoadingConversations] = useState<string | null>(null);
   const [bulkCreating, setBulkCreating] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number; created: number } | null>(null);
+  const [sheetLink, setSheetLink] = useState<CampaignLink | null>(null);
+  const [convResponseFilter, setConvResponseFilter] = useState<ConvResponseFilter>('all');
+  const [convLeadFilter, setConvLeadFilter] = useState<ConvLeadFilter>('all');
 
   const getMetaCredentials = () => {
     const savedAccounts = localStorage.getItem('meta_saved_accounts');
