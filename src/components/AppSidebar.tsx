@@ -94,9 +94,14 @@ export function AppSidebar() {
       id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" />,
       items: [
         { id: "dashboard-main", label: "Visão Geral", icon: <LayoutDashboard className="h-3.5 w-3.5" />, path: "/dashboard" },
-        { id: "paid", label: "Tráfego Pago", icon: <Megaphone className="h-3.5 w-3.5" />, path: "/dashboard?tab=paid", color: "text-blue-500" },
         { id: "organic", label: "Orgânico", icon: <Heart className="h-3.5 w-3.5" />, path: "/dashboard?tab=organic", color: "text-pink-500" },
         { id: "goals", label: "Metas", icon: <Target className="h-3.5 w-3.5" />, path: "/dashboard?tab=goals", color: "text-emerald-500" },
+      ],
+    },
+    {
+      id: "ads", label: "Anúncios", icon: <Megaphone className="h-4 w-4" />,
+      items: [
+        { id: "paid", label: "Campanhas", icon: <Megaphone className="h-3.5 w-3.5" />, path: "/dashboard?tab=paid", color: "text-blue-500" },
       ],
     },
     {

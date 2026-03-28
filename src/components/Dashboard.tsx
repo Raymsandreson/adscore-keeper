@@ -637,7 +637,7 @@ const Dashboard = () => {
           <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4">
             <TabsTrigger value="paid" className="gap-2">
               <Megaphone className="h-4 w-4" />
-              Tráfego Pago
+              Anúncios
             </TabsTrigger>
             <TabsTrigger value="organic" className="gap-2">
               <Heart className="h-4 w-4" />
