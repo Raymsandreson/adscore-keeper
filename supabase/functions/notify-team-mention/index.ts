@@ -111,13 +111,13 @@ serve(async (req) => {
         `\n🔗 Acessar: ${deepLink}`;
 
       try {
-        const resp = await fetch(`${baseUrl}/sendText`, {
+        const resp = await fetch(`${baseUrl}/send/text`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "token": senderInstance.instance_token,
           },
-          body: JSON.stringify({ phone, message }),
+          body: JSON.stringify({ number: phone, text: message }),
           signal: AbortSignal.timeout(10000),
         });
 
