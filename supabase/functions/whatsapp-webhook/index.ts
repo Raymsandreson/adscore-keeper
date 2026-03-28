@@ -1165,27 +1165,35 @@ Deno.serve(async (req) => {
           // Try matching by source_id (Meta ad ID) or by ad title against campaign_name
           let matchedCampaignLink: any = null
           
-          // Fetch all active campaign links
+          // Fetch ALL campaign links (include paused ones - they still track)
           const { data: allCampaignLinks } = await supabase
             .from('whatsapp_agent_campaign_links')
             .select('*')
-            .eq('is_active', true)
           
           if (allCampaignLinks && allCampaignLinks.length > 0) {
             const links = allCampaignLinks as any[]
             
-            // Strategy 1: Match source_id to campaign_id (Meta source_id often contains campaign/ad ID)
+            // Strategy 1: Exact match source_id to campaign_id
             if (ctwaSourceId) {
-              matchedCampaignLink = links.find(l => 
-                l.campaign_id === ctwaSourceId || 
-                ctwaSourceId.includes(l.campaign_id)
-              )
+              matchedCampaignLink = links.find(l => l.campaign_id === ctwaSourceId)
               if (matchedCampaignLink) {
-                console.log('CTWA: Matched campaign by source_id:', matchedCampaignLink.campaign_id)
+                console.log('CTWA: Exact match by source_id:', matchedCampaignLink.campaign_id)
               }
             }
             
-            // Strategy 2: Match by ad title against campaign_name
+            // Strategy 2: Prefix match - Meta generates different IDs for campaign/adset/ad
+            // but they often share a common prefix (first 12+ digits)
+            if (!matchedCampaignLink && ctwaSourceId && ctwaSourceId.length >= 12) {
+              const sourcePrefix = ctwaSourceId.substring(0, 12)
+              matchedCampaignLink = links.find(l => 
+                l.campaign_id && l.campaign_id.startsWith(sourcePrefix)
+              )
+              if (matchedCampaignLink) {
+                console.log('CTWA: Prefix match campaign:', matchedCampaignLink.campaign_id, 'for sourceID:', ctwaSourceId)
+              }
+            }
+            
+            // Strategy 3: Match by ad title against campaign_name
             if (!matchedCampaignLink && ctwaData.title) {
               const adTitle = (ctwaData.title || '').toLowerCase().trim()
               matchedCampaignLink = links.find(l => 
@@ -1196,13 +1204,7 @@ Deno.serve(async (req) => {
               }
             }
             
-            // Strategy 3: If only one active link exists, use it as default
-            if (!matchedCampaignLink && links.length === 1) {
-              matchedCampaignLink = links[0]
-              console.log('CTWA: Single active campaign link, using as default:', matchedCampaignLink.campaign_id)
-            }
-            
-            // Strategy 4: Match by instance (if webhook instance matches link's instance)
+            // Strategy 4: Match by instance
             if (!matchedCampaignLink && instanceName) {
               const { data: currentInst } = await supabase
                 .from('whatsapp_instances')
@@ -1219,6 +1221,12 @@ Deno.serve(async (req) => {
                   console.log('CTWA: Matched campaign by instance:', matchedCampaignLink.campaign_id)
                 }
               }
+            }
+            
+            // Strategy 5: Single link fallback
+            if (!matchedCampaignLink && links.length === 1) {
+              matchedCampaignLink = links[0]
+              console.log('CTWA: Single campaign link fallback:', matchedCampaignLink.campaign_id)
             }
           }
           
