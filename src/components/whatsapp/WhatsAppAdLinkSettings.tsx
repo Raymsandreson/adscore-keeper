@@ -187,5 +187,6 @@ export function WhatsAppAdLinkSettings() {
         )}
       </CardContent>
     </Card>
+    </div>
   );
 }
