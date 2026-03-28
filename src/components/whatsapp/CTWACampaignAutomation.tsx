@@ -31,7 +31,6 @@ interface Agent {
   shortcut_name: string;
   description: string | null;
 }
-}
 
 interface Board {
   id: string;
@@ -317,7 +316,7 @@ export function CTWACampaignAutomation() {
                   <Select value={link.agent_id} onValueChange={v => handleUpdate(link.id, { agent_id: v })}>
                     <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {agents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                      {agents.map(a => <SelectItem key={a.id} value={a.id}>#{a.shortcut_name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -498,7 +497,7 @@ export function CTWACampaignAutomation() {
                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar agente..." /></SelectTrigger>
                 <SelectContent>
                   {agents.length > 0 ? (
-                    agents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)
+                    agents.map(a => <SelectItem key={a.id} value={a.id}>#{a.shortcut_name}</SelectItem>)
                   ) : (
                     <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum agente ativo</div>
                   )}
