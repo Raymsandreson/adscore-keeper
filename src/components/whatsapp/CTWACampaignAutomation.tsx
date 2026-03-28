@@ -56,6 +56,8 @@ export function CTWACampaignAutomation() {
   const [addingAgent, setAddingAgent] = useState('');
   const [addingCampaign, setAddingCampaign] = useState('');
   const [addingInstance, setAddingInstance] = useState('');
+  const [addingBoard, setAddingBoard] = useState('');
+  const [addingStage, setAddingStage] = useState('');
   const [manualCampaignId, setManualCampaignId] = useState('');
   const [manualCampaignName, setManualCampaignName] = useState('');
   const [useManualInput, setUseManualInput] = useState(false);
@@ -200,6 +202,8 @@ export function CTWACampaignAutomation() {
     };
     if (detectedInstance) payload.instance_id = detectedInstance.id;
     else if (addingInstance) payload.instance_id = addingInstance;
+    if (addingBoard) payload.board_id = addingBoard;
+    if (addingStage) payload.stage_id = addingStage;
 
     const { error } = await supabase.from('whatsapp_agent_campaign_links').upsert(payload, { onConflict: 'campaign_id' });
 
@@ -208,6 +212,8 @@ export function CTWACampaignAutomation() {
     setAddingAgent('');
     setAddingCampaign('');
     setAddingInstance('');
+    setAddingBoard('');
+    setAddingStage('');
     setManualCampaignId('');
     setManualCampaignName('');
     fetchData();
@@ -503,6 +509,32 @@ export function CTWACampaignAutomation() {
                   )}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Board / Stage selectors */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-[10px] flex items-center gap-1">
+                  <FolderKanban className="h-3 w-3" /> Funil de destino
+                </Label>
+                <Select value={addingBoard} onValueChange={v => { setAddingBoard(v); setAddingStage(''); }}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar funil..." /></SelectTrigger>
+                  <SelectContent>
+                    {boards.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px]">Etapa inicial</Label>
+                <Select value={addingStage} onValueChange={setAddingStage} disabled={!addingBoard}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                  <SelectContent>
+                    {(boards.find(b => b.id === addingBoard)?.stages || []).map((s: any) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
           <Button
