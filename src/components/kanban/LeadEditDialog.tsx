@@ -159,6 +159,7 @@ export function LeadEditDialog({
   adAccountId,
   boards = [],
   mode = 'dialog',
+  initialTab,
 }: LeadEditDialogProps) {
   // Basic fields state
   const [leadName, setLeadName] = useState('');
