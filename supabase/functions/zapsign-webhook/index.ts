@@ -507,10 +507,10 @@ Deno.serve(async (req) => {
         try {
           console.log(`[zapsign-webhook] No lead linked, auto-creating contact+lead for phone: ${cleanPhone}`)
 
-          // 1. Fetch conversation messages for AI extraction
+          // 1. Fetch conversation messages for AI extraction (also grab campaign_id)
           const { data: convMessages } = await supabase
             .from('whatsapp_messages')
-            .select('message_text, direction, created_at')
+            .select('message_text, direction, created_at, campaign_id')
             .eq('phone', cleanPhone)
             .order('created_at', { ascending: true })
             .limit(100)
