@@ -123,8 +123,8 @@ const LandingPage = () => {
               <span className="text-primary">dinheiro infinito</span> para advogados
             </h1>
             <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-              Deixe a inteligência artificial trabalhar para você e foque no crescimento do seu escritório.
-              CRM jurídico completo com WhatsApp, automações e muito mais.
+              Conquiste sua liberdade financeira e operacional. Enquanto a IA cuida do atendimento, 
+              captação e follow-up, você foca no que realmente importa: crescer e lucrar.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Button size="lg" onClick={() => navigate("/dashboard")} className="gap-2 text-base h-12 px-8 rounded-xl shadow-lg shadow-primary/25">
