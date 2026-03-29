@@ -129,7 +129,7 @@ export function AgentMonitorDashboard() {
       // Fetch leads with location data
       const { data: leads } = await supabase
         .from('leads')
-        .select('id, lead_name, lead_phone, status, board_id, city, state, neighborhood, followup_count')
+        .select('id, lead_name, lead_phone, status, board_id, city, state, neighborhood, followup_count, campaign_name')
         .not('lead_phone', 'is', null);
 
       // Fetch boards for stage names
@@ -231,7 +231,7 @@ export function AgentMonitorDashboard() {
           outbound_count: outboundMsgs.length,
           followup_count: lead ? (followupsByLead.get(lead.id) || 0) : 0,
           time_without_response: timeWithoutResponse,
-          campaign_name: msgs.find((m: any) => m.campaign_name)?.campaign_name || null,
+          campaign_name: msgs.find((m: any) => m.campaign_name)?.campaign_name || lead?.campaign_name || null,
           activated_by: ca.activated_by || null,
         });
       });
