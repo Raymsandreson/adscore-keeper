@@ -1154,11 +1154,7 @@ Deno.serve(async (req) => {
         const isTrueCTWA = !!(ctwaSourceId || ctwaClid)
         
         if (externalAdReply && isTrueCTWA) {
-          // UazAPI uses sourceID (capital D) in externalAdReply, not ctwaContext.sourceId
-          const ctwaSourceId = externalAdReply.sourceID || externalAdReply.sourceId || contextInfo.ctwaContext?.sourceId || null
-          const ctwaClid = contextInfo.ctwaContext?.ctwaClid || contextInfo.ctwaClid || null
-          
-          console.log('CTWA sourceID resolved:', ctwaSourceId, 'from externalAdReply.sourceID:', externalAdReply.sourceID)
+          console.log('CTWA sourceID resolved:', ctwaSourceId, 'ctwa_clid:', ctwaClid)
           
           const ctwaData = {
             title: externalAdReply.title || null,
