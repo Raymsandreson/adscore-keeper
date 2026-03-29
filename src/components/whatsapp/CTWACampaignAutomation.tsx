@@ -410,26 +410,47 @@ export function CTWACampaignAutomation() {
     let success = 0;
     let failed = 0;
 
+    let skipped = 0;
+
     for (let i = 0; i < filtered.length; i++) {
       const conv = filtered[i];
       setBulkFollowup(prev => ({ ...prev, current: i + 1 }));
 
       try {
+        // Fetch last inbound message to use as context
+        const { data: lastMsg } = await supabase
+          .from('whatsapp_messages')
+          .select('message_text, message_type')
+          .eq('phone', conv.phone)
+          .eq('instance_name', conv.instance_name)
+          .eq('direction', 'inbound')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const messageText = (lastMsg as any)?.message_text || 'Olá';
+        const messageType = (lastMsg as any)?.message_type || 'text';
+
         const { data, error } = await supabase.functions.invoke('whatsapp-ai-agent-reply', {
           body: {
             phone: conv.phone,
             instance_name: conv.instance_name,
-            message_text: '',
-            message_type: 'text',
+            message_text: messageText,
+            message_type: messageType,
             is_group: false,
             contact_name: conv.contact_name || conv.lead_name || null,
+            is_followup: true,
           },
         });
 
         if (error) {
           console.error(`Followup error for ${conv.phone}:`, error);
           failed++;
+        } else if (data?.skipped) {
+          console.warn(`Followup skipped for ${conv.phone}: ${data.reason}`);
+          skipped++;
         } else {
+          console.log(`Followup sent to ${conv.phone}:`, data);
           success++;
         }
       } catch (err) {
