@@ -716,6 +716,11 @@ export function AgentMonitorDashboard() {
             )}
           </div>
         </TabsContent>
+
+        {/* TAB: Call Queue */}
+        <TabsContent value="call-queue">
+          <CallQueuePanel />
+        </TabsContent>
       </Tabs>
     </div>
   );
