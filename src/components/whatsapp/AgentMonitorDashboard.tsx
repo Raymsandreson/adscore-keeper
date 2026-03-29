@@ -349,7 +349,7 @@ export function AgentMonitorDashboard() {
       default: filtered = conversations;
     }
     if (sheetAgentFilter !== 'all') filtered = filtered.filter(c => c.agent_id === sheetAgentFilter);
-    if (sheetActivatedByFilter !== 'all') filtered = filtered.filter(c => c.activated_by === sheetActivatedByFilter);
+    if (sheetActivatedByFilter !== 'all') filtered = filtered.filter(c => activatedByLabel(c.activated_by) === sheetActivatedByFilter);
     if (sheetCampaignFilter !== 'all') filtered = filtered.filter(c => c.campaign_name === sheetCampaignFilter);
     return filtered;
   }, [kpiSheet, conversations, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter]);
@@ -365,17 +365,17 @@ export function AgentMonitorDashboard() {
       case 'manual': return 'Manual';
       case 'system': return 'Sistema';
       case 'agent': return 'Agente';
-      case 'ctwa_campaign': return 'Anúncio Meta (CTWA)';
-      case 'campaign_auto': return 'Anúncio Meta (Auto)';
-      case 'campaign_instance_auto': return 'Instância (Auto)';
-      case 'instance_default': return 'Padrão da Instância';
+      case 'ctwa_campaign':
+      case 'campaign_auto': return 'Anúncio Meta';
+      case 'campaign_instance_auto':
+      case 'instance_default': return 'Instância';
       case 'broadcast': return 'Lista de Transmissão';
       case 'stage_auto': return 'Troca de Etapa';
       default: return val || 'Desconhecido';
     }
   };
 
-  const uniqueActivatedBy = useMemo(() => [...new Set(conversations.map(c => c.activated_by).filter(Boolean))].sort() as string[], [conversations]);
+  const uniqueActivatedBy = useMemo(() => [...new Set(conversations.map(c => activatedByLabel(c.activated_by)).filter(v => v !== 'Desconhecido'))].sort() as string[], [conversations]);
   const uniqueCampaigns = useMemo(() => [...new Set(conversations.map(c => c.campaign_name).filter(Boolean))].sort() as string[], [conversations]);
   const uniqueSheetAgents = useMemo(() => {
     const agentMap = new Map<string, string>();
@@ -833,7 +833,7 @@ export function AgentMonitorDashboard() {
                   <SelectContent>
                     <SelectItem value="all">Todas ativações</SelectItem>
                     {uniqueActivatedBy.map(v => (
-                      <SelectItem key={v} value={v}>{activatedByLabel(v)}</SelectItem>
+                      <SelectItem key={v} value={v}>{v}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

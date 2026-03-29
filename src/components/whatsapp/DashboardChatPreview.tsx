@@ -80,11 +80,9 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           .eq('id', data.agent_id)
           .maybeSingle();
         const activatedByLabel = data.activated_by === 'stage_auto' ? 'Troca de Etapa'
-          : data.activated_by === 'ctwa_campaign' ? 'Anúncio Meta (CTWA)'
-          : data.activated_by === 'campaign_auto' ? 'Anúncio Meta (Auto)'
+          : (data.activated_by === 'ctwa_campaign' || data.activated_by === 'campaign_auto') ? 'Anúncio Meta'
           : data.activated_by === 'broadcast' ? 'Lista de Transmissão'
-          : data.activated_by === 'campaign_instance_auto' ? 'Instância (Auto)'
-          : data.activated_by === 'instance_default' ? 'Padrão da Instância'
+          : (data.activated_by === 'campaign_instance_auto' || data.activated_by === 'instance_default') ? 'Instância'
           : data.activated_by === 'manual' ? 'Manual'
           : data.activated_by || 'Automático';
         setAgentInfo({
