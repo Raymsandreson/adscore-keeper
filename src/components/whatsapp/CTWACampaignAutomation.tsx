@@ -1104,6 +1104,23 @@ export function CTWACampaignAutomation() {
                   </div>
                   <Progress value={bulkFollowup.total > 0 ? (bulkFollowup.current / bulkFollowup.total) * 100 : 0} className="h-1.5" />
                 </div>
+              ) : bulkFollowup.total > 0 ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-green-600 font-medium">
+                      ✅ Concluído: {bulkFollowup.success} enviados{bulkFollowup.failed > 0 ? `, ${bulkFollowup.failed} erros` : ''}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 text-[10px] px-2"
+                      onClick={() => setBulkFollowup({ running: false, current: 0, total: 0, success: 0, failed: 0 })}
+                    >
+                      Fechar
+                    </Button>
+                  </div>
+                  <Progress value={100} className="h-1.5" />
+                </div>
               ) : (
                 <Button
                   variant="default"
