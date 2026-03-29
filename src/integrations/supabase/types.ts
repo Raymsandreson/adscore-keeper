@@ -7624,6 +7624,8 @@ export type Database = {
           respond_in_groups: boolean
           response_delay_seconds: number | null
           send_signed_pdf: boolean
+          send_window_end_hour: number
+          send_window_start_hour: number
           shortcut_name: string
           split_delay_seconds: number | null
           split_messages: boolean | null
@@ -7659,6 +7661,8 @@ export type Database = {
           respond_in_groups?: boolean
           response_delay_seconds?: number | null
           send_signed_pdf?: boolean
+          send_window_end_hour?: number
+          send_window_start_hour?: number
           shortcut_name: string
           split_delay_seconds?: number | null
           split_messages?: boolean | null
@@ -7694,6 +7698,8 @@ export type Database = {
           respond_in_groups?: boolean
           response_delay_seconds?: number | null
           send_signed_pdf?: boolean
+          send_window_end_hour?: number
+          send_window_start_hour?: number
           shortcut_name?: string
           split_delay_seconds?: number | null
           split_messages?: boolean | null
