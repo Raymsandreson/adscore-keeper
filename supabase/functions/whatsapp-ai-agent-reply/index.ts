@@ -35,6 +35,9 @@ serve(async (req) => {
 
     assignment = existingAssignment;
 
+    // Helper: groups can't click on ads, so never attribute "campaign_auto" to them
+    const isGroup = phone.startsWith('120363') || phone.includes('@g.us');
+
     // 2) If no assignment and we have a campaign_id, try auto-assign by campaign
     if (!assignment && campaign_id) {
       const { data: campaignLink } = await supabase
@@ -45,16 +48,15 @@ serve(async (req) => {
         .maybeSingle();
 
       if (campaignLink) {
-        // Auto-assign this agent to the conversation
         await supabase.from("whatsapp_conversation_agents").upsert({
           phone,
           instance_name,
           agent_id: campaignLink.agent_id,
           is_active: true,
-          activated_by: "campaign_auto",
+          activated_by: isGroup ? "instance_default" : "campaign_auto",
         }, { onConflict: "phone,instance_name" });
         assignment = { agent_id: campaignLink.agent_id, is_active: true };
-        console.log(`Auto-assigned agent ${campaignLink.agent_id} via campaign ${campaign_id}`);
+        console.log(`Auto-assigned agent ${campaignLink.agent_id} via campaign ${campaign_id}${isGroup ? ' (group, attributed as instance_default)' : ''}`);
       }
     }
 
@@ -80,10 +82,10 @@ serve(async (req) => {
             instance_name,
             agent_id: campaignLink.agent_id,
             is_active: true,
-            activated_by: "campaign_auto",
+            activated_by: isGroup ? "instance_default" : "campaign_auto",
           }, { onConflict: "phone,instance_name" });
           assignment = { agent_id: campaignLink.agent_id, is_active: true };
-          console.log(`Auto-assigned agent ${campaignLink.agent_id} via lead campaign ${lead.campaign_id}`);
+          console.log(`Auto-assigned agent ${campaignLink.agent_id} via lead campaign ${lead.campaign_id}${isGroup ? ' (group, attributed as instance_default)' : ''}`);
         }
       }
     }
