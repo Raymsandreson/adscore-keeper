@@ -367,6 +367,8 @@ export function AgentMonitorDashboard() {
       case 'agent': return 'Agente';
       case 'ctwa_campaign': return 'Campanha CTWA';
       case 'campaign_auto': return 'Campanha Auto';
+      case 'campaign_instance_auto': return 'Instância Auto';
+      case 'instance_default': return 'Padrão Instância';
       case 'broadcast': return 'Transmissão';
       case 'stage_auto': return 'Troca de Etapa';
       default: return val || 'Desconhecido';
