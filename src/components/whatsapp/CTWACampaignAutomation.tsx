@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Megaphone, Target, Sparkles, FolderKanban, Plus, X, Loader2, RefreshCw, Phone, 
-  Pause, Play, MessageSquare, Users, UserPlus, Brain, ExternalLink 
+  Pause, Play, MessageSquare, Users, UserPlus, Brain, ExternalLink, Zap 
 } from 'lucide-react';
 import { DashboardChatPreview } from './DashboardChatPreview';
 import { Progress } from '@/components/ui/progress';
@@ -96,6 +96,7 @@ export function CTWACampaignAutomation() {
   const [loadingConversations, setLoadingConversations] = useState<string | null>(null);
   const [bulkCreating, setBulkCreating] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number; created: number } | null>(null);
+  const [bulkFollowup, setBulkFollowup] = useState<{ running: boolean; current: number; total: number; success: number; failed: number }>({ running: false, current: 0, total: 0, success: 0, failed: 0 });
   const [sheetLink, setSheetLink] = useState<CampaignLink | null>(null);
   const [convResponseFilter, setConvResponseFilter] = useState<ConvResponseFilter>('all');
   const [convLeadFilter, setConvLeadFilter] = useState<ConvLeadFilter>('all');
