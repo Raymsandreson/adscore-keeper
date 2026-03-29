@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import {
   Bot, MessageCircle, Clock, TrendingUp, Users, Search, RefreshCw,
   CheckCircle, XCircle, Pause, Zap, ArrowUpRight, ArrowDownRight,
-  Filter, MapPin, Phone, PhoneCall, ExternalLink
+  Filter, MapPin, Phone, PhoneCall, ExternalLink, PowerOff, Megaphone
 } from 'lucide-react';
 import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
@@ -813,6 +813,30 @@ export function AgentMonitorDashboard() {
                 </SelectContent>
               </Select>
             </div>
+            {/* Batch deactivate */}
+            {kpiSheetConversations.filter(c => c.is_active).length > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full mt-2 h-7 text-[10px]"
+                onClick={async () => {
+                  const activeConvs = kpiSheetConversations.filter(c => c.is_active);
+                  if (!confirm(`Desativar agente em ${activeConvs.length} conversas filtradas?`)) return;
+                  const phones = activeConvs.map(c => c.phone);
+                  const { error } = await supabase
+                    .from('whatsapp_conversation_agents')
+                    .update({ is_active: false })
+                    .in('phone', phones);
+                  if (!error) {
+                    fetchData();
+                    // toast would be nice but simple alert works
+                  }
+                }}
+              >
+                <PowerOff className="h-3 w-3 mr-1" />
+                Desativar {kpiSheetConversations.filter(c => c.is_active).length} conversas
+              </Button>
+            )}
           </div>
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-2">
@@ -848,6 +872,11 @@ export function AgentMonitorDashboard() {
                         {c.activated_by && (
                           <Badge variant="outline" className="text-[9px] h-4 mt-1 border-blue-200 text-blue-600 dark:border-blue-800 dark:text-blue-400">
                             ⚡ {activatedByLabel(c.activated_by)}
+                          </Badge>
+                        )}
+                        {c.campaign_name && (
+                          <Badge variant="secondary" className="text-[9px] h-4 mt-1">
+                            <Megaphone className="h-2.5 w-2.5 mr-0.5" /> {c.campaign_name}
                           </Badge>
                         )}
                         {c.board_name && c.stage_name && (
