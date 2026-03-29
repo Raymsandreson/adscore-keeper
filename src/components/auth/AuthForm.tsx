@@ -35,11 +35,11 @@ const PasswordInput = ({ id, value, onChange, show, onToggle, placeholder = '•
   </div>
 );
 
-const WhatsJUDLogo = () => (
-  <div className="flex items-center gap-1">
+const WhatsJUDLogo = ({ className = "" }: { className?: string }) => (
+  <a href="/landing" className={`flex items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity ${className}`}>
     <span className="text-3xl md:text-4xl font-light tracking-tight text-foreground">whats</span>
     <span className="text-3xl md:text-4xl font-bold text-primary-foreground bg-primary px-2 py-0.5 rounded-md">JUD</span>
-  </div>
+  </a>
 );
 
 const features = [
@@ -120,10 +120,10 @@ export const AuthForm = () => {
           <div className="absolute bottom-20 right-10 w-96 h-96 rounded-full bg-white/10 blur-3xl" />
         </div>
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20 text-white">
-          <div className="flex items-center gap-1 mb-8">
+          <a href="/landing" className="flex items-center gap-1 mb-8 hover:opacity-80 transition-opacity">
             <span className="text-5xl font-light tracking-tight">whats</span>
             <span className="text-5xl font-bold bg-white text-primary px-3 py-1 rounded-lg">JUD</span>
-          </div>
+          </a>
           <h1 className="text-3xl xl:text-4xl font-bold mb-4 leading-tight">
             Organize sua vida,<br />tenha liberdade e<br />acelere seus processos
           </h1>
@@ -285,9 +285,14 @@ export const AuthForm = () => {
                 </form>
               )}
 
-              <p className="text-center text-xs text-muted-foreground">
-                Ao criar uma conta, você concorda com nossos termos de uso.
-              </p>
+              <div className="text-center space-y-2">
+                <a href="/landing" className="text-sm text-primary hover:underline font-medium">
+                  ← Conheça o WhatsJUD
+                </a>
+                <p className="text-xs text-muted-foreground">
+                  Ao criar uma conta, você concorda com nossos termos de uso.
+                </p>
+              </div>
             </div>
           )}
         </div>
