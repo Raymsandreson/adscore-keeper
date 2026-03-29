@@ -282,16 +282,18 @@ serve(async (req) => {
       });
     }
 
-    // ========== SEND WINDOW CHECK ==========
-    const nowBrasilia = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-    const currentHour = nowBrasilia.getHours();
-    const windowStart = (agent as any).send_window_start_hour ?? 8;
-    const windowEnd = (agent as any).send_window_end_hour ?? 20;
-    if (currentHour < windowStart || currentHour >= windowEnd) {
-      console.log(`Outside send window (${windowStart}h-${windowEnd}h, current: ${currentHour}h). Skipping.`);
-      return new Response(JSON.stringify({ skipped: true, reason: `Outside send window (${windowStart}h-${windowEnd}h)` }), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // ========== FOLLOW-UP WINDOW CHECK (only applies to follow-ups, not regular responses) ==========
+    if (is_followup) {
+      const nowBrasilia = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+      const currentHour = nowBrasilia.getHours();
+      const windowStart = (agent as any).send_window_start_hour ?? 8;
+      const windowEnd = (agent as any).send_window_end_hour ?? 20;
+      if (currentHour < windowStart || currentHour >= windowEnd) {
+        console.log(`Follow-up outside window (${windowStart}h-${windowEnd}h, current: ${currentHour}h). Skipping.`);
+        return new Response(JSON.stringify({ skipped: true, reason: `Follow-up outside window (${windowStart}h-${windowEnd}h)` }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // ========== MESSAGE BATCHING DELAY ==========

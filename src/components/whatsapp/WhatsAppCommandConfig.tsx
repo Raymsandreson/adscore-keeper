@@ -620,8 +620,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                   })()}
                 </div>
                 <div className="border rounded-lg p-3 space-y-2 mb-3">
-                  <Label className="text-xs font-semibold">Janela de envio</Label>
-                  <p className="text-[9px] text-muted-foreground">Horário permitido para o agente enviar mensagens.</p>
+                  <Label className="text-xs font-semibold">Janela de follow-up</Label>
+                  <p className="text-[9px] text-muted-foreground">Horário permitido para follow-ups. Respostas ao cliente funcionam em qualquer horário.</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label className="text-[10px]">Início ({String(form.send_window_start_hour ?? 8).padStart(2, '0')}:00)</Label>
