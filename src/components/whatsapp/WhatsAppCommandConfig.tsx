@@ -344,6 +344,28 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     setFollowupSteps(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
   };
 
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+
+  const handleDragStart = (idx: number) => {
+    setDragIdx(idx);
+  };
+
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === idx) return;
+    setFollowupSteps(prev => {
+      const updated = [...prev];
+      const [moved] = updated.splice(dragIdx, 1);
+      updated.splice(idx, 0, moved);
+      return updated;
+    });
+    setDragIdx(idx);
+  };
+
+  const handleDragEnd = () => {
+    setDragIdx(null);
+  };
+
   const handleSave = async () => {
     if (!form.shortcut_name.trim()) { toast.error('Nome do agente é obrigatório'); return; }
     const payload = {
