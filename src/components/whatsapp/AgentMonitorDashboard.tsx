@@ -365,10 +365,10 @@ export function AgentMonitorDashboard() {
       case 'manual': return 'Manual';
       case 'system': return 'Sistema';
       case 'agent': return 'Agente';
-      case 'ctwa_campaign': return 'Anúncio Meta (CTWA)';
-      case 'campaign_auto': return 'Anúncio Meta (Auto)';
-      case 'campaign_instance_auto': return 'Instância (Auto)';
-      case 'instance_default': return 'Padrão da Instância';
+      case 'ctwa_campaign':
+      case 'campaign_auto': return 'Anúncio Meta';
+      case 'campaign_instance_auto':
+      case 'instance_default': return 'Instância';
       case 'broadcast': return 'Lista de Transmissão';
       case 'stage_auto': return 'Troca de Etapa';
       default: return val || 'Desconhecido';
