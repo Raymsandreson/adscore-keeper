@@ -443,11 +443,18 @@ export function CTWACampaignAutomation() {
       }
     }
 
-    setBulkFollowup({ running: false, current: 0, total: 0, success: 0, failed: 0 });
-    toast.success(`Follow-up concluído: ${success} enviados, ${failed} erros`);
+    setBulkFollowup({ running: false, current: filtered.length, total: filtered.length, success, failed });
+    console.log(`Bulk followup completed: ${success} sent, ${failed} errors`);
+    if (failed > 0) {
+      toast.warning(`Follow-up concluído: ${success} enviados, ${failed} com erro`);
+    } else {
+      toast.success(`Follow-up concluído: ${success} enviados com sucesso!`);
+    }
     
-    // Refresh conversations
-    if (sheetLink) fetchLinkConversations(sheetLink);
+    // Refresh conversations after a small delay
+    setTimeout(() => {
+      if (sheetLink) fetchLinkConversations(sheetLink);
+    }, 3000);
   };
 
 
@@ -1096,6 +1103,23 @@ export function CTWACampaignAutomation() {
                     <span>{bulkFollowup.success} ok / {bulkFollowup.current} de {bulkFollowup.total}</span>
                   </div>
                   <Progress value={bulkFollowup.total > 0 ? (bulkFollowup.current / bulkFollowup.total) * 100 : 0} className="h-1.5" />
+                </div>
+              ) : bulkFollowup.total > 0 ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-green-600 font-medium">
+                      ✅ Concluído: {bulkFollowup.success} enviados{bulkFollowup.failed > 0 ? `, ${bulkFollowup.failed} erros` : ''}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 text-[10px] px-2"
+                      onClick={() => setBulkFollowup({ running: false, current: 0, total: 0, success: 0, failed: 0 })}
+                    >
+                      Fechar
+                    </Button>
+                  </div>
+                  <Progress value={100} className="h-1.5" />
                 </div>
               ) : (
                 <Button
