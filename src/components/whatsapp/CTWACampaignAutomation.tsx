@@ -99,6 +99,8 @@ export function CTWACampaignAutomation() {
   const [sheetLink, setSheetLink] = useState<CampaignLink | null>(null);
   const [convResponseFilter, setConvResponseFilter] = useState<ConvResponseFilter>('all');
   const [convLeadFilter, setConvLeadFilter] = useState<ConvLeadFilter>('all');
+  const [chatPreviewPhone, setChatPreviewPhone] = useState<string | null>(null);
+  const [chatPreviewConv, setChatPreviewConv] = useState<ConversationInfo | null>(null);
 
   const getMetaCredentials = () => {
     const savedAccounts = localStorage.getItem('meta_saved_accounts');
