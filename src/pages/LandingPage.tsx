@@ -50,6 +50,26 @@ const features = [
     title: "Gestão de Equipes",
     desc: "Controle de produtividade, metas, comissões e ranking em tempo real.",
   },
+  {
+    icon: BarChart3,
+    title: "Modelo de Negócios & Lucratividade",
+    desc: "Gerencie seu modelo de negócios com medição de lucratividade por produto, equity e visão estratégica completa.",
+  },
+  {
+    icon: Shield,
+    title: "Contabilidade & Jurimetria",
+    desc: "Controle financeiro integrado com análise jurimétrica para decisões baseadas em dados reais.",
+  },
+  {
+    icon: Zap,
+    title: "Antecipação de Honorários",
+    desc: "Antecipe recebíveis do escritório com controle total de fluxo de caixa e previsibilidade financeira.",
+  },
+  {
+    icon: CheckCircle2,
+    title: "Bancarização do Escritório",
+    desc: "Transforme seu escritório em um hub financeiro: ofereça crédito e empréstimos para seus próprios clientes.",
+  },
 ];
 
 const stats = [
