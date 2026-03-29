@@ -1054,10 +1054,8 @@ export function CTWACampaignAutomation() {
                         key={`${conv.phone}-${i}`}
                         className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
                         onClick={() => {
-                          const params = new URLSearchParams(window.location.search);
-                          params.set('openChat', conv.phone);
-                          window.history.pushState({}, '', `${window.location.pathname}?${params}`);
-                          window.dispatchEvent(new PopStateEvent('popstate'));
+                          setChatPreviewConv(conv);
+                          setChatPreviewPhone(conv.phone);
                         }}
                       >
                         <div className="min-w-0 flex-1">
