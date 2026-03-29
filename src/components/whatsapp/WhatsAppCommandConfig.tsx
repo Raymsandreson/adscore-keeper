@@ -935,7 +935,14 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                 </div>
 
                 {followupSteps.map((step, idx) => (
-                  <div key={idx} className="flex items-start gap-2 p-3 rounded-lg border bg-muted/30">
+                  <div
+                    key={idx}
+                    draggable
+                    onDragStart={() => handleDragStart(idx)}
+                    onDragOver={(e) => handleDragOver(e, idx)}
+                    onDragEnd={handleDragEnd}
+                    className={`flex items-start gap-2 p-3 rounded-lg border bg-muted/30 cursor-grab active:cursor-grabbing transition-opacity ${dragIdx === idx ? 'opacity-50' : ''}`}
+                  >
                     <Badge variant="secondary" className="text-[10px] h-5 w-5 p-0 flex items-center justify-center mt-1">{idx + 1}</Badge>
                     <div className="flex-1 space-y-2">
                       <div className="grid grid-cols-2 gap-2">
