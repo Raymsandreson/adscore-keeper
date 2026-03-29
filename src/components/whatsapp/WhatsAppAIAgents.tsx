@@ -594,22 +594,6 @@ export function WhatsAppAIAgents() {
 
               {/* TAB: Timing */}
               <TabsContent value="timing" className="space-y-4 mt-4">
-                <div className="border rounded-lg p-3 space-y-3">
-                  <Label className="text-sm font-semibold">Janela de follow-up</Label>
-                  <p className="text-[10px] text-muted-foreground">Horário permitido para envio de follow-ups automáticos e manuais. Respostas a mensagens do cliente funcionam normalmente em qualquer horário.</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs">Início</Label>
-                      <Input type="number" value={editingAgent.send_window_start_hour ?? 8} onChange={e => setEditingAgent({ ...editingAgent, send_window_start_hour: parseInt(e.target.value) || 8 })} min={0} max={23} />
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{String(editingAgent.send_window_start_hour ?? 8).padStart(2, '0')}:00</p>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Fim</Label>
-                      <Input type="number" value={editingAgent.send_window_end_hour ?? 20} onChange={e => setEditingAgent({ ...editingAgent, send_window_end_hour: parseInt(e.target.value) || 20 })} min={0} max={23} />
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{String(editingAgent.send_window_end_hour ?? 20).padStart(2, '0')}:00</p>
-                    </div>
-                  </div>
-                </div>
                 <div>
                   <Label>Delay de agrupamento (segundos)</Label>
                   <p className="text-[10px] text-muted-foreground mb-1">Aguarda esse tempo para juntar várias mensagens do contato antes de processar. Ex: se o contato mandar 3 msgs em 5s e o delay for 8s, todas serão processadas juntas.</p>
@@ -622,6 +606,23 @@ export function WhatsAppAIAgents() {
                       <p className="text-[10px] text-muted-foreground">Reenvia mensagem se o lead não responder</p>
                     </div>
                     <Switch checked={editingAgent.followup_enabled ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, followup_enabled: v })} />
+                  </div>
+                  <div className="border-t pt-3 space-y-2">
+                    <Label className="text-xs font-semibold">🕐 Janela de follow-up</Label>
+                    <p className="text-[10px] text-muted-foreground">Horário permitido para envio de follow-ups. Respostas a mensagens do cliente funcionam em qualquer horário.</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs">Início</Label>
+                        <Input type="number" value={editingAgent.send_window_start_hour ?? 8} onChange={e => setEditingAgent({ ...editingAgent, send_window_start_hour: parseInt(e.target.value) || 8 })} min={0} max={23} />
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{String(editingAgent.send_window_start_hour ?? 8).padStart(2, '0')}:00</p>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Fim</Label>
+                        <Input type="number" value={editingAgent.send_window_end_hour ?? 20} onChange={e => setEditingAgent({ ...editingAgent, send_window_end_hour: parseInt(e.target.value) || 20 })} min={0} max={23} />
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{String(editingAgent.send_window_end_hour ?? 20).padStart(2, '0')}:00</p>
+                      </div>
+                    </div>
+                  </div>
                   </div>
                   {editingAgent.followup_enabled && (
                     <>
