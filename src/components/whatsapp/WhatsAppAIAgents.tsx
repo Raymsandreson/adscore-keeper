@@ -50,6 +50,8 @@ interface AIAgent {
   reply_with_audio: boolean;
   reply_voice_id: string | null;
   stt_prompt: string | null;
+  send_window_start_hour: number;
+  send_window_end_hour: number;
   created_at: string;
 }
 
@@ -214,7 +216,7 @@ export function WhatsAppAIAgents() {
       auto_call_no_response_minutes: 30, auto_call_instance_name: null,
       call_assigned_to: null, human_pause_minutes: 30, split_messages: false, split_delay_seconds: 2,
       respond_in_groups: false, reply_with_audio: false, reply_voice_id: null,
-      stt_prompt: null,
+      stt_prompt: null, send_window_start_hour: 8, send_window_end_hour: 20,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
@@ -261,6 +263,8 @@ export function WhatsAppAIAgents() {
         reply_with_audio: editingAgent.reply_with_audio ?? false,
         reply_voice_id: editingAgent.reply_voice_id || null,
         stt_prompt: editingAgent.stt_prompt || null,
+        send_window_start_hour: editingAgent.send_window_start_hour ?? 8,
+        send_window_end_hour: editingAgent.send_window_end_hour ?? 20,
       };
 
       if (editingAgent.id) {
@@ -590,6 +594,22 @@ export function WhatsAppAIAgents() {
 
               {/* TAB: Timing */}
               <TabsContent value="timing" className="space-y-4 mt-4">
+                <div className="border rounded-lg p-3 space-y-3">
+                  <Label className="text-sm font-semibold">Janela de envio</Label>
+                  <p className="text-[10px] text-muted-foreground">Horário permitido para o agente enviar mensagens. Fora desse horário, o agente não responde.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Início</Label>
+                      <Input type="number" value={editingAgent.send_window_start_hour ?? 8} onChange={e => setEditingAgent({ ...editingAgent, send_window_start_hour: parseInt(e.target.value) || 8 })} min={0} max={23} />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{String(editingAgent.send_window_start_hour ?? 8).padStart(2, '0')}:00</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Fim</Label>
+                      <Input type="number" value={editingAgent.send_window_end_hour ?? 20} onChange={e => setEditingAgent({ ...editingAgent, send_window_end_hour: parseInt(e.target.value) || 20 })} min={0} max={23} />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{String(editingAgent.send_window_end_hour ?? 20).padStart(2, '0')}:00</p>
+                    </div>
+                  </div>
+                </div>
                 <div>
                   <Label>Delay de agrupamento (segundos)</Label>
                   <p className="text-[10px] text-muted-foreground mb-1">Aguarda esse tempo para juntar várias mensagens do contato antes de processar. Ex: se o contato mandar 3 msgs em 5s e o delay for 8s, todas serão processadas juntas.</p>

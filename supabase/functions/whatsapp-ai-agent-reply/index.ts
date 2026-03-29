@@ -261,6 +261,8 @@ serve(async (req) => {
           human_reply_pause_minutes: (shortcut as any).human_reply_pause_minutes || 10,
           is_shortcut: true,
           template_token: (shortcut as any).template_token || null,
+          send_window_start_hour: (shortcut as any).send_window_start_hour ?? 8,
+          send_window_end_hour: (shortcut as any).send_window_end_hour ?? 20,
         };
         console.log(`Using command shortcut "${agent.name}" as agent for instance default`);
       }
@@ -276,6 +278,18 @@ serve(async (req) => {
     if (is_group && !(agent as any).respond_in_groups) {
       console.log(`Agent ${(agent as any).name} is not allowed to respond in groups, skipping`);
       return new Response(JSON.stringify({ skipped: true, reason: "Agent not allowed in groups" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ========== SEND WINDOW CHECK ==========
+    const nowBrasilia = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+    const currentHour = nowBrasilia.getHours();
+    const windowStart = (agent as any).send_window_start_hour ?? 8;
+    const windowEnd = (agent as any).send_window_end_hour ?? 20;
+    if (currentHour < windowStart || currentHour >= windowEnd) {
+      console.log(`Outside send window (${windowStart}h-${windowEnd}h, current: ${currentHour}h). Skipping.`);
+      return new Response(JSON.stringify({ skipped: true, reason: `Outside send window (${windowStart}h-${windowEnd}h)` }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
