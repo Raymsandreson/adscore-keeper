@@ -983,9 +983,11 @@ export function AgentMonitorDashboard() {
                         <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto" />
                       </div>
                     </div>
+                    </div>
                   </CardContent>
                 </Card>
-              ))}
+                );
+              })}
               {kpiSheetConversations.length === 0 && (
                 <div className="text-center py-12 text-muted-foreground">
                   <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-30" />
