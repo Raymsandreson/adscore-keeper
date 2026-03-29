@@ -119,8 +119,8 @@ const LandingPage = () => {
               Plataforma #1 para escritórios jurídicos
             </div>
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight mb-6">
-              Organize sua vida,{" "}
-              <span className="text-primary">tenha liberdade</span> e acelere seus processos
+              Plataforma de geração de{" "}
+              <span className="text-primary">dinheiro infinito</span> para advogados
             </h1>
             <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
               Deixe a inteligência artificial trabalhar para você e foque no crescimento do seu escritório.
