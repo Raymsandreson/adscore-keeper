@@ -952,6 +952,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                         </div>
                         <div className="space-y-1">
                           <Label className="text-[10px]">Aguardar (minutos)</Label>
+                          <p className="text-[9px] text-muted-foreground">Após a ação anterior (ou última msg do cliente na 1ª etapa)</p>
                           <Input
                             type="number" min={5}
                             value={step.delay_minutes}
