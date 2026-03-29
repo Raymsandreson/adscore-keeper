@@ -327,6 +327,21 @@ export function AgentMonitorDashboard() {
     return { total, active, paused, noResponse, totalFollowups, totalMsgsSent, totalMsgsReceived, closed, refused };
   }, [conversations]);
 
+  const kpiSheetConversations = useMemo(() => {
+    if (!kpiSheet) return [];
+    switch (kpiSheet.filter) {
+      case 'total': return conversations;
+      case 'active': return conversations.filter(c => c.is_active && !c.human_paused);
+      case 'paused': return conversations.filter(c => c.human_paused);
+      case 'no_response': return conversations.filter(c => c.time_without_response && c.time_without_response > 60);
+      case 'closed': return conversations.filter(c => c.lead_status === 'closed' || c.lead_status === 'converted');
+      case 'refused': return conversations.filter(c => c.lead_status === 'refused' || c.lead_status === 'lost');
+      case 'followups': return conversations.filter(c => c.followup_count > 0);
+      case 'msgs_sent': return conversations.filter(c => c.outbound_count > 0);
+      default: return conversations;
+    }
+  }, [kpiSheet, conversations]);
+
   const formatTimeAgo = (minutes: number | null) => {
     if (!minutes) return '-';
     if (minutes < 60) return `${minutes}min`;
