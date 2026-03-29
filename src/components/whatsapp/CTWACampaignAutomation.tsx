@@ -1084,6 +1084,43 @@ export function CTWACampaignAutomation() {
                 );
               })}
             </div>
+
+            {/* Bulk follow-up button */}
+            <div className="mt-2">
+              {bulkFollowup.running ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Disparando agente IA...
+                    </span>
+                    <span>{bulkFollowup.success} ok / {bulkFollowup.current} de {bulkFollowup.total}</span>
+                  </div>
+                  <Progress value={bulkFollowup.total > 0 ? (bulkFollowup.current / bulkFollowup.total) * 100 : 0} className="h-1.5" />
+                </div>
+              ) : (
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="h-7 text-[11px] gap-1.5 w-full"
+                  onClick={handleBulkFollowup}
+                >
+                  <Zap className="h-3.5 w-3.5" />
+                  Re-disparar Agente IA ({(() => {
+                    const allConvs = sheetLink ? (linkConversations[sheetLink.id] || []) : [];
+                    return allConvs.filter(conv => {
+                      if (convResponseFilter === 'responded' && !conv.was_responded) return false;
+                      if (convResponseFilter === 'waiting' && conv.was_responded) return false;
+                      if (convLeadFilter === 'has_lead' && !conv.has_lead) return false;
+                      if (convLeadFilter === 'no_lead' && conv.has_lead) return false;
+                      if (convLeadFilter === 'funnel' && !(conv.has_lead && conv.lead_status === 'active')) return false;
+                      if (convLeadFilter === 'closed' && !(conv.has_lead && conv.lead_status === 'closed')) return false;
+                      if (convLeadFilter === 'refused' && !(conv.has_lead && conv.lead_status === 'refused')) return false;
+                      return true;
+                    }).length;
+                  })()} conversas)
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Conversations list */}
