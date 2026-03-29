@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -813,30 +814,55 @@ export function AgentMonitorDashboard() {
                 </SelectContent>
               </Select>
             </div>
-            {/* Batch deactivate */}
-            {kpiSheetConversations.filter(c => c.is_active).length > 0 && (
-              <Button
-                variant="destructive"
-                size="sm"
-                className="w-full mt-2 h-7 text-[10px]"
-                onClick={async () => {
-                  const activeConvs = kpiSheetConversations.filter(c => c.is_active);
-                  if (!confirm(`Desativar agente em ${activeConvs.length} conversas filtradas?`)) return;
-                  const phones = activeConvs.map(c => c.phone);
-                  const { error } = await supabase
-                    .from('whatsapp_conversation_agents')
-                    .update({ is_active: false })
-                    .in('phone', phones);
-                  if (!error) {
-                    fetchData();
-                    // toast would be nice but simple alert works
-                  }
-                }}
-              >
-                <PowerOff className="h-3 w-3 mr-1" />
-                Desativar {kpiSheetConversations.filter(c => c.is_active).length} conversas
-              </Button>
-            )}
+            {/* Batch actions */}
+            <div className="flex gap-1 mt-2">
+              {kpiSheetConversations.filter(c => !c.is_active).length > 0 && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="flex-1 h-7 text-[10px] bg-emerald-600 hover:bg-emerald-700"
+                  onClick={async () => {
+                    const inactiveConvs = kpiSheetConversations.filter(c => !c.is_active);
+                    if (!confirm(`Ativar agente em ${inactiveConvs.length} conversas filtradas?`)) return;
+                    const phones = inactiveConvs.map(c => c.phone);
+                    const { error } = await supabase
+                      .from('whatsapp_conversation_agents')
+                      .update({ is_active: true, human_paused_until: null } as any)
+                      .in('phone', phones);
+                    if (!error) {
+                      toast.success(`${inactiveConvs.length} agentes ativados`);
+                      fetchData();
+                    }
+                  }}
+                >
+                  <Bot className="h-3 w-3 mr-1" />
+                  Ativar {kpiSheetConversations.filter(c => !c.is_active).length}
+                </Button>
+              )}
+              {kpiSheetConversations.filter(c => c.is_active).length > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="flex-1 h-7 text-[10px]"
+                  onClick={async () => {
+                    const activeConvs = kpiSheetConversations.filter(c => c.is_active);
+                    if (!confirm(`Desativar agente em ${activeConvs.length} conversas filtradas?`)) return;
+                    const phones = activeConvs.map(c => c.phone);
+                    const { error } = await supabase
+                      .from('whatsapp_conversation_agents')
+                      .update({ is_active: false } as any)
+                      .in('phone', phones);
+                    if (!error) {
+                      toast.success(`${activeConvs.length} agentes desativados`);
+                      fetchData();
+                    }
+                  }}
+                >
+                  <PowerOff className="h-3 w-3 mr-1" />
+                  Desativar {kpiSheetConversations.filter(c => c.is_active).length}
+                </Button>
+              )}
+            </div>
           </div>
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-2">
