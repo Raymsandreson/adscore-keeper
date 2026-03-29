@@ -12,8 +12,9 @@ import { Progress } from '@/components/ui/progress';
 import {
   Bot, MessageCircle, Clock, TrendingUp, Users, Search, RefreshCw,
   CheckCircle, XCircle, Pause, Zap, ArrowUpRight, ArrowDownRight,
-  Filter, MapPin, Phone, PhoneCall, ExternalLink, PowerOff, Megaphone
+  Filter, MapPin, Phone, PhoneCall, ExternalLink, PowerOff, Megaphone, PhoneOutgoing
 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -99,6 +100,7 @@ export function AgentMonitorDashboard() {
   const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
   const [sheetAgentFilter, setSheetAgentFilter] = useState('all');
   const [sheetActivatedByFilter, setSheetActivatedByFilter] = useState('all');
+  const [excludedPhones, setExcludedPhones] = useState<Set<string>>(new Set());
 
   const fetchData = async () => {
     setLoading(true);
@@ -351,6 +353,12 @@ export function AgentMonitorDashboard() {
     return filtered;
   }, [kpiSheet, conversations, sheetAgentFilter, sheetActivatedByFilter]);
 
+
+  const selectedSheetConversations = useMemo(() => {
+    return kpiSheetConversations.filter(c => !excludedPhones.has(c.phone));
+  }, [kpiSheetConversations, excludedPhones]);
+
+  useEffect(() => { setExcludedPhones(new Set()); }, [kpiSheet, sheetAgentFilter, sheetActivatedByFilter]);
   const activatedByLabel = (val: string | null) => {
     switch (val) {
       case 'manual': return 'Manual';
@@ -815,65 +823,121 @@ export function AgentMonitorDashboard() {
               </Select>
             </div>
             {/* Batch actions */}
-            <div className="flex gap-1 mt-2">
-              {kpiSheetConversations.filter(c => !c.is_active).length > 0 && (
+            <div className="flex items-center justify-between mt-1 mb-1">
+              <span className="text-[10px] text-muted-foreground">
+                {selectedSheetConversations.length}/{kpiSheetConversations.length} selecionadas
+              </span>
+              <Button variant="ghost" size="sm" className="h-5 text-[9px] px-2" onClick={() => {
+                if (excludedPhones.size === 0) {
+                  setExcludedPhones(new Set(kpiSheetConversations.map(c => c.phone)));
+                } else {
+                  setExcludedPhones(new Set());
+                }
+              }}>
+                {excludedPhones.size === 0 ? 'Desmarcar todos' : 'Selecionar todos'}
+              </Button>
+            </div>
+            <div className="flex gap-1 flex-wrap">
+              {selectedSheetConversations.filter(c => !c.is_active).length > 0 && (
                 <Button
                   variant="default"
                   size="sm"
                   className="flex-1 h-7 text-[10px] bg-emerald-600 hover:bg-emerald-700"
                   onClick={async () => {
-                    const inactiveConvs = kpiSheetConversations.filter(c => !c.is_active);
-                    if (!confirm(`Ativar agente em ${inactiveConvs.length} conversas filtradas?`)) return;
-                    const phones = inactiveConvs.map(c => c.phone);
+                    const targets = selectedSheetConversations.filter(c => !c.is_active);
+                    if (!confirm(`Ativar agente em ${targets.length} conversas selecionadas?`)) return;
+                    const phones = targets.map(c => c.phone);
                     const { error } = await supabase
                       .from('whatsapp_conversation_agents')
                       .update({ is_active: true, human_paused_until: null } as any)
                       .in('phone', phones);
                     if (!error) {
-                      toast.success(`${inactiveConvs.length} agentes ativados`);
+                      toast.success(`${targets.length} agentes ativados`);
                       fetchData();
                     }
                   }}
                 >
                   <Bot className="h-3 w-3 mr-1" />
-                  Ativar {kpiSheetConversations.filter(c => !c.is_active).length}
+                  Ativar {selectedSheetConversations.filter(c => !c.is_active).length}
                 </Button>
               )}
-              {kpiSheetConversations.filter(c => c.is_active).length > 0 && (
+              {selectedSheetConversations.filter(c => c.is_active).length > 0 && (
                 <Button
                   variant="destructive"
                   size="sm"
                   className="flex-1 h-7 text-[10px]"
                   onClick={async () => {
-                    const activeConvs = kpiSheetConversations.filter(c => c.is_active);
-                    if (!confirm(`Desativar agente em ${activeConvs.length} conversas filtradas?`)) return;
-                    const phones = activeConvs.map(c => c.phone);
+                    const targets = selectedSheetConversations.filter(c => c.is_active);
+                    if (!confirm(`Desativar agente em ${targets.length} conversas selecionadas?`)) return;
+                    const phones = targets.map(c => c.phone);
                     const { error } = await supabase
                       .from('whatsapp_conversation_agents')
                       .update({ is_active: false } as any)
                       .in('phone', phones);
                     if (!error) {
-                      toast.success(`${activeConvs.length} agentes desativados`);
+                      toast.success(`${targets.length} agentes desativados`);
                       fetchData();
                     }
                   }}
                 >
                   <PowerOff className="h-3 w-3 mr-1" />
-                  Desativar {kpiSheetConversations.filter(c => c.is_active).length}
+                  Desativar {selectedSheetConversations.filter(c => c.is_active).length}
+                </Button>
+              )}
+              {selectedSheetConversations.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-7 text-[10px]"
+                  onClick={async () => {
+                    const targets = selectedSheetConversations;
+                    if (!confirm(`Ligar (flash call) para ${targets.length} conversas selecionadas?`)) return;
+                    const inserts = targets.map(c => ({
+                      phone: c.phone,
+                      instance_name: c.instance_name,
+                      status: 'pending',
+                      priority: 5,
+                      call_type: 'flash',
+                    }));
+                    const { error } = await supabase
+                      .from('whatsapp_call_queue')
+                      .insert(inserts as any);
+                    if (!error) {
+                      toast.success(`${targets.length} ligações adicionadas à fila`);
+                    } else {
+                      toast.error('Erro ao adicionar ligações à fila');
+                    }
+                  }}
+                >
+                  <PhoneOutgoing className="h-3 w-3 mr-1" />
+                  Ligar {selectedSheetConversations.length}
                 </Button>
               )}
             </div>
           </div>
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-2">
-              {kpiSheetConversations.map((c, idx) => (
+              {kpiSheetConversations.map((c, idx) => {
+                const isSelected = !excludedPhones.has(c.phone);
+                return (
                 <Card
                   key={`${c.phone}-${c.instance_name}-${idx}`}
-                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  className={`cursor-pointer hover:shadow-md transition-shadow ${!isSelected ? 'opacity-40' : ''}`}
                   onClick={() => setChatPreview(c)}
                 >
                   <CardContent className="p-3">
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2">
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={(checked) => {
+                          const next = new Set(excludedPhones);
+                          if (checked) { next.delete(c.phone); } else { next.add(c.phone); }
+                          setExcludedPhones(next);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="mt-1 shrink-0"
+                      />
+                      <div className="flex items-start justify-between gap-2 flex-1 min-w-0">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-semibold truncate">{c.contact_name || c.lead_name || c.phone}</span>
@@ -919,9 +983,11 @@ export function AgentMonitorDashboard() {
                         <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto" />
                       </div>
                     </div>
+                    </div>
                   </CardContent>
                 </Card>
-              ))}
+                );
+              })}
               {kpiSheetConversations.length === 0 && (
                 <div className="text-center py-12 text-muted-foreground">
                   <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-30" />
