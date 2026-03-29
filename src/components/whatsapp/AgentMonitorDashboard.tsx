@@ -61,6 +61,7 @@ interface ConversationDetail {
   followup_count: number;
   time_without_response: number | null; // minutes
   campaign_name: string | null;
+  activated_by: string | null;
 }
 
 interface AgentStats {
@@ -95,6 +96,8 @@ export function AgentMonitorDashboard() {
   const [periodDays, setPeriodDays] = useState(7);
   const [kpiSheet, setKpiSheet] = useState<{ filter: string; label: string } | null>(null);
   const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
+  const [sheetAgentFilter, setSheetAgentFilter] = useState('all');
+  const [sheetActivatedByFilter, setSheetActivatedByFilter] = useState('all');
 
   const fetchData = async () => {
     setLoading(true);
@@ -226,6 +229,7 @@ export function AgentMonitorDashboard() {
           followup_count: lead ? (followupsByLead.get(lead.id) || 0) : 0,
           time_without_response: timeWithoutResponse,
           campaign_name: msgs.find((m: any) => m.campaign_name)?.campaign_name || null,
+          activated_by: ca.activated_by || null,
         });
       });
 
@@ -329,18 +333,36 @@ export function AgentMonitorDashboard() {
 
   const kpiSheetConversations = useMemo(() => {
     if (!kpiSheet) return [];
+    let filtered: ConversationDetail[];
     switch (kpiSheet.filter) {
-      case 'total': return conversations;
-      case 'active': return conversations.filter(c => c.is_active && !c.human_paused);
-      case 'paused': return conversations.filter(c => c.human_paused);
-      case 'no_response': return conversations.filter(c => c.time_without_response && c.time_without_response > 60);
-      case 'closed': return conversations.filter(c => c.lead_status === 'closed' || c.lead_status === 'converted');
-      case 'refused': return conversations.filter(c => c.lead_status === 'refused' || c.lead_status === 'lost');
-      case 'followups': return conversations.filter(c => c.followup_count > 0);
-      case 'msgs_sent': return conversations.filter(c => c.outbound_count > 0);
-      default: return conversations;
+      case 'total': filtered = conversations; break;
+      case 'active': filtered = conversations.filter(c => c.is_active && !c.human_paused); break;
+      case 'paused': filtered = conversations.filter(c => c.human_paused); break;
+      case 'no_response': filtered = conversations.filter(c => c.time_without_response && c.time_without_response > 60); break;
+      case 'closed': filtered = conversations.filter(c => c.lead_status === 'closed' || c.lead_status === 'converted'); break;
+      case 'refused': filtered = conversations.filter(c => c.lead_status === 'refused' || c.lead_status === 'lost'); break;
+      case 'followups': filtered = conversations.filter(c => c.followup_count > 0); break;
+      case 'msgs_sent': filtered = conversations.filter(c => c.outbound_count > 0); break;
+      default: filtered = conversations;
     }
-  }, [kpiSheet, conversations]);
+    if (sheetAgentFilter !== 'all') filtered = filtered.filter(c => c.agent_id === sheetAgentFilter);
+    if (sheetActivatedByFilter !== 'all') filtered = filtered.filter(c => c.activated_by === sheetActivatedByFilter);
+    return filtered;
+  }, [kpiSheet, conversations, sheetAgentFilter, sheetActivatedByFilter]);
+
+  const activatedByLabel = (val: string | null) => {
+    switch (val) {
+      case 'manual': return 'Manual';
+      case 'system': return 'Sistema';
+      case 'agent': return 'Agente';
+      case 'ctwa_campaign': return 'Campanha CTWA';
+      case 'broadcast': return 'Transmissão';
+      case 'stage_auto': return 'Troca de Etapa';
+      default: return val || 'Desconhecido';
+    }
+  };
+
+  const uniqueActivatedBy = useMemo(() => [...new Set(conversations.map(c => c.activated_by).filter(Boolean))].sort() as string[], [conversations]);
 
   const formatTimeAgo = (minutes: number | null) => {
     if (!minutes) return '-';
@@ -752,7 +774,7 @@ export function AgentMonitorDashboard() {
       </Tabs>
 
       {/* KPI Conversations Sheet */}
-      <Sheet open={!!kpiSheet} onOpenChange={(open) => !open && setKpiSheet(null)}>
+      <Sheet open={!!kpiSheet} onOpenChange={(open) => { if (!open) { setKpiSheet(null); setSheetAgentFilter('all'); setSheetActivatedByFilter('all'); } }}>
         <SheetContent side="right" className="w-[400px] sm:w-[480px] p-0 flex flex-col">
           <div className="shrink-0 px-4 py-3 border-b bg-primary/5">
             <SheetHeader>
@@ -766,6 +788,31 @@ export function AgentMonitorDashboard() {
                 </div>
               </SheetTitle>
             </SheetHeader>
+            {/* Filters inside sheet */}
+            <div className="flex gap-2 mt-2">
+              <Select value={sheetAgentFilter} onValueChange={setSheetAgentFilter}>
+                <SelectTrigger className="h-7 text-[10px] flex-1">
+                  <SelectValue placeholder="Agente" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos agentes</SelectItem>
+                  {agents.map(a => (
+                    <SelectItem key={a.id} value={a.id}>{a.shortcut_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={sheetActivatedByFilter} onValueChange={setSheetActivatedByFilter}>
+                <SelectTrigger className="h-7 text-[10px] flex-1">
+                  <SelectValue placeholder="Ativação" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas ativações</SelectItem>
+                  {uniqueActivatedBy.map(v => (
+                    <SelectItem key={v} value={v}>{activatedByLabel(v)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-2">
@@ -798,6 +845,11 @@ export function AgentMonitorDashboard() {
                             </span>
                           )}
                         </div>
+                        {c.activated_by && (
+                          <Badge variant="outline" className="text-[9px] h-4 mt-1 border-blue-200 text-blue-600 dark:border-blue-800 dark:text-blue-400">
+                            ⚡ {activatedByLabel(c.activated_by)}
+                          </Badge>
+                        )}
                         {c.board_name && c.stage_name && (
                           <Badge variant="outline" className="text-[9px] h-4 mt-1">{c.board_name} → {c.stage_name}</Badge>
                         )}
