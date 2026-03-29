@@ -12,6 +12,7 @@ serve(async (req) => {
 
   try {
     const { phone, instance_name, message_text, message_type, lead_id, campaign_id, is_group, contact_name, is_followup } = await req.json();
+    console.log(`Agent reply request: phone=${phone}, instance=${instance_name}, is_followup=${!!is_followup}, msg_type=${message_type || 'text'}`);
     if (!phone || !instance_name) {
       return new Response(JSON.stringify({ error: "Missing fields" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -280,9 +281,9 @@ serve(async (req) => {
     }
 
     // ========== MESSAGE BATCHING DELAY ==========
-    // Wait for the configured delay to allow the sender to finish sending multiple messages
+    // Skip batching delay for manual followups to avoid timeouts
     const batchDelaySeconds = (agent as any).response_delay_seconds || 0;
-    if (batchDelaySeconds > 0) {
+    if (batchDelaySeconds > 0 && !is_followup) {
       console.log(`Batching delay: waiting ${batchDelaySeconds}s for more messages from ${phone}`);
       await new Promise(resolve => setTimeout(resolve, batchDelaySeconds * 1000));
 
@@ -311,6 +312,8 @@ serve(async (req) => {
         }
       }
       console.log(`Batching delay complete: processing all accumulated messages for ${phone}`);
+    } else if (is_followup) {
+      console.log(`Manual followup: skipping batching delay for ${phone}`);
     }
 
     // ========== GENERATE AI RESPONSE ==========
@@ -425,7 +428,7 @@ REGRAS IMPORTANTES:
         .eq("phone", phone)
         .eq("instance_name", instance_name)
         .order("created_at", { ascending: false })
-        .limit(20);
+        .limit(is_followup ? 40 : 20);
 
       // Process messages handling different types (audio, image, document, etc.)
       const contextMessages: any[] = [];
