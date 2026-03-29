@@ -1351,75 +1351,11 @@ Deno.serve(async (req) => {
             }
           }
           
-          // Fallback: if no matched campaign link but ad context exists, still try generic auto-create
-          if (!leadId && !matchedCampaignLink && instanceName) {
-            try {
-              const { data: genericLinks } = await supabase
-                .from('whatsapp_agent_campaign_links')
-                .select('*')
-                .eq('auto_create_lead', true)
-                .eq('is_active', true)
-              
-              if (genericLinks && genericLinks.length > 0) {
-                const autoLink = (genericLinks as any[]).find(l => l.board_id)
-                if (autoLink) {
-                  let stageId = autoLink.stage_id
-                  if (!stageId && autoLink.board_id) {
-                    const { data: board } = await supabase
-                      .from('kanban_boards')
-                      .select('stages')
-                      .eq('id', autoLink.board_id)
-                      .single()
-                    const stages = (board as any)?.stages || []
-                    if (stages.length > 0) stageId = stages[0].id
-                  }
-                  
-                  detectedCampaignId = detectedCampaignId || autoLink.campaign_id || null
-                  detectedCampaignName = detectedCampaignName || autoLink.campaign_name || null
-                  const leadName = contactName || `WhatsApp ${phone}`
-                  
-                  const { data: newLead, error: leadErr } = await supabase
-                    .from('leads')
-                    .insert({
-                      lead_name: leadName,
-                      lead_phone: phone,
-                      board_id: autoLink.board_id,
-                      status: stageId || 'new',
-                      source: 'ctwa_whatsapp',
-                      ctwa_context: ctwaData,
-                      ad_name: ctwaData.title || detectedCampaignName || null,
-                      campaign_id: detectedCampaignId,
-                      action_source: 'system',
-                      action_source_detail: `CTWA Auto-create fallback (campanha: ${detectedCampaignName || 'desconhecida'})`,
-                    })
-                    .select('id')
-                    .single()
-                  
-                  if (!leadErr && newLead) {
-                    leadId = (newLead as any).id
-                    console.log('Auto-created lead from CTWA (fallback):', leadId)
-                    
-                    if (!contactId) {
-                      const { data: newContact } = await supabase
-                        .from('contacts')
-                        .insert({
-                          full_name: leadName,
-                          phone: phone,
-                          lead_id: leadId,
-                          classification: 'lead',
-                          action_source: 'system',
-                          action_source_detail: `CTWA Auto-create fallback`,
-                        })
-                        .select('id')
-                        .single()
-                      if (newContact) contactId = (newContact as any).id
-                    }
-                  }
-                }
-              }
-            } catch (autoErr) {
-              console.error('CTWA fallback auto-create error:', autoErr)
-            }
+          // NOTE: Removed dangerous generic fallback that was assigning random campaign_ids
+          // to messages with externalAdReply but no matching campaign link.
+          // Only messages with a proper source_id/ctwa_clid match should get a campaign_id.
+          if (!matchedCampaignLink) {
+            console.log('CTWA: No campaign link matched for sourceID:', ctwaSourceId, '- not assigning campaign_id')
           }
         }
       } catch (ctwaErr) {
