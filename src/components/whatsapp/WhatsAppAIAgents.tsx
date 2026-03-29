@@ -623,7 +623,6 @@ export function WhatsAppAIAgents() {
                       </div>
                     </div>
                   </div>
-                  </div>
                   {editingAgent.followup_enabled && (
                     <>
                       <div className="grid grid-cols-2 gap-3">
