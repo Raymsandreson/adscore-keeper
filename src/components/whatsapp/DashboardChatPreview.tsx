@@ -335,7 +335,12 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
               </div>
               {agentInfo && (
                 <div className="flex items-center gap-1.5 mt-1.5">
-                  <Badge variant={agentInfo.is_active ? "default" : "secondary"} className="text-[10px] px-1.5 py-0 h-4 gap-1">
+                  <Badge
+                    variant={agentInfo.is_active ? "default" : "secondary"}
+                    className="text-[10px] px-1.5 py-0 h-4 gap-1 cursor-pointer select-none"
+                    onClick={handleToggleAgent}
+                    title={agentInfo.is_active ? 'Clique para desativar o agente' : 'Clique para ativar o agente'}
+                  >
                     <Bot className="h-3 w-3" />
                     {agentInfo.name}
                     {!agentInfo.is_active && ' (pausado)'}
