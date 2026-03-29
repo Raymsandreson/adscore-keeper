@@ -112,7 +112,6 @@ export function AgentMonitorDashboard() {
       const { data: agentsData } = await supabase
         .from('wjia_command_shortcuts')
         .select('id, shortcut_name, description, is_active')
-        .eq('command_scope', 'conversation')
         .order('shortcut_name');
 
       // Fetch conversation agents
