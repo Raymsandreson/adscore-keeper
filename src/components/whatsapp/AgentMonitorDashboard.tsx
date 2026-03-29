@@ -360,7 +360,6 @@ export function AgentMonitorDashboard() {
   }, [kpiSheetConversations, excludedPhones]);
 
   useEffect(() => { setExcludedPhones(new Set()); }, [kpiSheet, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter]);
-  const activatedByLabel = (val: string | null) => {
     switch (val) {
       case 'manual': return 'Manual';
       case 'system': return 'Sistema';
