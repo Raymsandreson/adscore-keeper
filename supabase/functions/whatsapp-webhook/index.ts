@@ -1147,7 +1147,13 @@ Deno.serve(async (req) => {
         const contextInfo = msgContent.contextInfo || msg.contextInfo || msg.imageMessage?.contextInfo || msg.videoMessage?.contextInfo || {}
         const externalAdReply = contextInfo.externalAdReply || null
         
-        if (externalAdReply) {
+        // Only process as CTWA if it's actually a Meta ad click (has sourceId/ctwa_clid)
+        // Messages forwarded with spam/promo links also have externalAdReply but no sourceId
+        const ctwaSourceId = externalAdReply?.sourceID || externalAdReply?.sourceId || contextInfo.ctwaContext?.sourceId || null
+        const ctwaClid = contextInfo.ctwaContext?.ctwaClid || contextInfo.ctwaClid || null
+        const isTrueCTWA = !!(ctwaSourceId || ctwaClid)
+        
+        if (externalAdReply && isTrueCTWA) {
           // UazAPI uses sourceID (capital D) in externalAdReply, not ctwaContext.sourceId
           const ctwaSourceId = externalAdReply.sourceID || externalAdReply.sourceId || contextInfo.ctwaContext?.sourceId || null
           const ctwaClid = contextInfo.ctwaContext?.ctwaClid || contextInfo.ctwaClid || null
