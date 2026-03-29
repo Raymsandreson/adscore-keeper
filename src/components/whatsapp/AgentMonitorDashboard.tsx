@@ -126,6 +126,21 @@ export function AgentMonitorDashboard() {
         .gte('created_at', startDate)
         .order('created_at', { ascending: false });
 
+      // Fetch campaign_name for ALL phones (not date-filtered) to ensure we capture campaign origin
+      const agentPhones = (convAgents || []).map((ca: any) => ca.phone);
+      const { data: campaignMsgs } = await supabase
+        .from('whatsapp_messages')
+        .select('phone, instance_name, campaign_name')
+        .in('phone', agentPhones)
+        .not('campaign_name', 'is', null)
+        .limit(2000);
+
+      const campaignByPhone = new Map<string, string>();
+      (campaignMsgs || []).forEach((m: any) => {
+        const key = `${m.phone}|${m.instance_name}`;
+        if (!campaignByPhone.has(key)) campaignByPhone.set(key, m.campaign_name);
+      });
+
       // Fetch leads with location data
       const { data: leads } = await supabase
         .from('leads')
@@ -231,7 +246,7 @@ export function AgentMonitorDashboard() {
           outbound_count: outboundMsgs.length,
           followup_count: lead ? (followupsByLead.get(lead.id) || 0) : 0,
           time_without_response: timeWithoutResponse,
-          campaign_name: msgs.find((m: any) => m.campaign_name)?.campaign_name || lead?.campaign_name || null,
+          campaign_name: campaignByPhone.get(key) || msgs.find((m: any) => m.campaign_name)?.campaign_name || lead?.campaign_name || null,
           activated_by: ca.activated_by || null,
         });
       });
