@@ -13,6 +13,7 @@ import {
   Megaphone, Target, Sparkles, FolderKanban, Plus, X, Loader2, RefreshCw, Phone, 
   Pause, Play, MessageSquare, Users, UserPlus, Brain, ExternalLink 
 } from 'lucide-react';
+import { DashboardChatPreview } from './DashboardChatPreview';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 
@@ -98,6 +99,8 @@ export function CTWACampaignAutomation() {
   const [sheetLink, setSheetLink] = useState<CampaignLink | null>(null);
   const [convResponseFilter, setConvResponseFilter] = useState<ConvResponseFilter>('all');
   const [convLeadFilter, setConvLeadFilter] = useState<ConvLeadFilter>('all');
+  const [chatPreviewPhone, setChatPreviewPhone] = useState<string | null>(null);
+  const [chatPreviewConv, setChatPreviewConv] = useState<ConversationInfo | null>(null);
 
   const getMetaCredentials = () => {
     const savedAccounts = localStorage.getItem('meta_saved_accounts');
@@ -1051,10 +1054,8 @@ export function CTWACampaignAutomation() {
                         key={`${conv.phone}-${i}`}
                         className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
                         onClick={() => {
-                          const params = new URLSearchParams(window.location.search);
-                          params.set('openChat', conv.phone);
-                          window.history.pushState({}, '', `${window.location.pathname}?${params}`);
-                          window.dispatchEvent(new PopStateEvent('popstate'));
+                          setChatPreviewConv(conv);
+                          setChatPreviewPhone(conv.phone);
                         }}
                       >
                         <div className="min-w-0 flex-1">
@@ -1125,6 +1126,18 @@ export function CTWACampaignAutomation() {
           </ScrollArea>
         </SheetContent>
       </Sheet>
+
+      <DashboardChatPreview
+        open={!!chatPreviewPhone}
+        onOpenChange={(open) => { if (!open) { setChatPreviewPhone(null); setChatPreviewConv(null); } }}
+        phone={chatPreviewPhone}
+        contactName={chatPreviewConv?.contact_name || chatPreviewConv?.lead_name || null}
+        instanceName={chatPreviewConv?.instance_name || null}
+        hasLead={chatPreviewConv?.has_lead || false}
+        hasContact={chatPreviewConv?.has_contact || false}
+        wasResponded={chatPreviewConv?.was_responded || false}
+        responseTimeMinutes={chatPreviewConv?.response_time_minutes || null}
+      />
     </Card>
   );
 }
