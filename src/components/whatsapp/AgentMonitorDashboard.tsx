@@ -11,10 +11,12 @@ import { Progress } from '@/components/ui/progress';
 import {
   Bot, MessageCircle, Clock, TrendingUp, Users, Search, RefreshCw,
   CheckCircle, XCircle, Pause, Zap, ArrowUpRight, ArrowDownRight,
-  Filter, MapPin, Phone, PhoneCall
+  Filter, MapPin, Phone, PhoneCall, ExternalLink
 } from 'lucide-react';
 import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { DashboardChatPreview } from './DashboardChatPreview';
 import { format, differenceInMinutes, differenceInHours, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -91,6 +93,8 @@ export function AgentMonitorDashboard() {
   const [stateFilter, setStateFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [periodDays, setPeriodDays] = useState(7);
+  const [kpiSheet, setKpiSheet] = useState<{ filter: string; label: string } | null>(null);
+  const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -323,6 +327,21 @@ export function AgentMonitorDashboard() {
     return { total, active, paused, noResponse, totalFollowups, totalMsgsSent, totalMsgsReceived, closed, refused };
   }, [conversations]);
 
+  const kpiSheetConversations = useMemo(() => {
+    if (!kpiSheet) return [];
+    switch (kpiSheet.filter) {
+      case 'total': return conversations;
+      case 'active': return conversations.filter(c => c.is_active && !c.human_paused);
+      case 'paused': return conversations.filter(c => c.human_paused);
+      case 'no_response': return conversations.filter(c => c.time_without_response && c.time_without_response > 60);
+      case 'closed': return conversations.filter(c => c.lead_status === 'closed' || c.lead_status === 'converted');
+      case 'refused': return conversations.filter(c => c.lead_status === 'refused' || c.lead_status === 'lost');
+      case 'followups': return conversations.filter(c => c.followup_count > 0);
+      case 'msgs_sent': return conversations.filter(c => c.outbound_count > 0);
+      default: return conversations;
+    }
+  }, [kpiSheet, conversations]);
+
   const formatTimeAgo = (minutes: number | null) => {
     if (!minutes) return '-';
     if (minutes < 60) return `${minutes}min`;
@@ -362,7 +381,7 @@ export function AgentMonitorDashboard() {
 
       {/* Global KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <Card className="border-primary/20">
+        <Card className="border-primary/20 cursor-pointer hover:shadow-md transition-shadow" onClick={() => setKpiSheet({ filter: 'total', label: 'Total Conversas' })}>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
               <MessageCircle className="h-3.5 w-3.5" />
@@ -370,13 +389,13 @@ export function AgentMonitorDashboard() {
             </div>
             <p className="text-2xl font-bold">{globalStats.total}</p>
             <div className="flex gap-2 mt-1">
-              <Badge variant="secondary" className="text-[9px]">{globalStats.active} ativas</Badge>
-              <Badge variant="outline" className="text-[9px]">{globalStats.paused} pausadas</Badge>
+              <Badge variant="secondary" className="text-[9px] cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'active', label: 'Conversas Ativas' }); }}>{globalStats.active} ativas</Badge>
+              <Badge variant="outline" className="text-[9px] cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'paused', label: 'Conversas Pausadas' }); }}>{globalStats.paused} pausadas</Badge>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setKpiSheet({ filter: 'msgs_sent', label: 'Conversas com Mensagens' })}>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
               <TrendingUp className="h-3.5 w-3.5" />
@@ -387,7 +406,7 @@ export function AgentMonitorDashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setKpiSheet({ filter: 'followups', label: 'Conversas com Follow-up' })}>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
               <Zap className="h-3.5 w-3.5" />
@@ -397,18 +416,18 @@ export function AgentMonitorDashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setKpiSheet({ filter: 'closed', label: 'Fechados' })}>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
               <CheckCircle className="h-3.5 w-3.5 text-green-500" />
               Fechados
             </div>
             <p className="text-2xl font-bold text-green-600">{globalStats.closed}</p>
-            <p className="text-[10px] text-red-500">{globalStats.refused} recusados</p>
+            <p className="text-[10px] text-red-500 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'refused', label: 'Recusados' }); }}>{globalStats.refused} recusados</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setKpiSheet({ filter: 'no_response', label: 'Sem Resposta (>1h)' })}>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
               <Clock className="h-3.5 w-3.5 text-amber-500" />
@@ -731,6 +750,94 @@ export function AgentMonitorDashboard() {
           <CallQueuePanel />
         </TabsContent>
       </Tabs>
+
+      {/* KPI Conversations Sheet */}
+      <Sheet open={!!kpiSheet} onOpenChange={(open) => !open && setKpiSheet(null)}>
+        <SheetContent side="right" className="w-[400px] sm:w-[480px] p-0 flex flex-col">
+          <div className="shrink-0 px-4 py-3 border-b bg-primary/5">
+            <SheetHeader>
+              <SheetTitle className="text-sm flex items-center gap-2">
+                <MessageCircle className="h-4 w-4 text-primary" />
+                <div className="flex-1 min-w-0">
+                  <div className="truncate text-sm">{kpiSheet?.label}</div>
+                  <div className="text-[10px] text-muted-foreground font-normal">
+                    {kpiSheetConversations.length} conversas
+                  </div>
+                </div>
+              </SheetTitle>
+            </SheetHeader>
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="p-3 space-y-2">
+              {kpiSheetConversations.map((c, idx) => (
+                <Card
+                  key={`${c.phone}-${c.instance_name}-${idx}`}
+                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => setChatPreview(c)}
+                >
+                  <CardContent className="p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold truncate">{c.contact_name || c.lead_name || c.phone}</span>
+                          {c.is_active && !c.human_paused && (
+                            <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400 text-[9px] h-4">Ativo</Badge>
+                          )}
+                          {c.human_paused && (
+                            <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400 text-[9px] h-4">Pausado</Badge>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground mt-0.5">{c.phone}</div>
+                        <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground flex-wrap">
+                          <span className="flex items-center gap-0.5">
+                            <Bot className="h-3 w-3" /> {c.agent_name}
+                          </span>
+                          {c.lead_city && (
+                            <span className="flex items-center gap-0.5">
+                              <MapPin className="h-3 w-3" /> {c.lead_city}{c.lead_state ? `/${c.lead_state}` : ''}
+                            </span>
+                          )}
+                        </div>
+                        {c.board_name && c.stage_name && (
+                          <Badge variant="outline" className="text-[9px] h-4 mt-1">{c.board_name} → {c.stage_name}</Badge>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0 space-y-1">
+                        {c.time_without_response != null && c.time_without_response > 0 && (
+                          <p className={`text-[10px] font-medium ${c.time_without_response > 120 ? 'text-red-500' : c.time_without_response > 60 ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                            {formatTimeAgo(c.time_without_response)}
+                          </p>
+                        )}
+                        <p className="text-[9px] text-muted-foreground">📩 {c.inbound_count} 📤 {c.outbound_count}</p>
+                        <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {kpiSheetConversations.length === 0 && (
+                <div className="text-center py-12 text-muted-foreground">
+                  <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Nenhuma conversa nesta categoria</p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      {/* Chat Preview Drawer */}
+      <DashboardChatPreview
+        open={!!chatPreview}
+        onOpenChange={(open) => { if (!open) setChatPreview(null); }}
+        phone={chatPreview?.phone || null}
+        contactName={chatPreview?.contact_name || chatPreview?.lead_name || null}
+        instanceName={chatPreview?.instance_name || null}
+        hasLead={!!chatPreview?.lead_name}
+        hasContact={!!chatPreview?.contact_name}
+        wasResponded={chatPreview ? chatPreview.inbound_count > 0 : false}
+        responseTimeMinutes={null}
+      />
     </div>
   );
 }
