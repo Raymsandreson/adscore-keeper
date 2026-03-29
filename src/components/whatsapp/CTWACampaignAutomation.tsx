@@ -382,7 +382,75 @@ export function CTWACampaignAutomation() {
     }
   };
 
-  const handleBulkCreateLeads = async (link: CampaignLink) => {
+  const handleBulkFollowup = async () => {
+    if (!sheetLink || bulkFollowup.running) return;
+    
+    const allConvs = linkConversations[sheetLink.id] || [];
+    const filtered = allConvs.filter(conv => {
+      if (convResponseFilter === 'responded' && !conv.was_responded) return false;
+      if (convResponseFilter === 'waiting' && conv.was_responded) return false;
+      if (convLeadFilter === 'has_lead' && !conv.has_lead) return false;
+      if (convLeadFilter === 'no_lead' && conv.has_lead) return false;
+      if (convLeadFilter === 'funnel' && !(conv.has_lead && conv.lead_status === 'active')) return false;
+      if (convLeadFilter === 'closed' && !(conv.has_lead && conv.lead_status === 'closed')) return false;
+      if (convLeadFilter === 'refused' && !(conv.has_lead && conv.lead_status === 'refused')) return false;
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      toast.error('Nenhuma conversa no filtro atual');
+      return;
+    }
+
+    const confirmMsg = `Disparar agente IA para ${filtered.length} conversa(s) filtrada(s)?`;
+    if (!confirm(confirmMsg)) return;
+
+    setBulkFollowup({ running: true, current: 0, total: filtered.length, success: 0, failed: 0 });
+
+    let success = 0;
+    let failed = 0;
+
+    for (let i = 0; i < filtered.length; i++) {
+      const conv = filtered[i];
+      setBulkFollowup(prev => ({ ...prev, current: i + 1 }));
+
+      try {
+        const { data, error } = await supabase.functions.invoke('whatsapp-ai-agent-reply', {
+          body: {
+            phone: conv.phone,
+            instance_name: conv.instance_name,
+            message_text: '',
+            message_type: 'text',
+            is_group: false,
+            contact_name: conv.contact_name || conv.lead_name || null,
+          },
+        });
+
+        if (error) {
+          console.error(`Followup error for ${conv.phone}:`, error);
+          failed++;
+        } else {
+          success++;
+        }
+      } catch (err) {
+        console.error(`Followup error for ${conv.phone}:`, err);
+        failed++;
+      }
+
+      // Small delay between calls to avoid rate limiting
+      if (i < filtered.length - 1) {
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+
+    setBulkFollowup({ running: false, current: 0, total: 0, success: 0, failed: 0 });
+    toast.success(`Follow-up concluído: ${success} enviados, ${failed} erros`);
+    
+    // Refresh conversations
+    if (sheetLink) fetchLinkConversations(sheetLink);
+  };
+
+
     const linkAny = link as any;
     if (!linkAny.board_id) {
       toast.error('Configure um funil de destino antes de criar leads em massa');
