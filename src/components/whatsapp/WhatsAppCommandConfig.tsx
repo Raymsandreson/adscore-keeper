@@ -14,7 +14,8 @@ import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
 import { 
   Bot, Plus, Trash2, MessageSquare, Sparkles, 
-  Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2, Volume2, Maximize2, RefreshCw
+  Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2, Volume2, Maximize2, RefreshCw,
+  ChevronUp, ChevronDown
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
@@ -344,26 +345,14 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     setFollowupSteps(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
   };
 
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-
-  const handleDragStart = (idx: number) => {
-    setDragIdx(idx);
-  };
-
-  const handleDragOver = (e: React.DragEvent, idx: number) => {
-    e.preventDefault();
-    if (dragIdx === null || dragIdx === idx) return;
+  const moveStep = (idx: number, direction: 'up' | 'down') => {
     setFollowupSteps(prev => {
       const updated = [...prev];
-      const [moved] = updated.splice(dragIdx, 1);
-      updated.splice(idx, 0, moved);
+      const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= updated.length) return prev;
+      [updated[idx], updated[targetIdx]] = [updated[targetIdx], updated[idx]];
       return updated;
     });
-    setDragIdx(idx);
-  };
-
-  const handleDragEnd = () => {
-    setDragIdx(null);
   };
 
   const handleSave = async () => {
@@ -937,13 +926,17 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                 {followupSteps.map((step, idx) => (
                   <div
                     key={idx}
-                    draggable
-                    onDragStart={() => handleDragStart(idx)}
-                    onDragOver={(e) => handleDragOver(e, idx)}
-                    onDragEnd={handleDragEnd}
-                    className={`flex items-start gap-2 p-3 rounded-lg border bg-muted/30 cursor-grab active:cursor-grabbing transition-opacity ${dragIdx === idx ? 'opacity-50' : ''}`}
+                    className="flex items-start gap-2 p-3 rounded-lg border bg-muted/30"
                   >
-                    <Badge variant="secondary" className="text-[10px] h-5 w-5 p-0 flex items-center justify-center mt-1">{idx + 1}</Badge>
+                    <div className="flex flex-col items-center gap-0.5 mt-1">
+                      <Badge variant="secondary" className="text-[10px] h-5 w-5 p-0 flex items-center justify-center">{idx + 1}</Badge>
+                      <Button variant="ghost" size="icon" className="h-5 w-5" disabled={idx === 0} onClick={() => moveStep(idx, 'up')}>
+                        <ChevronUp className="h-3 w-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-5 w-5" disabled={idx === followupSteps.length - 1} onClick={() => moveStep(idx, 'down')}>
+                        <ChevronDown className="h-3 w-3" />
+                      </Button>
+                    </div>
                     <div className="flex-1 space-y-2">
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
