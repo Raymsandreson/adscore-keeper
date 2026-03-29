@@ -815,8 +815,8 @@ export function AgentMonitorDashboard() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos agentes</SelectItem>
-                  {agents.map(a => (
-                    <SelectItem key={a.id} value={a.id}>{a.shortcut_name}</SelectItem>
+                  {uniqueSheetAgents.map(([id, name]) => (
+                    <SelectItem key={id} value={id}>{name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
