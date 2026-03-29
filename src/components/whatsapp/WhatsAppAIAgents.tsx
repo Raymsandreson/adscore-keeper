@@ -595,8 +595,8 @@ export function WhatsAppAIAgents() {
               {/* TAB: Timing */}
               <TabsContent value="timing" className="space-y-4 mt-4">
                 <div className="border rounded-lg p-3 space-y-3">
-                  <Label className="text-sm font-semibold">Janela de envio</Label>
-                  <p className="text-[10px] text-muted-foreground">Horário permitido para o agente enviar mensagens. Fora desse horário, o agente não responde.</p>
+                  <Label className="text-sm font-semibold">Janela de follow-up</Label>
+                  <p className="text-[10px] text-muted-foreground">Horário permitido para envio de follow-ups automáticos e manuais. Respostas a mensagens do cliente funcionam normalmente em qualquer horário.</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs">Início</Label>
