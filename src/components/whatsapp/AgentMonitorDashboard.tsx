@@ -721,6 +721,11 @@ export function AgentMonitorDashboard() {
           </div>
         </TabsContent>
 
+        {/* TAB: Follow-ups */}
+        <TabsContent value="followups">
+          <FollowupActivityPanel />
+        </TabsContent>
+
         {/* TAB: Call Queue */}
         <TabsContent value="call-queue">
           <CallQueuePanel />
