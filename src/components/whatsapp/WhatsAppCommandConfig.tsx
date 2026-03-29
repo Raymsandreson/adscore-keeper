@@ -344,26 +344,14 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     setFollowupSteps(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
   };
 
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-
-  const handleDragStart = (idx: number) => {
-    setDragIdx(idx);
-  };
-
-  const handleDragOver = (e: React.DragEvent, idx: number) => {
-    e.preventDefault();
-    if (dragIdx === null || dragIdx === idx) return;
+  const moveStep = (idx: number, direction: 'up' | 'down') => {
     setFollowupSteps(prev => {
       const updated = [...prev];
-      const [moved] = updated.splice(dragIdx, 1);
-      updated.splice(idx, 0, moved);
+      const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= updated.length) return prev;
+      [updated[idx], updated[targetIdx]] = [updated[targetIdx], updated[idx]];
       return updated;
     });
-    setDragIdx(idx);
-  };
-
-  const handleDragEnd = () => {
-    setDragIdx(null);
   };
 
   const handleSave = async () => {
