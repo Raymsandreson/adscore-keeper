@@ -100,6 +100,7 @@ export function AgentMonitorDashboard() {
   const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
   const [sheetAgentFilter, setSheetAgentFilter] = useState('all');
   const [sheetActivatedByFilter, setSheetActivatedByFilter] = useState('all');
+  const [sheetCampaignFilter, setSheetCampaignFilter] = useState('all');
   const [excludedPhones, setExcludedPhones] = useState<Set<string>>(new Set());
 
   const fetchData = async () => {
@@ -350,8 +351,9 @@ export function AgentMonitorDashboard() {
     }
     if (sheetAgentFilter !== 'all') filtered = filtered.filter(c => c.agent_id === sheetAgentFilter);
     if (sheetActivatedByFilter !== 'all') filtered = filtered.filter(c => c.activated_by === sheetActivatedByFilter);
+    if (sheetCampaignFilter !== 'all') filtered = filtered.filter(c => c.campaign_name === sheetCampaignFilter);
     return filtered;
-  }, [kpiSheet, conversations, sheetAgentFilter, sheetActivatedByFilter]);
+  }, [kpiSheet, conversations, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter]);
 
 
   const selectedSheetConversations = useMemo(() => {
@@ -365,6 +367,7 @@ export function AgentMonitorDashboard() {
       case 'system': return 'Sistema';
       case 'agent': return 'Agente';
       case 'ctwa_campaign': return 'Campanha CTWA';
+      case 'campaign_auto': return 'Campanha Auto';
       case 'broadcast': return 'Transmissão';
       case 'stage_auto': return 'Troca de Etapa';
       default: return val || 'Desconhecido';
