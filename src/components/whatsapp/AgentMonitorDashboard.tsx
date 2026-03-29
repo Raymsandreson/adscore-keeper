@@ -349,7 +349,7 @@ export function AgentMonitorDashboard() {
       default: filtered = conversations;
     }
     if (sheetAgentFilter !== 'all') filtered = filtered.filter(c => c.agent_id === sheetAgentFilter);
-    if (sheetActivatedByFilter !== 'all') filtered = filtered.filter(c => c.activated_by === sheetActivatedByFilter);
+    if (sheetActivatedByFilter !== 'all') filtered = filtered.filter(c => activatedByLabel(c.activated_by) === sheetActivatedByFilter);
     if (sheetCampaignFilter !== 'all') filtered = filtered.filter(c => c.campaign_name === sheetCampaignFilter);
     return filtered;
   }, [kpiSheet, conversations, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter]);
@@ -375,7 +375,7 @@ export function AgentMonitorDashboard() {
     }
   };
 
-  const uniqueActivatedBy = useMemo(() => [...new Set(conversations.map(c => c.activated_by).filter(Boolean))].sort() as string[], [conversations]);
+  const uniqueActivatedBy = useMemo(() => [...new Set(conversations.map(c => activatedByLabel(c.activated_by)).filter(v => v !== 'Desconhecido'))].sort() as string[], [conversations]);
   const uniqueCampaigns = useMemo(() => [...new Set(conversations.map(c => c.campaign_name).filter(Boolean))].sort() as string[], [conversations]);
   const uniqueSheetAgents = useMemo(() => {
     const agentMap = new Map<string, string>();
