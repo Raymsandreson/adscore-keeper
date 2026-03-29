@@ -52,6 +52,8 @@ interface Shortcut {
   reply_with_audio: boolean;
   reply_voice_id: string | null;
   respond_in_groups: boolean;
+  send_window_start_hour: number;
+  send_window_end_hour: number;
 }
 
 interface FollowupStep {
@@ -113,6 +115,8 @@ export function WhatsAppCommandConfig() {
       reply_with_audio: s.reply_with_audio ?? false,
       reply_voice_id: s.reply_voice_id || null,
       respond_in_groups: s.respond_in_groups ?? false,
+      send_window_start_hour: (s as any).send_window_start_hour ?? 8,
+      send_window_end_hour: (s as any).send_window_end_hour ?? 20,
     })) as Shortcut[]);
     
     setLoading(false);
@@ -194,6 +198,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     reply_voice_id: null as string | null,
     respond_in_groups: false,
     max_tts_chars: 1000,
+    send_window_start_hour: 8,
+    send_window_end_hour: 20,
   });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
   const [humanReplyPauseMinutes, setHumanReplyPauseMinutes] = useState(0);
@@ -266,6 +272,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       model: 'google/gemini-2.5-flash', temperature: 0.7,
       max_tokens: 2048, response_delay_seconds: 2, split_messages: false, split_delay_seconds: 3,
       reply_with_audio: false, reply_voice_id: null, respond_in_groups: false, max_tts_chars: 1000,
+      send_window_start_hour: 8, send_window_end_hour: 20,
     });
     setFollowupSteps([]);
     setHumanReplyPauseMinutes(0);
@@ -366,6 +373,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       reply_voice_id: form.reply_voice_id,
       respond_in_groups: form.respond_in_groups,
       max_tts_chars: form.max_tts_chars,
+      send_window_start_hour: form.send_window_start_hour ?? 8,
+      send_window_end_hour: form.send_window_end_hour ?? 20,
     };
 
     let error;
@@ -607,6 +616,20 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       </div>
                     );
                   })()}
+                </div>
+                <div className="border rounded-lg p-3 space-y-2 mb-3">
+                  <Label className="text-xs font-semibold">Janela de envio</Label>
+                  <p className="text-[9px] text-muted-foreground">Horário permitido para o agente enviar mensagens.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-[10px]">Início ({String(form.send_window_start_hour ?? 8).padStart(2, '0')}:00)</Label>
+                      <Input type="number" min={0} max={23} value={form.send_window_start_hour ?? 8} onChange={e => setForm(f => ({ ...f, send_window_start_hour: parseInt(e.target.value) || 8 }))} className="h-9 text-xs" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px]">Fim ({String(form.send_window_end_hour ?? 20).padStart(2, '0')}:00)</Label>
+                      <Input type="number" min={0} max={23} value={form.send_window_end_hour ?? 20} onChange={e => setForm(f => ({ ...f, send_window_end_hour: parseInt(e.target.value) || 20 }))} className="h-9 text-xs" />
+                    </div>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
