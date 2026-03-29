@@ -619,20 +619,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     );
                   })()}
                 </div>
-                <div className="border rounded-lg p-3 space-y-2 mb-3">
-                  <Label className="text-xs font-semibold">Janela de follow-up</Label>
-                  <p className="text-[9px] text-muted-foreground">Horário permitido para follow-ups. Respostas ao cliente funcionam em qualquer horário.</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-[10px]">Início ({String(form.send_window_start_hour ?? 8).padStart(2, '0')}:00)</Label>
-                      <Input type="number" min={0} max={23} value={form.send_window_start_hour ?? 8} onChange={e => setForm(f => ({ ...f, send_window_start_hour: parseInt(e.target.value) || 8 }))} className="h-9 text-xs" />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[10px]">Fim ({String(form.send_window_end_hour ?? 20).padStart(2, '0')}:00)</Label>
-                      <Input type="number" min={0} max={23} value={form.send_window_end_hour ?? 20} onChange={e => setForm(f => ({ ...f, send_window_end_hour: parseInt(e.target.value) || 20 }))} className="h-9 text-xs" />
-                    </div>
-                  </div>
-                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Delay agrupamento (seg)</Label>
@@ -903,6 +889,21 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
             {/* FOLLOWUP SECTION */}
             {formSection === 'followup' && (
               <div className="space-y-3">
+                <div className="border rounded-lg p-3 space-y-2">
+                  <Label className="text-xs font-semibold">🕐 Janela de follow-up</Label>
+                  <p className="text-[9px] text-muted-foreground">Horário permitido para follow-ups. Respostas ao cliente funcionam em qualquer horário.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-[10px]">Início ({String(form.send_window_start_hour ?? 8).padStart(2, '0')}:00)</Label>
+                      <Input type="number" min={0} max={23} value={form.send_window_start_hour ?? 8} onChange={e => setForm(f => ({ ...f, send_window_start_hour: parseInt(e.target.value) || 8 }))} className="h-9 text-xs" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px]">Fim ({String(form.send_window_end_hour ?? 20).padStart(2, '0')}:00)</Label>
+                      <Input type="number" min={0} max={23} value={form.send_window_end_hour ?? 20} onChange={e => setForm(f => ({ ...f, send_window_end_hour: parseInt(e.target.value) || 20 }))} className="h-9 text-xs" />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Bell className="h-4 w-4 text-primary" />
