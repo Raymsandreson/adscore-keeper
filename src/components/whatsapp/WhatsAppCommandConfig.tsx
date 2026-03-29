@@ -925,13 +925,17 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                 {followupSteps.map((step, idx) => (
                   <div
                     key={idx}
-                    draggable
-                    onDragStart={() => handleDragStart(idx)}
-                    onDragOver={(e) => handleDragOver(e, idx)}
-                    onDragEnd={handleDragEnd}
-                    className={`flex items-start gap-2 p-3 rounded-lg border bg-muted/30 cursor-grab active:cursor-grabbing transition-opacity ${dragIdx === idx ? 'opacity-50' : ''}`}
+                    className="flex items-start gap-2 p-3 rounded-lg border bg-muted/30"
                   >
-                    <Badge variant="secondary" className="text-[10px] h-5 w-5 p-0 flex items-center justify-center mt-1">{idx + 1}</Badge>
+                    <div className="flex flex-col items-center gap-0.5 mt-1">
+                      <Badge variant="secondary" className="text-[10px] h-5 w-5 p-0 flex items-center justify-center">{idx + 1}</Badge>
+                      <Button variant="ghost" size="icon" className="h-5 w-5" disabled={idx === 0} onClick={() => moveStep(idx, 'up')}>
+                        <ChevronUp className="h-3 w-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-5 w-5" disabled={idx === followupSteps.length - 1} onClick={() => moveStep(idx, 'down')}>
+                        <ChevronDown className="h-3 w-3" />
+                      </Button>
+                    </div>
                     <div className="flex-1 space-y-2">
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
