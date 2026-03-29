@@ -303,6 +303,22 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
   };
 
+  const handleToggleAgent = async () => {
+    if (!phone || !agentInfo) return;
+    const normalizedPhone = phone.replace(/\D/g, '');
+    const newActive = !agentInfo.is_active;
+    try {
+      await supabase
+        .from('whatsapp_conversation_agents')
+        .update({ is_active: newActive, human_paused_until: newActive ? null : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() } as any)
+        .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
+      setAgentInfo({ ...agentInfo, is_active: newActive });
+      toast.success(newActive ? 'Agente ativado!' : 'Agente desativado!');
+    } catch (e) {
+      toast.error('Erro ao alterar agente');
+    }
+  };
+
   let lastDateLabel = '';
 
   return (
@@ -335,7 +351,12 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
               </div>
               {agentInfo && (
                 <div className="flex items-center gap-1.5 mt-1.5">
-                  <Badge variant={agentInfo.is_active ? "default" : "secondary"} className="text-[10px] px-1.5 py-0 h-4 gap-1">
+                  <Badge
+                    variant={agentInfo.is_active ? "default" : "secondary"}
+                    className="text-[10px] px-1.5 py-0 h-4 gap-1 cursor-pointer select-none"
+                    onClick={handleToggleAgent}
+                    title={agentInfo.is_active ? 'Clique para desativar o agente' : 'Clique para ativar o agente'}
+                  >
                     <Bot className="h-3 w-3" />
                     {agentInfo.name}
                     {!agentInfo.is_active && ' (pausado)'}
