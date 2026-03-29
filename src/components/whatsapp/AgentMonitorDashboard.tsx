@@ -750,6 +750,94 @@ export function AgentMonitorDashboard() {
           <CallQueuePanel />
         </TabsContent>
       </Tabs>
+
+      {/* KPI Conversations Sheet */}
+      <Sheet open={!!kpiSheet} onOpenChange={(open) => !open && setKpiSheet(null)}>
+        <SheetContent side="right" className="w-[400px] sm:w-[480px] p-0 flex flex-col">
+          <div className="shrink-0 px-4 py-3 border-b bg-primary/5">
+            <SheetHeader>
+              <SheetTitle className="text-sm flex items-center gap-2">
+                <MessageCircle className="h-4 w-4 text-primary" />
+                <div className="flex-1 min-w-0">
+                  <div className="truncate text-sm">{kpiSheet?.label}</div>
+                  <div className="text-[10px] text-muted-foreground font-normal">
+                    {kpiSheetConversations.length} conversas
+                  </div>
+                </div>
+              </SheetTitle>
+            </SheetHeader>
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="p-3 space-y-2">
+              {kpiSheetConversations.map((c, idx) => (
+                <Card
+                  key={`${c.phone}-${c.instance_name}-${idx}`}
+                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => setChatPreview(c)}
+                >
+                  <CardContent className="p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold truncate">{c.contact_name || c.lead_name || c.phone}</span>
+                          {c.is_active && !c.human_paused && (
+                            <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400 text-[9px] h-4">Ativo</Badge>
+                          )}
+                          {c.human_paused && (
+                            <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400 text-[9px] h-4">Pausado</Badge>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground mt-0.5">{c.phone}</div>
+                        <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground flex-wrap">
+                          <span className="flex items-center gap-0.5">
+                            <Bot className="h-3 w-3" /> {c.agent_name}
+                          </span>
+                          {c.lead_city && (
+                            <span className="flex items-center gap-0.5">
+                              <MapPin className="h-3 w-3" /> {c.lead_city}{c.lead_state ? `/${c.lead_state}` : ''}
+                            </span>
+                          )}
+                        </div>
+                        {c.board_name && c.stage_name && (
+                          <Badge variant="outline" className="text-[9px] h-4 mt-1">{c.board_name} → {c.stage_name}</Badge>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0 space-y-1">
+                        {c.time_without_response != null && c.time_without_response > 0 && (
+                          <p className={`text-[10px] font-medium ${c.time_without_response > 120 ? 'text-red-500' : c.time_without_response > 60 ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                            {formatTimeAgo(c.time_without_response)}
+                          </p>
+                        )}
+                        <p className="text-[9px] text-muted-foreground">📩 {c.inbound_count} 📤 {c.outbound_count}</p>
+                        <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {kpiSheetConversations.length === 0 && (
+                <div className="text-center py-12 text-muted-foreground">
+                  <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Nenhuma conversa nesta categoria</p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      {/* Chat Preview Drawer */}
+      <DashboardChatPreview
+        open={!!chatPreview}
+        onOpenChange={(open) => { if (!open) setChatPreview(null); }}
+        phone={chatPreview?.phone || null}
+        contactName={chatPreview?.contact_name || chatPreview?.lead_name || null}
+        instanceName={chatPreview?.instance_name || null}
+        hasLead={!!chatPreview?.lead_name}
+        hasContact={!!chatPreview?.contact_name}
+        wasResponded={chatPreview ? chatPreview.inbound_count > 0 : false}
+        responseTimeMinutes={null}
+      />
     </div>
   );
 }
