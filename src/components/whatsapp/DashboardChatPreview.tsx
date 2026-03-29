@@ -8,7 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users } from 'lucide-react';
+import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -46,12 +46,15 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [agentInfo, setAgentInfo] = useState<{ name: string; activated_by: string | null; is_active: boolean } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open || !phone) return;
     setLoading(true);
     setAiSuggestion(null);
+    setAgentInfo(null);
+    const normalizedPhone = phone.replace(/\D/g, '');
     const fetchMessages = async () => {
       const { data } = await supabase
         .from('whatsapp_messages')
@@ -63,7 +66,33 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       setLoading(false);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 100);
     };
+    const fetchAgent = async () => {
+      const { data } = await supabase
+        .from('whatsapp_conversation_agents')
+        .select('agent_id, is_active, activated_by')
+        .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
+        .limit(1)
+        .maybeSingle();
+      if (data) {
+        const { data: agent } = await supabase
+          .from('whatsapp_ai_agents' as any)
+          .select('name')
+          .eq('id', data.agent_id)
+          .maybeSingle();
+        const activatedByLabel = data.activated_by === 'stage_auto' ? 'Troca de etapa'
+          : data.activated_by === 'ctwa_campaign' ? 'Campanha CTWA'
+          : data.activated_by === 'broadcast' ? 'Lista de transmissão'
+          : data.activated_by === 'manual' ? 'Manual'
+          : data.activated_by || 'Automático';
+        setAgentInfo({
+          name: (agent as any)?.name || 'Agente',
+          activated_by: activatedByLabel,
+          is_active: data.is_active,
+        });
+      }
+    };
     fetchMessages();
+    fetchAgent();
   }, [open, phone]);
 
   // Realtime
@@ -304,6 +333,18 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                   </Badge>
                 )}
               </div>
+              {agentInfo && (
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <Badge variant={agentInfo.is_active ? "default" : "secondary"} className="text-[10px] px-1.5 py-0 h-4 gap-1">
+                    <Bot className="h-3 w-3" />
+                    {agentInfo.name}
+                    {!agentInfo.is_active && ' (pausado)'}
+                  </Badge>
+                  {agentInfo.activated_by && (
+                    <span className="text-[9px] text-muted-foreground">via {agentInfo.activated_by}</span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-1 shrink-0 ml-2">
