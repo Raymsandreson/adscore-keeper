@@ -100,6 +100,7 @@ export function AgentMonitorDashboard() {
   const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
   const [sheetAgentFilter, setSheetAgentFilter] = useState('all');
   const [sheetActivatedByFilter, setSheetActivatedByFilter] = useState('all');
+  const [excludedPhones, setExcludedPhones] = useState<Set<string>>(new Set());
 
   const fetchData = async () => {
     setLoading(true);
