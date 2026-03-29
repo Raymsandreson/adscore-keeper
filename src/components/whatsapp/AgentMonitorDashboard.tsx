@@ -14,6 +14,7 @@ import {
   Filter, MapPin, Phone, PhoneCall
 } from 'lucide-react';
 import { CallQueuePanel } from './CallQueuePanel';
+import { FollowupActivityPanel } from './FollowupActivityPanel';
 import { format, differenceInMinutes, differenceInHours, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
