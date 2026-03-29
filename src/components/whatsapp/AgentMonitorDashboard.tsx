@@ -100,6 +100,7 @@ export function AgentMonitorDashboard() {
   const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
   const [sheetAgentFilter, setSheetAgentFilter] = useState('all');
   const [sheetActivatedByFilter, setSheetActivatedByFilter] = useState('all');
+  const [sheetCampaignFilter, setSheetCampaignFilter] = useState('all');
   const [excludedPhones, setExcludedPhones] = useState<Set<string>>(new Set());
 
   const fetchData = async () => {
@@ -350,21 +351,23 @@ export function AgentMonitorDashboard() {
     }
     if (sheetAgentFilter !== 'all') filtered = filtered.filter(c => c.agent_id === sheetAgentFilter);
     if (sheetActivatedByFilter !== 'all') filtered = filtered.filter(c => c.activated_by === sheetActivatedByFilter);
+    if (sheetCampaignFilter !== 'all') filtered = filtered.filter(c => c.campaign_name === sheetCampaignFilter);
     return filtered;
-  }, [kpiSheet, conversations, sheetAgentFilter, sheetActivatedByFilter]);
+  }, [kpiSheet, conversations, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter]);
 
 
   const selectedSheetConversations = useMemo(() => {
     return kpiSheetConversations.filter(c => !excludedPhones.has(c.phone));
   }, [kpiSheetConversations, excludedPhones]);
 
-  useEffect(() => { setExcludedPhones(new Set()); }, [kpiSheet, sheetAgentFilter, sheetActivatedByFilter]);
+  useEffect(() => { setExcludedPhones(new Set()); }, [kpiSheet, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter]);
   const activatedByLabel = (val: string | null) => {
     switch (val) {
       case 'manual': return 'Manual';
       case 'system': return 'Sistema';
       case 'agent': return 'Agente';
       case 'ctwa_campaign': return 'Campanha CTWA';
+      case 'campaign_auto': return 'Campanha Auto';
       case 'broadcast': return 'Transmissão';
       case 'stage_auto': return 'Troca de Etapa';
       default: return val || 'Desconhecido';
@@ -372,6 +375,7 @@ export function AgentMonitorDashboard() {
   };
 
   const uniqueActivatedBy = useMemo(() => [...new Set(conversations.map(c => c.activated_by).filter(Boolean))].sort() as string[], [conversations]);
+  const uniqueCampaigns = useMemo(() => [...new Set(conversations.map(c => c.campaign_name).filter(Boolean))].sort() as string[], [conversations]);
 
   const formatTimeAgo = (minutes: number | null) => {
     if (!minutes) return '-';
@@ -783,7 +787,7 @@ export function AgentMonitorDashboard() {
       </Tabs>
 
       {/* KPI Conversations Sheet */}
-      <Sheet open={!!kpiSheet} onOpenChange={(open) => { if (!open) { setKpiSheet(null); setSheetAgentFilter('all'); setSheetActivatedByFilter('all'); } }}>
+      <Sheet open={!!kpiSheet} onOpenChange={(open) => { if (!open) { setKpiSheet(null); setSheetAgentFilter('all'); setSheetActivatedByFilter('all'); setSheetCampaignFilter('all'); } }}>
         <SheetContent side="right" className="w-[400px] sm:w-[480px] p-0 flex flex-col">
           <div className="shrink-0 px-4 py-3 border-b bg-primary/5">
             <SheetHeader>
@@ -797,10 +801,9 @@ export function AgentMonitorDashboard() {
                 </div>
               </SheetTitle>
             </SheetHeader>
-            {/* Filters inside sheet */}
-            <div className="flex gap-2 mt-2">
+            <div className="flex flex-wrap gap-2 mt-2">
               <Select value={sheetAgentFilter} onValueChange={setSheetAgentFilter}>
-                <SelectTrigger className="h-7 text-[10px] flex-1">
+                <SelectTrigger className="h-7 text-[10px] flex-1 min-w-[100px]">
                   <SelectValue placeholder="Agente" />
                 </SelectTrigger>
                 <SelectContent>
@@ -811,13 +814,24 @@ export function AgentMonitorDashboard() {
                 </SelectContent>
               </Select>
               <Select value={sheetActivatedByFilter} onValueChange={setSheetActivatedByFilter}>
-                <SelectTrigger className="h-7 text-[10px] flex-1">
+                <SelectTrigger className="h-7 text-[10px] flex-1 min-w-[100px]">
                   <SelectValue placeholder="Ativação" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas ativações</SelectItem>
                   {uniqueActivatedBy.map(v => (
                     <SelectItem key={v} value={v}>{activatedByLabel(v)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={sheetCampaignFilter} onValueChange={setSheetCampaignFilter}>
+                <SelectTrigger className="h-7 text-[10px] flex-1 min-w-[100px]">
+                  <SelectValue placeholder="Campanha" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas campanhas</SelectItem>
+                  {uniqueCampaigns.map(v => (
+                    <SelectItem key={v} value={v}>{v}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
