@@ -11,10 +11,12 @@ import { Progress } from '@/components/ui/progress';
 import {
   Bot, MessageCircle, Clock, TrendingUp, Users, Search, RefreshCw,
   CheckCircle, XCircle, Pause, Zap, ArrowUpRight, ArrowDownRight,
-  Filter, MapPin, Phone, PhoneCall
+  Filter, MapPin, Phone, PhoneCall, ExternalLink
 } from 'lucide-react';
 import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { DashboardChatPreview } from './DashboardChatPreview';
 import { format, differenceInMinutes, differenceInHours, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
