@@ -148,6 +148,24 @@ const App = () => (
 // Separate component to use hooks inside BrowserRouter
 function AppRoutes() {
   return (
+    <Suspense fallback={<PageLoading />}>
+      <Routes>
+        {/* Public routes without sidebar */}
+        <Route path="/landing" element={<LandingPage />} />
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/install" element={<InstallPage />} />
+        <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
+
+        {/* All other routes with sidebar layout */}
+        <Route path="*" element={<SidebarLayout />} />
+      </Routes>
+    </Suspense>
+  );
+}
+
+function SidebarLayout() {
+  return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
         <AppSidebar />
@@ -173,7 +191,6 @@ function AppRoutes() {
                 <Route path="/workflow-progress" element={<ProtectedRoute><WorkflowProgressPage /></ProtectedRoute>} />
                 <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
                 <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
-                <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
                 <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
                 <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
                 <Route path="/instagram" element={<ProtectedRoute><InstagramPage /></ProtectedRoute>} />
@@ -185,9 +202,6 @@ function AppRoutes() {
                 <Route path="/nuclei" element={<ProtectedRoute><NucleiPage /></ProtectedRoute>} />
                 <Route path="/cost-organization" element={<ProtectedRoute><CostOrganizationPage /></ProtectedRoute>} />
                 <Route path="/process-tracking" element={<ProtectedRoute><ProcessTrackingPage /></ProtectedRoute>} />
-                <Route path="/privacy" element={<PrivacyPolicyPage />} />
-                <Route path="/reset-password" element={<ResetPasswordPage />} />
-                <Route path="/install" element={<InstallPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
