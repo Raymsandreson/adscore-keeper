@@ -141,7 +141,18 @@ serve(async (req) => {
 
     const campaignData = await fetchJson(campaignUrl);
     if (campaignData.error) {
-      throw new Error(campaignData.error.message || 'Failed to fetch campaigns');
+      const metaError = campaignData.error;
+      console.error('Meta API error:', JSON.stringify(metaError));
+      return new Response(
+        JSON.stringify({ 
+          error: metaError.message || 'Failed to fetch campaigns',
+          error_type: metaError.type || 'unknown',
+          error_code: metaError.code || 0,
+          error_subcode: metaError.error_subcode || 0,
+          fbtrace_id: metaError.fbtrace_id || null
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const campaigns = campaignData.data || [];
