@@ -159,16 +159,21 @@ serve(async (req) => {
           });
         }
       } else if (step.action_type === "call") {
-        if (inst?.instance_token) {
-          const baseUrl = inst.base_url || "https://abraci.uazapi.com";
-          await fetch(`${baseUrl}/call/make`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", token: inst.instance_token },
-            body: JSON.stringify({ number: session.phone }),
-          }).catch(e => {
-            console.error("Followup call error:", e);
-            actionResult = "error";
-          });
+        // Enqueue the call instead of making it directly to avoid simultaneous calls
+        const { error: queueError } = await supabase.from("whatsapp_call_queue").insert({
+          phone: session.phone,
+          instance_name: session.instance_name,
+          lead_id: session.lead_id || null,
+          contact_name: session.collected_data?.signer_name || null,
+          status: "pending",
+          priority: 5,
+          max_attempts: 2,
+        });
+        if (queueError) {
+          console.error("Failed to enqueue followup call:", queueError);
+          actionResult = "error";
+        } else {
+          console.log(`Followup call enqueued for ${session.phone}`);
         }
       } else if (step.action_type === "create_activity") {
         let assignedTo = step.assigned_to || null;
