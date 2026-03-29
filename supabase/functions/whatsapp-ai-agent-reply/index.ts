@@ -12,6 +12,7 @@ serve(async (req) => {
 
   try {
     const { phone, instance_name, message_text, message_type, lead_id, campaign_id, is_group, contact_name, is_followup } = await req.json();
+    console.log(`Agent reply request: phone=${phone}, instance=${instance_name}, is_followup=${!!is_followup}, msg_type=${message_type || 'text'}`);
     if (!phone || !instance_name) {
       return new Response(JSON.stringify({ error: "Missing fields" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
