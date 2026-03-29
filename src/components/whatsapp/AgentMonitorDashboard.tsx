@@ -64,6 +64,7 @@ interface ConversationDetail {
   time_without_response: number | null; // minutes
   campaign_name: string | null;
   activated_by: string | null;
+  activated_at: string | null;
 }
 
 interface AgentStats {
@@ -102,6 +103,7 @@ export function AgentMonitorDashboard() {
   const [sheetActivatedByFilter, setSheetActivatedByFilter] = useState('all');
   const [sheetCampaignFilter, setSheetCampaignFilter] = useState('all');
   const [sheetInstanceFilter, setSheetInstanceFilter] = useState('all');
+  const [sheetActivatedDateFilter, setSheetActivatedDateFilter] = useState('all');
   const [excludedPhones, setExcludedPhones] = useState<Set<string>>(new Set());
 
   const fetchData = async () => {
@@ -249,6 +251,7 @@ export function AgentMonitorDashboard() {
           time_without_response: timeWithoutResponse,
           campaign_name: campaignByPhone.get(key) || msgs.find((m: any) => m.campaign_name)?.campaign_name || lead?.campaign_name || null,
           activated_by: ca.activated_by || null,
+          activated_at: ca.created_at || null,
         });
       });
 
@@ -389,16 +392,22 @@ export function AgentMonitorDashboard() {
       }
     }
     if (sheetInstanceFilter !== 'all') filtered = filtered.filter(c => c.instance_name === sheetInstanceFilter);
+    if (sheetActivatedDateFilter !== 'all') filtered = filtered.filter(c => c.activated_at ? format(new Date(c.activated_at), 'yyyy-MM-dd') === sheetActivatedDateFilter : false);
     return filtered;
-  }, [kpiSheet, conversations, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter, sheetInstanceFilter]);
+  }, [kpiSheet, conversations, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter, sheetInstanceFilter, sheetActivatedDateFilter]);
 
   const selectedSheetConversations = useMemo(() => {
     return kpiSheetConversations.filter(c => !excludedPhones.has(c.phone));
   }, [kpiSheetConversations, excludedPhones]);
 
-  useEffect(() => { setExcludedPhones(new Set()); }, [kpiSheet, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter, sheetInstanceFilter]);
+  useEffect(() => { setExcludedPhones(new Set()); }, [kpiSheet, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter, sheetInstanceFilter, sheetActivatedDateFilter]);
 
   const uniqueInstances = useMemo(() => [...new Set(conversations.map(c => c.instance_name).filter(Boolean))].sort() as string[], [conversations]);
+
+  const uniqueActivatedDates = useMemo(() => {
+    const dates = conversations.map(c => c.activated_at ? format(new Date(c.activated_at), 'yyyy-MM-dd') : null).filter(Boolean) as string[];
+    return [...new Set(dates)].sort().reverse();
+  }, [conversations]);
 
   const uniqueActivatedBy = useMemo(() => [...new Set(conversations.map(c => activatedByLabel(c.activated_by)).filter(v => v !== 'Desconhecido'))].sort() as string[], [conversations]);
   const uniqueCampaigns = useMemo(() => {
@@ -828,7 +837,7 @@ export function AgentMonitorDashboard() {
       </Tabs>
 
       {/* KPI Conversations Sheet */}
-      <Sheet open={!!kpiSheet} onOpenChange={(open) => { if (!open) { setKpiSheet(null); setSheetAgentFilter('all'); setSheetActivatedByFilter('all'); setSheetCampaignFilter('all'); setSheetInstanceFilter('all'); } }}>
+      <Sheet open={!!kpiSheet} onOpenChange={(open) => { if (!open) { setKpiSheet(null); setSheetAgentFilter('all'); setSheetActivatedByFilter('all'); setSheetCampaignFilter('all'); setSheetInstanceFilter('all'); setSheetActivatedDateFilter('all'); } }}>
         <SheetContent side="right" className="w-[400px] sm:w-[480px] p-0 flex flex-col">
           <div className="shrink-0 px-4 py-3 border-b bg-primary/5">
             <SheetHeader>
@@ -898,6 +907,20 @@ export function AgentMonitorDashboard() {
                     <SelectItem value="all">Todas instâncias</SelectItem>
                     {uniqueInstances.map(v => (
                       <SelectItem key={v} value={v}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1 min-w-[100px]">
+                <label className="text-[9px] font-medium text-muted-foreground mb-0.5 block">Data Ativação</label>
+                <Select value={sheetActivatedDateFilter} onValueChange={setSheetActivatedDateFilter}>
+                  <SelectTrigger className="h-7 text-[10px]">
+                    <SelectValue placeholder="Data Ativação" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas datas</SelectItem>
+                    {uniqueActivatedDates.map(v => (
+                      <SelectItem key={v} value={v}>{format(new Date(v + 'T12:00:00'), 'dd/MM/yyyy')}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
