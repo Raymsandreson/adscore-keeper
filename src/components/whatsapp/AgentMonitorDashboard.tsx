@@ -12,8 +12,9 @@ import { Progress } from '@/components/ui/progress';
 import {
   Bot, MessageCircle, Clock, TrendingUp, Users, Search, RefreshCw,
   CheckCircle, XCircle, Pause, Zap, ArrowUpRight, ArrowDownRight,
-  Filter, MapPin, Phone, PhoneCall, ExternalLink, PowerOff, Megaphone
+  Filter, MapPin, Phone, PhoneCall, ExternalLink, PowerOff, Megaphone, PhoneOutgoing
 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
