@@ -443,11 +443,18 @@ export function CTWACampaignAutomation() {
       }
     }
 
-    setBulkFollowup({ running: false, current: 0, total: 0, success: 0, failed: 0 });
-    toast.success(`Follow-up concluído: ${success} enviados, ${failed} erros`);
+    setBulkFollowup({ running: false, current: filtered.length, total: filtered.length, success, failed });
+    console.log(`Bulk followup completed: ${success} sent, ${failed} errors`);
+    if (failed > 0) {
+      toast.warning(`Follow-up concluído: ${success} enviados, ${failed} com erro`);
+    } else {
+      toast.success(`Follow-up concluído: ${success} enviados com sucesso!`);
+    }
     
-    // Refresh conversations
-    if (sheetLink) fetchLinkConversations(sheetLink);
+    // Refresh conversations after a small delay
+    setTimeout(() => {
+      if (sheetLink) fetchLinkConversations(sheetLink);
+    }, 3000);
   };
 
 
