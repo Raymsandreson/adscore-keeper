@@ -367,6 +367,8 @@ export function AgentMonitorDashboard() {
       case 'agent': return 'Agente';
       case 'ctwa_campaign': return 'Campanha CTWA';
       case 'campaign_auto': return 'Campanha Auto';
+      case 'campaign_instance_auto': return 'Instância Auto';
+      case 'instance_default': return 'Padrão Instância';
       case 'broadcast': return 'Transmissão';
       case 'stage_auto': return 'Troca de Etapa';
       default: return val || 'Desconhecido';
@@ -808,39 +810,48 @@ export function AgentMonitorDashboard() {
               </SheetTitle>
             </SheetHeader>
             <div className="flex flex-wrap gap-2 mt-2">
-              <Select value={sheetAgentFilter} onValueChange={setSheetAgentFilter}>
-                <SelectTrigger className="h-7 text-[10px] flex-1 min-w-[100px]">
-                  <SelectValue placeholder="Agente" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos agentes</SelectItem>
-                  {uniqueSheetAgents.map(([id, name]) => (
-                    <SelectItem key={id} value={id}>{name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={sheetActivatedByFilter} onValueChange={setSheetActivatedByFilter}>
-                <SelectTrigger className="h-7 text-[10px] flex-1 min-w-[100px]">
-                  <SelectValue placeholder="Ativação" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas ativações</SelectItem>
-                  {uniqueActivatedBy.map(v => (
-                    <SelectItem key={v} value={v}>{activatedByLabel(v)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={sheetCampaignFilter} onValueChange={setSheetCampaignFilter}>
-                <SelectTrigger className="h-7 text-[10px] flex-1 min-w-[100px]">
-                  <SelectValue placeholder="Campanha" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas campanhas</SelectItem>
-                  {uniqueCampaigns.map(v => (
-                    <SelectItem key={v} value={v}>{v}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex-1 min-w-[100px]">
+                <label className="text-[9px] font-medium text-muted-foreground mb-0.5 block">Agente</label>
+                <Select value={sheetAgentFilter} onValueChange={setSheetAgentFilter}>
+                  <SelectTrigger className="h-7 text-[10px]">
+                    <SelectValue placeholder="Agente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos agentes</SelectItem>
+                    {uniqueSheetAgents.map(([id, name]) => (
+                      <SelectItem key={id} value={id}>{name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1 min-w-[100px]">
+                <label className="text-[9px] font-medium text-muted-foreground mb-0.5 block">Ativação</label>
+                <Select value={sheetActivatedByFilter} onValueChange={setSheetActivatedByFilter}>
+                  <SelectTrigger className="h-7 text-[10px]">
+                    <SelectValue placeholder="Ativação" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas ativações</SelectItem>
+                    {uniqueActivatedBy.map(v => (
+                      <SelectItem key={v} value={v}>{activatedByLabel(v)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1 min-w-[100px]">
+                <label className="text-[9px] font-medium text-muted-foreground mb-0.5 block">Campanha</label>
+                <Select value={sheetCampaignFilter} onValueChange={setSheetCampaignFilter}>
+                  <SelectTrigger className="h-7 text-[10px]">
+                    <SelectValue placeholder="Campanha" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas campanhas</SelectItem>
+                    {uniqueCampaigns.map(v => (
+                      <SelectItem key={v} value={v}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             {/* Batch actions */}
             <div className="flex items-center justify-between mt-1 mb-1">
