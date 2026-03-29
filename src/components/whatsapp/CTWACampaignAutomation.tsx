@@ -465,9 +465,13 @@ export function CTWACampaignAutomation() {
     }
 
     setBulkFollowup({ running: false, current: filtered.length, total: filtered.length, success, failed });
-    console.log(`Bulk followup completed: ${success} sent, ${failed} errors`);
-    if (failed > 0) {
-      toast.warning(`Follow-up concluído: ${success} enviados, ${failed} com erro`);
+    console.log(`Bulk followup completed: ${success} sent, ${skipped} skipped, ${failed} errors`);
+    if (failed > 0 || skipped > 0) {
+      const parts = [];
+      if (success > 0) parts.push(`${success} enviados`);
+      if (skipped > 0) parts.push(`${skipped} pulados (sem agente ou pausado)`);
+      if (failed > 0) parts.push(`${failed} com erro`);
+      toast.warning(`Follow-up: ${parts.join(', ')}`);
     } else {
       toast.success(`Follow-up concluído: ${success} enviados com sucesso!`);
     }
