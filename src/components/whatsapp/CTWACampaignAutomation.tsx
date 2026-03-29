@@ -13,6 +13,7 @@ import {
   Megaphone, Target, Sparkles, FolderKanban, Plus, X, Loader2, RefreshCw, Phone, 
   Pause, Play, MessageSquare, Users, UserPlus, Brain, ExternalLink 
 } from 'lucide-react';
+import { DashboardChatPreview } from './DashboardChatPreview';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 
