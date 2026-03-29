@@ -451,6 +451,7 @@ export function CTWACampaignAutomation() {
   };
 
 
+  const handleBulkCreateLeads = async (link: CampaignLink) => {
     const linkAny = link as any;
     if (!linkAny.board_id) {
       toast.error('Configure um funil de destino antes de criar leads em massa');
