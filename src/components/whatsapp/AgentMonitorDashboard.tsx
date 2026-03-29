@@ -11,8 +11,9 @@ import { Progress } from '@/components/ui/progress';
 import {
   Bot, MessageCircle, Clock, TrendingUp, Users, Search, RefreshCw,
   CheckCircle, XCircle, Pause, Zap, ArrowUpRight, ArrowDownRight,
-  Filter, MapPin, Phone
+  Filter, MapPin, Phone, PhoneCall
 } from 'lucide-react';
+import { CallQueuePanel } from './CallQueuePanel';
 import { format, differenceInMinutes, differenceInHours, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -419,10 +420,13 @@ export function AgentMonitorDashboard() {
       </div>
 
       <Tabs defaultValue="agents" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 max-w-md">
+        <TabsList className="grid w-full grid-cols-4 max-w-lg">
           <TabsTrigger value="agents" className="text-xs">Por Agente</TabsTrigger>
           <TabsTrigger value="conversations" className="text-xs">Conversas</TabsTrigger>
           <TabsTrigger value="funnel" className="text-xs">Funil</TabsTrigger>
+          <TabsTrigger value="call-queue" className="text-xs flex items-center gap-1">
+            <PhoneCall className="h-3 w-3" /> Fila Ligações
+          </TabsTrigger>
         </TabsList>
 
         {/* TAB: Per Agent Stats */}
