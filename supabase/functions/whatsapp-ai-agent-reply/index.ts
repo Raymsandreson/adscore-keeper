@@ -280,9 +280,9 @@ serve(async (req) => {
     }
 
     // ========== MESSAGE BATCHING DELAY ==========
-    // Wait for the configured delay to allow the sender to finish sending multiple messages
+    // Skip batching delay for manual followups to avoid timeouts
     const batchDelaySeconds = (agent as any).response_delay_seconds || 0;
-    if (batchDelaySeconds > 0) {
+    if (batchDelaySeconds > 0 && !is_followup) {
       console.log(`Batching delay: waiting ${batchDelaySeconds}s for more messages from ${phone}`);
       await new Promise(resolve => setTimeout(resolve, batchDelaySeconds * 1000));
 
@@ -311,6 +311,8 @@ serve(async (req) => {
         }
       }
       console.log(`Batching delay complete: processing all accumulated messages for ${phone}`);
+    } else if (is_followup) {
+      console.log(`Manual followup: skipping batching delay for ${phone}`);
     }
 
     // ========== GENERATE AI RESPONSE ==========
