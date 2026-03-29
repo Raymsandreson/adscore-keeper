@@ -114,6 +114,7 @@ const InstagramPage = lazyRetry(() => import("./pages/InstagramPage"), "Instagra
 const SettingsPage = lazyRetry(() => import("./pages/SettingsPage"), "SettingsPage");
 const ReferralSearchPage = lazyRetry(() => import("./pages/ReferralSearchPage"), "ReferralSearchPage");
 const AgentMonitorPage = lazyRetry(() => import("./pages/AgentMonitorPage"), "AgentMonitorPage");
+const LandingPage = lazyRetry(() => import("./pages/LandingPage"), "LandingPage");
 
 const queryClient = new QueryClient();
 
