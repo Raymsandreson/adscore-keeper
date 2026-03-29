@@ -334,6 +334,21 @@ export function AgentMonitorDashboard() {
     return { total, active, paused, noResponse, totalFollowups, totalMsgsSent, totalMsgsReceived, closed, refused };
   }, [conversations]);
 
+  const activatedByLabel = (val: string | null) => {
+    switch (val) {
+      case 'manual': return 'Manual';
+      case 'system': return 'Sistema';
+      case 'agent': return 'Agente';
+      case 'ctwa_campaign':
+      case 'campaign_auto': return 'Anúncio Meta';
+      case 'campaign_instance_auto':
+      case 'instance_default': return 'Instância';
+      case 'broadcast': return 'Lista de Transmissão';
+      case 'stage_auto': return 'Troca de Etapa';
+      default: return val || 'Desconhecido';
+    }
+  };
+
   const kpiSheetConversations = useMemo(() => {
     if (!kpiSheet) return [];
     let filtered: ConversationDetail[];
@@ -354,26 +369,11 @@ export function AgentMonitorDashboard() {
     return filtered;
   }, [kpiSheet, conversations, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter]);
 
-
   const selectedSheetConversations = useMemo(() => {
     return kpiSheetConversations.filter(c => !excludedPhones.has(c.phone));
   }, [kpiSheetConversations, excludedPhones]);
 
   useEffect(() => { setExcludedPhones(new Set()); }, [kpiSheet, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter]);
-  const activatedByLabel = (val: string | null) => {
-    switch (val) {
-      case 'manual': return 'Manual';
-      case 'system': return 'Sistema';
-      case 'agent': return 'Agente';
-      case 'ctwa_campaign':
-      case 'campaign_auto': return 'Anúncio Meta';
-      case 'campaign_instance_auto':
-      case 'instance_default': return 'Instância';
-      case 'broadcast': return 'Lista de Transmissão';
-      case 'stage_auto': return 'Troca de Etapa';
-      default: return val || 'Desconhecido';
-    }
-  };
 
   const uniqueActivatedBy = useMemo(() => [...new Set(conversations.map(c => activatedByLabel(c.activated_by)).filter(v => v !== 'Desconhecido'))].sort() as string[], [conversations]);
   const uniqueCampaigns = useMemo(() => [...new Set(conversations.map(c => c.campaign_name).filter(Boolean))].sort() as string[], [conversations]);
