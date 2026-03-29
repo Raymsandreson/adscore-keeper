@@ -381,7 +381,7 @@ export function AgentMonitorDashboard() {
 
       {/* Global KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <Card className="border-primary/20">
+        <Card className="border-primary/20 cursor-pointer hover:shadow-md transition-shadow" onClick={() => setKpiSheet({ filter: 'total', label: 'Total Conversas' })}>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
               <MessageCircle className="h-3.5 w-3.5" />
@@ -389,13 +389,13 @@ export function AgentMonitorDashboard() {
             </div>
             <p className="text-2xl font-bold">{globalStats.total}</p>
             <div className="flex gap-2 mt-1">
-              <Badge variant="secondary" className="text-[9px]">{globalStats.active} ativas</Badge>
-              <Badge variant="outline" className="text-[9px]">{globalStats.paused} pausadas</Badge>
+              <Badge variant="secondary" className="text-[9px] cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'active', label: 'Conversas Ativas' }); }}>{globalStats.active} ativas</Badge>
+              <Badge variant="outline" className="text-[9px] cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'paused', label: 'Conversas Pausadas' }); }}>{globalStats.paused} pausadas</Badge>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setKpiSheet({ filter: 'msgs_sent', label: 'Conversas com Mensagens' })}>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
               <TrendingUp className="h-3.5 w-3.5" />
@@ -406,7 +406,7 @@ export function AgentMonitorDashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setKpiSheet({ filter: 'followups', label: 'Conversas com Follow-up' })}>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
               <Zap className="h-3.5 w-3.5" />
@@ -416,18 +416,18 @@ export function AgentMonitorDashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setKpiSheet({ filter: 'closed', label: 'Fechados' })}>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
               <CheckCircle className="h-3.5 w-3.5 text-green-500" />
               Fechados
             </div>
             <p className="text-2xl font-bold text-green-600">{globalStats.closed}</p>
-            <p className="text-[10px] text-red-500">{globalStats.refused} recusados</p>
+            <p className="text-[10px] text-red-500 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'refused', label: 'Recusados' }); }}>{globalStats.refused} recusados</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setKpiSheet({ filter: 'no_response', label: 'Sem Resposta (>1h)' })}>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
               <Clock className="h-3.5 w-3.5 text-amber-500" />
