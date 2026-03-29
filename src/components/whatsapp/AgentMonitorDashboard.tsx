@@ -365,7 +365,13 @@ export function AgentMonitorDashboard() {
     }
     if (sheetAgentFilter !== 'all') filtered = filtered.filter(c => c.agent_id === sheetAgentFilter);
     if (sheetActivatedByFilter !== 'all') filtered = filtered.filter(c => activatedByLabel(c.activated_by) === sheetActivatedByFilter);
-    if (sheetCampaignFilter !== 'all') filtered = filtered.filter(c => c.campaign_name === sheetCampaignFilter);
+    if (sheetCampaignFilter !== 'all') {
+      if (sheetCampaignFilter === '__none__') {
+        filtered = filtered.filter(c => !c.campaign_name);
+      } else {
+        filtered = filtered.filter(c => c.campaign_name === sheetCampaignFilter);
+      }
+    }
     return filtered;
   }, [kpiSheet, conversations, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter]);
 
@@ -376,7 +382,15 @@ export function AgentMonitorDashboard() {
   useEffect(() => { setExcludedPhones(new Set()); }, [kpiSheet, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter]);
 
   const uniqueActivatedBy = useMemo(() => [...new Set(conversations.map(c => activatedByLabel(c.activated_by)).filter(v => v !== 'Desconhecido'))].sort() as string[], [conversations]);
-  const uniqueCampaigns = useMemo(() => [...new Set(conversations.map(c => c.campaign_name).filter(Boolean))].sort() as string[], [conversations]);
+  const uniqueCampaigns = useMemo(() => {
+    // Filter campaigns based on current activation filter to keep them consistent
+    let base = conversations;
+    if (sheetActivatedByFilter !== 'all') base = base.filter(c => activatedByLabel(c.activated_by) === sheetActivatedByFilter);
+    const names = base.map(c => c.campaign_name);
+    const hasNull = names.some(n => !n);
+    const unique = [...new Set(names.filter(Boolean))].sort() as string[];
+    return { campaigns: unique, hasNoCampaign: hasNull };
+  }, [conversations, sheetActivatedByFilter]);
   const uniqueSheetAgents = useMemo(() => {
     const agentMap = new Map<string, string>();
     conversations.forEach(c => {
@@ -846,9 +860,12 @@ export function AgentMonitorDashboard() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas campanhas</SelectItem>
-                    {uniqueCampaigns.map(v => (
+                    {uniqueCampaigns.campaigns.map(v => (
                       <SelectItem key={v} value={v}>{v}</SelectItem>
                     ))}
+                    {uniqueCampaigns.hasNoCampaign && (
+                      <SelectItem value="__none__">Sem campanha</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
