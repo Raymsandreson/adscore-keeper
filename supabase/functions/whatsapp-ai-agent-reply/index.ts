@@ -314,7 +314,8 @@ serve(async (req) => {
     }
 
     // ========== GENERATE AI RESPONSE ==========
-    if ((agent as any).provider === "lovable_ai") {
+    const agentProvider = ((agent as any).provider || "").toLowerCase();
+    if (agentProvider === "lovable_ai" || agentProvider === "lovable") {
       const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
       if (!GOOGLE_AI_API_KEY) {
         return new Response(JSON.stringify({ error: "GOOGLE_AI_API_KEY not configured" }), {
