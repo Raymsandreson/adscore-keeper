@@ -353,6 +353,12 @@ export function AgentMonitorDashboard() {
     return filtered;
   }, [kpiSheet, conversations, sheetAgentFilter, sheetActivatedByFilter]);
 
+
+  const selectedSheetConversations = useMemo(() => {
+    return kpiSheetConversations.filter(c => !excludedPhones.has(c.phone));
+  }, [kpiSheetConversations, excludedPhones]);
+
+  useEffect(() => { setExcludedPhones(new Set()); }, [kpiSheet, sheetAgentFilter, sheetActivatedByFilter]);
   const activatedByLabel = (val: string | null) => {
     switch (val) {
       case 'manual': return 'Manual';
