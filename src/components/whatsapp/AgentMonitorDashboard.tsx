@@ -376,6 +376,13 @@ export function AgentMonitorDashboard() {
 
   const uniqueActivatedBy = useMemo(() => [...new Set(conversations.map(c => c.activated_by).filter(Boolean))].sort() as string[], [conversations]);
   const uniqueCampaigns = useMemo(() => [...new Set(conversations.map(c => c.campaign_name).filter(Boolean))].sort() as string[], [conversations]);
+  const uniqueSheetAgents = useMemo(() => {
+    const agentMap = new Map<string, string>();
+    conversations.forEach(c => {
+      if (c.agent_id && c.agent_name) agentMap.set(c.agent_id, c.agent_name);
+    });
+    return Array.from(agentMap.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [conversations]);
 
   const formatTimeAgo = (minutes: number | null) => {
     if (!minutes) return '-';
@@ -808,8 +815,8 @@ export function AgentMonitorDashboard() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos agentes</SelectItem>
-                  {agents.map(a => (
-                    <SelectItem key={a.id} value={a.id}>{a.shortcut_name}</SelectItem>
+                  {uniqueSheetAgents.map(([id, name]) => (
+                    <SelectItem key={id} value={id}>{name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
