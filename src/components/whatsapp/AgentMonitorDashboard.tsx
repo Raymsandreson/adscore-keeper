@@ -196,6 +196,10 @@ export function AgentMonitorDashboard() {
 
       const convDetails: ConversationDetail[] = [];
       (convAgents || []).forEach((ca: any) => {
+        // Skip groups — they can't click on ads and shouldn't appear
+        const phoneClean = ca.phone?.replace(/\D/g, '') || '';
+        if (ca.phone?.includes('@g.us') || phoneClean.startsWith('120363')) return;
+
         const agentName = agentMap.get(ca.agent_id) || 'Desconhecido';
         const key = `${ca.phone}|${ca.instance_name}`;
         const msgs = msgByConv.get(key) || [];
