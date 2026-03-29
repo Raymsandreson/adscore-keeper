@@ -253,7 +253,7 @@ serve(async (req) => {
           split_messages: (shortcut as any).split_messages || false,
           split_delay_seconds: (shortcut as any).split_delay_seconds || 2,
           sign_messages: false,
-          provider: "lovable_ai",
+          provider: "lovable",
           respond_in_groups: (shortcut as any).respond_in_groups || false,
           reply_with_audio: (shortcut as any).reply_with_audio || false,
           reply_voice_id: (shortcut as any).reply_voice_id || null,
@@ -314,8 +314,7 @@ serve(async (req) => {
     }
 
     // ========== GENERATE AI RESPONSE ==========
-    const agentProvider = ((agent as any).provider || "").toLowerCase();
-    if (agentProvider === "lovable_ai" || agentProvider === "lovable") {
+    if ((agent as any).provider === "lovable") {
       const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
       if (!GOOGLE_AI_API_KEY) {
         return new Response(JSON.stringify({ error: "GOOGLE_AI_API_KEY not configured" }), {
