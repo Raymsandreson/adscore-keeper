@@ -231,6 +231,8 @@ export function CTWACampaignAutomation() {
       (campaignMessages || []).forEach((m: any) => {
         const norm = m.phone?.replace(/\D/g, '');
         if (!norm) return;
+        // Exclude WhatsApp groups (phone starts with 120363 or contains @g.us)
+        if (norm.startsWith('120363') || m.phone?.includes('@g.us')) return;
         const key = `${norm}_${m.instance_name}`;
         if (!phoneMap.has(key)) {
           phoneMap.set(key, { phone: m.phone, contact_name: m.contact_name, instance_name: m.instance_name });
