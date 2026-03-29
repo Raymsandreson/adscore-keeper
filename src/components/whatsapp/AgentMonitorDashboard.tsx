@@ -833,7 +833,7 @@ export function AgentMonitorDashboard() {
                   <SelectContent>
                     <SelectItem value="all">Todas ativações</SelectItem>
                     {uniqueActivatedBy.map(v => (
-                      <SelectItem key={v} value={v}>{activatedByLabel(v)}</SelectItem>
+                      <SelectItem key={v} value={v}>{v}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
