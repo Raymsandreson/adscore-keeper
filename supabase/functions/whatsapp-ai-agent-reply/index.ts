@@ -11,7 +11,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { phone, instance_name, message_text, message_type, lead_id, campaign_id, is_group, contact_name } = await req.json();
+    const { phone, instance_name, message_text, message_type, lead_id, campaign_id, is_group, contact_name, is_followup } = await req.json();
     if (!phone || !instance_name) {
       return new Response(JSON.stringify({ error: "Missing fields" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -203,7 +203,7 @@ serve(async (req) => {
       .eq("instance_name", instance_name)
       .maybeSingle();
 
-    if ((pauseCheck as any)?.human_paused_until) {
+    if ((pauseCheck as any)?.human_paused_until && !is_followup) {
       const pausedUntil = new Date((pauseCheck as any).human_paused_until);
       if (pausedUntil > new Date()) {
         console.log(`Agent paused until ${pausedUntil.toISOString()} due to human intervention`);
