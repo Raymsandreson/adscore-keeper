@@ -101,6 +101,7 @@ export function AgentMonitorDashboard() {
   const [sheetAgentFilter, setSheetAgentFilter] = useState('all');
   const [sheetActivatedByFilter, setSheetActivatedByFilter] = useState('all');
   const [sheetCampaignFilter, setSheetCampaignFilter] = useState('all');
+  const [sheetInstanceFilter, setSheetInstanceFilter] = useState('all');
   const [excludedPhones, setExcludedPhones] = useState<Set<string>>(new Set());
 
   const fetchData = async () => {
@@ -387,14 +388,17 @@ export function AgentMonitorDashboard() {
         filtered = filtered.filter(c => c.campaign_name === sheetCampaignFilter);
       }
     }
+    if (sheetInstanceFilter !== 'all') filtered = filtered.filter(c => c.instance_name === sheetInstanceFilter);
     return filtered;
-  }, [kpiSheet, conversations, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter]);
+  }, [kpiSheet, conversations, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter, sheetInstanceFilter]);
 
   const selectedSheetConversations = useMemo(() => {
     return kpiSheetConversations.filter(c => !excludedPhones.has(c.phone));
   }, [kpiSheetConversations, excludedPhones]);
 
-  useEffect(() => { setExcludedPhones(new Set()); }, [kpiSheet, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter]);
+  useEffect(() => { setExcludedPhones(new Set()); }, [kpiSheet, sheetAgentFilter, sheetActivatedByFilter, sheetCampaignFilter, sheetInstanceFilter]);
+
+  const uniqueInstances = useMemo(() => [...new Set(conversations.map(c => c.instance_name).filter(Boolean))].sort() as string[], [conversations]);
 
   const uniqueActivatedBy = useMemo(() => [...new Set(conversations.map(c => activatedByLabel(c.activated_by)).filter(v => v !== 'Desconhecido'))].sort() as string[], [conversations]);
   const uniqueCampaigns = useMemo(() => {
@@ -824,7 +828,7 @@ export function AgentMonitorDashboard() {
       </Tabs>
 
       {/* KPI Conversations Sheet */}
-      <Sheet open={!!kpiSheet} onOpenChange={(open) => { if (!open) { setKpiSheet(null); setSheetAgentFilter('all'); setSheetActivatedByFilter('all'); setSheetCampaignFilter('all'); } }}>
+      <Sheet open={!!kpiSheet} onOpenChange={(open) => { if (!open) { setKpiSheet(null); setSheetAgentFilter('all'); setSheetActivatedByFilter('all'); setSheetCampaignFilter('all'); setSheetInstanceFilter('all'); } }}>
         <SheetContent side="right" className="w-[400px] sm:w-[480px] p-0 flex flex-col">
           <div className="shrink-0 px-4 py-3 border-b bg-primary/5">
             <SheetHeader>
@@ -881,6 +885,20 @@ export function AgentMonitorDashboard() {
                     {uniqueCampaigns.hasNoCampaign && (
                       <SelectItem value="__none__">Sem campanha</SelectItem>
                     )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1 min-w-[100px]">
+                <label className="text-[9px] font-medium text-muted-foreground mb-0.5 block">Instância</label>
+                <Select value={sheetInstanceFilter} onValueChange={setSheetInstanceFilter}>
+                  <SelectTrigger className="h-7 text-[10px]">
+                    <SelectValue placeholder="Instância" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas instâncias</SelectItem>
+                    {uniqueInstances.map(v => (
+                      <SelectItem key={v} value={v}>{v}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
