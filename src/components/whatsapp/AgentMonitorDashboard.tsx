@@ -860,9 +860,12 @@ export function AgentMonitorDashboard() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas campanhas</SelectItem>
-                    {uniqueCampaigns.map(v => (
+                    {uniqueCampaigns.campaigns.map(v => (
                       <SelectItem key={v} value={v}>{v}</SelectItem>
                     ))}
+                    {uniqueCampaigns.hasNoCampaign && (
+                      <SelectItem value="__none__">Sem campanha</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
