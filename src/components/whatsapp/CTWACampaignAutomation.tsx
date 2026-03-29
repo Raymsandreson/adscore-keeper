@@ -1126,6 +1126,18 @@ export function CTWACampaignAutomation() {
           </ScrollArea>
         </SheetContent>
       </Sheet>
+
+      <DashboardChatPreview
+        open={!!chatPreviewPhone}
+        onOpenChange={(open) => { if (!open) { setChatPreviewPhone(null); setChatPreviewConv(null); } }}
+        phone={chatPreviewPhone}
+        contactName={chatPreviewConv?.contact_name || chatPreviewConv?.lead_name || null}
+        instanceName={chatPreviewConv?.instance_name || null}
+        hasLead={chatPreviewConv?.has_lead || false}
+        hasContact={chatPreviewConv?.has_contact || false}
+        wasResponded={chatPreviewConv?.was_responded || false}
+        responseTimeMinutes={chatPreviewConv?.response_time_minutes || null}
+      />
     </Card>
   );
 }
