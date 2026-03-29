@@ -917,14 +917,27 @@ export function AgentMonitorDashboard() {
           </div>
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-2">
-              {kpiSheetConversations.map((c, idx) => (
+              {kpiSheetConversations.map((c, idx) => {
+                const isSelected = !excludedPhones.has(c.phone);
+                return (
                 <Card
                   key={`${c.phone}-${c.instance_name}-${idx}`}
-                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  className={`cursor-pointer hover:shadow-md transition-shadow ${!isSelected ? 'opacity-40' : ''}`}
                   onClick={() => setChatPreview(c)}
                 >
                   <CardContent className="p-3">
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2">
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={(checked) => {
+                          const next = new Set(excludedPhones);
+                          if (checked) { next.delete(c.phone); } else { next.add(c.phone); }
+                          setExcludedPhones(next);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="mt-1 shrink-0"
+                      />
+                      <div className="flex items-start justify-between gap-2 flex-1 min-w-0">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-semibold truncate">{c.contact_name || c.lead_name || c.phone}</span>
