@@ -774,7 +774,7 @@ export function AgentMonitorDashboard() {
       </Tabs>
 
       {/* KPI Conversations Sheet */}
-      <Sheet open={!!kpiSheet} onOpenChange={(open) => !open && setKpiSheet(null)}>
+      <Sheet open={!!kpiSheet} onOpenChange={(open) => { if (!open) { setKpiSheet(null); setSheetAgentFilter('all'); setSheetActivatedByFilter('all'); } }}>
         <SheetContent side="right" className="w-[400px] sm:w-[480px] p-0 flex flex-col">
           <div className="shrink-0 px-4 py-3 border-b bg-primary/5">
             <SheetHeader>
@@ -788,6 +788,31 @@ export function AgentMonitorDashboard() {
                 </div>
               </SheetTitle>
             </SheetHeader>
+            {/* Filters inside sheet */}
+            <div className="flex gap-2 mt-2">
+              <Select value={sheetAgentFilter} onValueChange={setSheetAgentFilter}>
+                <SelectTrigger className="h-7 text-[10px] flex-1">
+                  <SelectValue placeholder="Agente" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos agentes</SelectItem>
+                  {agents.map(a => (
+                    <SelectItem key={a.id} value={a.id}>{a.shortcut_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={sheetActivatedByFilter} onValueChange={setSheetActivatedByFilter}>
+                <SelectTrigger className="h-7 text-[10px] flex-1">
+                  <SelectValue placeholder="Ativação" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas ativações</SelectItem>
+                  {uniqueActivatedBy.map(v => (
+                    <SelectItem key={v} value={v}>{activatedByLabel(v)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-2">
@@ -820,6 +845,11 @@ export function AgentMonitorDashboard() {
                             </span>
                           )}
                         </div>
+                        {c.activated_by && (
+                          <Badge variant="outline" className="text-[9px] h-4 mt-1 border-blue-200 text-blue-600 dark:border-blue-800 dark:text-blue-400">
+                            ⚡ {activatedByLabel(c.activated_by)}
+                          </Badge>
+                        )}
                         {c.board_name && c.stage_name && (
                           <Badge variant="outline" className="text-[9px] h-4 mt-1">{c.board_name} → {c.stage_name}</Badge>
                         )}
