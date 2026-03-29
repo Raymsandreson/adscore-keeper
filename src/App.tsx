@@ -113,6 +113,7 @@ const ContactsPage = lazyRetry(() => import("./pages/ContactsPage"), "ContactsPa
 const InstagramPage = lazyRetry(() => import("./pages/InstagramPage"), "InstagramPage");
 const SettingsPage = lazyRetry(() => import("./pages/SettingsPage"), "SettingsPage");
 const ReferralSearchPage = lazyRetry(() => import("./pages/ReferralSearchPage"), "ReferralSearchPage");
+const AgentMonitorPage = lazyRetry(() => import("./pages/AgentMonitorPage"), "AgentMonitorPage");
 
 const queryClient = new QueryClient();
 
@@ -178,6 +179,7 @@ function AppRoutes() {
                 <Route path="/contacts" element={<ProtectedRoute><ContactsPage /></ProtectedRoute>} />
                 <Route path="/referrals" element={<ProtectedRoute><ReferralSearchPage /></ProtectedRoute>} />
                 <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+                <Route path="/agent-monitor" element={<ProtectedRoute><AgentMonitorPage /></ProtectedRoute>} />
                 <Route path="/cases" element={<ProtectedRoute><CasesPage /></ProtectedRoute>} />
                 <Route path="/nuclei" element={<ProtectedRoute><NucleiPage /></ProtectedRoute>} />
                 <Route path="/cost-organization" element={<ProtectedRoute><CostOrganizationPage /></ProtectedRoute>} />
