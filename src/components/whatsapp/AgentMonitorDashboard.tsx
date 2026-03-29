@@ -14,6 +14,7 @@ import {
   Filter, MapPin, Phone, PhoneCall
 } from 'lucide-react';
 import { CallQueuePanel } from './CallQueuePanel';
+import { FollowupActivityPanel } from './FollowupActivityPanel';
 import { format, differenceInMinutes, differenceInHours, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -420,10 +421,13 @@ export function AgentMonitorDashboard() {
       </div>
 
       <Tabs defaultValue="agents" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 max-w-lg">
+        <TabsList className="grid w-full grid-cols-5 max-w-2xl">
           <TabsTrigger value="agents" className="text-xs">Por Agente</TabsTrigger>
           <TabsTrigger value="conversations" className="text-xs">Conversas</TabsTrigger>
           <TabsTrigger value="funnel" className="text-xs">Funil</TabsTrigger>
+          <TabsTrigger value="followups" className="text-xs flex items-center gap-1">
+            <Zap className="h-3 w-3" /> Follow-ups
+          </TabsTrigger>
           <TabsTrigger value="call-queue" className="text-xs flex items-center gap-1">
             <PhoneCall className="h-3 w-3" /> Fila Ligações
           </TabsTrigger>
@@ -715,6 +719,11 @@ export function AgentMonitorDashboard() {
               </div>
             )}
           </div>
+        </TabsContent>
+
+        {/* TAB: Follow-ups */}
+        <TabsContent value="followups">
+          <FollowupActivityPanel />
         </TabsContent>
 
         {/* TAB: Call Queue */}
