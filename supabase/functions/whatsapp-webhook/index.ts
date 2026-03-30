@@ -1105,7 +1105,9 @@ Deno.serve(async (req) => {
     let contactId: string | null = null
     let leadId: string | null = null
 
-    const phoneVariants = [phone, `+${phone}`, phone.replace(/^55/, '')]
+    const normalizedPhone = phone.replace(/\D/g, '')
+    const last8Digits = normalizedPhone.slice(-8)
+    const phoneVariants = Array.from(new Set([phone, normalizedPhone, `+${normalizedPhone}`, normalizedPhone.replace(/^55/, ''), last8Digits].filter(Boolean)))
     
     for (const variant of phoneVariants) {
       const { data: contacts } = await supabase
@@ -1131,6 +1133,22 @@ Deno.serve(async (req) => {
 
         if (leads && leads.length > 0) {
           leadId = leads[0].id
+          break
+        }
+      }
+    }
+
+    if (leadId && !contactId) {
+      for (const variant of phoneVariants) {
+        const { data: linkedContacts } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('lead_id', leadId)
+          .or(`phone.ilike.%${variant}`)
+          .limit(1)
+
+        if (linkedContacts && linkedContacts.length > 0) {
+          contactId = linkedContacts[0].id
           break
         }
       }
@@ -1284,66 +1302,93 @@ Deno.serve(async (req) => {
               }
               
               const leadName = contactName || `WhatsApp ${phone}`
+
+              if (leadId) {
+                console.log('CTWA: Lead already linked/resolved for phone, reusing existing lead:', leadId)
+              }
               
-              const { data: newLead, error: leadErr } = await supabase
-                .from('leads')
-                .insert({
-                  lead_name: leadName,
-                  lead_phone: phone,
-                  board_id: autoLink.board_id,
-                  status: stageId || 'new',
-                  source: 'ctwa_whatsapp',
+              if (!leadId) {
+                const { data: newLead, error: leadErr } = await supabase
+                  .from('leads')
+                  .insert({
+                    lead_name: leadName,
+                    lead_phone: phone,
+                    board_id: autoLink.board_id,
+                    status: stageId || 'new',
+                    source: 'ctwa_whatsapp',
+                    ctwa_context: ctwaData,
+                    ad_name: ctwaData.title || detectedCampaignName || null,
+                    campaign_id: detectedCampaignId,
+                    action_source: 'system',
+                    action_source_detail: `CTWA Auto-create (campanha: ${detectedCampaignName || 'desconhecida'})`,
+                  })
+                  .select('id')
+                  .single()
+
+                if (leadErr) {
+                  console.error('Error auto-creating lead from CTWA:', leadErr)
+                } else if (newLead) {
+                  leadId = (newLead as any).id
+                  console.log('Auto-created lead from CTWA:', leadId, 'board:', autoLink.board_id, 'campaign:', detectedCampaignId)
+                }
+              }
+
+              if (leadId) {
+                const leadPatch: Record<string, unknown> = {
                   ctwa_context: ctwaData,
                   ad_name: ctwaData.title || detectedCampaignName || null,
                   campaign_id: detectedCampaignId,
-                  action_source: 'system',
-                  action_source_detail: `CTWA Auto-create (campanha: ${detectedCampaignName || 'desconhecida'})`,
-                })
-                .select('id')
-                .single()
-              
-              if (leadErr) {
-                console.error('Error auto-creating lead from CTWA:', leadErr)
-              } else if (newLead) {
-                leadId = (newLead as any).id
-                console.log('Auto-created lead from CTWA:', leadId, 'board:', autoLink.board_id, 'campaign:', detectedCampaignId)
-                
-                // Also create contact
-                if (!contactId && (autoLink.auto_create_contact !== false)) {
-                  const { data: newContact } = await supabase
-                    .from('contacts')
-                    .insert({
-                      full_name: leadName,
-                      phone: phone,
-                      lead_id: leadId,
-                      classification: 'lead',
-                      action_source: 'system',
-                      action_source_detail: `CTWA Auto-create (campanha: ${detectedCampaignName || 'desconhecida'})`,
-                    })
-                    .select('id')
-                    .single()
-                  if (newContact) {
-                    contactId = (newContact as any).id
-                    console.log('Auto-created contact from CTWA:', contactId)
-                  }
+                  campaign_name: detectedCampaignName || null,
                 }
-                
-                // Auto-assign agent from the campaign link
-                if (autoLink.agent_id && instanceName) {
-                  try {
-                    await supabase
-                      .from('whatsapp_conversation_agents')
-                      .upsert({
-                        phone,
-                        instance_name: instanceName,
-                        agent_id: autoLink.agent_id,
-                        is_active: true,
-                        activated_by: 'ctwa_campaign',
-                      }, { onConflict: 'phone,instance_name' })
-                    console.log('Auto-assigned agent from CTWA campaign link:', autoLink.agent_id)
-                  } catch (agentErr) {
-                    console.error('Error auto-assigning agent from CTWA:', agentErr)
-                  }
+                await supabase
+                  .from('leads')
+                  .update(leadPatch)
+                  .eq('id', leadId)
+              }
+
+              // Also create or link contact
+              if (!contactId && leadId && (autoLink.auto_create_contact !== false)) {
+                const { data: newContact } = await supabase
+                  .from('contacts')
+                  .insert({
+                    full_name: leadName,
+                    phone: phone,
+                    lead_id: leadId,
+                    classification: 'lead',
+                    action_source: 'system',
+                    action_source_detail: `CTWA Auto-create (campanha: ${detectedCampaignName || 'desconhecida'})`,
+                  })
+                  .select('id')
+                  .single()
+                if (newContact) {
+                  contactId = (newContact as any).id
+                  console.log('Auto-created contact from CTWA:', contactId)
+                }
+              }
+
+              if (leadId && contactId) {
+                await supabase
+                  .from('whatsapp_messages')
+                  .update({ lead_id: leadId, contact_id: contactId })
+                  .eq('campaign_id', detectedCampaignId)
+                  .or(`phone.eq.${phone},phone.ilike.%${last8Digits}%`)
+              }
+
+              // Auto-assign agent from the campaign link
+              if (leadId && autoLink.agent_id && instanceName) {
+                try {
+                  await supabase
+                    .from('whatsapp_conversation_agents')
+                    .upsert({
+                      phone,
+                      instance_name: instanceName,
+                      agent_id: autoLink.agent_id,
+                      is_active: true,
+                      activated_by: 'ctwa_campaign',
+                    }, { onConflict: 'phone,instance_name' })
+                  console.log('Auto-assigned agent from CTWA campaign link:', autoLink.agent_id)
+                } catch (agentErr) {
+                  console.error('Error auto-assigning agent from CTWA:', agentErr)
                 }
               }
             } catch (autoErr) {
