@@ -175,6 +175,7 @@ export default function ProcessesPage() {
             onOpenChange={(open) => { if (!open) setSelectedProcess(null); }}
             process={selectedProcess}
             onUpdated={loadProcesses}
+            mode="dialog"
           />
         )}
       </Suspense>
