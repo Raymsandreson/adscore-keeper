@@ -12,11 +12,12 @@ import { Progress } from '@/components/ui/progress';
 import {
   Bot, MessageCircle, Clock, TrendingUp, Users, Search, RefreshCw,
   CheckCircle, XCircle, Pause, Zap, ArrowUpRight, ArrowDownRight,
-  Filter, MapPin, Phone, PhoneCall, ExternalLink, PowerOff, Megaphone, PhoneOutgoing
+  Filter, MapPin, Phone, PhoneCall, ExternalLink, PowerOff, Megaphone, PhoneOutgoing, Sparkles
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
+import { AIEnrichmentMonitorPanel } from './AIEnrichmentMonitorPanel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DashboardChatPreview } from './DashboardChatPreview';
 import { format, differenceInMinutes, differenceInHours, subDays } from 'date-fns';
@@ -529,7 +530,7 @@ export function AgentMonitorDashboard() {
       </div>
 
       <Tabs defaultValue="agents" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5 max-w-2xl">
+        <TabsList className="grid w-full grid-cols-6 max-w-3xl">
           <TabsTrigger value="agents" className="text-xs">Por Agente</TabsTrigger>
           <TabsTrigger value="conversations" className="text-xs">Conversas</TabsTrigger>
           <TabsTrigger value="funnel" className="text-xs">Funil</TabsTrigger>
@@ -538,6 +539,9 @@ export function AgentMonitorDashboard() {
           </TabsTrigger>
           <TabsTrigger value="call-queue" className="text-xs flex items-center gap-1">
             <PhoneCall className="h-3 w-3" /> Fila Ligações
+          </TabsTrigger>
+          <TabsTrigger value="ai-data" className="text-xs flex items-center gap-1">
+            <Sparkles className="h-3 w-3" /> IA Dados
           </TabsTrigger>
         </TabsList>
 
@@ -839,6 +843,11 @@ export function AgentMonitorDashboard() {
           <CallQueuePanel onSelectConversation={(phone, instanceName, contactName) => {
             setChatPreview({ phone, instance_name: instanceName, contact_name: contactName || '', lead_name: '', inbound_count: 0, outbound_count: 0, is_active: false, activated_at: null, campaign_name: null, activated_by: null } as any);
           }} />
+        </TabsContent>
+
+        {/* TAB: AI Data */}
+        <TabsContent value="ai-data">
+          <AIEnrichmentMonitorPanel />
         </TabsContent>
       </Tabs>
 
