@@ -59,6 +59,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [creatingLead, setCreatingLead] = useState(false);
   const [agentInfo, setAgentInfo] = useState<{ name: string; activated_by: string | null; is_active: boolean } | null>(null);
   const [callRecords, setCallRecords] = useState<CallRecord[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -223,9 +224,161 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   };
 
   const handleAction = (action: string) => {
+    if (action === 'create_lead') {
+      handleCreateLeadAndContact();
+      return;
+    }
+    // For other actions, redirect to full chat
     if (phone && onOpenChat) {
       onOpenChange(false);
       onOpenChat(phone);
+    }
+  };
+
+  const handleCreateLeadAndContact = async () => {
+    if (!phone || creatingLead) return;
+    setCreatingLead(true);
+    try {
+      // 1. Get current user
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+
+      // 2. Extract data from conversation using AI
+      const recentMessages = messages.slice(-50).map(m => ({
+        direction: m.direction,
+        message_text: m.message_text,
+      }));
+
+      let leadExtracted: Record<string, any> = {};
+      let contactExtracted: Record<string, any> = {};
+
+      if (recentMessages.length > 0) {
+        const [leadRes, contactRes] = await Promise.all([
+          supabase.functions.invoke('extract-conversation-data', {
+            body: { messages: recentMessages, targetType: 'lead' },
+          }),
+          supabase.functions.invoke('extract-conversation-data', {
+            body: { messages: recentMessages, targetType: 'contact' },
+          }),
+        ]);
+        leadExtracted = leadRes.data?.data || {};
+        contactExtracted = contactRes.data?.data || {};
+      }
+
+      // 3. Find first available funnel board
+      const { data: availableBoards } = (await supabase
+        .from('kanban_boards')
+        .select('id')
+        .neq('board_type', 'workflow')
+        .eq('is_active', true)
+        .order('display_order')
+        .limit(1)) as any;
+
+      const boardId = availableBoards?.[0]?.id;
+      if (!boardId) {
+        toast.error('Nenhum funil disponível para criar o lead');
+        return;
+      }
+
+      // 4. Create lead
+      const insertData: Record<string, any> = {
+        lead_name: leadExtracted.lead_name || contactExtracted.full_name || contactName || 'Novo Lead - WhatsApp',
+        lead_phone: phone,
+        source: 'whatsapp',
+        created_by: currentUser?.id || null,
+        board_id: boardId,
+      };
+
+      const leadFields = [
+        'victim_name', 'lead_email', 'city', 'state', 'neighborhood',
+        'main_company', 'contractor_company', 'accident_address', 'accident_date',
+        'damage_description', 'case_number', 'case_type', 'notes', 'sector',
+        'visit_city', 'visit_state', 'visit_address', 'liability_type', 'news_link',
+      ];
+      for (const field of leadFields) {
+        if (leadExtracted[field]) insertData[field] = leadExtracted[field];
+      }
+
+      const { data: newLead, error: leadError } = await supabase
+        .from('leads')
+        .insert(insertData)
+        .select('*')
+        .single();
+      if (leadError) throw leadError;
+
+      // 5. Link lead to conversation messages
+      const normalizedPhone = phone.replace(/\D/g, '');
+      await supabase
+        .from('whatsapp_messages')
+        .update({ lead_id: newLead.id })
+        .or(`phone.eq.${phone},phone.eq.${normalizedPhone}`)
+        .is('lead_id', null);
+
+      // 6. Create or find contact
+      const contactFullName = contactExtracted.full_name || contactName || 'Contato WhatsApp';
+      const { data: existingContact } = await supabase
+        .from('contacts')
+        .select('id, full_name')
+        .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
+        .limit(1)
+        .maybeSingle();
+
+      let contactId: string;
+      if (existingContact) {
+        contactId = existingContact.id;
+        // Update contact with enriched data if available
+        const contactUpdates: Record<string, any> = {};
+        if (contactExtracted.full_name && existingContact.full_name?.match(/^\d/)) contactUpdates.full_name = contactExtracted.full_name;
+        if (contactExtracted.email) contactUpdates.email = contactExtracted.email;
+        if (contactExtracted.city) contactUpdates.city = contactExtracted.city;
+        if (contactExtracted.state) contactUpdates.state = contactExtracted.state;
+        if (contactExtracted.cpf) contactUpdates.cpf = contactExtracted.cpf;
+        if (contactExtracted.birth_date) contactUpdates.birth_date = contactExtracted.birth_date;
+        if (Object.keys(contactUpdates).length > 0) {
+          await supabase.from('contacts').update(contactUpdates).eq('id', contactId);
+        }
+      } else {
+        const contactInsert: Record<string, any> = {
+          full_name: contactFullName,
+          phone: phone,
+          created_by: currentUser?.id || null,
+        };
+        if (contactExtracted.email) contactInsert.email = contactExtracted.email;
+        if (contactExtracted.city) contactInsert.city = contactExtracted.city;
+        if (contactExtracted.state) contactInsert.state = contactExtracted.state;
+        if (contactExtracted.cpf) contactInsert.cpf = contactExtracted.cpf;
+        if (contactExtracted.birth_date) contactInsert.birth_date = contactExtracted.birth_date;
+        if (contactExtracted.neighborhood) contactInsert.neighborhood = contactExtracted.neighborhood;
+        if (contactExtracted.instagram_url) contactInsert.instagram_url = contactExtracted.instagram_url;
+
+        const { data: newContact, error: contactError } = await supabase
+          .from('contacts')
+          .insert([contactInsert] as any)
+          .select('id')
+          .single();
+        if (contactError) throw contactError;
+        contactId = newContact.id;
+      }
+
+      // 7. Link contact to lead
+      await supabase.from('contact_leads').insert({
+        contact_id: contactId,
+        lead_id: newLead.id,
+        relationship_to_victim: 'Vítima',
+      });
+
+      // 8. Update conversation messages with contact_id
+      await supabase
+        .from('whatsapp_messages')
+        .update({ contact_id: contactId })
+        .or(`phone.eq.${phone},phone.eq.${normalizedPhone}`)
+        .is('contact_id', null);
+
+      toast.success('Lead e contato criados com dados da conversa!');
+    } catch (e: any) {
+      console.error('Error creating lead+contact:', e);
+      toast.error('Erro ao criar lead: ' + (e.message || ''));
+    } finally {
+      setCreatingLead(false);
     }
   };
 
@@ -445,7 +598,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                     <Link2 className="h-4 w-4 mr-2" /> Vincular Lead
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleAction('create_lead')}>
-                    <Plus className="h-4 w-4 mr-2" /> Criar Lead + Contato
+                    <Plus className="h-4 w-4 mr-2" /> {creatingLead ? 'Criando...' : 'Criar Lead + Contato'}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleAction('create_contact')}>
                     <UserPlus className="h-4 w-4 mr-2" /> Criar Contato
