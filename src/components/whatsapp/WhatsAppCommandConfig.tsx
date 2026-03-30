@@ -55,6 +55,7 @@ interface Shortcut {
   respond_in_groups: boolean;
   send_window_start_hour: number;
   send_window_end_hour: number;
+  send_call_followup_audio: boolean;
 }
 
 interface FollowupStep {
