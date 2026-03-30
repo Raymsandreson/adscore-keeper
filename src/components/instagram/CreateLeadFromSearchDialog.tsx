@@ -119,14 +119,14 @@ function SearchContentExtractor({
       if (error) {
         console.error('Error extracting data:', error);
         try {
-          const errorBody = typeof error === 'object' && error.context ? await error.context.json() : null;
+          const errorBody = null;
           if (errorBody?.error) {
             toast.error(errorBody.error);
             return;
           }
         } catch {}
 
-        const status = typeof error === 'object' && error.context ? error.context.status : null;
+        const status = null;
         if (status === 413) {
           toast.error('Texto muito grande para processamento. Tente com um trecho menor.');
           return;
