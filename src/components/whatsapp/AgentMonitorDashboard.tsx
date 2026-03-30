@@ -844,6 +844,11 @@ export function AgentMonitorDashboard() {
             setChatPreview({ phone, instance_name: instanceName, contact_name: contactName || '', lead_name: '', inbound_count: 0, outbound_count: 0, is_active: false, activated_at: null, campaign_name: null, activated_by: null } as any);
           }} />
         </TabsContent>
+
+        {/* TAB: AI Data */}
+        <TabsContent value="ai-data">
+          <AIEnrichmentMonitorPanel />
+        </TabsContent>
       </Tabs>
 
       {/* KPI Conversations Sheet */}
