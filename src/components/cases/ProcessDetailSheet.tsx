@@ -107,7 +107,7 @@ const TABS = [
 
 type TabId = typeof TABS[number]['id'];
 
-export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated }: ProcessDetailSheetProps) {
+export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet' }: ProcessDetailSheetProps) {
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
