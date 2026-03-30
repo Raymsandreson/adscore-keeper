@@ -999,7 +999,7 @@ export function AgentMonitorDashboard() {
                   className="flex-1 h-7 text-[10px]"
                   onClick={async () => {
                     const targets = selectedSheetConversations;
-                    if (!confirm(`Ligar (flash call) para ${targets.length} conversas selecionadas?`)) return;
+                    if (!confirm(`Ligar para ${targets.length} conversas selecionadas?`)) return;
                     const inserts = targets.map(c => ({
                       phone: c.phone,
                       instance_name: c.instance_name,

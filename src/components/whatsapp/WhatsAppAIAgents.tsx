@@ -707,7 +707,7 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
                     <Switch checked={editingAgent.auto_call_enabled ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, auto_call_enabled: v })} />
                    </div>
                    <p className="text-[9px] text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-1.5 rounded">
-                     ⚡ Flash call: apenas um toque rápido para chamar atenção. A ligação não é completada — serve para o lead ver a notificação e retornar ao WhatsApp.
+                     📞 Ligação automática: o sistema liga para o lead e aguarda até a chamada ser finalizada (atendida ou não). Após a ligação, pode enviar um áudio de follow-up no WhatsApp.
                    </p>
                    {editingAgent.auto_call_enabled && (
                      <>
