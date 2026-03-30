@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
@@ -19,6 +20,7 @@ interface ProcessDetailSheetProps {
   onOpenChange: (open: boolean) => void;
   process: any;
   onUpdated?: () => void;
+  mode?: 'sheet' | 'dialog';
 }
 
 function formatDateBR(val: string): string {
@@ -105,7 +107,7 @@ const TABS = [
 
 type TabId = typeof TABS[number]['id'];
 
-export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated }: ProcessDetailSheetProps) {
+export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet' }: ProcessDetailSheetProps) {
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -272,71 +274,69 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const audiencias = Array.isArray(form.audiencias) ? form.audiencias : [];
   const processosRelacionados = Array.isArray(form.processos_relacionados) ? form.processos_relacionados : [];
 
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg p-0 flex flex-col">
-        {/* Header */}
-        <SheetHeader className="p-4 pb-2 flex flex-row items-center justify-between shrink-0">
-          <SheetTitle className="text-sm flex items-center gap-2">
-            <Pencil className="h-4 w-4 text-primary" />
-            Detalhes do Processo
-          </SheetTitle>
-          <div className="flex items-center gap-1">
-            {form.escavador_raw && (
-              <Button size="sm" variant="outline" onClick={handleReExtract} disabled={saving} className="h-7 text-xs gap-1">
-                <RefreshCw className="h-3 w-3" />
-                Re-extrair
-              </Button>
-            )}
-            {dirty && (
-              <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs gap-1">
-                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                Salvar
-              </Button>
-            )}
-          </div>
-        </SheetHeader>
-
-        {/* Process info */}
-        <div className="px-4 pb-2 space-y-2 border-b shrink-0">
-          <EditableField label="Título" value={form.title || ''} onChange={v => set('title', v)} />
-          <EditableField label="Nº do Processo" value={form.process_number || ''} onChange={v => set('process_number', v)} icon={Hash} />
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="secondary" className="text-[10px]">
-              {form.status === 'em_andamento' ? 'Em Andamento' : form.status === 'concluido' ? 'Concluído' : form.status === 'arquivado' ? 'Arquivado' : form.status}
-            </Badge>
-            {form.situacao && <Badge variant="outline" className="text-[10px]">{form.situacao}</Badge>}
-            {form.segredo_justica && <Badge variant="destructive" className="text-[10px]">Segredo de Justiça</Badge>}
-          </div>
+  const innerContent = (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="p-4 pb-2 flex flex-row items-center justify-between shrink-0">
+        <div className="text-sm font-semibold flex items-center gap-2">
+          <Pencil className="h-4 w-4 text-primary" />
+          Detalhes do Processo
         </div>
-
-        {/* Tab navigation */}
-        <div className="shrink-0 border-b">
-          <ScrollArea className="w-full">
-            <div className="flex gap-0.5 px-2 py-1.5 overflow-x-auto">
-              {TABS.map(tab => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
-                // Hide envolvidos tab if empty
-                if (tab.id === 'envolvidos' && envolvidos.length === 0 && audiencias.length === 0 && processosRelacionados.length === 0) return null;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${
-                      isActive
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
-                  >
-                    <Icon className="h-3 w-3" />
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
-          </ScrollArea>
+        <div className="flex items-center gap-1">
+          {form.escavador_raw && (
+            <Button size="sm" variant="outline" onClick={handleReExtract} disabled={saving} className="h-7 text-xs gap-1">
+              <RefreshCw className="h-3 w-3" />
+              Re-extrair
+            </Button>
+          )}
+          {dirty && (
+            <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs gap-1">
+              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Salvar
+            </Button>
+          )}
         </div>
+      </div>
+
+      {/* Process info */}
+      <div className="px-4 pb-2 space-y-2 border-b shrink-0">
+        <EditableField label="Título" value={form.title || ''} onChange={v => set('title', v)} />
+        <EditableField label="Nº do Processo" value={form.process_number || ''} onChange={v => set('process_number', v)} icon={Hash} />
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="secondary" className="text-[10px]">
+            {form.status === 'em_andamento' ? 'Em Andamento' : form.status === 'concluido' ? 'Concluído' : form.status === 'arquivado' ? 'Arquivado' : form.status}
+          </Badge>
+          {form.situacao && <Badge variant="outline" className="text-[10px]">{form.situacao}</Badge>}
+          {form.segredo_justica && <Badge variant="destructive" className="text-[10px]">Segredo de Justiça</Badge>}
+        </div>
+      </div>
+
+      {/* Tab navigation */}
+      <div className="shrink-0 border-b">
+        <ScrollArea className="w-full">
+          <div className="flex gap-0.5 px-2 py-1.5 overflow-x-auto">
+            {TABS.map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              if (tab.id === 'envolvidos' && envolvidos.length === 0 && audiencias.length === 0 && processosRelacionados.length === 0) return null;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${
+                    isActive
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  <Icon className="h-3 w-3" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </ScrollArea>
+      </div>
 
         {/* Tab content */}
         <ScrollArea className="flex-1 px-4 pb-6">
@@ -495,6 +495,25 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             )}
           </div>
         </ScrollArea>
+    </div>
+  );
+
+  if (mode === 'dialog') {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl max-h-[85vh] p-0 overflow-hidden flex flex-col">
+          <div className="sr-only"><DialogHeader><DialogTitle>Detalhes do Processo</DialogTitle></DialogHeader></div>
+          {innerContent}
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-lg p-0 flex flex-col">
+        <div className="sr-only"><SheetHeader><SheetTitle>Detalhes do Processo</SheetTitle></SheetHeader></div>
+        {innerContent}
       </SheetContent>
     </Sheet>
   );
