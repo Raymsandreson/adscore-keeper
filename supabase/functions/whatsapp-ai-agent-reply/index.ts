@@ -233,6 +233,20 @@ serve(async (req) => {
 
     if (aiAgent) {
       agent = aiAgent;
+      // Check if this agent also exists as a shortcut with template_token
+      const { data: matchingShortcut } = await supabase
+        .from("wjia_command_shortcuts")
+        .select("template_token, template_name, shortcut_name, request_documents, document_types, custom_document_names, document_type_modes, followup_steps, notify_on_signature, send_signed_pdf")
+        .eq("id", assignment.agent_id)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (matchingShortcut && (matchingShortcut as any).template_token) {
+        agent.is_shortcut = true;
+        agent.template_token = (matchingShortcut as any).template_token;
+        agent.template_name = (matchingShortcut as any).template_name;
+        agent.shortcut_name = (matchingShortcut as any).shortcut_name;
+        console.log(`Enriched agent "${agent.name}" with shortcut template_token: ${agent.template_token}`);
+      }
     } else {
       // Fallback: check wjia_command_shortcuts (instance default may reference this table)
       const { data: shortcut } = await supabase
