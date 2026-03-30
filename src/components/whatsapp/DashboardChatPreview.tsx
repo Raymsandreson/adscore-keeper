@@ -265,7 +265,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       }
 
       // 3. Find first available funnel board
-      const { data: boards } = await supabase
+      const { data: availableBoards } = await supabase
         .from('kanban_boards')
         .select('id')
         .neq('board_type', 'workflow')
@@ -273,7 +273,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         .order('display_order')
         .limit(1);
 
-      const boardId = boards?.[0]?.id;
+      const boardId = availableBoards?.[0]?.id;
       if (!boardId) {
         toast.error('Nenhum funil disponível para criar o lead');
         return;
