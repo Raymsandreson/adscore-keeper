@@ -202,6 +202,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     max_tts_chars: 1000,
     send_window_start_hour: 8,
     send_window_end_hour: 20,
+    send_call_followup_audio: false,
   });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
   const [humanReplyPauseMinutes, setHumanReplyPauseMinutes] = useState(0);
@@ -274,7 +275,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       model: 'google/gemini-2.5-flash', temperature: 0.7,
       max_tokens: 2048, response_delay_seconds: 2, split_messages: false, split_delay_seconds: 3,
       reply_with_audio: false, reply_voice_id: null, respond_in_groups: false, max_tts_chars: 1000,
-      send_window_start_hour: 8, send_window_end_hour: 20,
+      send_window_start_hour: 8, send_window_end_hour: 20, send_call_followup_audio: false,
     });
     setFollowupSteps([]);
     setHumanReplyPauseMinutes(0);
@@ -325,6 +326,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       max_tts_chars: (s as any).max_tts_chars ?? 1000,
       send_window_start_hour: (s as any).send_window_start_hour ?? 8,
       send_window_end_hour: (s as any).send_window_end_hour ?? 20,
+      send_call_followup_audio: (s as any).send_call_followup_audio ?? false,
     });
     setFollowupSteps(s.followup_steps || []);
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
@@ -389,6 +391,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       max_tts_chars: form.max_tts_chars,
       send_window_start_hour: form.send_window_start_hour ?? 8,
       send_window_end_hour: form.send_window_end_hour ?? 20,
+      send_call_followup_audio: form.send_call_followup_audio ?? false,
     };
 
     let error;
