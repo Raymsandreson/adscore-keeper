@@ -78,6 +78,7 @@ import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
 import { TeamChatPanel } from '@/components/chat/TeamChatPanel';
 import { LegalCasesTab } from '@/components/leads/LegalCasesTab';
+import { LeadFinancialsTab } from '@/components/leads/LeadFinancialsTab';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { Contact as ContactType } from '@/hooks/useContacts';
 import { format } from 'date-fns';
