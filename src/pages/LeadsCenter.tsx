@@ -121,8 +121,32 @@ const LeadsCenter = () => {
     }
   }, []);
 
-  // Use real leads data from database
-  const { leads: realLeads, stats: realStats, loading } = useLeads(adAccountId || undefined);
+  // Use lightweight stats query instead of loading all leads
+  const [realStats, setRealStats] = useState({ total: 0, converted: 0, inProgress: 0, notQualified: 0, conversionRate: 0 });
+  const [realLeadsCount, setRealLeadsCount] = useState(0);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('id, status')
+        .limit(5000);
+      if (error || !data) return;
+      const total = data.length;
+      const converted = data.filter(l => l.status === 'converted').length;
+      const notQualified = data.filter(l => ['not_qualified', 'lost'].includes(l.status || '')).length;
+      const inProgress = total - converted - notQualified;
+      setRealLeadsCount(total);
+      setRealStats({
+        total,
+        converted,
+        inProgress,
+        notQualified,
+        conversionRate: total > 0 ? (converted / total) * 100 : 0,
+      });
+    };
+    fetchStats();
+  }, [adAccountId]);
 
   const handleOpenFacebookEvents = () => {
     window.open('https://business.facebook.com/events_manager', '_blank');
