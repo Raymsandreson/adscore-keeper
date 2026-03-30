@@ -123,7 +123,7 @@ const LeadsCenter = () => {
 
   // Use lightweight stats query instead of loading all leads
   const [realStats, setRealStats] = useState({ total: 0, converted: 0, inProgress: 0, notQualified: 0, conversionRate: 0 });
-  const [realLeadsCount, setRealLeadsCount] = useState(0);
+  
 
   useEffect(() => {
     const fetchStats = async () => {
