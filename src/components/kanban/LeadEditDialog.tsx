@@ -638,6 +638,8 @@ ${scrapeData.content || ''}
         became_client_date: leadOutcome === 'closed' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
         classification_date: leadOutcome === 'refused' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
         in_progress_date: leadOutcome === 'in_progress' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
+        inviavel_date: leadOutcome === 'inviavel' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
+        lead_status_reason: leadOutcomeReason || null,
         case_number: caseNumber || null,
       } as Partial<Lead>);
 
