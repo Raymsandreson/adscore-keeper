@@ -625,8 +625,16 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
                 from_board_id: currentLead?.board_id || selectedBoardId,
                 to_board_id: currentLead?.board_id || selectedBoardId,
                 changed_by: user?.id || null,
-                notes: newStatus === 'closed' ? 'Lead fechado' : newStatus === 'refused' ? 'Lead recusado' : 'Lead reativado',
+                notes: newStatus === 'closed' ? 'Lead fechado' : newStatus === 'refused' ? 'Lead recusado' : newStatus === 'inviavel' ? 'Lead inviável' : 'Lead reativado',
               } as any);
+
+              // Record in lead_status_history
+              await supabase.from('lead_status_history' as any).insert({
+                lead_id: leadId,
+                from_status: (currentLead as any)?.lead_status || 'active',
+                to_status: newStatus,
+                changed_by: user?.id || null,
+              });
 
               // Auto-create legal case when closing
               if (newStatus === 'closed') {
@@ -687,6 +695,11 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
                 } else {
                   toast.success('Lead marcado como Fechado');
                 }
+              } else if (newStatus === 'inviavel') {
+                await supabase.from('leads').update({
+                  inviavel_date: new Date().toISOString().slice(0, 10),
+                } as any).eq('id', leadId);
+                toast.success('Lead marcado como Inviável');
               } else {
                 toast.success(newStatus === 'refused' ? 'Lead marcado como Recusado' : 'Lead reativado');
               }
