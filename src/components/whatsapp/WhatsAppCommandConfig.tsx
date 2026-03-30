@@ -740,7 +740,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     <Label className="text-xs">🔍 Prompt de Extração de Mídia</Label>
                     <Badge variant="outline" className="text-[9px] h-4">OCR</Badge>
                   </div>
-                  </div>
                   <p className="text-[10px] text-muted-foreground">
                     Instruções de como a IA deve interpretar documentos (RG, CNH, comprovantes).
                   </p>
