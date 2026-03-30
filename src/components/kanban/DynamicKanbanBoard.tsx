@@ -72,7 +72,7 @@ interface DynamicKanbanBoardProps {
   onEditLead?: (lead: Lead) => void;
   onManageContacts?: (lead: Lead) => void;
   availableBoards?: KanbanBoard[];
-  onChangeLeadStatus?: (leadId: string, newStatus: 'active' | 'closed' | 'refused') => void;
+  onChangeLeadStatus?: (leadId: string, newStatus: 'active' | 'closed' | 'refused' | 'inviavel') => void;
 }
 
 export function DynamicKanbanBoard({
@@ -219,6 +219,7 @@ export function DynamicKanbanBoard({
   const activeLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'active' || !(l as any).lead_status), [leads]);
   const closedLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'closed'), [leads]);
   const refusedLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'refused'), [leads]);
+  const inviavelLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'inviavel'), [leads]);
 
   // Group active leads by stage
   const leadsByStage = useMemo(() => {
@@ -666,7 +667,7 @@ export function DynamicKanbanBoard({
                                           </>
                                         )}
 
-                                        {/* Quick actions: Fechado / Recusado (status-based) */}
+                                        {/* Quick actions: Fechado / Recusado / Inviável (status-based) */}
                                         {onChangeLeadStatus && ((lead as any).lead_status === 'active' || !(lead as any).lead_status) && (
                                           <>
                                             <DropdownMenuSeparator />
@@ -683,6 +684,13 @@ export function DynamicKanbanBoard({
                                             >
                                               <XCircle className="h-3 w-3 mr-2" />
                                               Marcar como Recusado
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              onClick={() => onChangeLeadStatus(lead.id, 'inviavel')}
+                                              className="text-amber-600"
+                                            >
+                                              <AlertTriangle className="h-3 w-3 mr-2" />
+                                              Marcar como Inviável
                                             </DropdownMenuItem>
                                           </>
                                         )}
@@ -907,10 +915,11 @@ export function DynamicKanbanBoard({
             );
           })}
 
-          {/* Fixed Status Columns: Fechados & Recusados */}
+          {/* Fixed Status Columns: Fechados, Recusados & Inviáveis */}
           {[
             { id: 'closed', name: 'Fechados', color: '#22c55e', icon: CheckCircle2, leads: closedLeads },
             { id: 'refused', name: 'Recusados', color: '#ef4444', icon: XCircle, leads: refusedLeads },
+            { id: 'inviavel', name: 'Inviáveis', color: '#f59e0b', icon: AlertTriangle, leads: inviavelLeads },
           ].map(statusCol => {
             const colFilter = stageFilters[statusCol.id] || '';
             const filteredLeads = colFilter
@@ -928,7 +937,7 @@ export function DynamicKanbanBoard({
                   e.preventDefault();
                   setDragOverStage(null);
                   if (draggedLead && onChangeLeadStatus) {
-                    onChangeLeadStatus(draggedLead.id, statusCol.id as 'closed' | 'refused');
+                    onChangeLeadStatus(draggedLead.id, statusCol.id as 'closed' | 'refused' | 'inviavel');
                   }
                   setDraggedLead(null);
                 }}
@@ -999,16 +1008,22 @@ export function DynamicKanbanBoard({
                                       <ArrowRightLeft className="h-3 w-3 mr-2" />
                                       Voltar para Em Andamento
                                     </DropdownMenuItem>
-                                    {statusCol.id === 'closed' && (
+                                    {statusCol.id !== 'closed' && (
+                                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onChangeLeadStatus(lead.id, 'closed'); }} className="text-green-600">
+                                        <CheckCircle2 className="h-3 w-3 mr-2" />
+                                        Mover para Fechados
+                                      </DropdownMenuItem>
+                                    )}
+                                    {statusCol.id !== 'refused' && (
                                       <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onChangeLeadStatus(lead.id, 'refused'); }} className="text-red-600">
                                         <XCircle className="h-3 w-3 mr-2" />
                                         Mover para Recusados
                                       </DropdownMenuItem>
                                     )}
-                                    {statusCol.id === 'refused' && (
-                                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onChangeLeadStatus(lead.id, 'closed'); }} className="text-green-600">
-                                        <CheckCircle2 className="h-3 w-3 mr-2" />
-                                        Mover para Fechados
+                                    {statusCol.id !== 'inviavel' && (
+                                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onChangeLeadStatus(lead.id, 'inviavel'); }} className="text-amber-600">
+                                        <AlertTriangle className="h-3 w-3 mr-2" />
+                                        Mover para Inviáveis
                                       </DropdownMenuItem>
                                     )}
                                     <DropdownMenuSeparator />

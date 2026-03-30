@@ -72,11 +72,14 @@ import {
   CheckSquare,
   CheckCircle,
   XCircle,
+  AlertTriangle,
+  DollarSign,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
 import { TeamChatPanel } from '@/components/chat/TeamChatPanel';
 import { LegalCasesTab } from '@/components/leads/LegalCasesTab';
+import { LeadFinancialsTab } from '@/components/leads/LeadFinancialsTab';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { Contact as ContactType } from '@/hooks/useContacts';
 import { format } from 'date-fns';
@@ -179,8 +182,9 @@ export function LeadEditDialog({
   const [whatsappGroupId, setWhatsappGroupId] = useState('');
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
-  const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress'>('');
+  const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress' | 'inviavel'>('');
   const [leadOutcomeDate, setLeadOutcomeDate] = useState('');
+  const [leadOutcomeReason, setLeadOutcomeReason] = useState('');
   const [caseNumber, setCaseNumber] = useState('');
   
   // Accident fields
@@ -257,9 +261,13 @@ export function LeadEditDialog({
       setSelectedBoardId(leadAny.board_id || '');
       // Outcome
       setCaseNumber(leadAny.case_number || '');
+      setLeadOutcomeReason(leadAny.lead_status_reason || '');
       if (leadAny.became_client_date) {
         setLeadOutcome('closed');
         setLeadOutcomeDate(leadAny.became_client_date || '');
+      } else if (leadAny.inviavel_date) {
+        setLeadOutcome('inviavel');
+        setLeadOutcomeDate(leadAny.inviavel_date || '');
       } else if (leadAny.classification_date) {
         setLeadOutcome('refused');
         setLeadOutcomeDate(leadAny.classification_date || '');
@@ -633,12 +641,27 @@ ${scrapeData.content || ''}
         became_client_date: leadOutcome === 'closed' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
         classification_date: leadOutcome === 'refused' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
         in_progress_date: leadOutcome === 'in_progress' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
+        inviavel_date: leadOutcome === 'inviavel' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
+        lead_status_reason: leadOutcomeReason || null,
         case_number: caseNumber || null,
       } as Partial<Lead>);
 
       // Save custom field values
       if (Object.keys(localFieldValues).length > 0) {
         await saveAllFieldValues(lead.id, localFieldValues);
+      }
+
+      // Save status history if outcome changed
+      const previousOutcome = (lead as any).became_client_date ? 'closed' : (lead as any).inviavel_date ? 'inviavel' : (lead as any).classification_date ? 'refused' : (lead as any).in_progress_date ? 'in_progress' : 'active';
+      if (leadOutcome && leadOutcome !== previousOutcome) {
+        const { data: { user } } = await supabase.auth.getUser();
+        await supabase.from('lead_status_history' as any).insert({
+          lead_id: lead.id,
+          from_status: previousOutcome,
+          to_status: leadOutcome,
+          reason: leadOutcomeReason || null,
+          changed_by: user?.id || null,
+        });
       }
 
       // Auto-create legal case when lead is marked as closed (or was already closed but has no case yet)
@@ -728,8 +751,10 @@ ${scrapeData.content || ''}
         }
       } else if (leadOutcome === 'refused') {
         await supabase.from('leads').update({ lead_status: 'refused' } as any).eq('id', lead.id);
-      } else if ((lead as any).became_client_date) {
-        // Was closed, now reopened
+      } else if (leadOutcome === 'inviavel') {
+        await supabase.from('leads').update({ lead_status: 'inviavel' } as any).eq('id', lead.id);
+      } else if ((lead as any).became_client_date || (lead as any).inviavel_date) {
+        // Was closed/inviável, now reopened
         await supabase.from('leads').update({ lead_status: 'active' } as any).eq('id', lead.id);
       }
 
@@ -851,6 +876,10 @@ ${scrapeData.content || ''}
                   Casos
                 </TabsTrigger>
               )}
+              <TabsTrigger value="financeiro" className="text-xs py-1.5 px-2.5">
+                <DollarSign className="h-3 w-3 mr-1" />
+                Financeiro
+              </TabsTrigger>
               <TabsTrigger value="config" className="text-xs py-1.5 px-2.5">
                 <Settings className="h-3 w-3 mr-1" />
                 Config
@@ -1163,85 +1192,82 @@ ${scrapeData.content || ''}
                   </div>
                 )}
 
-                {/* Lead Outcome - Fechado/Recusado */}
+                {/* Lead Outcome - Fechado/Recusado/Inviável */}
                 <div className="col-span-2 space-y-3 p-3 border rounded-lg bg-muted/20">
                   <Label className="text-sm font-medium">Resultado do Lead</Label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
                       variant={leadOutcome === 'in_progress' ? 'default' : 'outline'}
                       size="sm"
-                      className={`flex-1 ${leadOutcome === 'in_progress' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
+                      className={`flex-1 min-w-[100px] ${leadOutcome === 'in_progress' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
                       onClick={() => {
-                        if (leadOutcome === 'in_progress') {
-                          setLeadOutcome('');
-                          setLeadOutcomeDate('');
-                        } else {
-                          setLeadOutcome('in_progress');
-                          if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10));
-                        }
+                        if (leadOutcome === 'in_progress') { setLeadOutcome(''); setLeadOutcomeDate(''); }
+                        else { setLeadOutcome('in_progress'); if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10)); }
                       }}
                     >
-                      <Clock className="h-4 w-4 mr-1" />
-                      Em Andamento
+                      <Clock className="h-4 w-4 mr-1" /> Em Andamento
                     </Button>
                     <Button
                       type="button"
                       variant={leadOutcome === 'closed' ? 'default' : 'outline'}
                       size="sm"
-                      className={`flex-1 ${leadOutcome === 'closed' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}
+                      className={`flex-1 min-w-[100px] ${leadOutcome === 'closed' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}
                       onClick={() => {
-                        if (leadOutcome === 'closed') {
-                          setLeadOutcome('');
-                          setLeadOutcomeDate('');
-                        } else {
-                          setLeadOutcome('closed');
-                          if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10));
-                        }
+                        if (leadOutcome === 'closed') { setLeadOutcome(''); setLeadOutcomeDate(''); }
+                        else { setLeadOutcome('closed'); if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10)); }
                       }}
                     >
-                      <CheckCircle className="h-4 w-4 mr-1" />
-                      Fechado (ganho)
+                      <CheckCircle className="h-4 w-4 mr-1" /> Fechado
                     </Button>
                     <Button
                       type="button"
                       variant={leadOutcome === 'refused' ? 'default' : 'outline'}
                       size="sm"
-                      className={`flex-1 ${leadOutcome === 'refused' ? 'bg-destructive hover:bg-destructive/90 text-white' : ''}`}
+                      className={`flex-1 min-w-[100px] ${leadOutcome === 'refused' ? 'bg-destructive hover:bg-destructive/90 text-white' : ''}`}
                       onClick={() => {
-                        if (leadOutcome === 'refused') {
-                          setLeadOutcome('');
-                          setLeadOutcomeDate('');
-                        } else {
-                          setLeadOutcome('refused');
-                          if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10));
-                        }
+                        if (leadOutcome === 'refused') { setLeadOutcome(''); setLeadOutcomeDate(''); }
+                        else { setLeadOutcome('refused'); if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10)); }
                       }}
                     >
-                      <XCircle className="h-4 w-4 mr-1" />
-                      Recusado (perdido)
+                      <XCircle className="h-4 w-4 mr-1" /> Recusado
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={leadOutcome === 'inviavel' ? 'default' : 'outline'}
+                      size="sm"
+                      className={`flex-1 min-w-[100px] ${leadOutcome === 'inviavel' ? 'bg-amber-500 hover:bg-amber-600 text-white' : ''}`}
+                      onClick={() => {
+                        if (leadOutcome === 'inviavel') { setLeadOutcome(''); setLeadOutcomeDate(''); }
+                        else { setLeadOutcome('inviavel'); if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10)); }
+                      }}
+                    >
+                      <AlertTriangle className="h-4 w-4 mr-1" /> Inviável
                     </Button>
                   </div>
                   {leadOutcome && (
-                    <div>
-                      <Label className="text-xs">{leadOutcome === 'closed' ? 'Data de Fechamento' : leadOutcome === 'refused' ? 'Data da Recusa' : 'Data de Início'}</Label>
-                      <Input
-                        type="date"
-                        value={leadOutcomeDate}
-                        onChange={(e) => setLeadOutcomeDate(e.target.value)}
-                        className="mt-1"
-                      />
-                    </div>
+                    <>
+                      <div>
+                        <Label className="text-xs">
+                          {leadOutcome === 'closed' ? 'Data de Fechamento' : leadOutcome === 'refused' ? 'Data da Recusa' : leadOutcome === 'inviavel' ? 'Data da Inviabilidade' : 'Data de Início'}
+                        </Label>
+                        <Input type="date" value={leadOutcomeDate} onChange={(e) => setLeadOutcomeDate(e.target.value)} className="mt-1" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Motivo</Label>
+                        <Input 
+                          placeholder={leadOutcome === 'inviavel' ? 'Ex: Prazo prescrito, sem direito...' : leadOutcome === 'refused' ? 'Ex: Não quis prosseguir...' : 'Motivo (opcional)'}
+                          value={leadOutcomeReason}
+                          onChange={(e) => setLeadOutcomeReason(e.target.value)}
+                          className="mt-1"
+                        />
+                      </div>
+                    </>
                   )}
                   {leadOutcome === 'closed' && (
                     <div>
                       <Label className="text-xs">Nº do Caso</Label>
-                      <Input
-                        value={caseNumber}
-                        onChange={(e) => setCaseNumber(e.target.value)}
-                        placeholder="Número do caso..."
-                        className="mt-1"
-                      />
+                      <Input value={caseNumber} onChange={(e) => setCaseNumber(e.target.value)} placeholder="Número do caso..." className="mt-1" />
                     </div>
                   )}
                 </div>
@@ -1618,7 +1644,11 @@ ${scrapeData.content || ''}
               </TabsContent>
             )}
 
-            {/* History Tab */}
+            {/* Financeiro Tab */}
+            <TabsContent value="financeiro" className="mt-0">
+              <LeadFinancialsTab leadId={lead.id} />
+            </TabsContent>
+
             <TabsContent value="history" className="mt-0 space-y-6">
               <LeadStageHistoryPanel leadId={lead.id} boards={boards} />
               
