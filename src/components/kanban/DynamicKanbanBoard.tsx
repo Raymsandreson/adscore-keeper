@@ -667,7 +667,7 @@ export function DynamicKanbanBoard({
                                           </>
                                         )}
 
-                                        {/* Quick actions: Fechado / Recusado (status-based) */}
+                                        {/* Quick actions: Fechado / Recusado / Inviável (status-based) */}
                                         {onChangeLeadStatus && ((lead as any).lead_status === 'active' || !(lead as any).lead_status) && (
                                           <>
                                             <DropdownMenuSeparator />
@@ -684,6 +684,13 @@ export function DynamicKanbanBoard({
                                             >
                                               <XCircle className="h-3 w-3 mr-2" />
                                               Marcar como Recusado
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              onClick={() => onChangeLeadStatus(lead.id, 'inviavel')}
+                                              className="text-amber-600"
+                                            >
+                                              <AlertTriangle className="h-3 w-3 mr-2" />
+                                              Marcar como Inviável
                                             </DropdownMenuItem>
                                           </>
                                         )}
