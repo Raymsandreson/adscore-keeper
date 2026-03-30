@@ -228,7 +228,7 @@ export function CTWACampaignAutomation() {
         .eq('campaign_id', link.campaign_id);
 
       // Deduplicate by phone+instance
-      const phoneMap = new Map<string, { phone: string; contact_name: string | null; instance_name: string }>();
+      const phoneMap = new Map<string, { phone: string; contact_name: string | null; instance_name: string; normalized_phone: string }>();
       (campaignMessages || []).forEach((m: any) => {
         const norm = m.phone?.replace(/\D/g, '');
         if (!norm) return;
@@ -236,7 +236,7 @@ export function CTWACampaignAutomation() {
         if (norm.startsWith('120363') || m.phone?.includes('@g.us')) return;
         const key = `${norm}_${m.instance_name}`;
         if (!phoneMap.has(key)) {
-          phoneMap.set(key, { phone: m.phone, contact_name: m.contact_name, instance_name: m.instance_name });
+          phoneMap.set(key, { phone: m.phone, contact_name: m.contact_name, instance_name: m.instance_name, normalized_phone: norm });
         }
       });
 
@@ -247,18 +247,19 @@ export function CTWACampaignAutomation() {
 
       // Build conversations list with enriched data
       const conversations: ConversationInfo[] = [];
-      const phonesArr = Array.from(phoneMap.keys());
+      const rawPhones = Array.from(new Set(Array.from(phoneMap.values()).map(conv => conv.phone)));
       
       // Check agent assignment
       const { data: convAgents } = await supabase
         .from('whatsapp_conversation_agents' as any)
-        .select('phone, is_active')
-        .eq('agent_id', link.agent_id)
-        .in('phone', phonesArr);
+        .select('phone, instance_name, is_active')
+        .eq('agent_id', link.agent_id);
 
       const agentMap = new Map<string, boolean>();
       (convAgents as any[] || []).forEach((ca: any) => {
-        agentMap.set(ca.phone?.replace(/\D/g, ''), ca.is_active);
+        const normalizedAgentPhone = ca.phone?.replace(/\D/g, '');
+        if (!normalizedAgentPhone) return;
+        agentMap.set(`${normalizedAgentPhone}_${ca.instance_name || ''}`, !!ca.is_active);
       });
 
       // Check leads for these phones
@@ -274,10 +275,12 @@ export function CTWACampaignAutomation() {
       });
 
       // Check contacts
-      const { data: contacts } = await supabase
-        .from('contacts')
-        .select('phone')
-        .in('phone', phonesArr);
+      const { data: contacts } = rawPhones.length
+        ? await supabase
+            .from('contacts')
+            .select('phone')
+            .in('phone', rawPhones)
+        : { data: [] as any[] };
 
       const contactSet = new Set<string>();
       (contacts || []).forEach((c: any) => {
@@ -285,7 +288,8 @@ export function CTWACampaignAutomation() {
         if (norm) contactSet.add(norm);
       });
 
-      for (const [norm, info] of phoneMap) {
+      for (const [, info] of phoneMap) {
+        const conversationKey = `${info.normalized_phone}_${info.instance_name || ''}`;
         // Get last messages for response detection
         let msgQuery = supabase
           .from('whatsapp_messages')
@@ -311,15 +315,15 @@ export function CTWACampaignAutomation() {
           }
         }
 
-        const leadInfo = leadMap.get(norm);
+        const leadInfo = leadMap.get(info.normalized_phone);
 
         conversations.push({
           phone: info.phone,
           contact_name: msgs?.[0]?.contact_name || info.contact_name || info.phone,
           last_message_at: msgs?.[0]?.created_at || null,
-          is_agent_active: agentMap.get(norm) ?? false,
+          is_agent_active: agentMap.get(conversationKey) ?? false,
           has_lead: !!leadInfo,
-          has_contact: contactSet.has(norm),
+          has_contact: contactSet.has(info.normalized_phone),
           lead_status: leadInfo?.status || null,
           lead_name: leadInfo?.name || null,
           instance_name: msgs?.[0]?.instance_name || info.instance_name,
