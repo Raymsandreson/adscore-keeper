@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot } from 'lucide-react';
+import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -22,6 +23,18 @@ interface Message {
   media_url: string | null;
   media_type: string | null;
   instance_name: string | null;
+}
+
+interface CallRecord {
+  id: string;
+  call_type: string;
+  call_result: string;
+  duration_seconds: number | null;
+  notes: string | null;
+  ai_summary: string | null;
+  created_at: string;
+  contact_name: string | null;
+  phone_used: string | null;
 }
 
 interface Props {
@@ -47,6 +60,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [agentInfo, setAgentInfo] = useState<{ name: string; activated_by: string | null; is_active: boolean } | null>(null);
+  const [callRecords, setCallRecords] = useState<CallRecord[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -54,6 +68,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     setLoading(true);
     setAiSuggestion(null);
     setAgentInfo(null);
+    setCallRecords([]);
     const normalizedPhone = phone.replace(/\D/g, '');
     const fetchMessages = async () => {
       const { data } = await supabase
@@ -92,8 +107,18 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         });
       }
     };
+    const fetchCallRecords = async () => {
+      const last8 = normalizedPhone.slice(-8);
+      const { data } = await supabase
+        .from('call_records')
+        .select('id, call_type, call_result, duration_seconds, notes, ai_summary, created_at, contact_name, phone_used, contact_phone')
+        .or(`contact_phone.ilike.%${last8}%,phone_used.ilike.%${last8}%`)
+        .order('created_at', { ascending: true });
+      setCallRecords((data || []) as CallRecord[]);
+    };
     fetchMessages();
     fetchAgent();
+    fetchCallRecords();
   }, [open, phone]);
 
   // Realtime
@@ -320,6 +345,35 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
   };
 
+  // Merge messages and call records into unified timeline
+  const timelineItems = useMemo(() => {
+    const items: Array<{ type: 'message'; data: Message } | { type: 'call'; data: CallRecord }> = [];
+    messages.forEach(m => items.push({ type: 'message', data: m }));
+    callRecords.forEach(c => items.push({ type: 'call', data: c }));
+    items.sort((a, b) => new Date(a.data.created_at).getTime() - new Date(b.data.created_at).getTime());
+    return items;
+  }, [messages, callRecords]);
+
+  const callResultLabel = (result: string) => {
+    switch (result) {
+      case 'answered': return 'Atendida';
+      case 'no_answer': return 'Não atendida';
+      case 'busy': return 'Ocupado';
+      case 'voicemail': return 'Caixa postal';
+      case 'failed': return 'Falhou';
+      default: return result || 'Ligação';
+    }
+  };
+
+  const callResultIcon = (result: string) => {
+    switch (result) {
+      case 'answered': return <PhoneIncoming className="h-3.5 w-3.5 text-emerald-600" />;
+      case 'no_answer': return <PhoneMissed className="h-3.5 w-3.5 text-red-500" />;
+      case 'busy': return <PhoneMissed className="h-3.5 w-3.5 text-amber-500" />;
+      default: return <PhoneIcon className="h-3.5 w-3.5 text-muted-foreground" />;
+    }
+  };
+
   let lastDateLabel = '';
 
   return (
@@ -430,23 +484,61 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           </div>
         )}
 
-        {/* Messages area */}
+        {/* Messages & Call Records Timeline */}
         <div className="flex-1 min-h-0 px-4">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          ) : messages.length === 0 ? (
+          ) : timelineItems.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">Nenhuma mensagem encontrada</p>
           ) : (
             <ScrollArea className="h-[50vh]">
               <div className="space-y-1 pr-3">
-                {messages.map((msg) => {
-                  const dateLabel = formatDateSeparator(msg.created_at);
+                {timelineItems.map((item) => {
+                  const dateLabel = formatDateSeparator(item.data.created_at);
                   const showDateSep = dateLabel !== lastDateLabel;
                   if (showDateSep) lastDateLabel = dateLabel;
-                  const isInbound = msg.direction === 'inbound';
 
+                  if (item.type === 'call') {
+                    const call = item.data as CallRecord;
+                    const duration = call.duration_seconds ? `${Math.floor(call.duration_seconds / 60)}:${String(call.duration_seconds % 60).padStart(2, '0')}` : null;
+                    return (
+                      <div key={`call-${call.id}`}>
+                        {showDateSep && (
+                          <div className="flex justify-center my-2">
+                            <span className="text-[10px] bg-muted px-2 py-0.5 rounded-full text-muted-foreground">{dateLabel}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-center my-2">
+                          <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2 max-w-[85%]">
+                            {callResultIcon(call.call_result)}
+                            <div className="text-[11px]">
+                              <span className="font-medium text-blue-700 dark:text-blue-300">
+                                📞 {call.call_type === 'inbound' ? 'Ligação recebida' : 'Ligação realizada'}
+                              </span>
+                              <span className="text-blue-600 dark:text-blue-400 ml-1">
+                                — {callResultLabel(call.call_result)}
+                              </span>
+                              {duration && <span className="text-muted-foreground ml-1">({duration})</span>}
+                              {call.ai_summary && (
+                                <p className="text-[10px] text-muted-foreground mt-0.5 whitespace-pre-wrap">{call.ai_summary}</p>
+                              )}
+                              {call.notes && !call.ai_summary && (
+                                <p className="text-[10px] text-muted-foreground mt-0.5">{call.notes}</p>
+                              )}
+                            </div>
+                            <span className="text-[9px] text-muted-foreground ml-auto shrink-0">
+                              {format(parseISO(call.created_at), 'HH:mm')}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const msg = item.data as Message;
+                  const isInbound = msg.direction === 'inbound';
                   return (
                     <div key={msg.id}>
                       {showDateSep && (
