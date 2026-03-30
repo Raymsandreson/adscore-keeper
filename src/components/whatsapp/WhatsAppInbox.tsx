@@ -319,21 +319,28 @@ export function WhatsAppInbox() {
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
 
-      // Extract data from conversation using AI
-      const extracted = await extractConversationData('lead');
+      // Extract both lead and contact data in parallel
+      const [extracted, contactExtracted] = await Promise.all([
+        extractConversationData('lead'),
+        extractConversationData('contact'),
+      ]);
 
       const insertData: Record<string, any> = {
-        lead_name: extracted.lead_name || selectedConversation.contact_name || 'Novo Lead - WhatsApp',
+        lead_name: extracted.lead_name || contactExtracted.full_name || selectedConversation.contact_name || 'Novo Lead - WhatsApp',
         lead_phone: selectedConversation.phone || null,
+        lead_email: extracted.lead_email || contactExtracted.email || null,
         source: 'whatsapp',
         created_by: currentUser?.id || null,
         board_id: boardId,
+        city: extracted.city || contactExtracted.city || null,
+        state: extracted.state || contactExtracted.state || null,
+        neighborhood: extracted.neighborhood || contactExtracted.neighborhood || null,
+        action_source: 'system',
       };
 
       // Merge extracted fields
       const leadFields = [
-        'victim_name', 'lead_email', 'city', 'state', 'neighborhood',
-        'main_company', 'contractor_company', 'accident_address', 'accident_date',
+        'victim_name', 'main_company', 'contractor_company', 'accident_address', 'accident_date',
         'damage_description', 'case_number', 'case_type', 'notes', 'sector',
         'visit_city', 'visit_state', 'visit_address', 'liability_type', 'news_link',
       ];
