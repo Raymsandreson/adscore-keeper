@@ -7623,6 +7623,7 @@ export type Database = {
           request_documents: boolean | null
           respond_in_groups: boolean
           response_delay_seconds: number | null
+          send_call_followup_audio: boolean | null
           send_signed_pdf: boolean
           send_window_end_hour: number
           send_window_start_hour: number
@@ -7660,6 +7661,7 @@ export type Database = {
           request_documents?: boolean | null
           respond_in_groups?: boolean
           response_delay_seconds?: number | null
+          send_call_followup_audio?: boolean | null
           send_signed_pdf?: boolean
           send_window_end_hour?: number
           send_window_start_hour?: number
@@ -7697,6 +7699,7 @@ export type Database = {
           request_documents?: boolean | null
           respond_in_groups?: boolean
           response_delay_seconds?: number | null
+          send_call_followup_audio?: boolean | null
           send_signed_pdf?: boolean
           send_window_end_hour?: number
           send_window_start_hour?: number
@@ -8080,6 +8083,7 @@ export type Database = {
           reply_with_audio: boolean | null
           respond_in_groups: boolean | null
           response_delay_seconds: number | null
+          send_call_followup_audio: boolean | null
           sign_messages: boolean | null
           split_delay_seconds: number | null
           split_messages: boolean | null
@@ -8117,6 +8121,7 @@ export type Database = {
           reply_with_audio?: never
           respond_in_groups?: never
           response_delay_seconds?: never
+          send_call_followup_audio?: never
           sign_messages?: never
           split_delay_seconds?: never
           split_messages?: never
@@ -8154,6 +8159,7 @@ export type Database = {
           reply_with_audio?: never
           respond_in_groups?: never
           response_delay_seconds?: never
+          send_call_followup_audio?: never
           sign_messages?: never
           split_delay_seconds?: never
           split_messages?: never
