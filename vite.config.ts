@@ -10,6 +10,10 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
   },
+  define: {
+    'import.meta.env.VITE_SUPABASE_URL': JSON.stringify('https://kmedldlepwiityjsdahz.supabase.co'),
+    'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImttZWRsZGxlcHdpaXR5anNkYWh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTExOTAsImV4cCI6MjA5MDQ2NzE5MH0.s51bWtABFjJGfGyuPFWr5Tp8CzbxPD5eieFUqUVuQTs'),
+  },
   plugins: [
     react(),
     mode === "development" && componentTagger(),
@@ -24,7 +28,7 @@ export default defineConfig(({ mode }) => ({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/gliigkupoebmlbwyvijp\.supabase\.co\/.*/i,
+            urlPattern: /^https:\/\/kmedldlepwiityjsdahz\.supabase\.co\/.*/i,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
