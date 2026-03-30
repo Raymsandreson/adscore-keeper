@@ -113,8 +113,8 @@ export default function ProcessesPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0 space-y-1.5">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <FileText className="h-4 w-4 text-primary shrink-0" />
-                      <span className="font-medium truncate">{p.title}</span>
+                      <FileText className={`h-4 w-4 shrink-0 ${p.case_id ? 'text-primary' : 'text-destructive'}`} />
+                      <span className={`font-medium truncate ${!p.case_id ? 'text-destructive' : ''}`}>{p.title}</span>
                       <Badge variant="outline" className={statusColor(p.status)}>
                         {statusLabel(p.status)}
                       </Badge>
@@ -122,6 +122,19 @@ export default function ProcessesPage() {
                         <Badge variant="secondary" className="text-xs">{p.process_type}</Badge>
                       )}
                     </div>
+
+                    {/* Case link */}
+                    {(p as any).legal_cases ? (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Briefcase className="h-3 w-3" />
+                        <span>Caso: <strong>{(p as any).legal_cases.case_number}</strong> — {(p as any).legal_cases.title}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-xs text-destructive">
+                        <Briefcase className="h-3 w-3" />
+                        <span>Sem caso vinculado</span>
+                      </div>
+                    )}
 
                     {p.process_number && (
                       <p className="text-sm text-muted-foreground font-mono">{p.process_number}</p>
