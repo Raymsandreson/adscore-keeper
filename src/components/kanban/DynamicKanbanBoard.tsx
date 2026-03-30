@@ -930,7 +930,7 @@ export function DynamicKanbanBoard({
                   e.preventDefault();
                   setDragOverStage(null);
                   if (draggedLead && onChangeLeadStatus) {
-                    onChangeLeadStatus(draggedLead.id, statusCol.id as 'closed' | 'refused');
+                    onChangeLeadStatus(draggedLead.id, statusCol.id as 'closed' | 'refused' | 'inviavel');
                   }
                   setDraggedLead(null);
                 }}
