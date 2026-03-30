@@ -662,6 +662,7 @@ ${scrapeData.content || ''}
           to_status: leadOutcome,
           reason: leadOutcomeReason || null,
           changed_by: user?.id || null,
+          changed_by_type: 'manual',
         });
       }
 
