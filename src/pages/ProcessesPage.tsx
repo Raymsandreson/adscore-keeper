@@ -107,11 +107,7 @@ export default function ProcessesPage() {
             <Card
               key={p.id}
               className="hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => {
-                if (p.case_id) {
-                  navigate(`/cases?openCase=${p.case_id}&openProcess=${p.id}`);
-                }
-              }}
+              onClick={() => setSelectedProcess(p)}
             >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -162,9 +158,7 @@ export default function ProcessesPage() {
                     </div>
                   </div>
 
-                  {p.case_id && (
-                    <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
-                  )}
+                  <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
                 </div>
               </CardContent>
             </Card>
