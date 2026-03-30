@@ -277,7 +277,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           .order('display_order')
           .limit(1);
         const { data: availableBoards } = await boardQuery;
-        boardId = availableBoards?.[0]?.id;
+        boardId = (availableBoards as any)?.[0]?.id;
       }
       if (!boardId) {
         toast.error('Nenhum funil disponível para criar o lead');
