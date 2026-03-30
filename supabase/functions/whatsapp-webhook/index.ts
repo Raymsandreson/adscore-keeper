@@ -1,6 +1,11 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { geminiChat } from "../_shared/gemini.ts";
 
+// Use external Supabase project when configured (hybrid architecture)
+const RESOLVED_SUPABASE_URL = Deno.env.get('EXTERNAL_SUPABASE_URL') || Deno.env.get('SUPABASE_URL')!;
+const RESOLVED_SERVICE_ROLE_KEY = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const RESOLVED_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -660,8 +665,8 @@ async function handleCallEvent(supabase: any, body: any) {
 
   // Trigger field extraction via analyze-activity-chat (async, don't wait)
   if (callResult === 'atendeu' && durationSeconds > 5 && (audioUrl || record.audio_url)) {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabaseUrl = RESOLVED_SUPABASE_URL;
+    const anonKey = RESOLVED_ANON_KEY;
     fetch(`${supabaseUrl}/functions/v1/analyze-activity-chat`, {
       method: 'POST',
       headers: {
@@ -686,8 +691,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabaseUrl = RESOLVED_SUPABASE_URL
+    const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     const startTime = Date.now()
@@ -1469,8 +1474,8 @@ Deno.serve(async (req) => {
     // ========== AUTO-ENRICH LEAD/CONTACT (after X inbound messages) ==========
     if (direction === 'inbound' && instanceName && phone && (leadId || contactId)) {
       try {
-        const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+        const supabaseUrl = RESOLVED_SUPABASE_URL
+        const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
         // Fire and forget - don't block webhook response
         fetch(`${supabaseUrl}/functions/v1/auto-enrich-lead`, {
           method: 'POST',
@@ -1594,8 +1599,8 @@ Deno.serve(async (req) => {
             console.log('Anti-loop: skipping bot own message from command routing:', phone)
           } else {
           console.log('Authorized command phone detected, routing to command processor:', cmdLookupPhone, isGroup ? `(group: ${phone})` : '')
-          const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-          const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+          const supabaseUrl = RESOLVED_SUPABASE_URL
+          const supabaseAnonKey = RESOLVED_ANON_KEY
           // Fire-and-forget — pass the actual sender phone and group context
           fetch(`${supabaseUrl}/functions/v1/whatsapp-command-processor`, {
             method: 'POST',
@@ -1643,8 +1648,8 @@ Deno.serve(async (req) => {
       if (trimmed.toLowerCase().startsWith('@wjia')) {
         console.log('@wjia command detected from attendant via WhatsApp app, phone:', phone, 'command:', trimmed)
         try {
-          const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-          const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+          const supabaseUrl = RESOLVED_SUPABASE_URL
+          const supabaseAnonKey = RESOLVED_ANON_KEY
 
           // Resolve instance_name to get instance details
           const { data: instData } = await supabase
@@ -1794,8 +1799,8 @@ Deno.serve(async (req) => {
             const internalOwnerPhone = normalizePhone(body?.message?.owner || body?.chat?.owner || body?.owner || '')
             const internalLookupPhone = internalSenderPhone || internalOwnerPhone || phone
 
-            const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-            const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+            const supabaseUrl = RESOLVED_SUPABASE_URL
+            const supabaseAnonKey = RESOLVED_ANON_KEY
 
             // Route to command processor preserving full command text
             fetch(`${supabaseUrl}/functions/v1/whatsapp-command-processor`, {
@@ -1906,8 +1911,8 @@ Deno.serve(async (req) => {
                 .eq('instance_name', instanceName),
             ])
 
-            const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-            const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+            const supabaseUrl = RESOLVED_SUPABASE_URL
+            const supabaseAnonKey = RESOLVED_ANON_KEY
 
             // Route to unified wjia-agent with the #name as command
             fetch(`${supabaseUrl}/functions/v1/wjia-agent`, {
@@ -1971,8 +1976,8 @@ Deno.serve(async (req) => {
 
         if (activeSession) {
           console.log('Active WJIA collection session found, routing to collection processor:', activeSession.id, 'direction:', direction, 'message_type:', messageType)
-          const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-          const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+          const supabaseUrl = RESOLVED_SUPABASE_URL
+          const supabaseAnonKey = RESOLVED_ANON_KEY
           fetch(`${supabaseUrl}/functions/v1/wjia-agent`, {
             method: 'POST',
             headers: {
@@ -2407,8 +2412,8 @@ Deno.serve(async (req) => {
                   content: messageText?.substring(0, 200) || 'member_assistant',
                 })
 
-                const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-                const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+                const supabaseUrl = RESOLVED_SUPABASE_URL
+                const supabaseAnonKey = RESOLVED_ANON_KEY
 
                 // Fire-and-forget to member assistant
                 fetch(`${supabaseUrl}/functions/v1/member-ai-assistant`, {
@@ -2456,8 +2461,8 @@ Deno.serve(async (req) => {
     // ========== AI AGENT AUTO-REPLY ==========
     if (direction === 'inbound' && instanceName && phone) {
       try {
-        const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-        const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+        const supabaseUrl = RESOLVED_SUPABASE_URL
+        const supabaseAnonKey = RESOLVED_ANON_KEY
         // Fire-and-forget: don't await to avoid delaying webhook response
         fetch(`${supabaseUrl}/functions/v1/whatsapp-ai-agent-reply`, {
           method: 'POST',
@@ -2501,8 +2506,8 @@ Deno.serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     // Try to log the error
     try {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      const supabaseUrl = RESOLVED_SUPABASE_URL
+      const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
       const supabase = createClient(supabaseUrl, supabaseKey)
       await supabase.from('webhook_logs').insert({
         source: 'whatsapp',

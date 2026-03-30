@@ -1,6 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// Use external Supabase project when configured (hybrid architecture)
+const RESOLVED_SUPABASE_URL = Deno.env.get('EXTERNAL_SUPABASE_URL') || Deno.env.get('SUPABASE_URL')!;
+const RESOLVED_SERVICE_ROLE_KEY = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const RESOLVED_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -28,8 +34,8 @@ serve(async (req) => {
   if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
   const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
+    RESOLVED_SUPABASE_URL,
+    RESOLVED_ANON_KEY,
     { global: { headers: { Authorization: authHeader } } }
   );
 
@@ -40,7 +46,7 @@ serve(async (req) => {
   const { name, phone, email, notes, instagram_username } = body;
 
   // Get user tokens using service role
-  const serviceSupabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  const serviceSupabase = createClient(RESOLVED_SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY);
   const { data: tokenRow } = await serviceSupabase
     .from('google_oauth_tokens')
     .select('*')
