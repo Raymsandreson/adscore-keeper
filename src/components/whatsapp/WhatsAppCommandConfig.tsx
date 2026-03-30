@@ -976,7 +976,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       {step.action_type === 'call' && (
                         <div className="space-y-1">
                           <p className="text-[9px] text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-1.5 rounded flex items-start gap-1">
-                            ⚡ Flash call: apenas um toque rápido para chamar atenção. A ligação não é completada — serve para o lead ver a notificação e retornar ao WhatsApp.
+                            📞 Ligação automática: o sistema liga para o lead e aguarda até a chamada ser finalizada (atendida ou não). Após a ligação, pode enviar um áudio de follow-up no WhatsApp.
                           </p>
                           <div className="flex items-center justify-between">
                             <Label className="text-[10px]">📞 Enviar áudio pós-ligação</Label>
