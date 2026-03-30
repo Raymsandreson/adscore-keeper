@@ -4117,6 +4117,69 @@ export type Database = {
           },
         ]
       }
+      lead_financials: {
+        Row: {
+          amount: number
+          case_id: string | null
+          category: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          entry_date: string
+          entry_type: string
+          id: string
+          lead_id: string | null
+          notes: string | null
+          payment_method: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          case_id?: string | null
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          entry_date?: string
+          entry_type: string
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          case_id?: string | null
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          entry_date?: string
+          entry_type?: string
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_financials_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "legal_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_financials_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_followups: {
         Row: {
           created_at: string
@@ -4428,6 +4491,44 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_status_history: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          from_status: string | null
+          id: string
+          lead_id: string
+          reason: string | null
+          to_status: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          from_status?: string | null
+          id?: string
+          lead_id: string
+          reason?: string | null
+          to_status: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          from_status?: string | null
+          id?: string
+          lead_id?: string
+          reason?: string | null
+          to_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_status_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           accident_address: string | null
@@ -4443,6 +4544,7 @@ export type Database = {
           adset_name: string | null
           became_client_date: string | null
           board_id: string | null
+          cac: number | null
           campaign_id: string | null
           campaign_name: string | null
           case_number: string | null
@@ -4478,6 +4580,8 @@ export type Database = {
           lead_name: string | null
           lead_phone: string | null
           lead_status: string
+          lead_status_changed_at: string | null
+          lead_status_reason: string | null
           legal_viability: string | null
           liability_type: string | null
           main_company: string | null
@@ -4515,6 +4619,7 @@ export type Database = {
           adset_name?: string | null
           became_client_date?: string | null
           board_id?: string | null
+          cac?: number | null
           campaign_id?: string | null
           campaign_name?: string | null
           case_number?: string | null
@@ -4550,6 +4655,8 @@ export type Database = {
           lead_name?: string | null
           lead_phone?: string | null
           lead_status?: string
+          lead_status_changed_at?: string | null
+          lead_status_reason?: string | null
           legal_viability?: string | null
           liability_type?: string | null
           main_company?: string | null
@@ -4587,6 +4694,7 @@ export type Database = {
           adset_name?: string | null
           became_client_date?: string | null
           board_id?: string | null
+          cac?: number | null
           campaign_id?: string | null
           campaign_name?: string | null
           case_number?: string | null
@@ -4622,6 +4730,8 @@ export type Database = {
           lead_name?: string | null
           lead_phone?: string | null
           lead_status?: string
+          lead_status_changed_at?: string | null
+          lead_status_reason?: string | null
           legal_viability?: string | null
           liability_type?: string | null
           main_company?: string | null
