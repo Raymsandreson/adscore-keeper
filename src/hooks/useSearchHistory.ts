@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Json } from '@/integrations/supabase/types';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface SearchHistoryItem {
   id: string;
@@ -137,7 +138,7 @@ export function useSearchHistory() {
 
     try {
       // Check status first
-      const { data: statusData, error: statusError } = await supabase.functions.invoke('search-instagram-posts', {
+      const { data: statusData, error: statusError } = await cloudFunctions.invoke('search-instagram-posts', {
         body: { action: 'status', runId: item.apify_run_id },
       });
 
@@ -156,7 +157,7 @@ export function useSearchHistory() {
       }
 
       // If complete, fetch results
-      const { data: resultsData, error: resultsError } = await supabase.functions.invoke('search-instagram-posts', {
+      const { data: resultsData, error: resultsError } = await cloudFunctions.invoke('search-instagram-posts', {
         body: { action: 'results', runId: item.apify_run_id },
       });
 
@@ -188,7 +189,7 @@ export function useSearchHistory() {
       await new Promise(resolve => setTimeout(resolve, 5000));
 
       try {
-        const { data: statusData, error: statusError } = await supabase.functions.invoke('search-instagram-posts', {
+        const { data: statusData, error: statusError } = await cloudFunctions.invoke('search-instagram-posts', {
           body: { action: 'status', runId },
         });
 
@@ -201,7 +202,7 @@ export function useSearchHistory() {
         }
 
         if (statusData?.isComplete) {
-          const { data: resultsData, error: resultsError } = await supabase.functions.invoke('search-instagram-posts', {
+          const { data: resultsData, error: resultsError } = await cloudFunctions.invoke('search-instagram-posts', {
             body: { action: 'results', runId },
           });
 

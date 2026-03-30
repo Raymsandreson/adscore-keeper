@@ -38,6 +38,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { LeadContactSelector } from './LeadContactSelector';
 import { PendingTransactionsList } from './PendingTransactionsList';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface Transaction {
   id: string;
@@ -174,7 +175,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
     
     setIsLookingUpLocation(true);
     try {
-      const { data, error } = await supabase.functions.invoke('lookup-cnpj', {
+      const { data, error } = await cloudFunctions.invoke('lookup-cnpj', {
         body: { cnpj: currentTransaction.merchant_cnpj }
       });
       

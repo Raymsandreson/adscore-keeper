@@ -2,8 +2,8 @@
 // Since the app connects to an external Supabase project for data,
 // but Edge Functions are deployed on Lovable Cloud, we need to call them directly.
 
-const LOVABLE_CLOUD_URL = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co`;
-const LOVABLE_CLOUD_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const LOVABLE_CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
+const LOVABLE_CLOUD_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38';
 
 export async function invokeCloudFunction<T = any>(
   functionName: string,
@@ -28,7 +28,6 @@ export async function invokeCloudFunction<T = any>(
 
     const contentType = response.headers.get('content-type') || '';
     if (contentType.includes('text/event-stream')) {
-      // Return the response itself for streaming
       return { data: response as any, error: null };
     }
 
@@ -39,3 +38,11 @@ export async function invokeCloudFunction<T = any>(
     return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
   }
 }
+
+// Compatible proxy that mimics supabase.functions interface
+// Use: replace `supabase.functions.invoke(...)` with `cloudFunctions.invoke(...)`
+export const cloudFunctions = {
+  invoke: async <T = any>(functionName: string, options?: { body?: any }): Promise<{ data: T | null; error: Error | null }> => {
+    return invokeCloudFunction<T>(functionName, options?.body);
+  }
+};

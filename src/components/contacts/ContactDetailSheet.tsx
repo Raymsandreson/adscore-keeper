@@ -74,6 +74,7 @@ import { Sparkles, PhoneCall } from 'lucide-react';
 import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import type { Lead } from '@/hooks/useLeads';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface ContactDetailSheetProps {
   contact: Contact | null;
@@ -262,7 +263,7 @@ export function ContactDetailSheet({
       let resolvedGroupId = whatsappGroupId || null;
       if (whatsappGroupId && whatsappGroupId.includes('chat.whatsapp.com')) {
         try {
-          const { data: resolveData } = await supabase.functions.invoke('send-whatsapp', {
+          const { data: resolveData } = await cloudFunctions.invoke('send-whatsapp', {
             body: { action: 'resolve_group_link', group_link: whatsappGroupId },
           });
           if (resolveData?.success && resolveData.group_id) {

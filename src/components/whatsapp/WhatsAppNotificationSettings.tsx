@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Save, Plus, X, Bell, Clock, Target, AlertTriangle, CalendarDays, UserPlus, User, Send } from 'lucide-react';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 const DAYS_OF_WEEK = [
   { value: 0, label: 'Dom' },
@@ -180,7 +181,7 @@ export function WhatsAppNotificationSettings() {
       setSending(true);
     }
     try {
-      const { data, error } = await supabase.functions.invoke('trigger-whatsapp-notifications', {
+      const { data, error } = await cloudFunctions.invoke('trigger-whatsapp-notifications', {
         body: targetUserId ? { target_user_id: targetUserId } : {},
       });
       if (error) throw error;

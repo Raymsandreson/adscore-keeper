@@ -13,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Loader2, Link2, Plus, UserPlus, UserMinus, Users2, UserCheck, Users, Handshake, Package, X } from 'lucide-react';
 import type { ContactClassification, FollowerStatus } from '@/hooks/useContacts';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface CreateContactDialogProps {
   open: boolean;
@@ -184,9 +185,9 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-          const { data: googleCheck } = await supabase.functions.invoke('google-check-connection');
+          const { data: googleCheck } = await cloudFunctions.invoke('google-check-connection');
           if (googleCheck?.connected) {
-            supabase.functions.invoke('google-save-contact', {
+            cloudFunctions.invoke('google-save-contact', {
               body: { name: form.full_name, phone: form.phone || undefined, email: form.email || undefined, instagram_username: igUsername || undefined, notes: form.notes || undefined },
             }).catch(() => {});
           }

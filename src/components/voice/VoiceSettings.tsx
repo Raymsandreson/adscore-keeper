@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Mic, Play, Pause, Upload, Check, Loader2, Volume2, Trash2, Square, Circle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface VoicePreset {
   id: string;
@@ -94,7 +95,7 @@ export function VoiceSettings() {
 
   const loadVoices = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('elevenlabs-voice-clone', {
+      const { data, error } = await cloudFunctions.invoke('elevenlabs-voice-clone', {
         body: { action: 'list_presets' },
       });
       if (error) throw error;
@@ -112,7 +113,7 @@ export function VoiceSettings() {
   const selectVoice = async (voiceType: string, voiceId: string, voiceName: string) => {
     setSaving(true);
     try {
-      const { error } = await supabase.functions.invoke('elevenlabs-voice-clone', {
+      const { error } = await cloudFunctions.invoke('elevenlabs-voice-clone', {
         body: { action: 'set_preference', voice_type: voiceType, voice_id: voiceId, voice_name: voiceName },
       });
       if (error) throw error;
@@ -128,7 +129,7 @@ export function VoiceSettings() {
   const deleteVoice = async (recordId: string, elevenlabsVoiceId: string | null) => {
     if (!confirm('Tem certeza que deseja excluir esta voz?')) return;
     try {
-      const { error } = await supabase.functions.invoke('elevenlabs-voice-clone', {
+      const { error } = await cloudFunctions.invoke('elevenlabs-voice-clone', {
         body: { action: 'delete', record_id: recordId, voice_id: elevenlabsVoiceId },
       });
       if (error) throw error;
@@ -150,7 +151,7 @@ export function VoiceSettings() {
     setPreviewingId(voiceId);
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-voice-clone`,
+        `https://gliigkupoebmlbwyvijp.supabase.co/functions/v1/elevenlabs-voice-clone`,
         {
           method: 'POST',
           headers: {
@@ -204,7 +205,7 @@ export function VoiceSettings() {
         if (urlData?.publicUrl) sampleUrls.push(urlData.publicUrl);
       }
 
-      const { data, error } = await supabase.functions.invoke('elevenlabs-voice-clone', {
+      const { data, error } = await cloudFunctions.invoke('elevenlabs-voice-clone', {
         body: { action: 'clone', name: cloneName, sample_urls: sampleUrls },
       });
 

@@ -59,6 +59,7 @@ import { StagnationSettings } from './leads/StagnationSettings';
 import { StagnantLeadsList } from './leads/StagnantLeadsList';
 import { useStagnationAlerts, StagnantLead } from '@/hooks/useStagnationAlerts';
 import { BarChart3 } from 'lucide-react';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 const daysOfWeek = [
   { value: 0, label: 'Domingo', short: 'Dom' },
@@ -205,7 +206,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
 
     setIsImporting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('fetch-facebook-leads', {
+      const { data, error } = await cloudFunctions.invoke('fetch-facebook-leads', {
         body: { adAccountId }
       });
 

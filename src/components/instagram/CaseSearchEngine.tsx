@@ -74,6 +74,7 @@ import { cn } from '@/lib/utils';
 import { useSearchHistory } from '@/hooks/useSearchHistory';
 import { parseAdvancedSearch, SEARCH_TIPS } from '@/utils/advancedSearchParser';
 import { ProfileSearchEngine } from './ProfileSearchEngine';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface SearchResult {
   postId: string;
@@ -310,7 +311,7 @@ export function CaseSearchEngine() {
       await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
 
       try {
-        const { data: statusData, error: statusError } = await supabase.functions.invoke('search-instagram-posts', {
+        const { data: statusData, error: statusError } = await cloudFunctions.invoke('search-instagram-posts', {
           body: { action: 'status', runId },
         });
 
@@ -324,7 +325,7 @@ export function CaseSearchEngine() {
           setSearchStatus('Carregando resultados...');
           
           // Fetch results
-          const { data: resultsData, error: resultsError } = await supabase.functions.invoke('search-instagram-posts', {
+          const { data: resultsData, error: resultsError } = await cloudFunctions.invoke('search-instagram-posts', {
             body: { action: 'results', runId },
           });
 
@@ -374,7 +375,7 @@ export function CaseSearchEngine() {
       const keywordList = keywords.split(',').map(k => k.trim()).filter(Boolean);
 
       // Start the search
-      const { data, error } = await supabase.functions.invoke('search-instagram-posts', {
+      const { data, error } = await cloudFunctions.invoke('search-instagram-posts', {
         body: {
           action: 'start',
           keywords: keywordList,
@@ -463,7 +464,7 @@ export function CaseSearchEngine() {
     setLoadingComments(result.postId);
 
     try {
-      const { data, error } = await supabase.functions.invoke('fetch-post-comments', {
+      const { data, error } = await cloudFunctions.invoke('fetch-post-comments', {
         body: {
           postUrl: result.postUrl,
           maxComments: 100,
@@ -520,7 +521,7 @@ export function CaseSearchEngine() {
       setLoadingAllProgress({ current: i + 1, total: posts.length });
 
       try {
-        const { data, error } = await supabase.functions.invoke('fetch-post-comments', {
+        const { data, error } = await cloudFunctions.invoke('fetch-post-comments', {
           body: {
             postUrl: result.postUrl,
             maxComments: 100,
@@ -1005,7 +1006,7 @@ export function CaseSearchEngine() {
                   setIsLoadingAiSuggestions(true);
                   setAiSuggestions([]);
                   try {
-                    const { data, error } = await supabase.functions.invoke('suggest-search-keywords', {
+                    const { data, error } = await cloudFunctions.invoke('suggest-search-keywords', {
                       body: { topic: aiTopic },
                     });
                     if (error) throw error;

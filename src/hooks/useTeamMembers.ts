@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from './useUserRole';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface TeamMember {
   id: string;
@@ -107,7 +108,7 @@ export function useTeamMembers() {
     // Send invitation email via edge function
     try {
       const appUrl = window.location.origin;
-      const response = await supabase.functions.invoke('send-team-invitation', {
+      const response = await cloudFunctions.invoke('send-team-invitation', {
         body: {
           email: normalizedEmail,
           role,

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export interface TeamMessage {
   id: string;
@@ -129,7 +130,7 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
       await supabase.from('team_chat_mentions').insert(mentions);
 
       // Send WhatsApp notification to mentioned users (using sender's instance)
-      supabase.functions.invoke('notify-team-mention', {
+      cloudFunctions.invoke('notify-team-mention', {
         body: {
           mentioned_user_ids: mentionedUserIds,
           message_content: content,

@@ -12,6 +12,7 @@ import {
   Plus, Trash2, CheckCircle2 
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface Instance {
   id: string;
@@ -213,7 +214,7 @@ export function WhatsAppReportSettings() {
   const sendTestReport = async () => {
     try {
       toast.info('Enviando relatório de teste...');
-      const { error } = await supabase.functions.invoke('whatsapp-instance-report', {
+      const { error } = await cloudFunctions.invoke('whatsapp-instance-report', {
         body: { test: true },
       });
       if (error) throw error;

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export interface CommentSchedule {
   id: string;
@@ -152,7 +153,7 @@ export function useCommentSchedules() {
 
   const runScheduleNow = async (schedule: CommentSchedule) => {
     try {
-      const response = await supabase.functions.invoke("n8n-comment-webhook", {
+      const response = await cloudFunctions.invoke("n8n-comment-webhook", {
         body: {
           action: "scheduled_run",
           schedule_id: schedule.id,

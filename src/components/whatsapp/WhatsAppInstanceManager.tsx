@@ -12,6 +12,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, Pencil, Trash2, Smartphone, Wifi, WifiOff, Phone, Globe, Key, CheckCircle2, RefreshCw, Bot, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface Instance {
   id: string;
@@ -74,7 +75,7 @@ export function WhatsAppInstanceManager() {
   const syncPhones = async () => {
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('check-whatsapp-status');
+      const { data, error } = await cloudFunctions.invoke('check-whatsapp-status');
       if (error) throw error;
       const results = data as Array<{ id: string; owner_phone: string | null }>;
       if (results?.length) {

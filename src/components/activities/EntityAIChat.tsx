@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface ChatMessage {
   id: string;
@@ -222,7 +223,7 @@ export function EntityAIChat({
         i <= 1 ? { ...s, status: 'done' } : i === 2 ? { ...s, status: 'active' } : s
       ));
 
-      const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
+      const { data, error } = await cloudFunctions.invoke('analyze-activity-chat', {
         body: {
           mode: 'assistant',
           context: {

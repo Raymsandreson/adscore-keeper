@@ -7,7 +7,7 @@ import { WhatsAppAdLinkSettings } from './WhatsAppAdLinkSettings';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
 
 export function WhatsAppSetupGuide() {
-  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
+  const webhookUrl = `https://gliigkupoebmlbwyvijp.supabase.co/functions/v1/whatsapp-webhook`;
 
   const copyUrl = () => {
     navigator.clipboard.writeText(webhookUrl);
@@ -159,8 +159,8 @@ export function WhatsAppSetupGuide() {
               <strong>URL do Webhook para Chamadas:</strong>
             </p>
             <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-              <code className="text-xs flex-1 break-all">{`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meta-calling-webhook`}</code>
-              <Button variant="ghost" size="icon" onClick={() => { navigator.clipboard.writeText(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meta-calling-webhook`); toast.success('URL copiada!'); }}>
+              <code className="text-xs flex-1 break-all">{`https://gliigkupoebmlbwyvijp.supabase.co/functions/v1/meta-calling-webhook`}</code>
+              <Button variant="ghost" size="icon" onClick={() => { navigator.clipboard.writeText(`https://gliigkupoebmlbwyvijp.supabase.co/functions/v1/meta-calling-webhook`); toast.success('URL copiada!'); }}>
                 <Copy className="h-4 w-4" />
               </Button>
             </div>

@@ -15,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Loader2, Sparkles, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface CommentData {
   id: string;
@@ -111,21 +112,21 @@ function SearchContentExtractor({
     setExtractedData(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke('extract-accident-data', {
+      const { data, error } = await cloudFunctions.invoke('extract-accident-data', {
         body: { content: truncatedText, type: 'text' },
       });
 
       if (error) {
         console.error('Error extracting data:', error);
         try {
-          const errorBody = typeof error === 'object' && error.context ? await error.context.json() : null;
+          const errorBody = null;
           if (errorBody?.error) {
             toast.error(errorBody.error);
             return;
           }
         } catch {}
 
-        const status = typeof error === 'object' && error.context ? error.context.status : null;
+        const status = null;
         if (status === 413) {
           toast.error('Texto muito grande para processamento. Tente com um trecho menor.');
           return;

@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { Goal } from "./GoalsManager";
 import GoalSuccessChart from "./GoalSuccessChart";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface GoalHistoryEntry {
   id: string;
@@ -96,7 +97,7 @@ const GoalHistory = ({ currentGoals, onArchiveGoal }: GoalHistoryProps) => {
       const progress = Math.min(100, (goal.currentValue / goal.targetValue) * 100);
       const daysLeft = Math.ceil((goal.deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
       
-      const { data, error } = await supabase.functions.invoke('goal-ai-suggestions', {
+      const { data, error } = await cloudFunctions.invoke('goal-ai-suggestions', {
         body: {
           goal: {
             title: goal.title,

@@ -41,6 +41,7 @@ import { useMultiAccountSelection } from "@/hooks/useMultiAccountSelection";
 import { useAggregatedMetrics } from "@/hooks/useAggregatedMetrics";
 import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 const Dashboard = () => {
   const [searchParams] = useSearchParams();
@@ -219,7 +220,7 @@ const Dashboard = () => {
       
       try {
         console.log('📊 [Dashboard] Fetching organic insights for status...', { period: periodDays });
-        const { data, error } = await supabase.functions.invoke('fetch-organic-insights', {
+        const { data, error } = await cloudFunctions.invoke('fetch-organic-insights', {
           body: { 
             pageId: metaConfig.accountId,
             accessToken: metaConfig.accessToken,

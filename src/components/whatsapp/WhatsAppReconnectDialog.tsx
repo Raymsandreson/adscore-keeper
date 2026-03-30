@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Loader2, RefreshCw, QrCode, CheckCircle2, XCircle, Wifi, Smartphone, Copy } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface WhatsAppReconnectDialogProps {
   open: boolean;
@@ -48,7 +49,7 @@ export function WhatsAppReconnectDialog({
     setQrCode(null);
     setPollCount(0);
     try {
-      const { data, error } = await supabase.functions.invoke('reconnect-whatsapp', {
+      const { data, error } = await cloudFunctions.invoke('reconnect-whatsapp', {
         body: { instance_id: instanceId, action: 'connect' },
       });
       if (error) throw error;
@@ -82,7 +83,7 @@ export function WhatsAppReconnectDialog({
       const body: any = { instance_id: instanceId, action: 'pairing_code' };
       if (phone) body.phone = phone;
 
-      const { data, error } = await supabase.functions.invoke('reconnect-whatsapp', { body });
+      const { data, error } = await cloudFunctions.invoke('reconnect-whatsapp', { body });
       if (error) throw error;
 
       if (data?.already_connected) {
@@ -130,7 +131,7 @@ export function WhatsAppReconnectDialog({
     setStep('connecting');
     setErrorMsg(null);
     try {
-      const { data, error } = await supabase.functions.invoke('reconnect-whatsapp', {
+      const { data, error } = await cloudFunctions.invoke('reconnect-whatsapp', {
         body: { instance_id: instanceId, action: 'restart' },
       });
       if (error) throw error;
@@ -159,7 +160,7 @@ export function WhatsAppReconnectDialog({
     }
     const timer = setTimeout(async () => {
       try {
-        const { data } = await supabase.functions.invoke('reconnect-whatsapp', {
+        const { data } = await cloudFunctions.invoke('reconnect-whatsapp', {
           body: { instance_id: instanceId, action: 'connect' },
         });
         if (data?.qrCode) {
@@ -185,7 +186,7 @@ export function WhatsAppReconnectDialog({
     if (step !== 'showing_qr' && step !== 'showing_pairing') return;
     const checkConnection = async () => {
       try {
-        const { data } = await supabase.functions.invoke('check-whatsapp-status');
+        const { data } = await cloudFunctions.invoke('check-whatsapp-status');
         const inst = (data || []).find((s: any) => s.id === instanceId);
         if (inst?.connected) {
           setStep('connected');
@@ -202,7 +203,7 @@ export function WhatsAppReconnectDialog({
   const refreshQr = useCallback(async () => {
     setQrCode(null);
     try {
-      const { data } = await supabase.functions.invoke('reconnect-whatsapp', {
+      const { data } = await cloudFunctions.invoke('reconnect-whatsapp', {
         body: { instance_id: instanceId, action: 'connect' },
       });
       if (data?.qrCode) {

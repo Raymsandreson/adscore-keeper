@@ -27,6 +27,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CommentScheduleManager } from "./CommentScheduleManager";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface AutomationLog {
   id: string;
@@ -59,7 +60,7 @@ export function N8nIntegrationSettings() {
     webhookSecret: "",
   });
 
-  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/n8n-comment-webhook`;
+  const webhookUrl = `https://gliigkupoebmlbwyvijp.supabase.co/functions/v1/n8n-comment-webhook`;
 
   useEffect(() => {
     loadSettings();
@@ -113,7 +114,7 @@ export function N8nIntegrationSettings() {
   const testWebhook = async (action: string) => {
     setTesting(true);
     try {
-      const response = await supabase.functions.invoke("n8n-comment-webhook", {
+      const response = await cloudFunctions.invoke("n8n-comment-webhook", {
         body: {
           action,
           limit: 3,

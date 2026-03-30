@@ -258,7 +258,7 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
       };
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/campaign-ai-assistant`,
+        `https://gliigkupoebmlbwyvijp.supabase.co/functions/v1/campaign-ai-assistant`,
         {
           method: "POST",
           headers: {

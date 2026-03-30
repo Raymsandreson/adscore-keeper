@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface ProfileResult {
   username: string;
@@ -62,7 +63,7 @@ export function ProfileSearchEngine() {
 
     try {
       // Start the search
-      const { data: startData, error: startError } = await supabase.functions.invoke('search-instagram-profiles', {
+      const { data: startData, error: startError } = await cloudFunctions.invoke('search-instagram-profiles', {
         body: {
           action: 'start',
           keywords: keyword.split(',').map(k => k.trim()).filter(Boolean),
@@ -84,7 +85,7 @@ export function ProfileSearchEngine() {
         attempts++;
         await new Promise(resolve => setTimeout(resolve, 5000));
 
-        const { data: statusData, error: statusError } = await supabase.functions.invoke('search-instagram-profiles', {
+        const { data: statusData, error: statusError } = await cloudFunctions.invoke('search-instagram-profiles', {
           body: { action: 'status', runId },
         });
 
@@ -97,7 +98,7 @@ export function ProfileSearchEngine() {
         if (statusData?.isComplete) {
           setSearchStatus('Carregando resultados...');
 
-          const { data: resultsData, error: resultsError } = await supabase.functions.invoke('search-instagram-profiles', {
+          const { data: resultsData, error: resultsError } = await cloudFunctions.invoke('search-instagram-profiles', {
             body: { action: 'results', runId },
           });
 

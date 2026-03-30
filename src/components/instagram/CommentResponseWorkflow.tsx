@@ -52,6 +52,7 @@ import { useCommentContactInfo } from "@/hooks/useCommentContactInfo";
 import { useCommentCardSettings } from "@/hooks/useCommentCardSettings";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useActivityLogger } from "@/hooks/useActivityLogger";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface Comment {
   id: string;
@@ -448,7 +449,7 @@ export const CommentResponseWorkflow = ({
         };
       }
 
-      const { data, error } = await supabase.functions.invoke("generate-ai-reply", {
+      const { data, error } = await cloudFunctions.invoke("generate-ai-reply", {
         body: {
           comment: currentComment.comment_text,
           authorUsername: currentComment.author_username?.replace("@", ""),
@@ -501,7 +502,7 @@ export const CommentResponseWorkflow = ({
     setWorkflowStep('replying');
 
     try {
-      const { data, error } = await supabase.functions.invoke("post-instagram-reply", {
+      const { data, error } = await cloudFunctions.invoke("post-instagram-reply", {
         body: {
           commentId: commentIdToReply,
           message: editedReply.trim(),

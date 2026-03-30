@@ -18,6 +18,7 @@ import { ConfirmDialogDateFields } from '@/components/activities/ConfirmDialogDa
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface ChatMessage {
   id: string;
@@ -185,7 +186,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const fetchActionSuggestions = useCallback(async (actData: any, leadData: any, contactData: any) => {
     setActionsLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
+      const { data, error } = await cloudFunctions.invoke('analyze-activity-chat', {
         body: {
           mode: 'suggest_actions',
           context: {
@@ -271,7 +272,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const autoAnalyzeFile = async (fileType: string, fileUrl: string, fileName: string, audioDuration?: number) => {
     try {
       setAnalyzing(true);
-      const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
+      const { data, error } = await cloudFunctions.invoke('analyze-activity-chat', {
         body: { mode: 'describe_file', context: { file_url: fileUrl, file_type: fileType, file_name: fileName, audio_duration: audioDuration } },
       });
       if (error) throw error;
@@ -305,7 +306,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     if (!regenerateConfig) return;
     setRegenerating(true);
     try {
-      const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
+      const { data, error } = await cloudFunctions.invoke('analyze-activity-chat', {
         body: {
           mode: 'describe_file',
           context: {
@@ -462,7 +463,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         i <= 1 ? { ...s, status: 'done' } : i === 2 ? { ...s, status: 'active' } : s
       ));
 
-      const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
+      const { data, error } = await cloudFunctions.invoke('analyze-activity-chat', {
         body: {
           mode: 'assistant',
           context: {
@@ -798,7 +799,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     }
     setAnalyzing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
+      const { data, error } = await cloudFunctions.invoke('analyze-activity-chat', {
         body: { messages: messages.filter(m => !m.deleted_at).map(m => ({ content: m.content, message_type: m.message_type, sender_name: m.sender_name, file_name: m.file_name, file_url: m.file_url, audio_duration: m.audio_duration })) },
       });
       if (error) throw error;

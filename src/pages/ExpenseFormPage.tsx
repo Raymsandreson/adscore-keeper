@@ -19,6 +19,7 @@ import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useGeolocation } from '@/hooks/useGeolocation';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface Transaction {
   id: string;
@@ -177,7 +178,7 @@ export default function ExpenseFormPage() {
   const loadFormData = async () => {
     setLoading(true);
     try {
-      const { data, error: fnError } = await supabase.functions.invoke('expense-form', {
+      const { data, error: fnError } = await cloudFunctions.invoke('expense-form', {
         body: { action: 'validate', token },
       });
 
@@ -323,7 +324,7 @@ export default function ExpenseFormPage() {
 
     setSubmitting(true);
     try {
-      const { data, error: fnError } = await supabase.functions.invoke('expense-form', {
+      const { data, error: fnError } = await cloudFunctions.invoke('expense-form', {
         body: { action: 'submit', token, responses: toSubmit },
       });
 

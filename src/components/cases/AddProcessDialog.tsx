@@ -20,6 +20,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { autoCreatePartiesFromEnvolvidos } from '@/utils/escavadorPartyUtils';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface AddProcessDialogProps {
   open: boolean;
@@ -165,7 +166,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
         body.oab_estado = oabEstado;
       }
 
-      const { data, error } = await supabase.functions.invoke('search-escavador', { body });
+      const { data, error } = await cloudFunctions.invoke('search-escavador', { body });
 
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
@@ -238,7 +239,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
         let movimentacoes: any[] = [];
         if (result.numero_cnj) {
           try {
-            const { data: completeData } = await supabase.functions.invoke('search-escavador', {
+            const { data: completeData } = await cloudFunctions.invoke('search-escavador', {
               body: { action: 'buscar_completo', numero_cnj: result.numero_cnj },
             });
             if (completeData?.success && completeData.data) {

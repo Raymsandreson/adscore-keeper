@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Phone, PhoneCall, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface WhatsAppCallButtonProps {
   phoneNumber?: string;
@@ -49,7 +50,7 @@ export function WhatsAppCallButton({
     setLastResult(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke('make-whatsapp-call', {
+      const { data, error } = await cloudFunctions.invoke('make-whatsapp-call', {
         body: {
           phone: clean,
           instance_name: instanceName,

@@ -48,6 +48,7 @@ import { useGeolocation } from '@/hooks/useGeolocation';
 import { translateCategory } from '@/utils/categoryTranslations';
 import { toast } from 'sonner';
 import { CategorySelector } from '@/components/finance/CategorySelector';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface Transaction {
   id: string;
@@ -451,7 +452,7 @@ export function PendingTransactionsList({
         }).join('\n');
         const moreText = cardTxs.length > 5 ? `\n... e mais ${cardTxs.length - 5} transações` : '';
         const message = `📋 *Despesas pendentes de classificação*\n\nCartão: *${assignment.card_name || `****${cardDigits}`}*\nTotal: *${formattedTotal}* (${cardTxs.length} transações)\n\n${txSummary}${moreText}\n\nPor favor, cadastre o lead e a categoria de cada despesa no link abaixo:\n\n👉 ${link}`;
-        const { error: sendError } = await supabase.functions.invoke('send-whatsapp', {
+        const { error: sendError } = await cloudFunctions.invoke('send-whatsapp', {
           body: { phone: contact.phone, message, contact_id: assignment.contact_id, lead_id: assignment.lead_id },
         });
         if (sendError) {

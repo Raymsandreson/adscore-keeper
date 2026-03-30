@@ -10,6 +10,7 @@ import { Sparkles, Loader2 } from 'lucide-react';
 import { VoiceInputButton } from '@/components/ui/voice-input-button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface Props {
   open: boolean;
@@ -73,7 +74,7 @@ export function ProductFormDialog({ open, onOpenChange, product, companies, onSa
     setAiRationale(null);
     try {
       const activeCompanies = companies.filter(c => c.is_active).map(c => ({ id: c.id, name: c.name }));
-      const { data, error } = await supabase.functions.invoke('suggest-product-fields', {
+      const { data, error } = await cloudFunctions.invoke('suggest-product-fields', {
         body: { name: form.name, description: form.description, companies: activeCompanies },
       });
 

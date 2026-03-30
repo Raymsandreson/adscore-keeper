@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface Comment {
   id: string;
@@ -63,7 +64,7 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
     setMarkedDm(false);
 
     try {
-      const { data, error } = await supabase.functions.invoke("generate-ai-reply", {
+      const { data, error } = await cloudFunctions.invoke("generate-ai-reply", {
         body: {
           comment: comment.comment_text,
           authorUsername: comment.author_username?.replace("@", ""),

@@ -16,6 +16,7 @@ import {
 import { DashboardChatPreview } from './DashboardChatPreview';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface CampaignLink {
   id: string;
@@ -136,7 +137,7 @@ export function CTWACampaignAutomation() {
     try {
       const formattedAdAccountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
       console.log('CTWA: Fetching campaigns for', formattedAdAccountId);
-      const { data, error } = await supabase.functions.invoke('list-meta-ads', {
+      const { data, error } = await cloudFunctions.invoke('list-meta-ads', {
         body: { accessToken, adAccountId: formattedAdAccountId, limit: 100, status: ['ACTIVE', 'PAUSED'] },
       });
       if (error) throw error;
@@ -453,7 +454,7 @@ export function CTWACampaignAutomation() {
         const messageText = (lastMsg as any)?.message_text || 'Olá';
         const messageType = (lastMsg as any)?.message_type || 'text';
 
-        const { data, error } = await supabase.functions.invoke('whatsapp-ai-agent-reply', {
+        const { data, error } = await cloudFunctions.invoke('whatsapp-ai-agent-reply', {
           body: {
             phone: conv.phone,
             instance_name: conv.instance_name,
@@ -521,7 +522,7 @@ export function CTWACampaignAutomation() {
     
     try {
       while (true) {
-        const { data, error } = await supabase.functions.invoke('bulk-create-leads-from-campaign', {
+        const { data, error } = await cloudFunctions.invoke('bulk-create-leads-from-campaign', {
           body: {
             campaign_id: link.campaign_id,
             board_id: linkAny.board_id,

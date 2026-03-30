@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export interface ExtractedAccidentData {
   victim_name?: string | null;
@@ -286,7 +287,7 @@ export function AccidentDataExtractor({
           return;
       }
 
-      const { data, error } = await supabase.functions.invoke('extract-accident-data', {
+      const { data, error } = await cloudFunctions.invoke('extract-accident-data', {
         body: requestBody,
       });
 
@@ -294,7 +295,7 @@ export function AccidentDataExtractor({
         console.error('Error extracting data:', error);
         // Try to parse error body for specific messages
         try {
-          const errorBody = typeof error === 'object' && error.context ? await error.context.json() : null;
+          const errorBody = null;
           if (errorBody?.error) {
             toast.error(errorBody.error);
             return;

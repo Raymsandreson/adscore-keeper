@@ -39,6 +39,7 @@ import { Switch } from '@/components/ui/switch';
 import { ProcessMonitorDialog } from '@/components/cases/ProcessMonitorDialog';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface LegalCasesTabProps {
   leadId: string;
@@ -597,7 +598,7 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
     }
     setRefreshing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('search-escavador', {
+      const { data, error } = await cloudFunctions.invoke('search-escavador', {
         body: { action: 'buscar_completo', numero_cnj: process.process_number },
       });
 
@@ -653,7 +654,7 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
     }
     setAnalyzingPetition(true);
     try {
-      const { data: fnData, error: fnError } = await supabase.functions.invoke('analyze-petition', {
+      const { data: fnData, error: fnError } = await cloudFunctions.invoke('analyze-petition', {
         body: { text: petitionText, processNumber: process.process_number },
       });
       if (fnError) throw fnError;

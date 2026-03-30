@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Phone, Mic, MicOff, Square, Loader2, PhoneOff, PhoneCall, FileText, Save, Sparkles, User, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface Props {
   phone: string;
@@ -114,7 +115,7 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
     try {
       const cleanPhone = phone.replace(/\D/g, '');
 
-      const { data, error } = await supabase.functions.invoke('make-whatsapp-call', {
+      const { data, error } = await cloudFunctions.invoke('make-whatsapp-call', {
         body: {
           phone: cleanPhone,
           instance_name: instanceName,
@@ -258,7 +259,7 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
     if (!liveTranscript.trim()) return;
     setSummarizing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
+      const { data, error } = await cloudFunctions.invoke('analyze-activity-chat', {
         body: {
           action: 'summarize_text',
           text: liveTranscript,

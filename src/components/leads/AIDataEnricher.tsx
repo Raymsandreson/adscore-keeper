@@ -29,6 +29,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Lead } from '@/hooks/useLeads';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface ExtractedField {
   key: string;
@@ -110,7 +111,7 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
     setIsFetchingLink(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('scrape-news', {
+      const { data, error } = await cloudFunctions.invoke('scrape-news', {
         body: { url: newsLink.trim() },
       });
 
@@ -210,7 +211,7 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
 
     try {
       // Use Apify to search Instagram posts
-      const { data, error } = await supabase.functions.invoke('search-instagram-posts', {
+      const { data, error } = await cloudFunctions.invoke('search-instagram-posts', {
         body: {
           action: 'start',
           keywords: keywords.slice(0, 3), // Limit to first 3 keywords
@@ -248,7 +249,7 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
         const pollResults = async () => {
           attempts++;
           
-          const { data: statusData, error: statusError } = await supabase.functions.invoke('search-instagram-posts', {
+          const { data: statusData, error: statusError } = await cloudFunctions.invoke('search-instagram-posts', {
             body: { action: 'status', runId: data.runId },
           });
           
@@ -264,7 +265,7 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
           
           if (statusData.status === 'SUCCEEDED') {
             // Fetch results
-            const { data: resultsData } = await supabase.functions.invoke('search-instagram-posts', {
+            const { data: resultsData } = await cloudFunctions.invoke('search-instagram-posts', {
               body: { action: 'results', runId: data.runId },
             });
             
@@ -323,7 +324,7 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
     setHasResults(false);
 
     try {
-      const { data, error } = await supabase.functions.invoke('extract-accident-data', {
+      const { data, error } = await cloudFunctions.invoke('extract-accident-data', {
         body: {
           content: truncatedText || null,
           type: 'text',
@@ -334,14 +335,14 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
       if (error) {
         console.error('Error extracting data:', error);
         try {
-          const errorBody = typeof error === 'object' && error.context ? await error.context.json() : null;
+          const errorBody = null;
           if (errorBody?.error) {
             toast.error(errorBody.error);
             return;
           }
         } catch {}
 
-        const status = typeof error === 'object' && error.context ? error.context.status : null;
+        const status = null;
         if (status === 413) {
           toast.error('Texto muito grande para processamento. Tente com um trecho menor.');
           return;

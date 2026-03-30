@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export interface LeadActivity {
   id: string;
@@ -128,9 +129,9 @@ export function useLeadActivities() {
       // Auto-sync to Google Calendar (silent, best-effort, only if connected)
       if (data && (activity.deadline || activity.notification_date)) {
         try {
-          const { data: checkData } = await supabase.functions.invoke('google-check-connection');
+          const { data: checkData } = await cloudFunctions.invoke('google-check-connection');
           if (checkData?.connected) {
-            supabase.functions.invoke('google-calendar-event', {
+            cloudFunctions.invoke('google-calendar-event', {
               body: {
                 action_type: 'call',
                 title: activity.title || 'Nova Atividade',
@@ -148,7 +149,7 @@ export function useLeadActivities() {
 
       // Send WhatsApp notification to assigned user (best-effort, silent)
       if (data) {
-        supabase.functions.invoke('notify-activity-created', {
+        cloudFunctions.invoke('notify-activity-created', {
           body: {
             activity_id: data.id,
             title: activity.title,

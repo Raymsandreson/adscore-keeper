@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, Search, ExternalLink, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface ApifyCommentsFetcherProps {
   myUsername?: string;
@@ -41,7 +42,7 @@ export const ApifyCommentsFetcher = ({ myUsername, onSuccess }: ApifyCommentsFet
     setResults(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke("fetch-apify-comments", {
+      const { data, error } = await cloudFunctions.invoke("fetch-apify-comments", {
         body: { 
           postUrls: urls,
           myUsername: myUsername?.replace("@", "")

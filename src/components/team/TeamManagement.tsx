@@ -51,6 +51,7 @@ import { MemberDetailSheet } from './MemberDetailSheet';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface TeamMember {
   id: string;
@@ -152,7 +153,7 @@ export function TeamManagement() {
   const handleSendNotification = async (userId: string, memberName: string) => {
     setSendingNotifUserId(userId);
     try {
-      const { data, error } = await supabase.functions.invoke('trigger-whatsapp-notifications', {
+      const { data, error } = await cloudFunctions.invoke('trigger-whatsapp-notifications', {
         body: { target_user_id: userId },
       });
       if (error) throw error;

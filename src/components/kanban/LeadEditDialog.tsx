@@ -87,6 +87,7 @@ import { ptBR } from 'date-fns/locale';
 import { useLeadSources } from '@/hooks/useLeadSources';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Pencil, Trash2 } from 'lucide-react';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface LeadEditDialogProps {
   open: boolean;
@@ -475,7 +476,7 @@ export function LeadEditDialog({
 
     try {
       // First, fetch the page content via scrape-news
-      const { data: scrapeData, error: scrapeError } = await supabase.functions.invoke('scrape-news', {
+      const { data: scrapeData, error: scrapeError } = await cloudFunctions.invoke('scrape-news', {
         body: { url: urlToAnalyze },
       });
 
@@ -498,7 +499,7 @@ ${scrapeData.content || ''}
       `.trim();
 
       // Call AI to analyze viability
-      const { data: aiData, error: aiError } = await supabase.functions.invoke('analyze-legal-viability', {
+      const { data: aiData, error: aiError } = await cloudFunctions.invoke('analyze-legal-viability', {
         body: { 
           content: caseContext,
           existingData: {
@@ -586,7 +587,7 @@ ${scrapeData.content || ''}
       if (whatsappGroupId && whatsappGroupId.includes('chat.whatsapp.com')) {
         console.log('[handleSave] Resolving WhatsApp group link...');
         try {
-          const { data: resolveData } = await supabase.functions.invoke('send-whatsapp', {
+          const { data: resolveData } = await cloudFunctions.invoke('send-whatsapp', {
             body: { action: 'resolve_group_link', group_link: whatsappGroupId },
           });
           if (resolveData?.success && resolveData.group_id) {
@@ -1280,7 +1281,7 @@ ${scrapeData.content || ''}
                                 if (!msgs || msgs.length === 0) { toast.error('Nenhuma conversa encontrada'); return; }
 
                                 const statusLabel = leadOutcome === 'inviavel' ? 'INVIÁVEL' : leadOutcome === 'refused' ? 'RECUSADO' : leadOutcome === 'closed' ? 'FECHADO' : 'EM ANDAMENTO';
-                                const { data, error } = await supabase.functions.invoke('extract-conversation-data', {
+                                const { data, error } = await cloudFunctions.invoke('extract-conversation-data', {
                                   body: {
                                     messages: msgs.map(m => ({ message_text: m.message_text, direction: m.direction })),
                                     targetType: 'reason',

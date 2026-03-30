@@ -15,6 +15,7 @@ import { ptBR } from 'date-fns/locale';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DashboardChatPreview } from './DashboardChatPreview';
 import { DashboardFunnelChecklist } from './DashboardFunnelChecklist';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface LeadWithMessages {
   id: string;
@@ -918,7 +919,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
       if (reportInstance && reportInstance.owner_phone) {
         // Send to the selected instance's owner
         try {
-          await supabase.functions.invoke('send-whatsapp', {
+          await cloudFunctions.invoke('send-whatsapp', {
             body: {
               phone: reportInstance.owner_phone,
               message: reportText,
@@ -937,7 +938,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
           sentPhones.add(inst.owner_phone);
 
           try {
-            await supabase.functions.invoke('send-whatsapp', {
+            await cloudFunctions.invoke('send-whatsapp', {
               body: {
                 phone: inst.owner_phone,
                 message: reportText,

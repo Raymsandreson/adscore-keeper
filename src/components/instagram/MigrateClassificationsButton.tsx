@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { RefreshCw, CheckCircle2 } from "lucide-react";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export const MigrateClassificationsButton = () => {
   const [migrating, setMigrating] = useState(false);
@@ -18,7 +19,7 @@ export const MigrateClassificationsButton = () => {
     setResult(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke("migrate-classifications");
+      const { data, error } = await cloudFunctions.invoke("migrate-classifications");
 
       if (error) {
         throw error;

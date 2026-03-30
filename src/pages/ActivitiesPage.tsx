@@ -44,6 +44,7 @@ import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO, startOfWeek, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 const ACTIVITY_TYPES = [
   { value: 'tarefa', label: 'Tarefa', bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-300 dark:border-blue-700', header: 'bg-blue-500', dot: 'bg-blue-500' },
   { value: 'audiencia', label: 'Audiência', bg: 'bg-green-50 dark:bg-green-950/20', border: 'border-green-300 dark:border-green-700', header: 'bg-green-500', dot: 'bg-green-500' },
@@ -1015,7 +1016,7 @@ const ActivitiesPage = () => {
     if (!title || title.trim().length < 5) return;
     setAiSuggestingType(true);
     try {
-      const { data, error } = await supabase.functions.invoke('suggest-activity-type', { body: { title } });
+      const { data, error } = await cloudFunctions.invoke('suggest-activity-type', { body: { title } });
       if (!error && data?.suggested_type) {
         // Check against all known types (hardcoded + DB custom)
         const allTypes = [...ACTIVITY_TYPES];

@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface RankingEntry {
   id?: string;
@@ -85,7 +86,7 @@ export const CorridaMalucaDialog: React.FC<CorridaMalucaDialogProps> = ({
     setGenerating(true);
     setChatMessages([]);
     try {
-      const { data, error } = await supabase.functions.invoke('generate-corrida-maluca', {
+      const { data, error } = await cloudFunctions.invoke('generate-corrida-maluca', {
         body: {
           rankings,
           weekStart: format(weekStart, 'dd/MM/yyyy', { locale: ptBR }),
@@ -121,7 +122,7 @@ export const CorridaMalucaDialog: React.FC<CorridaMalucaDialogProps> = ({
     setRefining(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('generate-corrida-maluca', {
+      const { data, error } = await cloudFunctions.invoke('generate-corrida-maluca', {
         body: {
           rankings,
           weekStart: format(weekStart, 'dd/MM/yyyy', { locale: ptBR }),

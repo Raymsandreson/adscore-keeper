@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { facebookCAPI } from '@/services/facebookCAPI';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'not_qualified' | 'converted' | 'lost' | 'comment';
 export type LeadBusinessStatus = 'active' | 'closed' | 'refused' | 'inviavel';
@@ -352,7 +353,7 @@ export const useLeads = (adAccountId?: string) => {
         .update({ sync_status: 'syncing' })
         .eq('id', leadId);
 
-      const { data, error } = await supabase.functions.invoke('sync-lead-status', {
+      const { data, error } = await cloudFunctions.invoke('sync-lead-status', {
         body: {
           leadId,
           facebookLeadId: lead.facebook_lead_id,

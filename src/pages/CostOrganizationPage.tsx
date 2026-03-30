@@ -21,6 +21,7 @@ import { FinancialConfigManager } from '@/components/finance/FinancialConfigMana
 import { BusinessModelTranslation, TranslationAction } from '@/components/business/BusinessModelTranslation';
 import { OrganizationalStructureTab } from '@/components/business/OrganizationalStructureTab';
 import { useNavigate } from 'react-router-dom';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 const TIER_CONFIG = {
   low: { label: 'Low Ticket', color: 'bg-emerald-500/10 text-emerald-700 border-emerald-200', icon: '💰', strategy: 'Geração de Caixa' },
@@ -123,7 +124,7 @@ export default function CostOrganizationPage() {
         timeoutId = setTimeout(() => reject(new Error('A sugestão está demorando. Tente novamente.')), 35000);
       });
 
-      const invokePromise = supabase.functions.invoke('suggest-cost-organization', {
+      const invokePromise = cloudFunctions.invoke('suggest-cost-organization', {
         body: {
           context,
           references: references || undefined,

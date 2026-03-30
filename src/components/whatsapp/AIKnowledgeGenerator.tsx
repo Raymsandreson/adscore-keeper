@@ -13,7 +13,7 @@ interface Props {
   onClose: () => void;
 }
 
-const GENERATE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-knowledge-content`;
+const GENERATE_URL = `https://gliigkupoebmlbwyvijp.supabase.co/functions/v1/generate-knowledge-content`;
 
 export function AIKnowledgeGenerator({ agentId, onSaved, onClose }: Props) {
   const [topic, setTopic] = useState('');
