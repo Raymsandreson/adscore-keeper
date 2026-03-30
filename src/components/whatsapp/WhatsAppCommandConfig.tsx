@@ -20,6 +20,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { MemberAssistantSettings } from './MemberAssistantSettings';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 // ==================== TYPES ====================
 
@@ -244,7 +245,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     if (zapsignTemplates.length > 0) return;
     setLoadingTemplates(true);
     try {
-      const { data, error } = await supabase.functions.invoke('zapsign-api', {
+      const { data, error } = await cloudFunctions.invoke('zapsign-api', {
         body: { action: 'list_templates' },
       });
       if (!error && data?.success) {
@@ -778,7 +779,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                             setTemplateFields([]);
                             setLoadingFields(true);
                             try {
-                              const { data, error } = await supabase.functions.invoke('zapsign-api', {
+                              const { data, error } = await cloudFunctions.invoke('zapsign-api', {
                                 body: { action: 'get_template', template_token: v }
                               });
                               if (!error && data?.success && data.fields) {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export interface InstanceStatus {
   id: string;
@@ -28,7 +29,7 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
 
       if (!raymInst?.id || !raymInst?.owner_phone) return;
 
-      await supabase.functions.invoke('send-whatsapp', {
+      await cloudFunctions.invoke('send-whatsapp', {
         body: {
           phone: raymInst.owner_phone,
           message,
@@ -70,7 +71,7 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
       for (const inst of offlineInsts) {
         if (inst.owner_phone && !phonesNotified.has(inst.owner_phone)) {
           phonesNotified.add(inst.owner_phone);
-          await supabase.functions.invoke('send-whatsapp', {
+          await cloudFunctions.invoke('send-whatsapp', {
             body: {
               phone: inst.owner_phone,
               message,
@@ -99,7 +100,7 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
     if (!enabled) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('check-whatsapp-status');
+      const { data, error } = await cloudFunctions.invoke('check-whatsapp-status');
       if (error) throw error;
       const now = new Date();
       const reconnected: InstanceStatus[] = [];

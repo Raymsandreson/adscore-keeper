@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export interface WhatsAppMessage {
   id: string;
@@ -217,7 +218,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
     syncInFlightRef.current = true;
     try {
-      const { data, error } = await supabase.functions.invoke('sync-whatsapp-recent', {
+      const { data, error } = await cloudFunctions.invoke('sync-whatsapp-recent', {
         body: {
           instance_id: instance.id,
           max_chats: 80,
@@ -408,7 +409,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         }
       }
 
-      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
           phone,
           chat_id: chatId,
@@ -476,7 +477,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       }
       if (!targetInstanceId && instances.length > 0) targetInstanceId = instances[0].id;
 
-      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
           action: 'send_media',
           phone,
@@ -536,7 +537,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       }
       if (!targetInstanceId && instances.length > 0) targetInstanceId = instances[0].id;
 
-      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
           action: 'send_location',
           phone, chat_id: chatId, latitude, longitude, name, address,
@@ -578,7 +579,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         if (data?.id) instanceId = data.id;
       }
 
-      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
           action: 'delete_message',
           message_id: messageId,
@@ -862,7 +863,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
   const clearConversation = async (phone: string, instanceName?: string) => {
     try {
-      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
           action: 'clear_conversation',
           phone,

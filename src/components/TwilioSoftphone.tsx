@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Phone, PhoneOff, PhoneCall, Mic, MicOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 type SoftphoneStatus = 'idle' | 'loading' | 'ready' | 'connecting' | 'ringing' | 'in-call' | 'error';
 
@@ -114,7 +115,7 @@ export function TwilioSoftphone({
 
     try {
       // Get token from edge function
-      const { data, error } = await supabase.functions.invoke('twilio-token');
+      const { data, error } = await cloudFunctions.invoke('twilio-token');
       if (error) throw error;
       if (!data?.token) throw new Error('No token received');
 
@@ -149,7 +150,7 @@ export function TwilioSoftphone({
       device.on('tokenWillExpire', async () => {
         console.log('[Twilio] Token expiring, refreshing...');
         try {
-          const { data: refreshData } = await supabase.functions.invoke('twilio-token');
+          const { data: refreshData } = await cloudFunctions.invoke('twilio-token');
           if (refreshData?.token) {
             device.updateToken(refreshData.token);
           }

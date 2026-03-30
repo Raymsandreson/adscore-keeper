@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { PhoneIncoming, PhoneOutgoing, Mic, Square, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 // v2 - force clean rebuild after hook refactor
 export function IncomingCallBanner() {
@@ -141,7 +142,7 @@ export function IncomingCallBanner() {
 
         if (upsertError) throw upsertError;
 
-        supabase.functions.invoke('analyze-activity-chat', {
+        cloudFunctions.invoke('analyze-activity-chat', {
           body: { action: 'transcribe_call', audio_url: audioUrl, call_id: callId, phone: currentCall?.phone },
         }).catch(() => {});
 

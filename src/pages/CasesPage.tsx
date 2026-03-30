@@ -41,6 +41,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useNavigate } from 'react-router-dom';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 const statusColors: Record<string, string> = {
   aberto: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
@@ -86,7 +87,7 @@ export default function CasesPage() {
       if (urlMatch) sheetId = urlMatch[1];
 
       const { data: { session } } = await supabase.auth.getSession();
-      const response = await supabase.functions.invoke('export-cases-to-sheets', {
+      const response = await cloudFunctions.invoke('export-cases-to-sheets', {
         body: {
           spreadsheet_id: sheetId,
           sheet_name: sheetName.trim() || undefined,

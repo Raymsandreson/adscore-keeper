@@ -46,6 +46,7 @@ import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface WorkflowBuilderProps {
   open: boolean;
@@ -188,7 +189,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           })),
         };
 
-        const { data, error } = await supabase.functions.invoke('edit-workflow', {
+        const { data, error } = await cloudFunctions.invoke('edit-workflow', {
           body: {
             description: aiPrompt,
             currentWorkflow,
@@ -231,7 +232,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         toast.success(`Fluxo editado! ${(data.changelog || []).length} alteração(ões) aplicada(s)`);
       } else {
         // Create mode
-        const { data, error } = await supabase.functions.invoke('generate-workflow', {
+        const { data, error } = await cloudFunctions.invoke('generate-workflow', {
           body: {
             description: aiPrompt,
             activityTypes: activityTypes.map(t => t.label),

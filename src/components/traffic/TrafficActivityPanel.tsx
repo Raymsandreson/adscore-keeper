@@ -14,6 +14,7 @@ import {
   Loader2, Save, RefreshCw, TrendingUp, Users, Image,
   DollarSign, Eye, MousePointer, Calendar, ChevronLeft, ChevronRight,
 } from 'lucide-react';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface MetaDailyMetric {
   id: string;
@@ -85,7 +86,7 @@ export function TrafficActivityPanel() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('meta-daily-sync', {
+      const { data, error } = await cloudFunctions.invoke('meta-daily-sync', {
         body: { date: dateStr, user_id: user?.id },
       });
       if (error) throw error;

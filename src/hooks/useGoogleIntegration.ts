@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export function useGoogleIntegration() {
   const [isConnected, setIsConnected] = useState(false);
@@ -12,7 +13,7 @@ export function useGoogleIntegration() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      const { data, error } = await supabase.functions.invoke('google-check-connection');
+      const { data, error } = await cloudFunctions.invoke('google-check-connection');
       if (!error && data) {
         setIsConnected(data.connected);
       }
@@ -30,7 +31,7 @@ export function useGoogleIntegration() {
   const connect = useCallback(async () => {
     setConnecting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('google-auth-url');
+      const { data, error } = await cloudFunctions.invoke('google-auth-url');
       if (error || !data?.url) throw new Error('Não foi possível gerar URL de autenticação');
 
       const popup = window.open(data.url, 'google-oauth', 'width=600,height=700,scrollbars=yes');
@@ -74,7 +75,7 @@ export function useGoogleIntegration() {
     notes?: string;
     instagram_username?: string;
   }) => {
-    const { data, error } = await supabase.functions.invoke('google-save-contact', { body: params });
+    const { data, error } = await cloudFunctions.invoke('google-save-contact', { body: params });
     if (error || data?.error) throw new Error(data?.error || error?.message);
     return data;
   }, []);
@@ -90,13 +91,13 @@ export function useGoogleIntegration() {
     message_text?: string;
     notes?: string;
   }) => {
-    const { data, error } = await supabase.functions.invoke('google-calendar-event', { body: params });
+    const { data, error } = await cloudFunctions.invoke('google-calendar-event', { body: params });
     if (error || data?.error) throw new Error(data?.error || error?.message);
     return data;
   }, []);
 
   const importContacts = useCallback(async () => {
-    const { data, error } = await supabase.functions.invoke('google-import-contacts');
+    const { data, error } = await cloudFunctions.invoke('google-import-contacts');
     if (error || data?.error) throw new Error(data?.error || error?.message);
     return data as { total: number; imported: number; skipped: number };
   }, []);

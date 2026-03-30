@@ -71,6 +71,7 @@ import { CommentTextWithMentions } from "./CommentTextWithMentions";
 import { ApifyCommentsFetcher } from "./ApifyCommentsFetcher";
 import { MessageSquarePlus, Upload, FileJson } from "lucide-react";
 import { PostStatsFilter } from "./PostStatsFilter";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 interface Comment {
   id: string;
   platform: string;
@@ -311,7 +312,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
             ? accessToken 
             : account.access_token;
           
-          const { data, error } = await supabase.functions.invoke('fetch-instagram-comments', {
+          const { data, error } = await cloudFunctions.invoke('fetch-instagram-comments', {
             body: { 
               accessToken: tokenToUse, 
               instagramAccountId: account.instagram_id 
@@ -477,7 +478,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
             ? accessToken 
             : account.access_token;
           
-          const { data, error } = await supabase.functions.invoke('fetch-instagram-comments', {
+          const { data, error } = await cloudFunctions.invoke('fetch-instagram-comments', {
             body: { 
               accessToken: tokenToUse, 
               instagramAccountId: account.instagram_id 

@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, X, Plus, Loader2, Mic, MicOff, Sparkles, Send } from 'lucide-react';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 const ACTIVITY_TYPES = [
   { value: 'tarefa', label: 'Tarefa' },
@@ -139,7 +140,7 @@ export function WhatsAppActivitySheet({
 
     setAiProcessing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('parse-activity-dictation', {
+      const { data, error } = await cloudFunctions.invoke('parse-activity-dictation', {
         body: { text: dictationText },
       });
 

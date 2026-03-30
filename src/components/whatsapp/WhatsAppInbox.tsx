@@ -30,6 +30,7 @@ import type { Contact } from '@/hooks/useContacts';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useModulePermissions } from '@/hooks/useModulePermissions';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 const FIELD_LABELS: Record<string, string> = {
   lead_name: 'Nome do Lead', victim_name: 'Nome da Vítima', lead_email: 'E-mail', lead_phone: 'Telefone',
@@ -282,7 +283,7 @@ export function WhatsAppInbox() {
     try {
       setExtracting(true);
       setExtractionStep(targetType === 'lead' ? 'Extraindo dados do lead...' : 'Extraindo dados do contato...');
-      const { data, error } = await supabase.functions.invoke('extract-conversation-data', {
+      const { data, error } = await cloudFunctions.invoke('extract-conversation-data', {
         body: {
           messages: selectedConversation.messages.slice(-50).map(m => ({
             direction: m.direction,
@@ -727,7 +728,7 @@ export function WhatsAppInbox() {
               setImportingWhatsApp(true);
               try {
                 const { data: session } = await supabase.auth.getSession();
-                const res = await supabase.functions.invoke('import-whatsapp-contacts', {
+                const res = await cloudFunctions.invoke('import-whatsapp-contacts', {
                   body: { instance_name: targetInstance.instance_name },
                 });
                 

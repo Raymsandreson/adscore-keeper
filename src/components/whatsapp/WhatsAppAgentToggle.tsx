@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Bot, BotOff, ChevronDown, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface Agent {
   id: string;
@@ -113,7 +114,7 @@ export function WhatsAppAgentToggle({ phone, instanceName }: Props) {
           .limit(1)
           .maybeSingle();
 
-        supabase.functions.invoke('execute-agent-automations', {
+        cloudFunctions.invoke('execute-agent-automations', {
           body: {
             agent_id: agentId,
             trigger_type: 'on_activation',

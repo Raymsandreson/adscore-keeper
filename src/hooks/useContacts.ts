@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export type ContactClassification = 'client' | 'non_client' | 'prospect' | 'partner' | 'supplier' | null;
 export type FollowerStatus = 'follower' | 'following' | 'mutual' | 'none';
@@ -277,7 +278,7 @@ export const useContacts = () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-          supabase.functions.invoke('google-save-contact', {
+          cloudFunctions.invoke('google-save-contact', {
             body: {
               name: contact.full_name,
               phone: contact.phone || undefined,

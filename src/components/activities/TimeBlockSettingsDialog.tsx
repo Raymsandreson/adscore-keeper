@@ -18,6 +18,7 @@ import { useActivityTypes, ActivityType } from '@/hooks/useActivityTypes';
 import { useUserRole } from '@/hooks/useUserRole';
 import { ActivityProcessGoalsConfig, ProcessGoalEntry } from './ActivityProcessGoalsConfig';
 import { useRoutineProcessGoals } from '@/hooks/useRoutineProcessGoals';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 /** One time-slot block (a type can have multiple) */
 export interface TimeBlockConfig {
@@ -353,7 +354,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
     }
     setAiLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('suggest-routine', {
+      const { data, error } = await cloudFunctions.invoke('suggest-routine', {
         body: { description: aiDescription },
       });
       if (error) throw error;

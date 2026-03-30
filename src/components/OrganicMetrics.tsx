@@ -50,6 +50,7 @@ import { supabase } from "@/integrations/supabase/client";
 import TokenConfigGuide from "./TokenConfigGuide";
 import { useOrganicCache } from "@/hooks/useOrganicCache";
 import { ContentTypeBreakdownComponent } from "./ContentTypeBreakdown";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 // Content type breakdown interface
 interface ContentTypeBreakdown {
@@ -314,7 +315,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
         period: periodDays
       });
       
-      const { data, error: fetchError } = await supabase.functions.invoke('fetch-organic-insights', {
+      const { data, error: fetchError } = await cloudFunctions.invoke('fetch-organic-insights', {
         body: { pageId, accessToken, period: periodDays }
       });
 

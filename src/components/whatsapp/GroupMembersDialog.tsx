@@ -10,6 +10,7 @@ import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronD
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface GroupParticipant {
   phone: string;
@@ -93,7 +94,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       }
 
       // Fetch from API
-      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: { action: 'fetch_group_participants', group_id: conversationPhone, instance_id: instId },
       });
 

@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface InstagramAccount {
   id: string;
@@ -117,7 +118,7 @@ export const InstagramAccountsManager = () => {
   const fetchAvailableAccounts = async () => {
     setLoadingAvailable(true);
     try {
-      const response = await supabase.functions.invoke('list-instagram-accounts');
+      const response = await cloudFunctions.invoke('list-instagram-accounts');
       
       if (response.error) {
         console.error('Error fetching available accounts:', response.error);
@@ -393,7 +394,7 @@ export const InstagramAccountsManager = () => {
     
     try {
       // First sync metrics
-      const response = await supabase.functions.invoke('sync-instagram-metrics', {
+      const response = await cloudFunctions.invoke('sync-instagram-metrics', {
         body: { account_id: id }
       });
 
@@ -441,7 +442,7 @@ export const InstagramAccountsManager = () => {
 
       toast.info('Buscando comentários...', { id: 'fetching-comments' });
 
-      const response = await supabase.functions.invoke('fetch-instagram-comments', {
+      const response = await cloudFunctions.invoke('fetch-instagram-comments', {
         body: { 
           accessToken: account.access_token,
           instagramAccountId: account.instagram_id

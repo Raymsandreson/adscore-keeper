@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface ManyChatTag {
   id: number;
@@ -63,7 +64,7 @@ export const ManyChatTagManager = () => {
   const loadTags = async () => {
     setIsLoadingTags(true);
     try {
-      const { data, error } = await supabase.functions.invoke("manychat-send-message", {
+      const { data, error } = await cloudFunctions.invoke("manychat-send-message", {
         body: { action: "list_subscribers" },
       });
       if (error) throw error;
@@ -82,7 +83,7 @@ export const ManyChatTagManager = () => {
     setIsCreating(true);
     const fullName = `${selectedCategory} ${newTagName.trim()}`;
     try {
-      const { data, error } = await supabase.functions.invoke("manychat-send-message", {
+      const { data, error } = await cloudFunctions.invoke("manychat-send-message", {
         body: { action: "create_tag", name: fullName },
       });
       if (error) throw error;
@@ -103,7 +104,7 @@ export const ManyChatTagManager = () => {
   const deleteTag = async (tagId: number, tagName: string) => {
     if (!confirm(`Remover a tag "${tagName}"?`)) return;
     try {
-      const { data, error } = await supabase.functions.invoke("manychat-send-message", {
+      const { data, error } = await cloudFunctions.invoke("manychat-send-message", {
         body: { action: "remove_page_tag", tag_id: tagId },
       });
       if (error) throw error;
@@ -118,7 +119,7 @@ export const ManyChatTagManager = () => {
     if (!searchName) return;
     setIsSearching(true);
     try {
-      const { data, error } = await supabase.functions.invoke("manychat-send-message", {
+      const { data, error } = await cloudFunctions.invoke("manychat-send-message", {
         body: { action: "find_subscriber", name: searchName },
       });
       if (error) throw error;
@@ -138,7 +139,7 @@ export const ManyChatTagManager = () => {
     }
     setIsAssigning(true);
     try {
-      const { data, error } = await supabase.functions.invoke("manychat-send-message", {
+      const { data, error } = await cloudFunctions.invoke("manychat-send-message", {
         body: { action: "add_tag", subscriber_id: assignSubscriberId, tag_id: parseInt(assignTagId) },
       });
       if (error) throw error;
@@ -157,7 +158,7 @@ export const ManyChatTagManager = () => {
   const removeTagFromSubscriber = async () => {
     if (!assignSubscriberId || !assignTagId) return;
     try {
-      const { data, error } = await supabase.functions.invoke("manychat-send-message", {
+      const { data, error } = await cloudFunctions.invoke("manychat-send-message", {
         body: { action: "remove_tag", subscriber_id: assignSubscriberId, tag_id: parseInt(assignTagId) },
       });
       if (error) throw error;
@@ -177,7 +178,7 @@ export const ManyChatTagManager = () => {
       // Get subscribers for each selected tag
       const allSubs: ManyChatSubscriber[] = [];
       for (const tagId of filterTags) {
-        const { data, error } = await supabase.functions.invoke("manychat-send-message", {
+        const { data, error } = await cloudFunctions.invoke("manychat-send-message", {
           body: { action: "get_subscribers_by_tag", tag_id: tagId },
         });
         if (!error && data?.data) {
@@ -206,7 +207,7 @@ export const ManyChatTagManager = () => {
     if (!confirm(`Enviar mensagem para ${filteredSubscribers.length} assinantes?`)) return;
     setIsSendingBulk(true);
     try {
-      const { data, error } = await supabase.functions.invoke("manychat-send-message", {
+      const { data, error } = await cloudFunctions.invoke("manychat-send-message", {
         body: {
           action: "bulk_send",
           subscriber_ids: filteredSubscribers.map(s => String(s.id)),

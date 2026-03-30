@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export interface CAPIUserData {
   email?: string;
@@ -58,7 +59,7 @@ class FacebookCAPIService {
         } : undefined,
       }));
 
-      const { data, error } = await supabase.functions.invoke('facebook-capi', {
+      const { data, error } = await cloudFunctions.invoke('facebook-capi', {
         body: {
           events: formattedEvents,
           test_event_code: testEventCode,

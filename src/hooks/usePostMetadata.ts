@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export interface PostMetadata {
   caption: string;
@@ -50,7 +51,7 @@ export function usePostMetadata() {
     setError(null);
     
     try {
-      const { data, error: fnError } = await supabase.functions.invoke('fetch-post-metadata', {
+      const { data, error: fnError } = await cloudFunctions.invoke('fetch-post-metadata', {
         body: { postUrl: normalizedUrl },
       });
       

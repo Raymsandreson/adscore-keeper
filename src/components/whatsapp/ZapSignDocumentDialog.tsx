@@ -14,6 +14,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { format, subDays, subHours, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface ZapSignTemplate {
   token: string;
@@ -172,7 +173,7 @@ export function ZapSignDocumentDialog({
   const loadTemplates = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('zapsign-api', {
+      const { data, error } = await cloudFunctions.invoke('zapsign-api', {
         body: { action: 'list_templates' },
       });
       if (error) throw error;
@@ -234,7 +235,7 @@ export function ZapSignDocumentDialog({
     setExtractingSigners(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('zapsign-api', {
+      const { data, error } = await cloudFunctions.invoke('zapsign-api', {
         body: {
           action: 'extract_signers',
           messages: extractionSource === 'upload_only' ? (pastedText ? [{ direction: 'inbound', message_text: pastedText }] : []) : [...filteredMessages.slice(-50), ...(pastedText ? [{ direction: 'inbound', message_text: pastedText }] : [])],
@@ -286,7 +287,7 @@ export function ZapSignDocumentDialog({
 
     try {
       const [templateRes] = await Promise.all([
-        supabase.functions.invoke('zapsign-api', {
+        cloudFunctions.invoke('zapsign-api', {
           body: { action: 'get_template', template_token: selectedTemplate },
         }),
       ]);
@@ -322,7 +323,7 @@ export function ZapSignDocumentDialog({
   const extractDataWithAI = async (fieldVars?: string[]) => {
     try {
       const vars = fieldVars || templateFields.map(f => f.de).filter(Boolean);
-      const { data, error } = await supabase.functions.invoke('zapsign-api', {
+      const { data, error } = await cloudFunctions.invoke('zapsign-api', {
         body: {
           action: 'extract_data',
           messages: extractionSource === 'upload_only' ? (pastedText ? [{ direction: 'inbound', message_text: pastedText }] : []) : [...filteredMessages.slice(-50), ...(pastedText ? [{ direction: 'inbound', message_text: pastedText }] : [])],
@@ -407,7 +408,7 @@ export function ZapSignDocumentDialog({
         auth_mode: s.auth_mode || 'assinaturaTela',
       }));
 
-      const { data, error } = await supabase.functions.invoke('zapsign-api', {
+      const { data, error } = await cloudFunctions.invoke('zapsign-api', {
         body: {
           action: 'create_doc',
           template_id: selectedTemplate,

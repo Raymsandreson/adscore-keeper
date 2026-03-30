@@ -37,6 +37,7 @@ import { ptBR } from 'date-fns/locale';
 import { RelationshipPromptDialog, getRelationshipClassificationsFromList, isRelationshipClassification, RELATIONSHIP_KEYWORDS } from './RelationshipPromptDialog';
 import { EditRelationshipDialog } from './EditRelationshipDialog';
 import { ProfessionBadgePopover } from './ProfessionBadgePopover';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 // Detect relationship keywords in comment text
 const detectRelationshipKeywordsInText = (text: string | null | undefined): string[] => {
@@ -132,7 +133,7 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
     if (contact?.city || contact?.state) return;
     
     try {
-      const { data, error } = await supabase.functions.invoke('extract-location', {
+      const { data, error } = await cloudFunctions.invoke('extract-location', {
         body: {
           commentText,
           authorUsername: authorUsername.replace('@', ''),

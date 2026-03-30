@@ -29,6 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface PostFormatCount {
   format: string;
@@ -239,7 +240,7 @@ export const SmartInsights = ({
         formatBreakdown: formatCounts.map(f => `${f.label}: ${f.count}`).join(", ")
       };
 
-      const { data, error } = await supabase.functions.invoke('goal-ai-suggestions', {
+      const { data, error } = await cloudFunctions.invoke('goal-ai-suggestions', {
         body: {
           prompt: `Você é um especialista em marketing digital e viralização no Instagram. 
           

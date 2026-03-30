@@ -15,6 +15,7 @@ import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw
 } from 'lucide-react';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface ProcessDetailSheetProps {
   open: boolean;
@@ -135,7 +136,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     }
     setSaving(true);
     try {
-      const { data, error } = await supabase.functions.invoke('search-escavador', {
+      const { data, error } = await cloudFunctions.invoke('search-escavador', {
         body: { action: 'buscar_completo', numero_cnj: form.process_number },
       });
       if (error) throw error;

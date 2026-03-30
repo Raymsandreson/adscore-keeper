@@ -23,6 +23,7 @@ import {
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface PendingUser {
   username: string;
@@ -263,7 +264,7 @@ export const PendingToFollowList = () => {
     
     setExtractingLocation(user.username);
     try {
-      const { data, error } = await supabase.functions.invoke('extract-location', {
+      const { data, error } = await cloudFunctions.invoke('extract-location', {
         body: { 
           commentText: user.lastCommentText,
           authorUsername: user.username

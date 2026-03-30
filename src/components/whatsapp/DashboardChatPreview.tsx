@@ -13,6 +13,7 @@ import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'l
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface Message {
   id: string;
@@ -191,7 +192,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         }
       }
 
-      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: { phone, message: finalMessage, instance_id: instanceId },
       });
       if (error) throw error;
@@ -255,10 +256,10 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
 
       if (recentMessages.length > 0) {
         const [leadRes, contactRes] = await Promise.all([
-          supabase.functions.invoke('extract-conversation-data', {
+          cloudFunctions.invoke('extract-conversation-data', {
             body: { messages: recentMessages, targetType: 'lead' },
           }),
-          supabase.functions.invoke('extract-conversation-data', {
+          cloudFunctions.invoke('extract-conversation-data', {
             body: { messages: recentMessages, targetType: 'contact' },
           }),
         ]);
@@ -428,7 +429,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         if (inst) instanceId = inst.id;
       }
 
-      const { data, error } = await supabase.functions.invoke('create-whatsapp-group', {
+      const { data, error } = await cloudFunctions.invoke('create-whatsapp-group', {
         body: {
           phone: normalizedPhone,
           lead_name: leadName,
@@ -478,7 +479,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     setLoadingSuggestion(true);
     setAiSuggestion(null);
     try {
-      const { data, error } = await supabase.functions.invoke('suggest-next-step', {
+      const { data, error } = await cloudFunctions.invoke('suggest-next-step', {
         body: { phone },
       });
       if (error) throw error;

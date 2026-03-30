@@ -10,6 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface ActivityTTSButtonProps {
   messageText: string;
@@ -121,7 +122,7 @@ export function ActivityTTSButton({ messageText, leadId, contactId }: ActivityTT
 
     setGenerating(true);
     try {
-      const { data, error } = await supabase.functions.invoke('elevenlabs-tts', {
+      const { data, error } = await cloudFunctions.invoke('elevenlabs-tts', {
         body: { text: messageText },
       });
 
@@ -151,7 +152,7 @@ export function ActivityTTSButton({ messageText, leadId, contactId }: ActivityTT
       }
 
       // Send via send-whatsapp edge function
-      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
           action: 'send_media',
           phone,
@@ -167,7 +168,7 @@ export function ActivityTTSButton({ messageText, leadId, contactId }: ActivityTT
       if (!data?.success) throw new Error(data?.error || 'Erro ao enviar');
 
       // Also send the text message
-      const { error: textError } = await supabase.functions.invoke('send-whatsapp', {
+      const { error: textError } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
           phone,
           chat_id: chatId || phone,

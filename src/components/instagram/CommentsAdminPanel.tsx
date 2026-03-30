@@ -50,6 +50,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ApifyCommentsFetcher } from './ApifyCommentsFetcher';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface InstagramComment {
   id: string;
@@ -152,7 +153,7 @@ export function CommentsAdminPanel() {
 
     setIsReplying(true);
     try {
-      const { data, error } = await supabase.functions.invoke('post-instagram-reply', {
+      const { data, error } = await cloudFunctions.invoke('post-instagram-reply', {
         body: {
           commentId: selectedComment.comment_id,
           message: replyText,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export interface ExternalPost {
   id: string;
@@ -178,7 +179,7 @@ export function useExternalPosts(options: UseExternalPostsOptions = {}) {
 
   const fetchCommentsForPost = async (postUrl: string, myUsername?: string) => {
     try {
-      const { data, error } = await supabase.functions.invoke('fetch-apify-comments', {
+      const { data, error } = await cloudFunctions.invoke('fetch-apify-comments', {
         body: { postUrls: [postUrl], myUsername }
       });
 

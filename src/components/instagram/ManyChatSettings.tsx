@@ -13,6 +13,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ManyChatTagManager } from "./ManyChatTagManager";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export const ManyChatSettings = () => {
   const queryClient = useQueryClient();
@@ -96,7 +97,7 @@ export const ManyChatSettings = () => {
   const testConnection = async () => {
     setIsTestingConnection(true);
     try {
-      const { data, error } = await supabase.functions.invoke("manychat-send-message", {
+      const { data, error } = await cloudFunctions.invoke("manychat-send-message", {
         body: { action: "test_connection" },
       });
       if (error) throw error;
@@ -123,7 +124,7 @@ export const ManyChatSettings = () => {
     }
     setIsSending(true);
     try {
-      const { data, error } = await supabase.functions.invoke("manychat-send-message", {
+      const { data, error } = await cloudFunctions.invoke("manychat-send-message", {
         body: {
           action: "send_ai_reply",
           subscriber_id: subscriberId,
@@ -150,7 +151,7 @@ export const ManyChatSettings = () => {
     if (!searchName) return;
     setIsSearching(true);
     try {
-      const { data, error } = await supabase.functions.invoke("manychat-send-message", {
+      const { data, error } = await cloudFunctions.invoke("manychat-send-message", {
         body: { action: "find_subscriber", name: searchName },
       });
       if (error) throw error;

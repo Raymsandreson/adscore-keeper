@@ -15,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Loader2, Sparkles, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface CommentData {
   id: string;
@@ -111,7 +112,7 @@ function SearchContentExtractor({
     setExtractedData(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke('extract-accident-data', {
+      const { data, error } = await cloudFunctions.invoke('extract-accident-data', {
         body: { content: truncatedText, type: 'text' },
       });
 

@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { findClosedStageId } from '@/utils/kanbanStageTypes';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface ExtractedProcess {
   title: string;
@@ -86,7 +87,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
     }
     setExtracting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('extract-conversation-data', {
+      const { data, error } = await cloudFunctions.invoke('extract-conversation-data', {
         body: {
           messages: messages.map(m => ({
             direction: m.direction,

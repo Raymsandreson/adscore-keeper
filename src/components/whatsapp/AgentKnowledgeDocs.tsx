@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { AIKnowledgeGenerator } from './AIKnowledgeGenerator';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface KnowledgeDoc {
   id: string;
@@ -129,7 +130,7 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
       toast.success('📄 Documento enviado! Processando...');
       fetchDocs();
 
-      supabase.functions.invoke('parse-knowledge-document', {
+      cloudFunctions.invoke('parse-knowledge-document', {
         body: { document_id: (docData as any).id },
       }).then(() => fetchDocs()).catch(() => fetchDocs());
 
@@ -165,7 +166,7 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
     toast.info('Reprocessando...');
     fetchDocs();
 
-    supabase.functions.invoke('parse-knowledge-document', {
+    cloudFunctions.invoke('parse-knowledge-document', {
       body: { document_id: doc.id },
     }).then(() => fetchDocs()).catch(() => fetchDocs());
   };

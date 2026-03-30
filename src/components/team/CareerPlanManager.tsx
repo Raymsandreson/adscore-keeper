@@ -25,6 +25,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface CareerPlan {
   id: string;
@@ -297,7 +298,7 @@ export function CareerPlanManager() {
     if (!selectedPlan) return;
     setAiLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('suggest-career-plan', {
+      const { data, error } = await cloudFunctions.invoke('suggest-career-plan', {
         body: {
           careerName: selectedPlan.name,
           department: selectedPlan.department,
@@ -340,7 +341,7 @@ export function CareerPlanManager() {
         })),
       };
 
-      const { data, error } = await supabase.functions.invoke('suggest-career-plan', {
+      const { data, error } = await cloudFunctions.invoke('suggest-career-plan', {
         body: {
           careerName: selectedPlan.name,
           department: selectedPlan.department,
@@ -387,7 +388,7 @@ export function CareerPlanManager() {
       if (planError) throw planError;
 
       // Generate positions & steps via AI
-      const { data, error } = await supabase.functions.invoke('suggest-career-plan', {
+      const { data, error } = await cloudFunctions.invoke('suggest-career-plan', {
         body: {
           careerName: aiPrompt,
           department: null,

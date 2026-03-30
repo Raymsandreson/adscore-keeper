@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface Transaction {
   id: string;
@@ -57,7 +58,7 @@ export function useCreditCardTransactions() {
       throw new Error('Not authenticated');
     }
 
-    const response = await supabase.functions.invoke('pluggy-integration', {
+    const response = await cloudFunctions.invoke('pluggy-integration', {
       body: { action, ...params },
     });
 

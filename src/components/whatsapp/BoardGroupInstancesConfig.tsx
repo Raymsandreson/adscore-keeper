@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText, Volume2, Sparkles, Send, Zap } from 'lucide-react';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface Instance {
   id: string;
@@ -344,7 +345,7 @@ export function BoardGroupInstancesConfig() {
         return `- ${inst?.instance_name || 'Instância'}: ${config.role_title || 'Sem cargo'} (${config.role_description || 'Sem descrição'})`;
       }).join('\n');
 
-      const { data, error } = await supabase.functions.invoke('generate-group-message-preview', {
+      const { data, error } = await cloudFunctions.invoke('generate-group-message-preview', {
         body: {
           board_name: boardName,
           board_id: selectedBoard,
@@ -376,7 +377,7 @@ export function BoardGroupInstancesConfig() {
         return `- ${inst?.instance_name || 'Instância'}: ${config.role_title || 'Sem cargo'} (${config.role_description || 'Sem descrição'})`;
       }).join('\n');
 
-      const { data, error } = await supabase.functions.invoke('generate-group-message-preview', {
+      const { data, error } = await cloudFunctions.invoke('generate-group-message-preview', {
         body: {
           board_name: boardName,
           board_id: selectedBoard,

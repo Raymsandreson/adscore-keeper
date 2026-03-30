@@ -44,6 +44,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface MemberDetailSheetProps {
   open: boolean;
@@ -177,7 +178,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     }
     setOabSearching(true);
     try {
-      const { data, error } = await supabase.functions.invoke('search-oab-lawyer', {
+      const { data, error } = await cloudFunctions.invoke('search-oab-lawyer', {
         body: { name: query.trim(), uf: '' },
       });
       if (error) throw error;

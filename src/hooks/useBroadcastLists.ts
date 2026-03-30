@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export interface BroadcastList {
   id: string;
@@ -233,7 +234,7 @@ export function useBroadcastLists() {
         try {
           if (params.mediaUrl) {
             // Send media message
-            const { error } = await supabase.functions.invoke('send-whatsapp', {
+            const { error } = await cloudFunctions.invoke('send-whatsapp', {
               body: {
                 action: 'send_media',
                 phone: contact.phone,
@@ -247,7 +248,7 @@ export function useBroadcastLists() {
             if (error) throw error;
           } else {
             // Send text message
-            const { error } = await supabase.functions.invoke('send-whatsapp', {
+            const { error } = await cloudFunctions.invoke('send-whatsapp', {
               body: {
                 phone: contact.phone,
                 message: params.message,

@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { ProcessGoalEntry } from './ActivityProcessGoalsConfig';
 import { PROCESS_METRIC_OPTIONS } from '@/hooks/useRoutineProcessGoals';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface GoalSuggestion {
   metric_key: string;
@@ -36,7 +37,7 @@ export function GoalAIAssistant({ userId, currentGoals, onApplySuggestions }: Pr
   const handleAnalyze = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('suggest-goals', {
+      const { data, error } = await cloudFunctions.invoke('suggest-goals', {
         body: { user_id: userId, current_goals: currentGoals },
       });
       if (error) throw error;

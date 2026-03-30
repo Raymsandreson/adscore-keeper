@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
@@ -403,7 +404,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         if (inst) instanceId = inst.id;
       }
 
-      const { data, error } = await supabase.functions.invoke('create-whatsapp-group', {
+      const { data, error } = await cloudFunctions.invoke('create-whatsapp-group', {
         body: {
           phone: normalizedPhone,
           lead_name: leadName,
@@ -526,7 +527,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setNewMessage('');
     toast.info('🤖 Processando comando @wjia...', { duration: 5000 });
     try {
-      const { data, error } = await supabase.functions.invoke('wjia-agent', {
+      const { data, error } = await cloudFunctions.invoke('wjia-agent', {
         body: {
           phone: conversation.phone,
           instance_name: conversation.instance_name,

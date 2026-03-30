@@ -56,6 +56,7 @@ import { useActivityLogger } from "@/hooks/useActivityLogger";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface Comment {
   id: string;
@@ -314,7 +315,7 @@ export const WorkflowFullscreen = ({
         };
       }
 
-      const { data, error } = await supabase.functions.invoke("generate-ai-reply", {
+      const { data, error } = await cloudFunctions.invoke("generate-ai-reply", {
         body: {
           comment: currentComment.comment_text,
           authorUsername: currentComment.author_username?.replace("@", ""),
@@ -365,7 +366,7 @@ export const WorkflowFullscreen = ({
     setWorkflowStep('replying');
 
     try {
-      const { data, error } = await supabase.functions.invoke("post-instagram-reply", {
+      const { data, error } = await cloudFunctions.invoke("post-instagram-reply", {
         body: {
           commentId: commentIdToReply,
           message: editedReply.trim(),

@@ -17,6 +17,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface LeadActivity {
   id: string;
@@ -85,7 +86,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     if (!title || title.trim().length < 5) return;
     setAiSuggestingType(true);
     try {
-      const { data, error } = await supabase.functions.invoke('suggest-activity-type', { body: { title } });
+      const { data, error } = await cloudFunctions.invoke('suggest-activity-type', { body: { title } });
       if (!error && data?.suggested_type) {
         const match = activityTypes.find(t => t.key === data.suggested_type);
         if (match) {
@@ -104,7 +105,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     if (!title || title.trim().length < 5) return;
     setNewAiSuggesting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('suggest-activity-type', { body: { title } });
+      const { data, error } = await cloudFunctions.invoke('suggest-activity-type', { body: { title } });
       if (!error && data?.suggested_type) {
         const match = activityTypes.find(t => t.key === data.suggested_type);
         if (match) {

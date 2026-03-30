@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { metaAPIService, MetaAPIConfig } from '@/services/metaAPI';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export interface UnifiedMetaCredentials {
   accessToken: string;
@@ -287,7 +288,7 @@ export const useUnifiedMetaConnection = () => {
           : null,
         // Organic metrics from edge function
         connectionStatus.organic
-          ? supabase.functions.invoke('fetch-organic-insights', {
+          ? cloudFunctions.invoke('fetch-organic-insights', {
               body: { 
                 pageId: credentials.pageId, 
                 accessToken: credentials.accessToken, 

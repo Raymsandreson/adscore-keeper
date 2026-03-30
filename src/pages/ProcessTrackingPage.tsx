@@ -18,6 +18,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ProcessTrackingTable } from '@/components/process-tracking/ProcessTrackingTable';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface ImportRow {
   cliente: string | null;
@@ -115,7 +116,7 @@ const ProcessTrackingPage = () => {
     if (!sheetUrl.trim()) { toast.error('Cole a URL da planilha'); return; }
     setImporting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('import-sheets-to-tracking', {
+      const { data, error } = await cloudFunctions.invoke('import-sheets-to-tracking', {
         body: { spreadsheet_url: sheetUrl, sheet_name: sheetName || undefined },
       });
       if (error) throw error;
@@ -266,7 +267,7 @@ const ProcessTrackingPage = () => {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const { data, error } = await supabase.functions.invoke('extract-pdf-process-tracking', {
+      const { data, error } = await cloudFunctions.invoke('extract-pdf-process-tracking', {
         body: formData,
       });
       if (error) throw error;

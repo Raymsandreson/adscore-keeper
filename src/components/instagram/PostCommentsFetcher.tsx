@@ -42,6 +42,7 @@ import { ReplyStatusBadge } from './ReplyStatusBadge';
 import { useCommentContactInfo } from '@/hooks/useCommentContactInfo';
 import { useCommentCardSettings } from '@/hooks/useCommentCardSettings';
 import { usePostExtractionHistory } from '@/hooks/usePostExtractionHistory';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface CommentResult {
   id?: string;
@@ -145,7 +146,7 @@ export function PostCommentsFetcher() {
     let historyId: string | null = null;
 
     try {
-      const { data, error } = await supabase.functions.invoke('fetch-post-super-scraper', {
+      const { data, error } = await cloudFunctions.invoke('fetch-post-super-scraper', {
         body: {
           postUrls,
           maxComments,
