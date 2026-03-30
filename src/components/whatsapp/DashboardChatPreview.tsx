@@ -107,8 +107,18 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         });
       }
     };
+    const fetchCallRecords = async () => {
+      const last8 = normalizedPhone.slice(-8);
+      const { data } = await supabase
+        .from('call_records')
+        .select('id, call_type, call_result, duration_seconds, notes, ai_summary, created_at, contact_name, phone_used, contact_phone')
+        .or(`contact_phone.ilike.%${last8}%,phone_used.ilike.%${last8}%`)
+        .order('created_at', { ascending: true });
+      setCallRecords((data || []) as CallRecord[]);
+    };
     fetchMessages();
     fetchAgent();
+    fetchCallRecords();
   }, [open, phone]);
 
   // Realtime
