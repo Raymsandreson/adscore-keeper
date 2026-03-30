@@ -493,7 +493,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                     <div className="space-y-2">
                       {envolvidos.map((env: any, i: number) => (
                         <div key={i} className="border rounded p-2 bg-muted/30 space-y-0.5">
-                          <p className="text-xs font-medium">{env.nome || env.nome_normalizado || 'N/A'}</p>
+                          <div className="overflow-x-auto scrollbar-hide">
+                            <p className="text-xs font-medium whitespace-nowrap min-w-max pr-2">{env.nome || env.nome_normalizado || 'N/A'}</p>
+                          </div>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {(env.tipo_normalizado || env.tipo) && <Badge variant="outline" className="text-[9px]">{env.tipo_normalizado || env.tipo}</Badge>}
                             {env.polo && env.polo !== 'NENHUM' && <Badge variant="secondary" className="text-[9px]">Polo {env.polo}</Badge>}
@@ -503,9 +505,11 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                           {env.advogados?.length > 0 && (
                             <div className="ml-3 mt-1 space-y-1">
                               {env.advogados.map((adv: any, j: number) => (
-                                <div key={j} className="text-[10px]">
-                                  <span className="font-medium">Adv:</span> {adv.nome || adv.nome_normalizado}
-                                  {adv.oabs?.length > 0 && ` (OAB: ${adv.oabs.map((o: any) => `${o.numero}/${o.uf}`).join(', ')})`}
+                                <div key={j} className="overflow-x-auto scrollbar-hide">
+                                  <div className="text-[10px] whitespace-nowrap min-w-max pr-2">
+                                    <span className="font-medium">Adv:</span> {adv.nome || adv.nome_normalizado}
+                                    {adv.oabs?.length > 0 && ` (OAB: ${adv.oabs.map((o: any) => `${o.numero}/${o.uf}`).join(', ')})`}
+                                  </div>
                                 </div>
                               ))}
                             </div>
