@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { usePageState } from "@/hooks/usePageState";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -32,7 +33,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import LeadManager from "@/components/LeadManager";
-import { useLeads } from "@/hooks/useLeads";
+// useLeads removed - stats loaded via lightweight query above
 import { InstagramAccountsManager } from "@/components/analytics/InstagramAccountsManager";
 import { ContactsManager } from "@/components/contacts/ContactsManager";
 import { UnifiedKanbanManager } from "@/components/kanban/UnifiedKanbanManager";
@@ -120,8 +121,32 @@ const LeadsCenter = () => {
     }
   }, []);
 
-  // Use real leads data from database
-  const { leads: realLeads, stats: realStats, loading } = useLeads(adAccountId || undefined);
+  // Use lightweight stats query instead of loading all leads
+  const [realStats, setRealStats] = useState({ total: 0, converted: 0, inProgress: 0, notQualified: 0, conversionRate: 0 });
+  
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('id, status')
+        .limit(5000);
+      if (error || !data) return;
+      const total = data.length;
+      const converted = data.filter(l => l.status === 'converted').length;
+      const notQualified = data.filter(l => ['not_qualified', 'lost'].includes(l.status || '')).length;
+      const inProgress = total - converted - notQualified;
+      
+      setRealStats({
+        total,
+        converted,
+        inProgress,
+        notQualified,
+        conversionRate: total > 0 ? (converted / total) * 100 : 0,
+      });
+    };
+    fetchStats();
+  }, [adAccountId]);
 
   const handleOpenFacebookEvents = () => {
     window.open('https://business.facebook.com/events_manager', '_blank');
@@ -138,14 +163,8 @@ const LeadsCenter = () => {
   };
 
   // Use real data if available, otherwise show simulated
-  const hasRealData = realLeads.length > 0;
-  const displayStats = hasRealData ? {
-    total: realStats.total,
-    converted: realStats.converted,
-    inProgress: realStats.new + realStats.contacted + realStats.qualified,
-    notQualified: realStats.notQualified + realStats.lost,
-    conversionRate: realStats.conversionRate,
-  } : {
+  const hasRealData = realStats.total > 0;
+  const displayStats = hasRealData ? realStats : {
     total: totalLeads,
     converted: statusDistribution[0].value,
     inProgress: statusDistribution[1].value,
@@ -199,7 +218,7 @@ const LeadsCenter = () => {
                   <div>
                     <p className="font-medium text-sm">Conta Meta conectada</p>
                     <p className="text-xs text-muted-foreground">
-                      ID: {adAccountId} • {realLeads.length} leads no banco de dados
+                      ID: {adAccountId} • {realStats.total} leads no banco de dados
                     </p>
                   </div>
                 </div>
@@ -283,7 +302,7 @@ const LeadsCenter = () => {
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-green-500" />
                       <span className="text-sm font-medium">Dados reais do banco de dados</span>
-                      <Badge variant="secondary">{realLeads.length} leads</Badge>
+                      <Badge variant="secondary">{realStats.total} leads</Badge>
                     </div>
                   </CardContent>
                 </Card>
