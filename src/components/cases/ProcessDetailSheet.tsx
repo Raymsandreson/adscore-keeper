@@ -20,6 +20,7 @@ interface ProcessDetailSheetProps {
   onOpenChange: (open: boolean) => void;
   process: any;
   onUpdated?: () => void;
+  mode?: 'sheet' | 'dialog';
 }
 
 function formatDateBR(val: string): string {
