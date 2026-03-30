@@ -563,7 +563,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   if (mode === 'dialog') {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[85vh] p-0 overflow-hidden flex flex-col">
+        <DialogContent className="max-w-2xl h-[85vh] max-h-[85vh] p-0 overflow-hidden flex flex-col">
           <div className="sr-only"><DialogHeader><DialogTitle>Detalhes do Processo</DialogTitle></DialogHeader></div>
           {innerContent}
         </DialogContent>
