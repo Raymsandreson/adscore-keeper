@@ -650,6 +650,21 @@ ${scrapeData.content || ''}
 
       // Auto-create legal case when lead is marked as closed (or was already closed but has no case yet)
       const wasAlreadyClosed = !!(lead as any).became_client_date;
+      // Save status history if outcome changed
+      const previousOutcome = (lead as any).became_client_date ? 'closed' : (lead as any).inviavel_date ? 'inviavel' : (lead as any).classification_date ? 'refused' : (lead as any).in_progress_date ? 'in_progress' : 'active';
+      if (leadOutcome && leadOutcome !== previousOutcome) {
+        const { data: { user } } = await supabase.auth.getUser();
+        await supabase.from('lead_status_history' as any).insert({
+          lead_id: lead.id,
+          from_status: previousOutcome,
+          to_status: leadOutcome,
+          reason: leadOutcomeReason || null,
+          changed_by: user?.id || null,
+        });
+      }
+
+      // Auto-create legal case when lead is marked as closed (or was already closed but has no case yet)
+      const wasAlreadyClosed = !!(lead as any).became_client_date;
       if (leadOutcome === 'closed') {
         if (!wasAlreadyClosed) {
           // Also update lead_status
@@ -735,8 +750,10 @@ ${scrapeData.content || ''}
         }
       } else if (leadOutcome === 'refused') {
         await supabase.from('leads').update({ lead_status: 'refused' } as any).eq('id', lead.id);
-      } else if ((lead as any).became_client_date) {
-        // Was closed, now reopened
+      } else if (leadOutcome === 'inviavel') {
+        await supabase.from('leads').update({ lead_status: 'inviavel' } as any).eq('id', lead.id);
+      } else if ((lead as any).became_client_date || (lead as any).inviavel_date) {
+        // Was closed/inviável, now reopened
         await supabase.from('leads').update({ lead_status: 'active' } as any).eq('id', lead.id);
       }
 
