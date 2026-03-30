@@ -109,6 +109,7 @@ const TABS = [
 type TabId = typeof TABS[number]['id'];
 
 export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet' }: ProcessDetailSheetProps) {
+  const navFn = useNavigate();
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
