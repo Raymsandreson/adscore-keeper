@@ -389,7 +389,19 @@ REGRAS DE ENDEREÇO E CEP:
 - LOCAL DE ASSINATURA é SEMPRE a mesma cidade/estado do endereço do cliente, nunca pergunte separadamente
 
 `;
-      let systemPrompt = humanizationPrefix + ((agent as any).base_prompt || '');
+      // Use followup_prompt when available and this is a followup request
+      const effectivePrompt = is_followup && (agent as any).followup_prompt?.trim()
+        ? (agent as any).followup_prompt
+        : (agent as any).base_prompt || '';
+      let systemPrompt = humanizationPrefix + effectivePrompt;
+      
+      if (is_followup) {
+        systemPrompt += `\n\nCONTEXTO DE FOLLOW-UP:
+- Esta é uma mensagem de FOLLOW-UP automático. O lead não respondeu recentemente.
+- NÃO repita a última mensagem enviada. Gere uma abordagem DIFERENTE e criativa.
+- Use o histórico da conversa para contextualizar, mas traga um ângulo novo.
+- Seja breve e direto — uma mensagem curta de retomada.`;
+      }
 
       // If this is a shortcut with a ZapSign template, fetch template fields and inject into prompt
       if ((agent as any).is_shortcut && (agent as any).template_token) {
