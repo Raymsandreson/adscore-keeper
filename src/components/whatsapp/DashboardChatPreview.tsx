@@ -48,9 +48,11 @@ interface Props {
   wasResponded: boolean;
   responseTimeMinutes: number | null;
   onOpenChat?: (phone: string) => void;
+  campaignBoardId?: string | null;
+  campaignStageId?: string | null;
 }
 
-export function DashboardChatPreview({ open, onOpenChange, phone, contactName, instanceName, hasLead, hasContact, wasResponded, responseTimeMinutes, onOpenChat }: Props) {
+export function DashboardChatPreview({ open, onOpenChange, phone, contactName, instanceName, hasLead, hasContact, wasResponded, responseTimeMinutes, onOpenChat, campaignBoardId, campaignStageId }: Props) {
   const { user } = useAuthContext();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
