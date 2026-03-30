@@ -208,8 +208,8 @@ export default function CasesPage() {
         </div>
       </div>
 
-      {/* Cases list */}
-      <div className="p-4 space-y-3">
+      {/* Cases list grouped by sections */}
+      <div className="p-4 space-y-6">
         {loading && (
           <div className="text-center py-12 text-muted-foreground">Carregando casos...</div>
         )}
@@ -221,16 +221,69 @@ export default function CasesPage() {
           </div>
         )}
 
-          {cases.map(c => (
-            <CaseListItem
-              key={c.id}
-              legalCase={c}
-              expanded={expandedId === c.id}
-              onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
-              onCaseUpdated={fetchCases}
-              onOpenLead={(leadId) => navigate(`/leads?openLead=${leadId}`)}
-            />
-        ))}
+        {!loading && cases.length > 0 && (() => {
+          const sections = [
+            { label: '👶 Salário Maternidade', prefixes: ['SM'], color: '#eab308' },
+            { label: '⚖️ Casos Previdenciários', prefixes: ['DG', 'DP'], color: '#8b5cf6' },
+            { label: '🔨 Casos Trabalhistas', prefixes: ['ATT', 'DT'], color: '#22c55e' },
+            { label: '🛒 Casos de Consumo', prefixes: ['AC', 'ATR'], color: '#3b82f6' },
+          ];
+
+          const categorized = new Set<string>();
+          const sectionData = sections.map(s => {
+            const items = cases.filter(c => s.prefixes.includes(c.nucleus_prefix));
+            items.forEach(c => categorized.add(c.id));
+            return { ...s, items };
+          });
+          const others = cases.filter(c => !categorized.has(c.id));
+
+          return (
+            <>
+              {sectionData.map(section => section.items.length > 0 && (
+                <div key={section.label}>
+                  <div className="flex items-center gap-2 mb-3 pb-2 border-b">
+                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: section.color }} />
+                    <h2 className="text-sm font-bold tracking-wide">{section.label}</h2>
+                    <Badge variant="secondary" className="text-[10px] ml-1">{section.items.length}</Badge>
+                  </div>
+                  <div className="space-y-3">
+                    {section.items.map(c => (
+                      <CaseListItem
+                        key={c.id}
+                        legalCase={c}
+                        expanded={expandedId === c.id}
+                        onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
+                        onCaseUpdated={fetchCases}
+                        onOpenLead={(leadId) => navigate(`/leads?openLead=${leadId}`)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {others.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3 pb-2 border-b">
+                    <span className="w-3 h-3 rounded-full shrink-0 bg-muted-foreground/40" />
+                    <h2 className="text-sm font-bold tracking-wide">📁 Outros</h2>
+                    <Badge variant="secondary" className="text-[10px] ml-1">{others.length}</Badge>
+                  </div>
+                  <div className="space-y-3">
+                    {others.map(c => (
+                      <CaseListItem
+                        key={c.id}
+                        legalCase={c}
+                        expanded={expandedId === c.id}
+                        onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
+                        onCaseUpdated={fetchCases}
+                        onOpenLead={(leadId) => navigate(`/leads?openLead=${leadId}`)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {/* Export to Google Sheets Dialog */}
