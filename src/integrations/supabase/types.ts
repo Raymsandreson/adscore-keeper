@@ -4572,6 +4572,7 @@ export type Database = {
           in_progress_date: string | null
           instagram_comment_id: string | null
           instagram_username: string | null
+          inviavel_date: string | null
           is_follower: boolean | null
           last_edit_summary: string | null
           last_followup_at: string | null
@@ -4647,6 +4648,7 @@ export type Database = {
           in_progress_date?: string | null
           instagram_comment_id?: string | null
           instagram_username?: string | null
+          inviavel_date?: string | null
           is_follower?: boolean | null
           last_edit_summary?: string | null
           last_followup_at?: string | null
@@ -4722,6 +4724,7 @@ export type Database = {
           in_progress_date?: string | null
           instagram_comment_id?: string | null
           instagram_username?: string | null
+          inviavel_date?: string | null
           is_follower?: boolean | null
           last_edit_summary?: string | null
           last_followup_at?: string | null
