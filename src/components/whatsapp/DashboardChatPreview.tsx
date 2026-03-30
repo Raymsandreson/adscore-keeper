@@ -484,23 +484,61 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           </div>
         )}
 
-        {/* Messages area */}
+        {/* Messages & Call Records Timeline */}
         <div className="flex-1 min-h-0 px-4">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          ) : messages.length === 0 ? (
+          ) : timelineItems.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">Nenhuma mensagem encontrada</p>
           ) : (
             <ScrollArea className="h-[50vh]">
               <div className="space-y-1 pr-3">
-                {messages.map((msg) => {
-                  const dateLabel = formatDateSeparator(msg.created_at);
+                {timelineItems.map((item) => {
+                  const dateLabel = formatDateSeparator(item.data.created_at);
                   const showDateSep = dateLabel !== lastDateLabel;
                   if (showDateSep) lastDateLabel = dateLabel;
-                  const isInbound = msg.direction === 'inbound';
 
+                  if (item.type === 'call') {
+                    const call = item.data as CallRecord;
+                    const duration = call.duration_seconds ? `${Math.floor(call.duration_seconds / 60)}:${String(call.duration_seconds % 60).padStart(2, '0')}` : null;
+                    return (
+                      <div key={`call-${call.id}`}>
+                        {showDateSep && (
+                          <div className="flex justify-center my-2">
+                            <span className="text-[10px] bg-muted px-2 py-0.5 rounded-full text-muted-foreground">{dateLabel}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-center my-2">
+                          <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2 max-w-[85%]">
+                            {callResultIcon(call.call_result)}
+                            <div className="text-[11px]">
+                              <span className="font-medium text-blue-700 dark:text-blue-300">
+                                📞 {call.call_type === 'inbound' ? 'Ligação recebida' : 'Ligação realizada'}
+                              </span>
+                              <span className="text-blue-600 dark:text-blue-400 ml-1">
+                                — {callResultLabel(call.call_result)}
+                              </span>
+                              {duration && <span className="text-muted-foreground ml-1">({duration})</span>}
+                              {call.ai_summary && (
+                                <p className="text-[10px] text-muted-foreground mt-0.5 whitespace-pre-wrap">{call.ai_summary}</p>
+                              )}
+                              {call.notes && !call.ai_summary && (
+                                <p className="text-[10px] text-muted-foreground mt-0.5">{call.notes}</p>
+                              )}
+                            </div>
+                            <span className="text-[9px] text-muted-foreground ml-auto shrink-0">
+                              {format(parseISO(call.created_at), 'HH:mm')}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const msg = item.data as Message;
+                  const isInbound = msg.direction === 'inbound';
                   return (
                     <div key={msg.id}>
                       {showDateSep && (
