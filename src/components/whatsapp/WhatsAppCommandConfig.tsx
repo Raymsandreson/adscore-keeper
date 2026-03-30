@@ -969,6 +969,21 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                           />
                         </div>
                       </div>
+                      {step.action_type === 'call' && (
+                        <div className="space-y-1">
+                          <p className="text-[9px] text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-1.5 rounded flex items-start gap-1">
+                            ⚡ Flash call: apenas um toque rápido para chamar atenção. A ligação não é completada — serve para o lead ver a notificação e retornar ao WhatsApp.
+                          </p>
+                          <div className="flex items-center justify-between">
+                            <Label className="text-[10px]">📞 Enviar áudio pós-ligação</Label>
+                            <Switch 
+                              checked={form.send_call_followup_audio ?? false} 
+                              onCheckedChange={v => setForm(f => ({ ...f, send_call_followup_audio: v }))} 
+                            />
+                          </div>
+                          <p className="text-[9px] text-muted-foreground">Após o toque, envia um áudio automático avisando que tentou ligar</p>
+                        </div>
+                      )}
                       {step.action_type === 'create_activity' && (
                         <div className="space-y-1">
                           <Label className="text-[10px]">Atribuir a</Label>

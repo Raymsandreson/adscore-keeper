@@ -528,14 +528,7 @@ export function WhatsAppAIAgents() {
                     </div>
                     )}
                   
-                  {/* Send call follow-up audio */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-xs">📞 Áudio pós-ligação</Label>
-                      <p className="text-[10px] text-muted-foreground">Após flash call, envia áudio automático avisando que tentou ligar</p>
-                    </div>
-                    <Switch checked={editingAgent.send_call_followup_audio ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, send_call_followup_audio: v })} />
-                  </div>
+                   {/* Send call follow-up audio - moved to follow-up tab */}
                   
                   {/* STT Prompt */}
                   <div className="space-y-1">
