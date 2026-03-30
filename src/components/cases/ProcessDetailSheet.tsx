@@ -401,7 +401,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       </div>
 
         {/* Tab content */}
-        <ScrollArea className="flex-1 min-h-0 px-4 pb-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6">
           <div className="space-y-3 pt-3">
 
             {activeTab === 'partes' && (
@@ -556,7 +556,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
     </div>
   );
 
