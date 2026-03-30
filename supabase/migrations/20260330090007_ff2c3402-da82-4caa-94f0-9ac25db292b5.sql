@@ -1,0 +1,1 @@
+UPDATE whatsapp_call_queue SET status = 'pending', last_result = NULL, attempts = 0, scheduled_at = now() WHERE status = 'failed' AND last_result = 'Instance not found';
