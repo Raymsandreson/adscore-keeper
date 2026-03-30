@@ -634,6 +634,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
                 from_status: (currentLead as any)?.lead_status || 'active',
                 to_status: newStatus,
                 changed_by: user?.id || null,
+                changed_by_type: 'manual',
               });
 
               // Auto-create legal case when closing

@@ -261,6 +261,7 @@ REGRAS:
               to_status: cleaned.lead_status === 'unviable' ? 'inviavel' : cleaned.lead_status,
               reason: cleaned.lead_status_reason || 'Detectado automaticamente pela IA',
               changed_by: null,
+              changed_by_type: 'ai',
             })
           }
         }
