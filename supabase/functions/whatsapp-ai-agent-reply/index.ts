@@ -120,6 +120,74 @@ serve(async (req) => {
       }
     }
 
+    // 4.5) If no assignment, check lead_status_filter-based agent routing
+    if (!assignment) {
+      // Find lead linked to this phone (via contact or direct)
+      const normalizedPhoneForStatus = phone.replace(/\D/g, '');
+      const phoneSuffixForStatus = normalizedPhoneForStatus.slice(-8);
+      
+      let leadStatusToCheck: string | null = null;
+      let foundLeadId: string | null = lead_id || null;
+
+      if (foundLeadId) {
+        const { data: leadData } = await supabase
+          .from("leads")
+          .select("lead_status")
+          .eq("id", foundLeadId)
+          .maybeSingle();
+        leadStatusToCheck = leadData?.lead_status || 'active';
+      } else {
+        // Try to find lead via contact phone
+        const { data: contactLeads } = await supabase
+          .from("contacts")
+          .select("id, contact_leads(lead_id, leads(id, lead_status))")
+          .ilike("phone", `%${phoneSuffixForStatus}`)
+          .limit(5);
+
+        if (contactLeads) {
+          for (const contact of contactLeads) {
+            const cls = (contact as any).contact_leads || [];
+            for (const cl of cls) {
+              const lead = cl.leads;
+              if (lead?.lead_status && ['closed', 'refused', 'unviable'].includes(lead.lead_status)) {
+                leadStatusToCheck = lead.lead_status;
+                foundLeadId = lead.id;
+                break;
+              }
+            }
+            if (leadStatusToCheck) break;
+          }
+        }
+      }
+
+      if (leadStatusToCheck) {
+        // Find agents with lead_status_filter matching this status
+        const { data: matchingAgents } = await supabase
+          .from("wjia_command_shortcuts")
+          .select("id, lead_status_filter")
+          .eq("is_active", true)
+          .not("lead_status_filter", "is", null);
+
+        if (matchingAgents) {
+          const matched = matchingAgents.find((a: any) => 
+            Array.isArray(a.lead_status_filter) && a.lead_status_filter.includes(leadStatusToCheck)
+          );
+
+          if (matched) {
+            await supabase.from("whatsapp_conversation_agents").upsert({
+              phone,
+              instance_name,
+              agent_id: matched.id,
+              is_active: true,
+              activated_by: "lead_status_auto",
+            }, { onConflict: "phone,instance_name" });
+            assignment = { agent_id: matched.id, is_active: true };
+            console.log(`Auto-assigned agent ${matched.id} via lead_status_filter (status=${leadStatusToCheck}, lead=${foundLeadId})`);
+          }
+        }
+      }
+    }
+
     // 5) If no assignment, check broadcast list agents
     if (!assignment) {
       // Find if this phone belongs to any broadcast list with an active agent

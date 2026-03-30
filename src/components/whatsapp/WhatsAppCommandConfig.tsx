@@ -56,6 +56,7 @@ interface Shortcut {
   send_window_start_hour: number;
   send_window_end_hour: number;
   send_call_followup_audio: boolean;
+  lead_status_filter: string[] | null;
 }
 
 interface FollowupStep {
@@ -181,6 +182,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [showAI, setShowAI] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; media_extraction_prompt?: string; followup_steps: FollowupStep[] } | null>(null);
+  const [leadStatusFilter, setLeadStatusFilter] = useState<string[]>([]);
   const [form, setForm] = useState({
     shortcut_name: '', description: '', template_token: '', template_name: '',
     prompt_instructions: '', media_extraction_prompt: '',
@@ -279,6 +281,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     });
     setFollowupSteps([]);
     setHumanReplyPauseMinutes(0);
+    setLeadStatusFilter([]);
     setEditingId(null);
     setShowForm(false);
     setAiEditConfig(null);
@@ -331,6 +334,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     setFollowupSteps(s.followup_steps || []);
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
     setFollowupRepeatForever((s as any).followup_repeat_forever ?? false);
+    setLeadStatusFilter((s as any).lead_status_filter || []);
     setEditingId(s.id);
     setShowForm(true);
     setFormSection('general');
@@ -392,6 +396,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_window_start_hour: form.send_window_start_hour ?? 8,
       send_window_end_hour: form.send_window_end_hour ?? 20,
       send_call_followup_audio: form.send_call_followup_audio ?? false,
+      lead_status_filter: leadStatusFilter.length > 0 ? leadStatusFilter : null,
     };
 
     let error;
@@ -691,6 +696,43 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       </Select>
                       <p className="text-[10px] text-muted-foreground">Vozes personalizadas aparecem com 🎤</p>
                     </div>
+                  )}
+                </div>
+                {/* Lead Status Filter */}
+                <div className="space-y-2 border rounded-lg p-3">
+                  <div>
+                    <Label className="text-xs font-semibold">🎯 Filtro por Status do Lead</Label>
+                    <p className="text-[10px] text-muted-foreground">
+                      Ativa o agente apenas para contatos vinculados a leads com os status selecionados. Ideal para pós-venda de leads fechados.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { value: 'active', label: 'Em andamento', icon: '🟢' },
+                      { value: 'closed', label: 'Fechado', icon: '🏆' },
+                      { value: 'refused', label: 'Recusado', icon: '❌' },
+                      { value: 'unviable', label: 'Inviável', icon: '⚠️' },
+                    ].map(opt => (
+                      <label key={opt.value} className="flex items-center gap-2 text-xs cursor-pointer">
+                        <Checkbox
+                          checked={leadStatusFilter.includes(opt.value)}
+                          onCheckedChange={(checked) => {
+                            setLeadStatusFilter(prev =>
+                              checked ? [...prev, opt.value] : prev.filter(v => v !== opt.value)
+                            );
+                          }}
+                        />
+                        <span>{opt.icon} {opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {leadStatusFilter.length > 0 && (
+                    <p className="text-[10px] text-primary font-medium">
+                      Este agente será ativado automaticamente quando um contato vinculado a um lead com status {leadStatusFilter.map(s => {
+                        const labels: Record<string, string> = { active: 'Em andamento', closed: 'Fechado', refused: 'Recusado', unviable: 'Inviável' };
+                        return labels[s] || s;
+                      }).join(', ')} enviar mensagem.
+                    </p>
                   )}
                 </div>
                 <div className="space-y-1">
