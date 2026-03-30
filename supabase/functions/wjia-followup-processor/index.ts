@@ -456,15 +456,17 @@ async function callAgentReply(supabase: any, phone: string, instanceName: string
   return true;
 }
 
-// Generate a deterministic UUID-like tracking ID for conversation follow-ups
+// Generate a deterministic UUID v5-like tracking ID for conversation follow-ups
 function generateTrackingId(phone: string, instanceName: string, agentId: string): string {
   const input = `agent_followup:${phone}:${instanceName}:${agentId}`;
-  let hash = 0;
+  // Simple hash to create a valid UUID format
+  const bytes = new Uint8Array(16);
   for (let i = 0; i < input.length; i++) {
-    const char = input.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0;
+    bytes[i % 16] = (bytes[i % 16] + input.charCodeAt(i)) & 0xff;
   }
-  const hex = Math.abs(hash).toString(16).padStart(8, "0");
-  return `af${hex}-0000-0000-0000-000000000000`;
+  // Set version 5 and variant bits
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20,32)}`;
 }
