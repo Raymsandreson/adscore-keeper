@@ -412,7 +412,7 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
     }
 
     // Log the execution
-    await supabase.from("wjia_followup_log").insert({
+    const { error: logError } = await supabase.from("wjia_followup_log").insert({
       session_id: trackingId,
       rule_id: null,
       step_index: nextStepIndex,
@@ -420,6 +420,9 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
       action_result: actionResult,
       next_execution_at: null,
     });
+    if (logError) {
+      console.error(`[AGENT] Failed to save followup log for ${conv.phone}:`, JSON.stringify(logError));
+    }
 
     actionsExecuted++;
   }
