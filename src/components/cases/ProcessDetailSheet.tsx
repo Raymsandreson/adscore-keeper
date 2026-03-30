@@ -495,7 +495,6 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             )}
           </div>
         </ScrollArea>
-      </div>
     </div>
   );
 
