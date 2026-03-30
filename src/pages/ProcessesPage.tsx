@@ -29,6 +29,7 @@ interface Process {
 }
 
 export default function ProcessesPage() {
+  const navigate = useNavigate();
   const [processes, setProcesses] = useState<Process[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
