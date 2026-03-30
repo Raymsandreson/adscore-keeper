@@ -202,22 +202,18 @@ async function sendCallFollowupAudio(
     const agentName = agent.shortcut_name || "Assistente";
 
       if (agent) {
-        agentName = agent.agent_name || "Assistente";
-        followupPrompt = agent.followup_prompt || agent.base_prompt || "";
-        if (agent.reply_voice_id) {
-          // Resolve custom voice UUID if needed
-          if (agent.reply_voice_id.length === 36 && agent.reply_voice_id.includes("-")) {
-            const { data: cv } = await supabase
-              .from("custom_voices")
-              .select("elevenlabs_voice_id")
-              .eq("id", agent.reply_voice_id)
-              .eq("status", "ready")
-              .maybeSingle();
-            voiceId = cv?.elevenlabs_voice_id || voiceId;
-          } else {
-            voiceId = agent.reply_voice_id;
-          }
-        }
+    const followupPrompt = agent.base_prompt || "";
+    if (agent.reply_voice_id) {
+      if (agent.reply_voice_id.length === 36 && agent.reply_voice_id.includes("-")) {
+        const { data: cv } = await supabase
+          .from("custom_voices")
+          .select("elevenlabs_voice_id")
+          .eq("id", agent.reply_voice_id)
+          .eq("status", "ready")
+          .maybeSingle();
+        voiceId = cv?.elevenlabs_voice_id || voiceId;
+      } else {
+        voiceId = agent.reply_voice_id;
       }
     }
 
