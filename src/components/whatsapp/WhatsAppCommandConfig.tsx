@@ -334,6 +334,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     setFollowupSteps(s.followup_steps || []);
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
     setFollowupRepeatForever((s as any).followup_repeat_forever ?? false);
+    setLeadStatusFilter((s as any).lead_status_filter || []);
     setEditingId(s.id);
     setShowForm(true);
     setFormSection('general');
