@@ -55,6 +55,7 @@ interface Shortcut {
   respond_in_groups: boolean;
   send_window_start_hour: number;
   send_window_end_hour: number;
+  send_call_followup_audio: boolean;
 }
 
 interface FollowupStep {
@@ -201,6 +202,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     max_tts_chars: 1000,
     send_window_start_hour: 8,
     send_window_end_hour: 20,
+    send_call_followup_audio: false,
   });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
   const [humanReplyPauseMinutes, setHumanReplyPauseMinutes] = useState(0);
@@ -273,7 +275,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       model: 'google/gemini-2.5-flash', temperature: 0.7,
       max_tokens: 2048, response_delay_seconds: 2, split_messages: false, split_delay_seconds: 3,
       reply_with_audio: false, reply_voice_id: null, respond_in_groups: false, max_tts_chars: 1000,
-      send_window_start_hour: 8, send_window_end_hour: 20,
+      send_window_start_hour: 8, send_window_end_hour: 20, send_call_followup_audio: false,
     });
     setFollowupSteps([]);
     setHumanReplyPauseMinutes(0);
@@ -324,6 +326,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       max_tts_chars: (s as any).max_tts_chars ?? 1000,
       send_window_start_hour: (s as any).send_window_start_hour ?? 8,
       send_window_end_hour: (s as any).send_window_end_hour ?? 20,
+      send_call_followup_audio: (s as any).send_call_followup_audio ?? false,
     });
     setFollowupSteps(s.followup_steps || []);
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
@@ -388,6 +391,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       max_tts_chars: form.max_tts_chars,
       send_window_start_hour: form.send_window_start_hour ?? 8,
       send_window_end_hour: form.send_window_end_hour ?? 20,
+      send_call_followup_audio: form.send_call_followup_audio ?? false,
     };
 
     let error;
@@ -969,6 +973,21 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                           />
                         </div>
                       </div>
+                      {step.action_type === 'call' && (
+                        <div className="space-y-1">
+                          <p className="text-[9px] text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-1.5 rounded flex items-start gap-1">
+                            ⚡ Flash call: apenas um toque rápido para chamar atenção. A ligação não é completada — serve para o lead ver a notificação e retornar ao WhatsApp.
+                          </p>
+                          <div className="flex items-center justify-between">
+                            <Label className="text-[10px]">📞 Enviar áudio pós-ligação</Label>
+                            <Switch 
+                              checked={form.send_call_followup_audio ?? false} 
+                              onCheckedChange={v => setForm(f => ({ ...f, send_call_followup_audio: v }))} 
+                            />
+                          </div>
+                          <p className="text-[9px] text-muted-foreground">Após o toque, envia um áudio automático avisando que tentou ligar</p>
+                        </div>
+                      )}
                       {step.action_type === 'create_activity' && (
                         <div className="space-y-1">
                           <Label className="text-[10px]">Atribuir a</Label>
