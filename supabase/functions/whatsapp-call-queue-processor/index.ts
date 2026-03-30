@@ -79,8 +79,8 @@ serve(async (req) => {
     }
 
     // Make call via UazAPI
-    const baseUrl = (instance as any).base_url || (instance as any).api_url;
-    const token = (instance as any).instance_token || (instance as any).api_token;
+    const baseUrl = (instance as any).base_url;
+    const token = (instance as any).instance_token;
     const phone = (nextCall as any).phone;
 
     console.log(`Initiating call to ${phone} via ${instanceName}`);
