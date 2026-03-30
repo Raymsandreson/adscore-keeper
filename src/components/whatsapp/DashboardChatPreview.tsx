@@ -345,9 +345,37 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
   };
 
+  // Merge messages and call records into unified timeline
+  const timelineItems = useMemo(() => {
+    const items: Array<{ type: 'message'; data: Message } | { type: 'call'; data: CallRecord }> = [];
+    messages.forEach(m => items.push({ type: 'message', data: m }));
+    callRecords.forEach(c => items.push({ type: 'call', data: c }));
+    items.sort((a, b) => new Date(a.data.created_at).getTime() - new Date(b.data.created_at).getTime());
+    return items;
+  }, [messages, callRecords]);
+
+  const callResultLabel = (result: string) => {
+    switch (result) {
+      case 'answered': return 'Atendida';
+      case 'no_answer': return 'Não atendida';
+      case 'busy': return 'Ocupado';
+      case 'voicemail': return 'Caixa postal';
+      case 'failed': return 'Falhou';
+      default: return result || 'Ligação';
+    }
+  };
+
+  const callResultIcon = (result: string) => {
+    switch (result) {
+      case 'answered': return <PhoneIncoming className="h-3.5 w-3.5 text-emerald-600" />;
+      case 'no_answer': return <PhoneMissed className="h-3.5 w-3.5 text-red-500" />;
+      case 'busy': return <PhoneMissed className="h-3.5 w-3.5 text-amber-500" />;
+      default: return <PhoneIcon className="h-3.5 w-3.5 text-muted-foreground" />;
+    }
+  };
+
   let lastDateLabel = '';
 
-  return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="max-h-[92vh] flex flex-col">
         <DrawerHeader className="pb-2 shrink-0">
