@@ -167,7 +167,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
       await supabase.from('lead_processes').update(updates).eq('id', process.id);
       setForm(prev => ({ ...prev, ...updates }));
-      setOriginal(prev => ({ ...prev, ...updates }));
+      setDirty(false);
       onUpdated?.();
       toast.success('Dados atualizados do Escavador com sucesso');
     } catch (err: any) {
