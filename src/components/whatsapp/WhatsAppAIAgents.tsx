@@ -705,9 +705,19 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
                       <p className="text-[10px] text-muted-foreground">Liga automaticamente para o lead via UazAPI</p>
                     </div>
                     <Switch checked={editingAgent.auto_call_enabled ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, auto_call_enabled: v })} />
-                  </div>
-                  {editingAgent.auto_call_enabled && (
-                    <>
+                   </div>
+                   <p className="text-[9px] text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-1.5 rounded">
+                     ⚡ Flash call: apenas um toque rápido para chamar atenção. A ligação não é completada — serve para o lead ver a notificação e retornar ao WhatsApp.
+                   </p>
+                   {editingAgent.auto_call_enabled && (
+                     <>
+                       <div className="flex items-center justify-between">
+                         <div>
+                           <Label className="text-xs">📞 Áudio pós-ligação</Label>
+                           <p className="text-[10px] text-muted-foreground">Após o toque, envia áudio automático avisando que tentou ligar</p>
+                         </div>
+                         <Switch checked={editingAgent.send_call_followup_audio ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, send_call_followup_audio: v })} />
+                       </div>
                       <div>
                         <Label className="text-xs">Quando ligar</Label>
                         <Select value={editingAgent.auto_call_mode || 'on_no_response'} onValueChange={v => setEditingAgent({ ...editingAgent, auto_call_mode: v })}>
