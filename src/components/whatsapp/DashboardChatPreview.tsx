@@ -25,6 +25,18 @@ interface Message {
   instance_name: string | null;
 }
 
+interface CallRecord {
+  id: string;
+  call_type: string;
+  call_result: string;
+  duration_seconds: number | null;
+  notes: string | null;
+  ai_summary: string | null;
+  created_at: string;
+  contact_name: string | null;
+  phone_used: string | null;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
