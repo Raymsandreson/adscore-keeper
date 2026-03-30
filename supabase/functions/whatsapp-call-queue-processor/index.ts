@@ -161,6 +161,8 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 });
 
 async function sendCallFollowupAudio(
@@ -173,7 +175,6 @@ async function sendCallFollowupAudio(
       return;
     }
 
-    // Find the active agent for this conversation
     const { data: convAgent } = await supabase
       .from("whatsapp_conversation_agents")
       .select("agent_id")
@@ -186,7 +187,6 @@ async function sendCallFollowupAudio(
       return;
     }
 
-    // Check if the agent has send_call_followup_audio enabled
     const { data: agent } = await supabase
       .from("wjia_command_shortcuts")
       .select("shortcut_name, reply_voice_id, base_prompt, send_call_followup_audio")
@@ -198,11 +198,10 @@ async function sendCallFollowupAudio(
       return;
     }
 
-    let voiceId = "FGY2WhTYpPnrIDTdsKH5"; // Laura default
+    let voiceId = "FGY2WhTYpPnrIDTdsKH5";
     const agentName = agent.shortcut_name || "Assistente";
-
-      if (agent) {
     const followupPrompt = agent.base_prompt || "";
+
     if (agent.reply_voice_id) {
       if (agent.reply_voice_id.length === 36 && agent.reply_voice_id.includes("-")) {
         const { data: cv } = await supabase
@@ -217,7 +216,6 @@ async function sendCallFollowupAudio(
       }
     }
 
-    // Get recent conversation context
     const { data: recentMsgs } = await supabase
       .from("whatsapp_messages")
       .select("direction, message_text")
@@ -233,7 +231,6 @@ async function sendCallFollowupAudio(
 
     const firstName = contactName?.split(" ")[0] || "cliente";
 
-    // Generate follow-up text via AI
     const aiResult = await geminiChat({
       model: "google/gemini-2.5-flash",
       messages: [
@@ -256,7 +253,6 @@ async function sendCallFollowupAudio(
 
     console.log(`Call follow-up text for ${phone}: ${followupText.substring(0, 100)}`);
 
-    // Convert to audio via ElevenLabs
     const ttsResp = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
       {
@@ -293,13 +289,10 @@ async function sendCallFollowupAudio(
 
     const { data: urlData } = supabase.storage.from("whatsapp-media").getPublicUrl(filePath);
     const audioUrl = urlData?.publicUrl;
-
     if (!audioUrl) return;
 
-    // Wait a few seconds after the call before sending
     await new Promise(r => setTimeout(r, 5000));
 
-    // Send audio via WhatsApp
     const baseUrl = (instance as any).base_url;
     const token = (instance as any).instance_token;
 
@@ -315,7 +308,6 @@ async function sendCallFollowupAudio(
       console.log(`Call follow-up audio sent to ${phone}`);
     }
 
-    // Save in messages table
     await supabase.from("whatsapp_messages").insert({
       phone,
       instance_name: instanceName,
@@ -331,5 +323,3 @@ async function sendCallFollowupAudio(
     console.error("Call follow-up audio error:", e);
   }
 }
-  }
-});
