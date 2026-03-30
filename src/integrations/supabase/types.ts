@@ -4495,6 +4495,7 @@ export type Database = {
         Row: {
           changed_at: string
           changed_by: string | null
+          changed_by_type: string
           from_status: string | null
           id: string
           lead_id: string
@@ -4504,6 +4505,7 @@ export type Database = {
         Insert: {
           changed_at?: string
           changed_by?: string | null
+          changed_by_type?: string
           from_status?: string | null
           id?: string
           lead_id: string
@@ -4513,6 +4515,7 @@ export type Database = {
         Update: {
           changed_at?: string
           changed_by?: string | null
+          changed_by_type?: string
           from_status?: string | null
           id?: string
           lead_id?: string
