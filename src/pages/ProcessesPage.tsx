@@ -133,7 +133,7 @@ export default function ProcessesPage() {
                           className="cursor-pointer hover:underline text-primary"
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/cases?search=${encodeURIComponent((p as any).legal_cases.case_number)}`);
+                            navigate(`/cases?search=${encodeURIComponent((p as any).legal_cases.case_number.replace(/^[^\w]*/, ''))}`);
                           }}
                         >{(p as any).legal_cases.case_number}</strong> — {(p as any).legal_cases.title}</span>
                       </div>
