@@ -648,8 +648,6 @@ ${scrapeData.content || ''}
         await saveAllFieldValues(lead.id, localFieldValues);
       }
 
-      // Auto-create legal case when lead is marked as closed (or was already closed but has no case yet)
-      const wasAlreadyClosed = !!(lead as any).became_client_date;
       // Save status history if outcome changed
       const previousOutcome = (lead as any).became_client_date ? 'closed' : (lead as any).inviavel_date ? 'inviavel' : (lead as any).classification_date ? 'refused' : (lead as any).in_progress_date ? 'in_progress' : 'active';
       if (leadOutcome && leadOutcome !== previousOutcome) {
