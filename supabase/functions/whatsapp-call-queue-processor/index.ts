@@ -173,7 +173,7 @@ async function sendCallFollowupAudio(
       return;
     }
 
-    // Find the active agent for this conversation to get voice and prompt
+    // Find the active agent for this conversation
     const { data: convAgent } = await supabase
       .from("whatsapp_conversation_agents")
       .select("agent_id")
@@ -181,34 +181,39 @@ async function sendCallFollowupAudio(
       .eq("is_active", true)
       .maybeSingle();
 
-    let voiceId = "FGY2WhTYpPnrIDTdsKH5"; // Laura default
-    let agentName = "Assistente";
-    let followupPrompt = "";
+    if (!convAgent?.agent_id) {
+      console.log("No active agent for phone, skipping call follow-up audio");
+      return;
+    }
 
-    if (convAgent?.agent_id) {
-      const { data: agent } = await supabase
-        .from("whatsapp_ai_agents")
-        .select("agent_name, reply_voice_id, followup_prompt, base_prompt")
-        .eq("id", convAgent.agent_id)
-        .maybeSingle();
+    // Check if the agent has send_call_followup_audio enabled
+    const { data: agent } = await supabase
+      .from("wjia_command_shortcuts")
+      .select("shortcut_name, reply_voice_id, base_prompt, send_call_followup_audio")
+      .eq("id", convAgent.agent_id)
+      .maybeSingle();
+
+    if (!agent?.send_call_followup_audio) {
+      console.log("Agent send_call_followup_audio is disabled, skipping");
+      return;
+    }
+
+    let voiceId = "FGY2WhTYpPnrIDTdsKH5"; // Laura default
+    const agentName = agent.shortcut_name || "Assistente";
 
       if (agent) {
-        agentName = agent.agent_name || "Assistente";
-        followupPrompt = agent.followup_prompt || agent.base_prompt || "";
-        if (agent.reply_voice_id) {
-          // Resolve custom voice UUID if needed
-          if (agent.reply_voice_id.length === 36 && agent.reply_voice_id.includes("-")) {
-            const { data: cv } = await supabase
-              .from("custom_voices")
-              .select("elevenlabs_voice_id")
-              .eq("id", agent.reply_voice_id)
-              .eq("status", "ready")
-              .maybeSingle();
-            voiceId = cv?.elevenlabs_voice_id || voiceId;
-          } else {
-            voiceId = agent.reply_voice_id;
-          }
-        }
+    const followupPrompt = agent.base_prompt || "";
+    if (agent.reply_voice_id) {
+      if (agent.reply_voice_id.length === 36 && agent.reply_voice_id.includes("-")) {
+        const { data: cv } = await supabase
+          .from("custom_voices")
+          .select("elevenlabs_voice_id")
+          .eq("id", agent.reply_voice_id)
+          .eq("status", "ready")
+          .maybeSingle();
+        voiceId = cv?.elevenlabs_voice_id || voiceId;
+      } else {
+        voiceId = agent.reply_voice_id;
       }
     }
 
