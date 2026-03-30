@@ -60,6 +60,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [agentInfo, setAgentInfo] = useState<{ name: string; activated_by: string | null; is_active: boolean } | null>(null);
+  const [callRecords, setCallRecords] = useState<CallRecord[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
