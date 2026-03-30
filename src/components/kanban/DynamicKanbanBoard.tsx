@@ -1008,16 +1008,22 @@ export function DynamicKanbanBoard({
                                       <ArrowRightLeft className="h-3 w-3 mr-2" />
                                       Voltar para Em Andamento
                                     </DropdownMenuItem>
-                                    {statusCol.id === 'closed' && (
+                                    {statusCol.id !== 'closed' && (
+                                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onChangeLeadStatus(lead.id, 'closed'); }} className="text-green-600">
+                                        <CheckCircle2 className="h-3 w-3 mr-2" />
+                                        Mover para Fechados
+                                      </DropdownMenuItem>
+                                    )}
+                                    {statusCol.id !== 'refused' && (
                                       <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onChangeLeadStatus(lead.id, 'refused'); }} className="text-red-600">
                                         <XCircle className="h-3 w-3 mr-2" />
                                         Mover para Recusados
                                       </DropdownMenuItem>
                                     )}
-                                    {statusCol.id === 'refused' && (
-                                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onChangeLeadStatus(lead.id, 'closed'); }} className="text-green-600">
-                                        <CheckCircle2 className="h-3 w-3 mr-2" />
-                                        Mover para Fechados
+                                    {statusCol.id !== 'inviavel' && (
+                                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onChangeLeadStatus(lead.id, 'inviavel'); }} className="text-amber-600">
+                                        <AlertTriangle className="h-3 w-3 mr-2" />
+                                        Mover para Inviáveis
                                       </DropdownMenuItem>
                                     )}
                                     <DropdownMenuSeparator />
