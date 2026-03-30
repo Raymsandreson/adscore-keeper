@@ -1295,6 +1295,8 @@ export function CTWACampaignAutomation() {
         hasContact={chatPreviewConv?.has_contact || false}
         wasResponded={chatPreviewConv?.was_responded || false}
         responseTimeMinutes={chatPreviewConv?.response_time_minutes || null}
+        campaignBoardId={(sheetLink as any)?.board_id || null}
+        campaignStageId={(sheetLink as any)?.stage_id || null}
       />
     </Card>
   );
