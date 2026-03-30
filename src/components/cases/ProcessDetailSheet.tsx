@@ -275,29 +275,29 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const processosRelacionados = Array.isArray(form.processos_relacionados) ? form.processos_relacionados : [];
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg p-0 flex flex-col">
-        {/* Header */}
-        <SheetHeader className="p-4 pb-2 flex flex-row items-center justify-between shrink-0">
-          <SheetTitle className="text-sm flex items-center gap-2">
-            <Pencil className="h-4 w-4 text-primary" />
-            Detalhes do Processo
-          </SheetTitle>
-          <div className="flex items-center gap-1">
-            {form.escavador_raw && (
-              <Button size="sm" variant="outline" onClick={handleReExtract} disabled={saving} className="h-7 text-xs gap-1">
-                <RefreshCw className="h-3 w-3" />
-                Re-extrair
-              </Button>
-            )}
-            {dirty && (
-              <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs gap-1">
-                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                Salvar
-              </Button>
-            )}
-          </div>
-        </SheetHeader>
+  const innerContent = (
+    <>
+      {/* Header */}
+      <div className="p-4 pb-2 flex flex-row items-center justify-between shrink-0">
+        <div className="text-sm font-semibold flex items-center gap-2">
+          <Pencil className="h-4 w-4 text-primary" />
+          Detalhes do Processo
+        </div>
+        <div className="flex items-center gap-1">
+          {form.escavador_raw && (
+            <Button size="sm" variant="outline" onClick={handleReExtract} disabled={saving} className="h-7 text-xs gap-1">
+              <RefreshCw className="h-3 w-3" />
+              Re-extrair
+            </Button>
+          )}
+          {dirty && (
+            <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs gap-1">
+              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Salvar
+            </Button>
+          )}
+        </div>
+      </div>
 
         {/* Process info */}
         <div className="px-4 pb-2 space-y-2 border-b shrink-0">
