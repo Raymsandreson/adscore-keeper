@@ -31,7 +31,7 @@ export default function ProcessesPage() {
   const [processes, setProcesses] = useState<Process[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const navigate = useNavigate();
+  const [selectedProcess, setSelectedProcess] = useState<any>(null);
 
   useEffect(() => {
     loadProcesses();
