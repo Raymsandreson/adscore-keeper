@@ -258,9 +258,13 @@ export function LeadEditDialog({
       setSelectedBoardId(leadAny.board_id || '');
       // Outcome
       setCaseNumber(leadAny.case_number || '');
+      setLeadOutcomeReason(leadAny.lead_status_reason || '');
       if (leadAny.became_client_date) {
         setLeadOutcome('closed');
         setLeadOutcomeDate(leadAny.became_client_date || '');
+      } else if (leadAny.inviavel_date) {
+        setLeadOutcome('inviavel');
+        setLeadOutcomeDate(leadAny.inviavel_date || '');
       } else if (leadAny.classification_date) {
         setLeadOutcome('refused');
         setLeadOutcomeDate(leadAny.classification_date || '');
