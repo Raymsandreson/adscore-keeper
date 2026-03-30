@@ -167,6 +167,17 @@ export default function ProcessesPage() {
       )}
 
       <p className="text-xs text-muted-foreground text-right">{filtered.length} processo(s)</p>
+
+      <Suspense fallback={null}>
+        {selectedProcess && (
+          <ProcessDetailSheet
+            open={!!selectedProcess}
+            onOpenChange={(open) => { if (!open) setSelectedProcess(null); }}
+            process={selectedProcess}
+            onUpdated={loadProcesses}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }
