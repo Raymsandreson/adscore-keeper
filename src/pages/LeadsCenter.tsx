@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { usePageState } from "@/hooks/usePageState";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
