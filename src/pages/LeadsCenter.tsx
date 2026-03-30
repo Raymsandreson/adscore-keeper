@@ -163,14 +163,8 @@ const LeadsCenter = () => {
   };
 
   // Use real data if available, otherwise show simulated
-  const hasRealData = realLeads.length > 0;
-  const displayStats = hasRealData ? {
-    total: realStats.total,
-    converted: realStats.converted,
-    inProgress: realStats.new + realStats.contacted + realStats.qualified,
-    notQualified: realStats.notQualified + realStats.lost,
-    conversionRate: realStats.conversionRate,
-  } : {
+  const hasRealData = realStats.total > 0;
+  const displayStats = hasRealData ? realStats : {
     total: totalLeads,
     converted: statusDistribution[0].value,
     inProgress: statusDistribution[1].value,
