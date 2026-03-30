@@ -71,7 +71,7 @@ export function AIEnrichmentMonitorPanel() {
         .limit(200),
     ]);
 
-    setEnrichments(enrichRes.data || []);
+    setEnrichments((enrichRes.data || []) as any);
 
     const records: CreatedRecord[] = [
       ...(leadsRes.data || []).map((l: any) => ({

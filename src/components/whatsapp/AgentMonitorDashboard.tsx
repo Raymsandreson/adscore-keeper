@@ -530,7 +530,7 @@ export function AgentMonitorDashboard() {
       </div>
 
       <Tabs defaultValue="agents" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5 max-w-2xl">
+        <TabsList className="grid w-full grid-cols-6 max-w-3xl">
           <TabsTrigger value="agents" className="text-xs">Por Agente</TabsTrigger>
           <TabsTrigger value="conversations" className="text-xs">Conversas</TabsTrigger>
           <TabsTrigger value="funnel" className="text-xs">Funil</TabsTrigger>
@@ -539,6 +539,9 @@ export function AgentMonitorDashboard() {
           </TabsTrigger>
           <TabsTrigger value="call-queue" className="text-xs flex items-center gap-1">
             <PhoneCall className="h-3 w-3" /> Fila Ligações
+          </TabsTrigger>
+          <TabsTrigger value="ai-data" className="text-xs flex items-center gap-1">
+            <Sparkles className="h-3 w-3" /> IA Dados
           </TabsTrigger>
         </TabsList>
 
