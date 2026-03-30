@@ -735,7 +735,11 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     </p>
                   )}
                 </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs">🔍 Prompt de Extração de Mídia</Label>
                     <Badge variant="outline" className="text-[9px] h-4">OCR</Badge>
+                  </div>
                   </div>
                   <p className="text-[10px] text-muted-foreground">
                     Instruções de como a IA deve interpretar documentos (RG, CNH, comprovantes).
