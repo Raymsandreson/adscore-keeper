@@ -267,6 +267,7 @@ export function WhatsAppAIAgents() {
         stt_prompt: editingAgent.stt_prompt || null,
         send_window_start_hour: editingAgent.send_window_start_hour ?? 8,
         send_window_end_hour: editingAgent.send_window_end_hour ?? 20,
+        send_call_followup_audio: editingAgent.send_call_followup_audio ?? false,
       };
 
       if (editingAgent.id) {
