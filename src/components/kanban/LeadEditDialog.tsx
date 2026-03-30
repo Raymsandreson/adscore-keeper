@@ -179,8 +179,9 @@ export function LeadEditDialog({
   const [whatsappGroupId, setWhatsappGroupId] = useState('');
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
-  const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress'>('');
+  const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress' | 'inviavel'>('');
   const [leadOutcomeDate, setLeadOutcomeDate] = useState('');
+  const [leadOutcomeReason, setLeadOutcomeReason] = useState('');
   const [caseNumber, setCaseNumber] = useState('');
   
   // Accident fields
