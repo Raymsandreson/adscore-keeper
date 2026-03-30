@@ -1644,7 +1644,11 @@ ${scrapeData.content || ''}
               </TabsContent>
             )}
 
-            {/* History Tab */}
+            {/* Financeiro Tab */}
+            <TabsContent value="financeiro" className="mt-0">
+              <LeadFinancialsTab leadId={lead.id} />
+            </TabsContent>
+
             <TabsContent value="history" className="mt-0 space-y-6">
               <LeadStageHistoryPanel leadId={lead.id} boards={boards} />
               
