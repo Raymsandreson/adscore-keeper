@@ -177,8 +177,9 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     }
     setOabSearching(true);
     try {
-      const { data, error } = await supabase.functions.invoke('search-oab-lawyer', {
-        body: { name: query.trim(), uf: '' },
+      const { invokeCloudFunction } = await import('@/lib/lovableCloudFunctions');
+      const { data, error } = await invokeCloudFunction('search-oab-lawyer', {
+        name: query.trim(), uf: '',
       });
       if (error) throw error;
       const results = data?.lawyers || [];
