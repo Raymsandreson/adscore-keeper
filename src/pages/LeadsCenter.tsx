@@ -136,7 +136,7 @@ const LeadsCenter = () => {
       const converted = data.filter(l => l.status === 'converted').length;
       const notQualified = data.filter(l => ['not_qualified', 'lost'].includes(l.status || '')).length;
       const inProgress = total - converted - notQualified;
-      setRealLeadsCount(total);
+      
       setRealStats({
         total,
         converted,
