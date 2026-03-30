@@ -269,13 +269,13 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       // 3. Resolve board: use campaign's configured board or find first available
       let boardId = campaignBoardId || null;
       if (!boardId) {
-        const { data: availableBoards } = await supabase
+        const { data: availableBoards } = await (supabase
           .from('kanban_boards')
           .select('id')
           .neq('board_type', 'workflow')
           .eq('is_active', true)
           .order('display_order')
-          .limit(1);
+          .limit(1) as any);
         boardId = (availableBoards as any)?.[0]?.id;
       }
       if (!boardId) {
