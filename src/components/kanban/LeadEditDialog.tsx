@@ -185,6 +185,7 @@ export function LeadEditDialog({
   const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress' | 'inviavel'>('');
   const [leadOutcomeDate, setLeadOutcomeDate] = useState('');
   const [leadOutcomeReason, setLeadOutcomeReason] = useState('');
+  const [isGeneratingReason, setIsGeneratingReason] = useState(false);
   const [caseNumber, setCaseNumber] = useState('');
   
   // Accident fields
