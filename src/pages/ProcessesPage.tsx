@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Search, FileText, ExternalLink, Calendar, Building2 } from "lucide-react";
+import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase } from "lucide-react";
 import { format } from "date-fns";
 
 const ProcessDetailSheet = lazy(() => import("@/components/cases/ProcessDetailSheet"));
