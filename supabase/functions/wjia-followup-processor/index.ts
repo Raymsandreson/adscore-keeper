@@ -19,7 +19,11 @@ serve(async (req) => {
     try { body = await req.json(); } catch { /* empty body ok */ }
     const targetSessionId = body?.session_id || null;
 
-    // Get target session(s) with status 'generated'
+    let actionsExecuted = 0;
+
+    // ============================================================
+    // PART 1: Document signing sessions (original logic)
+    // ============================================================
     let sessionsQuery = supabase
       .from("wjia_collection_sessions")
       .select("*")
@@ -31,213 +35,148 @@ serve(async (req) => {
 
     const { data: sessions } = await sessionsQuery.order("updated_at", { ascending: true });
 
-    if (!sessions?.length) {
-      return new Response(JSON.stringify({ message: "No pending sessions" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (sessions?.length) {
+      for (const session of sessions) {
+        const { data: shortcutData } = await supabase
+          .from("wjia_command_shortcuts")
+          .select("followup_steps, human_reply_pause_minutes, followup_repeat_forever")
+          .eq("shortcut_name", session.shortcut_name)
+          .maybeSingle();
 
-    let actionsExecuted = 0;
+        const steps = (shortcutData?.followup_steps || []) as any[];
+        const repeatForever = shortcutData?.followup_repeat_forever ?? false;
+        if (!steps.length) continue;
 
-    for (const session of sessions) {
-      // Load followup_steps from the shortcut linked to this session
-      const { data: shortcutData } = await supabase
-        .from("wjia_command_shortcuts")
-        .select("followup_steps, human_reply_pause_minutes, followup_repeat_forever")
-        .eq("shortcut_name", session.shortcut_name)
-        .maybeSingle();
+        const pauseMinutes = shortcutData?.human_reply_pause_minutes || 0;
+        if (pauseMinutes > 0) {
+          const pauseSince = new Date(Date.now() - pauseMinutes * 60 * 1000).toISOString();
+          const { data: humanReply } = await supabase
+            .from("whatsapp_messages")
+            .select("id, created_at")
+            .eq("phone", session.phone)
+            .eq("instance_name", session.instance_name)
+            .eq("direction", "outbound")
+            .not("external_message_id", "like", "wjia_%")
+            .gt("created_at", pauseSince)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-      const steps = (shortcutData?.followup_steps || []) as any[];
-      const repeatForever = shortcutData?.followup_repeat_forever ?? false;
-      if (!steps.length) {
-        console.log(`No followup steps for session ${session.id} (shortcut: ${session.shortcut_name})`);
-        continue;
-      }
+          if (humanReply) {
+            const replyTime = new Date(humanReply.created_at).getTime();
+            const resumeAt = replyTime + pauseMinutes * 60 * 1000;
+            const remainingMinutes = Math.max(1, Math.ceil((resumeAt - Date.now()) / 60000));
+            await supabase.rpc("schedule_followup_for_session", {
+              p_session_id: session.id,
+              p_delay_minutes: remainingMinutes,
+            }).catch(e => console.error("Schedule pause error:", e));
+            continue;
+          }
+        }
 
-      // Check human_reply_pause_minutes
-      const pauseMinutes = shortcutData?.human_reply_pause_minutes || 0;
-      if (pauseMinutes > 0) {
-        const pauseSince = new Date(Date.now() - pauseMinutes * 60 * 1000).toISOString();
-        const { data: humanReply } = await supabase
-          .from("whatsapp_messages")
-          .select("id, created_at")
-          .eq("phone", session.phone)
-          .eq("instance_name", session.instance_name)
-          .eq("direction", "outbound")
-          .not("external_message_id", "like", "wjia_%")
-          .gt("created_at", pauseSince)
-          .order("created_at", { ascending: false })
+        const { data: lastLog } = await supabase
+          .from("wjia_followup_log")
+          .select("*")
+          .eq("session_id", session.id)
+          .order("executed_at", { ascending: false })
           .limit(1)
           .maybeSingle();
 
-        if (humanReply) {
-          const replyTime = new Date(humanReply.created_at).getTime();
-          const resumeAt = replyTime + pauseMinutes * 60 * 1000;
-          const remainingMinutes = Math.max(1, Math.ceil((resumeAt - Date.now()) / 60000));
-          console.log(`Pausing followup for session ${session.id}: human replied, resuming in ${remainingMinutes}min`);
-          await supabase.rpc("schedule_followup_for_session", {
-            p_session_id: session.id,
-            p_delay_minutes: remainingMinutes,
-          }).catch(e => console.error("Schedule pause error:", e));
+        const nextStepIndex = lastLog ? (lastLog.step_index + 1) : 0;
+
+        if (!repeatForever && nextStepIndex >= steps.length) {
+          await supabase.from("wjia_collection_sessions").update({ status: "followup_done" }).eq("id", session.id);
           continue;
         }
-      }
 
-      // Get last executed step for this session
-      const { data: lastLog } = await supabase
-        .from("wjia_followup_log")
-        .select("*")
-        .eq("session_id", session.id)
-        .order("executed_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        const effectiveStepIndex = nextStepIndex % steps.length;
+        const step = steps[effectiveStepIndex];
+        const delayMinutes = step.delay_minutes || 60;
 
-      const nextStepIndex = lastLog ? (lastLog.step_index + 1) : 0;
-      
-      // If not repeat forever and we've completed all steps, mark session done
-      if (!repeatForever && nextStepIndex >= steps.length) {
-        console.log(`All ${steps.length} followup steps completed for session ${session.id}, not repeating.`);
-        await supabase.from("wjia_collection_sessions").update({ status: "followup_done" }).eq("id", session.id);
-        continue;
-      }
-      
-      const effectiveStepIndex = nextStepIndex % steps.length;
-      const step = steps[effectiveStepIndex];
-      const delayMinutes = step.delay_minutes || 60;
+        const referenceTime = lastLog?.executed_at || session.updated_at;
+        const timeSince = Date.now() - new Date(referenceTime).getTime();
+        const delayMs = delayMinutes * 60 * 1000;
 
-      // Check if enough time has passed
-      const referenceTime = lastLog?.executed_at || session.updated_at;
-      const timeSince = Date.now() - new Date(referenceTime).getTime();
-      const delayMs = delayMinutes * 60 * 1000;
+        if (timeSince < delayMs) continue;
 
-      if (timeSince < delayMs) {
-        const remainingMinutes = Math.max(1, Math.ceil((delayMs - timeSince) / 60000));
-        await supabase.rpc("schedule_followup_for_session", {
-          p_session_id: session.id,
-          p_delay_minutes: remainingMinutes,
-        }).catch(e => console.error("Schedule error:", e));
-        continue;
-      }
+        console.log(`[DOC] Executing step ${effectiveStepIndex} for session ${session.id}: ${step.action_type}`);
+        let actionResult = "executed";
 
-      console.log(`Executing followup step ${effectiveStepIndex} for session ${session.id}: ${step.action_type}`);
+        const { data: inst } = await supabase
+          .from("whatsapp_instances")
+          .select("instance_token, base_url")
+          .eq("instance_name", session.instance_name)
+          .maybeSingle();
 
-      let actionResult = "executed";
+        if (step.action_type === "whatsapp_message") {
+          if (inst?.instance_token) {
+            const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+            const collectedData = session.collected_data || {};
+            const signerName = collectedData.signer_name || "Cliente";
+            const msg = `Olá ${signerName.split(" ")[0]}! 📝\n\nNotamos que o documento *${session.template_name}* ainda não foi assinado.\n\n👉 ${session.sign_url}\n\nPrecisa de ajuda? Estamos à disposição! 🙏`;
 
-      const { data: inst } = await supabase
-        .from("whatsapp_instances")
-        .select("instance_token, base_url")
-        .eq("instance_name", session.instance_name)
-        .maybeSingle();
+            await fetch(`${baseUrl}/send/text`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", token: inst.instance_token },
+              body: JSON.stringify({ number: session.phone, text: msg }),
+            }).catch(e => { console.error("Followup WhatsApp error:", e); actionResult = "error"; });
 
-      if (step.action_type === "whatsapp_message") {
-        if (inst?.instance_token) {
-          const baseUrl = inst.base_url || "https://abraci.uazapi.com";
-          const collectedData = session.collected_data || {};
-          const signerName = collectedData.signer_name || "Cliente";
-          
-          const msg = `Olá ${signerName.split(" ")[0]}! 📝\n\nNotamos que o documento *${session.template_name}* ainda não foi assinado.\n\n👉 ${session.sign_url}\n\nPrecisa de ajuda? Estamos à disposição! 🙏`;
-
-          await fetch(`${baseUrl}/send/text`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", token: inst.instance_token },
-            body: JSON.stringify({ number: session.phone, text: msg }),
-          }).catch(e => {
-            console.error("Followup WhatsApp error:", e);
-            actionResult = "error";
+            await supabase.from("whatsapp_messages").insert({
+              phone: session.phone, instance_name: session.instance_name,
+              message_text: msg, message_type: "text", direction: "outbound",
+              contact_id: session.contact_id || null, lead_id: session.lead_id || null,
+              external_message_id: `wjia_followup_${Date.now()}`,
+              action_source: 'system', action_source_detail: 'Follow-up automático',
+            });
+          }
+        } else if (step.action_type === "call") {
+          const { error: queueError } = await supabase.from("whatsapp_call_queue").insert({
+            phone: session.phone, instance_name: session.instance_name,
+            lead_id: session.lead_id || null, contact_name: session.collected_data?.signer_name || null,
+            status: "pending", priority: 5, max_attempts: 2,
           });
-
-          await supabase.from("whatsapp_messages").insert({
-            phone: session.phone,
-            instance_name: session.instance_name,
-            message_text: msg,
-            message_type: "text",
-            direction: "outbound",
-            contact_id: session.contact_id || null,
+          if (queueError) { console.error("Failed to enqueue call:", queueError); actionResult = "error"; }
+        } else if (step.action_type === "create_activity") {
+          let assignedTo = step.assigned_to || null;
+          let assignedName = null;
+          if (assignedTo === "__self__") {
+            const { data: configUser } = await supabase.from("wjia_command_configs").select("user_id")
+              .eq("instance_name", session.instance_name).eq("is_active", true).limit(1).maybeSingle();
+            assignedTo = configUser?.user_id || null;
+          }
+          if (assignedTo) {
+            const { data: profile } = await supabase.from("profiles").select("full_name").eq("user_id", assignedTo).maybeSingle();
+            assignedName = profile?.full_name || null;
+          }
+          await supabase.from("lead_activities").insert({
             lead_id: session.lead_id || null,
-            external_message_id: `wjia_followup_${Date.now()}`,
-            action_source: 'system', action_source_detail: 'Follow-up automático',
+            title: `Cobrar assinatura: ${session.template_name}`,
+            description: `O cliente ainda não assinou o documento "${session.template_name}".\nLink: ${session.sign_url || "N/A"}\nTelefone: ${session.phone}`,
+            activity_type: step.activity_type || "tarefa", status: "pendente", priority: step.priority || "alta",
+            assigned_to: assignedTo, assigned_to_name: assignedName,
+            deadline: new Date().toISOString().split("T")[0],
           });
         }
-      } else if (step.action_type === "call") {
-        // Enqueue the call instead of making it directly to avoid simultaneous calls
-        const { error: queueError } = await supabase.from("whatsapp_call_queue").insert({
-          phone: session.phone,
-          instance_name: session.instance_name,
-          lead_id: session.lead_id || null,
-          contact_name: session.collected_data?.signer_name || null,
-          status: "pending",
-          priority: 5,
-          max_attempts: 2,
-        });
-        if (queueError) {
-          console.error("Failed to enqueue followup call:", queueError);
-          actionResult = "error";
-        } else {
-          console.log(`Followup call enqueued for ${session.phone}`);
-        }
-      } else if (step.action_type === "create_activity") {
-        let assignedTo = step.assigned_to || null;
-        let assignedName = null;
-        
-        if (assignedTo === "__self__") {
-          const { data: configUser } = await supabase
-            .from("wjia_command_configs")
-            .select("user_id")
-            .eq("instance_name", session.instance_name)
-            .eq("is_active", true)
-            .limit(1)
-            .maybeSingle();
-          assignedTo = configUser?.user_id || null;
-        }
-        
-        if (assignedTo) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("full_name")
-            .eq("user_id", assignedTo)
-            .maybeSingle();
-          assignedName = profile?.full_name || null;
-        }
 
-        await supabase.from("lead_activities").insert({
-          lead_id: session.lead_id || null,
-          title: `Cobrar assinatura: ${session.template_name}`,
-          description: `O cliente ainda não assinou o documento "${session.template_name}".\nLink: ${session.sign_url || "N/A"}\nTelefone: ${session.phone}`,
-          activity_type: step.activity_type || "tarefa",
-          status: "pendente",
-          priority: step.priority || "alta",
-          assigned_to: assignedTo,
-          assigned_to_name: assignedName,
-          deadline: new Date().toISOString().split("T")[0],
+        await supabase.from("wjia_followup_log").insert({
+          session_id: session.id, rule_id: null, step_index: nextStepIndex,
+          action_type: step.action_type, action_result: actionResult, next_execution_at: null,
         });
+        actionsExecuted++;
       }
+    }
 
-      // Log the execution
-      await supabase.from("wjia_followup_log").insert({
-        session_id: session.id,
-        rule_id: null,
-        step_index: nextStepIndex,
-        action_type: step.action_type,
-        action_result: actionResult,
-        next_execution_at: null,
-      });
-
-      actionsExecuted++;
-
-      // Schedule the NEXT step
-      const nextNextIndex = (nextStepIndex + 1) % steps.length;
-      const nextStep = steps[nextNextIndex];
-      const nextDelay = nextStep?.delay_minutes || 60;
-
-      await supabase.rpc("schedule_followup_for_session", {
-        p_session_id: session.id,
-        p_delay_minutes: nextDelay,
-      }).catch(e => console.error("Schedule next error:", e));
+    // ============================================================
+    // PART 2: Agent conversation follow-ups (NEW)
+    // ============================================================
+    if (!targetSessionId) {
+      const result = await processAgentConversationFollowups(supabase);
+      actionsExecuted += result;
     }
 
     return new Response(JSON.stringify({
       success: true,
-      sessions_checked: sessions.length,
+      sessions_checked: sessions?.length || 0,
       actions_executed: actionsExecuted,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -248,3 +187,286 @@ serve(async (req) => {
     });
   }
 });
+
+async function processAgentConversationFollowups(supabase: any): Promise<number> {
+  let actionsExecuted = 0;
+
+  // Check current hour in Brasilia timezone
+  const nowBrasilia = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  const currentHour = nowBrasilia.getHours();
+
+  // Get all active conversation-agent assignments where the shortcut has follow-up steps
+  const { data: conversations, error: convError } = await supabase
+    .from("whatsapp_conversation_agents")
+    .select("phone, instance_name, agent_id, human_paused_until")
+    .eq("is_active", true);
+
+  if (convError || !conversations?.length) {
+    console.log(`[AGENT] No active conversations found`);
+    return 0;
+  }
+
+  // Get unique agent IDs and load their configs
+  const agentIds = [...new Set(conversations.map((c: any) => c.agent_id))];
+  const { data: agentConfigs } = await supabase
+    .from("wjia_command_shortcuts")
+    .select("id, followup_steps, human_reply_pause_minutes, followup_repeat_forever, send_window_start_hour, send_window_end_hour, base_prompt, shortcut_name")
+    .in("id", agentIds);
+
+  if (!agentConfigs?.length) return 0;
+
+  const agentMap = new Map<string, any>();
+  for (const a of agentConfigs) {
+    if (a.followup_steps && Array.isArray(a.followup_steps) && a.followup_steps.length > 0) {
+      agentMap.set(a.id, a);
+    }
+  }
+
+  if (!agentMap.size) return 0;
+
+  // Also get followup_prompt from whatsapp_ai_agents table
+  const { data: agentPrompts } = await supabase
+    .from("whatsapp_ai_agents")
+    .select("id, followup_prompt, name")
+    .in("id", agentIds);
+  const promptMap = new Map<string, any>();
+  for (const p of (agentPrompts || [])) {
+    promptMap.set(p.id, p);
+  }
+
+  // Process up to 50 conversations per run to avoid timeouts
+  let processed = 0;
+  const maxPerRun = 50;
+
+  for (const conv of conversations) {
+    if (processed >= maxPerRun) break;
+
+    const config = agentMap.get(conv.agent_id);
+    if (!config) continue;
+
+    // Check send window
+    const windowStart = config.send_window_start_hour ?? 8;
+    const windowEnd = config.send_window_end_hour ?? 20;
+    if (currentHour < windowStart || currentHour >= windowEnd) continue;
+
+    // Check human_paused_until
+    if (conv.human_paused_until && new Date(conv.human_paused_until) > new Date()) continue;
+
+    // Generate a deterministic session ID for tracking
+    const trackingId = generateTrackingId(conv.phone, conv.instance_name, conv.agent_id);
+
+    // Check if client responded after our last outbound message
+    const { data: lastInbound } = await supabase
+      .from("whatsapp_messages")
+      .select("created_at")
+      .eq("phone", conv.phone)
+      .eq("instance_name", conv.instance_name)
+      .eq("direction", "inbound")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { data: lastOutbound } = await supabase
+      .from("whatsapp_messages")
+      .select("created_at")
+      .eq("phone", conv.phone)
+      .eq("instance_name", conv.instance_name)
+      .eq("direction", "outbound")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Only follow up if our last message is newer than client's last message
+    if (!lastOutbound) continue;
+    if (lastInbound && new Date(lastInbound.created_at) > new Date(lastOutbound.created_at)) {
+      // Client already responded, no need for follow-up. Clean any existing logs.
+      continue;
+    }
+
+    // Check human_reply_pause_minutes - pause if a human (non-agent) recently replied
+    const pauseMinutes = config.human_reply_pause_minutes || 0;
+    if (pauseMinutes > 0) {
+      const pauseSince = new Date(Date.now() - pauseMinutes * 60 * 1000).toISOString();
+      const { data: humanMsg } = await supabase
+        .from("whatsapp_messages")
+        .select("id")
+        .eq("phone", conv.phone)
+        .eq("instance_name", conv.instance_name)
+        .eq("direction", "outbound")
+        .or("action_source.eq.manual,action_source.is.null")
+        .gt("created_at", pauseSince)
+        .limit(1)
+        .maybeSingle();
+
+      if (humanMsg) continue;
+    }
+
+    // Get last executed step for this conversation
+    const { data: lastLog } = await supabase
+      .from("wjia_followup_log")
+      .select("*")
+      .eq("session_id", trackingId)
+      .order("executed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const steps = config.followup_steps;
+    const repeatForever = config.followup_repeat_forever ?? false;
+    const nextStepIndex = lastLog ? (lastLog.step_index + 1) : 0;
+
+    if (!repeatForever && nextStepIndex >= steps.length) continue;
+
+    const effectiveStepIndex = nextStepIndex % steps.length;
+    const step = steps[effectiveStepIndex];
+    const delayMinutes = step.delay_minutes || 60;
+
+    // Reference time: last log execution OR last outbound message
+    const referenceTime = lastLog?.executed_at || lastOutbound.created_at;
+    const timeSince = Date.now() - new Date(referenceTime).getTime();
+    const delayMs = delayMinutes * 60 * 1000;
+
+    if (timeSince < delayMs) continue;
+
+    processed++;
+    console.log(`[AGENT] Executing step ${effectiveStepIndex} (${step.action_type}) for ${conv.phone} (agent: ${config.shortcut_name})`);
+
+    let actionResult = "executed";
+
+    const { data: inst } = await supabase
+      .from("whatsapp_instances")
+      .select("instance_token, base_url")
+      .eq("instance_name", conv.instance_name)
+      .maybeSingle();
+
+    if (step.action_type === "whatsapp_message") {
+      // Use AI to generate contextual follow-up message
+      try {
+        const aiReply = await callAgentReply(supabase, conv.phone, conv.instance_name);
+        if (aiReply) {
+          console.log(`[AGENT] AI followup sent for ${conv.phone}`);
+        } else {
+          actionResult = "error";
+        }
+      } catch (e) {
+        console.error(`[AGENT] AI followup error for ${conv.phone}:`, e);
+        actionResult = "error";
+      }
+    } else if (step.action_type === "call") {
+      // Find lead_id and contact_name
+      const { data: msgWithLead } = await supabase
+        .from("whatsapp_messages")
+        .select("lead_id, contact_name")
+        .eq("phone", conv.phone)
+        .eq("instance_name", conv.instance_name)
+        .not("lead_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const { error: queueError } = await supabase.from("whatsapp_call_queue").insert({
+        phone: conv.phone,
+        instance_name: conv.instance_name,
+        lead_id: msgWithLead?.lead_id || null,
+        contact_name: msgWithLead?.contact_name || null,
+        status: "pending",
+        priority: 5,
+        max_attempts: 2,
+      });
+      if (queueError) {
+        console.error(`[AGENT] Call queue error for ${conv.phone}:`, queueError);
+        actionResult = "error";
+      } else {
+        console.log(`[AGENT] Call enqueued for ${conv.phone}`);
+      }
+    } else if (step.action_type === "create_activity") {
+      let assignedTo = step.assigned_to || null;
+      let assignedName = null;
+      if (assignedTo === "__self__") {
+        const { data: configUser } = await supabase.from("wjia_command_configs").select("user_id")
+          .eq("instance_name", conv.instance_name).eq("is_active", true).limit(1).maybeSingle();
+        assignedTo = configUser?.user_id || null;
+      }
+      if (assignedTo) {
+        const { data: profile } = await supabase.from("profiles").select("full_name").eq("user_id", assignedTo).maybeSingle();
+        assignedName = profile?.full_name || null;
+      }
+
+      const { data: msgWithLead } = await supabase
+        .from("whatsapp_messages")
+        .select("lead_id")
+        .eq("phone", conv.phone).eq("instance_name", conv.instance_name)
+        .not("lead_id", "is", null)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+
+      await supabase.from("lead_activities").insert({
+        lead_id: msgWithLead?.lead_id || null,
+        title: `Follow-up pendente: ${conv.phone}`,
+        description: `O cliente ${conv.phone} não respondeu após as tentativas automáticas de follow-up via agente ${config.shortcut_name}.`,
+        activity_type: step.activity_type || "tarefa",
+        status: "pendente",
+        priority: step.priority || "alta",
+        assigned_to: assignedTo,
+        assigned_to_name: assignedName,
+        deadline: new Date().toISOString().split("T")[0],
+      });
+    }
+
+    // Log the execution
+    await supabase.from("wjia_followup_log").insert({
+      session_id: trackingId,
+      rule_id: null,
+      step_index: nextStepIndex,
+      action_type: step.action_type,
+      action_result: actionResult,
+      next_execution_at: null,
+    });
+
+    actionsExecuted++;
+  }
+
+  console.log(`[AGENT] Processed ${processed} conversations, executed ${actionsExecuted} actions`);
+  return actionsExecuted;
+}
+
+// Call the existing AI agent reply endpoint for follow-up messages
+async function callAgentReply(supabase: any, phone: string, instanceName: string): Promise<boolean> {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+  const resp = await fetch(`${supabaseUrl}/functions/v1/whatsapp-ai-agent-reply`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${supabaseKey}`,
+    },
+    body: JSON.stringify({
+      phone,
+      instance_name: instanceName,
+      message_text: "",
+      is_followup: true,
+    }),
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    console.error(`[AGENT] Reply error for ${phone}: ${resp.status} - ${errText}`);
+    return false;
+  }
+
+  return true;
+}
+
+// Generate a deterministic UUID v5-like tracking ID for conversation follow-ups
+function generateTrackingId(phone: string, instanceName: string, agentId: string): string {
+  const input = `agent_followup:${phone}:${instanceName}:${agentId}`;
+  // Simple hash to create a valid UUID format
+  const bytes = new Uint8Array(16);
+  for (let i = 0; i < input.length; i++) {
+    bytes[i % 16] = (bytes[i % 16] + input.charCodeAt(i)) & 0xff;
+  }
+  // Set version 5 and variant bits
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20,32)}`;
+}
