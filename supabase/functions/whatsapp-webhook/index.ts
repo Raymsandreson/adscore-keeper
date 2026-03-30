@@ -1372,7 +1372,6 @@ Deno.serve(async (req) => {
                   .update({ lead_id: leadId, contact_id: contactId })
                   .eq('campaign_id', detectedCampaignId)
                   .or(`phone.eq.${phone},phone.ilike.%${last8Digits}%`)
-                  .or(`lead_id.is.null,contact_id.is.null`)
               }
 
               // Auto-assign agent from the campaign link
