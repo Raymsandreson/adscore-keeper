@@ -496,6 +496,26 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             )}
           </div>
         </ScrollArea>
+      </div>
+    </div>
+  );
+
+  if (mode === 'dialog') {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl max-h-[85vh] p-0 overflow-hidden flex flex-col">
+          <div className="sr-only"><DialogHeader><DialogTitle>Detalhes do Processo</DialogTitle></DialogHeader></div>
+          {innerContent}
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-lg p-0 flex flex-col">
+        <div className="sr-only"><SheetHeader><SheetTitle>Detalhes do Processo</SheetTitle></SheetHeader></div>
+        {innerContent}
       </SheetContent>
     </Sheet>
   );
