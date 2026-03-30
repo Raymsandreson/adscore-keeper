@@ -265,13 +265,13 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       }
 
       // 3. Find first available funnel board
-      const { data: availableBoards } = await supabase
+      const { data: availableBoards } = (await supabase
         .from('kanban_boards')
         .select('id')
         .neq('board_type', 'workflow')
         .eq('is_active', true)
         .order('display_order')
-        .limit(1);
+        .limit(1)) as any;
 
       const boardId = availableBoards?.[0]?.id;
       if (!boardId) {
