@@ -908,10 +908,11 @@ export function DynamicKanbanBoard({
             );
           })}
 
-          {/* Fixed Status Columns: Fechados & Recusados */}
+          {/* Fixed Status Columns: Fechados, Recusados & Inviáveis */}
           {[
             { id: 'closed', name: 'Fechados', color: '#22c55e', icon: CheckCircle2, leads: closedLeads },
             { id: 'refused', name: 'Recusados', color: '#ef4444', icon: XCircle, leads: refusedLeads },
+            { id: 'inviavel', name: 'Inviáveis', color: '#f59e0b', icon: AlertTriangle, leads: inviavelLeads },
           ].map(statusCol => {
             const colFilter = stageFilters[statusCol.id] || '';
             const filteredLeads = colFilter
