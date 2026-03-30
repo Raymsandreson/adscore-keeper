@@ -72,6 +72,7 @@ import {
   CheckSquare,
   CheckCircle,
   XCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
