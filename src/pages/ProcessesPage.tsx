@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Search, FileText, ExternalLink, Calendar, Building2 } from "lucide-react";
 import { format } from "date-fns";
-import { useNavigate } from "react-router-dom";
+
+const ProcessDetailSheet = lazy(() => import("@/components/cases/ProcessDetailSheet"));
 
 interface Process {
   id: string;
@@ -30,7 +31,7 @@ export default function ProcessesPage() {
   const [processes, setProcesses] = useState<Process[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const navigate = useNavigate();
+  const [selectedProcess, setSelectedProcess] = useState<any>(null);
 
   useEffect(() => {
     loadProcesses();
@@ -106,11 +107,7 @@ export default function ProcessesPage() {
             <Card
               key={p.id}
               className="hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => {
-                if (p.case_id) {
-                  navigate(`/cases?openCase=${p.case_id}&openProcess=${p.id}`);
-                }
-              }}
+              onClick={() => setSelectedProcess(p)}
             >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -161,9 +158,7 @@ export default function ProcessesPage() {
                     </div>
                   </div>
 
-                  {p.case_id && (
-                    <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
-                  )}
+                  <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
                 </div>
               </CardContent>
             </Card>
@@ -172,6 +167,17 @@ export default function ProcessesPage() {
       )}
 
       <p className="text-xs text-muted-foreground text-right">{filtered.length} processo(s)</p>
+
+      <Suspense fallback={null}>
+        {selectedProcess && (
+          <ProcessDetailSheet
+            open={!!selectedProcess}
+            onOpenChange={(open) => { if (!open) setSelectedProcess(null); }}
+            process={selectedProcess}
+            onUpdated={loadProcesses}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }
