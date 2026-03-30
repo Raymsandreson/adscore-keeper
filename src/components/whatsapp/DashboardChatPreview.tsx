@@ -266,33 +266,40 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         contactExtracted = contactRes.data?.data || {};
       }
 
-      // 3. Find first available funnel board
-      const { data: availableBoards } = (await supabase
-        .from('kanban_boards')
-        .select('id')
-        .neq('board_type', 'workflow')
-        .eq('is_active', true)
-        .order('display_order')
-        .limit(1)) as any;
-
-      const boardId = availableBoards?.[0]?.id;
+      // 3. Resolve board: use campaign's configured board or find first available
+      let boardId = campaignBoardId || null;
+      if (!boardId) {
+        const { data: availableBoards } = await supabase
+          .from('kanban_boards')
+          .select('id')
+          .neq('board_type', 'workflow')
+          .eq('is_active', true)
+          .order('display_order')
+          .limit(1);
+        boardId = (availableBoards as any)?.[0]?.id;
+      }
       if (!boardId) {
         toast.error('Nenhum funil disponível para criar o lead');
         return;
       }
 
-      // 4. Create lead
+      // 4. Create lead with enriched data
       const insertData: Record<string, any> = {
         lead_name: leadExtracted.lead_name || contactExtracted.full_name || contactName || 'Novo Lead - WhatsApp',
         lead_phone: phone,
+        lead_email: leadExtracted.lead_email || contactExtracted.email || null,
         source: 'whatsapp',
         created_by: currentUser?.id || null,
         board_id: boardId,
+        city: leadExtracted.city || contactExtracted.city || null,
+        state: leadExtracted.state || contactExtracted.state || null,
+        neighborhood: leadExtracted.neighborhood || contactExtracted.neighborhood || null,
+        action_source: 'system',
       };
+      if (campaignStageId) insertData.status = campaignStageId;
 
       const leadFields = [
-        'victim_name', 'lead_email', 'city', 'state', 'neighborhood',
-        'main_company', 'contractor_company', 'accident_address', 'accident_date',
+        'victim_name', 'main_company', 'contractor_company', 'accident_address', 'accident_date',
         'damage_description', 'case_number', 'case_type', 'notes', 'sector',
         'visit_city', 'visit_state', 'visit_address', 'liability_type', 'news_link',
       ];
