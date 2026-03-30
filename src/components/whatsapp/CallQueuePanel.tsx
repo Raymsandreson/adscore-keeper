@@ -40,7 +40,11 @@ interface CallQueueStats {
   total: number;
 }
 
-export function CallQueuePanel() {
+interface CallQueuePanelProps {
+  onSelectConversation?: (phone: string, instanceName: string, contactName: string | null) => void;
+}
+
+export function CallQueuePanel({ onSelectConversation }: CallQueuePanelProps = {}) {
   const [items, setItems] = useState<CallQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -212,7 +216,7 @@ export function CallQueuePanel() {
       <ScrollArea className="h-[calc(100vh-480px)]">
         <div className="space-y-2">
           {filtered.map(item => (
-            <Card key={item.id} className="hover:shadow-sm transition-shadow">
+            <Card key={item.id} className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => onSelectConversation?.(item.phone, item.instance_name, item.contact_name || item.lead_name)}>
               <CardContent className="p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
