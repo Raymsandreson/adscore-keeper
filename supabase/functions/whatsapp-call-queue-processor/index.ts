@@ -161,6 +161,170 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
+});
+
+async function sendCallFollowupAudio(
+  supabase: any, phone: string, instanceName: string, instance: any, contactName: string | null
+) {
+  try {
+    const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
+    if (!ELEVENLABS_API_KEY) {
+      console.log("No ElevenLabs key, skipping call follow-up audio");
+      return;
+    }
+
+    // Find the active agent for this conversation to get voice and prompt
+    const { data: convAgent } = await supabase
+      .from("whatsapp_conversation_agents")
+      .select("agent_id")
+      .like("phone", `%${phone.slice(-8)}%`)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    let voiceId = "FGY2WhTYpPnrIDTdsKH5"; // Laura default
+    let agentName = "Assistente";
+    let followupPrompt = "";
+
+    if (convAgent?.agent_id) {
+      const { data: agent } = await supabase
+        .from("whatsapp_ai_agents")
+        .select("agent_name, reply_voice_id, followup_prompt, base_prompt")
+        .eq("id", convAgent.agent_id)
+        .maybeSingle();
+
+      if (agent) {
+        agentName = agent.agent_name || "Assistente";
+        followupPrompt = agent.followup_prompt || agent.base_prompt || "";
+        if (agent.reply_voice_id) {
+          // Resolve custom voice UUID if needed
+          if (agent.reply_voice_id.length === 36 && agent.reply_voice_id.includes("-")) {
+            const { data: cv } = await supabase
+              .from("custom_voices")
+              .select("elevenlabs_voice_id")
+              .eq("id", agent.reply_voice_id)
+              .eq("status", "ready")
+              .maybeSingle();
+            voiceId = cv?.elevenlabs_voice_id || voiceId;
+          } else {
+            voiceId = agent.reply_voice_id;
+          }
+        }
+      }
+    }
+
+    // Get recent conversation context
+    const { data: recentMsgs } = await supabase
+      .from("whatsapp_messages")
+      .select("direction, message_text")
+      .like("phone", `%${phone.slice(-8)}%`)
+      .eq("instance_name", instanceName)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    const contextLines = (recentMsgs || [])
+      .reverse()
+      .map((m: any) => `${m.direction === "inbound" ? "Cliente" : agentName}: ${m.message_text || "(mídia)"}`)
+      .join("\n");
+
+    const firstName = contactName?.split(" ")[0] || "cliente";
+
+    // Generate follow-up text via AI
+    const aiResult = await geminiChat({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        {
+          role: "system",
+          content: `Você é ${agentName}. Você acabou de ligar para o(a) ${firstName} mas a ligação não foi atendida ou foi breve. Agora você vai enviar um áudio curto e natural no WhatsApp avisando que tentou ligar e reforçando o assunto da conversa. Seja empático, natural, use português brasileiro informal (tá, pra, tô). MÁXIMO 3 frases curtas. NÃO use listas ou bullets. ${followupPrompt ? `\nContexto do agente: ${followupPrompt}` : ""}`
+        },
+        {
+          role: "user",
+          content: `Contexto da conversa recente:\n${contextLines || "(sem mensagens anteriores)"}\n\nGere uma mensagem curta e natural avisando que tentou ligar e pedindo pra retornar ou continuar pelo WhatsApp.`
+        }
+      ],
     });
+
+    const followupText = aiResult.choices?.[0]?.message?.content?.trim();
+    if (!followupText) {
+      console.log("No AI text generated for call follow-up");
+      return;
+    }
+
+    console.log(`Call follow-up text for ${phone}: ${followupText.substring(0, 100)}`);
+
+    // Convert to audio via ElevenLabs
+    const ttsResp = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": ELEVENLABS_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: followupText,
+          model_id: "eleven_multilingual_v2",
+          voice_settings: { stability: 0.6, similarity_boost: 0.75, style: 0.3, speed: 1.1 },
+        }),
+      }
+    );
+
+    if (!ttsResp.ok) {
+      console.error("ElevenLabs TTS error for call follow-up:", ttsResp.status);
+      return;
+    }
+
+    const audioBuffer = await ttsResp.arrayBuffer();
+    const fileName = `tts-call-followup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+    const filePath = `tts/${fileName}`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from("whatsapp-media")
+      .upload(filePath, new Uint8Array(audioBuffer), { contentType: "audio/mpeg", upsert: false });
+
+    if (uploadErr) {
+      console.error("Upload error for call follow-up audio:", uploadErr);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage.from("whatsapp-media").getPublicUrl(filePath);
+    const audioUrl = urlData?.publicUrl;
+
+    if (!audioUrl) return;
+
+    // Wait a few seconds after the call before sending
+    await new Promise(r => setTimeout(r, 5000));
+
+    // Send audio via WhatsApp
+    const baseUrl = (instance as any).base_url;
+    const token = (instance as any).instance_token;
+
+    const sendRes = await fetch(`${baseUrl}/send/media`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", token },
+      body: JSON.stringify({ number: phone, file: audioUrl, type: "audio" }),
+    });
+
+    if (!sendRes.ok) {
+      console.error("Send call follow-up audio error:", sendRes.status);
+    } else {
+      console.log(`Call follow-up audio sent to ${phone}`);
+    }
+
+    // Save in messages table
+    await supabase.from("whatsapp_messages").insert({
+      phone,
+      instance_name: instanceName,
+      message_text: `🎤 ${followupText}`,
+      message_type: "audio",
+      direction: "outbound",
+      external_message_id: `call_followup_${Date.now()}`,
+      action_source: "system",
+      action_source_detail: "Call follow-up audio",
+    });
+
+  } catch (e) {
+    console.error("Call follow-up audio error:", e);
+  }
+}
   }
 });
