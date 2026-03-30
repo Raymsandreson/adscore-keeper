@@ -1185,85 +1185,82 @@ ${scrapeData.content || ''}
                   </div>
                 )}
 
-                {/* Lead Outcome - Fechado/Recusado */}
+                {/* Lead Outcome - Fechado/Recusado/Inviável */}
                 <div className="col-span-2 space-y-3 p-3 border rounded-lg bg-muted/20">
                   <Label className="text-sm font-medium">Resultado do Lead</Label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
                       variant={leadOutcome === 'in_progress' ? 'default' : 'outline'}
                       size="sm"
-                      className={`flex-1 ${leadOutcome === 'in_progress' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
+                      className={`flex-1 min-w-[100px] ${leadOutcome === 'in_progress' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
                       onClick={() => {
-                        if (leadOutcome === 'in_progress') {
-                          setLeadOutcome('');
-                          setLeadOutcomeDate('');
-                        } else {
-                          setLeadOutcome('in_progress');
-                          if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10));
-                        }
+                        if (leadOutcome === 'in_progress') { setLeadOutcome(''); setLeadOutcomeDate(''); }
+                        else { setLeadOutcome('in_progress'); if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10)); }
                       }}
                     >
-                      <Clock className="h-4 w-4 mr-1" />
-                      Em Andamento
+                      <Clock className="h-4 w-4 mr-1" /> Em Andamento
                     </Button>
                     <Button
                       type="button"
                       variant={leadOutcome === 'closed' ? 'default' : 'outline'}
                       size="sm"
-                      className={`flex-1 ${leadOutcome === 'closed' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}
+                      className={`flex-1 min-w-[100px] ${leadOutcome === 'closed' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}
                       onClick={() => {
-                        if (leadOutcome === 'closed') {
-                          setLeadOutcome('');
-                          setLeadOutcomeDate('');
-                        } else {
-                          setLeadOutcome('closed');
-                          if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10));
-                        }
+                        if (leadOutcome === 'closed') { setLeadOutcome(''); setLeadOutcomeDate(''); }
+                        else { setLeadOutcome('closed'); if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10)); }
                       }}
                     >
-                      <CheckCircle className="h-4 w-4 mr-1" />
-                      Fechado (ganho)
+                      <CheckCircle className="h-4 w-4 mr-1" /> Fechado
                     </Button>
                     <Button
                       type="button"
                       variant={leadOutcome === 'refused' ? 'default' : 'outline'}
                       size="sm"
-                      className={`flex-1 ${leadOutcome === 'refused' ? 'bg-destructive hover:bg-destructive/90 text-white' : ''}`}
+                      className={`flex-1 min-w-[100px] ${leadOutcome === 'refused' ? 'bg-destructive hover:bg-destructive/90 text-white' : ''}`}
                       onClick={() => {
-                        if (leadOutcome === 'refused') {
-                          setLeadOutcome('');
-                          setLeadOutcomeDate('');
-                        } else {
-                          setLeadOutcome('refused');
-                          if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10));
-                        }
+                        if (leadOutcome === 'refused') { setLeadOutcome(''); setLeadOutcomeDate(''); }
+                        else { setLeadOutcome('refused'); if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10)); }
                       }}
                     >
-                      <XCircle className="h-4 w-4 mr-1" />
-                      Recusado (perdido)
+                      <XCircle className="h-4 w-4 mr-1" /> Recusado
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={leadOutcome === 'inviavel' ? 'default' : 'outline'}
+                      size="sm"
+                      className={`flex-1 min-w-[100px] ${leadOutcome === 'inviavel' ? 'bg-amber-500 hover:bg-amber-600 text-white' : ''}`}
+                      onClick={() => {
+                        if (leadOutcome === 'inviavel') { setLeadOutcome(''); setLeadOutcomeDate(''); }
+                        else { setLeadOutcome('inviavel'); if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10)); }
+                      }}
+                    >
+                      <AlertTriangle className="h-4 w-4 mr-1" /> Inviável
                     </Button>
                   </div>
                   {leadOutcome && (
-                    <div>
-                      <Label className="text-xs">{leadOutcome === 'closed' ? 'Data de Fechamento' : leadOutcome === 'refused' ? 'Data da Recusa' : 'Data de Início'}</Label>
-                      <Input
-                        type="date"
-                        value={leadOutcomeDate}
-                        onChange={(e) => setLeadOutcomeDate(e.target.value)}
-                        className="mt-1"
-                      />
-                    </div>
+                    <>
+                      <div>
+                        <Label className="text-xs">
+                          {leadOutcome === 'closed' ? 'Data de Fechamento' : leadOutcome === 'refused' ? 'Data da Recusa' : leadOutcome === 'inviavel' ? 'Data da Inviabilidade' : 'Data de Início'}
+                        </Label>
+                        <Input type="date" value={leadOutcomeDate} onChange={(e) => setLeadOutcomeDate(e.target.value)} className="mt-1" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Motivo</Label>
+                        <Input 
+                          placeholder={leadOutcome === 'inviavel' ? 'Ex: Prazo prescrito, sem direito...' : leadOutcome === 'refused' ? 'Ex: Não quis prosseguir...' : 'Motivo (opcional)'}
+                          value={leadOutcomeReason}
+                          onChange={(e) => setLeadOutcomeReason(e.target.value)}
+                          className="mt-1"
+                        />
+                      </div>
+                    </>
                   )}
                   {leadOutcome === 'closed' && (
                     <div>
                       <Label className="text-xs">Nº do Caso</Label>
-                      <Input
-                        value={caseNumber}
-                        onChange={(e) => setCaseNumber(e.target.value)}
-                        placeholder="Número do caso..."
-                        className="mt-1"
-                      />
+                      <Input value={caseNumber} onChange={(e) => setCaseNumber(e.target.value)} placeholder="Número do caso..." className="mt-1" />
                     </div>
                   )}
                 </div>
