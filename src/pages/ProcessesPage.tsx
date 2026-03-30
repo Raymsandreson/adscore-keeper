@@ -1,4 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +29,7 @@ interface Process {
 }
 
 export default function ProcessesPage() {
+  const navigate = useNavigate();
   const [processes, setProcesses] = useState<Process[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -131,7 +133,7 @@ export default function ProcessesPage() {
                           className="cursor-pointer hover:underline text-primary"
                           onClick={(e) => {
                             e.stopPropagation();
-                            window.location.href = `/leads/${p.lead_id}?tab=cases&caseId=${p.case_id}`;
+                            navigate(`/leads/${p.lead_id}?tab=cases&caseId=${p.case_id}`);
                           }}
                         >{(p as any).legal_cases.case_number}</strong> — {(p as any).legal_cases.title}</span>
                       </div>
