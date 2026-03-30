@@ -127,7 +127,13 @@ export default function ProcessesPage() {
                     {(p as any).legal_cases ? (
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Briefcase className="h-3 w-3" />
-                        <span>Caso: <strong>{(p as any).legal_cases.case_number}</strong> — {(p as any).legal_cases.title}</span>
+                        <span>Caso: <strong
+                          className="cursor-pointer hover:underline text-primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.location.href = `/leads/${p.lead_id}?tab=cases&caseId=${p.case_id}`;
+                          }}
+                        >{(p as any).legal_cases.case_number}</strong> — {(p as any).legal_cases.title}</span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-1.5 text-xs text-destructive">
