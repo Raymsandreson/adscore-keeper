@@ -151,7 +151,7 @@ export function VoiceSettings() {
     setPreviewingId(voiceId);
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-voice-clone`,
+        `https://gliigkupoebmlbwyvijp.supabase.co/functions/v1/elevenlabs-voice-clone`,
         {
           method: 'POST',
           headers: {

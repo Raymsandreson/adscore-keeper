@@ -115,7 +115,7 @@ export function usePromotedPosts() {
     }
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-meta-campaign`, {
+      const response = await fetch(`https://gliigkupoebmlbwyvijp.supabase.co/functions/v1/create-meta-campaign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

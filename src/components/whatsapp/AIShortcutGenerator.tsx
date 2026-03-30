@@ -31,7 +31,7 @@ interface Props {
   templateName?: string;
 }
 
-const GENERATE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-shortcut-config`;
+const GENERATE_URL = `https://gliigkupoebmlbwyvijp.supabase.co/functions/v1/generate-shortcut-config`;
 
 export function AIShortcutGenerator({ onApply, onClose, existingConfig, templateFields, templateName }: Props) {
   const [description, setDescription] = useState('');

@@ -60,7 +60,7 @@ export function N8nIntegrationSettings() {
     webhookSecret: "",
   });
 
-  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/n8n-comment-webhook`;
+  const webhookUrl = `https://gliigkupoebmlbwyvijp.supabase.co/functions/v1/n8n-comment-webhook`;
 
   useEffect(() => {
     loadSettings();
