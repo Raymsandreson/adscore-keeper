@@ -41,7 +41,7 @@ export default function ProcessesPage() {
     setLoading(true);
     const { data } = await supabase
       .from("lead_processes")
-      .select("id, title, process_number, process_type, status, situacao, tribunal_sigla, classe, polo_ativo, polo_passivo, data_distribuicao, data_ultima_movimentacao, case_id, lead_id, valor_causa_formatado, created_at")
+      .select("id, title, process_number, process_type, status, situacao, tribunal_sigla, classe, polo_ativo, polo_passivo, data_distribuicao, data_ultima_movimentacao, case_id, lead_id, valor_causa_formatado, created_at, legal_cases(case_number, title)")
       .order("created_at", { ascending: false });
     setProcesses(data || []);
     setLoading(false);
