@@ -94,7 +94,12 @@ IMPORTANTE sobre "processes": Identifique TODOS os processos mencionados na conv
 }`;
     }
 
-    const systemPrompt = `Você é um assistente especializado em extrair informações estruturadas de conversas de WhatsApp para um escritório de advocacia focado em acidentes de trabalho.
+    let systemPrompt: string;
+
+    if (customPrompt) {
+      systemPrompt = customPrompt;
+    } else {
+      systemPrompt = `Você é um assistente especializado em extrair informações estruturadas de conversas de WhatsApp para um escritório de advocacia focado em acidentes de trabalho.
 
 Analise a conversa abaixo e extraia TODAS as informações relevantes que encontrar. Retorne APENAS um JSON válido (sem markdown) com os seguintes campos (use null para campos não encontrados):
 
@@ -105,6 +110,7 @@ IMPORTANTE:
 - Não invente dados
 - Para o campo "notes", faça um resumo útil
 - Retorne APENAS o JSON, sem nenhum texto adicional ou markdown`;
+    }
 
     const result = await geminiChat({
       model: 'google/gemini-3-flash-preview',
