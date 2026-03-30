@@ -119,12 +119,15 @@ Analise a conversa e extraia TODAS as informações pessoais e profissionais do 
   "accident_address": "endereço do acidente",
   "sector": "setor de atuação",
   "case_type": "tipo do caso",
-  "liability_type": "tipo de responsabilidade"
+  "liability_type": "tipo de responsabilidade",
+  "lead_status": "status do lead baseado na conversa: 'active' (em andamento/interessado), 'closed' (fechou contrato/assinou), 'refused' (cliente recusou/desistiu), 'unviable' (caso inviável juridicamente). Use null se não for possível determinar.",
+  "lead_status_reason": "motivo resumido em 1-2 frases para o status identificado. Ex: 'Prazo prescricional expirado', 'Cliente não quis prosseguir por questões financeiras', 'Contrato assinado com sucesso'. Use null se status for null ou active."
 }
 
 REGRAS:
 - Extraia APENAS informações explícitas na conversa
 - Use null para campos não encontrados
+- Para lead_status: analise se o cliente demonstrou desinteresse (refused), se o caso foi considerado inviável pelo atendente (unviable), se houve fechamento/assinatura (closed), ou se ainda está em negociação (active)
 - Retorne APENAS o JSON`
 
     const result = await geminiChat({
