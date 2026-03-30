@@ -653,9 +653,13 @@ REGRAS IMPORTANTES:
         const token = (instance as any).instance_token;
         const delayBetween = ((agent as any).split_delay_seconds || 2) * 1000;
 
-        // Check if we should reply with audio (agent setting + incoming was audio)
-        const shouldReplyAudio = (agent as any).reply_with_audio === true && message_type === "audio";
-        console.log(`Audio reply check: reply_with_audio=${(agent as any).reply_with_audio}, message_type=${message_type}, shouldReplyAudio=${shouldReplyAudio}`);
+        // Check if we should reply with audio:
+        // 1. Agent setting enabled + incoming was audio (mirror format)
+        // 2. Agent setting enabled + client explicitly asked for audio in text
+        const audioRequestPatterns = /\b(mand[ae]?\s+(um\s+)?[aá]udio|fal[ae]?\s+(pra\s+mim|comigo)|grav[ae]?\s+(um\s+)?[aá]udio|respond[ae]?\s+(em\s+|com\s+)?[aá]udio|quero\s+(um\s+)?[aá]udio|prefer[eo]\s+[aá]udio|me\s+mand[ae]?\s+(um\s+)?[aá]udio|pod[ee]?\s+mandar\s+(em\s+)?[aá]udio|envi[ae]?\s+(em\s+|um\s+)?[aá]udio)\b/i;
+        const clientRequestedAudio = message_type === "text" && message_text && audioRequestPatterns.test(message_text);
+        const shouldReplyAudio = (agent as any).reply_with_audio === true && (message_type === "audio" || clientRequestedAudio);
+        console.log(`Audio reply check: reply_with_audio=${(agent as any).reply_with_audio}, message_type=${message_type}, clientRequestedAudio=${clientRequestedAudio}, shouldReplyAudio=${shouldReplyAudio}`);
 
         if (shouldReplyAudio) {
           // Generate TTS audio via ElevenLabs
