@@ -288,21 +288,39 @@ export function CTWACampaignAutomation() {
         if (norm) contactSet.add(norm);
       });
 
+      // BATCH: Get last message + response info for ALL phones in one query per instance
+      const instanceGroups = new Map<string, string[]>();
+      for (const [, info] of phoneMap) {
+        const key = info.instance_name || '__none__';
+        if (!instanceGroups.has(key)) instanceGroups.set(key, []);
+        instanceGroups.get(key)!.push(info.phone);
+      }
+
+      // Fetch recent messages grouped - get all campaign messages with direction info
+      const { data: allCampaignMsgs } = await supabase
+        .from('whatsapp_messages')
+        .select('phone, contact_name, created_at, direction, instance_name')
+        .eq('campaign_id', link.campaign_id)
+        .order('created_at', { ascending: false });
+
+      // Group messages by phone+instance
+      const msgsByKey = new Map<string, any[]>();
+      (allCampaignMsgs || []).forEach((m: any) => {
+        const norm = m.phone?.replace(/\D/g, '');
+        if (!norm || norm.startsWith('120363') || m.phone?.includes('@g.us')) return;
+        const key = `${norm}_${m.instance_name}`;
+        if (!msgsByKey.has(key)) msgsByKey.set(key, []);
+        msgsByKey.get(key)!.push(m);
+      });
+
       for (const [, info] of phoneMap) {
         const conversationKey = `${info.normalized_phone}_${info.instance_name || ''}`;
-        // Get last messages for response detection
-        let msgQuery = supabase
-          .from('whatsapp_messages')
-          .select('contact_name, created_at, direction, instance_name')
-          .eq('phone', info.phone)
-          .eq('instance_name', info.instance_name)
-          .order('created_at', { ascending: false })
-          .limit(50);
-        const { data: msgs } = await msgQuery;
+        const msgs = msgsByKey.get(conversationKey) || [];
 
-        const msgCount = msgs?.length || 0;
-        const firstInbound = msgs ? [...msgs].reverse().find(m => m.direction === 'inbound') : null;
-        const firstOutbound = msgs ? [...msgs].reverse().find(m => m.direction === 'outbound') : null;
+        const msgCount = msgs.length;
+        const reversed = [...msgs].reverse();
+        const firstInbound = reversed.find(m => m.direction === 'inbound');
+        const firstOutbound = reversed.find(m => m.direction === 'outbound');
         
         let wasResponded = false;
         let responseTimeMins: number | null = null;
@@ -319,14 +337,14 @@ export function CTWACampaignAutomation() {
 
         conversations.push({
           phone: info.phone,
-          contact_name: msgs?.[0]?.contact_name || info.contact_name || info.phone,
-          last_message_at: msgs?.[0]?.created_at || null,
+          contact_name: msgs[0]?.contact_name || info.contact_name || info.phone,
+          last_message_at: msgs[0]?.created_at || null,
           is_agent_active: agentMap.get(conversationKey) ?? false,
           has_lead: !!leadInfo,
           has_contact: contactSet.has(info.normalized_phone),
           lead_status: leadInfo?.status || null,
           lead_name: leadInfo?.name || null,
-          instance_name: msgs?.[0]?.instance_name || info.instance_name,
+          instance_name: msgs[0]?.instance_name || info.instance_name,
           was_responded: wasResponded,
           response_time_minutes: responseTimeMins,
           message_count: msgCount,
