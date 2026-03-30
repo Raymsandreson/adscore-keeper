@@ -9,6 +9,18 @@ export async function invokeCloudFunction<T = any>(
   functionName: string,
   body?: Record<string, any>
 ): Promise<{ data: T | null; error: Error | null }> {
+
+// Compatible proxy that mimics supabase.functions interface
+export const cloudFunctions = {
+  invoke: async <T = any>(functionName: string, options?: { body?: any }) => {
+    return invokeCloudFunction<T>(functionName, options?.body);
+  }
+};
+
+async function _invokeCloudFunction<T = any>(
+  functionName: string,
+  body?: Record<string, any>
+): Promise<{ data: T | null; error: Error | null }> {
   try {
     const url = `${LOVABLE_CLOUD_URL}/functions/v1/${functionName}`;
     const response = await fetch(url, {
