@@ -33,7 +33,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import LeadManager from "@/components/LeadManager";
-import { useLeads } from "@/hooks/useLeads";
+// useLeads removed - stats loaded via lightweight query above
 import { InstagramAccountsManager } from "@/components/analytics/InstagramAccountsManager";
 import { ContactsManager } from "@/components/contacts/ContactsManager";
 import { UnifiedKanbanManager } from "@/components/kanban/UnifiedKanbanManager";
