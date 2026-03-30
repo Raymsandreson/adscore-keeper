@@ -360,8 +360,7 @@ export function WhatsAppInbox() {
 
       linkToLead(selectedConversation.phone, data.id);
 
-      // Auto-create contact and link to lead
-      const contactExtracted = await extractConversationData('contact');
+      // Use already-extracted contact data
       const contactName = contactExtracted.full_name || selectedConversation.contact_name || 'Contato WhatsApp';
       
       // Check if contact with same phone already exists
