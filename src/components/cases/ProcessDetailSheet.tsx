@@ -285,12 +285,10 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
           Detalhes do Processo
         </div>
         <div className="flex items-center gap-1">
-          {form.escavador_raw && (
-            <Button size="sm" variant="outline" onClick={handleReExtract} disabled={saving} className="h-7 text-xs gap-1">
-              <RefreshCw className="h-3 w-3" />
-              Re-extrair
-            </Button>
-          )}
+          <Button size="sm" variant="outline" onClick={form.escavador_raw ? handleReExtract : handleFetchFromApi} disabled={saving} className="h-7 text-xs gap-1">
+            <RefreshCw className="h-3 w-3" />
+            {form.escavador_raw ? 'Re-extrair' : 'Buscar no Escavador'}
+          </Button>
           {dirty && (
             <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs gap-1">
               {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
