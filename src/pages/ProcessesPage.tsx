@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +30,7 @@ interface Process {
 
 export default function ProcessesPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [processes, setProcesses] = useState<Process[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -38,6 +39,15 @@ export default function ProcessesPage() {
   useEffect(() => {
     loadProcesses();
   }, []);
+
+  // Auto-open process from URL param
+  useEffect(() => {
+    const openId = searchParams.get('openProcess');
+    if (openId && processes.length > 0 && !selectedProcess) {
+      const found = processes.find(p => p.id === openId);
+      if (found) setSelectedProcess(found);
+    }
+  }, [searchParams, processes]);
 
   const loadProcesses = async () => {
     setLoading(true);
