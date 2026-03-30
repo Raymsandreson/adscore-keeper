@@ -1255,7 +1255,57 @@ ${scrapeData.content || ''}
                         <Input type="date" value={leadOutcomeDate} onChange={(e) => setLeadOutcomeDate(e.target.value)} className="mt-1" />
                       </div>
                       <div>
-                        <Label className="text-xs">Motivo</Label>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs">Motivo</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs gap-1"
+                            disabled={isGeneratingReason}
+                            onClick={async () => {
+                              if (!lead) return;
+                              setIsGeneratingReason(true);
+                              try {
+                                const phone = lead.lead_phone?.replace(/\D/g, '');
+                                if (!phone) { toast.error('Lead sem telefone para análise'); return; }
+                                const last8 = phone.slice(-8);
+                                const { data: msgs } = await supabase
+                                  .from('whatsapp_messages')
+                                  .select('message_text, direction, created_at')
+                                  .or(`phone.ilike.%${last8}%`)
+                                  .order('created_at', { ascending: true })
+                                  .limit(100);
+                                if (!msgs || msgs.length === 0) { toast.error('Nenhuma conversa encontrada'); return; }
+
+                                const statusLabel = leadOutcome === 'inviavel' ? 'INVIÁVEL' : leadOutcome === 'refused' ? 'RECUSADO' : leadOutcome === 'closed' ? 'FECHADO' : 'EM ANDAMENTO';
+                                const { data, error } = await supabase.functions.invoke('extract-conversation-data', {
+                                  body: {
+                                    messages: msgs.map(m => ({ message_text: m.message_text, direction: m.direction })),
+                                    targetType: 'reason',
+                                    customPrompt: `Analise a conversa e determine o MOTIVO pelo qual este lead foi classificado como "${statusLabel}". Retorne APENAS um JSON: {"reason": "motivo resumido em 1-2 frases"}. Seja objetivo e direto.`
+                                  }
+                                });
+                                if (error) throw error;
+                                const reason = data?.data?.reason;
+                                if (reason) {
+                                  setLeadOutcomeReason(reason);
+                                  toast.success('Motivo preenchido pela IA');
+                                } else {
+                                  toast.warning('IA não conseguiu determinar o motivo');
+                                }
+                              } catch (e: any) {
+                                console.error('AI reason error:', e);
+                                toast.error('Erro ao gerar motivo com IA');
+                              } finally {
+                                setIsGeneratingReason(false);
+                              }
+                            }}
+                          >
+                            {isGeneratingReason ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                            {isGeneratingReason ? 'Analisando...' : 'Preencher com IA'}
+                          </Button>
+                        </div>
                         <Input 
                           placeholder={leadOutcome === 'inviavel' ? 'Ex: Prazo prescrito, sem direito...' : leadOutcome === 'refused' ? 'Ex: Não quis prosseguir...' : 'Motivo (opcional)'}
                           value={leadOutcomeReason}
