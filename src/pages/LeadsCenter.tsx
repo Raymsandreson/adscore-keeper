@@ -218,7 +218,7 @@ const LeadsCenter = () => {
                   <div>
                     <p className="font-medium text-sm">Conta Meta conectada</p>
                     <p className="text-xs text-muted-foreground">
-                      ID: {adAccountId} • {realLeads.length} leads no banco de dados
+                      ID: {adAccountId} • {realStats.total} leads no banco de dados
                     </p>
                   </div>
                 </div>
