@@ -302,7 +302,7 @@ const LeadsCenter = () => {
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-green-500" />
                       <span className="text-sm font-medium">Dados reais do banco de dados</span>
-                      <Badge variant="secondary">{realLeads.length} leads</Badge>
+                      <Badge variant="secondary">{realStats.total} leads</Badge>
                     </div>
                   </CardContent>
                 </Card>
