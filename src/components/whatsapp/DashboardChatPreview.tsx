@@ -269,8 +269,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       // 3. Resolve board: use campaign's configured board or find first available
       let boardId = campaignBoardId || null;
       if (!boardId) {
-        const boardQuery: any = supabase
-          .from('kanban_boards')
+        const boardQuery = supabase
+          .from('kanban_boards' as any)
           .select('id')
           .neq('board_type', 'workflow')
           .eq('is_active', true)
