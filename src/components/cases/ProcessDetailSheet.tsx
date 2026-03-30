@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -308,6 +309,18 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
           </Badge>
           {form.situacao && <Badge variant="outline" className="text-[10px]">{form.situacao}</Badge>}
           {form.segredo_justica && <Badge variant="destructive" className="text-[10px]">Segredo de Justiça</Badge>}
+          <Button
+            variant="link"
+            size="sm"
+            className="h-5 text-[10px] gap-1 px-1 text-primary"
+            onClick={() => {
+              onOpenChange(false);
+              navFn(`/processes?openProcess=${process.id}`);
+            }}
+          >
+            <ExternalLink className="h-3 w-3" />
+            Ver na aba Processos
+          </Button>
         </div>
       </div>
 
