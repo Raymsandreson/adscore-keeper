@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, CalendarDays, TrendingUp, Trophy, UsersRound,
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
-  Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw,
+  Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
   LogOut, MessagesSquare, Settings, ChevronRight,
   MessageSquare as MessageSquareIcon,
 } from "lucide-react";
