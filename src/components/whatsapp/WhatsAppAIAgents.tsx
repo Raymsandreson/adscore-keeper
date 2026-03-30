@@ -52,6 +52,7 @@ interface AIAgent {
   stt_prompt: string | null;
   send_window_start_hour: number;
   send_window_end_hour: number;
+  send_call_followup_audio: boolean;
   created_at: string;
 }
 
@@ -217,6 +218,7 @@ export function WhatsAppAIAgents() {
       call_assigned_to: null, human_pause_minutes: 30, split_messages: false, split_delay_seconds: 2,
       respond_in_groups: false, reply_with_audio: false, reply_voice_id: null,
       stt_prompt: null, send_window_start_hour: 8, send_window_end_hour: 20,
+      send_call_followup_audio: false,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
@@ -523,7 +525,16 @@ export function WhatsAppAIAgents() {
                       </Select>
                       <p className="text-[10px] text-muted-foreground">Escolha a voz para respostas em áudio. Vozes personalizadas aparecem com 🎤</p>
                     </div>
-                  )}
+                    )}
+                  
+                  {/* Send call follow-up audio */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-xs">📞 Áudio pós-ligação</Label>
+                      <p className="text-[10px] text-muted-foreground">Após flash call, envia áudio automático avisando que tentou ligar</p>
+                    </div>
+                    <Switch checked={editingAgent.send_call_followup_audio ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, send_call_followup_audio: v })} />
+                  </div>
                   
                   {/* STT Prompt */}
                   <div className="space-y-1">
