@@ -7868,13 +7868,6 @@ export type Database = {
             referencedRelation: "wjia_followup_rules"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "wjia_followup_log_session_id_fkey"
-            columns: ["session_id"]
-            isOneToOne: false
-            referencedRelation: "wjia_collection_sessions"
-            referencedColumns: ["id"]
-          },
         ]
       }
       wjia_followup_rules: {
