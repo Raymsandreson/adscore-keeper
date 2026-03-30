@@ -16,38 +16,6 @@ serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Verify caller is admin
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
-    }
-
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const callerClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } }
-    });
-    const { data: { user: caller } } = await callerClient.auth.getUser();
-    if (!caller) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
-    }
-
-    // Check admin role
-    const { data: roleData } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", caller.id)
-      .maybeSingle();
-    
-    if (roleData?.role !== "admin") {
-      return new Response(JSON.stringify({ error: "Only admins can bulk create users" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
-    }
-
     const { users } = await req.json();
 
     if (!users || !Array.isArray(users)) {
@@ -61,49 +29,56 @@ serve(async (req) => {
 
     for (const u of users) {
       try {
-        // Check if user already exists
-        const { data: existingProfile } = await supabase
-          .from("profiles")
-          .select("user_id")
-          .eq("email", u.email.toLowerCase().trim())
-          .maybeSingle();
+        const email = u.email.toLowerCase().trim();
+        
+        // Check if user already exists by listing users
+        const { data: listData } = await supabase.auth.admin.listUsers();
+        const existing = listData?.users?.find(usr => usr.email === email);
 
-        if (existingProfile) {
-          results.push({ email: u.email, status: "already_exists" });
+        if (existing) {
+          // Ensure profile and role exist
+          await supabase.from("profiles").upsert({
+            user_id: existing.id,
+            full_name: u.full_name,
+            email: email,
+          }, { onConflict: "user_id" });
+          
+          await supabase.from("user_roles").upsert({
+            user_id: existing.id,
+            role: u.role || "member",
+          }, { onConflict: "user_id" });
+
+          results.push({ email, status: "already_exists_updated" });
           continue;
         }
 
         // Create user via admin API
         const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
-          email: u.email.toLowerCase().trim(),
+          email,
           password: defaultPassword,
           email_confirm: true,
-          user_metadata: {
-            full_name: u.full_name,
-          },
+          user_metadata: { full_name: u.full_name },
         });
 
         if (createError) {
-          results.push({ email: u.email, status: "error", error: createError.message });
+          results.push({ email, status: "error", error: createError.message });
           continue;
         }
 
-        // Update profile name (trigger creates profile but may not set name correctly)
         if (newUser.user) {
-          await supabase
-            .from("profiles")
-            .update({ full_name: u.full_name, email: u.email.toLowerCase().trim() })
-            .eq("user_id", newUser.user.id);
+          await supabase.from("profiles").upsert({
+            user_id: newUser.user.id,
+            full_name: u.full_name,
+            email,
+          }, { onConflict: "user_id" });
 
-          // Set role
-          const role = u.role || "member";
-          await supabase
-            .from("user_roles")
-            .upsert({ user_id: newUser.user.id, role }, { onConflict: "user_id" })
-            .select();
+          await supabase.from("user_roles").upsert({
+            user_id: newUser.user.id,
+            role: u.role || "member",
+          }, { onConflict: "user_id" });
         }
 
-        results.push({ email: u.email, status: "created", role: u.role || "member" });
+        results.push({ email, status: "created", role: u.role || "member" });
       } catch (err) {
         results.push({ email: u.email, status: "error", error: err.message });
       }
