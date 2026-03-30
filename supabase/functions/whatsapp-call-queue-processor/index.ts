@@ -92,7 +92,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
         token: token,
       },
-      body: JSON.stringify({ phone }),
+      body: JSON.stringify({ number: phone }),
     });
 
     let callResult = "unknown";
