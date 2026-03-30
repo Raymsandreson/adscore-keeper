@@ -126,7 +126,7 @@ serve(async (req) => {
 
     await supabase.from("whatsapp_call_queue").update(updatePayload).eq("id", (nextCall as any).id);
 
-    // Create call record
+    // Create call record and send follow-up audio
     if (callResult === "initiated") {
       await supabase.from("call_records").insert({
         call_type: "outbound",
@@ -140,6 +140,9 @@ serve(async (req) => {
         tags: ["whatsapp", "automatico", "discadora"],
         user_id: "00000000-0000-0000-0000-000000000000", // system
       });
+
+      // Send follow-up audio message after the call
+      await sendCallFollowupAudio(supabase, phone, instanceName, instance, (nextCall as any).contact_name || (nextCall as any).lead_name);
     }
 
     return new Response(JSON.stringify({
