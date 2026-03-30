@@ -338,7 +338,6 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         </ScrollArea>
       </div>
 
-
         {/* Tab content */}
         <ScrollArea className="flex-1 px-4 pb-6">
           <div className="space-y-3 pt-3">
