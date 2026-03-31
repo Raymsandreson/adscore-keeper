@@ -13,7 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
-  Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw
+  Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock
 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
@@ -102,6 +102,7 @@ const TABS = [
   { id: 'tribunal', label: 'Tribunal', icon: Landmark },
   { id: 'local', label: 'Local', icon: MapPin },
   { id: 'datas', label: 'Datas', icon: Calendar },
+  { id: 'atividades', label: 'Histórico', icon: ClipboardList },
   { id: 'config', label: 'Config', icon: Info },
   { id: 'notas', label: 'Notas', icon: FileText },
   { id: 'envolvidos', label: 'Envolvidos', icon: Users },
@@ -109,20 +110,51 @@ const TABS = [
 
 type TabId = typeof TABS[number]['id'];
 
+interface ProcessActivity {
+  id: string;
+  title: string;
+  description: string | null;
+  activity_type: string;
+  status: string;
+  priority: string;
+  deadline: string | null;
+  assigned_to_name: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
 export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet' }: ProcessDetailSheetProps) {
   const navFn = useNavigate();
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('partes');
+  const [activities, setActivities] = useState<ProcessActivity[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
 
   useEffect(() => {
     if (process) {
       setForm({ ...process });
       setDirty(false);
       setActiveTab('partes');
+      setActivities([]);
     }
   }, [process]);
+
+  // Fetch activities when the tab is activated
+  useEffect(() => {
+    if (activeTab !== 'atividades' || !process?.id) return;
+    setLoadingActivities(true);
+    supabase
+      .from('lead_activities')
+      .select('id, title, description, activity_type, status, priority, deadline, assigned_to_name, completed_at, created_at')
+      .eq('process_id', process.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setActivities((data || []) as ProcessActivity[]);
+        setLoadingActivities(false);
+      });
+  }, [activeTab, process?.id]);
 
   const set = useCallback((key: string, value: any) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -477,6 +509,61 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 <EditableSwitch label="Processo Físico" checked={!!form.fisico} onChange={v => set('fisico', v)} />
                 <EditableField label="Fluxo de Trabalho" value={form.workflow_name || ''} onChange={v => set('workflow_name', v)} />
               </>
+            )}
+
+            {activeTab === 'atividades' && (
+              <div className="space-y-2">
+                {loadingActivities ? (
+                  <div className="text-center py-6 text-muted-foreground text-xs">
+                    <Loader2 className="h-4 w-4 animate-spin mx-auto mb-1" />
+                    Carregando atividades...
+                  </div>
+                ) : activities.length === 0 ? (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <ClipboardList className="h-6 w-6 mx-auto mb-1 opacity-50" />
+                    <p className="text-xs">Nenhuma atividade vinculada a este processo.</p>
+                  </div>
+                ) : (
+                  activities.map(act => {
+                    const isDone = act.status === 'concluida' || act.status === 'concluído';
+                    const statusLabel = isDone ? 'Concluída' : act.status === 'pendente' ? 'Pendente' : act.status === 'em_andamento' ? 'Em andamento' : act.status;
+                    const statusColor = isDone
+                      ? 'bg-muted text-muted-foreground'
+                      : act.status === 'em_andamento'
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                        : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
+                    const createdDate = act.created_at ? new Date(act.created_at).toLocaleDateString('pt-BR') : '';
+                    const deadlineDate = act.deadline ? new Date(act.deadline + 'T00:00:00').toLocaleDateString('pt-BR') : '';
+                    const completedDate = act.completed_at ? new Date(act.completed_at).toLocaleDateString('pt-BR') : '';
+                    let duration = '';
+                    if (act.created_at) {
+                      const start = new Date(act.created_at);
+                      const end = act.completed_at ? new Date(act.completed_at) : new Date();
+                      const days = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                      duration = days > 0 ? `${days} dia${days > 1 ? 's' : ''}` : '';
+                    }
+                    return (
+                      <div key={act.id} className={`border rounded-lg p-3 space-y-1.5 ${isDone ? 'opacity-60' : 'border-primary/30'}`}>
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2">
+                            {isDone ? <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" /> : <Clock className="h-3.5 w-3.5 text-primary" />}
+                            <span className="text-xs font-medium">{act.title}</span>
+                          </div>
+                          <Badge className={`text-[9px] ${statusColor}`}>{statusLabel}</Badge>
+                        </div>
+                        {act.description && <p className="text-[10px] text-muted-foreground pl-5">{act.description}</p>}
+                        {duration && <p className="text-[10px] text-muted-foreground pl-5">Tempo: {duration}</p>}
+                        <div className="flex items-center gap-3 pl-5 text-[10px] text-muted-foreground">
+                          {createdDate && <span>Criada: {createdDate}</span>}
+                          {deadlineDate && <span className="text-primary font-medium">Prazo: {deadlineDate}</span>}
+                          {completedDate && <span className="text-destructive">Concluída: {completedDate}</span>}
+                        </div>
+                        {act.assigned_to_name && <p className="text-[10px] text-muted-foreground pl-5">Responsável: {act.assigned_to_name}</p>}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             )}
 
             {activeTab === 'notas' && (
