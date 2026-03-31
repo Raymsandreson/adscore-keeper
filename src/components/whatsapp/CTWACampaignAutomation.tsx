@@ -359,10 +359,12 @@ export function CTWACampaignAutomation() {
 
         const leadInfo = leadMap.get(info.normalized_phone);
 
+        const firstMsg = reversed[0];
         conversations.push({
           phone: info.phone,
           contact_name: msgs[0]?.contact_name || info.contact_name || info.phone,
           last_message_at: msgs[0]?.created_at || null,
+          first_message_at: firstMsg?.created_at || null,
           is_agent_active: agentMap.get(conversationKey) ?? false,
           has_lead: !!leadInfo,
           has_contact: contactSet.has(info.normalized_phone),
