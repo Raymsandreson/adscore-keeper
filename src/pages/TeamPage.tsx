@@ -49,19 +49,19 @@ interface TabDef {
 
 const ALL_TABS: TabDef[] = [
   { key: 'productivity', label: 'Produtividade', icon: BarChart3 },
-  { key: 'metrics', label: 'Métricas', icon: Activity, adminOnly: true },
-  { key: 'commission', label: 'Metas', icon: DollarSign, adminOnly: true },
-  { key: 'evaluations', label: 'Avaliações', icon: Star, adminOnly: true },
-  { key: 'traffic', label: 'Tráfego', icon: TrendingUp, adminOnly: true },
+  { key: 'metrics', label: 'Métricas', icon: Activity },
+  { key: 'commission', label: 'Metas', icon: DollarSign },
+  { key: 'evaluations', label: 'Avaliações', icon: Star },
+  { key: 'traffic', label: 'Tráfego', icon: TrendingUp },
   { key: 'members', label: 'Membros', icon: Users },
   { key: 'teams', label: 'Times', icon: UsersRound },
   { key: 'ambassadors', label: 'Embaixadores', icon: Handshake },
-  { key: 'career', label: 'Carreira', icon: GraduationCap, adminOnly: true },
-  { key: 'routines', label: 'Rotinas', icon: CalendarClock, adminOnly: true },
-  { key: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, adminOnly: true },
-  { key: 'permissions', label: 'Cartões', icon: CreditCard, adminOnly: true },
-  { key: 'accounts', label: 'Contas', icon: Landmark, adminOnly: true },
-  { key: 'modules', label: 'Acessos', icon: Lock, adminOnly: true },
+  { key: 'career', label: 'Carreira', icon: GraduationCap },
+  { key: 'routines', label: 'Rotinas', icon: CalendarClock },
+  { key: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
+  { key: 'permissions', label: 'Cartões', icon: CreditCard },
+  { key: 'accounts', label: 'Contas', icon: Landmark },
+  { key: 'modules', label: 'Acessos', icon: Lock },
 ];
 
 function TeamTabContent({ tab, availableCards }: { tab: string; availableCards: string[] }) {
