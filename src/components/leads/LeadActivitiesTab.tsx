@@ -202,6 +202,8 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
         what_was_done: editWhatWasDone || null,
         current_status_notes: editCurrentStatusNotes || null,
         next_steps: editNextSteps || null,
+        assigned_to: editAssignedTo || null,
+        assigned_to_name: editAssignedToName || null,
       }).eq('id', editActivity.id);
       if (error) throw error;
       toast.success('Atividade atualizada!');
