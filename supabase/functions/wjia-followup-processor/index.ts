@@ -415,6 +415,7 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
         .limit(1)
         .maybeSingle();
 
+      const maxCallAttempts = config.max_call_attempts ?? 2;
       const { error: queueError } = await supabase.from("whatsapp_call_queue").insert({
         phone: conv.phone,
         instance_name: conv.instance_name,
@@ -422,7 +423,7 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
         contact_name: msgWithLead?.contact_name || null,
         status: "pending",
         priority: 5,
-        max_attempts: 2,
+        max_attempts: maxCallAttempts,
       });
       if (queueError) {
         console.error(`[AGENT] Call queue error for ${conv.phone}:`, queueError);
