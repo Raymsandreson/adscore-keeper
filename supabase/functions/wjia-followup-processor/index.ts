@@ -105,10 +105,12 @@ serve(async (req) => {
         const effectiveStepIndex = nextStepIndex % steps.length;
         const step = steps[effectiveStepIndex];
         const delayMinutes = step.delay_minutes || 60;
+        // For call steps, enforce minimum 30 minutes delay
+        const effectiveDelayMinutes = step.action_type === "call" ? Math.max(delayMinutes, 30) : delayMinutes;
 
         const referenceTime = lastLog?.executed_at || session.updated_at;
         const timeSince = Date.now() - new Date(referenceTime).getTime();
-        const delayMs = delayMinutes * 60 * 1000;
+        const delayMs = effectiveDelayMinutes * 60 * 1000;
 
         if (timeSince < delayMs) continue;
 
