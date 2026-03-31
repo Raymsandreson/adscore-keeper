@@ -155,3 +155,6 @@ verify_jwt = false
 
 [functions.wjia-followup-processor]
 verify_jwt = false
+
+[functions.pluggy-integration]
+verify_jwt = false
