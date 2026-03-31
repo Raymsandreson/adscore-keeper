@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${instance.instance_token}`,
+        'token': instance.instance_token,
       },
       body: JSON.stringify({
         number: phone,
