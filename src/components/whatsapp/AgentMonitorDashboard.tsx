@@ -121,6 +121,7 @@ export function AgentMonitorDashboard() {
   const [sheetInstanceFilter, setSheetInstanceFilter] = useState('all');
   const [sheetActivatedDateFilter, setSheetActivatedDateFilter] = useState('all');
   const [excludedPhones, setExcludedPhones] = useState<Set<string>>(new Set());
+  const [groupsSheetOpen, setGroupsSheetOpen] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
