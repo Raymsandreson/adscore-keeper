@@ -55,27 +55,60 @@ function countMatchedParticipants(rawParticipants: any[], expectedPhones: string
 async function fetchGroupInfo(baseUrl: string, token: string, groupId: string) {
   const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
 
-  try {
-    const infoRes = await fetch(`${baseUrl}/group/info`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', token },
-      body: JSON.stringify({ id: groupJid }),
-    })
+  // Try multiple parameter names since UazAPI versions vary
+  const paramVariants = [
+    { id: groupJid },
+    { groupJid: groupJid },
+    { jid: groupJid },
+    { groupId: groupJid },
+  ]
 
-    if (!infoRes.ok) {
-      console.warn('Group info request failed:', infoRes.status, await infoRes.text())
-      return null
-    }
+  for (const params of paramVariants) {
+    try {
+      const infoRes = await fetch(`${baseUrl}/group/info`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', token },
+        body: JSON.stringify(params),
+      })
 
-    const groupData = await infoRes.json()
-    return {
-      groupName: groupData?.subject || groupData?.name || groupData?.data?.subject || '',
-      participants: groupData?.participants || groupData?.data?.participants || [],
+      if (!infoRes.ok) {
+        const errText = await infoRes.text()
+        console.warn(`Group info with params ${JSON.stringify(params)} failed:`, infoRes.status, errText)
+        continue
+      }
+
+      const groupData = await infoRes.json()
+      const participants = groupData?.participants || groupData?.data?.participants || []
+      if (participants.length > 0 || groupData?.subject || groupData?.data?.subject) {
+        return {
+          groupName: groupData?.subject || groupData?.name || groupData?.data?.subject || '',
+          participants,
+        }
+      }
+    } catch (error) {
+      console.warn(`Error fetching group info with params ${JSON.stringify(params)}:`, error)
     }
-  } catch (error) {
-    console.warn('Error fetching group info:', error)
-    return null
   }
+
+  // Also try GET endpoint as fallback
+  try {
+    const getRes = await fetch(`${baseUrl}/group/info?jid=${encodeURIComponent(groupJid)}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json', token },
+    })
+    if (getRes.ok) {
+      const groupData = await getRes.json()
+      return {
+        groupName: groupData?.subject || groupData?.name || groupData?.data?.subject || '',
+        participants: groupData?.participants || groupData?.data?.participants || [],
+      }
+    }
+  } catch (e) {
+    console.warn('GET group info fallback failed:', e)
+  }
+
+  console.warn('All group info attempts failed for:', groupJid)
+  return null
 }
 
 function normalizeGroupName(rawName: string): string {
