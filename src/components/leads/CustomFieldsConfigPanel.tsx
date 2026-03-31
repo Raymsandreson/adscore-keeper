@@ -230,10 +230,24 @@ export function CustomFieldsConfigPanel({
         }
       }
 
+      // Save stage requirements if field is required and stages are selected
+      if (isRequired && currentBoardId && selectedStageIds.length > 0) {
+        const fieldId = editingField?.id || pendingFieldData.id;
+        if (fieldId) {
+          await setFieldStages(fieldId, currentBoardId, selectedStageIds);
+        }
+      } else if (!isRequired && currentBoardId) {
+        // Clear stage requirements if field is no longer required
+        const fieldId = editingField?.id || pendingFieldData.id;
+        if (fieldId) {
+          await setFieldStages(fieldId, currentBoardId, []);
+        }
+      }
+
       setScopeDialogOpen(false);
       setPendingFieldData(null);
       resetFieldForm();
-    } catch (error) {
+    } catch {
       // handled in hook
     }
   };
