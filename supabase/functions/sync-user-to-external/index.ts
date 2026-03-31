@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
     const { data: userRole } = await externalClient
       .from('user_roles')
       .select('role')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .maybeSingle();
 
     return new Response(JSON.stringify({
