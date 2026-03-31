@@ -440,11 +440,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   useEffect(() => {
     const phone = conversation.phone;
     if (!phone) return;
+    const phoneSuffix = phone.replace(/\D/g, '').slice(-8);
     const fetchCalls = async () => {
+      // Use ilike for fuzzy matching on phone suffix to catch format differences
       const { data } = await supabase
         .from('call_records')
         .select('*')
-        .eq('contact_phone', phone)
+        .or(`contact_phone.ilike.%${phoneSuffix}%,phone_used.ilike.%${conversation.instance_name || ''}%`)
+        .ilike('contact_phone', `%${phoneSuffix}%`)
         .order('created_at', { ascending: true });
       setCallRecords(data || []);
     };
@@ -452,10 +455,16 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
 
     const channel = supabase
       .channel(`call_records_chat_${phone}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'call_records', filter: `contact_phone=eq.${phone}` }, () => fetchCalls())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'call_records' }, (payload) => {
+        // Check if the changed record matches this conversation
+        const changed = payload.new as any;
+        if (changed?.contact_phone?.includes(phoneSuffix)) {
+          fetchCalls();
+        }
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [conversation.phone]);
+  }, [conversation.phone, conversation.instance_name]);
 
   // Merge messages, call records and internal notes into a unified timeline
   const timelineItems = (() => {
