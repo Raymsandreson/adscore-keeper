@@ -60,6 +60,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [instanceSwitching, setInstanceSwitching] = useState(false);
+  const [switchProgress, setSwitchProgress] = useState(0);
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [instanceStats, setInstanceStats] = useState<InstanceStats[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -665,7 +667,30 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     activePhoneRef.current = null;
     // Reset fetching guard so instance switch always triggers a fresh load
     isFetchingRef.current = false;
-    fetchMessages(true);
+    
+    // Show switching indicator with progress
+    setInstanceSwitching(true);
+    setSwitchProgress(10);
+    
+    const progressTimer1 = setTimeout(() => setSwitchProgress(30), 200);
+    const progressTimer2 = setTimeout(() => setSwitchProgress(50), 600);
+    const progressTimer3 = setTimeout(() => setSwitchProgress(70), 1200);
+    
+    const doFetch = async () => {
+      await fetchMessages(true);
+      setSwitchProgress(100);
+      setTimeout(() => {
+        setInstanceSwitching(false);
+        setSwitchProgress(0);
+      }, 300);
+    };
+    doFetch();
+    
+    return () => {
+      clearTimeout(progressTimer1);
+      clearTimeout(progressTimer2);
+      clearTimeout(progressTimer3);
+    };
   }, [selectedInstanceId, hasLoaded, fetchMessages]);
 
   // Realtime subscription with reconnection resilience
@@ -889,6 +914,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     messages,
     conversations,
     loading,
+    instanceSwitching,
+    switchProgress,
     instances,
     instanceStats,
     statsLoading,

@@ -24,6 +24,8 @@ interface LeadInfo {
 interface Props {
   conversations: WhatsAppConversation[];
   loading: boolean;
+  instanceSwitching?: boolean;
+  switchProgress?: number;
   selectedPhone: string | null;
   onSelect: (conv: WhatsAppConversation) => void;
   boards: KanbanBoard[];
@@ -40,7 +42,7 @@ type SortMode = 'alpha' | 'last_received' | 'last_sent';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
 
-export function WhatsAppConversationList({ conversations, loading, selectedPhone, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones }: Props) {
+export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones }: Props) {
   const [search, setSearch] = useState('');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [selectedBoardId, setSelectedBoardId] = useState<string>('all');
@@ -318,8 +320,27 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
     );
   }
 
+  // Instance switching overlay with progress
+  const switchingOverlay = instanceSwitching ? (
+    <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
+      <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" />
+      <div className="w-40">
+        <div className="text-xs text-muted-foreground text-center mb-1">
+          Carregando conversas... {switchProgress}%
+        </div>
+        <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+          <div
+            className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
+            style={{ width: `${switchProgress}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      {switchingOverlay}
       {/* Search */}
       <div className="p-3 border-b">
         <div className="relative">
