@@ -308,12 +308,21 @@ export function CTWACampaignAutomation() {
         instanceGroups.get(key)!.push(info.phone);
       }
 
-      // Fetch recent messages grouped - get all campaign messages with direction info
-      const { data: allCampaignMsgs } = await supabase
-        .from('whatsapp_messages')
-        .select('phone, contact_name, created_at, direction, instance_name')
-        .eq('campaign_id', link.campaign_id)
-        .order('created_at', { ascending: false });
+      // Fetch ALL campaign messages with direction info using pagination
+      let allCampaignMsgs: any[] = [];
+      let msgOffset = 0;
+      while (true) {
+        const { data: msgPage } = await supabase
+          .from('whatsapp_messages')
+          .select('phone, contact_name, created_at, direction, instance_name')
+          .eq('campaign_id', link.campaign_id)
+          .order('created_at', { ascending: false })
+          .range(msgOffset, msgOffset + pageSize - 1);
+        if (!msgPage || msgPage.length === 0) break;
+        allCampaignMsgs = allCampaignMsgs.concat(msgPage);
+        if (msgPage.length < pageSize) break;
+        msgOffset += pageSize;
+      }
 
       // Group messages by phone+instance
       const msgsByKey = new Map<string, any[]>();
