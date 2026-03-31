@@ -242,11 +242,13 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
     syncInFlightRef.current = true;
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const { data, error } = await cloudFunctions.invoke('sync-whatsapp-recent', {
         body: {
           instance_id: instance.id,
           max_chats: 80,
         },
+        authToken: session?.access_token,
       });
 
       if (error) throw error;
