@@ -295,19 +295,27 @@ serve(async (req) => {
       });
     }
 
-    const supabase = createClient(
-      RESOLVED_SUPABASE_URL,
-      RESOLVED_ANON_KEY,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Validate JWT using Cloud's own Supabase (not external) since tokens come from Lovable Cloud auth
+    const cloudUrl = Deno.env.get('SUPABASE_URL')!;
+    const cloudAnon = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const cloudClient = createClient(cloudUrl, cloudAnon, {
+      global: { headers: { Authorization: authHeader } }
+    });
+    const token = authHeader.replace('Bearer ', '');
+    const { data: claimsData, error: claimsError } = await cloudClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims?.sub) {
+      console.error('Auth claims error:', claimsError);
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    // Create external supabase client for data operations
+    const supabase = createClient(
+      RESOLVED_SUPABASE_URL,
+      RESOLVED_ANON_KEY
+    );
 
     const { action, itemId, from, to } = await req.json();
     const apiKey = await getPluggyApiKey();
