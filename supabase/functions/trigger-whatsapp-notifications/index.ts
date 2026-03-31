@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
 
           let instanceMap: Record<string, string> = {}
           if (instanceIds.length > 0) {
-            const { data: instances } = await supabase
+            const { data: instances } = await cloudDb
               .from('whatsapp_instances')
               .select('id, instance_name')
               .in('id', instanceIds)
