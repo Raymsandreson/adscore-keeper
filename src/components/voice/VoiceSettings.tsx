@@ -214,8 +214,9 @@ export function VoiceSettings() {
         if (urlData?.publicUrl) sampleUrls.push(urlData.publicUrl);
       }
 
+      const uid = await getUserId();
       const { data, error } = await cloudFunctions.invoke('elevenlabs-voice-clone', {
-        body: { action: 'clone', name: cloneName, sample_urls: sampleUrls },
+        body: { action: 'clone', name: cloneName, sample_urls: sampleUrls, user_id: uid },
       });
 
       if (error) throw error;
