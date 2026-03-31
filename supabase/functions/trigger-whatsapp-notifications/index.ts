@@ -241,11 +241,11 @@ Deno.serve(async (req) => {
           supabase, config, recipient, now, brDate, brTime
         )
 
-        const resp = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
+        const resp = await fetch(`${CLOUD_URL}/functions/v1/send-whatsapp`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseKey}`,
+            'Authorization': `Bearer ${CLOUD_KEY}`,
           },
           body: JSON.stringify({
             phone: recipient.phone,
