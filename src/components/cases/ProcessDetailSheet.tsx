@@ -137,8 +137,24 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       setForm({ ...process });
       setDirty(false);
       setActiveTab('partes');
+      setActivities([]);
     }
   }, [process]);
+
+  // Fetch activities when the tab is activated
+  useEffect(() => {
+    if (activeTab !== 'atividades' || !process?.id) return;
+    setLoadingActivities(true);
+    supabase
+      .from('lead_activities')
+      .select('id, title, description, activity_type, status, priority, deadline, assigned_to_name, completed_at, created_at')
+      .eq('process_id', process.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setActivities((data || []) as ProcessActivity[]);
+        setLoadingActivities(false);
+      });
+  }, [activeTab, process?.id]);
 
   const set = useCallback((key: string, value: any) => {
     setForm(prev => ({ ...prev, [key]: value }));
