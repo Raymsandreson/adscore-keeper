@@ -129,6 +129,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     setAiSuggestion(null);
     setAgentInfo(null);
     setCallRecords([]);
+    setLinkedLead(null);
+    setLinkedContact(null);
     const normalizedPhone = phone.replace(/\D/g, '');
     const fetchMessages = async () => {
       const { data } = await supabase
