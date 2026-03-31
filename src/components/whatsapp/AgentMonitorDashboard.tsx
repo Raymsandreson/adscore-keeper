@@ -332,6 +332,7 @@ export function AgentMonitorDashboard() {
       if (statusFilter === 'no_response' && (!c.time_without_response || c.time_without_response < 60)) return false;
       if (cityFilter !== 'all' && c.lead_city !== cityFilter) return false;
       if (stateFilter !== 'all' && c.lead_state !== stateFilter) return false;
+      if (acolhedorFilter !== 'all' && c.lead_acolhedor !== acolhedorFilter) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         return (
@@ -342,13 +343,13 @@ export function AgentMonitorDashboard() {
       }
       return true;
     });
-  }, [conversations, selectedAgent, statusFilter, cityFilter, stateFilter, searchQuery]);
+  }, [conversations, selectedAgent, statusFilter, cityFilter, stateFilter, acolhedorFilter, searchQuery]);
 
   const uniqueCities = useMemo(() => [...new Set(conversations.map(c => c.lead_city).filter(Boolean))].sort(), [conversations]);
   const uniqueStates = useMemo(() => [...new Set(conversations.map(c => c.lead_state).filter(Boolean))].sort(), [conversations]);
 
-  // Filter conversations by acolhedor
-  const filteredConversations = useMemo(() => {
+  // Acolhedor-filtered conversations for KPIs (before agent/status/search filters)
+  const kpiConversations = useMemo(() => {
     if (acolhedorFilter === 'all') return conversations;
     return conversations.filter(c => c.lead_acolhedor === acolhedorFilter);
   }, [conversations, acolhedorFilter]);
