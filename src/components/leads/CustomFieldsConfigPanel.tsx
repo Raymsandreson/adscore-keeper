@@ -118,6 +118,7 @@ export function CustomFieldsConfigPanel({
     setFieldOptions('');
     setIsRequired(false);
     setEditingField(null);
+    setSelectedStageIds([]);
   };
 
   const openNewField = () => {
