@@ -223,10 +223,21 @@ export function CTWACampaignAutomation() {
 
       // Get unique phones ONLY from messages tagged with this exact campaign_id
       // No need for instance or group filters — if campaign_id is set, it came from this ad
-      const { data: campaignMessages } = await supabase
-        .from('whatsapp_messages')
-        .select('phone, contact_name, instance_name')
-        .eq('campaign_id', link.campaign_id);
+      // Fetch ALL campaign messages using pagination to bypass the 1000-row limit
+      let campaignMessages: any[] = [];
+      let offset = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: page } = await supabase
+          .from('whatsapp_messages')
+          .select('phone, contact_name, instance_name')
+          .eq('campaign_id', link.campaign_id)
+          .range(offset, offset + pageSize - 1);
+        if (!page || page.length === 0) break;
+        campaignMessages = campaignMessages.concat(page);
+        if (page.length < pageSize) break;
+        offset += pageSize;
+      }
 
       // Deduplicate by phone+instance
       const phoneMap = new Map<string, { phone: string; contact_name: string | null; instance_name: string; normalized_phone: string }>();
@@ -297,12 +308,21 @@ export function CTWACampaignAutomation() {
         instanceGroups.get(key)!.push(info.phone);
       }
 
-      // Fetch recent messages grouped - get all campaign messages with direction info
-      const { data: allCampaignMsgs } = await supabase
-        .from('whatsapp_messages')
-        .select('phone, contact_name, created_at, direction, instance_name')
-        .eq('campaign_id', link.campaign_id)
-        .order('created_at', { ascending: false });
+      // Fetch ALL campaign messages with direction info using pagination
+      let allCampaignMsgs: any[] = [];
+      let msgOffset = 0;
+      while (true) {
+        const { data: msgPage } = await supabase
+          .from('whatsapp_messages')
+          .select('phone, contact_name, created_at, direction, instance_name')
+          .eq('campaign_id', link.campaign_id)
+          .order('created_at', { ascending: false })
+          .range(msgOffset, msgOffset + pageSize - 1);
+        if (!msgPage || msgPage.length === 0) break;
+        allCampaignMsgs = allCampaignMsgs.concat(msgPage);
+        if (msgPage.length < pageSize) break;
+        msgOffset += pageSize;
+      }
 
       // Group messages by phone+instance
       const msgsByKey = new Map<string, any[]>();
