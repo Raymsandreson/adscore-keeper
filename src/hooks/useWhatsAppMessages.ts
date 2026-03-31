@@ -247,6 +247,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         body: {
           instance_id: instance.id,
           max_chats: 80,
+          user_id: user?.id || null,
         },
         authToken: session?.access_token,
       });
