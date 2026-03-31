@@ -171,15 +171,35 @@ Deno.serve(async (req) => {
 
     const userId = typeof body.user_id === 'string' ? body.user_id : null;
 
-    const { data: permission } = await serviceClient
-      .from('whatsapp_instance_users')
-      .select('id')
-      .eq('instance_id', instance.id)
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle();
+    // Permission check: verify user has access to this instance
+    // If no user_id provided or no explicit permission, check if user has any role (member/admin)
+    let hasAccess = false;
 
-    if (!permission) {
+    if (userId) {
+      const { data: permission } = await serviceClient
+        .from('whatsapp_instance_users')
+        .select('id')
+        .eq('instance_id', instance.id)
+        .eq('user_id', userId)
+        .limit(1)
+        .maybeSingle();
+
+      if (permission) {
+        hasAccess = true;
+      } else {
+        // Fallback: check if user has any role (admin or member can sync)
+        const { data: role } = await serviceClient
+          .from('user_roles')
+          .select('id')
+          .eq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
+        hasAccess = !!role;
+      }
+    }
+
+    if (!hasAccess) {
+      console.warn(`sync-whatsapp-recent: no access for user=${userId} instance=${instance.instance_name}`);
       return new Response(JSON.stringify({ success: false, error: 'Forbidden' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
