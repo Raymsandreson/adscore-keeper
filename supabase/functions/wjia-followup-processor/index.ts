@@ -355,14 +355,15 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
     // For call steps, check if previous calls to this phone all failed (busy/not answered)
     // If 3+ consecutive failed calls, skip the call step
     if (step.action_type === "call") {
+      const maxCallFailures = config.max_consecutive_call_failures ?? 3;
       const { data: recentCalls } = await supabase
         .from("call_records")
         .select("call_result")
         .or(`contact_phone.ilike.%${conv.phone.slice(-8)}%`)
         .order("created_at", { ascending: false })
-        .limit(3);
+        .limit(maxCallFailures);
 
-      const allFailed = recentCalls?.length >= 3 && recentCalls.every(
+      const allFailed = recentCalls?.length >= maxCallFailures && recentCalls.every(
         (c: any) => c.call_result === 'ocupado' || c.call_result === 'não_atendeu' || c.call_result === 'nao_atendeu'
       );
       if (allFailed) {
