@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
     // Resolve instance for sending
     let instance: any = null
     if (config.instance_name) {
-      const { data } = await supabase
+      const { data } = await cloudDb
         .from('whatsapp_instances')
         .select('id, instance_name, instance_token, base_url')
         .eq('instance_name', config.instance_name)
