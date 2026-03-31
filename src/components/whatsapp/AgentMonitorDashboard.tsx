@@ -568,17 +568,57 @@ export function AgentMonitorDashboard() {
               </SelectContent>
             </Select>
           )}
-          <Select value={String(periodDays)} onValueChange={v => setPeriodDays(Number(v))}>
-            <SelectTrigger className="w-[130px] h-9 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="1">Últimas 24h</SelectItem>
-              <SelectItem value="7">Últimos 7 dias</SelectItem>
-              <SelectItem value="15">Últimos 15 dias</SelectItem>
-              <SelectItem value="30">Últimos 30 dias</SelectItem>
-            </SelectContent>
-          </Select>
+          <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 text-xs gap-1.5 min-w-[200px] justify-start">
+                <CalendarIcon className="h-3.5 w-3.5" />
+                {format(dateRange.from, 'dd/MM/yy')} — {format(dateRange.to, 'dd/MM/yy')}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <div className="flex">
+                <div className="border-r p-2 space-y-1 min-w-[140px]">
+                  <p className="text-xs font-semibold text-muted-foreground px-2 pb-1">Atalhos</p>
+                  {[
+                    { label: 'Últimas 24h', from: subDays(new Date(), 1), to: new Date() },
+                    { label: 'Últimos 7 dias', from: subDays(new Date(), 7), to: new Date() },
+                    { label: 'Últimos 15 dias', from: subDays(new Date(), 15), to: new Date() },
+                    { label: 'Últimos 30 dias', from: subDays(new Date(), 30), to: new Date() },
+                    { label: 'Esta semana', from: startOfWeek(new Date(), { weekStartsOn: 1 }), to: new Date() },
+                    { label: 'Este mês', from: startOfMonth(new Date()), to: new Date() },
+                    { label: 'Este ano', from: startOfYear(new Date()), to: new Date() },
+                  ].map(preset => (
+                    <Button
+                      key={preset.label}
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start text-xs h-7"
+                      onClick={() => { setDateRange({ from: preset.from, to: preset.to }); setDatePickerOpen(false); }}
+                    >
+                      {preset.label}
+                    </Button>
+                  ))}
+                </div>
+                <div className="p-2">
+                  <Calendar
+                    mode="range"
+                    selected={{ from: dateRange.from, to: dateRange.to }}
+                    onSelect={(range) => {
+                      if (range?.from && range?.to) {
+                        setDateRange({ from: range.from, to: range.to });
+                        setDatePickerOpen(false);
+                      } else if (range?.from) {
+                        setDateRange(prev => ({ ...prev, from: range.from! }));
+                      }
+                    }}
+                    numberOfMonths={2}
+                    className="pointer-events-auto"
+                    locale={ptBR}
+                  />
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
