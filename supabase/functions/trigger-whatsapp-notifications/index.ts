@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
     const recipients: Recipient[] = []
 
     if (targetUserId) {
-      const { data: profile } = await supabase
+      const { data: profile } = await cloudDb
         .from('profiles')
         .select('phone, full_name, default_instance_id')
         .eq('user_id', targetUserId)
