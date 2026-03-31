@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 export interface ProductService {
   id: string;
   company_id: string | null;
+  nucleus_id: string | null;
   name: string;
   description: string | null;
   ticket_tier: 'low' | 'medium' | 'high';
@@ -46,6 +47,7 @@ export function useProductsServices() {
       .from('products_services')
       .insert([{
         company_id: p.company_id || null,
+        nucleus_id: p.nucleus_id || null,
         name: p.name,
         description: p.description || null,
         ticket_tier: p.ticket_tier || 'medium',

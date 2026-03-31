@@ -4,9 +4,11 @@ import { useCompanies } from '@/hooks/useCompanies';
 import { useCostCenters } from '@/hooks/useCostCenters';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { useProductsServices } from '@/hooks/useProductsServices';
+import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { CreateValueSection } from './org-structure/CreateValueSection';
 import { DeliverValueSection } from './org-structure/DeliverValueSection';
 import { CaptureValueSection } from './org-structure/CaptureValueSection';
+import { EcosystemConnectionsMap } from './org-structure/EcosystemConnectionsMap';
 
 interface JobPosition {
   id: string;
@@ -42,6 +44,7 @@ export function OrganizationalStructureTab() {
   const { costCenters } = useCostCenters();
   const { nuclei } = useSpecializedNuclei();
   const { products } = useProductsServices();
+  const { boards } = useKanbanBoards();
   const [positions, setPositions] = useState<JobPosition[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -87,6 +90,17 @@ export function OrganizationalStructureTab() {
           Criar → Entregar → Capturar — a marca é o eixo que multiplica valor em cada etapa
         </p>
       </div>
+
+      {/* Ecosystem Connections Map */}
+      <EcosystemConnectionsMap
+        nuclei={nuclei}
+        products={products}
+        companies={companies}
+        boards={boards}
+        teams={teams}
+        teamMembers={teamMembers}
+        profiles={profiles}
+      />
 
       <CreateValueSection
         companies={companies}
