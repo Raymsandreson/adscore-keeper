@@ -59,6 +59,18 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   const [caseNucleusId, setCaseNucleusId] = useState('');
   const [caseNotes, setCaseNotes] = useState('');
   const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null);
+  const [selectedProcesses, setSelectedProcesses] = useState<Set<string>>(new Set());
+
+  const PREDEFINED_PROCESSES = [
+    'Indenização',
+    'Relatório de Acidente',
+    'TRCT + Verbas',
+    'Seguro de Vida',
+    'Pensão por morte',
+    'Inquérito Policial',
+    'Organizar docs',
+    'Onboarding',
+  ];
 
   useEffect(() => {
     fetchCases();
