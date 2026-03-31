@@ -80,12 +80,16 @@ serve(async (req) => {
     const supabase = createClient(
       RESOLVED_SUPABASE_URL,
       RESOLVED_ANON_KEY,
-      { global: { headers: { Authorization: authHeader } } }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    // Validate user via Cloud auth (ES256 tokens can't be verified locally in Deno)
+    const cloudUrl = Deno.env.get('SUPABASE_URL')!;
+    const cloudAnon = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const cloudClient = createClient(cloudUrl, cloudAnon, {
+      global: { headers: { Authorization: authHeader } }
+    });
+    const { data: userData, error: userError } = await cloudClient.auth.getUser();
+    if (userError || !userData?.user?.id) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
     }
 
