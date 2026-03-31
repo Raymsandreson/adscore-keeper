@@ -225,7 +225,7 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
   const agentIds = [...new Set(conversations.map((c: any) => c.agent_id))];
   const { data: agentConfigs } = await supabase
     .from("wjia_command_shortcuts")
-    .select("id, followup_steps, human_reply_pause_minutes, followup_repeat_forever, send_window_start_hour, send_window_end_hour, base_prompt, shortcut_name")
+    .select("id, followup_steps, human_reply_pause_minutes, followup_repeat_forever, send_window_start_hour, send_window_end_hour, base_prompt, shortcut_name, max_repeat_cycles, min_call_delay_minutes, max_consecutive_call_failures, max_call_attempts")
     .in("id", agentIds);
 
   if (!agentConfigs?.length) return 0;
@@ -329,9 +329,9 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
     const repeatForever = config.followup_repeat_forever ?? false;
     const nextStepIndex = lastLog ? (lastLog.step_index + 1) : 0;
 
-    // Cap repeat_forever to max 3 full cycles to prevent infinite spam
-    const MAX_REPEAT_CYCLES = 3;
-    const maxSteps = repeatForever ? steps.length * MAX_REPEAT_CYCLES : steps.length;
+    // Cap repeat_forever to max cycles (configurable per agent, default 3)
+    const maxRepeatCycles = config.max_repeat_cycles ?? 3;
+    const maxSteps = repeatForever ? steps.length * maxRepeatCycles : steps.length;
     if (nextStepIndex >= maxSteps) {
       console.log(`[AGENT] Max follow-up cycles reached for ${conv.phone} (${nextStepIndex}/${maxSteps}), stopping`);
       continue;
@@ -341,8 +341,9 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
     const step = steps[effectiveStepIndex];
     const delayMinutes = step.delay_minutes || 60;
 
-    // For call steps, enforce a minimum delay of 30 minutes to prevent spam
-    const effectiveDelayMinutes = step.action_type === "call" ? Math.max(delayMinutes, 30) : delayMinutes;
+    // For call steps, enforce configurable minimum delay (default 30 minutes)
+    const minCallDelay = config.min_call_delay_minutes ?? 30;
+    const effectiveDelayMinutes = step.action_type === "call" ? Math.max(delayMinutes, minCallDelay) : delayMinutes;
 
     // Reference time: last log execution OR last outbound message
     const referenceTime = lastLog?.executed_at || lastOutbound.created_at;
@@ -354,14 +355,15 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
     // For call steps, check if previous calls to this phone all failed (busy/not answered)
     // If 3+ consecutive failed calls, skip the call step
     if (step.action_type === "call") {
+      const maxCallFailures = config.max_consecutive_call_failures ?? 3;
       const { data: recentCalls } = await supabase
         .from("call_records")
         .select("call_result")
         .or(`contact_phone.ilike.%${conv.phone.slice(-8)}%`)
         .order("created_at", { ascending: false })
-        .limit(3);
+        .limit(maxCallFailures);
 
-      const allFailed = recentCalls?.length >= 3 && recentCalls.every(
+      const allFailed = recentCalls?.length >= maxCallFailures && recentCalls.every(
         (c: any) => c.call_result === 'ocupado' || c.call_result === 'não_atendeu' || c.call_result === 'nao_atendeu'
       );
       if (allFailed) {
@@ -413,6 +415,7 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
         .limit(1)
         .maybeSingle();
 
+      const maxCallAttempts = config.max_call_attempts ?? 2;
       const { error: queueError } = await supabase.from("whatsapp_call_queue").insert({
         phone: conv.phone,
         instance_name: conv.instance_name,
@@ -420,7 +423,7 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
         contact_name: msgWithLead?.contact_name || null,
         status: "pending",
         priority: 5,
-        max_attempts: 2,
+        max_attempts: maxCallAttempts,
       });
       if (queueError) {
         console.error(`[AGENT] Call queue error for ${conv.phone}:`, queueError);

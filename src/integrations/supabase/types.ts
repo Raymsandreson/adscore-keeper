@@ -8033,9 +8033,13 @@ export type Database = {
           is_active: boolean | null
           lead_status_board_ids: string[] | null
           lead_status_filter: string[] | null
+          max_call_attempts: number
+          max_consecutive_call_failures: number
+          max_repeat_cycles: number
           max_tokens: number | null
           max_tts_chars: number | null
           media_extraction_prompt: string | null
+          min_call_delay_minutes: number
           model: string | null
           notify_on_signature: boolean
           prompt_instructions: string | null
@@ -8073,9 +8077,13 @@ export type Database = {
           is_active?: boolean | null
           lead_status_board_ids?: string[] | null
           lead_status_filter?: string[] | null
+          max_call_attempts?: number
+          max_consecutive_call_failures?: number
+          max_repeat_cycles?: number
           max_tokens?: number | null
           max_tts_chars?: number | null
           media_extraction_prompt?: string | null
+          min_call_delay_minutes?: number
           model?: string | null
           notify_on_signature?: boolean
           prompt_instructions?: string | null
@@ -8113,9 +8121,13 @@ export type Database = {
           is_active?: boolean | null
           lead_status_board_ids?: string[] | null
           lead_status_filter?: string[] | null
+          max_call_attempts?: number
+          max_consecutive_call_failures?: number
+          max_repeat_cycles?: number
           max_tokens?: number | null
           max_tts_chars?: number | null
           media_extraction_prompt?: string | null
+          min_call_delay_minutes?: number
           model?: string | null
           notify_on_signature?: boolean
           prompt_instructions?: string | null
