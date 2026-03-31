@@ -225,10 +225,10 @@ const ActivitiesPage = () => {
       }
     } catch {}
 
-    const defaultAssigneeFilter = [user.id, '__unassigned__'];
-    setFilterAssigneeState(defaultAssigneeFilter);
+    // Default: show ALL activities (empty = "Todos")
+    setFilterAssigneeState([]);
     try {
-      localStorage.setItem(assigneeStorageKey, JSON.stringify(defaultAssigneeFilter));
+      localStorage.setItem(assigneeStorageKey, JSON.stringify([]));
     } catch {}
   }, [assigneeStorageKey, user?.id]);
 
