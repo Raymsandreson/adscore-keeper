@@ -44,6 +44,12 @@ Deno.serve(async (req) => {
       })
       .eq('id', agent_id);
 
+    if (error) {
+      return new Response(JSON.stringify({ error: error.message }), { 
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+
     return new Response(JSON.stringify({ success: true }), { 
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
