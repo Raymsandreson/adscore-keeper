@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 export interface ProductService {
   id: string;
   company_id: string | null;
+  nucleus_id: string | null;
   name: string;
   description: string | null;
   ticket_tier: 'low' | 'medium' | 'high';
