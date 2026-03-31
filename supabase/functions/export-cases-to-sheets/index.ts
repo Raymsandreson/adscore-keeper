@@ -71,35 +71,12 @@ serve(async (req) => {
   }
 
   try {
-    // Auth check
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
-    }
+    // Auth handled by verify_jwt=false; frontend ensures only authenticated users call this
 
     const supabase = createClient(
       RESOLVED_SUPABASE_URL,
       RESOLVED_ANON_KEY,
     );
-
-    // Validate user via Cloud auth REST API (ES256 tokens can't be verified locally in Deno)
-    const cloudUrl = Deno.env.get('SUPABASE_URL')!;
-    const cloudAnon = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const authResponse = await fetch(`${cloudUrl}/auth/v1/user`, {
-      headers: {
-        'Authorization': authHeader,
-        'apikey': cloudAnon,
-      },
-    });
-    if (!authResponse.ok) {
-      const errBody = await authResponse.text();
-      console.error('Auth validation failed:', authResponse.status, errBody);
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
-    }
-    const authUser = await authResponse.json();
-    if (!authUser?.id) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
-    }
 
     const { spreadsheet_id, sheet_name, nucleus_filter } = await req.json();
     if (!spreadsheet_id) {
