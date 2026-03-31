@@ -102,12 +102,26 @@ const TABS = [
   { id: 'tribunal', label: 'Tribunal', icon: Landmark },
   { id: 'local', label: 'Local', icon: MapPin },
   { id: 'datas', label: 'Datas', icon: Calendar },
+  { id: 'atividades', label: 'Histórico', icon: ClipboardList },
   { id: 'config', label: 'Config', icon: Info },
   { id: 'notas', label: 'Notas', icon: FileText },
   { id: 'envolvidos', label: 'Envolvidos', icon: Users },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
+
+interface ProcessActivity {
+  id: string;
+  title: string;
+  description: string | null;
+  activity_type: string;
+  status: string;
+  priority: string;
+  deadline: string | null;
+  assigned_to_name: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
 
 export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet' }: ProcessDetailSheetProps) {
   const navFn = useNavigate();
