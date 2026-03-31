@@ -657,7 +657,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         fetchMessages(true);
       }
     }
-  }, [instances, fetchInstanceStats]);
+  }, [instances, fetchInstanceStats, fetchMessages, hasLoaded]);
 
   // If conversations were already loaded, re-fetch when instance filter changes
   useEffect(() => {
