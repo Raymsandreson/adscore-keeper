@@ -3,7 +3,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
-export interface Ambassador {
+/**
+ * An "Ambassador" is a contact with classification = 'embaixador'.
+ * They are linked to the team member who created them (created_by).
+ */
+export interface AmbassadorContact {
   id: string;
   full_name: string;
   phone: string | null;
@@ -12,17 +16,8 @@ export interface Ambassador {
   city: string | null;
   state: string | null;
   notes: string | null;
-  is_active: boolean;
-  contact_id: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface AmbassadorMemberLink {
-  id: string;
-  ambassador_id: string;
-  member_user_id: string;
-  is_active: boolean;
+  classification: string | null;
+  created_by: string | null;
   created_at: string;
 }
 
@@ -57,8 +52,7 @@ export interface AmbassadorReferral {
 
 export function useAmbassadors() {
   const { user } = useAuthContext();
-  const [ambassadors, setAmbassadors] = useState<Ambassador[]>([]);
-  const [links, setLinks] = useState<AmbassadorMemberLink[]>([]);
+  const [ambassadors, setAmbassadors] = useState<AmbassadorContact[]>([]);
   const [campaigns, setCampaigns] = useState<AmbassadorCampaign[]>([]);
   const [referrals, setReferrals] = useState<AmbassadorReferral[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,15 +61,18 @@ export function useAmbassadors() {
     if (!user) return;
     setLoading(true);
     try {
-      const [ambRes, linkRes, campRes, refRes] = await Promise.all([
-        supabase.from('ambassadors').select('*').order('full_name'),
-        supabase.from('ambassador_member_links').select('*'),
+      // Fetch contacts classified as 'embaixador'
+      const [contactsRes, campRes, refRes] = await Promise.all([
+        supabase
+          .from('contacts')
+          .select('id, full_name, phone, email, instagram_username, city, state, notes, classification, created_by, created_at')
+          .eq('classification', 'embaixador')
+          .order('full_name'),
         supabase.from('ambassador_campaigns').select('*').order('created_at', { ascending: false }),
         supabase.from('ambassador_referrals').select('*').order('created_at', { ascending: false }),
       ]);
 
-      if (ambRes.data) setAmbassadors(ambRes.data as Ambassador[]);
-      if (linkRes.data) setLinks(linkRes.data as AmbassadorMemberLink[]);
+      if (contactsRes.data) setAmbassadors(contactsRes.data as AmbassadorContact[]);
       if (campRes.data) setCampaigns(campRes.data as AmbassadorCampaign[]);
       if (refRes.data) setReferrals(refRes.data as AmbassadorReferral[]);
     } catch (err) {
@@ -87,55 +84,46 @@ export function useAmbassadors() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const createAmbassador = useCallback(async (data: Partial<Ambassador>) => {
-    const { error } = await supabase.from('ambassadors').insert({
-      full_name: data.full_name!,
+  /** Mark an existing contact as ambassador */
+  const markContactAsAmbassador = useCallback(async (contactId: string) => {
+    const { error } = await supabase
+      .from('contacts')
+      .update({ classification: 'embaixador' })
+      .eq('id', contactId);
+    if (error) { toast.error('Erro ao marcar como embaixador'); throw error; }
+    toast.success('Contato marcado como embaixador!');
+    await fetchAll();
+  }, [fetchAll]);
+
+  /** Create a new contact already classified as ambassador */
+  const createAmbassadorContact = useCallback(async (data: { full_name: string; phone?: string; email?: string; city?: string; state?: string; notes?: string }) => {
+    const { error } = await supabase.from('contacts').insert({
+      full_name: data.full_name,
       phone: data.phone || null,
       email: data.email || null,
-      instagram_username: data.instagram_username || null,
       city: data.city || null,
       state: data.state || null,
       notes: data.notes || null,
-    });
+      classification: 'embaixador',
+      created_by: user?.id || null,
+    } as any);
     if (error) { toast.error('Erro ao criar embaixador'); throw error; }
     toast.success('Embaixador criado!');
     await fetchAll();
-  }, [fetchAll]);
+  }, [fetchAll, user?.id]);
 
-  const updateAmbassador = useCallback(async (id: string, data: Partial<Ambassador>) => {
-    const { error } = await supabase.from('ambassadors').update(data).eq('id', id);
-    if (error) { toast.error('Erro ao atualizar'); throw error; }
-    toast.success('Embaixador atualizado!');
+  /** Remove ambassador classification from contact */
+  const removeAmbassadorClassification = useCallback(async (contactId: string) => {
+    const { error } = await supabase
+      .from('contacts')
+      .update({ classification: null })
+      .eq('id', contactId);
+    if (error) { toast.error('Erro ao remover classificação'); throw error; }
+    toast.success('Classificação de embaixador removida');
     await fetchAll();
   }, [fetchAll]);
 
-  const deleteAmbassador = useCallback(async (id: string) => {
-    const { error } = await supabase.from('ambassadors').delete().eq('id', id);
-    if (error) { toast.error('Erro ao remover'); throw error; }
-    toast.success('Embaixador removido!');
-    await fetchAll();
-  }, [fetchAll]);
-
-  const linkAmbassadorToMember = useCallback(async (ambassadorId: string, memberUserId: string) => {
-    const { error } = await supabase.from('ambassador_member_links').upsert(
-      { ambassador_id: ambassadorId, member_user_id: memberUserId, is_active: true },
-      { onConflict: 'ambassador_id,member_user_id' }
-    );
-    if (error) { toast.error('Erro ao vincular'); throw error; }
-    toast.success('Embaixador vinculado!');
-    await fetchAll();
-  }, [fetchAll]);
-
-  const unlinkAmbassador = useCallback(async (ambassadorId: string, memberUserId: string) => {
-    const { error } = await supabase.from('ambassador_member_links')
-      .delete()
-      .eq('ambassador_id', ambassadorId)
-      .eq('member_user_id', memberUserId);
-    if (error) { toast.error('Erro ao desvincular'); throw error; }
-    toast.success('Embaixador desvinculado!');
-    await fetchAll();
-  }, [fetchAll]);
-
+  // Campaign CRUD
   const createCampaign = useCallback(async (data: Partial<AmbassadorCampaign>) => {
     const { error } = await supabase.from('ambassador_campaigns').insert({
       name: data.name!,
@@ -162,6 +150,7 @@ export function useAmbassadors() {
     await fetchAll();
   }, [fetchAll]);
 
+  // Referral CRUD
   const createReferral = useCallback(async (data: Partial<AmbassadorReferral>) => {
     const { error } = await supabase.from('ambassador_referrals').insert({
       ambassador_id: data.ambassador_id!,
@@ -183,10 +172,10 @@ export function useAmbassadors() {
     await fetchAll();
   }, [fetchAll]);
 
+  /** Get ambassadors linked to a specific member (via created_by) */
   const getAmbassadorsForMember = useCallback((memberUserId: string) => {
-    const linkedIds = links.filter(l => l.member_user_id === memberUserId && l.is_active).map(l => l.ambassador_id);
-    return ambassadors.filter(a => linkedIds.includes(a.id));
-  }, [ambassadors, links]);
+    return ambassadors.filter(a => a.created_by === memberUserId);
+  }, [ambassadors]);
 
   const getReferralsForAmbassador = useCallback((ambassadorId: string, campaignId?: string) => {
     return referrals.filter(r => {
@@ -197,9 +186,8 @@ export function useAmbassadors() {
   }, [referrals]);
 
   return {
-    ambassadors, links, campaigns, referrals, loading,
-    createAmbassador, updateAmbassador, deleteAmbassador,
-    linkAmbassadorToMember, unlinkAmbassador,
+    ambassadors, campaigns, referrals, loading,
+    markContactAsAmbassador, createAmbassadorContact, removeAmbassadorClassification,
     createCampaign, updateCampaign,
     createReferral, updateReferral,
     getAmbassadorsForMember, getReferralsForAmbassador,
