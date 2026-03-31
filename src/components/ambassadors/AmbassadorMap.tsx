@@ -97,8 +97,8 @@ export function AmbassadorMap() {
       // Fetch leads with location data
       const { data: leads } = await supabase
         .from('leads')
-        .select('id, lead_name, lead_city, lead_state, lead_phone')
-        .not('lead_state', 'is', null);
+        .select('id, lead_name, city, state, lead_phone')
+        .not('state', 'is', null);
 
       const mapPoints: MapPoint[] = [];
 
