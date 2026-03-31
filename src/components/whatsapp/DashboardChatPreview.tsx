@@ -181,6 +181,28 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     fetchMessages();
     fetchAgent();
     fetchCallRecords();
+
+    // Fetch linked lead & contact
+    const fetchLinkedData = async () => {
+      const last8 = normalizedPhone.slice(-8);
+      const { data: leadData } = await supabase
+        .from('leads')
+        .select('*')
+        .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${last8}%`)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (leadData) setLinkedLead(leadData as any);
+
+      const { data: contactData } = await supabase
+        .from('contacts')
+        .select('*')
+        .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
+        .limit(1)
+        .maybeSingle();
+      if (contactData) setLinkedContact(contactData as any);
+    };
+    fetchLinkedData();
   }, [open, phone]);
 
   // Realtime
