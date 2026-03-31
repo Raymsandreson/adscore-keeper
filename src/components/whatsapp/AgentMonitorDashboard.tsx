@@ -148,7 +148,7 @@ export function AgentMonitorDashboard() {
       // Fetch leads with location data
       const { data: leads } = await supabase
         .from('leads')
-        .select('id, lead_name, lead_phone, status, board_id, city, state, neighborhood, followup_count, campaign_name')
+        .select('id, lead_name, lead_phone, status, lead_status, board_id, city, state, neighborhood, followup_count, campaign_name, acolhedor')
         .not('lead_phone', 'is', null);
 
       // Fetch boards for stage names
