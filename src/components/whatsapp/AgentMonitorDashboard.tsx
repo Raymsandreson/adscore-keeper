@@ -173,7 +173,8 @@ export function AgentMonitorDashboard() {
       const { data: followups } = await supabase
         .from('lead_followups')
         .select('lead_id, followup_type')
-        .gte('followup_date', startDate);
+        .gte('followup_date', startDate)
+        .lte('followup_date', endDate);
 
       setAgents((agentsData || []) as AgentData[]);
       setConversationAgents((convAgents || []) as ConversationAgent[]);
