@@ -95,7 +95,7 @@ export const useAuth = () => {
           
           // Sync to external DB and get profile from there
           setTimeout(async () => {
-            const syncedProfile = await syncUserToExternal(session);
+            const syncedProfile = await syncUserToExternal(session.user);
             if (syncedProfile) {
               setProfile(syncedProfile);
               cacheSet('auth_profile', syncedProfile, CACHE_TTL.PROFILE);
