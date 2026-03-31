@@ -102,6 +102,8 @@ export function CTWACampaignAutomation() {
   const [sheetLink, setSheetLink] = useState<CampaignLink | null>(null);
   const [convResponseFilter, setConvResponseFilter] = useState<ConvResponseFilter>('all');
   const [convLeadFilter, setConvLeadFilter] = useState<ConvLeadFilter>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [chatPreviewPhone, setChatPreviewPhone] = useState<string | null>(null);
   const [chatPreviewConv, setChatPreviewConv] = useState<ConversationInfo | null>(null);
 
