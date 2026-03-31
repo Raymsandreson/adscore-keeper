@@ -19,6 +19,10 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+import type { Lead } from '@/hooks/useLeads';
+import type { Contact } from '@/hooks/useContacts';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
@@ -86,6 +90,10 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [newNickname, setNewNickname] = useState('');
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [linkedLead, setLinkedLead] = useState<Lead | null>(null);
+  const [linkedContact, setLinkedContact] = useState<Contact | null>(null);
+  const [showLeadEdit, setShowLeadEdit] = useState(false);
+  const [showContactEdit, setShowContactEdit] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
 
@@ -121,6 +129,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     setAiSuggestion(null);
     setAgentInfo(null);
     setCallRecords([]);
+    setLinkedLead(null);
+    setLinkedContact(null);
     const normalizedPhone = phone.replace(/\D/g, '');
     const fetchMessages = async () => {
       const { data } = await supabase
@@ -171,6 +181,28 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     fetchMessages();
     fetchAgent();
     fetchCallRecords();
+
+    // Fetch linked lead & contact
+    const fetchLinkedData = async () => {
+      const last8 = normalizedPhone.slice(-8);
+      const { data: leadData } = await supabase
+        .from('leads')
+        .select('*')
+        .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${last8}%`)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (leadData) setLinkedLead(leadData as any);
+
+      const { data: contactData } = await supabase
+        .from('contacts')
+        .select('*')
+        .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
+        .limit(1)
+        .maybeSingle();
+      if (contactData) setLinkedContact(contactData as any);
+    };
+    fetchLinkedData();
   }, [open, phone]);
 
   // Realtime
@@ -704,6 +736,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   let lastDateLabel = '';
 
   return (
+    <>
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="max-h-[92vh] flex flex-col">
         <DrawerHeader className="pb-2 shrink-0">
@@ -718,8 +751,26 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                 {instanceName && <span className="text-[10px] text-muted-foreground">• {instanceName}</span>}
               </div>
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                {hasLead && <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4">Lead</Badge>}
-                {hasContact && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">Contato</Badge>}
+                {hasLead && (
+                  <Badge
+                    variant="default"
+                    className="text-[10px] px-1.5 py-0 h-4 cursor-pointer hover:opacity-80"
+                    onClick={() => { if (linkedLead) setShowLeadEdit(true); }}
+                    title={linkedLead ? `Abrir lead: ${linkedLead.lead_name}` : 'Lead'}
+                  >
+                    Lead {linkedLead?.lead_name ? `• ${linkedLead.lead_name.slice(0, 20)}` : ''}
+                  </Badge>
+                )}
+                {hasContact && (
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] px-1.5 py-0 h-4 cursor-pointer hover:opacity-80"
+                    onClick={() => { if (linkedContact) setShowContactEdit(true); }}
+                    title={linkedContact ? `Abrir contato: ${linkedContact.full_name}` : 'Contato'}
+                  >
+                    Contato {linkedContact?.full_name ? `• ${linkedContact.full_name.slice(0, 20)}` : ''}
+                  </Badge>
+                )}
                 {!hasLead && !hasContact && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-muted-foreground">Sem vínculo</Badge>}
                 {wasResponded ? (
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800">
@@ -1037,5 +1088,63 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         </div>
       </DrawerContent>
     </Drawer>
+
+    {/* Lead Edit Dialog */}
+    <LeadEditDialog
+      open={showLeadEdit}
+      onOpenChange={(open) => {
+        setShowLeadEdit(open);
+        if (!open && phone) {
+          // Refresh lead data
+          const normalizedPhone = phone.replace(/\D/g, '');
+          const last8 = normalizedPhone.slice(-8);
+          supabase.from('leads').select('*')
+            .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${last8}%`)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+            .then(({ data }) => { if (data) setLinkedLead(data as any); });
+        }
+      }}
+      lead={linkedLead}
+      onSave={async (leadId, updates) => {
+        await supabase.from('leads').update(updates as any).eq('id', leadId);
+        if (linkedLead) setLinkedLead({ ...linkedLead, ...updates } as Lead);
+        toast.success('Lead atualizado!');
+      }}
+      mode="sheet"
+    />
+
+    {/* Contact Detail Sheet */}
+    <ContactDetailSheet
+      contact={linkedContact}
+      open={showContactEdit}
+      onOpenChange={(open) => {
+        setShowContactEdit(open);
+        if (!open && phone) {
+          // Refresh contact data
+          const normalizedPhone = phone.replace(/\D/g, '');
+          const last8 = normalizedPhone.slice(-8);
+          supabase.from('contacts').select('*')
+            .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
+            .limit(1)
+            .maybeSingle()
+            .then(({ data }) => { if (data) setLinkedContact(data as any); });
+        }
+      }}
+      onContactUpdated={() => {
+        if (phone) {
+          const normalizedPhone = phone.replace(/\D/g, '');
+          const last8 = normalizedPhone.slice(-8);
+          supabase.from('contacts').select('*')
+            .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
+            .limit(1)
+            .maybeSingle()
+            .then(({ data }) => { if (data) setLinkedContact(data as any); });
+        }
+      }}
+      mode="sheet"
+    />
+    </>
   );
 }
