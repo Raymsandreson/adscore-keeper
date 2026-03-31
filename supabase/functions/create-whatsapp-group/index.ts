@@ -1097,11 +1097,10 @@ async function forwardDocuments(
 
 async function forwardConversationMedia(
   supabase: any, leadData: any, phone: string, groupId: string,
-  baseUrl: string, creatorInstance: any
+  baseUrl: string, creatorInstance: any, sentUrls: Set<string>
 ) {
   try {
     const leadName = leadData.lead_name || leadData.victim_name || 'Lead'
-    const sentUrls = new Set<string>()
 
     // 1. Forward ZapSign signed documents
     const { data: signedDocs } = await supabase
