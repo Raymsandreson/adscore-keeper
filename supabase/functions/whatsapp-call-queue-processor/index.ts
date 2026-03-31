@@ -195,12 +195,14 @@ async function sendCallFollowupAudio(
 
     const { data: agent } = await supabase
       .from("wjia_command_shortcuts")
-      .select("shortcut_name, reply_voice_id, base_prompt, send_call_followup_audio")
+      .select("shortcut_name, reply_voice_id, base_prompt, send_call_followup_audio, reply_with_audio")
       .eq("id", convAgent.agent_id)
       .maybeSingle();
 
-    if (!agent?.send_call_followup_audio) {
-      console.log("Agent send_call_followup_audio is disabled, skipping");
+    // Send follow-up audio if explicitly enabled OR if agent has audio replies enabled (fallback)
+    const shouldSendAudio = agent?.send_call_followup_audio || agent?.reply_with_audio;
+    if (!shouldSendAudio) {
+      console.log("Agent has neither send_call_followup_audio nor reply_with_audio enabled, skipping");
       return;
     }
 
