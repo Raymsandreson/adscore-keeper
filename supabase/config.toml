@@ -1,6 +1,9 @@
 project_id = "gliigkupoebmlbwyvijp"
 
-[functions.meta-campaign-manager]
+[functions.sync-user-to-external]
+verify_jwt = false
+
+
 verify_jwt = false
 
 [functions.campaign-ai-assistant]

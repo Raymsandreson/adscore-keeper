@@ -18,31 +18,35 @@ Deno.serve(async (req) => {
     const cloudKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const cloudClient = createClient(cloudUrl, cloudKey);
 
-    // Verify the user token
+    // Verify the user token using getClaims (works with Cloud ES256 signing)
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await cloudClient.auth.getUser(token);
+    const { data: claimsData, error: claimsError } = await cloudClient.auth.getClaims(token);
 
-    if (authError || !user) {
+    if (claimsError || !claimsData?.claims?.sub) {
+      console.error('Auth error:', claimsError?.message);
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
+    const userId = claimsData.claims.sub as string;
+    const userEmail = claimsData.claims.email as string;
+    const userMetadata = claimsData.claims.user_metadata as Record<string, any> || {};
+
     // External DB - single source of truth for all data
     const externalUrl = resolveSupabaseUrl();
     const externalKey = resolveServiceRoleKey();
     const externalClient = createClient(externalUrl, externalKey);
 
-    const fullName = user.user_metadata?.full_name || user.email?.split('@')[0] || '';
-    const phone = user.user_metadata?.phone || user.phone || null;
+    const fullName = userMetadata?.full_name || userEmail?.split('@')[0] || '';
 
     // Upsert profile in external DB
     const { data: profile, error: profileError } = await externalClient
       .from('profiles')
       .upsert({
-        user_id: user.id,
-        email: user.email,
+        user_id: userId,
+        email: userEmail,
         full_name: fullName,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' })
@@ -58,7 +62,7 @@ Deno.serve(async (req) => {
     const { data: existingRole } = await externalClient
       .from('user_roles')
       .select('id')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .maybeSingle();
 
     if (!existingRole) {
@@ -71,20 +75,20 @@ Deno.serve(async (req) => {
 
       await externalClient
         .from('user_roles')
-        .upsert({ user_id: user.id, role }, { onConflict: 'user_id,role' });
+        .upsert({ user_id: userId, role }, { onConflict: 'user_id,role' });
     }
 
     // Get the synced profile + role for frontend
     const { data: finalProfile } = await externalClient
       .from('profiles')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single();
 
     const { data: userRole } = await externalClient
       .from('user_roles')
       .select('role')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .maybeSingle();
 
     return new Response(JSON.stringify({
