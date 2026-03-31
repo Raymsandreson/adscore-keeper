@@ -1233,7 +1233,88 @@ export function AgentMonitorDashboard() {
         </SheetContent>
       </Sheet>
 
-      {/* Chat Preview Drawer */}
+      {/* Groups Sheet */}
+      <Sheet open={groupsSheetOpen} onOpenChange={setGroupsSheetOpen}>
+        <SheetContent side="right" className="w-[400px] sm:w-[480px] p-0 flex flex-col">
+          <div className="shrink-0 px-4 py-3 border-b bg-primary/5">
+            <SheetHeader>
+              <SheetTitle className="text-sm flex items-center gap-2">
+                <Users className="h-4 w-4 text-primary" />
+                Grupos Criados
+                <Badge variant="secondary" className="text-[10px] ml-auto">{allGroups.length}</Badge>
+              </SheetTitle>
+            </SheetHeader>
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="p-3 space-y-2">
+              {allGroups.map((g) => (
+                <Card
+                  key={g.id}
+                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => {
+                    setGroupsSheetOpen(false);
+                    setChatPreview({
+                      phone: g.whatsapp_group_id,
+                      instance_name: '',
+                      agent_name: '',
+                      agent_id: '',
+                      is_active: false,
+                      human_paused: false,
+                      contact_name: g.lead_name,
+                      lead_name: g.lead_name,
+                      lead_id: g.id,
+                      lead_status: null,
+                      lead_city: null,
+                      lead_state: null,
+                      lead_acolhedor: g.acolhedor,
+                      board_name: g.board_name,
+                      stage_name: g.stage_name,
+                      last_inbound_at: null,
+                      last_outbound_at: null,
+                      total_messages: 0,
+                      inbound_count: 0,
+                      outbound_count: 0,
+                      followup_count: 0,
+                      time_without_response: null,
+                      campaign_name: null,
+                      activated_by: null,
+                      activated_at: null,
+                      whatsapp_group_id: g.whatsapp_group_id,
+                    });
+                  }}
+                >
+                  <CardContent className="p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-semibold truncate block">{g.lead_name}</span>
+                        <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground flex-wrap">
+                          {g.board_name && g.stage_name && (
+                            <Badge variant="outline" className="text-[9px] h-4">{g.board_name} → {g.stage_name}</Badge>
+                          )}
+                          {g.acolhedor && (
+                            <span className="text-[10px]">👤 {g.acolhedor}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-[10px] text-muted-foreground">{format(new Date(g.created_at), 'dd/MM/yyyy')}</p>
+                        <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto mt-1" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {allGroups.length === 0 && (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Users className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Nenhum grupo criado no período</p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
       <DashboardChatPreview
         open={!!chatPreview}
         onOpenChange={(open) => { if (!open) setChatPreview(null); }}
