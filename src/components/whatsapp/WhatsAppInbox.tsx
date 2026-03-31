@@ -317,7 +317,8 @@ export function WhatsAppInbox() {
   };
 
   const createLeadWithBoard = async (boardId: string) => {
-    if (!selectedConversation || !boardId) return;
+    if (!selectedConversation || !boardId || creatingLead) return;
+    setCreatingLead(true);
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
 
