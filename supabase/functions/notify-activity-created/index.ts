@@ -1,8 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// Use Cloud (local) Supabase for profiles & whatsapp_instances
-const CLOUD_SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
-const CLOUD_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
+
+const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
+const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
 
 
 const corsHeaders = {
