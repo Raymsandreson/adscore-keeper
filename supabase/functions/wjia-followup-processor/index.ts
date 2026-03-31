@@ -453,7 +453,7 @@ async function callAgentReply(supabase: any, phone: string, instanceName: string
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${supabaseKey}`,
+      "Authorization": `Bearer ${cloudAnonKey}`,
     },
     body: JSON.stringify({
       phone,
