@@ -507,6 +507,82 @@ Deno.serve(async (req) => {
       await forwardConversationMedia(supabase, leadData, normalizedPhone || (contact_phone || phone || '').replace(/\D/g, ''), groupId, baseUrl, creatorInstance)
     }
 
+    // Auto-create legal process if configured
+    if (groupId && leadData?.id && settings?.auto_create_process) {
+      try {
+        console.log(`[create-group] Auto-creating process for lead ${leadData.id}`)
+        
+        // Generate case number
+        const nucleusId = settings.process_nucleus_id || null
+        const { data: caseNumber } = await supabase.rpc('generate_case_number', { p_nucleus_id: nucleusId })
+        
+        if (caseNumber) {
+          const caseTitle = `${leadData.lead_name || lead_name} - ${leadData.case_type || 'Processo'}`
+          
+          const { data: newCase, error: caseError } = await supabase
+            .from('legal_cases')
+            .insert({
+              case_number: caseNumber,
+              title: caseTitle,
+              lead_id: leadData.id,
+              nucleus_id: nucleusId,
+              workflow_board_id: settings.process_workflow_board_id || null,
+              status: 'em_andamento',
+              description: `Processo criado automaticamente ao criar grupo WhatsApp "${groupName}"`,
+              action_source: 'system',
+              action_source_detail: 'Criação automática via grupo WhatsApp',
+            })
+            .select('id')
+            .single()
+          
+          if (caseError) {
+            console.error('[create-group] Error creating case:', caseError)
+          } else if (newCase) {
+            console.log(`[create-group] Created case ${caseNumber} (${newCase.id})`)
+            
+            // Create auto activities
+            const activities = settings.process_auto_activities || []
+            for (const act of activities) {
+              if (!act.title) continue
+              
+              // Resolve assigned_to name
+              let assignedName = null
+              if (act.assigned_to) {
+                const { data: profile } = await supabase
+                  .from('profiles')
+                  .select('full_name')
+                  .eq('user_id', act.assigned_to)
+                  .maybeSingle()
+                assignedName = profile?.full_name || null
+              }
+              
+              // Calculate deadline
+              const deadlineDays = act.deadline_days || 1
+              const deadline = new Date()
+              deadline.setDate(deadline.getDate() + deadlineDays)
+              
+              await supabase.from('lead_activities').insert({
+                lead_id: leadData.id,
+                lead_name: leadData.lead_name || lead_name,
+                title: act.title,
+                description: `Atividade do processo ${caseNumber}. Criada automaticamente.`,
+                activity_type: act.activity_type || 'tarefa',
+                status: 'pendente',
+                priority: act.priority || 'normal',
+                assigned_to: act.assigned_to || null,
+                assigned_to_name: assignedName,
+                deadline: deadline.toISOString().split('T')[0],
+              })
+              
+              console.log(`[create-group] Created activity: ${act.title} -> ${assignedName || 'unassigned'}`)
+            }
+          }
+        }
+      } catch (processErr) {
+        console.error('[create-group] Error in auto-create process:', processErr)
+      }
+    }
+
     return new Response(JSON.stringify({
       success: true,
       group_id: groupId,
