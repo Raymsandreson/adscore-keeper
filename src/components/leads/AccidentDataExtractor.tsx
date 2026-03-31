@@ -293,15 +293,22 @@ export function AccidentDataExtractor({
 
       if (error) {
         console.error('Error extracting data:', error);
-        // Try to parse error body for specific messages
-        try {
-          const errorBody = null;
-          if (errorBody?.error) {
-            toast.error(errorBody.error);
-            return;
-          }
-        } catch {}
-        toast.error('Erro ao extrair dados. Tente novamente.');
+        // Extract meaningful error message
+        const errorMsg = error?.message || '';
+        // Try to parse error body from the message (cloudFunctions wraps status + body)
+        const statusMatch = errorMsg.match(/Function error (\d+): (.*)/s);
+        if (statusMatch) {
+          try {
+            const parsed = JSON.parse(statusMatch[2]);
+            if (parsed?.error) {
+              toast.error(parsed.error);
+              return;
+            }
+          } catch {}
+          toast.error(statusMatch[2].slice(0, 200) || 'Erro ao extrair dados');
+        } else {
+          toast.error(errorMsg || 'Erro ao extrair dados. Tente novamente.');
+        }
         return;
       }
 
