@@ -163,7 +163,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     setLoading(true);
     const { data, error } = await supabase
       .from('lead_activities')
-      .select('id, title, description, activity_type, status, priority, deadline, assigned_to_name, created_at, completed_at, what_was_done, current_status_notes, next_steps, notes, matrix_quadrant')
+      .select('id, title, description, activity_type, status, priority, deadline, assigned_to, assigned_to_name, created_at, completed_at, what_was_done, current_status_notes, next_steps, notes, matrix_quadrant')
       .eq('lead_id', leadId)
       .order('created_at', { ascending: false });
 
