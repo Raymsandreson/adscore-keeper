@@ -905,6 +905,8 @@ export function WhatsAppInbox() {
           <WhatsAppConversationList
             conversations={visibleConversations}
             loading={loading}
+            instanceSwitching={instanceSwitching}
+            switchProgress={switchProgress}
             selectedPhone={selectedPhone}
             onSelect={handleSelectConversation}
             boards={boards}
