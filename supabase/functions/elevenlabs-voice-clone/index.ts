@@ -51,14 +51,14 @@ serve(async (req) => {
       const { data: customVoices } = await supabase
         .from("custom_voices")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .order("created_at", { ascending: false });
 
       // Get user's current preference
       const { data: pref } = await supabase
         .from("voice_preferences")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .maybeSingle();
 
       return new Response(JSON.stringify({ presets, custom_voices: customVoices || [], preference: pref }), {
@@ -75,7 +75,7 @@ serve(async (req) => {
       const { data: voiceRecord, error: insertErr } = await supabase
         .from("custom_voices")
         .insert({
-          user_id: user.id,
+          user_id: userId,
           name,
           status: "processing",
           sample_file_urls: sample_urls,
@@ -87,8 +87,8 @@ serve(async (req) => {
 
       // Download audio samples and prepare form data
       const formData = new FormData();
-      formData.append("name", `${name}_${user.id.slice(0, 8)}`);
-      formData.append("description", `Cloned voice for user ${user.id}`);
+      formData.append("name", `${name}_${userId.slice(0, 8)}`);
+      formData.append("description", `Cloned voice for user ${userId}`);
 
       for (let i = 0; i < sample_urls.length; i++) {
         const audioResp = await fetch(sample_urls[i]);
@@ -140,7 +140,7 @@ serve(async (req) => {
       const { error } = await supabase
         .from("voice_preferences")
         .upsert({
-          user_id: user.id,
+          user_id: userId,
           voice_type: voice_type || "preset",
           voice_id,
           voice_name,
@@ -208,7 +208,7 @@ serve(async (req) => {
         .from("custom_voices")
         .delete()
         .eq("id", record_id)
-        .eq("user_id", user.id);
+        .eq("user_id", userId);
 
       if (error) throw error;
 
@@ -217,7 +217,7 @@ serve(async (req) => {
         await supabase
           .from("voice_preferences")
           .delete()
-          .eq("user_id", user.id)
+          .eq("user_id", userId)
           .eq("voice_id", voice_id);
       }
 
