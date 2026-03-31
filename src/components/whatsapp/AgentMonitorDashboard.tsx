@@ -631,6 +631,17 @@ export function AgentMonitorDashboard() {
             <p className="text-[10px] text-muted-foreground">&gt;1h sem resposta</p>
           </CardContent>
         </Card>
+
+        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setGroupsSheetOpen(true)}>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <Users className="h-3.5 w-3.5 text-primary" />
+              Grupos Criados
+            </div>
+            <p className="text-2xl font-bold text-primary">{allGroups.length}</p>
+            <p className="text-[10px] text-muted-foreground">no período</p>
+          </CardContent>
+        </Card>
       </div>
 
       <Tabs defaultValue="agents" className="space-y-4">
