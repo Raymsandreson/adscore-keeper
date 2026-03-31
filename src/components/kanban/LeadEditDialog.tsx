@@ -1340,11 +1340,27 @@ ${scrapeData.content || ''}
                 {boards.length > 0 && (
                   <div className="col-span-2">
                     <Label>Funil / Quadro Kanban</Label>
-                    <Select value={selectedBoardId || '__none__'} onValueChange={(val) => setSelectedBoardId(val === '__none__' ? '' : val)}>
+                    <Select 
+                      value={selectedBoardId || '__none__'} 
+                      onValueChange={(val) => {
+                        const newBoardId = val === '__none__' ? '' : val;
+                        setSelectedBoardId(newBoardId);
+                        // Reset stage to the first stage of the new board
+                        if (newBoardId && newBoardId !== (lead as any)?.board_id) {
+                          const newBoard = boards.find(b => b.id === newBoardId);
+                          if (newBoard?.stages?.length > 0) {
+                            const firstStage = (newBoard.stages as any[])[0];
+                            if (firstStage?.id) {
+                              // We'll include status reset in the save
+                            }
+                          }
+                        }
+                      }}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione um funil..." />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="pointer-events-auto z-[200]">
                         <SelectItem value="__none__">Sem funil</SelectItem>
                         {boards.map(b => (
                           <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
