@@ -300,8 +300,8 @@ export function AgentMonitorDashboard() {
         if (c.stage_name) {
           stat.conversations_by_stage[c.stage_name] = (stat.conversations_by_stage[c.stage_name] || 0) + 1;
         }
-        if (c.lead_status === 'closed' || c.lead_status === 'converted') stat.leads_closed++;
-        if (c.lead_status === 'refused' || c.lead_status === 'lost') stat.leads_refused++;
+        if (c.lead_status === 'closed') stat.leads_closed++;
+        if (c.lead_status === 'refused') stat.leads_refused++;
         if (c.time_without_response && c.time_without_response > 60) stat.without_response_count++;
       });
 
