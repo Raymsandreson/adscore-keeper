@@ -299,6 +299,21 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const [editTitle, setEditTitle] = useState(legalCase.title || '');
   const [editDescription, setEditDescription] = useState(legalCase.description || '');
   const [editNotes, setEditNotes] = useState(legalCase.notes || '');
+  const [selectedProcesses, setSelectedProcesses] = useState<Set<string>>(new Set());
+
+  const PREDEFINED_PROCESSES = [
+    'Indenização', 'Relatório de Acidente', 'TRCT + Verbas', 'Seguro de Vida',
+    'Pensão por morte', 'Inquérito Policial', 'Organizar docs', 'Onboarding',
+  ];
+
+  const toggleProcess = (name: string) => {
+    setSelectedProcesses(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
 
   const loadDetails = useCallback(() => {
     if (!expanded) return;
