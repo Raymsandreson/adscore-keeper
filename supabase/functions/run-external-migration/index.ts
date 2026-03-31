@@ -7,41 +7,17 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const connStr = (Deno.env.get('EXTERNAL_SUPABASE_URL') || '').trim();
+    const connStr = (Deno.env.get('EXTERNAL_DB_URL') || '').trim();
     const results: any = {};
 
-    // Parse the connection string manually to handle special chars in password
-    const withoutScheme = connStr.replace(/^postgresql:\/\//, '');
-    const lastAtIndex = withoutScheme.lastIndexOf('@');
-    if (lastAtIndex === -1) {
-      return new Response(JSON.stringify({ error: 'Cannot parse connection string' }), { 
+    if (!connStr) {
+      return new Response(JSON.stringify({ error: 'EXTERNAL_DB_URL not configured' }), { 
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
     }
-    const userPass = withoutScheme.substring(0, lastAtIndex);
-    const hostPortDb = withoutScheme.substring(lastAtIndex + 1);
-    const firstColon = userPass.indexOf(':');
-    const user = decodeURIComponent(userPass.substring(0, firstColon));
-    const password = decodeURIComponent(userPass.substring(firstColon + 1));
-    const hostMatch = hostPortDb.match(/^([^:]+):(\d+)\/(.+)$/);
-    if (!hostMatch) {
-      return new Response(JSON.stringify({ error: 'Cannot parse host portion' }), { 
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      });
-    }
-    const [, host, port, database] = hostMatch;
-    results.host = host;
-    results.user = user;
 
     const { default: postgres } = await import('https://deno.land/x/postgresjs@v3.4.4/mod.js');
-    const sql = postgres({
-      host,
-      port: parseInt(port),
-      database,
-      username: user,
-      password,
-      ssl: 'require',
-    });
+    const sql = postgres(connStr, { ssl: 'require' });
 
     // Check which DB we're on
     const dbCheck = await sql`SELECT current_database()`;
