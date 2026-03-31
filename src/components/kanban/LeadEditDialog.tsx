@@ -1365,7 +1365,7 @@ ${scrapeData.content || ''}
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione um funil..." />
                       </SelectTrigger>
-                      <SelectContent className="pointer-events-auto z-[200]">
+                      <SelectContent className="pointer-events-auto z-[9999]" position="popper" sideOffset={4}>
                         <SelectItem value="__none__">Sem funil</SelectItem>
                         {boards.map(b => (
                           <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
