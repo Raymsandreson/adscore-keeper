@@ -188,7 +188,7 @@ Deno.serve(async (req) => {
         }
       } else if (recipientPhones.length > 0) {
         // Fallback: match phones to profiles
-        const { data: profiles } = await supabase
+        const { data: profiles } = await cloudDb
           .from('profiles')
           .select('user_id, phone, full_name, default_instance_id')
           .in('phone', recipientPhones)
