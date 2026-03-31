@@ -914,6 +914,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     messages,
     conversations,
     loading,
+    instanceSwitching,
+    switchProgress,
     instances,
     instanceStats,
     statsLoading,
