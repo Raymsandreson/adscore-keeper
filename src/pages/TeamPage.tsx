@@ -73,6 +73,7 @@ function TeamTabContent({ tab, availableCards }: { tab: string; availableCards: 
     case 'traffic': return <TrafficActivityPanel />;
     case 'members': return <TeamManagement />;
     case 'teams': return <TeamsManager />;
+    case 'ambassadors': return <AmbassadorCentral />;
     case 'career': return <CareerPlanManager />;
     case 'routines': return <MemberRoutineManager />;
     case 'whatsapp': return <WhatsAppInstancePermissions />;
