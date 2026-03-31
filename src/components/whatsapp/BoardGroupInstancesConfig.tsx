@@ -146,6 +146,7 @@ export function BoardGroupInstancesConfig() {
   const [adminNotes, setAdminNotes] = useState<string | null>(null);
   const [nuclei, setNuclei] = useState<{id: string; name: string; prefix: string}[]>([]);
   const [teamMembers, setTeamMembers] = useState<{user_id: string; full_name: string}[]>([]);
+  const [products, setProducts] = useState<{id: string; name: string; nucleus_id: string | null}[]>([]);
 
   useEffect(() => {
     fetchData();
