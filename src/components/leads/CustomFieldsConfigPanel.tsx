@@ -132,6 +132,9 @@ export function CustomFieldsConfigPanel({
     setFieldType(field.field_type);
     setFieldOptions(field.field_options?.join(', ') || '');
     setIsRequired(field.is_required);
+    // Load existing stage requirements for this field
+    const currentStages = getStagesForField(field.id);
+    setSelectedStageIds(currentStages);
     setFieldDialogOpen(true);
   };
 
