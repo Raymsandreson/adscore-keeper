@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
 import { cacheSet, cacheGet, CACHE_TTL } from '@/lib/offlineCache';
-import { invokeCloudFunction } from '@/lib/lovableCloudFunctions';
+
 
 interface Profile {
   id: string;
