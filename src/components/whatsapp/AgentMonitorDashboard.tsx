@@ -393,8 +393,10 @@ export function AgentMonitorDashboard() {
       case 'active': filtered = conversations.filter(c => c.is_active && !c.human_paused); break;
       case 'paused': filtered = conversations.filter(c => c.human_paused); break;
       case 'no_response': filtered = conversations.filter(c => c.time_without_response && c.time_without_response > 60); break;
-      case 'closed': filtered = conversations.filter(c => c.lead_status === 'closed' || c.lead_status === 'converted'); break;
-      case 'refused': filtered = conversations.filter(c => c.lead_status === 'refused' || c.lead_status === 'lost'); break;
+      case 'closed': filtered = conversations.filter(c => c.lead_status === 'closed'); break;
+      case 'refused': filtered = conversations.filter(c => c.lead_status === 'refused'); break;
+      case 'unviable': filtered = conversations.filter(c => c.lead_status === 'unviable'); break;
+      case 'active_leads': filtered = conversations.filter(c => c.lead_status === 'active'); break;
       case 'followups': filtered = conversations.filter(c => c.followup_count > 0); break;
       case 'msgs_sent': filtered = conversations.filter(c => c.outbound_count > 0); break;
       default: filtered = conversations;
