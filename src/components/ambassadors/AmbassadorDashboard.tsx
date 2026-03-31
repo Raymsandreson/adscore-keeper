@@ -6,16 +6,16 @@ import { Loader2 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 
 export function AmbassadorDashboard() {
-  const { ambassadors, campaigns, referrals, links, loading } = useAmbassadors();
+  const { ambassadors, campaigns, referrals, loading } = useAmbassadors();
 
   const stats = useMemo(() => {
-    const activeAmbassadors = ambassadors.filter(a => a.is_active).length;
+    const totalAmbassadors = ambassadors.length;
     const activeCampaigns = campaigns.filter(c => c.is_active).length;
     const totalReferrals = referrals.length;
     const convertedReferrals = referrals.filter(r => r.status === 'converted').length;
     const conversionRate = totalReferrals > 0 ? Math.round((convertedReferrals / totalReferrals) * 100) : 0;
 
-    return { activeAmbassadors, activeCampaigns, totalReferrals, convertedReferrals, conversionRate };
+    return { totalAmbassadors, activeCampaigns, totalReferrals, convertedReferrals, conversionRate };
   }, [ambassadors, campaigns, referrals]);
 
   const campaignProgress = useMemo(() => {
@@ -45,11 +45,7 @@ export function AmbassadorDashboard() {
   }, [campaigns, referrals]);
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   }
 
   return (
@@ -60,9 +56,9 @@ export function AmbassadorDashboard() {
           <CardContent className="pt-4 pb-3 px-4">
             <div className="flex items-center gap-2 mb-1">
               <Users className="h-4 w-4 text-primary" />
-              <span className="text-xs text-muted-foreground">Embaixadores Ativos</span>
+              <span className="text-xs text-muted-foreground">Embaixadores</span>
             </div>
-            <p className="text-2xl font-bold">{stats.activeAmbassadors}</p>
+            <p className="text-2xl font-bold">{stats.totalAmbassadors}</p>
           </CardContent>
         </Card>
         <Card>
