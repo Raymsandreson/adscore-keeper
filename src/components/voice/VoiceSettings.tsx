@@ -48,6 +48,11 @@ export function VoiceSettings() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const getUserId = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.user?.id;
+  };
+
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
