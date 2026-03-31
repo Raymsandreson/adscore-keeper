@@ -40,7 +40,7 @@ interface EcosystemConnectionsMapProps {
 }
 
 export function EcosystemConnectionsMap({
-  nuclei, products, companies, boards, teams, teamMembers, profiles,
+  nuclei, products, companies, boards, teams, teamMembers,
 }: EcosystemConnectionsMapProps) {
   const [selectedType, setSelectedType] = useState<EntityType | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
