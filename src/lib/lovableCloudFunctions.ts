@@ -7,15 +7,17 @@ const LOVABLE_CLOUD_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ
 
 export async function invokeCloudFunction<T = any>(
   functionName: string,
-  body?: Record<string, any>
+  body?: Record<string, any>,
+  options?: { authToken?: string }
 ): Promise<{ data: T | null; error: Error | null }> {
   try {
     const url = `${LOVABLE_CLOUD_URL}/functions/v1/${functionName}`;
+    const bearerToken = options?.authToken || LOVABLE_CLOUD_ANON_KEY;
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${LOVABLE_CLOUD_ANON_KEY}`,
+        'Authorization': `Bearer ${bearerToken}`,
         'apikey': LOVABLE_CLOUD_ANON_KEY,
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -42,7 +44,7 @@ export async function invokeCloudFunction<T = any>(
 // Compatible proxy that mimics supabase.functions interface
 // Use: replace `supabase.functions.invoke(...)` with `cloudFunctions.invoke(...)`
 export const cloudFunctions = {
-  invoke: async <T = any>(functionName: string, options?: { body?: any }): Promise<{ data: T | null; error: Error | null }> => {
-    return invokeCloudFunction<T>(functionName, options?.body);
+  invoke: async <T = any>(functionName: string, options?: { body?: any; authToken?: string }): Promise<{ data: T | null; error: Error | null }> => {
+    return invokeCloudFunction<T>(functionName, options?.body, { authToken: options?.authToken });
   }
 };

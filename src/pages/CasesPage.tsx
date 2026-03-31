@@ -93,6 +93,7 @@ export default function CasesPage() {
           sheet_name: sheetName.trim() || undefined,
           nucleus_filter: nucleusFilter !== 'all' ? nucleusFilter : undefined,
         },
+        authToken: session?.access_token,
       });
 
       if (response.error) throw new Error(response.error.message);
