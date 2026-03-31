@@ -151,6 +151,21 @@ serve(async (req) => {
         user_id: "00000000-0000-0000-0000-000000000000", // system
       });
 
+      // Register the call as a message in the chat so it appears in the conversation
+      const callContactName = (nextCall as any).contact_name || (nextCall as any).lead_name || phone;
+      await supabase.from("whatsapp_messages").insert({
+        phone,
+        instance_name: instanceName,
+        message_text: `📞 Ligação automática realizada para ${callContactName}`,
+        message_type: "text",
+        direction: "outbound",
+        contact_name: (nextCall as any).contact_name || null,
+        lead_id: (nextCall as any).lead_id || null,
+        external_message_id: `auto_call_${Date.now()}`,
+        action_source: "system",
+        action_source_detail: "Ligação automática - Discadora IA",
+      });
+
       // Send follow-up audio message after the call
       await sendCallFollowupAudio(supabase, phone, instanceName, instance, (nextCall as any).contact_name || (nextCall as any).lead_name);
     }
