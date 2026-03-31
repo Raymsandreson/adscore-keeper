@@ -36,8 +36,8 @@ Deno.serve(async (req) => {
     const userPass = withoutScheme.substring(0, lastAtIndex);
     const hostPortDb = withoutScheme.substring(lastAtIndex + 1);
     const firstColon = userPass.indexOf(':');
-    const user = userPass.substring(0, firstColon);
-    const password = userPass.substring(firstColon + 1);
+    const user = decodeURIComponent(userPass.substring(0, firstColon));
+    const password = decodeURIComponent(userPass.substring(firstColon + 1));
     const hostMatch = hostPortDb.match(/^([^:]+):(\d+)\/(.+)$/);
     if (!hostMatch) {
       return new Response(JSON.stringify({ error: 'Cannot parse EXTERNAL_DB_URL host portion' }), { 
