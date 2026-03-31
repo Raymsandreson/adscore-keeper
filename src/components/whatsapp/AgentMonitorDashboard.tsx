@@ -396,17 +396,17 @@ export function AgentMonitorDashboard() {
     if (!kpiSheet) return [];
     let filtered: ConversationDetail[];
     switch (kpiSheet.filter) {
-      case 'total': filtered = conversations; break;
-      case 'active': filtered = conversations.filter(c => c.is_active && !c.human_paused); break;
-      case 'paused': filtered = conversations.filter(c => c.human_paused); break;
-      case 'no_response': filtered = conversations.filter(c => c.time_without_response && c.time_without_response > 60); break;
-      case 'closed': filtered = conversations.filter(c => c.lead_status === 'closed'); break;
-      case 'refused': filtered = conversations.filter(c => c.lead_status === 'refused'); break;
-      case 'unviable': filtered = conversations.filter(c => c.lead_status === 'unviable'); break;
-      case 'active_leads': filtered = conversations.filter(c => c.lead_status === 'active'); break;
-      case 'followups': filtered = conversations.filter(c => c.followup_count > 0); break;
-      case 'msgs_sent': filtered = conversations.filter(c => c.outbound_count > 0); break;
-      default: filtered = conversations;
+      case 'total': filtered = kpiConversations; break;
+      case 'active': filtered = kpiConversations.filter(c => c.is_active && !c.human_paused); break;
+      case 'paused': filtered = kpiConversations.filter(c => c.human_paused); break;
+      case 'no_response': filtered = kpiConversations.filter(c => c.time_without_response && c.time_without_response > 60); break;
+      case 'closed': filtered = kpiConversations.filter(c => c.lead_status === 'closed'); break;
+      case 'refused': filtered = kpiConversations.filter(c => c.lead_status === 'refused'); break;
+      case 'unviable': filtered = kpiConversations.filter(c => c.lead_status === 'unviable'); break;
+      case 'active_leads': filtered = kpiConversations.filter(c => c.lead_status === 'active'); break;
+      case 'followups': filtered = kpiConversations.filter(c => c.followup_count > 0); break;
+      case 'msgs_sent': filtered = kpiConversations.filter(c => c.outbound_count > 0); break;
+      default: filtered = kpiConversations;
     }
     if (sheetAgentFilter !== 'all') filtered = filtered.filter(c => c.agent_id === sheetAgentFilter);
     if (sheetActivatedByFilter !== 'all') filtered = filtered.filter(c => activatedByLabel(c.activated_by) === sheetActivatedByFilter);
