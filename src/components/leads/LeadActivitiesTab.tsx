@@ -58,6 +58,8 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   const [editWhatWasDone, setEditWhatWasDone] = useState('');
   const [editCurrentStatusNotes, setEditCurrentStatusNotes] = useState('');
   const [editNextSteps, setEditNextSteps] = useState('');
+  const [editAssignedTo, setEditAssignedTo] = useState('');
+  const [editAssignedToName, setEditAssignedToName] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
   const [aiSuggestingType, setAiSuggestingType] = useState(false);
