@@ -356,19 +356,19 @@ export function AgentMonitorDashboard() {
 
   // Global KPIs
   const globalStats = useMemo(() => {
-    const total = filteredConversations.length;
-    const active = filteredConversations.filter(c => c.is_active && !c.human_paused).length;
-    const paused = filteredConversations.filter(c => c.human_paused).length;
-    const noResponse = filteredConversations.filter(c => c.time_without_response && c.time_without_response > 60).length;
-    const totalFollowups = filteredConversations.reduce((sum, c) => sum + c.followup_count, 0);
-    const totalMsgsSent = filteredConversations.reduce((sum, c) => sum + c.outbound_count, 0);
-    const totalMsgsReceived = filteredConversations.reduce((sum, c) => sum + c.inbound_count, 0);
-    const closed = filteredConversations.filter(c => c.lead_status === 'closed').length;
-    const refused = filteredConversations.filter(c => c.lead_status === 'refused').length;
-    const unviable = filteredConversations.filter(c => c.lead_status === 'unviable').length;
-    const activeLeads = filteredConversations.filter(c => c.lead_status === 'active').length;
+    const total = kpiConversations.length;
+    const active = kpiConversations.filter(c => c.is_active && !c.human_paused).length;
+    const paused = kpiConversations.filter(c => c.human_paused).length;
+    const noResponse = kpiConversations.filter(c => c.time_without_response && c.time_without_response > 60).length;
+    const totalFollowups = kpiConversations.reduce((sum, c) => sum + c.followup_count, 0);
+    const totalMsgsSent = kpiConversations.reduce((sum, c) => sum + c.outbound_count, 0);
+    const totalMsgsReceived = kpiConversations.reduce((sum, c) => sum + c.inbound_count, 0);
+    const closed = kpiConversations.filter(c => c.lead_status === 'closed').length;
+    const refused = kpiConversations.filter(c => c.lead_status === 'refused').length;
+    const unviable = kpiConversations.filter(c => c.lead_status === 'unviable').length;
+    const activeLeads = kpiConversations.filter(c => c.lead_status === 'active').length;
     return { total, active, paused, noResponse, totalFollowups, totalMsgsSent, totalMsgsReceived, closed, refused, unviable, activeLeads };
-  }, [filteredConversations]);
+  }, [kpiConversations]);
 
   // Get unique acolhedor values for filter
   const acolhedorOptions = useMemo(() => {
