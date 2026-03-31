@@ -419,55 +419,36 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_window_start_hour: form.send_window_start_hour ?? 8,
       send_window_end_hour: form.send_window_end_hour ?? 20,
       send_call_followup_audio: form.send_call_followup_audio ?? false,
-      lead_status_filter: leadStatusFilter.length > 0 ? leadStatusFilter : null,
-      lead_status_board_ids: leadStatusBoardIds.length > 0 ? leadStatusBoardIds : null,
     };
 
-    // Separate filter fields that may fail due to PostgREST cache
-    const { lead_status_board_ids, lead_status_filter, ...corePayload } = payload;
+    // Filter fields are stored separately in agent_filter_settings
+    const corePayload = payload;
     
     let error;
+    let savedId = editingId;
     if (editingId) {
-      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).update(payload).eq('id', editingId));
-      // If error is about schema cache, save core fields then use edge function for filters
-      if (error?.message?.includes('lead_status_board_ids') || error?.message?.includes('lead_status_filter') || error?.message?.includes('schema cache') || error?.message?.includes('Could not find')) {
-        const { error: retryError } = await (supabase.from('wjia_command_shortcuts') as any).update(corePayload).eq('id', editingId);
-        if (retryError) { toast.error(retryError.message); return; }
-        // Save filter fields via edge function (direct REST API bypass)
-        const { error: filterError } = await cloudFunctions.invoke('update-agent-filters', { body: {
-          agent_id: editingId,
-          lead_status_board_ids: lead_status_board_ids || null,
-          lead_status_filter: lead_status_filter || null,
-        }});
-        if (filterError) {
-          console.warn('Filter save via edge function failed:', filterError);
-          toast.warning('Salvo, mas filtro de funil pode não ter sido salvo.');
-        } else {
-          toast.success('Agente atualizado!');
-        }
-        resetForm();
-        onReload();
-        return;
-      }
+      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).update(corePayload).eq('id', editingId));
     } else {
-      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).insert({ ...payload, display_order: shortcuts.length }));
-      if (error?.message?.includes('lead_status_board_ids') || error?.message?.includes('lead_status_filter') || error?.message?.includes('schema cache') || error?.message?.includes('Could not find')) {
-        const { data: insertData, error: retryError } = await (supabase.from('wjia_command_shortcuts') as any).insert({ ...corePayload, display_order: shortcuts.length }).select('id').single();
-        if (retryError) { toast.error(retryError.message); return; }
-        if (insertData?.id) {
-          await cloudFunctions.invoke('update-agent-filters', { body: {
-            agent_id: insertData.id,
-            lead_status_board_ids: lead_status_board_ids || null,
-            lead_status_filter: lead_status_filter || null,
-          }});
-        }
-        toast.success('Agente criado!');
-        resetForm();
-        onReload();
-        return;
-      }
+      const { data: insertData, error: insertError } = await (supabase.from('wjia_command_shortcuts') as any)
+        .insert({ ...corePayload, display_order: shortcuts.length }).select('id').single();
+      error = insertError;
+      savedId = insertData?.id;
     }
     if (error) { toast.error(error.message); return; }
+
+    // Save filter fields via edge function (stored in agent_filter_settings table)
+    if (savedId && (leadStatusBoardIds.length > 0 || leadStatusFilter.length > 0)) {
+      const { error: filterError } = await cloudFunctions.invoke('update-agent-filters', { body: {
+        agent_id: savedId,
+        lead_status_board_ids: leadStatusBoardIds.length > 0 ? leadStatusBoardIds : null,
+        lead_status_filter: leadStatusFilter.length > 0 ? leadStatusFilter : null,
+      }});
+      if (filterError) {
+        console.warn('Filter save failed:', filterError);
+        toast.warning('Salvo, mas filtro de funil pode não ter sido salvo.');
+      }
+    }
+
     toast.success(editingId ? 'Agente atualizado!' : 'Agente criado!');
     resetForm();
     onReload();
