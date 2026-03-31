@@ -79,32 +79,54 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
   
 
-  const fetchInstances = async () => {
+  const fetchInstances = useCallback(async () => {
     if (!user) return;
-    
-    const { data: permissions } = await supabase
-      .from('whatsapp_instance_users')
-      .select('instance_id')
-      .eq('user_id', user.id);
-    
-    if (!permissions || permissions.length === 0) {
-      setInstances([]);
-      setStatsLoading(false);
-      return;
-    }
 
-    const allowedIds = permissions.map(p => p.instance_id);
-    const { data, error } = await supabase
-      .from('whatsapp_instances')
-      .select('*')
-      .eq('is_active', true)
-      .in('id', allowedIds)
-      .order('instance_name');
-    
-    if (!error && data) {
-      setInstances(data as WhatsAppInstance[]);
+    try {
+      const [{ data: permissions, error: permissionsError }, { data: profile, error: profileError }] = await Promise.all([
+        supabase
+          .from('whatsapp_instance_users')
+          .select('instance_id')
+          .eq('user_id', user.id),
+        supabase
+          .from('profiles')
+          .select('default_instance_id')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+      ]);
+
+      if (permissionsError) throw permissionsError;
+      if (profileError) throw profileError;
+
+      const allowedIds = new Set((permissions || []).map((permission) => permission.instance_id));
+
+      if (profile?.default_instance_id) {
+        allowedIds.add(profile.default_instance_id);
+      }
+
+      let query = supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('is_active', true)
+        .order('instance_name');
+
+      // Backward compatibility: when no per-user mapping exists yet,
+      // keep the inbox usable by loading active instances instead of zeroing the UI.
+      if (allowedIds.size > 0) {
+        query = query.in('id', Array.from(allowedIds));
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      setInstances((data || []) as WhatsAppInstance[]);
+    } catch (error) {
+      console.error('Error fetching WhatsApp instances:', error);
+      setInstances([]);
+    } finally {
+      setStatsLoading(false);
     }
-  };
+  }, [user]);
 
   // Lightweight stats fetch — only counts, no full message data
   const fetchInstanceStats = useCallback(async () => {
@@ -649,7 +671,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   // Fetch instances on mount
   useEffect(() => {
     if (user) fetchInstances();
-  }, [user]);
+  }, [user, fetchInstances]);
 
   // Fetch lightweight stats when instances load (NOT full messages)
   useEffect(() => {
