@@ -15,38 +15,31 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Use direct PostgreSQL connection via the internal Lovable Cloud DB
-    // The wjia_command_shortcuts table is on the EXTERNAL Supabase project
-    // We connect using the Supabase Management API approach: 
-    // external project ref = kmedldlepwiityjsdahz
-    const externalUrl = (Deno.env.get('EXTERNAL_SUPABASE_URL') || '').trim();
-    const serviceKey = (Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || '').trim();
+    // Use SUPABASE_DB_URL for direct PostgreSQL connection to external DB
+    const dbUrl = (Deno.env.get('SUPABASE_DB_URL') || '').trim();
 
-    if (!externalUrl || !serviceKey) {
-      return new Response(JSON.stringify({ error: 'External credentials not configured' }), { 
+    if (!dbUrl) {
+      return new Response(JSON.stringify({ error: 'SUPABASE_DB_URL not configured' }), { 
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
     }
 
-    // Use PostgreSQL direct connection via the pooler
-    // External project: kmedldlepwiityjsdahz
-    // Connection: postgresql://postgres.kmedldlepwiityjsdahz:[password]@aws-0-sa-east-1.pooler.supabase.com:6543/postgres
-    // We can extract the ref from EXTERNAL_SUPABASE_URL
-    const refMatch = externalUrl.match(/https?:\/\/([^.]+)\.supabase\.co/);
-    if (!refMatch) {
-      return new Response(JSON.stringify({ error: 'Cannot parse external ref from URL' }), { 
+    // Parse connection string: postgresql://user:password@host:port/dbname
+    const match = dbUrl.match(/^postgresql:\/\/([^:]+):(.+)@([^:]+):(\d+)\/(.+)$/);
+    if (!match) {
+      return new Response(JSON.stringify({ error: 'Cannot parse SUPABASE_DB_URL' }), { 
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
     }
-    const externalRef = refMatch[1];
+    const [, user, password, host, port, database] = match;
 
     const { default: postgres } = await import('https://deno.land/x/postgresjs@v3.4.4/mod.js');
     const sql = postgres({
-      host: `aws-0-sa-east-1.pooler.supabase.com`,
-      port: 6543,
-      database: 'postgres',
-      username: `postgres.${externalRef}`,
-      password: serviceKey,
+      host,
+      port: parseInt(port),
+      database,
+      username: user,
+      password,
       ssl: 'require',
     });
 
