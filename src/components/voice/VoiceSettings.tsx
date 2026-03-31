@@ -48,6 +48,11 @@ export function VoiceSettings() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const getUserId = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.user?.id;
+  };
+
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -95,8 +100,9 @@ export function VoiceSettings() {
 
   const loadVoices = async () => {
     try {
+      const uid = await getUserId();
       const { data, error } = await cloudFunctions.invoke('elevenlabs-voice-clone', {
-        body: { action: 'list_presets' },
+        body: { action: 'list_presets', user_id: uid },
       });
       if (error) throw error;
       setPresets(data.presets || []);
@@ -113,8 +119,9 @@ export function VoiceSettings() {
   const selectVoice = async (voiceType: string, voiceId: string, voiceName: string) => {
     setSaving(true);
     try {
+      const uid = await getUserId();
       const { error } = await cloudFunctions.invoke('elevenlabs-voice-clone', {
-        body: { action: 'set_preference', voice_type: voiceType, voice_id: voiceId, voice_name: voiceName },
+        body: { action: 'set_preference', voice_type: voiceType, voice_id: voiceId, voice_name: voiceName, user_id: uid },
       });
       if (error) throw error;
       setPreference({ voice_type: voiceType, voice_id: voiceId, voice_name: voiceName });
@@ -129,8 +136,9 @@ export function VoiceSettings() {
   const deleteVoice = async (recordId: string, elevenlabsVoiceId: string | null) => {
     if (!confirm('Tem certeza que deseja excluir esta voz?')) return;
     try {
+      const uid = await getUserId();
       const { error } = await cloudFunctions.invoke('elevenlabs-voice-clone', {
-        body: { action: 'delete', record_id: recordId, voice_id: elevenlabsVoiceId },
+        body: { action: 'delete', record_id: recordId, voice_id: elevenlabsVoiceId, user_id: uid },
       });
       if (error) throw error;
       toast.success('Voz excluída!');
@@ -150,6 +158,7 @@ export function VoiceSettings() {
 
     setPreviewingId(voiceId);
     try {
+      const uid = await getUserId();
       const response = await fetch(
         `https://gliigkupoebmlbwyvijp.supabase.co/functions/v1/elevenlabs-voice-clone`,
         {
@@ -159,7 +168,7 @@ export function VoiceSettings() {
             apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
             Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
           },
-          body: JSON.stringify({ action: 'preview', voice_id: voiceId }),
+          body: JSON.stringify({ action: 'preview', voice_id: voiceId, user_id: uid }),
         }
       );
 
@@ -205,8 +214,9 @@ export function VoiceSettings() {
         if (urlData?.publicUrl) sampleUrls.push(urlData.publicUrl);
       }
 
+      const uid = await getUserId();
       const { data, error } = await cloudFunctions.invoke('elevenlabs-voice-clone', {
-        body: { action: 'clone', name: cloneName, sample_urls: sampleUrls },
+        body: { action: 'clone', name: cloneName, sample_urls: sampleUrls, user_id: uid },
       });
 
       if (error) throw error;
