@@ -97,12 +97,25 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     });
   };
 
-  const autoCreateProcesses = async (caseId: string, caseLeadId: string) => {
+  // Mapping of process title → default assigned user for CASO-type cases
+  const CASO_PROCESS_ASSIGNMENTS: Record<string, { userId: string; userName: string }> = {
+    'Seguro de Vida': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
+    'Benefício INSS': { userId: '4dba2de0-5357-49ab-8bf9-4c248a1440de', userName: 'Gisele' },
+    'Inquérito Policial': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
+    'Organizar docs': { userId: '7f41a35e-7d98-4ade-8270-52d727433e6a', userName: 'Abderaman' },
+    'Onboarding': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
+    'Indenização': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
+    'Relatório de Acidente': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
+    'TRCT + Verbas': { userId: '44fd2301-47c6-4912-a583-0213b1c368eb', userName: 'João Vitor' },
+  };
+
+  const autoCreateProcesses = async (caseId: string, caseLeadId: string, caseNumber?: string) => {
     if (selectedProcesses.size === 0) return;
     const { data: { user } } = await supabase.auth.getUser();
+    const isCaso = !caseNumber || caseNumber.startsWith('CASO');
     for (const title of selectedProcesses) {
       try {
-        await supabase.from('lead_processes').insert({
+        const { data: savedProcess } = await supabase.from('lead_processes').insert({
           lead_id: caseLeadId,
           case_id: caseId,
           process_type: 'administrativo',
@@ -110,12 +123,37 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
           status: 'em_andamento',
           started_at: new Date().toISOString().slice(0, 10),
           created_by: user?.id,
-        } as any);
+        } as any).select('id').single();
+
+        // Auto-create activity for CASO-type cases
+        if (isCaso && CASO_PROCESS_ASSIGNMENTS[title]) {
+          const assignment = CASO_PROCESS_ASSIGNMENTS[title];
+          try {
+            await supabase.from('lead_activities').insert({
+              lead_id: caseLeadId,
+              title: `Dar andamento - ${title}`,
+              description: `Atividade criada automaticamente para o processo: ${title}`,
+              activity_type: 'tarefa',
+              status: 'pendente',
+              priority: 'normal',
+              assigned_to: assignment.userId,
+              assigned_to_name: assignment.userName,
+              created_by: user?.id,
+              deadline: new Date().toISOString().slice(0, 10),
+              process_id: savedProcess?.id || null,
+            } as any);
+          } catch (actErr) {
+            console.warn(`Error creating activity for process "${title}":`, actErr);
+          }
+        }
       } catch (err) {
         console.warn(`Error creating process "${title}":`, err);
       }
     }
     toast.success(`${selectedProcesses.size} processo(s) criado(s) automaticamente`);
+    if (isCaso && Array.from(selectedProcesses).some(t => CASO_PROCESS_ASSIGNMENTS[t])) {
+      toast.success('Atividades atribuídas automaticamente');
+    }
   };
 
   const handleSaveCase = async () => {
@@ -129,7 +167,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
       } as Partial<LegalCase>);
       // Auto-create selected processes on edit too
       if (selectedProcesses.size > 0) {
-        await autoCreateProcesses(editingCase.id, leadId);
+        await autoCreateProcesses(editingCase.id, leadId, editingCase.case_number);
       }
     } else {
       const newCase = await createCase({
@@ -143,7 +181,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
       setExpandedCaseId(newCase.id);
       // Auto-create selected processes
       if (selectedProcesses.size > 0) {
-        await autoCreateProcesses(newCase.id, leadId);
+        await autoCreateProcesses(newCase.id, leadId, newCase.case_number);
       }
     }
     setShowCaseDialog(false);
