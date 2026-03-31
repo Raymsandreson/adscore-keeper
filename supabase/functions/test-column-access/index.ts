@@ -17,6 +17,8 @@ Deno.serve(async (req) => {
   try {
     const url = resolveSupabaseUrl();
     const key = (Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
+    console.log('URL:', url);
+    console.log('Key prefix:', key?.substring(0, 20));
     const supabase = createClient(url, key);
 
     // Test: try to read lead_status_board_ids
