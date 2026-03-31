@@ -334,7 +334,7 @@ export function AgentMonitorDashboard() {
     }
   };
 
-  useEffect(() => { fetchData(); }, [periodDays]);
+  useEffect(() => { fetchData(); }, [dateRange]);
 
   // Filters
   const filteredConversations = useMemo(() => {
