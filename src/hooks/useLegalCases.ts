@@ -132,6 +132,29 @@ export function useLegalCases(leadId?: string) {
         console.warn('Could not auto-create tracking record:', trackingError);
       }
 
+      // Auto-create ONBOARDING CLIENTE activity for CASO-prefixed cases
+      if (caseNumber && caseNumber.startsWith('CASO')) {
+        try {
+          const WANESSA_USER_ID = '1f788b8d-e30e-484a-9460-39a881d25128';
+          const WANESSA_NAME = 'Wanessa Vitória Rodrigues de Sousa';
+          await supabase.from('lead_activities').insert({
+            lead_id: caseData.lead_id || null,
+            lead_name: caseData.title,
+            title: 'ONBOARDING CLIENTE',
+            description: `Atividade de onboarding criada automaticamente para o caso ${caseNumber}`,
+            activity_type: 'tarefa',
+            status: 'pendente',
+            priority: 'alta',
+            assigned_to: WANESSA_USER_ID,
+            assigned_to_name: WANESSA_NAME,
+            created_by: user?.id,
+            deadline: new Date().toISOString().split('T')[0],
+          } as any);
+        } catch (onboardingError) {
+          console.warn('Could not auto-create onboarding activity:', onboardingError);
+        }
+      }
+
       toast.success(`Caso ${caseNumber} criado`);
       return enriched;
     } catch (error) {
