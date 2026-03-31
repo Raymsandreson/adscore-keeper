@@ -56,7 +56,7 @@ interface Shortcut {
   send_window_start_hour: number;
   send_window_end_hour: number;
   send_call_followup_audio: boolean;
-  lead_status_filter: string[] | null;
+  
 }
 
 interface FollowupStep {
