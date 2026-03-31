@@ -24,6 +24,8 @@ interface LeadInfo {
 interface Props {
   conversations: WhatsAppConversation[];
   loading: boolean;
+  instanceSwitching?: boolean;
+  switchProgress?: number;
   selectedPhone: string | null;
   onSelect: (conv: WhatsAppConversation) => void;
   boards: KanbanBoard[];
