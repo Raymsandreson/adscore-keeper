@@ -132,6 +132,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [availableAgents, setAvailableAgents] = useState<Array<{ id: string; name: string }>>([]);
   const [agentLoading, setAgentLoading] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [muteType, setMuteType] = useState<string | null>(null);
+  const [muteLoading, setMuteLoading] = useState(false);
   const { notes, addNote, deleteNote } = useWhatsAppInternalNotes(conversation.phone);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
