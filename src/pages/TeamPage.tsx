@@ -36,8 +36,6 @@ import {
   TrendingUp,
   Activity,
   Handshake,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
 
 interface TabDef {
