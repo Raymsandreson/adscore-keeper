@@ -4,16 +4,29 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot } from 'lucide-react';
+import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, Paperclip, Image, FileUp } from 'lucide-react';
 import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+
+const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
+const NAME_FORMAT_OPTIONS = [
+  { value: 'full', label: 'Nome completo' },
+  { value: 'first', label: 'Primeiro nome' },
+  { value: 'first_last', label: 'Primeiro e último' },
+  { value: 'nickname', label: 'Apelido' },
+];
 
 interface Message {
   id: string;
@@ -54,7 +67,7 @@ interface Props {
 }
 
 export function DashboardChatPreview({ open, onOpenChange, phone, contactName, instanceName, hasLead, hasContact, wasResponded, responseTimeMinutes, onOpenChat, campaignBoardId, campaignStageId }: Props) {
-  const { user } = useAuthContext();
+  const { user, profile } = useAuthContext();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [newMessage, setNewMessage] = useState('');
@@ -65,7 +78,42 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [creatingLead, setCreatingLead] = useState(false);
   const [agentInfo, setAgentInfo] = useState<{ name: string; activated_by: string | null; is_active: boolean } | null>(null);
   const [callRecords, setCallRecords] = useState<CallRecord[]>([]);
+  const [identifySender, setIdentifySender] = useState(true);
+  const [treatmentTitle, setTreatmentTitle] = useState<string>('');
+  const [nameFormat, setNameFormat] = useState<string>('first_last');
+  const [nicknames, setNicknames] = useState<string[]>([]);
+  const [selectedNickname, setSelectedNickname] = useState<string>('');
+  const [newNickname, setNewNickname] = useState('');
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+
+  // Load identity preferences when phone changes
+  useEffect(() => {
+    if (!phone) return;
+    const storageKey = `wa-identify-sender:${phone}`;
+    const savedPref = localStorage.getItem(storageKey);
+    setIdentifySender(savedPref !== 'false');
+
+    const profileGender = (profile as any)?.gender;
+    const defaultTreatment = profileGender === 'female' ? 'Dra.' : profileGender === 'male' ? 'Dr.' : '';
+    const treatmentKey = `wa-treatment:${phone}`;
+    const savedTreatment = localStorage.getItem(treatmentKey);
+    setTreatmentTitle(savedTreatment ?? defaultTreatment);
+
+    const nameFormatKey = `wa-name-format:${phone}`;
+    const savedFormat = localStorage.getItem(nameFormatKey);
+    setNameFormat(savedFormat || 'first_last');
+
+    const nicknamesKey = `wa-nicknames`;
+    const savedNicknames = localStorage.getItem(nicknamesKey);
+    setNicknames(savedNicknames ? JSON.parse(savedNicknames) : []);
+
+    const selectedNicknameKey = `wa-selected-nickname:${phone}`;
+    const savedSelectedNickname = localStorage.getItem(selectedNicknameKey);
+    setSelectedNickname(savedSelectedNickname || '');
+  }, [phone, profile]);
 
   useEffect(() => {
     if (!open || !phone) return;
@@ -151,46 +199,102 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     return format(date, "dd 'de' MMMM", { locale: ptBR });
   };
 
+  const handleToggleIdentifySender = (checked: boolean) => {
+    setIdentifySender(checked);
+    if (phone) localStorage.setItem(`wa-identify-sender:${phone}`, checked ? 'true' : 'false');
+  };
+
+  const handleTreatmentChange = (value: string) => {
+    const v = value === 'none' ? '' : value;
+    setTreatmentTitle(v);
+    if (phone) localStorage.setItem(`wa-treatment:${phone}`, v);
+  };
+
+  const handleNameFormatChange = (value: string) => {
+    setNameFormat(value);
+    if (phone) localStorage.setItem(`wa-name-format:${phone}`, value);
+  };
+
+  const handleAddNickname = () => {
+    const trimmed = newNickname.trim();
+    if (!trimmed || nicknames.includes(trimmed)) return;
+    const updated = [...nicknames, trimmed];
+    setNicknames(updated);
+    localStorage.setItem('wa-nicknames', JSON.stringify(updated));
+    setSelectedNickname(trimmed);
+    if (phone) localStorage.setItem(`wa-selected-nickname:${phone}`, trimmed);
+    setNewNickname('');
+  };
+
+  const handleRemoveNickname = (nick: string) => {
+    const updated = nicknames.filter(n => n !== nick);
+    setNicknames(updated);
+    localStorage.setItem('wa-nicknames', JSON.stringify(updated));
+    if (selectedNickname === nick) {
+      setSelectedNickname(updated[0] || '');
+      if (phone) localStorage.setItem(`wa-selected-nickname:${phone}`, updated[0] || '');
+    }
+  };
+
+  const handleSelectNickname = (value: string) => {
+    setSelectedNickname(value);
+    if (phone) localStorage.setItem(`wa-selected-nickname:${phone}`, value);
+  };
+
+  const buildFinalMessage = async (message: string): Promise<string> => {
+    if (!user || !identifySender) return message;
+
+    if (nameFormat === 'nickname' && selectedNickname) {
+      return `*${selectedNickname}:*\n${message}`;
+    }
+
+    const { data: prof } = await supabase
+      .from('profiles')
+      .select('full_name, treatment_title')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!prof?.full_name) return message;
+
+    let displayName = prof.full_name;
+    if (nameFormat === 'first') {
+      displayName = prof.full_name.split(' ')[0];
+    } else if (nameFormat === 'first_last') {
+      const parts = prof.full_name.split(' ');
+      displayName = parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1]}` : parts[0];
+    }
+    const title = treatmentTitle || '';
+    const senderName = title ? `${title} ${displayName}` : displayName;
+    return `*${senderName}:*\n${message}`;
+  };
+
+  const resolveInstanceId = async (): Promise<string | undefined> => {
+    const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
+    if (msgInstanceName) {
+      const { data: inst } = await supabase
+        .from('whatsapp_instances')
+        .select('id')
+        .eq('instance_name', msgInstanceName)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (inst) return inst.id;
+    }
+    const { data: firstInst } = await supabase
+      .from('whatsapp_instances')
+      .select('id')
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
+    return firstInst?.id;
+  };
+
   const handleSend = async () => {
     if (!newMessage.trim() || !phone || sending) return;
     setSending(true);
     try {
-      let instanceId: string | undefined;
+      const instanceId = await resolveInstanceId();
+      const finalMessage = await buildFinalMessage(newMessage.trim());
       const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
-      if (msgInstanceName) {
-        const { data: inst } = await supabase
-          .from('whatsapp_instances')
-          .select('id')
-          .eq('instance_name', msgInstanceName)
-          .eq('is_active', true)
-          .maybeSingle();
-        if (inst) instanceId = inst.id;
-      }
-      if (!instanceId) {
-        const { data: firstInst } = await supabase
-          .from('whatsapp_instances')
-          .select('id')
-          .eq('is_active', true)
-          .limit(1)
-          .maybeSingle();
-        if (firstInst) instanceId = firstInst.id;
-      }
-
-      let finalMessage = newMessage.trim();
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name, treatment_title')
-          .eq('user_id', user.id)
-          .single();
-        if (profile?.full_name) {
-          const parts = profile.full_name.split(' ');
-          const displayName = parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1]}` : parts[0];
-          const title = profile.treatment_title || '';
-          const senderName = title ? `${title} ${displayName}` : displayName;
-          finalMessage = `*${senderName}:*\n${newMessage.trim()}`;
-        }
-      }
 
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: { phone, message: finalMessage, instance_id: instanceId },
@@ -219,6 +323,57 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
   };
 
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !phone) return;
+    setUploadingMedia(true);
+    setShowAttachMenu(false);
+    try {
+      const ext = file.name.split('.').pop() || 'bin';
+      const path = `whatsapp-media/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, file);
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
+      const mediaUrl = urlData.publicUrl;
+
+      const instanceId = await resolveInstanceId();
+      const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
+
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
+        body: {
+          action: 'send_media',
+          phone,
+          media_url: mediaUrl,
+          media_type: file.type,
+          file_name: file.name,
+          instance_id: instanceId,
+        },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Erro ao enviar mídia');
+
+      const msgType = file.type.startsWith('audio') ? 'audio' : file.type.startsWith('image') ? 'image' : file.type.startsWith('video') ? 'video' : 'document';
+      setMessages(prev => [...prev, {
+        id: data.message_id || crypto.randomUUID(),
+        message_text: null,
+        direction: 'outbound',
+        created_at: new Date().toISOString(),
+        message_type: msgType,
+        media_url: mediaUrl,
+        media_type: file.type,
+        instance_name: msgInstanceName || null,
+      }]);
+      toast.success('Mídia enviada!');
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    } catch (e: any) {
+      console.error('Error uploading media:', e);
+      toast.error('Erro ao enviar mídia');
+    } finally {
+      setUploadingMedia(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -231,7 +386,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       handleCreateLeadAndContact();
       return;
     }
-    // For other actions, redirect to full chat
     if (phone && onOpenChat) {
       onOpenChange(false);
       onOpenChat(phone);
@@ -242,10 +396,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     if (!phone || creatingLead) return;
     setCreatingLead(true);
     try {
-      // 1. Get current user
       const { data: { user: currentUser } } = await supabase.auth.getUser();
-
-      // 2. Extract data from conversation using AI
       const recentMessages = messages.slice(-50).map(m => ({
         direction: m.direction,
         message_text: m.message_text,
@@ -267,7 +418,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         contactExtracted = contactRes.data?.data || {};
       }
 
-      // 3. Resolve board: use campaign's configured board or find first available
       let boardId = campaignBoardId || null;
       if (!boardId) {
         const boardQuery = supabase
@@ -285,7 +435,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         return;
       }
 
-      // 4. Create lead with enriched data
       const insertData: Record<string, any> = {
         lead_name: leadExtracted.lead_name || contactExtracted.full_name || contactName || 'Novo Lead - WhatsApp',
         lead_phone: phone,
@@ -316,7 +465,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         .single();
       if (leadError) throw leadError;
 
-      // 5. Link lead to conversation messages
       const normalizedPhone = phone.replace(/\D/g, '');
       await supabase
         .from('whatsapp_messages')
@@ -324,7 +472,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         .or(`phone.eq.${phone},phone.eq.${normalizedPhone}`)
         .is('lead_id', null);
 
-      // 6. Create or find contact
       const contactFullName = contactExtracted.full_name || contactName || 'Contato WhatsApp';
       const { data: existingContact } = await supabase
         .from('contacts')
@@ -336,7 +483,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       let contactId: string;
       if (existingContact) {
         contactId = existingContact.id;
-        // Update contact with enriched data if available
         const contactUpdates: Record<string, any> = {};
         if (contactExtracted.full_name && existingContact.full_name?.match(/^\d/)) contactUpdates.full_name = contactExtracted.full_name;
         if (contactExtracted.email) contactUpdates.email = contactExtracted.email;
@@ -370,14 +516,12 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         contactId = newContact.id;
       }
 
-      // 7. Link contact to lead
       await supabase.from('contact_leads').insert({
         contact_id: contactId,
         lead_id: newLead.id,
         relationship_to_victim: 'Vítima',
       });
 
-      // 8. Update conversation messages with contact_id
       await supabase
         .from('whatsapp_messages')
         .update({ contact_id: contactId })
@@ -397,10 +541,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     if (!phone || creatingGroup) return;
     setCreatingGroup(true);
     try {
-      // Find lead linked to this contact/phone
       const normalizedPhone = phone.replace(/\D/g, '');
-      
-      // Try to find lead via contact_leads or directly by phone
       let leadName = contactName || normalizedPhone;
       let boardId: string | undefined;
 
@@ -416,7 +557,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         boardId = lead.board_id || undefined;
       }
 
-      // Get instance id
       let instanceId: string | undefined;
       const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
       if (msgInstanceName) {
@@ -442,7 +582,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Erro ao criar grupo');
 
-      // Save group_id to lead if available
       if (lead?.id && data.group_id) {
         await supabase
           .from('leads')
@@ -450,7 +589,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           .eq('id', lead.id);
       }
 
-      // Save group_id to contact too
       if (data.group_id) {
         const { data: contact } = await supabase
           .from('contacts')
@@ -536,6 +674,31 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       case 'busy': return <PhoneMissed className="h-3.5 w-3.5 text-amber-500" />;
       default: return <PhoneIcon className="h-3.5 w-3.5 text-muted-foreground" />;
     }
+  };
+
+  const renderMediaContent = (msg: Message) => {
+    if (!msg.media_url) return null;
+    const type = msg.media_type || msg.message_type;
+    if (type?.startsWith('image') || msg.message_type === 'image') {
+      return (
+        <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
+          <img src={msg.media_url} alt="Imagem" className="max-w-[200px] max-h-[200px] rounded-md object-cover" loading="lazy" />
+        </a>
+      );
+    }
+    if (type?.startsWith('video') || msg.message_type === 'video') {
+      return <video src={msg.media_url} controls className="max-w-[200px] max-h-[200px] rounded-md" />;
+    }
+    if (type?.startsWith('audio') || msg.message_type === 'audio') {
+      return <audio src={msg.media_url} controls className="max-w-[220px]" />;
+    }
+    // Document
+    const fileName = msg.media_url.split('/').pop() || 'Documento';
+    return (
+      <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[11px] underline">
+        📄 {fileName.length > 30 ? fileName.slice(0, 30) + '...' : fileName}
+      </a>
+    );
   };
 
   let lastDateLabel = '';
@@ -717,7 +880,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                             ? "bg-muted text-foreground rounded-tl-none"
                             : "bg-primary text-primary-foreground rounded-tr-none"
                         )}>
-                          {msg.media_type && !msg.message_text && (
+                          {renderMediaContent(msg)}
+                          {!msg.media_url && msg.media_type && !msg.message_text && (
                             <span className="italic text-[10px] opacity-70">
                               {msg.media_type === 'image' ? '📷 Imagem' : msg.media_type === 'audio' ? '🎵 Áudio' : msg.media_type === 'video' ? '🎬 Vídeo' : msg.media_type === 'document' ? '📄 Documento' : '📎 Mídia'}
                             </span>
@@ -737,20 +901,133 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           )}
         </div>
 
-        {/* Message input */}
-        <div className="px-4 pb-4 pt-2 shrink-0 border-t">
-          <div className="flex items-end gap-2">
+        {/* Identity controls + Message input */}
+        <div className="px-4 pb-4 pt-2 shrink-0 border-t space-y-2">
+          {/* Identity row */}
+          <div className="flex items-center justify-end gap-2 flex-wrap">
+            {identifySender && (
+              <>
+                <Select value={nameFormat} onValueChange={handleNameFormatChange}>
+                  <SelectTrigger className="h-7 w-[130px] text-xs">
+                    <SelectValue placeholder="Nome" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NAME_FORMAT_OPTIONS.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {nameFormat === 'nickname' ? (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1 max-w-[150px]">
+                        <User className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{selectedNickname || 'Escolher apelido'}</span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-3 space-y-3" align="end">
+                      <p className="text-xs font-medium">Apelidos cadastrados</p>
+                      {nicknames.length > 0 ? (
+                        <div className="space-y-1 max-h-[120px] overflow-y-auto">
+                          {nicknames.map(nick => (
+                            <div key={nick} className="flex items-center justify-between gap-1">
+                              <Button
+                                variant={selectedNickname === nick ? "default" : "ghost"}
+                                size="sm"
+                                className="flex-1 justify-start h-7 text-xs"
+                                onClick={() => handleSelectNickname(nick)}
+                              >
+                                {nick}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                                onClick={() => handleRemoveNickname(nick)}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Nenhum apelido cadastrado</p>
+                      )}
+                      <div className="flex gap-1">
+                        <Input
+                          placeholder="Novo apelido..."
+                          value={newNickname}
+                          onChange={e => setNewNickname(e.target.value)}
+                          className="h-7 text-xs"
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddNickname(); } }}
+                        />
+                        <Button size="sm" className="h-7 text-xs px-2" onClick={handleAddNickname} disabled={!newNickname.trim()}>
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                ) : (
+                  <Select value={treatmentTitle || 'none'} onValueChange={handleTreatmentChange}>
+                    <SelectTrigger className="h-7 w-[100px] text-xs">
+                      <SelectValue placeholder="Título" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sem título</SelectItem>
+                      {TREATMENT_OPTIONS.filter(t => t).map(t => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </>
+            )}
+            <Label htmlFor="dash-identify-sender" className="text-xs text-muted-foreground cursor-pointer">
+              Identificar remetente
+            </Label>
+            <Switch
+              id="dash-identify-sender"
+              checked={identifySender}
+              onCheckedChange={handleToggleIdentifySender}
+            />
+          </div>
+
+          {/* Input row */}
+          <div className="flex items-end gap-1">
+            <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-muted-foreground">
+                  {uploadingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuItem onClick={() => { mediaInputRef.current?.click(); setShowAttachMenu(false); }} className="gap-2">
+                  <Image className="h-4 w-4" /> Foto / Vídeo
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip';
+                  input.onchange = (e: any) => handleMediaUpload(e);
+                  input.click();
+                  setShowAttachMenu(false);
+                }} className="gap-2">
+                  <FileUp className="h-4 w-4" /> Documento
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
             <Textarea
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Digite uma mensagem..."
-              className="min-h-[40px] max-h-[100px] resize-none text-sm"
+              className="min-h-[40px] max-h-[100px] resize-none text-sm flex-1"
               rows={1}
             />
             <Button
               size="icon"
-              className="shrink-0 h-10 w-10"
+              className="shrink-0 h-10 w-10 bg-green-600 hover:bg-green-700"
               onClick={handleSend}
               disabled={!newMessage.trim() || sending}
             >
