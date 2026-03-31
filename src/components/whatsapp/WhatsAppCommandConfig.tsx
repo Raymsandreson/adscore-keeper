@@ -407,14 +407,12 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     };
 
     let error;
-    let savedId = editingId;
     if (editingId) {
-      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).update(corePayload).eq('id', editingId));
+      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).update(payload).eq('id', editingId));
     } else {
-      const { data: insertData, error: insertError } = await (supabase.from('wjia_command_shortcuts') as any)
-        .insert({ ...corePayload, display_order: shortcuts.length }).select('id').single();
+      const { error: insertError } = await (supabase.from('wjia_command_shortcuts') as any)
+        .insert({ ...payload, display_order: shortcuts.length }).select('id').single();
       error = insertError;
-      savedId = insertData?.id;
     }
     if (error) { toast.error(error.message); return; }
 
