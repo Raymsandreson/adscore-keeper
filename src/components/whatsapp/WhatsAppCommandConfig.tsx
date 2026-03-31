@@ -413,8 +413,27 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     let error;
     if (editingId) {
       ({ error } = await (supabase.from('wjia_command_shortcuts') as any).update(payload).eq('id', editingId));
+      // If error is about schema cache, retry without the problematic columns
+      if (error?.message?.includes('lead_status_board_ids') || error?.message?.includes('schema cache')) {
+        const { lead_status_board_ids, lead_status_filter, ...safePayload } = payload;
+        const { error: retryError } = await (supabase.from('wjia_command_shortcuts') as any).update(safePayload).eq('id', editingId);
+        if (retryError) { toast.error(retryError.message); return; }
+        toast.warning('Salvo parcialmente - filtro de funil pode não ter sido salvo. Recarregue a página e tente novamente.');
+        resetForm();
+        onReload();
+        return;
+      }
     } else {
       ({ error } = await (supabase.from('wjia_command_shortcuts') as any).insert({ ...payload, display_order: shortcuts.length }));
+      if (error?.message?.includes('lead_status_board_ids') || error?.message?.includes('schema cache')) {
+        const { lead_status_board_ids, lead_status_filter, ...safePayload } = payload;
+        const { error: retryError } = await (supabase.from('wjia_command_shortcuts') as any).insert({ ...safePayload, display_order: shortcuts.length });
+        if (retryError) { toast.error(retryError.message); return; }
+        toast.warning('Criado parcialmente - filtro de funil pode não ter sido salvo.');
+        resetForm();
+        onReload();
+        return;
+      }
     }
     if (error) { toast.error(error.message); return; }
     toast.success(editingId ? 'Agente atualizado!' : 'Agente criado!');
