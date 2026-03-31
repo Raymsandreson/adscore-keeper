@@ -263,7 +263,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     } finally {
       syncInFlightRef.current = false;
     }
-  }, []);
+  }, [user?.id]);
 
   const fetchMessages = useCallback(async (silent = false, triggerSync = false) => {
     if (isFetchingRef.current) return;
