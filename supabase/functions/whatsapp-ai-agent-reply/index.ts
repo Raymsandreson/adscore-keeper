@@ -173,14 +173,19 @@ serve(async (req) => {
         // Find agents with lead_status_filter matching this status
         const { data: matchingAgents } = await supabase
           .from("wjia_command_shortcuts")
-          .select("id, lead_status_filter")
+          .select("id, lead_status_filter, lead_status_board_ids")
           .eq("is_active", true)
           .not("lead_status_filter", "is", null);
 
         if (matchingAgents) {
-          const matched = matchingAgents.find((a: any) => 
-            Array.isArray(a.lead_status_filter) && a.lead_status_filter.includes(leadStatusToCheck)
-          );
+          const matched = matchingAgents.find((a: any) => {
+            if (!Array.isArray(a.lead_status_filter) || !a.lead_status_filter.includes(leadStatusToCheck)) return false;
+            // If board filter is set, check if lead's board matches
+            if (Array.isArray(a.lead_status_board_ids) && a.lead_status_board_ids.length > 0) {
+              return foundLeadBoardId && a.lead_status_board_ids.includes(foundLeadBoardId);
+            }
+            return true;
+          });
 
           if (matched) {
             await supabase.from("whatsapp_conversation_agents").upsert({
@@ -191,7 +196,7 @@ serve(async (req) => {
               activated_by: "lead_status_auto",
             }, { onConflict: "phone,instance_name" });
             assignment = { agent_id: matched.id, is_active: true };
-            console.log(`Auto-assigned agent ${matched.id} via lead_status_filter (status=${leadStatusToCheck}, lead=${foundLeadId})`);
+            console.log(`Auto-assigned agent ${matched.id} via lead_status_filter (status=${leadStatusToCheck}, board=${foundLeadBoardId}, lead=${foundLeadId})`);
           }
         }
       }
