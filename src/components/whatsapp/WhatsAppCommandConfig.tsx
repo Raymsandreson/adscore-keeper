@@ -406,9 +406,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_call_followup_audio: form.send_call_followup_audio ?? false,
     };
 
-    // Filter fields are stored separately in agent_filter_settings
-    const corePayload = payload;
-    
     let error;
     let savedId = editingId;
     if (editingId) {
