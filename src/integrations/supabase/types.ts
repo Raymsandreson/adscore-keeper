@@ -5942,6 +5942,7 @@ export type Database = {
           id: string
           is_active: boolean
           name: string
+          nucleus_id: string | null
           price_range_max: number | null
           price_range_min: number | null
           product_type: string | null
@@ -5958,6 +5959,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name: string
+          nucleus_id?: string | null
           price_range_max?: number | null
           price_range_min?: number | null
           product_type?: string | null
@@ -5974,6 +5976,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name?: string
+          nucleus_id?: string | null
           price_range_max?: number | null
           price_range_min?: number | null
           product_type?: string | null
@@ -5987,6 +5990,13 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_services_nucleus_id_fkey"
+            columns: ["nucleus_id"]
+            isOneToOne: false
+            referencedRelation: "specialized_nuclei"
             referencedColumns: ["id"]
           },
         ]

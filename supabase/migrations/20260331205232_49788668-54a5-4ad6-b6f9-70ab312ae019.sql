@@ -1,0 +1,1 @@
+ALTER TABLE public.products_services ADD COLUMN IF NOT EXISTS nucleus_id UUID REFERENCES public.specialized_nuclei(id) ON DELETE SET NULL;
