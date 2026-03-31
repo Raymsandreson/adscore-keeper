@@ -1005,7 +1005,7 @@ export function WhatsAppInbox() {
                   .select('phone, instance_name, private_by');
                 setPrivateConvs((data || []) as PrivateConv[]);
               }}
-              onOpenChat={(phone) => setSelectedPhone(phone)}
+              onOpenChat={handleOpenChatByPhone}
               onClearConversation={clearConversation}
             />
           ) : (
