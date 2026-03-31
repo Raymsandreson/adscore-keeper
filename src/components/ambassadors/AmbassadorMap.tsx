@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Navigation, MapPin, ExternalLink, Search, Loader2, Users, Target, ChevronDown } from 'lucide-react';
+import { Navigation, MapPin, ExternalLink, Search, Loader2, Target } from 'lucide-react';
 import { toast } from 'sonner';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import type { Contact } from '@/hooks/useContacts';
