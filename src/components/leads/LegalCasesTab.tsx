@@ -225,6 +225,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
             statusColors={caseStatusColors}
             statusLabels={caseStatusLabels}
             onViewContact={onViewContact}
+            refreshKey={processRefreshKey}
           />
         ))}
       </div>
