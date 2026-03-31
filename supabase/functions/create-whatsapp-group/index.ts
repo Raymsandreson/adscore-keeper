@@ -794,16 +794,53 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
       // Clean admin notes from AI output
       messageText = messageText.replace(/⚠️\s*OBSERV[AÇ]+[ÃO]+[:\s].*$/gims, '').trim()
       
-      // Send text message
-      const sendTextRes = await fetch(`${baseUrl}/send/text`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-        body: JSON.stringify({ number: groupId, text: messageText }),
-      })
-      if (!sendTextRes.ok) {
-        console.error('Failed to send initial message:', sendTextRes.status, await sendTextRes.text())
+      // Remove incomplete/dangling lines (e.g., "* *Meses" without content)
+      messageText = messageText
+        .split('\n')
+        .filter(line => {
+          const trimmed = line.trim()
+          // Remove lines that are just bullets with no real content
+          if (/^\*?\s*\*[^*]*$/.test(trimmed) && trimmed.length < 15 && !trimmed.includes(':')) return false
+          // Remove lines that look like incomplete field labels
+          if (/^\*\s*\*\w+$/.test(trimmed)) return false
+          return true
+        })
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+
+      // Split long messages (WhatsApp limit ~4096 chars)
+      const messageParts: string[] = []
+      if (messageText.length > 3800) {
+        // Split on double newlines
+        const sections = messageText.split('\n\n')
+        let currentPart = ''
+        for (const section of sections) {
+          if (currentPart.length + section.length + 2 > 3800) {
+            if (currentPart.trim()) messageParts.push(currentPart.trim())
+            currentPart = section
+          } else {
+            currentPart += (currentPart ? '\n\n' : '') + section
+          }
+        }
+        if (currentPart.trim()) messageParts.push(currentPart.trim())
       } else {
-        console.log('Initial message sent to group')
+        messageParts.push(messageText)
+      }
+
+      // Send text message parts
+      for (let i = 0; i < messageParts.length; i++) {
+        const sendTextRes = await fetch(`${baseUrl}/send/text`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+          body: JSON.stringify({ number: groupId, text: messageParts[i] }),
+        })
+        if (!sendTextRes.ok) {
+          console.error(`Failed to send initial message part ${i + 1}:`, sendTextRes.status, await sendTextRes.text())
+        } else {
+          console.log(`Initial message part ${i + 1}/${messageParts.length} sent to group`)
+        }
+        if (i < messageParts.length - 1) await sleep(1000)
       }
 
       await sleep(1000)
@@ -824,18 +861,26 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
       let audioVoiceId = settings.audio_voice_id
       if (creatorInstance.owner_phone) {
         const ownerPhone = creatorInstance.owner_phone.replace(/\D/g, '')
+        // Try multiple phone format matches
         const { data: ownerProfile } = await supabase
           .from('profiles')
           .select('voice_id')
-          .eq('phone', ownerPhone)
+          .or(`phone.eq.${ownerPhone},phone.ilike.%${ownerPhone.slice(-8)}%`)
+          .not('voice_id', 'is', null)
+          .limit(1)
           .maybeSingle()
         if (ownerProfile?.voice_id) {
           audioVoiceId = ownerProfile.voice_id
           console.log('Using member voice:', audioVoiceId)
         }
       }
+      
+      console.log('Audio check - send_audio_message:', settings.send_audio_message, 'audioVoiceId:', audioVoiceId, 'hasText:', !!messageText)
+      
       if (settings.send_audio_message && audioVoiceId && messageText) {
         await sendAudioMessage(supabase, messageText, audioVoiceId, groupId, baseUrl, creatorInstance)
+      } else if (!audioVoiceId) {
+        console.log('Skipping audio: no voice ID configured')
       }
     }
   } catch (err) {
