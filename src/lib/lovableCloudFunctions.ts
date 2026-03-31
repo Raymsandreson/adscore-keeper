@@ -7,15 +7,17 @@ const LOVABLE_CLOUD_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ
 
 export async function invokeCloudFunction<T = any>(
   functionName: string,
-  body?: Record<string, any>
+  body?: Record<string, any>,
+  options?: { authToken?: string }
 ): Promise<{ data: T | null; error: Error | null }> {
   try {
     const url = `${LOVABLE_CLOUD_URL}/functions/v1/${functionName}`;
+    const bearerToken = options?.authToken || LOVABLE_CLOUD_ANON_KEY;
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${LOVABLE_CLOUD_ANON_KEY}`,
+        'Authorization': `Bearer ${bearerToken}`,
         'apikey': LOVABLE_CLOUD_ANON_KEY,
       },
       body: body ? JSON.stringify(body) : undefined,
