@@ -494,17 +494,20 @@ Deno.serve(async (req) => {
       console.log('Skipping initial message. groupId:', groupId, 'settings:', !!settings)
     }
 
-    // Forward documents if configured
+    // Forward documents if configured + conversation media
+    // Use shared sentUrls set to avoid duplicate sends
+    const sentUrls = new Set<string>()
+
     if (groupId && settings?.forward_document_types?.length > 0 && leadData) {
       console.log('Forwarding documents. Types:', settings.forward_document_types)
-      await forwardDocuments(supabase, settings, leadData, groupId, baseUrl, creatorInstance)
+      await forwardDocuments(supabase, settings, leadData, groupId, baseUrl, creatorInstance, sentUrls)
     } else {
       console.log('Skipping document forwarding. groupId:', groupId, 'docTypes:', settings?.forward_document_types, 'hasLead:', !!leadData)
     }
 
     // Always forward conversation media (inbound images/documents) + signed ZapSign docs to the group
     if (groupId && leadData) {
-      await forwardConversationMedia(supabase, leadData, normalizedPhone || (contact_phone || phone || '').replace(/\D/g, ''), groupId, baseUrl, creatorInstance)
+      await forwardConversationMedia(supabase, leadData, normalizedPhone || (contact_phone || phone || '').replace(/\D/g, ''), groupId, baseUrl, creatorInstance, sentUrls)
     }
 
     // Auto-create legal process if configured
