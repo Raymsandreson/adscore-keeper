@@ -510,11 +510,21 @@ export function WhatsAppInbox() {
   };
 
   const handleSaveLead = async (leadId: string, updates: Partial<Lead>) => {
+    // Track who updated
+    const { data: { user } } = await supabase.auth.getUser();
+    const payload = { ...updates } as any;
+    if (user?.id) {
+      payload.updated_by = user.id;
+    }
+    
     const { error } = await supabase
       .from('leads')
-      .update(updates as any)
+      .update(payload)
       .eq('id', leadId);
-    if (error) throw error;
+    if (error) {
+      console.error('[handleSaveLead] Supabase error:', JSON.stringify(error));
+      throw error;
+    }
   };
 
   const handleCloseLeadPanel = (open: boolean) => {
