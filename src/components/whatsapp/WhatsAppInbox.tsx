@@ -1101,8 +1101,8 @@ export function WhatsAppInbox() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowBoardPicker(false)}>Cancelar</Button>
-            <Button onClick={() => createLeadWithBoard(selectedBoardId)} disabled={!selectedBoardId}>
-              Criar Lead
+            <Button onClick={() => createLeadWithBoard(selectedBoardId)} disabled={!selectedBoardId || creatingLead}>
+              {creatingLead ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Criando...</> : 'Criar Lead'}
             </Button>
           </DialogFooter>
         </DialogContent>
