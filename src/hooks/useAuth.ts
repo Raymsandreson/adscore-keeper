@@ -128,7 +128,7 @@ export const useAuth = () => {
         cacheSet('auth_session', { user: session.user, session }, CACHE_TTL.SESSION);
         
         // Sync to external DB
-        const syncedProfile = await syncUserToExternal(session);
+        const syncedProfile = await syncUserToExternal(session.user);
         if (syncedProfile) {
           setProfile(syncedProfile);
           cacheSet('auth_profile', syncedProfile, CACHE_TTL.PROFILE);
