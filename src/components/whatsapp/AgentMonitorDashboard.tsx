@@ -387,6 +387,9 @@ export function AgentMonitorDashboard() {
 
   // Separate groups data for the groups sheet (from all leads, not just conversation agents)
   const [allGroups, setAllGroups] = useState<Array<{ id: string; lead_name: string; whatsapp_group_id: string; lead_phone: string | null; board_name: string | null; stage_name: string | null; acolhedor: string | null; created_at: string }>>([]);
+  // All leads with status for proper filtering
+  const [allLeadsWithStatus, setAllLeadsWithStatus] = useState<Array<{ lead_status: string; acolhedor: string | null }>>([]);
+  const [allGroupsRaw, setAllGroupsRaw] = useState<Array<{ id: string; lead_name: string; whatsapp_group_id: string; lead_phone: string | null; board_name: string | null; stage_name: string | null; acolhedor: string | null; created_at: string }>>([]);
   
   useEffect(() => {
     const fetchGroups = async () => {
@@ -400,12 +403,10 @@ export function AgentMonitorDashboard() {
         .lte('created_at', endDate)
         .order('created_at', { ascending: false });
       
-      if (!groupLeads) { setAllGroups([]); return; }
-      
       const { data: boards } = await supabase.from('kanban_boards').select('id, name, stages');
       const boardMap = new Map((boards || []).map((b: any) => [b.id, b]));
       
-      const mapped = groupLeads.map((l: any) => {
+      const mapped = (groupLeads || []).map((l: any) => {
         let boardName = null;
         let stageName = null;
         if (l.board_id) {
@@ -430,27 +431,39 @@ export function AgentMonitorDashboard() {
           created_at: l.created_at,
         };
       });
-      setAllGroups(mapped);
+      setAllGroupsRaw(mapped);
 
-      // Fetch ALL leads status counts (not limited to conversation agents)
+      // Fetch ALL leads status counts with acolhedor for proper filtering
       const { data: closedLeads } = await supabase
         .from('leads')
-        .select('lead_status')
+        .select('lead_status, acolhedor')
         .in('lead_status', ['closed', 'refused', 'unviable', 'active'])
         .gte('updated_at', startDate)
         .lte('updated_at', endDate);
 
-      const statusCounts = { closed: 0, refused: 0, unviable: 0, active: 0 };
-      (closedLeads || []).forEach((l: any) => {
-        if (l.lead_status === 'closed') statusCounts.closed++;
-        else if (l.lead_status === 'refused') statusCounts.refused++;
-        else if (l.lead_status === 'unviable') statusCounts.unviable++;
-        else if (l.lead_status === 'active') statusCounts.active++;
-      });
-      setAllLeadStatusCounts(statusCounts);
+      setAllLeadsWithStatus((closedLeads || []).map((l: any) => ({ lead_status: l.lead_status, acolhedor: l.acolhedor })));
     };
     fetchGroups();
   }, [dateRange]);
+
+  // Filter allGroups and allLeadStatusCounts by acolhedor
+  useEffect(() => {
+    if (acolhedorFilter === 'all') {
+      setAllGroups(allGroupsRaw);
+    } else {
+      setAllGroups(allGroupsRaw.filter(g => g.acolhedor === acolhedorFilter));
+    }
+
+    const filtered = acolhedorFilter === 'all' ? allLeadsWithStatus : allLeadsWithStatus.filter(l => l.acolhedor === acolhedorFilter);
+    const statusCounts = { closed: 0, refused: 0, unviable: 0, active: 0 };
+    filtered.forEach(l => {
+      if (l.lead_status === 'closed') statusCounts.closed++;
+      else if (l.lead_status === 'refused') statusCounts.refused++;
+      else if (l.lead_status === 'unviable') statusCounts.unviable++;
+      else if (l.lead_status === 'active') statusCounts.active++;
+    });
+    setAllLeadStatusCounts(statusCounts);
+  }, [acolhedorFilter, allGroupsRaw, allLeadsWithStatus]);
 
   // Get unique acolhedor values for filter
   const acolhedorOptions = useMemo(() => {
