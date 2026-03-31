@@ -341,8 +341,9 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
     const step = steps[effectiveStepIndex];
     const delayMinutes = step.delay_minutes || 60;
 
-    // For call steps, enforce a minimum delay of 30 minutes to prevent spam
-    const effectiveDelayMinutes = step.action_type === "call" ? Math.max(delayMinutes, 30) : delayMinutes;
+    // For call steps, enforce configurable minimum delay (default 30 minutes)
+    const minCallDelay = config.min_call_delay_minutes ?? 30;
+    const effectiveDelayMinutes = step.action_type === "call" ? Math.max(delayMinutes, minCallDelay) : delayMinutes;
 
     // Reference time: last log execution OR last outbound message
     const referenceTime = lastLog?.executed_at || lastOutbound.created_at;
