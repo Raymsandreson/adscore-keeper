@@ -55,6 +55,7 @@ const ALL_TABS: TabDef[] = [
   { key: 'traffic', label: 'Tráfego', icon: TrendingUp, adminOnly: true },
   { key: 'members', label: 'Membros', icon: Users },
   { key: 'teams', label: 'Times', icon: UsersRound },
+  { key: 'ambassadors', label: 'Embaixadores', icon: Handshake },
   { key: 'career', label: 'Carreira', icon: GraduationCap, adminOnly: true },
   { key: 'routines', label: 'Rotinas', icon: CalendarClock, adminOnly: true },
   { key: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, adminOnly: true },
