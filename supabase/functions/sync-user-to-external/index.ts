@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
     const { data: finalProfile } = await externalClient
       .from('profiles')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single();
 
     const { data: userRole } = await externalClient
