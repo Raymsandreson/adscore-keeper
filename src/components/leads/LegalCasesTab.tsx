@@ -60,6 +60,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   const [caseNucleusId, setCaseNucleusId] = useState('');
   const [caseNotes, setCaseNotes] = useState('');
   const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null);
+  const [processRefreshKey, setProcessRefreshKey] = useState(0);
   const [selectedProcesses, setSelectedProcesses] = useState<Set<string>>(new Set());
 
   const PREDEFINED_PROCESSES = [
