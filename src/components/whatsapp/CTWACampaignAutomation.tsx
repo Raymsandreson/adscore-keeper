@@ -818,6 +818,26 @@ export function CTWACampaignAutomation() {
                     </div>
                   </div>
 
+                  {/* Agente pós-fechamento */}
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                      <Sparkles className="h-3 w-3 text-emerald-500" /> Agente IA pós-fechamento (lead fechado)
+                    </Label>
+                    <Select 
+                      value={linkAny.closed_agent_id || 'none'} 
+                      onValueChange={v => handleUpdate(link.id, { closed_agent_id: v === 'none' ? null : v } as any)}
+                    >
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Mesmo agente" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none" className="text-xs">Sem agente específico (mesmo agente)</SelectItem>
+                        {agents.map(a => <SelectItem key={a.id} value={a.id} className="text-xs">#{a.shortcut_name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10px] text-muted-foreground">
+                      Quando o lead for fechado, este agente assumirá a conversa automaticamente.
+                    </p>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
