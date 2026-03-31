@@ -27,6 +27,7 @@ interface LeadActivity {
   status: string;
   priority: string | null;
   deadline: string | null;
+  assigned_to: string | null;
   assigned_to_name: string | null;
   created_at: string;
   completed_at: string | null;
