@@ -320,6 +320,24 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     );
   }
 
+  // Instance switching overlay with progress
+  const switchingOverlay = instanceSwitching ? (
+    <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
+      <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" />
+      <div className="w-40">
+        <div className="text-xs text-muted-foreground text-center mb-1">
+          Carregando conversas... {switchProgress}%
+        </div>
+        <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+          <div
+            className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
+            style={{ width: `${switchProgress}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div className="flex flex-col h-full">
       {/* Search */}
