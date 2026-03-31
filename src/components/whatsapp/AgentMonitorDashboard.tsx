@@ -274,6 +274,7 @@ export function AgentMonitorDashboard() {
           campaign_name: campaignByPhone.get(key) || msgs.find((m: any) => m.campaign_name)?.campaign_name || lead?.campaign_name || null,
           activated_by: ca.activated_by || null,
           activated_at: ca.created_at || null,
+          whatsapp_group_id: lead?.whatsapp_group_id || null,
         });
       });
 
