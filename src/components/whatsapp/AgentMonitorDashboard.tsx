@@ -54,6 +54,7 @@ interface ConversationDetail {
   lead_status: string | null;
   lead_city: string | null;
   lead_state: string | null;
+  lead_acolhedor: string | null;
   board_name: string | null;
   stage_name: string | null;
   last_inbound_at: string | null;
@@ -97,6 +98,7 @@ export function AgentMonitorDashboard() {
   const [cityFilter, setCityFilter] = useState('all');
   const [stateFilter, setStateFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [acolhedorFilter, setAcolhedorFilter] = useState('all');
   const [periodDays, setPeriodDays] = useState(7);
   const [kpiSheet, setKpiSheet] = useState<{ filter: string; label: string } | null>(null);
   const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
@@ -148,7 +150,7 @@ export function AgentMonitorDashboard() {
       // Fetch leads with location data
       const { data: leads } = await supabase
         .from('leads')
-        .select('id, lead_name, lead_phone, status, board_id, city, state, neighborhood, followup_count, campaign_name')
+        .select('id, lead_name, lead_phone, status, lead_status, board_id, city, state, neighborhood, followup_count, campaign_name, acolhedor')
         .not('lead_phone', 'is', null);
 
       // Fetch boards for stage names
@@ -242,9 +244,10 @@ export function AgentMonitorDashboard() {
           human_paused: !!isPaused,
           contact_name: msgs[0]?.contact_name || null,
           lead_name: lead?.lead_name || null,
-          lead_status: lead?.status || null,
+          lead_status: lead?.lead_status || null,
           lead_city: lead?.city || null,
           lead_state: lead?.state || null,
+          lead_acolhedor: lead?.acolhedor || null,
           board_name: boardName,
           stage_name: stageName,
           last_inbound_at: lastInbound,
@@ -297,8 +300,8 @@ export function AgentMonitorDashboard() {
         if (c.stage_name) {
           stat.conversations_by_stage[c.stage_name] = (stat.conversations_by_stage[c.stage_name] || 0) + 1;
         }
-        if (c.lead_status === 'closed' || c.lead_status === 'converted') stat.leads_closed++;
-        if (c.lead_status === 'refused' || c.lead_status === 'lost') stat.leads_refused++;
+        if (c.lead_status === 'closed') stat.leads_closed++;
+        if (c.lead_status === 'refused') stat.leads_refused++;
         if (c.time_without_response && c.time_without_response > 60) stat.without_response_count++;
       });
 
@@ -329,6 +332,7 @@ export function AgentMonitorDashboard() {
       if (statusFilter === 'no_response' && (!c.time_without_response || c.time_without_response < 60)) return false;
       if (cityFilter !== 'all' && c.lead_city !== cityFilter) return false;
       if (stateFilter !== 'all' && c.lead_state !== stateFilter) return false;
+      if (acolhedorFilter !== 'all' && c.lead_acolhedor !== acolhedorFilter) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         return (
@@ -339,23 +343,38 @@ export function AgentMonitorDashboard() {
       }
       return true;
     });
-  }, [conversations, selectedAgent, statusFilter, cityFilter, stateFilter, searchQuery]);
+  }, [conversations, selectedAgent, statusFilter, cityFilter, stateFilter, acolhedorFilter, searchQuery]);
 
   const uniqueCities = useMemo(() => [...new Set(conversations.map(c => c.lead_city).filter(Boolean))].sort(), [conversations]);
   const uniqueStates = useMemo(() => [...new Set(conversations.map(c => c.lead_state).filter(Boolean))].sort(), [conversations]);
 
+  // Acolhedor-filtered conversations for KPIs (before agent/status/search filters)
+  const kpiConversations = useMemo(() => {
+    if (acolhedorFilter === 'all') return conversations;
+    return conversations.filter(c => c.lead_acolhedor === acolhedorFilter);
+  }, [conversations, acolhedorFilter]);
+
   // Global KPIs
   const globalStats = useMemo(() => {
-    const total = conversations.length;
-    const active = conversations.filter(c => c.is_active && !c.human_paused).length;
-    const paused = conversations.filter(c => c.human_paused).length;
-    const noResponse = conversations.filter(c => c.time_without_response && c.time_without_response > 60).length;
-    const totalFollowups = conversations.reduce((sum, c) => sum + c.followup_count, 0);
-    const totalMsgsSent = conversations.reduce((sum, c) => sum + c.outbound_count, 0);
-    const totalMsgsReceived = conversations.reduce((sum, c) => sum + c.inbound_count, 0);
-    const closed = conversations.filter(c => c.lead_status === 'closed' || c.lead_status === 'converted').length;
-    const refused = conversations.filter(c => c.lead_status === 'refused' || c.lead_status === 'lost').length;
-    return { total, active, paused, noResponse, totalFollowups, totalMsgsSent, totalMsgsReceived, closed, refused };
+    const total = kpiConversations.length;
+    const active = kpiConversations.filter(c => c.is_active && !c.human_paused).length;
+    const paused = kpiConversations.filter(c => c.human_paused).length;
+    const noResponse = kpiConversations.filter(c => c.time_without_response && c.time_without_response > 60).length;
+    const totalFollowups = kpiConversations.reduce((sum, c) => sum + c.followup_count, 0);
+    const totalMsgsSent = kpiConversations.reduce((sum, c) => sum + c.outbound_count, 0);
+    const totalMsgsReceived = kpiConversations.reduce((sum, c) => sum + c.inbound_count, 0);
+    const closed = kpiConversations.filter(c => c.lead_status === 'closed').length;
+    const refused = kpiConversations.filter(c => c.lead_status === 'refused').length;
+    const unviable = kpiConversations.filter(c => c.lead_status === 'unviable').length;
+    const activeLeads = kpiConversations.filter(c => c.lead_status === 'active').length;
+    return { total, active, paused, noResponse, totalFollowups, totalMsgsSent, totalMsgsReceived, closed, refused, unviable, activeLeads };
+  }, [kpiConversations]);
+
+  // Get unique acolhedor values for filter
+  const acolhedorOptions = useMemo(() => {
+    const set = new Set<string>();
+    conversations.forEach(c => { if (c.lead_acolhedor) set.add(c.lead_acolhedor); });
+    return Array.from(set).sort();
   }, [conversations]);
 
   const activatedByLabel = (val: string | null) => {
@@ -377,15 +396,17 @@ export function AgentMonitorDashboard() {
     if (!kpiSheet) return [];
     let filtered: ConversationDetail[];
     switch (kpiSheet.filter) {
-      case 'total': filtered = conversations; break;
-      case 'active': filtered = conversations.filter(c => c.is_active && !c.human_paused); break;
-      case 'paused': filtered = conversations.filter(c => c.human_paused); break;
-      case 'no_response': filtered = conversations.filter(c => c.time_without_response && c.time_without_response > 60); break;
-      case 'closed': filtered = conversations.filter(c => c.lead_status === 'closed' || c.lead_status === 'converted'); break;
-      case 'refused': filtered = conversations.filter(c => c.lead_status === 'refused' || c.lead_status === 'lost'); break;
-      case 'followups': filtered = conversations.filter(c => c.followup_count > 0); break;
-      case 'msgs_sent': filtered = conversations.filter(c => c.outbound_count > 0); break;
-      default: filtered = conversations;
+      case 'total': filtered = kpiConversations; break;
+      case 'active': filtered = kpiConversations.filter(c => c.is_active && !c.human_paused); break;
+      case 'paused': filtered = kpiConversations.filter(c => c.human_paused); break;
+      case 'no_response': filtered = kpiConversations.filter(c => c.time_without_response && c.time_without_response > 60); break;
+      case 'closed': filtered = kpiConversations.filter(c => c.lead_status === 'closed'); break;
+      case 'refused': filtered = kpiConversations.filter(c => c.lead_status === 'refused'); break;
+      case 'unviable': filtered = kpiConversations.filter(c => c.lead_status === 'unviable'); break;
+      case 'active_leads': filtered = kpiConversations.filter(c => c.lead_status === 'active'); break;
+      case 'followups': filtered = kpiConversations.filter(c => c.followup_count > 0); break;
+      case 'msgs_sent': filtered = kpiConversations.filter(c => c.outbound_count > 0); break;
+      default: filtered = kpiConversations;
     }
     if (sheetAgentFilter !== 'all') filtered = filtered.filter(c => c.agent_id === sheetAgentFilter);
     if (sheetActivatedByFilter !== 'all') filtered = filtered.filter(c => activatedByLabel(c.activated_by) === sheetActivatedByFilter);
@@ -451,7 +472,20 @@ export function AgentMonitorDashboard() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Acompanhe o desempenho das conversas automáticas em tempo real</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {acolhedorOptions.length > 0 && (
+            <Select value={acolhedorFilter} onValueChange={setAcolhedorFilter}>
+              <SelectTrigger className="w-[140px] h-9 text-xs">
+                <SelectValue placeholder="Acolhedor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos Acolhedores</SelectItem>
+                {acolhedorOptions.map(a => (
+                  <SelectItem key={a} value={a}>{a}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={String(periodDays)} onValueChange={v => setPeriodDays(Number(v))}>
             <SelectTrigger className="w-[130px] h-9 text-xs">
               <SelectValue />
@@ -510,10 +544,15 @@ export function AgentMonitorDashboard() {
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
               <CheckCircle className="h-3.5 w-3.5 text-green-500" />
-              Fechados
+              Status dos Leads
             </div>
             <p className="text-2xl font-bold text-green-600">{globalStats.closed}</p>
-            <p className="text-[10px] text-red-500 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'refused', label: 'Recusados' }); }}>{globalStats.refused} recusados</p>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+              <p className="text-[10px] text-blue-600 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'active_leads', label: 'Em Andamento' }); }}>{globalStats.activeLeads} andamento</p>
+              <p className="text-[10px] text-green-600 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'closed', label: 'Fechados' }); }}>{globalStats.closed} fechados</p>
+              <p className="text-[10px] text-red-500 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'refused', label: 'Recusados' }); }}>{globalStats.refused} recusados</p>
+              <p className="text-[10px] text-muted-foreground cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'unviable', label: 'Inviáveis' }); }}>{globalStats.unviable} inviáveis</p>
+            </div>
           </CardContent>
         </Card>
 
