@@ -320,7 +320,7 @@ interface CaseCardProps {
   refreshKey?: number;
 }
 
-function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChange, onDelete, statusColors, statusLabels, onViewContact }: CaseCardProps) {
+function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChange, onDelete, statusColors, statusLabels, onViewContact, refreshKey }: CaseCardProps) {
   const { processes, loading: procLoading, fetchProcesses, addProcess, updateProcess, deleteProcess } = useLeadProcesses(legalCase.id);
   const [showProcessDialog, setShowProcessDialog] = useState(false);
   const [editingProcess, setEditingProcess] = useState<LeadProcess | null>(null);
