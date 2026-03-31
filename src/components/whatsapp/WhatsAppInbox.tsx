@@ -70,6 +70,7 @@ export function WhatsAppInbox() {
   const { isConnected: googleConnected, importContacts: googleImportContacts } = useGoogleIntegration();
   const [importingGoogle, setImportingGoogle] = useState(false);
   const [importingWhatsApp, setImportingWhatsApp] = useState(false);
+  const [creatingLead, setCreatingLead] = useState(false);
 
   const disconnectedSignature = useMemo(
     () => disconnectedInstances.map((inst) => inst.id).sort().join('|'),
@@ -316,7 +317,8 @@ export function WhatsAppInbox() {
   };
 
   const createLeadWithBoard = async (boardId: string) => {
-    if (!selectedConversation || !boardId) return;
+    if (!selectedConversation || !boardId || creatingLead) return;
+    setCreatingLead(true);
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
 
@@ -415,6 +417,8 @@ export function WhatsAppInbox() {
     } catch (e) {
       console.error(e);
       toast.error('Erro ao criar lead');
+    } finally {
+      setCreatingLead(false);
     }
   };
 
@@ -1097,8 +1101,8 @@ export function WhatsAppInbox() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowBoardPicker(false)}>Cancelar</Button>
-            <Button onClick={() => createLeadWithBoard(selectedBoardId)} disabled={!selectedBoardId}>
-              Criar Lead
+            <Button onClick={() => createLeadWithBoard(selectedBoardId)} disabled={!selectedBoardId || creatingLead}>
+              {creatingLead ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Criando...</> : 'Criar Lead'}
             </Button>
           </DialogFooter>
         </DialogContent>
