@@ -1108,9 +1108,12 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       }}
       lead={linkedLead}
       onSave={async (leadId, updates) => {
-        await supabase.from('leads').update(updates as any).eq('id', leadId);
+        const { error } = await supabase.from('leads').update(updates as any).eq('id', leadId);
+        if (error) {
+          console.error('[DashboardChatPreview] Lead save error:', JSON.stringify(error));
+          throw error;
+        }
         if (linkedLead) setLinkedLead({ ...linkedLead, ...updates } as Lead);
-        toast.success('Lead atualizado!');
       }}
       mode="sheet"
     />
