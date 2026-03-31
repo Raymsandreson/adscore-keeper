@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(CLOUD_URL, CLOUD_SERVICE_KEY);
+    const supabase = createClient(RESOLVED_SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY);
 
     const body = await req.json();
     const {
