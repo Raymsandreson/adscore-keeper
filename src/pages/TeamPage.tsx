@@ -17,6 +17,7 @@ import { WhatsAppInstancePermissions } from '@/components/team/WhatsAppInstanceP
 import { CareerPlanManager } from '@/components/team/CareerPlanManager';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
 import { MetricsManager } from '@/components/team/MetricsManager';
+import { AmbassadorCentral } from '@/components/ambassadors/AmbassadorCentral';
 import { cn } from '@/lib/utils';
 import {
   Users,
@@ -34,6 +35,7 @@ import {
   GraduationCap,
   TrendingUp,
   Activity,
+  Handshake,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
@@ -53,6 +55,7 @@ const ALL_TABS: TabDef[] = [
   { key: 'traffic', label: 'Tráfego', icon: TrendingUp, adminOnly: true },
   { key: 'members', label: 'Membros', icon: Users },
   { key: 'teams', label: 'Times', icon: UsersRound },
+  { key: 'ambassadors', label: 'Embaixadores', icon: Handshake },
   { key: 'career', label: 'Carreira', icon: GraduationCap, adminOnly: true },
   { key: 'routines', label: 'Rotinas', icon: CalendarClock, adminOnly: true },
   { key: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, adminOnly: true },
@@ -70,6 +73,7 @@ function TeamTabContent({ tab, availableCards }: { tab: string; availableCards: 
     case 'traffic': return <TrafficActivityPanel />;
     case 'members': return <TeamManagement />;
     case 'teams': return <TeamsManager />;
+    case 'ambassadors': return <AmbassadorCentral />;
     case 'career': return <CareerPlanManager />;
     case 'routines': return <MemberRoutineManager />;
     case 'whatsapp': return <WhatsAppInstancePermissions />;

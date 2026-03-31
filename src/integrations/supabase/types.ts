@@ -498,6 +498,213 @@ export type Database = {
         }
         Relationships: []
       }
+      ambassador_campaigns: {
+        Row: {
+          accelerator_multiplier: number | null
+          cap_percent: number | null
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          member_user_id: string | null
+          metric_key: string
+          min_threshold_percent: number
+          name: string
+          period_end: string
+          period_start: string
+          reward_value: number
+          target_value: number
+          updated_at: string
+        }
+        Insert: {
+          accelerator_multiplier?: number | null
+          cap_percent?: number | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          member_user_id?: string | null
+          metric_key?: string
+          min_threshold_percent?: number
+          name: string
+          period_end: string
+          period_start: string
+          reward_value?: number
+          target_value?: number
+          updated_at?: string
+        }
+        Update: {
+          accelerator_multiplier?: number | null
+          cap_percent?: number | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          member_user_id?: string | null
+          metric_key?: string
+          min_threshold_percent?: number
+          name?: string
+          period_end?: string
+          period_start?: string
+          reward_value?: number
+          target_value?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ambassador_member_links: {
+        Row: {
+          ambassador_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          member_user_id: string
+        }
+        Insert: {
+          ambassador_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          member_user_id: string
+        }
+        Update: {
+          ambassador_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          member_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ambassador_member_links_ambassador_id_fkey"
+            columns: ["ambassador_id"]
+            isOneToOne: false
+            referencedRelation: "ambassadors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ambassador_referrals: {
+        Row: {
+          ambassador_id: string
+          campaign_id: string | null
+          contact_id: string | null
+          created_at: string
+          id: string
+          lead_id: string | null
+          member_user_id: string
+          notes: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          ambassador_id: string
+          campaign_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          member_user_id: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          ambassador_id?: string
+          campaign_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          member_user_id?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ambassador_referrals_ambassador_id_fkey"
+            columns: ["ambassador_id"]
+            isOneToOne: false
+            referencedRelation: "ambassadors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ambassador_referrals_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "ambassador_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ambassador_referrals_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ambassador_referrals_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ambassadors: {
+        Row: {
+          city: string | null
+          contact_id: string | null
+          created_at: string
+          email: string | null
+          full_name: string
+          id: string
+          instagram_username: string | null
+          is_active: boolean
+          notes: string | null
+          phone: string | null
+          state: string | null
+          updated_at: string
+        }
+        Insert: {
+          city?: string | null
+          contact_id?: string | null
+          created_at?: string
+          email?: string | null
+          full_name: string
+          id?: string
+          instagram_username?: string | null
+          is_active?: boolean
+          notes?: string | null
+          phone?: string | null
+          state?: string | null
+          updated_at?: string
+        }
+        Update: {
+          city?: string | null
+          contact_id?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string
+          id?: string
+          instagram_username?: string | null
+          is_active?: boolean
+          notes?: string | null
+          phone?: string | null
+          state?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ambassadors_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bank_transactions: {
         Row: {
           amount: number
