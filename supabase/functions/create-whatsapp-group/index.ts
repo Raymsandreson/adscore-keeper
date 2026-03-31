@@ -1035,25 +1035,31 @@ async function forwardDocuments(
 
     // Send collected documents from sessions
     if (sessions) {
+      console.log(`[forward-docs] Found ${sessions.length} collection sessions`)
       for (const session of sessions) {
         const collected = session.collected_data || {}
         for (const docType of docTypes) {
           if (docType === 'zapsign_signed') continue
           const docKey = docType + '_url'
           const docUrl = collected[docKey] || collected[docType]
-          if (docUrl && typeof docUrl === 'string' && (docUrl.startsWith('http') || docUrl.startsWith('/'))) {
+          if (docUrl && typeof docUrl === 'string' && (docUrl.startsWith('http') || docUrl.startsWith('/')) && !sentUrls.has(docUrl)) {
+            sentUrls.add(docUrl)
             const label = docLabels[docType] || docType
             const fileName = `${label} - ${leadName}.pdf`
             try {
-              await fetch(`${baseUrl}/send/media`, {
+              const sendRes = await fetch(`${baseUrl}/send/media`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
                 body: JSON.stringify({ number: groupId, media: docUrl, type: 'document', fileName, caption: `📄 ${label} - ${leadName}` }),
               })
-              console.log(`Sent doc: ${fileName}`)
+              if (!sendRes.ok) {
+                console.error(`[forward-docs] Failed to send doc ${fileName}:`, sendRes.status)
+              } else {
+                console.log(`[forward-docs] Sent doc: ${fileName}`)
+              }
               await sleep(800)
             } catch (e) {
-              console.error(`Error sending doc ${docType}:`, e)
+              console.error(`[forward-docs] Error sending doc ${docType}:`, e)
             }
           }
         }
