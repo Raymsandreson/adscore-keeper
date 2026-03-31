@@ -1,15 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
-// External DB for business data
+// Single Source of Truth: ALL data from external DB
 const EXTERNAL_URL = resolveSupabaseUrl();
 const EXTERNAL_KEY = resolveServiceRoleKey();
-
-// Cloud DB for profiles & whatsapp_instances (auth user_ids match)
-const CLOUD_URL = Deno.env.get('SUPABASE_URL') || '';
-const CLOUD_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -22,29 +16,15 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Use Cloud client for profiles/instances (user_ids from Cloud auth)
-    const supabase = createClient(CLOUD_URL, CLOUD_KEY);
+    // Use ONLY external DB for everything
+    const supabase = createClient(EXTERNAL_URL, EXTERNAL_KEY);
 
     const body = await req.json();
     const {
-      activity_id,
-      title,
-      description,
-      activity_type,
-      status,
-      priority,
-      assigned_to,
-      assigned_to_name,
-      created_by,
-      deadline,
-      lead_name,
-      lead_id,
-      contact_name,
-      contact_id,
-      what_was_done,
-      next_steps,
-      current_status_notes,
-      notes,
+      activity_id, title, description, activity_type, status, priority,
+      assigned_to, assigned_to_name, created_by, deadline,
+      lead_name, lead_id, contact_name, contact_id,
+      what_was_done, next_steps, current_status_notes, notes,
     } = body;
 
     if (!assigned_to) {
@@ -53,27 +33,32 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Don't notify if the creator is the same as the assignee
     if (assigned_to === created_by) {
       return new Response(JSON.stringify({ ok: false, reason: 'self_assigned' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Get assigned user's profile (phone + default instance)
-    const { data: profile } = await supabase
+    // ALL from external DB - profiles, instances, everything
+    const { data: profile, error: profileErr } = await supabase
       .from('profiles')
       .select('phone, default_instance_id, full_name')
       .eq('user_id', assigned_to)
       .single();
 
+    console.log('[notify] Profile lookup for', assigned_to, ':', profile, profileErr?.message);
+
     if (!profile?.phone || !profile?.default_instance_id) {
-      return new Response(JSON.stringify({ ok: false, reason: 'no_phone_or_instance' }), {
+      return new Response(JSON.stringify({ 
+        ok: false, 
+        reason: 'no_phone_or_instance',
+        debug: { assigned_to, profile_found: !!profile, phone: profile?.phone, instance: profile?.default_instance_id }
+      }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Get creator's name
+    // Creator name - also from external
     let creatorName = 'Sistema';
     if (created_by) {
       const { data: creatorProfile } = await supabase
@@ -84,7 +69,7 @@ Deno.serve(async (req) => {
       if (creatorProfile?.full_name) creatorName = creatorProfile.full_name;
     }
 
-    // Get the instance details
+    // Instance - from external
     const { data: instance } = await supabase
       .from('whatsapp_instances')
       .select('base_url, instance_token, instance_name')
@@ -97,31 +82,20 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Build deep link
+    // Build message
     const appUrl = Deno.env.get('APP_URL') || 'https://adscore-keeper.lovable.app';
     const deepLink = `${appUrl}/atividades?openActivity=${activity_id}`;
 
-    // Build activity type label
     const typeLabels: Record<string, string> = {
-      tarefa: '📋 Tarefa',
-      ligacao: '📞 Ligação',
-      reuniao: '🤝 Reunião',
-      email: '📧 E-mail',
-      whatsapp: '💬 WhatsApp',
-      visita: '🏢 Visita',
-      notificacao: '🔔 Notificação',
-      audiencia: '⚖️ Audiência',
-      prazo: '⏰ Prazo',
+      tarefa: '📋 Tarefa', ligacao: '📞 Ligação', reuniao: '🤝 Reunião',
+      email: '📧 E-mail', whatsapp: '💬 WhatsApp', visita: '🏢 Visita',
+      notificacao: '🔔 Notificação', audiencia: '⚖️ Audiência', prazo: '⏰ Prazo',
     };
 
     const priorityLabels: Record<string, string> = {
-      baixa: '🟢 Baixa',
-      normal: '🟡 Normal',
-      alta: '🟠 Alta',
-      urgente: '🔴 Urgente',
+      baixa: '🟢 Baixa', normal: '🟡 Normal', alta: '🟠 Alta', urgente: '🔴 Urgente',
     };
 
-    // Build message
     const lines: string[] = [];
     lines.push('📌 *Nova Atividade Atribuída*');
     lines.push('');
@@ -135,39 +109,27 @@ Deno.serve(async (req) => {
     }
 
     lines.push('');
-
     if (lead_name) lines.push(`🏢 *Lead:* ${lead_name}`);
     if (contact_name) lines.push(`👤 *Contato:* ${contact_name}`);
-
     if (lead_name || contact_name) lines.push('');
-
     if (description) lines.push(`📄 *Descrição:* ${description}`);
     if (current_status_notes) lines.push(`📊 *Status atual:* ${current_status_notes}`);
     if (what_was_done) lines.push(`✅ *O que foi feito:* ${what_was_done}`);
     if (next_steps) lines.push(`➡️ *Próximo passo:* ${next_steps}`);
     if (notes) lines.push(`📝 *Observação:* ${notes}`);
-
     lines.push('');
     lines.push(`👤 *Registrado por:* ${creatorName}`);
     lines.push('');
     lines.push(`🔗 *Acessar:* ${deepLink}`);
 
     const message = lines.join('\n');
-
-    // Send via UazAPI
     const phone = profile.phone.replace(/\D/g, '');
     const baseUrl = instance.base_url.replace(/\/$/, '');
 
     const response = await fetch(`${baseUrl}/send/text`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'token': instance.instance_token,
-      },
-      body: JSON.stringify({
-        number: phone,
-        text: message,
-      }),
+      headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
+      body: JSON.stringify({ number: phone, text: message }),
     });
 
     const result = await response.json().catch(() => ({}));
