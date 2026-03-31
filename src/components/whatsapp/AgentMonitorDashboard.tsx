@@ -54,6 +54,7 @@ interface ConversationDetail {
   lead_status: string | null;
   lead_city: string | null;
   lead_state: string | null;
+  lead_acolhedor: string | null;
   board_name: string | null;
   stage_name: string | null;
   last_inbound_at: string | null;
