@@ -750,8 +750,26 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                 {instanceName && <span className="text-[10px] text-muted-foreground">• {instanceName}</span>}
               </div>
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                {hasLead && <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4">Lead</Badge>}
-                {hasContact && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">Contato</Badge>}
+                {hasLead && (
+                  <Badge
+                    variant="default"
+                    className="text-[10px] px-1.5 py-0 h-4 cursor-pointer hover:opacity-80"
+                    onClick={() => { if (linkedLead) setShowLeadEdit(true); }}
+                    title={linkedLead ? `Abrir lead: ${linkedLead.lead_name}` : 'Lead'}
+                  >
+                    Lead {linkedLead?.lead_name ? `• ${linkedLead.lead_name.slice(0, 20)}` : ''}
+                  </Badge>
+                )}
+                {hasContact && (
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] px-1.5 py-0 h-4 cursor-pointer hover:opacity-80"
+                    onClick={() => { if (linkedContact) setShowContactEdit(true); }}
+                    title={linkedContact ? `Abrir contato: ${linkedContact.full_name}` : 'Contato'}
+                  >
+                    Contato {linkedContact?.full_name ? `• ${linkedContact.full_name.slice(0, 20)}` : ''}
+                  </Badge>
+                )}
                 {!hasLead && !hasContact && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-muted-foreground">Sem vínculo</Badge>}
                 {wasResponded ? (
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800">
