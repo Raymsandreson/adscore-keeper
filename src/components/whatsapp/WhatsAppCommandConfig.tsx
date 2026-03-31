@@ -421,7 +421,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
         const { error: retryError } = await (supabase.from('wjia_command_shortcuts') as any).update(corePayload).eq('id', editingId);
         if (retryError) { toast.error(retryError.message); return; }
         // Save filter fields via edge function (direct REST API bypass)
-        const { error: filterError } = await invokeCloudFunction('update-agent-filters', {
+        const { error: filterError } = await cloudFunctions.invoke('update-agent-filters', { body: {
           agent_id: editingId,
           lead_status_board_ids: lead_status_board_ids || null,
           lead_status_filter: lead_status_filter || null,
