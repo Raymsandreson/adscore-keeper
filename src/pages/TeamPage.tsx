@@ -149,32 +149,11 @@ export default function TeamPage() {
         </div>
       </div>
 
-      {/* Collapsible pill tab navigation */}
+      {/* Pill tab navigation - all tabs visible */}
       <div className="sticky top-16 z-20 bg-card/80 backdrop-blur-md border-b">
         <div className="container mx-auto max-w-7xl px-4 sm:px-6">
-          {(() => {
-            // Always show the active tab + first N tabs (deduplicated)
-            const activeTabDef = visibleTabs.find(t => t.key === safeTab);
-            const collapsed = !tabsExpanded;
-            
-            // When collapsed: show first VISIBLE_COUNT, but ensure active is always visible
-            let displayTabs = visibleTabs;
-            let hiddenCount = 0;
-            if (collapsed && visibleTabs.length > VISIBLE_COUNT) {
-              const firstN = visibleTabs.slice(0, VISIBLE_COUNT);
-              const activeInFirstN = firstN.some(t => t.key === safeTab);
-              if (activeInFirstN) {
-                displayTabs = firstN;
-              } else {
-                // Replace last visible with active tab
-                displayTabs = [...firstN.slice(0, VISIBLE_COUNT - 1), activeTabDef!];
-              }
-              hiddenCount = visibleTabs.length - displayTabs.length;
-            }
-
-            return (
               <div className="flex items-center gap-1.5 py-2.5 flex-wrap">
-                {displayTabs.map(tab => {
+                {visibleTabs.map(tab => {
                   const Icon = tab.icon;
                   const isActive = safeTab === tab.key;
                   return (
@@ -193,11 +172,6 @@ export default function TeamPage() {
                     </button>
                   );
                 })}
-
-                {/* Expand/collapse toggle */}
-                {visibleTabs.length > VISIBLE_COUNT && (
-                  <button
-                    onClick={() => setTabsExpanded(prev => !prev)}
                     className={cn(
                       'inline-flex items-center gap-1 px-3 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-200 shrink-0',
                       'text-primary bg-primary/10 hover:bg-primary/20'
