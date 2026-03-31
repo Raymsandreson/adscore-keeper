@@ -183,6 +183,8 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     setEditWhatWasDone(a.what_was_done || '');
     setEditCurrentStatusNotes(a.current_status_notes || '');
     setEditNextSteps(a.next_steps || '');
+    setEditAssignedTo(a.assigned_to || '');
+    setEditAssignedToName(a.assigned_to_name || '');
   };
 
   const handleSaveEdit = async () => {
