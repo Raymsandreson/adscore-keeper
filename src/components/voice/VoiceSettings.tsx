@@ -100,8 +100,9 @@ export function VoiceSettings() {
 
   const loadVoices = async () => {
     try {
+      const uid = await getUserId();
       const { data, error } = await cloudFunctions.invoke('elevenlabs-voice-clone', {
-        body: { action: 'list_presets' },
+        body: { action: 'list_presets', user_id: uid },
       });
       if (error) throw error;
       setPresets(data.presets || []);
