@@ -136,6 +136,7 @@ export function BoardGroupInstancesConfig() {
     process_nucleus_id: '',
     process_workflow_board_id: '',
     process_auto_activities: [],
+    process_workflows: [],
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
