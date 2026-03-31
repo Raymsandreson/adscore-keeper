@@ -188,7 +188,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [showAI, setShowAI] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; media_extraction_prompt?: string; followup_steps: FollowupStep[] } | null>(null);
-  const [leadStatusFilter, setLeadStatusFilter] = useState<string[]>([]);
+  
   const [form, setForm] = useState({
     shortcut_name: '', description: '', template_token: '', template_name: '',
     prompt_instructions: '', media_extraction_prompt: '',
