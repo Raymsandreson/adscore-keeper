@@ -88,8 +88,6 @@ export default function TeamPage() {
   const navigate = useNavigate();
   const { isAdmin, loading } = useUserRole();
   const [activeTab, setActiveTab] = usePageState<string>('team_activeTab', 'productivity');
-  const [tabsExpanded, setTabsExpanded] = useState(false);
-  const VISIBLE_COUNT = 4; // Show first N tabs when collapsed
 
   const { transactions, fetchTransactions, fetchConnections } = useCreditCardTransactions();
 
