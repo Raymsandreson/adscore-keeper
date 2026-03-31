@@ -134,19 +134,21 @@ serve(async (req) => {
       
       let leadStatusToCheck: string | null = null;
       let foundLeadId: string | null = lead_id || null;
+      let foundLeadBoardId: string | null = null;
 
       if (foundLeadId) {
         const { data: leadData } = await supabase
           .from("leads")
-          .select("lead_status")
+          .select("lead_status, board_id")
           .eq("id", foundLeadId)
           .maybeSingle();
         leadStatusToCheck = leadData?.lead_status || 'active';
+        foundLeadBoardId = leadData?.board_id || null;
       } else {
         // Try to find lead via contact phone
         const { data: contactLeads } = await supabase
           .from("contacts")
-          .select("id, contact_leads(lead_id, leads(id, lead_status))")
+          .select("id, contact_leads(lead_id, leads(id, lead_status, board_id))")
           .ilike("phone", `%${phoneSuffixForStatus}`)
           .limit(5);
 
@@ -158,6 +160,7 @@ serve(async (req) => {
               if (lead?.lead_status && ['closed', 'refused', 'unviable'].includes(lead.lead_status)) {
                 leadStatusToCheck = lead.lead_status;
                 foundLeadId = lead.id;
+                foundLeadBoardId = lead.board_id || null;
                 break;
               }
             }
