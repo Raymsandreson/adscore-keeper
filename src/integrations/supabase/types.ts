@@ -6786,6 +6786,7 @@ export type Database = {
           board_id: string | null
           campaign_id: string
           campaign_name: string | null
+          closed_agent_id: string | null
           created_at: string
           id: string
           instance_id: string | null
@@ -6800,6 +6801,7 @@ export type Database = {
           board_id?: string | null
           campaign_id: string
           campaign_name?: string | null
+          closed_agent_id?: string | null
           created_at?: string
           id?: string
           instance_id?: string | null
@@ -6814,6 +6816,7 @@ export type Database = {
           board_id?: string | null
           campaign_id?: string
           campaign_name?: string | null
+          closed_agent_id?: string | null
           created_at?: string
           id?: string
           instance_id?: string | null
