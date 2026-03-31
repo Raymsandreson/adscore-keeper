@@ -172,27 +172,7 @@ export default function TeamPage() {
                     </button>
                   );
                 })}
-                    className={cn(
-                      'inline-flex items-center gap-1 px-3 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-200 shrink-0',
-                      'text-primary bg-primary/10 hover:bg-primary/20'
-                    )}
-                  >
-                    {collapsed ? (
-                      <>
-                        <span>+{hiddenCount}</span>
-                        <ChevronDown className="h-3.5 w-3.5" />
-                      </>
-                    ) : (
-                      <>
-                        <span>Menos</span>
-                        <ChevronUp className="h-3.5 w-3.5" />
-                      </>
-                    )}
-                  </button>
-                )}
               </div>
-            );
-          })()}
         </div>
       </div>
 
