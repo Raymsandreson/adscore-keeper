@@ -307,6 +307,18 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
     'Benefício INSS', 'Inquérito Policial', 'Organizar docs', 'Onboarding',
   ];
 
+  // Mapping of process title → default assigned user for CASO-type cases
+  const CASO_PROCESS_ASSIGNMENTS: Record<string, { userId: string; userName: string }> = {
+    'Seguro de Vida': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
+    'Benefício INSS': { userId: '4dba2de0-5357-49ab-8bf9-4c248a1440de', userName: 'Gisele' },
+    'Inquérito Policial': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
+    'Organizar docs': { userId: '7f41a35e-7d98-4ade-8270-52d727433e6a', userName: 'Abderaman' },
+    'Onboarding': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
+    'Indenização': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
+    'Relatório de Acidente': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
+    'TRCT + Verbas': { userId: '44fd2301-47c6-4912-a583-0213b1c368eb', userName: 'João Vitor' },
+  };
+
   const toggleProcess = (name: string) => {
     setSelectedProcesses(prev => {
       const next = new Set(prev);
