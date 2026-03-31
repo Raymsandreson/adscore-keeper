@@ -494,17 +494,20 @@ Deno.serve(async (req) => {
       console.log('Skipping initial message. groupId:', groupId, 'settings:', !!settings)
     }
 
-    // Forward documents if configured
+    // Forward documents if configured + conversation media
+    // Use shared sentUrls set to avoid duplicate sends
+    const sentUrls = new Set<string>()
+
     if (groupId && settings?.forward_document_types?.length > 0 && leadData) {
       console.log('Forwarding documents. Types:', settings.forward_document_types)
-      await forwardDocuments(supabase, settings, leadData, groupId, baseUrl, creatorInstance)
+      await forwardDocuments(supabase, settings, leadData, groupId, baseUrl, creatorInstance, sentUrls)
     } else {
       console.log('Skipping document forwarding. groupId:', groupId, 'docTypes:', settings?.forward_document_types, 'hasLead:', !!leadData)
     }
 
     // Always forward conversation media (inbound images/documents) + signed ZapSign docs to the group
     if (groupId && leadData) {
-      await forwardConversationMedia(supabase, leadData, normalizedPhone || (contact_phone || phone || '').replace(/\D/g, ''), groupId, baseUrl, creatorInstance)
+      await forwardConversationMedia(supabase, leadData, normalizedPhone || (contact_phone || phone || '').replace(/\D/g, ''), groupId, baseUrl, creatorInstance, sentUrls)
     }
 
     // Auto-create legal process if configured
@@ -705,11 +708,12 @@ Nome do grupo: ${groupName}
 REGRAS:
 1. Mantenha a MESMA estrutura e formatação do modelo original.
 2. Substitua TODOS os dados fictícios pelos dados reais correspondentes.
-3. Se um dado real não estiver disponível, coloque "Não informado" ou omita a linha.
+3. Se um dado real não estiver disponível, OMITA a linha inteira em vez de escrever "Não informado".
 4. NÃO adicione seções que não existam no modelo original.
 5. NÃO inclua links na mensagem (serão adicionados separadamente).
 6. NÃO inclua observações administrativas ou técnicas.
-7. Retorne APENAS a mensagem final, sem explicações.`
+7. Certifique-se de que a mensagem está COMPLETA — não corte no meio de uma frase ou campo.
+8. Retorne APENAS a mensagem final, sem explicações.`
 
         try {
           const aiResult = await geminiChat({
@@ -790,16 +794,53 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
       // Clean admin notes from AI output
       messageText = messageText.replace(/⚠️\s*OBSERV[AÇ]+[ÃO]+[:\s].*$/gims, '').trim()
       
-      // Send text message
-      const sendTextRes = await fetch(`${baseUrl}/send/text`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-        body: JSON.stringify({ number: groupId, text: messageText }),
-      })
-      if (!sendTextRes.ok) {
-        console.error('Failed to send initial message:', sendTextRes.status, await sendTextRes.text())
+      // Remove incomplete/dangling lines (e.g., "* *Meses" without content)
+      messageText = messageText
+        .split('\n')
+        .filter(line => {
+          const trimmed = line.trim()
+          // Remove lines that are just bullets with no real content
+          if (/^\*?\s*\*[^*]*$/.test(trimmed) && trimmed.length < 15 && !trimmed.includes(':')) return false
+          // Remove lines that look like incomplete field labels
+          if (/^\*\s*\*\w+$/.test(trimmed)) return false
+          return true
+        })
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+
+      // Split long messages (WhatsApp limit ~4096 chars)
+      const messageParts: string[] = []
+      if (messageText.length > 3800) {
+        // Split on double newlines
+        const sections = messageText.split('\n\n')
+        let currentPart = ''
+        for (const section of sections) {
+          if (currentPart.length + section.length + 2 > 3800) {
+            if (currentPart.trim()) messageParts.push(currentPart.trim())
+            currentPart = section
+          } else {
+            currentPart += (currentPart ? '\n\n' : '') + section
+          }
+        }
+        if (currentPart.trim()) messageParts.push(currentPart.trim())
       } else {
-        console.log('Initial message sent to group')
+        messageParts.push(messageText)
+      }
+
+      // Send text message parts
+      for (let i = 0; i < messageParts.length; i++) {
+        const sendTextRes = await fetch(`${baseUrl}/send/text`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+          body: JSON.stringify({ number: groupId, text: messageParts[i] }),
+        })
+        if (!sendTextRes.ok) {
+          console.error(`Failed to send initial message part ${i + 1}:`, sendTextRes.status, await sendTextRes.text())
+        } else {
+          console.log(`Initial message part ${i + 1}/${messageParts.length} sent to group`)
+        }
+        if (i < messageParts.length - 1) await sleep(1000)
       }
 
       await sleep(1000)
@@ -820,18 +861,26 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
       let audioVoiceId = settings.audio_voice_id
       if (creatorInstance.owner_phone) {
         const ownerPhone = creatorInstance.owner_phone.replace(/\D/g, '')
+        // Try multiple phone format matches
         const { data: ownerProfile } = await supabase
           .from('profiles')
           .select('voice_id')
-          .eq('phone', ownerPhone)
+          .or(`phone.eq.${ownerPhone},phone.ilike.%${ownerPhone.slice(-8)}%`)
+          .not('voice_id', 'is', null)
+          .limit(1)
           .maybeSingle()
         if (ownerProfile?.voice_id) {
           audioVoiceId = ownerProfile.voice_id
           console.log('Using member voice:', audioVoiceId)
         }
       }
+      
+      console.log('Audio check - send_audio_message:', settings.send_audio_message, 'audioVoiceId:', audioVoiceId, 'hasText:', !!messageText)
+      
       if (settings.send_audio_message && audioVoiceId && messageText) {
         await sendAudioMessage(supabase, messageText, audioVoiceId, groupId, baseUrl, creatorInstance)
+      } else if (!audioVoiceId) {
+        console.log('Skipping audio: no voice ID configured')
       }
     }
   } catch (err) {
@@ -919,7 +968,7 @@ async function sendAudioMessage(
 
 async function forwardDocuments(
   supabase: any, settings: any, leadData: any, groupId: string,
-  baseUrl: string, creatorInstance: any
+  baseUrl: string, creatorInstance: any, sentUrls: Set<string>
 ) {
   try {
     const docTypes = settings.forward_document_types || []
@@ -933,15 +982,19 @@ async function forwardDocuments(
       .order('created_at', { ascending: false })
       .limit(5)
 
-    // Get ZapSign signed documents
+    // Get ZapSign signed documents - always check for these regardless of type filter
     let signedDocs: any[] = []
-    if (docTypes.includes('zapsign_signed') || docTypes.includes('procuracao')) {
-      const { data } = await supabase
-        .from('zapsign_documents')
-        .select('*')
-        .eq('lead_id', leadData.id)
-        .not('signed_file_url', 'is', null)
-      signedDocs = data || []
+    const { data: zapSignData, error: zapSignError } = await supabase
+      .from('zapsign_documents')
+      .select('*')
+      .eq('lead_id', leadData.id)
+      .not('signed_file_url', 'is', null)
+    
+    if (zapSignError) {
+      console.error('[forward-docs] ZapSign query error:', zapSignError)
+    } else {
+      signedDocs = zapSignData || []
+      console.log(`[forward-docs] Found ${signedDocs.length} ZapSign signed documents`)
     }
 
     const docLabels: Record<string, string> = {
@@ -959,43 +1012,54 @@ async function forwardDocuments(
 
     // Send ZapSign signed documents
     for (const doc of signedDocs) {
-      if (!doc.signed_file_url) continue
+      if (!doc.signed_file_url || sentUrls.has(doc.signed_file_url)) continue
+      sentUrls.add(doc.signed_file_url)
       const docLabel = doc.template_name || docLabels['zapsign_signed']
       const fileName = `${docLabel} - ${leadName}.pdf`
       try {
-        await fetch(`${baseUrl}/send/media`, {
+        const sendRes = await fetch(`${baseUrl}/send/media`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
           body: JSON.stringify({ number: groupId, media: doc.signed_file_url, type: 'document', fileName, caption: `📄 ${docLabel} - ${leadName}` }),
         })
-        console.log(`Sent signed doc: ${fileName}`)
+        if (!sendRes.ok) {
+          console.error(`[forward-docs] Failed to send signed doc ${fileName}:`, sendRes.status, await sendRes.text())
+        } else {
+          console.log(`[forward-docs] Sent signed doc: ${fileName}`)
+        }
         await sleep(800)
       } catch (e) {
-        console.error(`Error sending signed doc:`, e)
+        console.error(`[forward-docs] Error sending signed doc:`, e)
       }
     }
 
     // Send collected documents from sessions
     if (sessions) {
+      console.log(`[forward-docs] Found ${sessions.length} collection sessions`)
       for (const session of sessions) {
         const collected = session.collected_data || {}
         for (const docType of docTypes) {
           if (docType === 'zapsign_signed') continue
           const docKey = docType + '_url'
           const docUrl = collected[docKey] || collected[docType]
-          if (docUrl && typeof docUrl === 'string' && (docUrl.startsWith('http') || docUrl.startsWith('/'))) {
+          if (docUrl && typeof docUrl === 'string' && (docUrl.startsWith('http') || docUrl.startsWith('/')) && !sentUrls.has(docUrl)) {
+            sentUrls.add(docUrl)
             const label = docLabels[docType] || docType
             const fileName = `${label} - ${leadName}.pdf`
             try {
-              await fetch(`${baseUrl}/send/media`, {
+              const sendRes = await fetch(`${baseUrl}/send/media`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
                 body: JSON.stringify({ number: groupId, media: docUrl, type: 'document', fileName, caption: `📄 ${label} - ${leadName}` }),
               })
-              console.log(`Sent doc: ${fileName}`)
+              if (!sendRes.ok) {
+                console.error(`[forward-docs] Failed to send doc ${fileName}:`, sendRes.status)
+              } else {
+                console.log(`[forward-docs] Sent doc: ${fileName}`)
+              }
               await sleep(800)
             } catch (e) {
-              console.error(`Error sending doc ${docType}:`, e)
+              console.error(`[forward-docs] Error sending doc ${docType}:`, e)
             }
           }
         }
@@ -1009,41 +1073,50 @@ async function forwardDocuments(
         .select('*')
         .eq('lead_id', leadData.id)
 
+      console.log(`[forward-docs] Found ${leadDocs?.length || 0} lead_documents`)
+      
       if (leadDocs) {
         for (const doc of leadDocs) {
+          if (!doc.file_url || sentUrls.has(doc.file_url)) continue
           const docType = (doc.document_type || '').toLowerCase()
           if (docTypes.some((dt: string) => docType.includes(dt) || dt === 'outros')) {
+            sentUrls.add(doc.file_url)
             const label = doc.document_name || docLabels[docType] || 'Documento'
             const fileName = `${label} - ${leadName}.pdf`
             try {
-              await fetch(`${baseUrl}/send/media`, {
+              const sendRes = await fetch(`${baseUrl}/send/media`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
                 body: JSON.stringify({ number: groupId, media: doc.file_url, type: 'document', fileName, caption: `📄 ${label} - ${leadName}` }),
               })
-              console.log(`Sent lead doc: ${fileName}`)
+              if (!sendRes.ok) {
+                console.error(`[forward-docs] Failed to send lead doc ${fileName}:`, sendRes.status)
+              } else {
+                console.log(`[forward-docs] Sent lead doc: ${fileName}`)
+              }
               await sleep(800)
             } catch (e) {
-              console.error(`Error sending lead doc:`, e)
+              console.error(`[forward-docs] Error sending lead doc:`, e)
             }
           }
         }
       }
     } catch (e) {
-      console.log('lead_documents table not available')
+      console.log('[forward-docs] lead_documents table not available:', e)
     }
+    
+    console.log(`[forward-docs] Total unique URLs sent: ${sentUrls.size}`)
   } catch (err) {
-    console.error('Error forwarding documents:', err)
+    console.error('[forward-docs] Error forwarding documents:', err)
   }
 }
 
 async function forwardConversationMedia(
   supabase: any, leadData: any, phone: string, groupId: string,
-  baseUrl: string, creatorInstance: any
+  baseUrl: string, creatorInstance: any, sentUrls: Set<string>
 ) {
   try {
     const leadName = leadData.lead_name || leadData.victim_name || 'Lead'
-    const sentUrls = new Set<string>()
 
     // 1. Forward ZapSign signed documents
     const { data: signedDocs } = await supabase
