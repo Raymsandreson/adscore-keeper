@@ -375,8 +375,29 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
         notes: editNotes || null,
       }).eq('id', legalCase.id);
       if (error) throw error;
+      // Auto-create selected processes
+      if (selectedProcesses.size > 0 && legalCase.lead_id) {
+        const { data: { user } } = await supabase.auth.getUser();
+        for (const title of selectedProcesses) {
+          try {
+            await supabase.from('lead_processes').insert({
+              lead_id: legalCase.lead_id,
+              case_id: legalCase.id,
+              process_type: 'administrativo',
+              title,
+              status: 'em_andamento',
+              started_at: new Date().toISOString().slice(0, 10),
+              created_by: user?.id,
+            } as any);
+          } catch (err) {
+            console.warn(`Error creating process "${title}":`, err);
+          }
+        }
+        toast.success(`${selectedProcesses.size} processo(s) criado(s)`);
+      }
       toast.success('Caso atualizado');
       setShowEditDialog(false);
+      setSelectedProcesses(new Set());
       onCaseUpdated();
     } catch {
       toast.error('Erro ao atualizar caso');
