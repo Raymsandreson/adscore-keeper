@@ -1,0 +1,1 @@
+UPDATE leads SET lead_status = 'active' WHERE lead_status = 'refused' AND lead_status_reason IS NULL AND lead_status_changed_at IS NULL;

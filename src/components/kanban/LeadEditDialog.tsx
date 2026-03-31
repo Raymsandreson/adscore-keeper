@@ -264,13 +264,15 @@ export function LeadEditDialog({
       // Outcome
       setCaseNumber(leadAny.case_number || '');
       setLeadOutcomeReason(leadAny.lead_status_reason || '');
-      if (leadAny.became_client_date) {
+      // Use lead_status field as primary source of truth
+      const leadStatus = leadAny.lead_status;
+      if (leadStatus === 'closed' || leadAny.became_client_date) {
         setLeadOutcome('closed');
         setLeadOutcomeDate(leadAny.became_client_date || '');
-      } else if (leadAny.inviavel_date) {
+      } else if (leadStatus === 'inviavel' || leadAny.inviavel_date) {
         setLeadOutcome('inviavel');
         setLeadOutcomeDate(leadAny.inviavel_date || '');
-      } else if (leadAny.classification_date) {
+      } else if (leadStatus === 'refused') {
         setLeadOutcome('refused');
         setLeadOutcomeDate(leadAny.classification_date || '');
       } else if (leadAny.in_progress_date) {
