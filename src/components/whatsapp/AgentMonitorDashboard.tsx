@@ -257,6 +257,7 @@ export function AgentMonitorDashboard() {
           human_paused: !!isPaused,
           contact_name: msgs[0]?.contact_name || null,
           lead_name: lead?.lead_name || null,
+          lead_id: lead?.id || null,
           lead_status: lead?.lead_status || null,
           lead_city: lead?.city || null,
           lead_state: lead?.state || null,
