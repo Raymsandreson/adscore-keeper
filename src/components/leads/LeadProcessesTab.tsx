@@ -112,6 +112,7 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
             assigned_to: user?.id,
             created_by: user?.id,
             deadline: new Date().toISOString().slice(0, 10),
+            process_id: savedProcess.id,
           } as any);
           toast.success('Atividade "Dar andamento" criada automaticamente');
         } catch (actErr) {
