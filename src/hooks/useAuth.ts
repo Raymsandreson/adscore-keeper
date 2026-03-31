@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
 import { cacheSet, cacheGet, CACHE_TTL } from '@/lib/offlineCache';
-import { invokeCloudFunction } from '@/lib/lovableCloudFunctions';
+
 
 interface Profile {
   id: string;
@@ -13,24 +13,30 @@ interface Profile {
   updated_at: string;
 }
 
-// Sync user to external DB and get profile back
-async function syncUserToExternal(session: Session): Promise<Profile | null> {
+// Sync user to external DB - sends user data from session
+async function syncUserToExternal(user: User): Promise<Profile | null> {
   try {
     const CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
+    const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38';
     const res = await fetch(`${CLOUD_URL}/functions/v1/sync-user-to-external`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-        'apikey': session.access_token,
+        'Authorization': `Bearer ${ANON_KEY}`,
+        'apikey': ANON_KEY,
       },
+      body: JSON.stringify({
+        user_id: user.id,
+        email: user.email,
+        full_name: user.user_metadata?.full_name || '',
+      }),
     });
     if (res.ok) {
       const data = await res.json();
       console.log('[AUTH] ✅ User synced to external DB:', data.profile?.full_name);
       return data.profile;
     } else {
-      console.warn('[AUTH] ⚠️ Sync failed:', res.status);
+      console.warn('[AUTH] ⚠️ Sync failed:', res.status, await res.text());
     }
   } catch (err) {
     console.warn('[AUTH] ⚠️ Sync error:', err);
@@ -89,7 +95,7 @@ export const useAuth = () => {
           
           // Sync to external DB and get profile from there
           setTimeout(async () => {
-            const syncedProfile = await syncUserToExternal(session);
+            const syncedProfile = await syncUserToExternal(session.user);
             if (syncedProfile) {
               setProfile(syncedProfile);
               cacheSet('auth_profile', syncedProfile, CACHE_TTL.PROFILE);
@@ -122,7 +128,7 @@ export const useAuth = () => {
         cacheSet('auth_session', { user: session.user, session }, CACHE_TTL.SESSION);
         
         // Sync to external DB
-        const syncedProfile = await syncUserToExternal(session);
+        const syncedProfile = await syncUserToExternal(session.user);
         if (syncedProfile) {
           setProfile(syncedProfile);
           cacheSet('auth_profile', syncedProfile, CACHE_TTL.PROFILE);
