@@ -99,29 +99,42 @@ export function WhatsAppCommandConfig() {
 
   const loadData = async () => {
     setLoading(true);
-    const [profilesRes, shortcutsRes] = await Promise.all([
+    const [profilesRes, shortcutsRes, filterSettingsRes] = await Promise.all([
       supabase.from('profiles').select('user_id, full_name').order('full_name'),
       supabase.from('wjia_command_shortcuts').select('*').order('display_order') as any,
+      supabase.from('agent_filter_settings').select('*') as any,
     ]);
     setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
-    setShortcuts((shortcutsRes.data || []).map((s: any) => ({
-      ...s,
-      followup_steps: s.followup_steps || [],
-      assistant_type: s.assistant_type || 'document',
-      model: s.model || 'google/gemini-2.5-flash',
-      temperature: s.temperature ?? 0.7,
-      max_tokens: (s as any).max_tokens ?? 2048,
-      response_delay_seconds: s.response_delay_seconds ?? 2,
-      split_messages: s.split_messages ?? false,
-      split_delay_seconds: s.split_delay_seconds ?? 3,
-      human_reply_pause_minutes: s.human_reply_pause_minutes ?? 0,
-      command_scope: s.command_scope || 'client',
-      reply_with_audio: s.reply_with_audio ?? false,
-      reply_voice_id: s.reply_voice_id || null,
-      respond_in_groups: s.respond_in_groups ?? false,
-      send_window_start_hour: (s as any).send_window_start_hour ?? 8,
-      send_window_end_hour: (s as any).send_window_end_hour ?? 20,
-    })) as Shortcut[]);
+    
+    // Build a map of filter settings by agent_id
+    const filterMap: Record<string, any> = {};
+    (filterSettingsRes.data || []).forEach((f: any) => {
+      filterMap[f.agent_id] = f;
+    });
+    
+    setShortcuts((shortcutsRes.data || []).map((s: any) => {
+      const filters = filterMap[s.id] || {};
+      return {
+        ...s,
+        followup_steps: s.followup_steps || [],
+        assistant_type: s.assistant_type || 'document',
+        model: s.model || 'google/gemini-2.5-flash',
+        temperature: s.temperature ?? 0.7,
+        max_tokens: (s as any).max_tokens ?? 2048,
+        response_delay_seconds: s.response_delay_seconds ?? 2,
+        split_messages: s.split_messages ?? false,
+        split_delay_seconds: s.split_delay_seconds ?? 3,
+        human_reply_pause_minutes: s.human_reply_pause_minutes ?? 0,
+        command_scope: s.command_scope || 'client',
+        reply_with_audio: s.reply_with_audio ?? false,
+        reply_voice_id: s.reply_voice_id || null,
+        respond_in_groups: s.respond_in_groups ?? false,
+        send_window_start_hour: (s as any).send_window_start_hour ?? 8,
+        send_window_end_hour: (s as any).send_window_end_hour ?? 20,
+        lead_status_board_ids: filters.lead_status_board_ids || s.lead_status_board_ids || [],
+        lead_status_filter: filters.lead_status_filter || s.lead_status_filter || [],
+      };
+    }) as Shortcut[]);
     
     setLoading(false);
   };
