@@ -1,3 +1,4 @@
+// v3 - Uses agent_filter_settings table in Lovable Cloud DB
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
