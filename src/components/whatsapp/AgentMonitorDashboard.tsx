@@ -434,6 +434,13 @@ export function AgentMonitorDashboard() {
     fetchGroups();
   }, [periodDays]);
 
+  // Get unique acolhedor values for filter
+  const acolhedorOptions = useMemo(() => {
+    const set = new Set<string>();
+    conversations.forEach(c => { if (c.lead_acolhedor) set.add(c.lead_acolhedor); });
+    return Array.from(set).sort();
+  }, [conversations]);
+
   const activatedByLabel = (val: string | null) => {
     switch (val) {
       case 'manual': return 'Manual';
