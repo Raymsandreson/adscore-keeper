@@ -128,14 +128,15 @@ Analise a conversa e extraia TODAS as informações pessoais e profissionais do 
   "sector": "setor de atuação",
   "case_type": "tipo do caso",
   "liability_type": "tipo de responsabilidade",
-  "lead_status": "status do lead baseado na conversa: 'active' (em andamento/interessado), 'closed' (fechou contrato/assinou), 'refused' (cliente recusou/desistiu), 'unviable' (caso inviável juridicamente). Use null se não for possível determinar.",
-  "lead_status_reason": "motivo resumido em 1-2 frases para o status identificado. Ex: 'Prazo prescricional expirado', 'Cliente não quis prosseguir por questões financeiras', 'Contrato assinado com sucesso'. Use null se status for null ou active."
+  "lead_status": "status do lead baseado na conversa: use null na maioria dos casos. Só preencha com 'closed' se houve assinatura/contrato EXPLÍCITO, 'refused' APENAS se o cliente disse CLARAMENTE que NÃO quer prosseguir (ex: 'não quero', 'desisto', 'não tenho interesse'), 'unviable' APENAS se o atendente determinou EXPLICITAMENTE que o caso é inviável. Em caso de QUALQUER dúvida, use null. Conversas em andamento, triagem, identificação = null (NÃO é refused).",
+  "lead_status_reason": "motivo resumido em 1-2 frases para o status identificado. OBRIGATÓRIO se lead_status não for null. Use null se status for null."
 }
 
 REGRAS:
 - Extraia APENAS informações explícitas na conversa
 - Use null para campos não encontrados
-- Para lead_status: analise se o cliente demonstrou desinteresse (refused), se o caso foi considerado inviável pelo atendente (unviable), se houve fechamento/assinatura (closed), ou se ainda está em negociação (active)
+- IMPORTANTE: lead_status deve ser null na grande maioria dos casos. Só marque como 'refused' se o cliente EXPLICITAMENTE recusou. Conversas sem resposta, em triagem, ou em fase inicial NÃO são 'refused'. Na dúvida, use null.
+- lead_status_reason é OBRIGATÓRIO quando lead_status não for null
 - Retorne APENAS o JSON`
 
     const result = await geminiChat({
