@@ -148,7 +148,8 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     }
     setShowCaseDialog(false);
     resetCaseForm();
-    // Force CaseCard to re-fetch processes by toggling expanded state
+    // Force CaseCard to re-fetch processes
+    setProcessRefreshKey(prev => prev + 1);
     await fetchCases();
   };
 
