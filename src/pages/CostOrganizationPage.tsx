@@ -201,14 +201,15 @@ export default function CostOrganizationPage() {
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-4xl !max-h-[85vh] flex flex-col overflow-hidden">
-              <div className="flex-1 overflow-y-auto min-h-0 -mx-6 px-6 pb-4">
-              <DialogHeader>
+              <DialogHeader className="shrink-0">
                 <DialogTitle className="flex items-center gap-2">
                   <Settings2 className="h-5 w-5" />
                   Gerenciar Estrutura
                 </DialogTitle>
               </DialogHeader>
-              <FinancialConfigManager />
+              <div className="flex-1 overflow-y-auto min-h-0 -mx-6 px-6 pb-4">
+                <FinancialConfigManager />
+              </div>
             </DialogContent>
           </Dialog>
           {mainTab === 'modelo' && (
