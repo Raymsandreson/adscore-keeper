@@ -51,6 +51,7 @@ interface ConversationDetail {
   human_paused: boolean;
   contact_name: string | null;
   lead_name: string | null;
+  lead_id: string | null;
   lead_status: string | null;
   lead_city: string | null;
   lead_state: string | null;
@@ -67,7 +68,9 @@ interface ConversationDetail {
   campaign_name: string | null;
   activated_by: string | null;
   activated_at: string | null;
+  whatsapp_group_id: string | null;
 }
+
 
 interface AgentStats {
   agent_id: string;
@@ -108,6 +111,7 @@ export function AgentMonitorDashboard() {
   const [sheetInstanceFilter, setSheetInstanceFilter] = useState('all');
   const [sheetActivatedDateFilter, setSheetActivatedDateFilter] = useState('all');
   const [excludedPhones, setExcludedPhones] = useState<Set<string>>(new Set());
+  const [groupsSheetOpen, setGroupsSheetOpen] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -150,7 +154,7 @@ export function AgentMonitorDashboard() {
       // Fetch leads with location data
       const { data: leads } = await supabase
         .from('leads')
-        .select('id, lead_name, lead_phone, status, lead_status, board_id, city, state, neighborhood, followup_count, campaign_name, acolhedor')
+        .select('id, lead_name, lead_phone, status, lead_status, board_id, city, state, neighborhood, followup_count, campaign_name, acolhedor, whatsapp_group_id, created_at')
         .not('lead_phone', 'is', null);
 
       // Fetch boards for stage names
@@ -244,6 +248,7 @@ export function AgentMonitorDashboard() {
           human_paused: !!isPaused,
           contact_name: msgs[0]?.contact_name || null,
           lead_name: lead?.lead_name || null,
+          lead_id: lead?.id || null,
           lead_status: lead?.lead_status || null,
           lead_city: lead?.city || null,
           lead_state: lead?.state || null,
@@ -260,6 +265,7 @@ export function AgentMonitorDashboard() {
           campaign_name: campaignByPhone.get(key) || msgs.find((m: any) => m.campaign_name)?.campaign_name || lead?.campaign_name || null,
           activated_by: ca.activated_by || null,
           activated_at: ca.created_at || null,
+          whatsapp_group_id: lead?.whatsapp_group_id || null,
         });
       });
 
@@ -367,8 +373,57 @@ export function AgentMonitorDashboard() {
     const refused = kpiConversations.filter(c => c.lead_status === 'refused').length;
     const unviable = kpiConversations.filter(c => c.lead_status === 'unviable').length;
     const activeLeads = kpiConversations.filter(c => c.lead_status === 'active').length;
-    return { total, active, paused, noResponse, totalFollowups, totalMsgsSent, totalMsgsReceived, closed, refused, unviable, activeLeads };
+    const groupsCreated = kpiConversations.filter(c => !!c.whatsapp_group_id).length;
+    return { total, active, paused, noResponse, totalFollowups, totalMsgsSent, totalMsgsReceived, closed, refused, unviable, activeLeads, groupsCreated };
   }, [kpiConversations]);
+
+  // Separate groups data for the groups sheet (from all leads, not just conversation agents)
+  const [allGroups, setAllGroups] = useState<Array<{ id: string; lead_name: string; whatsapp_group_id: string; lead_phone: string | null; board_name: string | null; stage_name: string | null; acolhedor: string | null; created_at: string }>>([]);
+  
+  useEffect(() => {
+    const fetchGroups = async () => {
+      const startDate = subDays(new Date(), periodDays).toISOString();
+      const { data: groupLeads } = await supabase
+        .from('leads')
+        .select('id, lead_name, whatsapp_group_id, lead_phone, board_id, status, acolhedor, created_at')
+        .not('whatsapp_group_id', 'is', null)
+        .gte('created_at', startDate)
+        .order('created_at', { ascending: false });
+      
+      if (!groupLeads) { setAllGroups([]); return; }
+      
+      const { data: boards } = await supabase.from('kanban_boards').select('id, name, stages');
+      const boardMap = new Map((boards || []).map((b: any) => [b.id, b]));
+      
+      const mapped = groupLeads.map((l: any) => {
+        let boardName = null;
+        let stageName = null;
+        if (l.board_id) {
+          const board = boardMap.get(l.board_id);
+          if (board) {
+            boardName = board.name;
+            const stages = board.stages as any[];
+            if (stages && l.status) {
+              const stage = stages.find((s: any) => s.id === l.status);
+              stageName = stage?.name || null;
+            }
+          }
+        }
+        return {
+          id: l.id,
+          lead_name: l.lead_name || 'Sem nome',
+          whatsapp_group_id: l.whatsapp_group_id,
+          lead_phone: l.lead_phone,
+          board_name: boardName,
+          stage_name: stageName,
+          acolhedor: l.acolhedor,
+          created_at: l.created_at,
+        };
+      });
+      setAllGroups(mapped);
+    };
+    fetchGroups();
+  }, [periodDays]);
 
   // Get unique acolhedor values for filter
   const acolhedorOptions = useMemo(() => {
@@ -504,7 +559,7 @@ export function AgentMonitorDashboard() {
       </div>
 
       {/* Global KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Card className="border-primary/20 cursor-pointer hover:shadow-md transition-shadow" onClick={() => setKpiSheet({ filter: 'total', label: 'Total Conversas' })}>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
@@ -564,6 +619,17 @@ export function AgentMonitorDashboard() {
             </div>
             <p className="text-2xl font-bold text-amber-600">{globalStats.noResponse}</p>
             <p className="text-[10px] text-muted-foreground">&gt;1h sem resposta</p>
+          </CardContent>
+        </Card>
+
+        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setGroupsSheetOpen(true)}>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <Users className="h-3.5 w-3.5 text-primary" />
+              Grupos Criados
+            </div>
+            <p className="text-2xl font-bold text-primary">{allGroups.length}</p>
+            <p className="text-[10px] text-muted-foreground">no período</p>
           </CardContent>
         </Card>
       </div>
@@ -1157,7 +1223,88 @@ export function AgentMonitorDashboard() {
         </SheetContent>
       </Sheet>
 
-      {/* Chat Preview Drawer */}
+      {/* Groups Sheet */}
+      <Sheet open={groupsSheetOpen} onOpenChange={setGroupsSheetOpen}>
+        <SheetContent side="right" className="w-[400px] sm:w-[480px] p-0 flex flex-col">
+          <div className="shrink-0 px-4 py-3 border-b bg-primary/5">
+            <SheetHeader>
+              <SheetTitle className="text-sm flex items-center gap-2">
+                <Users className="h-4 w-4 text-primary" />
+                Grupos Criados
+                <Badge variant="secondary" className="text-[10px] ml-auto">{allGroups.length}</Badge>
+              </SheetTitle>
+            </SheetHeader>
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="p-3 space-y-2">
+              {allGroups.map((g) => (
+                <Card
+                  key={g.id}
+                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => {
+                    setGroupsSheetOpen(false);
+                    setChatPreview({
+                      phone: g.whatsapp_group_id,
+                      instance_name: '',
+                      agent_name: '',
+                      agent_id: '',
+                      is_active: false,
+                      human_paused: false,
+                      contact_name: g.lead_name,
+                      lead_name: g.lead_name,
+                      lead_id: g.id,
+                      lead_status: null,
+                      lead_city: null,
+                      lead_state: null,
+                      lead_acolhedor: g.acolhedor,
+                      board_name: g.board_name,
+                      stage_name: g.stage_name,
+                      last_inbound_at: null,
+                      last_outbound_at: null,
+                      total_messages: 0,
+                      inbound_count: 0,
+                      outbound_count: 0,
+                      followup_count: 0,
+                      time_without_response: null,
+                      campaign_name: null,
+                      activated_by: null,
+                      activated_at: null,
+                      whatsapp_group_id: g.whatsapp_group_id,
+                    });
+                  }}
+                >
+                  <CardContent className="p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-semibold truncate block">{g.lead_name}</span>
+                        <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground flex-wrap">
+                          {g.board_name && g.stage_name && (
+                            <Badge variant="outline" className="text-[9px] h-4">{g.board_name} → {g.stage_name}</Badge>
+                          )}
+                          {g.acolhedor && (
+                            <span className="text-[10px]">👤 {g.acolhedor}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-[10px] text-muted-foreground">{format(new Date(g.created_at), 'dd/MM/yyyy')}</p>
+                        <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto mt-1" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {allGroups.length === 0 && (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Users className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Nenhum grupo criado no período</p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
       <DashboardChatPreview
         open={!!chatPreview}
         onOpenChange={(open) => { if (!open) setChatPreview(null); }}
