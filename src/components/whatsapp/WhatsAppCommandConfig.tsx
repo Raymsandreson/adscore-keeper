@@ -240,7 +240,12 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       const customList = (customs || []).map((v: any) => ({ id: v.id, name: `🎤 ${v.name} (personalizada)` }));
       setAvailableVoices([...builtins, ...customList]);
     };
+    const fetchBoards = async () => {
+      const { data } = await supabase.from('kanban_boards').select('id, name').order('display_order');
+      setAvailableBoards((data || []) as { id: string; name: string }[]);
+    };
     fetchVoices();
+    fetchBoards();
   }, []);
 
   const loadZapSignTemplates = useCallback(async () => {
