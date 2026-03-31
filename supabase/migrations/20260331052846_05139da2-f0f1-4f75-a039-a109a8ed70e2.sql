@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_agent_campaign_links ADD COLUMN closed_agent_id UUID DEFAULT NULL;
