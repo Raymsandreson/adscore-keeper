@@ -59,6 +59,7 @@ interface ConversationInfo {
   phone: string;
   contact_name: string | null;
   last_message_at: string | null;
+  first_message_at: string | null;
   is_agent_active: boolean;
   has_lead: boolean;
   has_contact: boolean;
@@ -101,6 +102,8 @@ export function CTWACampaignAutomation() {
   const [sheetLink, setSheetLink] = useState<CampaignLink | null>(null);
   const [convResponseFilter, setConvResponseFilter] = useState<ConvResponseFilter>('all');
   const [convLeadFilter, setConvLeadFilter] = useState<ConvLeadFilter>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [chatPreviewPhone, setChatPreviewPhone] = useState<string | null>(null);
   const [chatPreviewConv, setChatPreviewConv] = useState<ConversationInfo | null>(null);
 
@@ -356,10 +359,12 @@ export function CTWACampaignAutomation() {
 
         const leadInfo = leadMap.get(info.normalized_phone);
 
+        const firstMsg = reversed[0];
         conversations.push({
           phone: info.phone,
           contact_name: msgs[0]?.contact_name || info.contact_name || info.phone,
           last_message_at: msgs[0]?.created_at || null,
+          first_message_at: firstMsg?.created_at || null,
           is_agent_active: agentMap.get(conversationKey) ?? false,
           has_lead: !!leadInfo,
           has_contact: contactSet.has(info.normalized_phone),
@@ -1185,6 +1190,33 @@ export function CTWACampaignAutomation() {
               })}
             </div>
 
+            {/* Date period filter */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <label className="text-[10px] text-muted-foreground whitespace-nowrap">De:</label>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={e => setDateFrom(e.target.value)}
+                  className="h-6 text-[10px] w-[120px] px-1.5"
+                />
+              </div>
+              <div className="flex items-center gap-1">
+                <label className="text-[10px] text-muted-foreground whitespace-nowrap">Até:</label>
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={e => setDateTo(e.target.value)}
+                  className="h-6 text-[10px] w-[120px] px-1.5"
+                />
+              </div>
+              {(dateFrom || dateTo) && (
+                <Button variant="ghost" size="sm" className="h-5 px-1 text-[10px]" onClick={() => { setDateFrom(''); setDateTo(''); }}>
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+
             {/* Bulk follow-up button */}
             <div className="mt-2">
               {bulkFollowup.running ? (
@@ -1232,6 +1264,12 @@ export function CTWACampaignAutomation() {
                       if (convLeadFilter === 'funnel' && !(conv.has_lead && conv.lead_status === 'active')) return false;
                       if (convLeadFilter === 'closed' && !(conv.has_lead && conv.lead_status === 'closed')) return false;
                       if (convLeadFilter === 'refused' && !(conv.has_lead && conv.lead_status === 'refused')) return false;
+                      if (dateFrom && conv.first_message_at) {
+                        if (new Date(conv.first_message_at).toISOString().slice(0, 10) < dateFrom) return false;
+                      }
+                      if (dateTo && conv.first_message_at) {
+                        if (new Date(conv.first_message_at).toISOString().slice(0, 10) > dateTo) return false;
+                      }
                       return true;
                     }).length;
                   })()} conversas)
@@ -1260,6 +1298,14 @@ export function CTWACampaignAutomation() {
                     if (convLeadFilter === 'funnel' && !(conv.has_lead && conv.lead_status === 'active')) return false;
                     if (convLeadFilter === 'closed' && !(conv.has_lead && conv.lead_status === 'closed')) return false;
                     if (convLeadFilter === 'refused' && !(conv.has_lead && conv.lead_status === 'refused')) return false;
+                    if (dateFrom && conv.first_message_at) {
+                      const convDate = new Date(conv.first_message_at).toISOString().slice(0, 10);
+                      if (convDate < dateFrom) return false;
+                    }
+                    if (dateTo && conv.first_message_at) {
+                      const convDate = new Date(conv.first_message_at).toISOString().slice(0, 10);
+                      if (convDate > dateTo) return false;
+                    }
                     return true;
                   })
                   .map((conv, i) => {
