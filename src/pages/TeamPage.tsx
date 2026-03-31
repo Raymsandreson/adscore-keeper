@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { usePageState } from '@/hooks/usePageState';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -36,8 +36,6 @@ import {
   TrendingUp,
   Activity,
   Handshake,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
 
 interface TabDef {
@@ -88,8 +86,6 @@ export default function TeamPage() {
   const navigate = useNavigate();
   const { isAdmin, loading } = useUserRole();
   const [activeTab, setActiveTab] = usePageState<string>('team_activeTab', 'productivity');
-  const [tabsExpanded, setTabsExpanded] = useState(false);
-  const VISIBLE_COUNT = 4; // Show first N tabs when collapsed
 
   const { transactions, fetchTransactions, fetchConnections } = useCreditCardTransactions();
 
@@ -149,32 +145,11 @@ export default function TeamPage() {
         </div>
       </div>
 
-      {/* Collapsible pill tab navigation */}
+      {/* Pill tab navigation - all tabs visible */}
       <div className="sticky top-16 z-20 bg-card/80 backdrop-blur-md border-b">
         <div className="container mx-auto max-w-7xl px-4 sm:px-6">
-          {(() => {
-            // Always show the active tab + first N tabs (deduplicated)
-            const activeTabDef = visibleTabs.find(t => t.key === safeTab);
-            const collapsed = !tabsExpanded;
-            
-            // When collapsed: show first VISIBLE_COUNT, but ensure active is always visible
-            let displayTabs = visibleTabs;
-            let hiddenCount = 0;
-            if (collapsed && visibleTabs.length > VISIBLE_COUNT) {
-              const firstN = visibleTabs.slice(0, VISIBLE_COUNT);
-              const activeInFirstN = firstN.some(t => t.key === safeTab);
-              if (activeInFirstN) {
-                displayTabs = firstN;
-              } else {
-                // Replace last visible with active tab
-                displayTabs = [...firstN.slice(0, VISIBLE_COUNT - 1), activeTabDef!];
-              }
-              hiddenCount = visibleTabs.length - displayTabs.length;
-            }
-
-            return (
               <div className="flex items-center gap-1.5 py-2.5 flex-wrap">
-                {displayTabs.map(tab => {
+                {visibleTabs.map(tab => {
                   const Icon = tab.icon;
                   const isActive = safeTab === tab.key;
                   return (
@@ -193,32 +168,7 @@ export default function TeamPage() {
                     </button>
                   );
                 })}
-
-                {/* Expand/collapse toggle */}
-                {visibleTabs.length > VISIBLE_COUNT && (
-                  <button
-                    onClick={() => setTabsExpanded(prev => !prev)}
-                    className={cn(
-                      'inline-flex items-center gap-1 px-3 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-200 shrink-0',
-                      'text-primary bg-primary/10 hover:bg-primary/20'
-                    )}
-                  >
-                    {collapsed ? (
-                      <>
-                        <span>+{hiddenCount}</span>
-                        <ChevronDown className="h-3.5 w-3.5" />
-                      </>
-                    ) : (
-                      <>
-                        <span>Menos</span>
-                        <ChevronUp className="h-3.5 w-3.5" />
-                      </>
-                    )}
-                  </button>
-                )}
               </div>
-            );
-          })()}
         </div>
       </div>
 
