@@ -356,9 +356,18 @@ export function AgentMonitorDashboard() {
     const totalFollowups = conversations.reduce((sum, c) => sum + c.followup_count, 0);
     const totalMsgsSent = conversations.reduce((sum, c) => sum + c.outbound_count, 0);
     const totalMsgsReceived = conversations.reduce((sum, c) => sum + c.inbound_count, 0);
-    const closed = conversations.filter(c => c.lead_status === 'closed' || c.lead_status === 'converted').length;
-    const refused = conversations.filter(c => c.lead_status === 'refused' || c.lead_status === 'lost').length;
-    return { total, active, paused, noResponse, totalFollowups, totalMsgsSent, totalMsgsReceived, closed, refused };
+    const closed = conversations.filter(c => c.lead_status === 'closed').length;
+    const refused = conversations.filter(c => c.lead_status === 'refused').length;
+    const unviable = conversations.filter(c => c.lead_status === 'unviable').length;
+    const activeLeads = conversations.filter(c => c.lead_status === 'active').length;
+    return { total, active, paused, noResponse, totalFollowups, totalMsgsSent, totalMsgsReceived, closed, refused, unviable, activeLeads };
+  }, [conversations]);
+
+  // Get unique acolhedor values for filter
+  const acolhedorOptions = useMemo(() => {
+    const set = new Set<string>();
+    conversations.forEach(c => { if (c.lead_acolhedor) set.add(c.lead_acolhedor); });
+    return Array.from(set).sort();
   }, [conversations]);
 
   const activatedByLabel = (val: string | null) => {
