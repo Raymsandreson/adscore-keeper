@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
     const { data: existingRole } = await externalClient
       .from('user_roles')
       .select('id')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .maybeSingle();
 
     if (!existingRole) {
