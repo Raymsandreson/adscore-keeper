@@ -122,14 +122,14 @@ export function AmbassadorMap() {
 
       // Add leads
       leads?.forEach(l => {
-        if (l.lead_state && STATE_COORDS[l.lead_state]) {
-          const [lat, lng] = STATE_COORDS[l.lead_state];
+        if (l.state && STATE_COORDS[l.state]) {
+          const [lat, lng] = STATE_COORDS[l.state];
           mapPoints.push({
             id: l.id,
             name: l.lead_name || 'Lead',
             type: 'lead',
-            city: l.lead_city || '',
-            state: l.lead_state,
+            city: l.city || '',
+            state: l.state,
             phone: l.lead_phone || undefined,
             lat: lat + (Math.random() - 0.5) * 0.1,
             lng: lng + (Math.random() - 0.5) * 0.1,

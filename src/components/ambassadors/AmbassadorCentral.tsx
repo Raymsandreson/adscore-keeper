@@ -47,6 +47,7 @@ export function AmbassadorCentral() {
       {activeTab === 'dashboard' && <AmbassadorDashboard />}
       {activeTab === 'ambassadors' && <AmbassadorsList />}
       {activeTab === 'campaigns' && <AmbassadorCampaigns />}
+      {activeTab === 'map' && <AmbassadorMap />}
     </div>
   );
 }
