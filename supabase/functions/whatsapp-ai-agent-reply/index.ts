@@ -50,21 +50,30 @@ serve(async (req) => {
     if (!assignment && campaign_id) {
       const { data: campaignLink } = await supabase
         .from("whatsapp_agent_campaign_links")
-        .select("agent_id")
+        .select("agent_id, closed_agent_id")
         .eq("campaign_id", campaign_id)
         .eq("is_active", true)
         .maybeSingle();
 
       if (campaignLink) {
+        // Check if lead is closed to use closed_agent_id
+        let resolvedAgentId = campaignLink.agent_id;
+        if (campaignLink.closed_agent_id && lead_id) {
+          const { data: leadCheck } = await supabase.from("leads").select("lead_status").eq("id", lead_id).maybeSingle();
+          if (leadCheck?.lead_status === 'closed') {
+            resolvedAgentId = campaignLink.closed_agent_id;
+            console.log(`Using closed_agent_id ${resolvedAgentId} for closed lead`);
+          }
+        }
         await supabase.from("whatsapp_conversation_agents").upsert({
           phone,
           instance_name,
-          agent_id: campaignLink.agent_id,
+          agent_id: resolvedAgentId,
           is_active: true,
           activated_by: isGroup ? "instance_default" : "campaign_auto",
         }, { onConflict: "phone,instance_name" });
-        assignment = { agent_id: campaignLink.agent_id, is_active: true };
-        console.log(`Auto-assigned agent ${campaignLink.agent_id} via campaign ${campaign_id}${isGroup ? ' (group, attributed as instance_default)' : ''}`);
+        assignment = { agent_id: resolvedAgentId, is_active: true };
+        console.log(`Auto-assigned agent ${resolvedAgentId} via campaign ${campaign_id}${isGroup ? ' (group, attributed as instance_default)' : ''}`);
       }
     }
 
