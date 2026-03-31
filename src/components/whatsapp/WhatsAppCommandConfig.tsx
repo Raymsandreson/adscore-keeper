@@ -99,21 +99,13 @@ export function WhatsAppCommandConfig() {
 
   const loadData = async () => {
     setLoading(true);
-    const [profilesRes, shortcutsRes, filterSettingsRes] = await Promise.all([
+    const [profilesRes, shortcutsRes] = await Promise.all([
       supabase.from('profiles').select('user_id, full_name').order('full_name'),
       supabase.from('wjia_command_shortcuts').select('*').order('display_order') as any,
-      supabase.from('agent_filter_settings').select('*') as any,
     ]);
     setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
     
-    // Build a map of filter settings by agent_id
-    const filterMap: Record<string, any> = {};
-    (filterSettingsRes.data || []).forEach((f: any) => {
-      filterMap[f.agent_id] = f;
-    });
-    
     setShortcuts((shortcutsRes.data || []).map((s: any) => {
-      const filters = filterMap[s.id] || {};
       return {
         ...s,
         followup_steps: s.followup_steps || [],
@@ -131,8 +123,8 @@ export function WhatsAppCommandConfig() {
         respond_in_groups: s.respond_in_groups ?? false,
         send_window_start_hour: (s as any).send_window_start_hour ?? 8,
         send_window_end_hour: (s as any).send_window_end_hour ?? 20,
-        lead_status_board_ids: filters.lead_status_board_ids || s.lead_status_board_ids || [],
-        lead_status_filter: filters.lead_status_filter || s.lead_status_filter || [],
+        lead_status_board_ids: s.lead_status_board_ids || [],
+        lead_status_filter: s.lead_status_filter || [],
       };
     }) as Shortcut[]);
     
