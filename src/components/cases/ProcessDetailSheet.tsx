@@ -129,6 +129,8 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('partes');
+  const [activities, setActivities] = useState<ProcessActivity[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
 
   useEffect(() => {
     if (process) {
