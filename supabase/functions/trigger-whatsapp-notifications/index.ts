@@ -1,7 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // Use external Supabase project when configured (hybrid architecture)
-const RESOLVED_SUPABASE_URL = (Deno.env.get('EXTERNAL_SUPABASE_URL') || Deno.env.get('SUPABASE_URL') || '').trim();
+function resolveSupabaseUrl(): string {
+  const candidates = [Deno.env.get('EXTERNAL_SUPABASE_URL'), Deno.env.get('SUPABASE_URL')];
+  for (const c of candidates) { const v = (c || '').trim(); if (v.startsWith('https://') || v.startsWith('http://')) return v; }
+  return 'https://kmedldlepwiityjsdahz.supabase.co';
+}
+const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = (Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
 const RESOLVED_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
