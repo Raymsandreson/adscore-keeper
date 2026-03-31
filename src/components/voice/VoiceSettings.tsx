@@ -119,8 +119,9 @@ export function VoiceSettings() {
   const selectVoice = async (voiceType: string, voiceId: string, voiceName: string) => {
     setSaving(true);
     try {
+      const uid = await getUserId();
       const { error } = await cloudFunctions.invoke('elevenlabs-voice-clone', {
-        body: { action: 'set_preference', voice_type: voiceType, voice_id: voiceId, voice_name: voiceName },
+        body: { action: 'set_preference', voice_type: voiceType, voice_id: voiceId, voice_name: voiceName, user_id: uid },
       });
       if (error) throw error;
       setPreference({ voice_type: voiceType, voice_id: voiceId, voice_name: voiceName });
