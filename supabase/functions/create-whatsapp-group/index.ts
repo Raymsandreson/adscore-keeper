@@ -1012,19 +1012,24 @@ async function forwardDocuments(
 
     // Send ZapSign signed documents
     for (const doc of signedDocs) {
-      if (!doc.signed_file_url) continue
+      if (!doc.signed_file_url || sentUrls.has(doc.signed_file_url)) continue
+      sentUrls.add(doc.signed_file_url)
       const docLabel = doc.template_name || docLabels['zapsign_signed']
       const fileName = `${docLabel} - ${leadName}.pdf`
       try {
-        await fetch(`${baseUrl}/send/media`, {
+        const sendRes = await fetch(`${baseUrl}/send/media`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
           body: JSON.stringify({ number: groupId, media: doc.signed_file_url, type: 'document', fileName, caption: `📄 ${docLabel} - ${leadName}` }),
         })
-        console.log(`Sent signed doc: ${fileName}`)
+        if (!sendRes.ok) {
+          console.error(`[forward-docs] Failed to send signed doc ${fileName}:`, sendRes.status, await sendRes.text())
+        } else {
+          console.log(`[forward-docs] Sent signed doc: ${fileName}`)
+        }
         await sleep(800)
       } catch (e) {
-        console.error(`Error sending signed doc:`, e)
+        console.error(`[forward-docs] Error sending signed doc:`, e)
       }
     }
 
