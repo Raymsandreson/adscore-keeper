@@ -527,7 +527,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                   {processes.map(p => (
                     <div
                       key={p.id}
-                      className="border rounded-lg p-2.5 bg-card space-y-1 cursor-pointer hover:bg-muted/50 transition-colors"
+                      className="border rounded-lg p-2.5 bg-card space-y-1 cursor-pointer hover:bg-muted/50 transition-colors group"
                       onClick={() => setSelectedProcess(p)}
                     >
                       <div className="flex items-center gap-2">
@@ -540,6 +540,25 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                         <Badge variant="secondary" className="text-[10px] ml-auto">
                           {p.status === 'em_andamento' ? 'Em Andamento' : p.status === 'concluido' ? 'Concluído' : 'Arquivado'}
                         </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            confirmDelete(
+                              'Excluir Processo',
+                              `Tem certeza que deseja excluir o processo "${p.title}"? Esta ação não pode ser desfeita.`,
+                              async () => {
+                                await supabase.from('lead_processes').delete().eq('id', p.id);
+                                toast.success('Processo excluído');
+                                loadDetails();
+                              }
+                            );
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                       {p.process_number && (
                         <CopyableText as="p" copyValue={p.process_number} label="Nº Processo" noPhoneDetect className="text-[10px] text-muted-foreground">Nº {p.process_number}</CopyableText>
