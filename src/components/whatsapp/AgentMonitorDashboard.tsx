@@ -669,12 +669,12 @@ export function AgentMonitorDashboard() {
               <CheckCircle className="h-3.5 w-3.5 text-green-500" />
               Status dos Leads
             </div>
-            <p className="text-2xl font-bold text-green-600">{globalStats.closed}</p>
+            <p className="text-2xl font-bold text-green-600">{allLeadStatusCounts.closed}</p>
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
-              <p className="text-[10px] text-blue-600 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'active_leads', label: 'Em Andamento' }); }}>{globalStats.activeLeads} andamento</p>
-              <p className="text-[10px] text-green-600 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'closed', label: 'Fechados' }); }}>{globalStats.closed} fechados</p>
-              <p className="text-[10px] text-red-500 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'refused', label: 'Recusados' }); }}>{globalStats.refused} recusados</p>
-              <p className="text-[10px] text-muted-foreground cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'unviable', label: 'Inviáveis' }); }}>{globalStats.unviable} inviáveis</p>
+              <p className="text-[10px] text-blue-600 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'active_leads', label: 'Em Andamento' }); }}>{allLeadStatusCounts.active} andamento</p>
+              <p className="text-[10px] text-green-600 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'closed', label: 'Fechados' }); }}>{allLeadStatusCounts.closed} fechados</p>
+              <p className="text-[10px] text-red-500 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'refused', label: 'Recusados' }); }}>{allLeadStatusCounts.refused} recusados</p>
+              <p className="text-[10px] text-muted-foreground cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'unviable', label: 'Inviáveis' }); }}>{allLeadStatusCounts.unviable} inviáveis</p>
             </div>
           </CardContent>
         </Card>
