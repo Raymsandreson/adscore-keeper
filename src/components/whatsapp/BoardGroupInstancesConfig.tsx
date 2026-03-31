@@ -236,7 +236,7 @@ export function BoardGroupInstancesConfig() {
         send_audio_message: false, audio_voice_id: '',
         auto_close_lead_on_sign: false, auto_create_group_on_sign: false,
         auto_create_process: false, process_nucleus_id: '', process_workflow_board_id: '',
-        process_auto_activities: [],
+        process_auto_activities: [], process_workflows: [],
       });
       setPreviewMessage(null);
     }
