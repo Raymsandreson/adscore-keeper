@@ -568,7 +568,7 @@ export function AgentMonitorDashboard() {
       </div>
 
       {/* Global KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Card className="border-primary/20 cursor-pointer hover:shadow-md transition-shadow" onClick={() => setKpiSheet({ filter: 'total', label: 'Total Conversas' })}>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
