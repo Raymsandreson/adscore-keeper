@@ -544,17 +544,12 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                           variant="ghost"
                           size="sm"
                           className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            confirmDelete(
-                              'Excluir Processo',
-                              `Tem certeza que deseja excluir o processo "${p.title}"? Esta ação não pode ser desfeita.`,
-                              async () => {
-                                await supabase.from('lead_processes').delete().eq('id', p.id);
-                                toast.success('Processo excluído');
-                                loadDetails();
-                              }
-                            );
+                            if (!confirm(`Excluir o processo "${p.title}"?`)) return;
+                            await supabase.from('lead_processes').delete().eq('id', p.id);
+                            toast.success('Processo excluído');
+                            loadDetails();
                           }}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
