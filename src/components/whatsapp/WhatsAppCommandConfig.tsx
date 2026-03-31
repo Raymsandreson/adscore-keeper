@@ -287,7 +287,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     });
     setFollowupSteps([]);
     setHumanReplyPauseMinutes(0);
-    setLeadStatusFilter([]);
+    
     
     setEditingId(null);
     setShowForm(false);
