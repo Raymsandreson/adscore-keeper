@@ -12,7 +12,8 @@ import { Progress } from '@/components/ui/progress';
 import {
   Bot, MessageCircle, Clock, TrendingUp, Users, Search, RefreshCw,
   CheckCircle, XCircle, Pause, Zap, ArrowUpRight, ArrowDownRight,
-  Filter, MapPin, Phone, PhoneCall, ExternalLink, PowerOff, Megaphone, PhoneOutgoing, Sparkles
+  Filter, MapPin, Phone, PhoneCall, ExternalLink, PowerOff, Megaphone, PhoneOutgoing, Sparkles,
+  CalendarIcon
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { CallQueuePanel } from './CallQueuePanel';
@@ -20,8 +21,10 @@ import { FollowupActivityPanel } from './FollowupActivityPanel';
 import { AIEnrichmentMonitorPanel } from './AIEnrichmentMonitorPanel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DashboardChatPreview } from './DashboardChatPreview';
-import { format, differenceInMinutes, differenceInHours, subDays } from 'date-fns';
+import { format, differenceInMinutes, subDays, startOfWeek, startOfMonth, startOfYear, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 
 interface AgentData {
   id: string;
@@ -102,7 +105,9 @@ export function AgentMonitorDashboard() {
   const [stateFilter, setStateFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [acolhedorFilter, setAcolhedorFilter] = useState('all');
-  const [periodDays, setPeriodDays] = useState(7);
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({ from: subDays(new Date(), 7), to: new Date() });
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [allLeadStatusCounts, setAllLeadStatusCounts] = useState<{ closed: number; refused: number; unviable: number; active: number }>({ closed: 0, refused: 0, unviable: 0, active: 0 });
   const [kpiSheet, setKpiSheet] = useState<{ filter: string; label: string } | null>(null);
   const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
   const [sheetAgentFilter, setSheetAgentFilter] = useState('all');
@@ -116,7 +121,8 @@ export function AgentMonitorDashboard() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const startDate = subDays(new Date(), periodDays).toISOString();
+      const startDate = dateRange.from.toISOString();
+      const endDate = endOfDay(dateRange.to).toISOString();
 
       // Fetch agents
       const { data: agentsData } = await supabase
@@ -134,6 +140,7 @@ export function AgentMonitorDashboard() {
         .from('whatsapp_messages')
         .select('phone, instance_name, direction, created_at, action_source, action_source_detail, contact_name, lead_id, campaign_name')
         .gte('created_at', startDate)
+        .lte('created_at', endDate)
         .order('created_at', { ascending: false });
 
       // Fetch campaign_name for ALL phones (not date-filtered) to ensure we capture campaign origin
@@ -166,7 +173,8 @@ export function AgentMonitorDashboard() {
       const { data: followups } = await supabase
         .from('lead_followups')
         .select('lead_id, followup_type')
-        .gte('followup_date', startDate);
+        .gte('followup_date', startDate)
+        .lte('followup_date', endDate);
 
       setAgents((agentsData || []) as AgentData[]);
       setConversationAgents((convAgents || []) as ConversationAgent[]);
@@ -326,7 +334,7 @@ export function AgentMonitorDashboard() {
     }
   };
 
-  useEffect(() => { fetchData(); }, [periodDays]);
+  useEffect(() => { fetchData(); }, [dateRange]);
 
   // Filters
   const filteredConversations = useMemo(() => {
@@ -382,12 +390,14 @@ export function AgentMonitorDashboard() {
   
   useEffect(() => {
     const fetchGroups = async () => {
-      const startDate = subDays(new Date(), periodDays).toISOString();
+      const startDate = dateRange.from.toISOString();
+      const endDate = endOfDay(dateRange.to).toISOString();
       const { data: groupLeads } = await supabase
         .from('leads')
         .select('id, lead_name, whatsapp_group_id, lead_phone, board_id, status, acolhedor, created_at')
         .not('whatsapp_group_id', 'is', null)
         .gte('created_at', startDate)
+        .lte('created_at', endDate)
         .order('created_at', { ascending: false });
       
       if (!groupLeads) { setAllGroups([]); return; }
@@ -421,9 +431,26 @@ export function AgentMonitorDashboard() {
         };
       });
       setAllGroups(mapped);
+
+      // Fetch ALL leads status counts (not limited to conversation agents)
+      const { data: closedLeads } = await supabase
+        .from('leads')
+        .select('lead_status')
+        .in('lead_status', ['closed', 'refused', 'unviable', 'active'])
+        .gte('updated_at', startDate)
+        .lte('updated_at', endDate);
+
+      const statusCounts = { closed: 0, refused: 0, unviable: 0, active: 0 };
+      (closedLeads || []).forEach((l: any) => {
+        if (l.lead_status === 'closed') statusCounts.closed++;
+        else if (l.lead_status === 'refused') statusCounts.refused++;
+        else if (l.lead_status === 'unviable') statusCounts.unviable++;
+        else if (l.lead_status === 'active') statusCounts.active++;
+      });
+      setAllLeadStatusCounts(statusCounts);
     };
     fetchGroups();
-  }, [periodDays]);
+  }, [dateRange]);
 
   // Get unique acolhedor values for filter
   const acolhedorOptions = useMemo(() => {
@@ -541,17 +568,57 @@ export function AgentMonitorDashboard() {
               </SelectContent>
             </Select>
           )}
-          <Select value={String(periodDays)} onValueChange={v => setPeriodDays(Number(v))}>
-            <SelectTrigger className="w-[130px] h-9 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="1">Últimas 24h</SelectItem>
-              <SelectItem value="7">Últimos 7 dias</SelectItem>
-              <SelectItem value="15">Últimos 15 dias</SelectItem>
-              <SelectItem value="30">Últimos 30 dias</SelectItem>
-            </SelectContent>
-          </Select>
+          <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 text-xs gap-1.5 min-w-[200px] justify-start">
+                <CalendarIcon className="h-3.5 w-3.5" />
+                {format(dateRange.from, 'dd/MM/yy')} — {format(dateRange.to, 'dd/MM/yy')}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <div className="flex">
+                <div className="border-r p-2 space-y-1 min-w-[140px]">
+                  <p className="text-xs font-semibold text-muted-foreground px-2 pb-1">Atalhos</p>
+                  {[
+                    { label: 'Últimas 24h', from: subDays(new Date(), 1), to: new Date() },
+                    { label: 'Últimos 7 dias', from: subDays(new Date(), 7), to: new Date() },
+                    { label: 'Últimos 15 dias', from: subDays(new Date(), 15), to: new Date() },
+                    { label: 'Últimos 30 dias', from: subDays(new Date(), 30), to: new Date() },
+                    { label: 'Esta semana', from: startOfWeek(new Date(), { weekStartsOn: 1 }), to: new Date() },
+                    { label: 'Este mês', from: startOfMonth(new Date()), to: new Date() },
+                    { label: 'Este ano', from: startOfYear(new Date()), to: new Date() },
+                  ].map(preset => (
+                    <Button
+                      key={preset.label}
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start text-xs h-7"
+                      onClick={() => { setDateRange({ from: preset.from, to: preset.to }); setDatePickerOpen(false); }}
+                    >
+                      {preset.label}
+                    </Button>
+                  ))}
+                </div>
+                <div className="p-2">
+                  <Calendar
+                    mode="range"
+                    selected={{ from: dateRange.from, to: dateRange.to }}
+                    onSelect={(range) => {
+                      if (range?.from && range?.to) {
+                        setDateRange({ from: range.from, to: range.to });
+                        setDatePickerOpen(false);
+                      } else if (range?.from) {
+                        setDateRange(prev => ({ ...prev, from: range.from! }));
+                      }
+                    }}
+                    numberOfMonths={2}
+                    className="pointer-events-auto"
+                    locale={ptBR}
+                  />
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
@@ -601,12 +668,12 @@ export function AgentMonitorDashboard() {
               <CheckCircle className="h-3.5 w-3.5 text-green-500" />
               Status dos Leads
             </div>
-            <p className="text-2xl font-bold text-green-600">{globalStats.closed}</p>
+            <p className="text-2xl font-bold text-green-600">{allLeadStatusCounts.closed}</p>
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
-              <p className="text-[10px] text-blue-600 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'active_leads', label: 'Em Andamento' }); }}>{globalStats.activeLeads} andamento</p>
-              <p className="text-[10px] text-green-600 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'closed', label: 'Fechados' }); }}>{globalStats.closed} fechados</p>
-              <p className="text-[10px] text-red-500 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'refused', label: 'Recusados' }); }}>{globalStats.refused} recusados</p>
-              <p className="text-[10px] text-muted-foreground cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'unviable', label: 'Inviáveis' }); }}>{globalStats.unviable} inviáveis</p>
+              <p className="text-[10px] text-blue-600 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'active_leads', label: 'Em Andamento' }); }}>{allLeadStatusCounts.active} andamento</p>
+              <p className="text-[10px] text-green-600 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'closed', label: 'Fechados' }); }}>{allLeadStatusCounts.closed} fechados</p>
+              <p className="text-[10px] text-red-500 cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'refused', label: 'Recusados' }); }}>{allLeadStatusCounts.refused} recusados</p>
+              <p className="text-[10px] text-muted-foreground cursor-pointer" onClick={(e) => { e.stopPropagation(); setKpiSheet({ filter: 'unviable', label: 'Inviáveis' }); }}>{allLeadStatusCounts.unviable} inviáveis</p>
             </div>
           </CardContent>
         </Card>
