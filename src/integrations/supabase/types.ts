@@ -584,6 +584,45 @@ export type Database = {
           },
         ]
       }
+      ambassador_product_links: {
+        Row: {
+          ambassador_contact_id: string
+          created_at: string
+          id: string
+          member_user_id: string
+          product_service_id: string
+        }
+        Insert: {
+          ambassador_contact_id: string
+          created_at?: string
+          id?: string
+          member_user_id: string
+          product_service_id: string
+        }
+        Update: {
+          ambassador_contact_id?: string
+          created_at?: string
+          id?: string
+          member_user_id?: string
+          product_service_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ambassador_product_links_ambassador_contact_id_fkey"
+            columns: ["ambassador_contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ambassador_product_links_product_service_id_fkey"
+            columns: ["product_service_id"]
+            isOneToOne: false
+            referencedRelation: "products_services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ambassador_referrals: {
         Row: {
           ambassador_id: string
