@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
 
       await externalClient
         .from('user_roles')
-        .upsert({ user_id: user.id, role }, { onConflict: 'user_id,role' });
+        .upsert({ user_id: userId, role }, { onConflict: 'user_id,role' });
     }
 
     // Get the synced profile + role for frontend
