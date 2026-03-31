@@ -431,7 +431,7 @@ Deno.serve(async (req) => {
         // SEND MEETING SCHEDULING SLOTS via WhatsApp
         // ====================================================
         try {
-          const slotsRes = await fetch(`${supabaseUrl}/functions/v1/get-available-slots`, {
+          const slotsRes = await fetch(`${cloudFunctionsUrl}/functions/v1/get-available-slots`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -529,7 +529,7 @@ Deno.serve(async (req) => {
           let extractedData: Record<string, any> = {}
           if (convMessages && convMessages.length > 0) {
             try {
-              const extractRes = await fetch(`${supabaseUrl}/functions/v1/extract-conversation-data`, {
+              const extractRes = await fetch(`${cloudFunctionsUrl}/functions/v1/extract-conversation-data`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -842,7 +842,7 @@ Deno.serve(async (req) => {
 
               console.log(`[zapsign-webhook] Resolved creator instance: ${creatorInstanceId} (from doc instance_name: ${localDoc.instance_name}, created_by: ${localDoc.created_by})`)
 
-              const groupRes = await fetch(`${supabaseUrl}/functions/v1/create-whatsapp-group`, {
+              const groupRes = await fetch(`${cloudFunctionsUrl}/functions/v1/create-whatsapp-group`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -891,7 +891,7 @@ Deno.serve(async (req) => {
 
         if (assignment?.agent_id) {
           console.log(`[zapsign-webhook] Triggering on_document_signed automations for agent ${assignment.agent_id}`)
-          await fetch(`${supabaseUrl}/functions/v1/execute-agent-automations`, {
+          await fetch(`${cloudFunctionsUrl}/functions/v1/execute-agent-automations`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
