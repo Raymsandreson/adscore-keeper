@@ -390,12 +390,14 @@ export function AgentMonitorDashboard() {
   
   useEffect(() => {
     const fetchGroups = async () => {
-      const startDate = subDays(new Date(), periodDays).toISOString();
+      const startDate = dateRange.from.toISOString();
+      const endDate = endOfDay(dateRange.to).toISOString();
       const { data: groupLeads } = await supabase
         .from('leads')
         .select('id, lead_name, whatsapp_group_id, lead_phone, board_id, status, acolhedor, created_at')
         .not('whatsapp_group_id', 'is', null)
         .gte('created_at', startDate)
+        .lte('created_at', endDate)
         .order('created_at', { ascending: false });
       
       if (!groupLeads) { setAllGroups([]); return; }
@@ -429,9 +431,26 @@ export function AgentMonitorDashboard() {
         };
       });
       setAllGroups(mapped);
+
+      // Fetch ALL leads status counts (not limited to conversation agents)
+      const { data: closedLeads } = await supabase
+        .from('leads')
+        .select('lead_status')
+        .in('lead_status', ['closed', 'refused', 'unviable', 'active'])
+        .gte('updated_at', startDate)
+        .lte('updated_at', endDate);
+
+      const statusCounts = { closed: 0, refused: 0, unviable: 0, active: 0 };
+      (closedLeads || []).forEach((l: any) => {
+        if (l.lead_status === 'closed') statusCounts.closed++;
+        else if (l.lead_status === 'refused') statusCounts.refused++;
+        else if (l.lead_status === 'unviable') statusCounts.unviable++;
+        else if (l.lead_status === 'active') statusCounts.active++;
+      });
+      setAllLeadStatusCounts(statusCounts);
     };
     fetchGroups();
-  }, [periodDays]);
+  }, [dateRange]);
 
   // Get unique acolhedor values for filter
   const acolhedorOptions = useMemo(() => {
