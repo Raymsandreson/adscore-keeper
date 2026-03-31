@@ -225,7 +225,8 @@ REGRAS:
       }
 
       // Auto-update lead status if AI detected a terminal state
-      if (cleaned.lead_status && ['closed', 'refused', 'unviable'].includes(cleaned.lead_status)) {
+      // IMPORTANT: Only proceed if reason is provided (prevents false positives)
+      if (cleaned.lead_status && ['closed', 'refused', 'unviable'].includes(cleaned.lead_status) && cleaned.lead_status_reason) {
         const { data: currentLead } = await supabase
           .from('leads')
           .select('lead_status, became_client_date, classification_date, inviavel_date')
