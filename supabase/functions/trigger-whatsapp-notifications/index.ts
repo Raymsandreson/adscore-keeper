@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
       instance = data
     }
     if (!instance) {
-      const { data } = await supabase
+      const { data } = await cloudDb
         .from('whatsapp_instances')
         .select('id, instance_name, instance_token, base_url')
         .eq('is_active', true)
