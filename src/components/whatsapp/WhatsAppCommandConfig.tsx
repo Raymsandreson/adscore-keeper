@@ -410,26 +410,45 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       lead_status_board_ids: leadStatusBoardIds.length > 0 ? leadStatusBoardIds : null,
     };
 
+    // Separate filter fields that may fail due to PostgREST cache
+    const { lead_status_board_ids, lead_status_filter, ...corePayload } = payload;
+    
     let error;
     if (editingId) {
       ({ error } = await (supabase.from('wjia_command_shortcuts') as any).update(payload).eq('id', editingId));
-      // If error is about schema cache, retry without the problematic columns
-      if (error?.message?.includes('lead_status_board_ids') || error?.message?.includes('schema cache')) {
-        const { lead_status_board_ids, lead_status_filter, ...safePayload } = payload;
-        const { error: retryError } = await (supabase.from('wjia_command_shortcuts') as any).update(safePayload).eq('id', editingId);
+      // If error is about schema cache, save core fields then use edge function for filters
+      if (error?.message?.includes('lead_status_board_ids') || error?.message?.includes('lead_status_filter') || error?.message?.includes('schema cache') || error?.message?.includes('Could not find')) {
+        const { error: retryError } = await (supabase.from('wjia_command_shortcuts') as any).update(corePayload).eq('id', editingId);
         if (retryError) { toast.error(retryError.message); return; }
-        toast.warning('Salvo parcialmente - filtro de funil pode não ter sido salvo. Recarregue a página e tente novamente.');
+        // Save filter fields via edge function (direct REST API bypass)
+        const { error: filterError } = await invokeCloudFunction('update-agent-filters', {
+          agent_id: editingId,
+          lead_status_board_ids: lead_status_board_ids || null,
+          lead_status_filter: lead_status_filter || null,
+        });
+        if (filterError) {
+          console.warn('Filter save via edge function failed:', filterError);
+          toast.warning('Salvo, mas filtro de funil pode não ter sido salvo.');
+        } else {
+          toast.success('Agente atualizado!');
+        }
         resetForm();
         onReload();
         return;
       }
     } else {
       ({ error } = await (supabase.from('wjia_command_shortcuts') as any).insert({ ...payload, display_order: shortcuts.length }));
-      if (error?.message?.includes('lead_status_board_ids') || error?.message?.includes('schema cache')) {
-        const { lead_status_board_ids, lead_status_filter, ...safePayload } = payload;
-        const { error: retryError } = await (supabase.from('wjia_command_shortcuts') as any).insert({ ...safePayload, display_order: shortcuts.length });
+      if (error?.message?.includes('lead_status_board_ids') || error?.message?.includes('lead_status_filter') || error?.message?.includes('schema cache') || error?.message?.includes('Could not find')) {
+        const { data: insertData, error: retryError } = await (supabase.from('wjia_command_shortcuts') as any).insert({ ...corePayload, display_order: shortcuts.length }).select('id').single();
         if (retryError) { toast.error(retryError.message); return; }
-        toast.warning('Criado parcialmente - filtro de funil pode não ter sido salvo.');
+        if (insertData?.id) {
+          await invokeCloudFunction('update-agent-filters', {
+            agent_id: insertData.id,
+            lead_status_board_ids: lead_status_board_ids || null,
+            lead_status_filter: lead_status_filter || null,
+          });
+        }
+        toast.success('Agente criado!');
         resetForm();
         onReload();
         return;
