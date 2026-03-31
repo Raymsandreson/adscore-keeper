@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
     const password = userPass.substring(firstColon + 1);
     const hostMatch = hostPortDb.match(/^([^:]+):(\d+)\/(.+)$/);
     if (!hostMatch) {
-      return new Response(JSON.stringify({ error: 'Cannot parse SUPABASE_DB_URL host portion' }), { 
+      return new Response(JSON.stringify({ error: 'Cannot parse EXTERNAL_DB_URL host portion' }), { 
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
     }
