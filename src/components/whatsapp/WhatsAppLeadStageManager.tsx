@@ -3,13 +3,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowRight, CheckSquare, ListChecks, Lock, Loader2, MessageSquareText, Copy, ChevronDown, ChevronRight } from 'lucide-react';
+import { CheckSquare, Loader2, MessageSquareText, Copy, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
-import { useChecklists, LeadChecklistInstance, ChecklistItem } from '@/hooks/useChecklists';
+import { useChecklists, LeadChecklistInstance } from '@/hooks/useChecklists';
 import { useLeadStageHistory } from '@/hooks/useLeadStageHistory';
 import { cn } from '@/lib/utils';
 
