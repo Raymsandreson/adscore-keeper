@@ -378,11 +378,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     checkPrivate();
   }, [conversation.phone, conversation.instance_name]);
 
-  // Check if contact/lead has a linked group
+  // Check if contact/lead has a linked group that actually exists
   useEffect(() => {
     const checkLinkedGroup = async () => {
       const normalizedPhone = conversation.phone?.replace(/\D/g, '') || '';
       if (!normalizedPhone) return;
+      
+      let candidateGroupId: string | null = null;
+      
       // Check contact first
       const { data: contact } = await supabase
         .from('contacts')
@@ -391,19 +394,35 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         .not('whatsapp_group_id', 'is', null)
         .maybeSingle();
       if (contact?.whatsapp_group_id) {
-        setLinkedGroupId(contact.whatsapp_group_id);
-        return;
+        candidateGroupId = contact.whatsapp_group_id;
       }
-      // Check lead
-      const { data: lead } = await (supabase as any)
-        .from('leads')
-        .select('whatsapp_group_id')
-        .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${normalizedPhone.slice(-8)}%`)
-        .not('whatsapp_group_id', 'is', null)
-        .limit(1)
-        .maybeSingle();
-      if (lead?.whatsapp_group_id) {
-        setLinkedGroupId(lead.whatsapp_group_id);
+      
+      // Check lead if no contact group
+      if (!candidateGroupId) {
+        const { data: lead } = await (supabase as any)
+          .from('leads')
+          .select('whatsapp_group_id')
+          .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${normalizedPhone.slice(-8)}%`)
+          .not('whatsapp_group_id', 'is', null)
+          .limit(1)
+          .maybeSingle();
+        if (lead?.whatsapp_group_id) {
+          candidateGroupId = lead.whatsapp_group_id;
+        }
+      }
+      
+      // Verify the group actually exists by checking for messages
+      if (candidateGroupId) {
+        const { count } = await supabase
+          .from('whatsapp_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('phone', candidateGroupId)
+          .limit(1);
+        if (count && count > 0) {
+          setLinkedGroupId(candidateGroupId);
+        } else {
+          setLinkedGroupId(null);
+        }
       } else {
         setLinkedGroupId(null);
       }
