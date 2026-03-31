@@ -59,6 +59,7 @@ interface ConversationInfo {
   phone: string;
   contact_name: string | null;
   last_message_at: string | null;
+  first_message_at: string | null;
   is_agent_active: boolean;
   has_lead: boolean;
   has_contact: boolean;
