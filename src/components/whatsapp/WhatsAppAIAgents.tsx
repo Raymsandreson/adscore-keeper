@@ -684,6 +684,32 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
                       </div>
                     </>
                   )}
+                  <div className="border-t pt-3 space-y-2">
+                    <Label className="text-xs font-semibold">⚙️ Regras avançadas de follow-up</Label>
+                    <p className="text-[10px] text-muted-foreground">Limites e controles do processador automático de follow-up.</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs">Máx. ciclos de repetição</Label>
+                        <p className="text-[10px] text-muted-foreground">Quantas vezes o ciclo completo de passos se repete (quando "repetir" está ativo)</p>
+                        <Input type="number" value={(editingAgent as any).max_repeat_cycles ?? 3} onChange={e => setEditingAgent({ ...editingAgent, max_repeat_cycles: parseInt(e.target.value) || 3 } as any)} min={1} max={20} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Delay mín. para ligação (min)</Label>
+                        <p className="text-[10px] text-muted-foreground">Intervalo mínimo entre tentativas de ligação, mesmo se o passo definir menos</p>
+                        <Input type="number" value={(editingAgent as any).min_call_delay_minutes ?? 30} onChange={e => setEditingAgent({ ...editingAgent, min_call_delay_minutes: parseInt(e.target.value) || 30 } as any)} min={5} max={1440} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Falhas consecutivas p/ pular</Label>
+                        <p className="text-[10px] text-muted-foreground">Após X ligações sem atender, pula o passo de ligação</p>
+                        <Input type="number" value={(editingAgent as any).max_consecutive_call_failures ?? 3} onChange={e => setEditingAgent({ ...editingAgent, max_consecutive_call_failures: parseInt(e.target.value) || 3 } as any)} min={1} max={10} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Tentativas por ligação</Label>
+                        <p className="text-[10px] text-muted-foreground">Máximo de tentativas na fila de ligações</p>
+                        <Input type="number" value={(editingAgent as any).max_call_attempts ?? 2} onChange={e => setEditingAgent({ ...editingAgent, max_call_attempts: parseInt(e.target.value) || 2 } as any)} min={1} max={5} />
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div className="border rounded-lg p-3 space-y-3">
                   <div>
