@@ -1087,5 +1087,63 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         </div>
       </DrawerContent>
     </Drawer>
+
+    {/* Lead Edit Dialog */}
+    <LeadEditDialog
+      open={showLeadEdit}
+      onOpenChange={(open) => {
+        setShowLeadEdit(open);
+        if (!open && phone) {
+          // Refresh lead data
+          const normalizedPhone = phone.replace(/\D/g, '');
+          const last8 = normalizedPhone.slice(-8);
+          supabase.from('leads').select('*')
+            .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${last8}%`)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+            .then(({ data }) => { if (data) setLinkedLead(data as any); });
+        }
+      }}
+      lead={linkedLead}
+      onSave={async (leadId, updates) => {
+        await supabase.from('leads').update(updates as any).eq('id', leadId);
+        if (linkedLead) setLinkedLead({ ...linkedLead, ...updates } as Lead);
+        toast.success('Lead atualizado!');
+      }}
+      mode="sheet"
+    />
+
+    {/* Contact Detail Sheet */}
+    <ContactDetailSheet
+      contact={linkedContact}
+      open={showContactEdit}
+      onOpenChange={(open) => {
+        setShowContactEdit(open);
+        if (!open && phone) {
+          // Refresh contact data
+          const normalizedPhone = phone.replace(/\D/g, '');
+          const last8 = normalizedPhone.slice(-8);
+          supabase.from('contacts').select('*')
+            .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
+            .limit(1)
+            .maybeSingle()
+            .then(({ data }) => { if (data) setLinkedContact(data as any); });
+        }
+      }}
+      onContactUpdated={() => {
+        if (phone) {
+          const normalizedPhone = phone.replace(/\D/g, '');
+          const last8 = normalizedPhone.slice(-8);
+          supabase.from('contacts').select('*')
+            .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
+            .limit(1)
+            .maybeSingle()
+            .then(({ data }) => { if (data) setLinkedContact(data as any); });
+        }
+      }}
+      mode="sheet"
+    />
+    </>
   );
 }
