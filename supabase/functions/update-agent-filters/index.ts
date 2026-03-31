@@ -1,4 +1,4 @@
-// v3 - Uses agent_filter_settings table in Lovable Cloud DB
+// v4 - Updates whatsapp_ai_agents directly on external Supabase
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -18,9 +18,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Use Lovable Cloud's own DB (local Supabase) to store filter settings
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    // Use EXTERNAL Supabase only
+    const supabaseUrl = Deno.env.get('EXTERNAL_SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const boardIds = lead_status_board_ids && lead_status_board_ids.length > 0 
@@ -30,16 +30,17 @@ Deno.serve(async (req) => {
       ? lead_status_filter 
       : null;
 
+    // Update directly on the base table whatsapp_ai_agents
     const { error } = await supabase
-      .from('agent_filter_settings')
-      .upsert({
-        agent_id,
+      .from('whatsapp_ai_agents')
+      .update({
         lead_status_board_ids: boardIds,
         lead_status_filter: statusFilter,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'agent_id' });
+      })
+      .eq('id', agent_id);
 
     if (error) {
+      console.error('Update error:', error);
       return new Response(JSON.stringify({ error: error.message }), { 
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
@@ -49,7 +50,8 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), { 
+    console.error('Function error:', error);
+    return new Response(JSON.stringify({ error: error.message, stack: error.stack }), { 
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
   }
