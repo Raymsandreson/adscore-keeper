@@ -142,6 +142,7 @@ export function AgentMonitorDashboard() {
         .from('whatsapp_messages')
         .select('phone, instance_name, direction, created_at, action_source, action_source_detail, contact_name, lead_id, campaign_name')
         .gte('created_at', startDate)
+        .lte('created_at', endDate)
         .order('created_at', { ascending: false });
 
       // Fetch campaign_name for ALL phones (not date-filtered) to ensure we capture campaign origin
