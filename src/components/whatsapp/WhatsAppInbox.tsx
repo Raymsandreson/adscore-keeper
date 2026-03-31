@@ -510,11 +510,28 @@ export function WhatsAppInbox() {
   };
 
   const handleSaveLead = async (leadId: string, updates: Partial<Lead>) => {
-    const { error } = await supabase
-      .from('leads')
-      .update(updates as any)
-      .eq('id', leadId);
-    if (error) throw error;
+    try {
+      // Track who updated
+      const { data: { user } } = await supabase.auth.getUser();
+      const payload = { ...updates } as any;
+      if (user?.id) {
+        payload.updated_by = user.id;
+      }
+      
+      const { error } = await supabase
+        .from('leads')
+        .update(payload)
+        .eq('id', leadId);
+      if (error) {
+        console.error('[handleSaveLead] Supabase error:', error);
+        throw error;
+      }
+      toast.success('Lead atualizado com sucesso!');
+    } catch (err) {
+      console.error('[handleSaveLead] Error:', err);
+      toast.error('Erro ao salvar lead: ' + (err instanceof Error ? err.message : String(err)));
+      throw err;
+    }
   };
 
   const handleCloseLeadPanel = (open: boolean) => {
