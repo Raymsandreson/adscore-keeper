@@ -1190,6 +1190,33 @@ export function CTWACampaignAutomation() {
               })}
             </div>
 
+            {/* Date period filter */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <label className="text-[10px] text-muted-foreground whitespace-nowrap">De:</label>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={e => setDateFrom(e.target.value)}
+                  className="h-6 text-[10px] w-[120px] px-1.5"
+                />
+              </div>
+              <div className="flex items-center gap-1">
+                <label className="text-[10px] text-muted-foreground whitespace-nowrap">Até:</label>
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={e => setDateTo(e.target.value)}
+                  className="h-6 text-[10px] w-[120px] px-1.5"
+                />
+              </div>
+              {(dateFrom || dateTo) && (
+                <Button variant="ghost" size="sm" className="h-5 px-1 text-[10px]" onClick={() => { setDateFrom(''); setDateTo(''); }}>
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+
             {/* Bulk follow-up button */}
             <div className="mt-2">
               {bulkFollowup.running ? (
