@@ -25,13 +25,26 @@ Deno.serve(async (req) => {
     }
 
     // Parse connection string: postgresql://user:password@host:port/dbname
-    const match = dbUrl.match(/^postgresql:\/\/([^:]+):(.+)@([^:]+):(\d+)\/(.+)$/);
-    if (!match) {
-      return new Response(JSON.stringify({ error: 'Cannot parse SUPABASE_DB_URL' }), { 
+    // Use lastIndexOf to handle passwords with @ in them
+    const withoutScheme = dbUrl.replace(/^postgresql:\/\//, '');
+    const lastAtIndex = withoutScheme.lastIndexOf('@');
+    if (lastAtIndex === -1) {
+      return new Response(JSON.stringify({ error: 'Cannot parse SUPABASE_DB_URL: no @ found' }), { 
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
     }
-    const [, user, password, host, port, database] = match;
+    const userPass = withoutScheme.substring(0, lastAtIndex);
+    const hostPortDb = withoutScheme.substring(lastAtIndex + 1);
+    const firstColon = userPass.indexOf(':');
+    const user = userPass.substring(0, firstColon);
+    const password = userPass.substring(firstColon + 1);
+    const hostMatch = hostPortDb.match(/^([^:]+):(\d+)\/(.+)$/);
+    if (!hostMatch) {
+      return new Response(JSON.stringify({ error: 'Cannot parse SUPABASE_DB_URL host portion' }), { 
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+    const [, host, port, database] = hostMatch;
 
     const { default: postgres } = await import('https://deno.land/x/postgresjs@v3.4.4/mod.js');
     const sql = postgres({

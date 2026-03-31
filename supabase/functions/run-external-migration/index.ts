@@ -11,16 +11,25 @@ Deno.serve(async (req) => {
     const results: any = {};
 
     // Parse the connection string manually to handle special chars in password
-    // Format: postgresql://user:password@host:port/dbname
-    const match = connStr.match(/^postgresql:\/\/([^:]+):(.+)@([^:]+):(\d+)\/(.+)$/);
-    
-    if (!match) {
-      return new Response(JSON.stringify({ error: 'Cannot parse connection string', preview: connStr.substring(0, 30) }), { 
+    const withoutScheme = connStr.replace(/^postgresql:\/\//, '');
+    const lastAtIndex = withoutScheme.lastIndexOf('@');
+    if (lastAtIndex === -1) {
+      return new Response(JSON.stringify({ error: 'Cannot parse connection string' }), { 
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
     }
-
-    const [, user, password, host, port, database] = match;
+    const userPass = withoutScheme.substring(0, lastAtIndex);
+    const hostPortDb = withoutScheme.substring(lastAtIndex + 1);
+    const firstColon = userPass.indexOf(':');
+    const user = userPass.substring(0, firstColon);
+    const password = userPass.substring(firstColon + 1);
+    const hostMatch = hostPortDb.match(/^([^:]+):(\d+)\/(.+)$/);
+    if (!hostMatch) {
+      return new Response(JSON.stringify({ error: 'Cannot parse host portion' }), { 
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+    const [, host, port, database] = hostMatch;
     results.host = host;
     results.user = user;
 
