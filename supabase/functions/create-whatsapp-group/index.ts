@@ -1073,31 +1073,41 @@ async function forwardDocuments(
         .select('*')
         .eq('lead_id', leadData.id)
 
+      console.log(`[forward-docs] Found ${leadDocs?.length || 0} lead_documents`)
+      
       if (leadDocs) {
         for (const doc of leadDocs) {
+          if (!doc.file_url || sentUrls.has(doc.file_url)) continue
           const docType = (doc.document_type || '').toLowerCase()
           if (docTypes.some((dt: string) => docType.includes(dt) || dt === 'outros')) {
+            sentUrls.add(doc.file_url)
             const label = doc.document_name || docLabels[docType] || 'Documento'
             const fileName = `${label} - ${leadName}.pdf`
             try {
-              await fetch(`${baseUrl}/send/media`, {
+              const sendRes = await fetch(`${baseUrl}/send/media`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
                 body: JSON.stringify({ number: groupId, media: doc.file_url, type: 'document', fileName, caption: `📄 ${label} - ${leadName}` }),
               })
-              console.log(`Sent lead doc: ${fileName}`)
+              if (!sendRes.ok) {
+                console.error(`[forward-docs] Failed to send lead doc ${fileName}:`, sendRes.status)
+              } else {
+                console.log(`[forward-docs] Sent lead doc: ${fileName}`)
+              }
               await sleep(800)
             } catch (e) {
-              console.error(`Error sending lead doc:`, e)
+              console.error(`[forward-docs] Error sending lead doc:`, e)
             }
           }
         }
       }
     } catch (e) {
-      console.log('lead_documents table not available')
+      console.log('[forward-docs] lead_documents table not available:', e)
     }
+    
+    console.log(`[forward-docs] Total unique URLs sent: ${sentUrls.size}`)
   } catch (err) {
-    console.error('Error forwarding documents:', err)
+    console.error('[forward-docs] Error forwarding documents:', err)
   }
 }
 
