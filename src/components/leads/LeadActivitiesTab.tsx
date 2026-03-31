@@ -128,7 +128,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     setNewSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from('lead_activities').insert({
+      const { data, error } = await supabase.from('lead_activities').insert({
         title: newTitle,
         lead_id: leadId,
         lead_name: leadName,
@@ -140,8 +140,28 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
         assigned_to: newAssignedTo || user?.id || null,
         assigned_to_name: newAssignedToName || null,
         created_by: user?.id || null,
-      } as any);
+      } as any).select().single();
       if (error) throw error;
+
+      // Send notification to assigned user (best-effort)
+      if (data) {
+        cloudFunctions.invoke('notify-activity-created', {
+          body: {
+            activity_id: data.id,
+            title: newTitle,
+            description: newDescription,
+            activity_type: newType,
+            status: 'pendente',
+            priority: newPriority,
+            assigned_to: newAssignedTo || user?.id,
+            assigned_to_name: newAssignedToName,
+            created_by: user?.id,
+            deadline: newDeadline || null,
+            lead_name: leadName,
+            lead_id: leadId,
+          },
+        }).catch(() => {});
+      }
       toast.success('Atividade criada!');
       setShowNewSheet(false);
       setNewTitle('');
