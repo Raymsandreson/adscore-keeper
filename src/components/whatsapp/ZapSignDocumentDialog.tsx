@@ -82,6 +82,7 @@ export function ZapSignDocumentDialog({
   const [fetchedContactData, setFetchedContactData] = useState<Record<string, any>>({});
   const [fetchedLeadData, setFetchedLeadData] = useState<Record<string, any>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dbMessages, setDbMessages] = useState<Array<{ direction: string; message_text: string | null; media_url?: string | null; media_type?: string | null; created_at?: string }>>([]);
 
   // Signers state
   const [signers, setSigners] = useState<SignerInfo[]>([]);
@@ -91,7 +92,9 @@ export function ZapSignDocumentDialog({
 
   // Filter messages by period
   const filteredMessages = useMemo(() => {
-    if (messagePeriod === 'all') return messages;
+    // Use DB messages (full history) when available, fall back to props
+    const source = dbMessages.length > 0 ? dbMessages : messages;
+    if (messagePeriod === 'all') return source;
     const now = new Date();
     let cutoff: Date;
     switch (messagePeriod) {
@@ -103,19 +106,20 @@ export function ZapSignDocumentDialog({
       default: cutoff = subDays(now, 7);
     }
     const cutoffTs = cutoff.getTime();
-    return messages.filter(m => {
+    return source.filter(m => {
       const ts = (m as any).created_at || (m as any).timestamp;
       if (!ts) return true;
       return new Date(ts).getTime() >= cutoffTs;
     });
-  }, [messages, messagePeriod]);
+  }, [messages, dbMessages, messagePeriod]);
 
   const messageCountByPeriod = useMemo(() => {
     const now = new Date();
+    const source = dbMessages.length > 0 ? dbMessages : messages;
     const countFor = (days: number | 'today' | 'all') => {
-      if (days === 'all') return messages.length;
+      if (days === 'all') return source.length;
       const cutoff = days === 'today' ? startOfDay(now) : subDays(now, days as number);
-      return messages.filter(m => {
+      return source.filter(m => {
         const ts = (m as any).created_at || (m as any).timestamp;
         if (!ts) return true;
         return new Date(ts).getTime() >= cutoff.getTime();
@@ -129,7 +133,25 @@ export function ZapSignDocumentDialog({
       '30d': countFor(30),
       all: countFor('all'),
     };
-  }, [messages]);
+  }, [messages, dbMessages]);
+
+  // Fetch full message history from database when dialog opens
+  const fetchDbMessages = async () => {
+    if (!phone) return;
+    try {
+      const { data, error } = await supabase
+        .from('whatsapp_messages')
+        .select('direction, message_text, media_url, media_type, created_at')
+        .eq('phone', phone)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (!error && data && data.length > 0) {
+        setDbMessages(data);
+      }
+    } catch (err) {
+      console.error('Error fetching messages for ZapSign extraction:', err);
+    }
+  };
 
   const fetchCrmData = async () => {
     if (contactId) {
@@ -150,6 +172,7 @@ export function ZapSignDocumentDialog({
     if (open) {
       loadTemplates();
       fetchCrmData();
+      fetchDbMessages();
       setStep('select');
       setTemplateFields([]);
       setSelectedTemplate('');
@@ -162,6 +185,7 @@ export function ZapSignDocumentDialog({
       setPendingSignUrl(null);
       setPendingDocData(null);
       setSendingLink(false);
+      setDbMessages([]);
       // Initialize with default signer from contact/lead
       const defaultName = contactName || contactData?.full_name || leadData?.lead_name || '';
       const defaultEmail = contactData?.email || leadData?.email || '';
