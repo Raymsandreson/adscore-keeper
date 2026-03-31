@@ -428,18 +428,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     }
     if (error) { toast.error(error.message); return; }
 
-    // Save filter fields via edge function (stored in agent_filter_settings table)
-    if (savedId && (leadStatusBoardIds.length > 0 || leadStatusFilter.length > 0)) {
-      const { error: filterError } = await cloudFunctions.invoke('update-agent-filters', { body: {
-        agent_id: savedId,
-        lead_status_board_ids: leadStatusBoardIds.length > 0 ? leadStatusBoardIds : null,
-        lead_status_filter: leadStatusFilter.length > 0 ? leadStatusFilter : null,
-      }});
-      if (filterError) {
-        console.warn('Filter save failed:', filterError);
-        toast.warning('Salvo, mas filtro de funil pode não ter sido salvo.');
-      }
-    }
+    // No separate filter save needed - filters are part of the view/base table
 
     toast.success(editingId ? 'Agente atualizado!' : 'Agente criado!');
     resetForm();
