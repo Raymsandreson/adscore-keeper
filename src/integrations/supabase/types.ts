@@ -891,6 +891,7 @@ export type Database = {
           audio_voice_id: string | null
           auto_close_lead_on_sign: boolean | null
           auto_create_group_on_sign: boolean | null
+          auto_create_process: boolean
           board_id: string
           created_at: string
           current_sequence: number | null
@@ -899,6 +900,9 @@ export type Database = {
           id: string
           initial_message_template: string | null
           lead_fields: string[] | null
+          process_auto_activities: Json | null
+          process_nucleus_id: string | null
+          process_workflow_board_id: string | null
           send_audio_message: boolean | null
           sequence_start: number | null
           updated_at: string
@@ -909,6 +913,7 @@ export type Database = {
           audio_voice_id?: string | null
           auto_close_lead_on_sign?: boolean | null
           auto_create_group_on_sign?: boolean | null
+          auto_create_process?: boolean
           board_id: string
           created_at?: string
           current_sequence?: number | null
@@ -917,6 +922,9 @@ export type Database = {
           id?: string
           initial_message_template?: string | null
           lead_fields?: string[] | null
+          process_auto_activities?: Json | null
+          process_nucleus_id?: string | null
+          process_workflow_board_id?: string | null
           send_audio_message?: boolean | null
           sequence_start?: number | null
           updated_at?: string
@@ -927,6 +935,7 @@ export type Database = {
           audio_voice_id?: string | null
           auto_close_lead_on_sign?: boolean | null
           auto_create_group_on_sign?: boolean | null
+          auto_create_process?: boolean
           board_id?: string
           created_at?: string
           current_sequence?: number | null
@@ -935,6 +944,9 @@ export type Database = {
           id?: string
           initial_message_template?: string | null
           lead_fields?: string[] | null
+          process_auto_activities?: Json | null
+          process_nucleus_id?: string | null
+          process_workflow_board_id?: string | null
           send_audio_message?: boolean | null
           sequence_start?: number | null
           updated_at?: string
@@ -945,6 +957,20 @@ export type Database = {
             foreignKeyName: "board_group_settings_board_id_fkey"
             columns: ["board_id"]
             isOneToOne: true
+            referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "board_group_settings_process_nucleus_id_fkey"
+            columns: ["process_nucleus_id"]
+            isOneToOne: false
+            referencedRelation: "specialized_nuclei"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "board_group_settings_process_workflow_board_id_fkey"
+            columns: ["process_workflow_board_id"]
+            isOneToOne: false
             referencedRelation: "kanban_boards"
             referencedColumns: ["id"]
           },
