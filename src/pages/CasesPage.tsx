@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
@@ -299,6 +300,21 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const [editTitle, setEditTitle] = useState(legalCase.title || '');
   const [editDescription, setEditDescription] = useState(legalCase.description || '');
   const [editNotes, setEditNotes] = useState(legalCase.notes || '');
+  const [selectedProcesses, setSelectedProcesses] = useState<Set<string>>(new Set());
+
+  const PREDEFINED_PROCESSES = [
+    'Indenização', 'Relatório de Acidente', 'TRCT + Verbas', 'Seguro de Vida',
+    'Pensão por morte', 'Inquérito Policial', 'Organizar docs', 'Onboarding',
+  ];
+
+  const toggleProcess = (name: string) => {
+    setSelectedProcesses(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
 
   const loadDetails = useCallback(() => {
     if (!expanded) return;
@@ -360,8 +376,29 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
         notes: editNotes || null,
       }).eq('id', legalCase.id);
       if (error) throw error;
+      // Auto-create selected processes
+      if (selectedProcesses.size > 0 && legalCase.lead_id) {
+        const { data: { user } } = await supabase.auth.getUser();
+        for (const title of selectedProcesses) {
+          try {
+            await supabase.from('lead_processes').insert({
+              lead_id: legalCase.lead_id,
+              case_id: legalCase.id,
+              process_type: 'administrativo',
+              title,
+              status: 'em_andamento',
+              started_at: new Date().toISOString().slice(0, 10),
+              created_by: user?.id,
+            } as any);
+          } catch (err) {
+            console.warn(`Error creating process "${title}":`, err);
+          }
+        }
+        toast.success(`${selectedProcesses.size} processo(s) criado(s)`);
+      }
       toast.success('Caso atualizado');
       setShowEditDialog(false);
+      setSelectedProcesses(new Set());
       onCaseUpdated();
     } catch {
       toast.error('Erro ao atualizar caso');
@@ -565,6 +602,23 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
             <div>
               <Label>Observações</Label>
               <Textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={2} />
+            </div>
+            <div>
+              <Label className="flex items-center gap-2 mb-2">Criar processos automaticamente</Label>
+              <div className="border rounded-md p-2 space-y-1 max-h-48 overflow-y-auto">
+                {PREDEFINED_PROCESSES.map(name => (
+                  <label key={name} className="flex items-center gap-2 cursor-pointer hover:bg-accent/50 rounded px-2 py-1.5">
+                    <Checkbox
+                      checked={selectedProcesses.has(name)}
+                      onCheckedChange={() => toggleProcess(name)}
+                    />
+                    <span className="text-sm">{name}</span>
+                  </label>
+                ))}
+              </div>
+              {selectedProcesses.size > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">{selectedProcesses.size} processo(s) será(ão) criado(s)</p>
+              )}
             </div>
           </div>
           <DialogFooter>

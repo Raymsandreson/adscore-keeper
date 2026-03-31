@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
 import {
   Select,
@@ -59,6 +60,18 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   const [caseNucleusId, setCaseNucleusId] = useState('');
   const [caseNotes, setCaseNotes] = useState('');
   const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null);
+  const [selectedProcesses, setSelectedProcesses] = useState<Set<string>>(new Set());
+
+  const PREDEFINED_PROCESSES = [
+    'Indenização',
+    'Relatório de Acidente',
+    'TRCT + Verbas',
+    'Seguro de Vida',
+    'Pensão por morte',
+    'Inquérito Policial',
+    'Organizar docs',
+    'Onboarding',
+  ];
 
   useEffect(() => {
     fetchCases();
@@ -71,6 +84,37 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     setCaseNucleusId('');
     setCaseNotes('');
     setEditingCase(null);
+    setSelectedProcesses(new Set());
+  };
+
+  const toggleProcess = (name: string) => {
+    setSelectedProcesses(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const autoCreateProcesses = async (caseId: string, caseLeadId: string) => {
+    if (selectedProcesses.size === 0) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    for (const title of selectedProcesses) {
+      try {
+        await supabase.from('lead_processes').insert({
+          lead_id: caseLeadId,
+          case_id: caseId,
+          process_type: 'administrativo',
+          title,
+          status: 'em_andamento',
+          started_at: new Date().toISOString().slice(0, 10),
+          created_by: user?.id,
+        } as any);
+      } catch (err) {
+        console.warn(`Error creating process "${title}":`, err);
+      }
+    }
+    toast.success(`${selectedProcesses.size} processo(s) criado(s) automaticamente`);
   };
 
   const handleSaveCase = async () => {
@@ -82,6 +126,10 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
         nucleus_id: caseNucleusId && caseNucleusId !== '__none__' ? caseNucleusId : null,
         notes: caseNotes || null,
       } as Partial<LegalCase>);
+      // Auto-create selected processes on edit too
+      if (selectedProcesses.size > 0) {
+        await autoCreateProcesses(editingCase.id, leadId);
+      }
     } else {
       const newCase = await createCase({
         lead_id: leadId,
@@ -92,6 +140,10 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
         case_number: caseCaseNumber || undefined,
       });
       setExpandedCaseId(newCase.id);
+      // Auto-create selected processes
+      if (selectedProcesses.size > 0) {
+        await autoCreateProcesses(newCase.id, leadId);
+      }
     }
     setShowCaseDialog(false);
     resetCaseForm();
@@ -216,6 +268,26 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
             <div>
               <Label>Observações</Label>
               <Textarea value={caseNotes} onChange={e => setCaseNotes(e.target.value)} rows={2} />
+            </div>
+            <div>
+              <Label className="flex items-center gap-2 mb-2">
+                <CheckCircle className="h-4 w-4" />
+                Criar processos automaticamente
+              </Label>
+              <div className="border rounded-md p-2 space-y-1 max-h-48 overflow-y-auto">
+                {PREDEFINED_PROCESSES.map(name => (
+                  <label key={name} className="flex items-center gap-2 cursor-pointer hover:bg-accent/50 rounded px-2 py-1.5">
+                    <Checkbox
+                      checked={selectedProcesses.has(name)}
+                      onCheckedChange={() => toggleProcess(name)}
+                    />
+                    <span className="text-sm">{name}</span>
+                  </label>
+                ))}
+              </div>
+              {selectedProcesses.size > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">{selectedProcesses.size} processo(s) será(ão) criado(s)</p>
+              )}
             </div>
           </div>
           <DialogFooter>
