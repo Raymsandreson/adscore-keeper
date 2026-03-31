@@ -98,6 +98,7 @@ export function AgentMonitorDashboard() {
   const [cityFilter, setCityFilter] = useState('all');
   const [stateFilter, setStateFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [acolhedorFilter, setAcolhedorFilter] = useState('all');
   const [periodDays, setPeriodDays] = useState(7);
   const [kpiSheet, setKpiSheet] = useState<{ filter: string; label: string } | null>(null);
   const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
