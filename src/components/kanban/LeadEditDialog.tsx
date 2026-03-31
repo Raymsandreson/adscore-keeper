@@ -653,7 +653,7 @@ ${scrapeData.content || ''}
         inviavel_date: leadOutcome === 'inviavel' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
         lead_status_reason: leadOutcomeReason || null,
         case_number: caseNumber || null,
-      } as Partial<Lead>);
+      } as any);
 
       // Save custom field values
       if (Object.keys(localFieldValues).length > 0) {
