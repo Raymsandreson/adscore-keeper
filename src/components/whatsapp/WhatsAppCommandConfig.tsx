@@ -738,31 +738,24 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     ))}
                   </div>
 
-                  {/* Board filter */}
-                  {leadStatusFilter.length > 0 && availableBoards.length > 0 && (
-                    <div className="space-y-1.5 pt-1 border-t">
-                      <Label className="text-[10px] font-medium text-muted-foreground">📋 Filtrar por Funil (opcional)</Label>
-                      <p className="text-[10px] text-muted-foreground">
-                        Se selecionado, o agente só será ativado para leads dos funis escolhidos.
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {availableBoards.map(board => (
-                          <label key={board.id} className="flex items-center gap-1.5 text-[10px] cursor-pointer bg-muted/50 rounded-md px-2 py-1 hover:bg-accent transition-colors">
-                            <Checkbox
-                              checked={leadStatusBoardIds.includes(board.id)}
-                              onCheckedChange={(checked) => {
-                                setLeadStatusBoardIds(prev =>
-                                  checked ? [...prev, board.id] : prev.filter(v => v !== board.id)
-                                );
-                              }}
-                              className="h-3 w-3"
-                            />
-                            <span>{board.name}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                   {/* Board filter - dropdown */}
+                   {leadStatusFilter.length > 0 && availableBoards.length > 0 && (
+                     <div className="space-y-1.5 pt-1 border-t">
+                       <Label className="text-[10px] font-medium text-muted-foreground">📋 Filtrar por Funil (opcional)</Label>
+                       <select
+                         className="w-full text-xs border rounded-md px-2 py-1.5 bg-background text-foreground"
+                         value={leadStatusBoardIds[0] || ''}
+                         onChange={(e) => {
+                           setLeadStatusBoardIds(e.target.value ? [e.target.value] : []);
+                         }}
+                       >
+                         <option value="">Todos os funis</option>
+                         {availableBoards.map(board => (
+                           <option key={board.id} value={board.id}>{board.name}</option>
+                         ))}
+                       </select>
+                     </div>
+                   )}
 
                   {leadStatusFilter.length > 0 && (
                     <p className="text-[10px] text-primary font-medium">
