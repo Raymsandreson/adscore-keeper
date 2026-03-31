@@ -58,6 +58,8 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   const [editWhatWasDone, setEditWhatWasDone] = useState('');
   const [editCurrentStatusNotes, setEditCurrentStatusNotes] = useState('');
   const [editNextSteps, setEditNextSteps] = useState('');
+  const [editAssignedTo, setEditAssignedTo] = useState('');
+  const [editAssignedToName, setEditAssignedToName] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
   const [aiSuggestingType, setAiSuggestingType] = useState(false);
@@ -181,6 +183,8 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     setEditWhatWasDone(a.what_was_done || '');
     setEditCurrentStatusNotes(a.current_status_notes || '');
     setEditNextSteps(a.next_steps || '');
+    setEditAssignedTo(a.assigned_to || '');
+    setEditAssignedToName(a.assigned_to_name || '');
   };
 
   const handleSaveEdit = async () => {
@@ -198,6 +202,8 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
         what_was_done: editWhatWasDone || null,
         current_status_notes: editCurrentStatusNotes || null,
         next_steps: editNextSteps || null,
+        assigned_to: editAssignedTo || null,
+        assigned_to_name: editAssignedToName || null,
       }).eq('id', editActivity.id);
       if (error) throw error;
       toast.success('Atividade atualizada!');
@@ -465,6 +471,21 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div>
+                <Label className="text-xs">Responsável</Label>
+                <Select value={editAssignedTo} onValueChange={val => {
+                  setEditAssignedTo(val);
+                  const p = profiles.find(pr => pr.user_id === val);
+                  setEditAssignedToName(p?.full_name || '');
+                }}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {profiles.map(p => (
+                      <SelectItem key={p.user_id} value={p.user_id}>{p.full_name || p.email}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label className="text-xs">Prazo</Label>
