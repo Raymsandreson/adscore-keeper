@@ -20,11 +20,18 @@ interface Instance {
 interface Board {
   id: string;
   name: string;
+  board_type?: string;
+  product_service_id?: string | null;
 }
 
 interface InstanceConfig {
   role_title: string;
   role_description: string;
+}
+
+interface ProcessWorkflow {
+  workflow_board_id: string;
+  activities: ProcessActivity[];
 }
 
 interface GroupSettings {
@@ -44,6 +51,7 @@ interface GroupSettings {
   process_nucleus_id: string;
   process_workflow_board_id: string;
   process_auto_activities: ProcessActivity[];
+  process_workflows: ProcessWorkflow[];
 }
 
 interface ProcessActivity {
