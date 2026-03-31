@@ -200,7 +200,8 @@ export default function CostOrganizationPage() {
                 Gerenciar Estrutura
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+            <DialogContent className="max-w-4xl !max-h-[85vh] flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-y-auto min-h-0 -mx-6 px-6 pb-4">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <Settings2 className="h-5 w-5" />
