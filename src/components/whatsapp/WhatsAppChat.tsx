@@ -1116,6 +1116,29 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   </DropdownMenuSub>
                 </>
               )}
+              <DropdownMenuSeparator />
+              {isMuted ? (
+                <DropdownMenuItem onClick={() => handleToggleMute(null)} disabled={muteLoading} className="gap-2">
+                  <Volume2 className="h-4 w-4" /> Reativar Conversa
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="gap-2">
+                    <VolumeX className="h-4 w-4" /> Silenciar Conversa
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem onClick={() => handleToggleMute('all')} className="gap-2">
+                      <BellOff className="h-3.5 w-3.5" /> Silenciar tudo (envio + recebimento)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleToggleMute('receive')} className="gap-2">
+                      <VolumeX className="h-3.5 w-3.5" /> Desativar recebimento
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleToggleMute('send')} className="gap-2">
+                      <VolumeX className="h-3.5 w-3.5" /> Desativar envio
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
               {onClearConversation && (
                 <DropdownMenuItem
                   onClick={async () => {
