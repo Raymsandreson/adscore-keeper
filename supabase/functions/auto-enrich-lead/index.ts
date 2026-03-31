@@ -238,8 +238,8 @@ REGRAS:
           : currentLead?.classification_date ? 'refused' 
           : 'active'
 
-        // Only update if currently active (don't override manual decisions)
-        if (currentStatus === 'active') {
+        // Only update if currently active AND lead_status field confirms active
+        if (currentStatus === 'active' && (!currentLead?.lead_status || currentLead.lead_status === 'active')) {
           const statusMap: Record<string, string> = {
             'closed': 'became_client_date',
             'refused': 'classification_date',
