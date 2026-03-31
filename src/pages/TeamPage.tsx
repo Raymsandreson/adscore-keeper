@@ -17,6 +17,7 @@ import { WhatsAppInstancePermissions } from '@/components/team/WhatsAppInstanceP
 import { CareerPlanManager } from '@/components/team/CareerPlanManager';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
 import { MetricsManager } from '@/components/team/MetricsManager';
+import { AmbassadorCentral } from '@/components/ambassadors/AmbassadorCentral';
 import { cn } from '@/lib/utils';
 import {
   Users,
