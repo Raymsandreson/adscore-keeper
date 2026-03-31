@@ -1,8 +1,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// Use Cloud (local) Supabase for profiles & whatsapp_instances
-const CLOUD_SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
-const CLOUD_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
+
+// External DB for business data
+const EXTERNAL_URL = resolveSupabaseUrl();
+const EXTERNAL_KEY = resolveServiceRoleKey();
+
+// Cloud DB for profiles & whatsapp_instances (auth user_ids match)
+const CLOUD_URL = Deno.env.get('SUPABASE_URL') || '';
+const CLOUD_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
 
 const corsHeaders = {
@@ -16,7 +22,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(CLOUD_SUPABASE_URL, CLOUD_SERVICE_ROLE_KEY);
+    // Use Cloud client for profiles/instances (user_ids from Cloud auth)
+    const supabase = createClient(CLOUD_URL, CLOUD_KEY);
 
     const body = await req.json();
     const {

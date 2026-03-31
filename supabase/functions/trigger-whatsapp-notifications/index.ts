@@ -1,14 +1,18 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-// Use external Supabase project when configured (hybrid architecture)
+// External DB for business data (leads, activities, messages, notification config)
 function resolveSupabaseUrl(): string {
   const candidates = [Deno.env.get('EXTERNAL_SUPABASE_URL'), Deno.env.get('SUPABASE_URL')];
   for (const c of candidates) { const v = (c || '').trim(); if (v.startsWith('https://') || v.startsWith('http://')) return v; }
   return 'https://kmedldlepwiityjsdahz.supabase.co';
 }
-const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
-const RESOLVED_SERVICE_ROLE_KEY = (Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
+const EXTERNAL_URL = resolveSupabaseUrl();
+const EXTERNAL_KEY = (Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
 const RESOLVED_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+// Cloud DB for profiles & whatsapp_instances (user_ids from Cloud auth)
+const CLOUD_URL = Deno.env.get('SUPABASE_URL') || '';
+const CLOUD_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
 
 const corsHeaders = {
@@ -22,9 +26,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = RESOLVED_SUPABASE_URL
-    const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    // External DB for business data (notification config, leads, activities, messages)
+    const supabase = createClient(EXTERNAL_URL, EXTERNAL_KEY)
+    // Cloud DB for profiles & whatsapp_instances (auth user_ids match)
+    const cloudDb = createClient(CLOUD_URL, CLOUD_KEY)
 
     let targetUserId: string | null = null
     let isScheduled = false
@@ -77,7 +82,7 @@ Deno.serve(async (req) => {
     // Resolve instance for sending
     let instance: any = null
     if (config.instance_name) {
-      const { data } = await supabase
+      const { data } = await cloudDb
         .from('whatsapp_instances')
         .select('id, instance_name, instance_token, base_url')
         .eq('instance_name', config.instance_name)
@@ -86,7 +91,7 @@ Deno.serve(async (req) => {
       instance = data
     }
     if (!instance) {
-      const { data } = await supabase
+      const { data } = await cloudDb
         .from('whatsapp_instances')
         .select('id, instance_name, instance_token, base_url')
         .eq('is_active', true)
@@ -112,7 +117,7 @@ Deno.serve(async (req) => {
     const recipients: Recipient[] = []
 
     if (targetUserId) {
-      const { data: profile } = await supabase
+      const { data: profile } = await cloudDb
         .from('profiles')
         .select('phone, full_name, default_instance_id')
         .eq('user_id', targetUserId)
@@ -128,7 +133,7 @@ Deno.serve(async (req) => {
       // Get user's instance name
       let userInstanceNames: string[] = []
       if (profile.default_instance_id) {
-        const { data: inst } = await supabase
+        const { data: inst } = await cloudDb
           .from('whatsapp_instances')
           .select('instance_name')
           .eq('id', profile.default_instance_id)
@@ -148,7 +153,7 @@ Deno.serve(async (req) => {
       const recipientPhones: string[] = config.recipient_phones || []
 
       if (recipientUserIds.length > 0) {
-        const { data: profiles } = await supabase
+        const { data: profiles } = await cloudDb
           .from('profiles')
           .select('user_id, phone, full_name, default_instance_id')
           .in('user_id', recipientUserIds)
@@ -161,7 +166,7 @@ Deno.serve(async (req) => {
 
           let instanceMap: Record<string, string> = {}
           if (instanceIds.length > 0) {
-            const { data: instances } = await supabase
+            const { data: instances } = await cloudDb
               .from('whatsapp_instances')
               .select('id, instance_name')
               .in('id', instanceIds)
@@ -183,7 +188,7 @@ Deno.serve(async (req) => {
         }
       } else if (recipientPhones.length > 0) {
         // Fallback: match phones to profiles
-        const { data: profiles } = await supabase
+        const { data: profiles } = await cloudDb
           .from('profiles')
           .select('user_id, phone, full_name, default_instance_id')
           .in('phone', recipientPhones)
@@ -194,7 +199,7 @@ Deno.serve(async (req) => {
 
         let instanceMap: Record<string, string> = {}
         if (instanceIds.length > 0) {
-          const { data: instances } = await supabase
+          const { data: instances } = await cloudDb
             .from('whatsapp_instances')
             .select('id, instance_name')
             .in('id', instanceIds)
@@ -236,11 +241,11 @@ Deno.serve(async (req) => {
           supabase, config, recipient, now, brDate, brTime
         )
 
-        const resp = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
+        const resp = await fetch(`${CLOUD_URL}/functions/v1/send-whatsapp`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseKey}`,
+            'Authorization': `Bearer ${CLOUD_KEY}`,
           },
           body: JSON.stringify({
             phone: recipient.phone,
