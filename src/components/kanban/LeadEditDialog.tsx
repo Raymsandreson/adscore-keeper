@@ -641,6 +641,11 @@ ${scrapeData.content || ''}
         news_link: newsLink || null,
         legal_viability: legalViability || null,
         board_id: selectedBoardId || null,
+        ...(selectedBoardId && selectedBoardId !== (lead as any).board_id ? (() => {
+          const newBoard = boards.find(b => b.id === selectedBoardId);
+          const firstStage = newBoard?.stages?.[0] as any;
+          return firstStage?.id ? { status: firstStage.id } : {};
+        })() : {}),
         expected_birth_date: expectedBirthDate || null,
         became_client_date: leadOutcome === 'closed' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
         classification_date: leadOutcome === 'refused' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
