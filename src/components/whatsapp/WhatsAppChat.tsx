@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff } from 'lucide-react';
+import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff } from 'lucide-react';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { ZapSignDocumentDialog } from './ZapSignDocumentDialog';
@@ -132,6 +132,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [availableAgents, setAvailableAgents] = useState<Array<{ id: string; name: string }>>([]);
   const [agentLoading, setAgentLoading] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [muteType, setMuteType] = useState<string | null>(null);
+  const [muteLoading, setMuteLoading] = useState(false);
   const { notes, addNote, deleteNote } = useWhatsAppInternalNotes(conversation.phone);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -205,7 +208,72 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     finally { setAgentLoading(false); }
   };
 
-  // Detect if this is a group conversation
+  // ========== MUTE STATE (Cloud DB) ==========
+  const CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
+  const CLOUD_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38';
+
+  useEffect(() => {
+    const fetchMuteState = async () => {
+      try {
+        const res = await fetch(
+          `${CLOUD_URL}/rest/v1/whatsapp_muted_chats?phone=eq.${conversation.phone}&instance_name=eq.${encodeURIComponent(conversation.instance_name)}&select=mute_type&limit=1`,
+          { headers: { 'apikey': CLOUD_ANON, 'Authorization': `Bearer ${CLOUD_ANON}` } }
+        );
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setIsMuted(true);
+          setMuteType(data[0].mute_type);
+        } else {
+          setIsMuted(false);
+          setMuteType(null);
+        }
+      } catch { /* ignore */ }
+    };
+    fetchMuteState();
+  }, [conversation.phone, conversation.instance_name]);
+
+  const handleToggleMute = async (newMuteType: string | null) => {
+    setMuteLoading(true);
+    try {
+      if (newMuteType === null) {
+        // Unmute
+        await fetch(
+          `${CLOUD_URL}/rest/v1/whatsapp_muted_chats?phone=eq.${conversation.phone}&instance_name=eq.${encodeURIComponent(conversation.instance_name)}`,
+          { method: 'DELETE', headers: { 'apikey': CLOUD_ANON, 'Authorization': `Bearer ${CLOUD_ANON}` } }
+        );
+        setIsMuted(false);
+        setMuteType(null);
+        toast.success('🔔 Conversa reativada');
+      } else {
+        // Mute (upsert)
+        await fetch(`${CLOUD_URL}/rest/v1/whatsapp_muted_chats`, {
+          method: 'POST',
+          headers: {
+            'apikey': CLOUD_ANON,
+            'Authorization': `Bearer ${CLOUD_ANON}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates',
+          },
+          body: JSON.stringify({
+            phone: conversation.phone,
+            instance_name: conversation.instance_name,
+            mute_type: newMuteType,
+            muted_by: profile?.full_name || null,
+          }),
+        });
+        setIsMuted(true);
+        setMuteType(newMuteType);
+        const labels: Record<string, string> = { all: '🔇 Conversa silenciada (envio + recebimento)', receive: '🔇 Recebimento desativado', send: '🔇 Envio desativado' };
+        toast.success(labels[newMuteType] || '🔇 Conversa silenciada');
+      }
+    } catch (e: any) {
+      toast.error('Erro ao alterar mute: ' + e.message);
+    } finally {
+      setMuteLoading(false);
+    }
+  };
+
+
   const isGroup = messages.some(msg => {
     const meta = msg.metadata;
     if (!meta) return false;
@@ -953,6 +1021,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {isPrivate && <Lock className="h-4 w-4 text-amber-500" />}
+          {isMuted && (
+            <Badge variant="outline" className="text-[9px] gap-1 text-destructive border-destructive/30 px-1.5 py-0 cursor-pointer" onClick={() => handleToggleMute(null)}>
+              <VolumeX className="h-3 w-3" /> Mudo
+            </Badge>
+          )}
           {conversation.lead_id && <Badge variant="outline" className="text-[10px] gap-1 text-blue-600 px-1.5 py-0"><Link2 className="h-3 w-3" /> Lead</Badge>}
           {agentEnabled && activeAgentName && (
             <Badge variant="default" className="text-[9px] gap-1 bg-emerald-600 hover:bg-emerald-700 px-1.5 py-0 cursor-pointer" onClick={handleAgentToggle}>
@@ -1047,6 +1120,29 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
                 </>
+              )}
+              <DropdownMenuSeparator />
+              {isMuted ? (
+                <DropdownMenuItem onClick={() => handleToggleMute(null)} disabled={muteLoading} className="gap-2">
+                  <Volume2 className="h-4 w-4" /> Reativar Conversa
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="gap-2">
+                    <VolumeX className="h-4 w-4" /> Silenciar Conversa
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem onClick={() => handleToggleMute('all')} className="gap-2">
+                      <BellOff className="h-3.5 w-3.5" /> Silenciar tudo (envio + recebimento)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleToggleMute('receive')} className="gap-2">
+                      <VolumeX className="h-3.5 w-3.5" /> Desativar recebimento
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleToggleMute('send')} className="gap-2">
+                      <VolumeX className="h-3.5 w-3.5" /> Desativar envio
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
               )}
               {onClearConversation && (
                 <DropdownMenuItem

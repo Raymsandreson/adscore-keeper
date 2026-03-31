@@ -1065,6 +1065,36 @@ Deno.serve(async (req) => {
 
     console.log('Parsed message:', { phone, contactName, messageText: messageText?.substring(0, 100), direction, messageType, mediaUrl: mediaUrl?.substring(0, 80), instanceName })
 
+    // ========== MUTED CHAT CHECK (Cloud DB) ==========
+    if (phone && instanceName) {
+      try {
+        const cloudClient = createClient(cloudFunctionsUrl, cloudAnonKey)
+        const { data: muteRecord } = await cloudClient
+          .from('whatsapp_muted_chats')
+          .select('mute_type')
+          .eq('phone', phone)
+          .eq('instance_name', instanceName)
+          .maybeSingle()
+        
+        if (muteRecord) {
+          const mt = muteRecord.mute_type || 'all'
+          const shouldBlock = mt === 'all' 
+            || (mt === 'receive' && direction === 'inbound')
+            || (mt === 'send' && direction === 'outbound')
+          
+          if (shouldBlock) {
+            console.log(`Chat MUTED (${mt}): phone=${phone}, instance=${instanceName}, direction=${direction}. Skipping.`)
+            return new Response(
+              JSON.stringify({ success: true, skipped: true, reason: 'chat_muted', mute_type: mt }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
+        }
+      } catch (muteErr) {
+        console.warn('Mute check failed, continuing:', muteErr)
+      }
+    }
+
     // ========== DOWNLOAD AND STORE MEDIA ==========
     let storedMediaUrl = mediaUrl;
     let mediaTranscription: string | null = null;
