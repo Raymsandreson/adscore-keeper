@@ -7,45 +7,38 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    // EXTERNAL_SUPABASE_URL actually contains the postgres connection string!
     const connStr = (Deno.env.get('EXTERNAL_SUPABASE_URL') || '').trim();
-    const serviceKey = (Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || '').trim();
-    
     const results: any = {};
 
-    // Determine which is the postgres URL and which is the API URL
-    let dbConnStr = '';
+    // Parse the connection string manually to handle special chars in password
+    // Format: postgresql://user:password@host:port/dbname
+    const match = connStr.match(/^postgresql:\/\/([^:]+):(.+)@([^:]+):(\d+)\/(.+)$/);
     
-    if (connStr.startsWith('postgresql://')) {
-      dbConnStr = connStr;
-      results.source = 'EXTERNAL_SUPABASE_URL contains postgres conn string';
-    } else {
-      // Check SUPABASE_DB_URL 
-      const dbUrl = Deno.env.get('SUPABASE_DB_URL') || '';
-      if (dbUrl.startsWith('postgresql://')) {
-        dbConnStr = dbUrl;
-        results.source = 'Using SUPABASE_DB_URL';
-      }
-    }
-
-    // Extract host to see which project
-    const hostMatch = dbConnStr.match(/@([^:\/]+)/);
-    results.db_host = hostMatch ? hostMatch[1] : 'unknown';
-
-    if (!dbConnStr) {
-      return new Response(JSON.stringify({ error: 'No postgres connection string found', ...results }), { 
+    if (!match) {
+      return new Response(JSON.stringify({ error: 'Cannot parse connection string', preview: connStr.substring(0, 30) }), { 
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
     }
 
+    const [, user, password, host, port, database] = match;
+    results.host = host;
+    results.user = user;
+
     const { default: postgres } = await import('https://deno.land/x/postgresjs@v3.4.4/mod.js');
-    const sql = postgres(dbConnStr, { ssl: 'require' });
+    const sql = postgres({
+      host,
+      port: parseInt(port),
+      database,
+      username: user,
+      password,
+      ssl: 'require',
+    });
 
     // Check which DB we're on
     const dbCheck = await sql`SELECT current_database()`;
     results.database = dbCheck[0]?.current_database;
 
-    // Check if columns exist
+    // Check columns
     const cols = await sql`
       SELECT column_name FROM information_schema.columns 
       WHERE table_schema = 'public' AND table_name = 'wjia_command_shortcuts'
@@ -56,16 +49,16 @@ Deno.serve(async (req) => {
     // Add columns if missing
     if (!cols.some((r: any) => r.column_name === 'lead_status_board_ids')) {
       await sql`ALTER TABLE public.wjia_command_shortcuts ADD COLUMN IF NOT EXISTS lead_status_board_ids text[] DEFAULT NULL`;
-      results.added_lead_status_board_ids = true;
+      results.added_board_ids = true;
     }
     if (!cols.some((r: any) => r.column_name === 'lead_status_filter')) {
       await sql`ALTER TABLE public.wjia_command_shortcuts ADD COLUMN IF NOT EXISTS lead_status_filter text[] DEFAULT NULL`;
-      results.added_lead_status_filter = true;
+      results.added_status_filter = true;
     }
 
-    // Force schema refresh
-    await sql`ALTER TABLE public.wjia_command_shortcuts ADD COLUMN IF NOT EXISTS _temp_refresh boolean DEFAULT NULL`;
-    await sql`ALTER TABLE public.wjia_command_shortcuts DROP COLUMN IF EXISTS _temp_refresh`;
+    // Force schema refresh - multiple techniques
+    await sql`ALTER TABLE public.wjia_command_shortcuts ADD COLUMN IF NOT EXISTS _temp boolean DEFAULT NULL`;
+    await sql`ALTER TABLE public.wjia_command_shortcuts DROP COLUMN IF EXISTS _temp`;
     await sql`NOTIFY pgrst, 'reload schema'`;
     results.schema_refreshed = true;
 
@@ -83,7 +76,7 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), { 
+    return new Response(JSON.stringify({ error: error.message, stack: error.stack?.substring(0, 300) }), { 
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
   }
