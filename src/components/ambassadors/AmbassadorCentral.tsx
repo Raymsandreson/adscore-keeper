@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
-import { Users, Trophy, UserPlus, BarChart3 } from 'lucide-react';
+import { Users, Trophy, BarChart3, Map } from 'lucide-react';
 import { AmbassadorsList } from './AmbassadorsList';
 import { AmbassadorCampaigns } from './AmbassadorCampaigns';
 import { AmbassadorDashboard } from './AmbassadorDashboard';
+import { AmbassadorMap } from './AmbassadorMap';
 
 const SUB_TABS = [
   { key: 'dashboard', label: 'Painel', icon: BarChart3 },
   { key: 'ambassadors', label: 'Embaixadores', icon: Users },
   { key: 'campaigns', label: 'Campanhas & Metas', icon: Trophy },
+  { key: 'map', label: 'Mapa', icon: Map },
 ] as const;
 
 type SubTab = typeof SUB_TABS[number]['key'];
