@@ -20,11 +20,18 @@ interface Instance {
 interface Board {
   id: string;
   name: string;
+  board_type?: string;
+  product_service_id?: string | null;
 }
 
 interface InstanceConfig {
   role_title: string;
   role_description: string;
+}
+
+interface ProcessWorkflow {
+  workflow_board_id: string;
+  activities: ProcessActivity[];
 }
 
 interface GroupSettings {
@@ -44,6 +51,7 @@ interface GroupSettings {
   process_nucleus_id: string;
   process_workflow_board_id: string;
   process_auto_activities: ProcessActivity[];
+  process_workflows: ProcessWorkflow[];
 }
 
 interface ProcessActivity {
@@ -128,6 +136,7 @@ export function BoardGroupInstancesConfig() {
     process_nucleus_id: '',
     process_workflow_board_id: '',
     process_auto_activities: [],
+    process_workflows: [],
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -137,6 +146,7 @@ export function BoardGroupInstancesConfig() {
   const [adminNotes, setAdminNotes] = useState<string | null>(null);
   const [nuclei, setNuclei] = useState<{id: string; name: string; prefix: string}[]>([]);
   const [teamMembers, setTeamMembers] = useState<{user_id: string; full_name: string}[]>([]);
+  const [products, setProducts] = useState<{id: string; name: string; nucleus_id: string | null}[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -151,18 +161,20 @@ export function BoardGroupInstancesConfig() {
 
   const fetchData = async () => {
     setLoading(true);
-    const [boardsRes, instancesRes, voicesRes, nucleiRes, profilesRes] = await Promise.all([
-      (supabase as any).from('kanban_boards').select('id, name').order('display_order'),
+    const [boardsRes, instancesRes, voicesRes, nucleiRes, profilesRes, productsRes] = await Promise.all([
+      (supabase as any).from('kanban_boards').select('id, name, board_type, product_service_id').order('display_order'),
       (supabase as any).from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true),
       (supabase as any).from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
       (supabase as any).from('specialized_nuclei').select('id, name, prefix').eq('is_active', true).order('name'),
       (supabase as any).from('profiles').select('user_id, full_name').order('full_name'),
+      (supabase as any).from('products_services').select('id, name, nucleus_id'),
     ]);
     setBoards((boardsRes.data as any[]) || []);
     setInstances((instancesRes.data as any[]) || []);
     setCustomVoices((voicesRes.data || []).map((v: any) => ({ id: v.elevenlabs_voice_id, name: `🎤 ${v.name}` })));
     setNuclei((nucleiRes.data || []).map((n: any) => ({ id: n.id, name: n.name, prefix: n.prefix })));
     setTeamMembers((profilesRes.data || []).filter((p: any) => p.full_name));
+    setProducts((productsRes.data || []).map((p: any) => ({ id: p.id, name: p.name, nucleus_id: p.nucleus_id })));
     if (boardsRes.data && boardsRes.data.length > 0) {
       setSelectedBoard(boardsRes.data[0].id);
     }
@@ -209,6 +221,7 @@ export function BoardGroupInstancesConfig() {
         process_nucleus_id: data.process_nucleus_id || '',
         process_workflow_board_id: data.process_workflow_board_id || '',
         process_auto_activities: data.process_auto_activities || [],
+        process_workflows: data.process_workflows || [],
       });
       if (data.ai_generated_message) {
         setPreviewMessage(data.ai_generated_message);
@@ -223,7 +236,7 @@ export function BoardGroupInstancesConfig() {
         send_audio_message: false, audio_voice_id: '',
         auto_close_lead_on_sign: false, auto_create_group_on_sign: false,
         auto_create_process: false, process_nucleus_id: '', process_workflow_board_id: '',
-        process_auto_activities: [],
+        process_auto_activities: [], process_workflows: [],
       });
       setPreviewMessage(null);
     }
@@ -291,6 +304,7 @@ export function BoardGroupInstancesConfig() {
         process_nucleus_id: settings.process_nucleus_id || null,
         process_workflow_board_id: settings.process_workflow_board_id || null,
         process_auto_activities: settings.process_auto_activities,
+        process_workflows: settings.process_workflows,
         updated_at: new Date().toISOString(),
       };
 
@@ -702,10 +716,10 @@ export function BoardGroupInstancesConfig() {
           <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-primary" />
-              <h4 className="font-medium text-xs">Criação Automática de Processo</h4>
+              <h4 className="font-medium text-xs">Criação Automática de Processos</h4>
             </div>
             <p className="text-[10px] text-muted-foreground">
-              Ao criar o grupo, cria automaticamente um caso jurídico vinculado ao lead com atividades pré-definidas.
+              Selecione os fluxos de trabalho que devem ser criados automaticamente ao criar o grupo. Cada fluxo gera um processo separado com seu núcleo correspondente.
             </p>
 
             <div className="flex items-center gap-2">
@@ -715,156 +729,157 @@ export function BoardGroupInstancesConfig() {
                 onCheckedChange={(checked) => setSettings(prev => ({ ...prev, auto_create_process: !!checked }))}
               />
               <Label htmlFor="auto_create_process" className="text-xs cursor-pointer">
-                ⚖️ Criar <strong>processo jurídico</strong> automaticamente ao criar grupo
+                ⚖️ Criar <strong>processos jurídicos</strong> automaticamente ao criar grupo
               </Label>
             </div>
 
             {settings.auto_create_process && (
               <div className="space-y-3 pl-2 border-l-2 border-primary/20 ml-1">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-[11px] text-muted-foreground">Núcleo Especializado</Label>
-                    <Select value={settings.process_nucleus_id} onValueChange={v => setSettings(prev => ({ ...prev, process_nucleus_id: v }))}>
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Selecione o núcleo..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {nuclei.map(n => (
-                          <SelectItem key={n.id} value={n.id}>{n.prefix} - {n.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[11px] text-muted-foreground">Fluxo de Trabalho</Label>
-                    <Select value={settings.process_workflow_board_id} onValueChange={v => setSettings(prev => ({ ...prev, process_workflow_board_id: v }))}>
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Selecione o fluxo..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {boards.map(b => (
-                          <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+                <Label className="text-[11px] text-muted-foreground">Selecione os fluxos de trabalho:</Label>
+                
+                {boards.filter(b => b.board_type === 'workflow').length === 0 && (
+                  <p className="text-[10px] text-muted-foreground text-center py-2">
+                    Nenhum fluxo de trabalho cadastrado. Crie fluxos na página de Configurações.
+                  </p>
+                )}
 
-                {/* Auto Activities */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-[11px] text-muted-foreground">Atividades automáticas</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-[10px] gap-1"
-                      onClick={() => setSettings(prev => ({
-                        ...prev,
-                        process_auto_activities: [...prev.process_auto_activities, {
-                          title: '',
-                          activity_type: 'tarefa',
-                          assigned_to: '',
-                          deadline_days: 1,
-                          priority: 'normal',
-                        }],
-                      }))}
-                    >
-                      + Adicionar atividade
-                    </Button>
-                  </div>
+                {boards.filter(b => b.board_type === 'workflow').map(workflow => {
+                  const isSelected = settings.process_workflows.some(w => w.workflow_board_id === workflow.id);
+                  const workflowEntry = settings.process_workflows.find(w => w.workflow_board_id === workflow.id);
+                  
+                  const product = products.find(p => p.id === workflow.product_service_id);
+                  const nucleus = product?.nucleus_id ? nuclei.find(n => n.id === product.nucleus_id) : null;
 
-                  {settings.process_auto_activities.map((act, idx) => (
-                    <div key={idx} className="p-2 rounded border bg-background space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-medium text-muted-foreground">Atividade {idx + 1}</span>
-                        <button
-                          type="button"
-                          onClick={() => setSettings(prev => ({
-                            ...prev,
-                            process_auto_activities: prev.process_auto_activities.filter((_, i) => i !== idx),
-                          }))}
-                          className="text-destructive hover:text-destructive/80 text-xs"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                      <Input
-                        value={act.title}
-                        onChange={e => {
-                          const updated = [...settings.process_auto_activities];
-                          updated[idx] = { ...updated[idx], title: e.target.value };
-                          setSettings(prev => ({ ...prev, process_auto_activities: updated }));
-                        }}
-                        placeholder="Título da atividade (ex: Protocolar processo)"
-                        className="h-7 text-[11px]"
-                      />
-                      <div className="grid grid-cols-3 gap-2">
-                        <div>
-                          <Label className="text-[10px] text-muted-foreground">Responsável</Label>
-                          <Select
-                            value={act.assigned_to}
-                            onValueChange={v => {
-                              const updated = [...settings.process_auto_activities];
-                              updated[idx] = { ...updated[idx], assigned_to: v };
-                              setSettings(prev => ({ ...prev, process_auto_activities: updated }));
-                            }}
-                          >
-                            <SelectTrigger className="h-7 text-[10px]">
-                              <SelectValue placeholder="Selecionar..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {teamMembers.map(m => (
-                                <SelectItem key={m.user_id} value={m.user_id}>{m.full_name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                  return (
+                    <div key={workflow.id} className="rounded-lg border bg-background">
+                      <label className="flex items-center gap-2 p-2 cursor-pointer">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={(checked) => {
+                            setSettings(prev => {
+                              if (checked) {
+                                return { ...prev, process_workflows: [...prev.process_workflows, { workflow_board_id: workflow.id, activities: [] }] };
+                              }
+                              return { ...prev, process_workflows: prev.process_workflows.filter(w => w.workflow_board_id !== workflow.id) };
+                            });
+                          }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-medium">{workflow.name}</span>
+                          {nucleus && (
+                            <span className="text-[10px] text-muted-foreground ml-2">({nucleus.prefix} - {nucleus.name})</span>
+                          )}
                         </div>
-                        <div>
-                          <Label className="text-[10px] text-muted-foreground">Prazo (dias)</Label>
-                          <Input
-                            type="number"
-                            min={0}
-                            value={act.deadline_days}
-                            onChange={e => {
-                              const updated = [...settings.process_auto_activities];
-                              updated[idx] = { ...updated[idx], deadline_days: parseInt(e.target.value) || 1 };
-                              setSettings(prev => ({ ...prev, process_auto_activities: updated }));
-                            }}
-                            className="h-7 text-[10px]"
-                          />
+                      </label>
+
+                      {isSelected && workflowEntry && (
+                        <div className="px-2 pb-2 space-y-2 border-t mx-2 pt-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-[10px] text-muted-foreground">Atividades automáticas</Label>
+                            <Button type="button" variant="outline" size="sm" className="h-5 text-[9px] gap-1 px-2"
+                              onClick={() => setSettings(prev => ({
+                                ...prev,
+                                process_workflows: prev.process_workflows.map(w =>
+                                  w.workflow_board_id === workflow.id
+                                    ? { ...w, activities: [...w.activities, { title: '', activity_type: 'tarefa', assigned_to: '', deadline_days: 1, priority: 'normal' }] }
+                                    : w
+                                ),
+                              }))}
+                            >+ Atividade</Button>
+                          </div>
+
+                          {workflowEntry.activities.map((act, actIdx) => (
+                            <div key={actIdx} className="p-1.5 rounded border bg-muted/30 space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[9px] font-medium text-muted-foreground">Atividade {actIdx + 1}</span>
+                                <button type="button" className="text-destructive hover:text-destructive/80 text-[9px]"
+                                  onClick={() => setSettings(prev => ({
+                                    ...prev,
+                                    process_workflows: prev.process_workflows.map(w =>
+                                      w.workflow_board_id === workflow.id
+                                        ? { ...w, activities: w.activities.filter((_, i) => i !== actIdx) }
+                                        : w
+                                    ),
+                                  }))}
+                                >✕</button>
+                              </div>
+                              <Input value={act.title} placeholder="Título da atividade" className="h-6 text-[10px]"
+                                onChange={e => setSettings(prev => ({
+                                  ...prev,
+                                  process_workflows: prev.process_workflows.map(w =>
+                                    w.workflow_board_id === workflow.id
+                                      ? { ...w, activities: w.activities.map((a, i) => i === actIdx ? { ...a, title: e.target.value } : a) }
+                                      : w
+                                  ),
+                                }))}
+                              />
+                              <div className="grid grid-cols-3 gap-1.5">
+                                <div>
+                                  <Label className="text-[9px] text-muted-foreground">Responsável</Label>
+                                  <Select value={act.assigned_to} onValueChange={v => setSettings(prev => ({
+                                    ...prev,
+                                    process_workflows: prev.process_workflows.map(w =>
+                                      w.workflow_board_id === workflow.id
+                                        ? { ...w, activities: w.activities.map((a, i) => i === actIdx ? { ...a, assigned_to: v } : a) }
+                                        : w
+                                    ),
+                                  }))}>
+                                    <SelectTrigger className="h-6 text-[9px]"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                                    <SelectContent>
+                                      {teamMembers.map(m => <SelectItem key={m.user_id} value={m.user_id}>{m.full_name}</SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label className="text-[9px] text-muted-foreground">Prazo (dias)</Label>
+                                  <Input type="number" min={0} value={act.deadline_days} className="h-6 text-[9px]"
+                                    onChange={e => setSettings(prev => ({
+                                      ...prev,
+                                      process_workflows: prev.process_workflows.map(w =>
+                                        w.workflow_board_id === workflow.id
+                                          ? { ...w, activities: w.activities.map((a, i) => i === actIdx ? { ...a, deadline_days: parseInt(e.target.value) || 1 } : a) }
+                                          : w
+                                      ),
+                                    }))}
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-[9px] text-muted-foreground">Prioridade</Label>
+                                  <Select value={act.priority} onValueChange={v => setSettings(prev => ({
+                                    ...prev,
+                                    process_workflows: prev.process_workflows.map(w =>
+                                      w.workflow_board_id === workflow.id
+                                        ? { ...w, activities: w.activities.map((a, i) => i === actIdx ? { ...a, priority: v } : a) }
+                                        : w
+                                    ),
+                                  }))}>
+                                    <SelectTrigger className="h-6 text-[9px]"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="baixa">Baixa</SelectItem>
+                                      <SelectItem value="normal">Normal</SelectItem>
+                                      <SelectItem value="alta">Alta</SelectItem>
+                                      <SelectItem value="urgente">Urgente</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+
+                          {workflowEntry.activities.length === 0 && (
+                            <p className="text-[9px] text-muted-foreground text-center py-1">Sem atividades automáticas.</p>
+                          )}
                         </div>
-                        <div>
-                          <Label className="text-[10px] text-muted-foreground">Prioridade</Label>
-                          <Select
-                            value={act.priority}
-                            onValueChange={v => {
-                              const updated = [...settings.process_auto_activities];
-                              updated[idx] = { ...updated[idx], priority: v };
-                              setSettings(prev => ({ ...prev, process_auto_activities: updated }));
-                            }}
-                          >
-                            <SelectTrigger className="h-7 text-[10px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="baixa">Baixa</SelectItem>
-                              <SelectItem value="normal">Normal</SelectItem>
-                              <SelectItem value="alta">Alta</SelectItem>
-                              <SelectItem value="urgente">Urgente</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
+                      )}
                     </div>
-                  ))}
+                  );
+                })}
 
-                  {settings.process_auto_activities.length === 0 && (
-                    <p className="text-[10px] text-muted-foreground text-center py-2">
-                      Nenhuma atividade configurada. Adicione atividades que serão criadas automaticamente dentro do processo.
-                    </p>
-                  )}
-                </div>
+                {settings.process_workflows.length > 0 && (
+                  <p className="text-[10px] text-muted-foreground">
+                    ✅ {settings.process_workflows.length} processo(s) será(ão) criado(s) automaticamente.
+                  </p>
+                )}
               </div>
             )}
           </div>

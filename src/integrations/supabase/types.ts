@@ -903,6 +903,7 @@ export type Database = {
           process_auto_activities: Json | null
           process_nucleus_id: string | null
           process_workflow_board_id: string | null
+          process_workflows: Json | null
           send_audio_message: boolean | null
           sequence_start: number | null
           updated_at: string
@@ -925,6 +926,7 @@ export type Database = {
           process_auto_activities?: Json | null
           process_nucleus_id?: string | null
           process_workflow_board_id?: string | null
+          process_workflows?: Json | null
           send_audio_message?: boolean | null
           sequence_start?: number | null
           updated_at?: string
@@ -947,6 +949,7 @@ export type Database = {
           process_auto_activities?: Json | null
           process_nucleus_id?: string | null
           process_workflow_board_id?: string | null
+          process_workflows?: Json | null
           send_audio_message?: boolean | null
           sequence_start?: number | null
           updated_at?: string
