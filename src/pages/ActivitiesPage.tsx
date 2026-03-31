@@ -209,6 +209,30 @@ const ActivitiesPage = () => {
   });
 
   useEffect(() => {
+    if (!user?.id) {
+      setFilterAssigneeState([]);
+      return;
+    }
+
+    try {
+      const stored = localStorage.getItem(assigneeStorageKey);
+      if (stored !== null) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setFilterAssigneeState(parsed.filter((value): value is string => typeof value === 'string'));
+          return;
+        }
+      }
+    } catch {}
+
+    const defaultAssigneeFilter = [user.id, '__unassigned__'];
+    setFilterAssigneeState(defaultAssigneeFilter);
+    try {
+      localStorage.setItem(assigneeStorageKey, JSON.stringify(defaultAssigneeFilter));
+    } catch {}
+  }, [assigneeStorageKey, user?.id]);
+
+  useEffect(() => {
     fetchActivities(getFilterParams());
   }, [fetchActivities, filterStatus, filterType, filterAssignee, filterLead, filterContact]);
 
