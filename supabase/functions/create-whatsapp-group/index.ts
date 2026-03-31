@@ -780,6 +780,7 @@ Deno.serve(async (req) => {
       group_id: groupId,
       group_name: groupName,
       participants_count: participantsCount,
+      warning: verificationWarning || undefined,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
