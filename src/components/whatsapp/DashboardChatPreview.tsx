@@ -90,6 +90,10 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [newNickname, setNewNickname] = useState('');
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [linkedLead, setLinkedLead] = useState<Lead | null>(null);
+  const [linkedContact, setLinkedContact] = useState<Contact | null>(null);
+  const [showLeadEdit, setShowLeadEdit] = useState(false);
+  const [showContactEdit, setShowContactEdit] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
 
