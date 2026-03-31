@@ -253,7 +253,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         : instances.filter(i => i.id === selectedInstanceId);
 
       if (targetInstances.length === 0) {
-        processMessages([], silent);
+        // Don't set hasLoaded when there are no instances yet — 
+        // allows retry once instances actually load
+        setConversations([]);
+        setMessages([]);
         return;
       }
 
