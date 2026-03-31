@@ -736,6 +736,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   let lastDateLabel = '';
 
   return (
+    <>
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="max-h-[92vh] flex flex-col">
         <DrawerHeader className="pb-2 shrink-0">
