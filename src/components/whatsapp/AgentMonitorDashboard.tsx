@@ -465,7 +465,20 @@ export function AgentMonitorDashboard() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Acompanhe o desempenho das conversas automáticas em tempo real</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {acolhedorOptions.length > 0 && (
+            <Select value={acolhedorFilter} onValueChange={setAcolhedorFilter}>
+              <SelectTrigger className="w-[140px] h-9 text-xs">
+                <SelectValue placeholder="Acolhedor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos Acolhedores</SelectItem>
+                {acolhedorOptions.map(a => (
+                  <SelectItem key={a} value={a}>{a}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={String(periodDays)} onValueChange={v => setPeriodDays(Number(v))}>
             <SelectTrigger className="w-[130px] h-9 text-xs">
               <SelectValue />
