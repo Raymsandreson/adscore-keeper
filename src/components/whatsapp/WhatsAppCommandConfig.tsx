@@ -407,6 +407,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_window_end_hour: form.send_window_end_hour ?? 20,
       send_call_followup_audio: form.send_call_followup_audio ?? false,
       lead_status_filter: leadStatusFilter.length > 0 ? leadStatusFilter : null,
+      lead_status_board_ids: leadStatusBoardIds.length > 0 ? leadStatusBoardIds : null,
     };
 
     let error;
