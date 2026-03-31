@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText, Volume2, Sparkles, Send, Zap } from 'lucide-react';
+import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText, Volume2, Sparkles, Send, Zap, Scale, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
