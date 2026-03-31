@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
       const recipientPhones: string[] = config.recipient_phones || []
 
       if (recipientUserIds.length > 0) {
-        const { data: profiles } = await supabase
+        const { data: profiles } = await cloudDb
           .from('profiles')
           .select('user_id, phone, full_name, default_instance_id')
           .in('user_id', recipientUserIds)
