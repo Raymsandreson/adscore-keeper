@@ -7733,6 +7733,33 @@ export type Database = {
           },
         ]
       }
+      whatsapp_muted_chats: {
+        Row: {
+          created_at: string
+          id: string
+          instance_name: string
+          mute_type: string
+          muted_by: string | null
+          phone: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          instance_name: string
+          mute_type?: string
+          muted_by?: string | null
+          phone: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          instance_name?: string
+          mute_type?: string
+          muted_by?: string | null
+          phone?: string
+        }
+        Relationships: []
+      }
       whatsapp_notification_config: {
         Row: {
           created_at: string | null
