@@ -543,7 +543,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                       duration = days > 0 ? `${days} dia${days > 1 ? 's' : ''}` : '';
                     }
                     return (
-                      <div key={act.id} className={`border rounded-lg p-3 space-y-1.5 cursor-pointer hover:bg-muted/50 transition-colors ${isDone ? 'opacity-60' : 'border-primary/30'}`} onClick={() => navigate(`/activities?openActivity=${act.id}`)}>
+                      <div key={act.id} className={`border rounded-lg p-3 space-y-1.5 cursor-pointer hover:bg-muted/50 transition-colors ${isDone ? 'opacity-60' : 'border-primary/30'}`} onClick={() => navFn(`/activities?openActivity=${act.id}`)}>
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-2">
                             {isDone ? <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" /> : <Clock className="h-3.5 w-3.5 text-primary" />}
