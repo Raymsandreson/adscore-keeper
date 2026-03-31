@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
       // Get user's instance name
       let userInstanceNames: string[] = []
       if (profile.default_instance_id) {
-        const { data: inst } = await supabase
+        const { data: inst } = await cloudDb
           .from('whatsapp_instances')
           .select('instance_name')
           .eq('id', profile.default_instance_id)
