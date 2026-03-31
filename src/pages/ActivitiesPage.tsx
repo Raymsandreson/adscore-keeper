@@ -101,7 +101,7 @@ const ActivitiesPage = () => {
 
   const [filterStatus, setFilterStatus] = usePageState<string[]>('activities_filterStatus', []);
   const [filterType, setFilterType] = usePageState<string[]>('activities_filterType', []);
-  const [filterAssignee, setFilterAssignee] = usePageState<string[]>('activities_filterAssignee', user?.id ? [user.id] : []);
+  const [filterAssignee, setFilterAssignee] = usePageState<string[]>('activities_filterAssignee', user?.id ? [user.id, '__unassigned__'] : []);
   const [filterLead, setFilterLead] = usePageState<string[]>('activities_filterLead', []);
   const [filterContact, setFilterContact] = usePageState<string[]>('activities_filterContact', []);
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
@@ -1745,7 +1745,7 @@ const ActivitiesPage = () => {
           <PopoverTrigger asChild>
             <Button variant={filterAssignee.length > 0 ? "default" : "outline"} size="sm" className="h-7 text-xs shrink-0 gap-1">
               <User className="h-3 w-3" />
-              {filterAssignee.length === 0 ? 'Assessor' : filterAssignee.length === 1 ? (teamMembers.find(m => m.user_id === filterAssignee[0])?.full_name?.split(' ')[0] || '1') : `${filterAssignee.length}`}
+              {filterAssignee.length === 0 ? 'Assessor' : filterAssignee.length === 1 ? (filterAssignee[0] === '__unassigned__' ? 'Sem responsável' : (teamMembers.find(m => m.user_id === filterAssignee[0])?.full_name?.split(' ')[0] || '1')) : `${filterAssignee.length}`}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-[260px] p-0" align="start">
@@ -1772,6 +1772,18 @@ const ActivitiesPage = () => {
                       </CommandItem>
                     );
                   })}
+                  <CommandItem value="__unassigned__" onSelect={() => toggleFilter(setFilterAssignee, filterAssignee, '__unassigned__')}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", filterAssignee.includes('__unassigned__') ? "opacity-100" : "opacity-0")} />
+                    <span className="flex-1 truncate text-muted-foreground italic">Sem responsável</span>
+                    <span className="ml-2 flex gap-1 text-[10px]">
+                      <Badge variant="outline" className="px-1 py-0 text-[10px]">
+                        {allActivitiesRaw.filter(a => !a.assigned_to && a.status !== 'concluida').length}⏳
+                      </Badge>
+                      <Badge variant="secondary" className="px-1 py-0 text-[10px]">
+                        {allActivitiesRaw.filter(a => !a.assigned_to && a.status === 'concluida').length}✓
+                      </Badge>
+                    </span>
+                  </CommandItem>
                 </CommandGroup>
               </CommandList>
             </Command>
