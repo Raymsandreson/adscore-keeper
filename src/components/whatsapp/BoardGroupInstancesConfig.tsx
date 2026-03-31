@@ -287,6 +287,10 @@ export function BoardGroupInstancesConfig() {
         audio_voice_id: settings.audio_voice_id || null,
         auto_close_lead_on_sign: settings.auto_close_lead_on_sign,
         auto_create_group_on_sign: settings.auto_create_group_on_sign,
+        auto_create_process: settings.auto_create_process,
+        process_nucleus_id: settings.process_nucleus_id || null,
+        process_workflow_board_id: settings.process_workflow_board_id || null,
+        process_auto_activities: settings.process_auto_activities,
         updated_at: new Date().toISOString(),
       };
 
