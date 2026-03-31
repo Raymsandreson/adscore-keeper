@@ -40,6 +40,18 @@ interface GroupSettings {
   audio_voice_id: string;
   auto_close_lead_on_sign: boolean;
   auto_create_group_on_sign: boolean;
+  auto_create_process: boolean;
+  process_nucleus_id: string;
+  process_workflow_board_id: string;
+  process_auto_activities: ProcessActivity[];
+}
+
+interface ProcessActivity {
+  title: string;
+  activity_type: string;
+  assigned_to: string;
+  deadline_days: number;
+  priority: string;
 }
 
 const LEAD_FIELD_OPTIONS = [
