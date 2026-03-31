@@ -329,9 +329,9 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
     const repeatForever = config.followup_repeat_forever ?? false;
     const nextStepIndex = lastLog ? (lastLog.step_index + 1) : 0;
 
-    // Cap repeat_forever to max 3 full cycles to prevent infinite spam
-    const MAX_REPEAT_CYCLES = 3;
-    const maxSteps = repeatForever ? steps.length * MAX_REPEAT_CYCLES : steps.length;
+    // Cap repeat_forever to max cycles (configurable per agent, default 3)
+    const maxRepeatCycles = config.max_repeat_cycles ?? 3;
+    const maxSteps = repeatForever ? steps.length * maxRepeatCycles : steps.length;
     if (nextStepIndex >= maxSteps) {
       console.log(`[AGENT] Max follow-up cycles reached for ${conv.phone} (${nextStepIndex}/${maxSteps}), stopping`);
       continue;
