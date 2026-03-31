@@ -563,43 +563,52 @@ Deno.serve(async (req) => {
     }
 
     let participantsCount = participantsToCreate.length
+    let verificationWarning: string | null = null
 
     if (groupId) {
       let groupInfo = await fetchGroupInfo(baseUrl, creatorInstance.instance_token, groupId)
       let matchedParticipants = countMatchedParticipants(groupInfo?.participants || [], participantsToCreate)
       let mainContactAdded = normalizedContact ? countMatchedParticipants(groupInfo?.participants || [], [normalizedContact]) > 0 : true
 
-      if (normalizedContact && !mainContactAdded) {
-        const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
-        try {
-          const addMainContactRes = await postUazApiWithRetry(
-            baseUrl,
-            creatorInstance.instance_token,
-            '/group/updateParticipants',
-            { groupjid: groupJid, action: 'add', participants: [normalizedContact] },
-          )
+      // If group info failed (API issue), skip verification but DON'T abort
+      if (!groupInfo) {
+        console.warn('Could not verify group participants (API issue). Proceeding with post-creation steps anyway.')
+        verificationWarning = 'Não foi possível verificar participantes do grupo (problema na API), mas o grupo foi criado.'
+      } else {
+        if (normalizedContact && !mainContactAdded) {
+          const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
+          try {
+            const addMainContactRes = await postUazApiWithRetry(
+              baseUrl,
+              creatorInstance.instance_token,
+              '/group/updateParticipants',
+              { groupjid: groupJid, action: 'add', participants: [normalizedContact] },
+            )
 
-          if (!addMainContactRes.ok) {
-            console.warn('Failed to re-add main contact to group:', await addMainContactRes.text())
-          } else {
-            await sleep(1200)
-            groupInfo = await fetchGroupInfo(baseUrl, creatorInstance.instance_token, groupId)
-            matchedParticipants = countMatchedParticipants(groupInfo?.participants || [], participantsToCreate)
-            mainContactAdded = countMatchedParticipants(groupInfo?.participants || [], [normalizedContact]) > 0
+            if (!addMainContactRes.ok) {
+              console.warn('Failed to re-add main contact to group:', await addMainContactRes.text())
+            } else {
+              await sleep(1200)
+              groupInfo = await fetchGroupInfo(baseUrl, creatorInstance.instance_token, groupId)
+              matchedParticipants = countMatchedParticipants(groupInfo?.participants || [], participantsToCreate)
+              mainContactAdded = countMatchedParticipants(groupInfo?.participants || [], [normalizedContact]) > 0
+            }
+          } catch (error) {
+            console.warn('Error re-adding main contact to group:', error)
           }
-        } catch (error) {
-          console.warn('Error re-adding main contact to group:', error)
         }
-      }
 
-      participantsCount = matchedParticipants || participantsToCreate.length
+        participantsCount = matchedParticipants || participantsToCreate.length
 
-      if (normalizedContact && !mainContactAdded) {
-        throw new Error('O grupo foi criado, mas o contato principal não entrou automaticamente.')
-      }
+        if (normalizedContact && !mainContactAdded) {
+          verificationWarning = 'O contato principal pode não ter entrado no grupo automaticamente.'
+          console.warn(verificationWarning)
+        }
 
-      if (participantsToCreate.length > 0 && matchedParticipants === 0) {
-        throw new Error('O grupo foi criado, mas nenhum participante entrou automaticamente.')
+        if (participantsToCreate.length > 0 && matchedParticipants === 0 && groupInfo) {
+          verificationWarning = 'Nenhum participante verificado no grupo, mas prosseguindo com envios.'
+          console.warn(verificationWarning)
+        }
       }
     }
 
