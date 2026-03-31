@@ -101,7 +101,7 @@ const ActivitiesPage = () => {
 
   const [filterStatus, setFilterStatus] = usePageState<string[]>('activities_filterStatus', []);
   const [filterType, setFilterType] = usePageState<string[]>('activities_filterType', []);
-  const [filterAssignee, setFilterAssignee] = usePageState<string[]>('activities_filterAssignee', user?.id ? [user.id] : []);
+  const [filterAssignee, setFilterAssignee] = usePageState<string[]>('activities_filterAssignee', user?.id ? [user.id, '__unassigned__'] : []);
   const [filterLead, setFilterLead] = usePageState<string[]>('activities_filterLead', []);
   const [filterContact, setFilterContact] = usePageState<string[]>('activities_filterContact', []);
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
