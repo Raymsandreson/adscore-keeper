@@ -442,11 +442,11 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
         const { data: insertData, error: retryError } = await (supabase.from('wjia_command_shortcuts') as any).insert({ ...corePayload, display_order: shortcuts.length }).select('id').single();
         if (retryError) { toast.error(retryError.message); return; }
         if (insertData?.id) {
-          await invokeCloudFunction('update-agent-filters', {
+          await cloudFunctions.invoke('update-agent-filters', { body: {
             agent_id: insertData.id,
             lead_status_board_ids: lead_status_board_ids || null,
             lead_status_filter: lead_status_filter || null,
-          });
+          }});
         }
         toast.success('Agente criado!');
         resetForm();
