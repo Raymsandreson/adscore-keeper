@@ -391,9 +391,10 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       // Auto-create selected processes
       if (selectedProcesses.size > 0 && legalCase.lead_id) {
         const { data: { user } } = await supabase.auth.getUser();
+        const isCaso = !legalCase.case_number || legalCase.case_number.startsWith('CASO');
         for (const title of selectedProcesses) {
           try {
-            await supabase.from('lead_processes').insert({
+            const { data: savedProcess } = await supabase.from('lead_processes').insert({
               lead_id: legalCase.lead_id,
               case_id: legalCase.id,
               process_type: 'administrativo',
@@ -401,12 +402,35 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               status: 'em_andamento',
               started_at: new Date().toISOString().slice(0, 10),
               created_by: user?.id,
-            } as any);
+            } as any).select('id').single();
+
+            // Auto-create activity for CASO-type cases
+            if (isCaso && CASO_PROCESS_ASSIGNMENTS[title]) {
+              const assignment = CASO_PROCESS_ASSIGNMENTS[title];
+              try {
+                await supabase.from('lead_activities').insert({
+                  lead_id: legalCase.lead_id,
+                  title: `Dar andamento - ${title}`,
+                  description: `Atividade criada automaticamente para o processo: ${title}`,
+                  activity_type: 'tarefa',
+                  status: 'pendente',
+                  priority: 'normal',
+                  assigned_to: assignment.userId,
+                  assigned_to_name: assignment.userName,
+                  created_by: user?.id,
+                  deadline: new Date().toISOString().slice(0, 10),
+                  process_id: savedProcess?.id || null,
+                } as any);
+              } catch (actErr) {
+                console.warn(`Error creating activity for "${title}":`, actErr);
+              }
+            }
           } catch (err) {
             console.warn(`Error creating process "${title}":`, err);
           }
         }
         toast.success(`${selectedProcesses.size} processo(s) criado(s)`);
+        if (isCaso) toast.success('Atividades atribuídas automaticamente');
       }
       toast.success('Caso atualizado');
       setShowEditDialog(false);
