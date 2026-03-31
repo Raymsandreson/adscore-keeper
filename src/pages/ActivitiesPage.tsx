@@ -1745,7 +1745,7 @@ const ActivitiesPage = () => {
           <PopoverTrigger asChild>
             <Button variant={filterAssignee.length > 0 ? "default" : "outline"} size="sm" className="h-7 text-xs shrink-0 gap-1">
               <User className="h-3 w-3" />
-              {filterAssignee.length === 0 ? 'Assessor' : filterAssignee.length === 1 ? (teamMembers.find(m => m.user_id === filterAssignee[0])?.full_name?.split(' ')[0] || '1') : `${filterAssignee.length}`}
+              {filterAssignee.length === 0 ? 'Assessor' : filterAssignee.length === 1 ? (filterAssignee[0] === '__unassigned__' ? 'Sem responsável' : (teamMembers.find(m => m.user_id === filterAssignee[0])?.full_name?.split(' ')[0] || '1')) : `${filterAssignee.length}`}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-[260px] p-0" align="start">
