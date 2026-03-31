@@ -126,15 +126,8 @@ export const useAuth = () => {
           setProfile(syncedProfile);
           cacheSet('auth_profile', syncedProfile, CACHE_TTL.PROFILE);
         } else {
-          const { data } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .single();
-          if (data) {
-            setProfile(data);
-            cacheSet('auth_profile', data, CACHE_TTL.PROFILE);
-          }
+          const cached = cacheGet<Profile>('auth_profile');
+          if (cached?.data) setProfile(cached.data);
         }
       }
       settle();
