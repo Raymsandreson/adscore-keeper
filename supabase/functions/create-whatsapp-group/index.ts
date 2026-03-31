@@ -708,11 +708,12 @@ Nome do grupo: ${groupName}
 REGRAS:
 1. Mantenha a MESMA estrutura e formatação do modelo original.
 2. Substitua TODOS os dados fictícios pelos dados reais correspondentes.
-3. Se um dado real não estiver disponível, coloque "Não informado" ou omita a linha.
+3. Se um dado real não estiver disponível, OMITA a linha inteira em vez de escrever "Não informado".
 4. NÃO adicione seções que não existam no modelo original.
 5. NÃO inclua links na mensagem (serão adicionados separadamente).
 6. NÃO inclua observações administrativas ou técnicas.
-7. Retorne APENAS a mensagem final, sem explicações.`
+7. Certifique-se de que a mensagem está COMPLETA — não corte no meio de uma frase ou campo.
+8. Retorne APENAS a mensagem final, sem explicações.`
 
         try {
           const aiResult = await geminiChat({
