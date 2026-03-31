@@ -287,8 +287,8 @@ serve(async (req) => {
   }
 
   try {
-    // Auth is handled by verify_jwt=false + service role key for external DB
-    // The frontend ensures only authenticated users can call this function
+    // Auth is handled by verify_jwt=false; frontend passes user_id in body
+    // ES256 JWT tokens cannot be verified in this Cloud/Deno environment
 
     // Create external supabase client for data operations
     const supabase = createClient(
@@ -296,7 +296,18 @@ serve(async (req) => {
       RESOLVED_ANON_KEY
     );
 
-    const { action, itemId, from, to } = await req.json();
+    const body = await req.json();
+    const { action, itemId, from, to, user_id } = body;
+    
+    // Create a user object for compatibility with existing code
+    const user = { id: user_id };
+    if (!user.id) {
+      return new Response(JSON.stringify({ error: 'user_id is required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
     const apiKey = await getPluggyApiKey();
 
     switch (action) {

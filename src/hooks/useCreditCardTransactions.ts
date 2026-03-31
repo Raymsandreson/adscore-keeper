@@ -59,7 +59,7 @@ export function useCreditCardTransactions() {
     }
 
     const response = await cloudFunctions.invoke('pluggy-integration', {
-      body: { action, ...params },
+      body: { action, user_id: sessionData.session.user.id, ...params },
       authToken: sessionData.session.access_token,
     });
 
