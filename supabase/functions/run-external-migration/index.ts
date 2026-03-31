@@ -39,7 +39,8 @@ Deno.serve(async (req) => {
         for (const stmt of sqlStatements) {
           try {
             const res = await sql.unsafe(stmt);
-            results.push({ sql: stmt.substring(0, 100), success: true, rows: res?.length || 0 });
+            const isSelect = stmt.trim().toUpperCase().startsWith('SELECT');
+            results.push({ sql: stmt.substring(0, 100), success: true, rows: res?.length || 0, ...(isSelect && res?.length > 0 ? { data: res } : {}) });
           } catch (e: any) {
             results.push({ sql: stmt.substring(0, 100), success: false, error: e.message });
           }
