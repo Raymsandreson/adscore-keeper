@@ -895,16 +895,46 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       // Cache the full conversation
       fullConvCacheRef.current[phone] = deduped;
 
-      setConversations(prev => prev.map(c => {
-        if (c.phone !== phone) return c;
-        return {
-          ...c,
+      const firstNamedMessage = deduped.find(m => m.contact_name || m.contact_id || m.lead_id) || deduped[0] || null;
+      const lastMessage = deduped[0] || null;
+      const unreadCount = deduped.filter(m => !m.read_at && m.direction === 'inbound').length;
+
+      setConversations(prev => {
+        const existingIndex = prev.findIndex(c => c.phone === phone);
+
+        if (existingIndex >= 0) {
+          return prev.map(c => {
+            if (c.phone !== phone) return c;
+            return {
+              ...c,
+              messages: deduped,
+              contact_name: firstNamedMessage?.contact_name || c.contact_name,
+              contact_id: firstNamedMessage?.contact_id || c.contact_id,
+              lead_id: firstNamedMessage?.lead_id || c.lead_id,
+              last_message: lastMessage?.message_text || c.last_message,
+              last_message_at: lastMessage?.created_at || c.last_message_at,
+              unread_count: unreadCount,
+              instance_name: lastMessage?.instance_name || c.instance_name,
+            };
+          });
+        }
+
+        if (!lastMessage) return prev;
+
+        const next = [{
+          phone,
+          contact_name: firstNamedMessage?.contact_name || null,
+          contact_id: firstNamedMessage?.contact_id || null,
+          lead_id: firstNamedMessage?.lead_id || null,
+          last_message: lastMessage.message_text,
+          last_message_at: lastMessage.created_at,
+          unread_count: unreadCount,
           messages: deduped,
-          contact_name: deduped.find(m => m.contact_name)?.contact_name || c.contact_name,
-          contact_id: deduped.find(m => m.contact_id)?.contact_id || c.contact_id,
-          lead_id: deduped.find(m => m.lead_id)?.lead_id || c.lead_id,
-        };
-      }));
+          instance_name: lastMessage.instance_name,
+        }, ...prev];
+
+        return next.sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
+      });
     } catch (error) {
       console.error('Error fetching full conversation:', error);
     }
