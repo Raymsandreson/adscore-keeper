@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
 import { cacheSet, cacheGet, CACHE_TTL } from '@/lib/offlineCache';
+import { invokeCloudFunction } from '@/lib/lovableCloudFunctions';
 
 interface Profile {
   id: string;
@@ -10,6 +11,31 @@ interface Profile {
   email: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Sync user to external DB and get profile back
+async function syncUserToExternal(session: Session): Promise<Profile | null> {
+  try {
+    const CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
+    const res = await fetch(`${CLOUD_URL}/functions/v1/sync-user-to-external`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': session.access_token,
+      },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      console.log('[AUTH] ✅ User synced to external DB:', data.profile?.full_name);
+      return data.profile;
+    } else {
+      console.warn('[AUTH] ⚠️ Sync failed:', res.status);
+    }
+  } catch (err) {
+    console.warn('[AUTH] ⚠️ Sync error:', err);
+  }
+  return null;
 }
 
 export const useAuth = () => {
@@ -30,10 +56,8 @@ export const useAuth = () => {
       if (!settled) {
         settled = true;
         if (error) {
-          // Try to restore from cache before showing error
           const cachedSession = cacheGet<{ user: User; session: Session }>('auth_session');
           const cachedProfile = cacheGet<Profile>('auth_profile');
-
           if (cachedSession?.data) {
             console.log('[AUTH] ⚡ Restaurando sessão do cache offline');
             setUser(cachedSession.data.user);
@@ -43,39 +67,44 @@ export const useAuth = () => {
             setConnectionError(null);
           } else {
             setConnectionError(error);
-            console.error('[AUTH] ❌ Falha na conexão com backend:', error);
           }
         } else {
           setConnectionError(null);
-          console.log('[AUTH] ✅ Conexão com backend OK');
         }
         setLoading(false);
       }
     };
 
-    // Safety timeout: if backend is unreachable, stop loading after 8s
     const timeout = setTimeout(() => {
-      settle('Tempo limite excedido ao conectar com o servidor. O servidor pode estar sobrecarregado.');
+      settle('Tempo limite excedido ao conectar com o servidor.');
     }, 8000);
 
-    // Set up auth state listener BEFORE getting session
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Cache the session
           cacheSet('auth_session', { user: session.user, session }, CACHE_TTL.SESSION);
           
+          // Sync to external DB and get profile from there
           setTimeout(async () => {
-            const { data } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('user_id', session.user.id)
-              .single();
-            setProfile(data);
-            if (data) cacheSet('auth_profile', data, CACHE_TTL.PROFILE);
+            const syncedProfile = await syncUserToExternal(session);
+            if (syncedProfile) {
+              setProfile(syncedProfile);
+              cacheSet('auth_profile', syncedProfile, CACHE_TTL.PROFILE);
+            } else {
+              // Fallback: try Cloud DB
+              const { data } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('user_id', session.user.id)
+                .single();
+              if (data) {
+                setProfile(data);
+                cacheSet('auth_profile', data, CACHE_TTL.PROFILE);
+              }
+            }
           }, 0);
         } else {
           setProfile(null);
@@ -85,23 +114,29 @@ export const useAuth = () => {
       }
     );
 
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
         cacheSet('auth_session', { user: session.user, session }, CACHE_TTL.SESSION);
         
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('user_id', session.user.id)
-          .single()
-          .then(({ data }) => {
+        // Sync to external DB
+        const syncedProfile = await syncUserToExternal(session);
+        if (syncedProfile) {
+          setProfile(syncedProfile);
+          cacheSet('auth_profile', syncedProfile, CACHE_TTL.PROFILE);
+        } else {
+          const { data } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .single();
+          if (data) {
             setProfile(data);
-            if (data) cacheSet('auth_profile', data, CACHE_TTL.PROFILE);
-          });
+            cacheSet('auth_profile', data, CACHE_TTL.PROFILE);
+          }
+        }
       }
       settle();
     }).catch((err) => {
@@ -125,19 +160,14 @@ export const useAuth = () => {
       password,
       options: {
         emailRedirectTo: window.location.origin,
-        data: {
-          full_name: fullName,
-        },
+        data: { full_name: fullName },
       },
     });
     return { data, error };
   };
 
   const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     return { data, error };
   };
 
@@ -169,17 +199,8 @@ export const useAuth = () => {
   };
 
   return {
-    user,
-    session,
-    profile,
-    loading,
-    connectionError,
-    isOfflineMode,
-    signUp,
-    signIn,
-    signOut,
-    updateProfile,
-    retry,
+    user, session, profile, loading, connectionError, isOfflineMode,
+    signUp, signIn, signOut, updateProfile, retry,
     isAuthenticated: !!user,
   };
 };
