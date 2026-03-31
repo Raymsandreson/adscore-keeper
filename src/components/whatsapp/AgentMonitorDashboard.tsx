@@ -51,6 +51,7 @@ interface ConversationDetail {
   human_paused: boolean;
   contact_name: string | null;
   lead_name: string | null;
+  lead_id: string | null;
   lead_status: string | null;
   lead_city: string | null;
   lead_state: string | null;
@@ -67,6 +68,18 @@ interface ConversationDetail {
   campaign_name: string | null;
   activated_by: string | null;
   activated_at: string | null;
+  whatsapp_group_id: string | null;
+}
+
+interface GroupInfo {
+  lead_id: string;
+  lead_name: string;
+  whatsapp_group_id: string;
+  lead_phone: string | null;
+  board_name: string | null;
+  stage_name: string | null;
+  acolhedor: string | null;
+  created_at: string | null;
 }
 
 interface AgentStats {
