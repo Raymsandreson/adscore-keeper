@@ -676,7 +676,12 @@ export function CTWACampaignAutomation() {
   };
 
   const handleUpdate = async (id: string, updates: Partial<CampaignLink>) => {
-    await supabase.from('whatsapp_agent_campaign_links').update(updates as any).eq('id', id);
+    const { error } = await supabase.from('whatsapp_agent_campaign_links').update(updates as any).eq('id', id);
+    if (error) {
+      console.error('Update error:', error);
+      toast.error('Erro ao atualizar: ' + error.message);
+      return;
+    }
     fetchData();
   };
 
