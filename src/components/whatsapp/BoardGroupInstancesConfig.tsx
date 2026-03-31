@@ -205,8 +205,11 @@ export function BoardGroupInstancesConfig() {
         audio_voice_id: data.audio_voice_id || '',
         auto_close_lead_on_sign: data.auto_close_lead_on_sign || false,
         auto_create_group_on_sign: data.auto_create_group_on_sign || false,
+        auto_create_process: data.auto_create_process || false,
+        process_nucleus_id: data.process_nucleus_id || '',
+        process_workflow_board_id: data.process_workflow_board_id || '',
+        process_auto_activities: data.process_auto_activities || [],
       });
-      // Load saved AI message model into preview
       if (data.ai_generated_message) {
         setPreviewMessage(data.ai_generated_message);
       } else {
@@ -219,6 +222,8 @@ export function BoardGroupInstancesConfig() {
         forward_document_types: [],
         send_audio_message: false, audio_voice_id: '',
         auto_close_lead_on_sign: false, auto_create_group_on_sign: false,
+        auto_create_process: false, process_nucleus_id: '', process_workflow_board_id: '',
+        process_auto_activities: [],
       });
       setPreviewMessage(null);
     }
