@@ -338,6 +338,33 @@ export type Database = {
           },
         ]
       }
+      agent_filter_settings: {
+        Row: {
+          agent_id: string
+          created_at: string
+          id: string
+          lead_status_board_ids: string[] | null
+          lead_status_filter: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          id?: string
+          lead_status_board_ids?: string[] | null
+          lead_status_filter?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          id?: string
+          lead_status_board_ids?: string[] | null
+          lead_status_filter?: string[] | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       agent_knowledge_documents: {
         Row: {
           agent_id: string

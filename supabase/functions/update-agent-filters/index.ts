@@ -1,3 +1,5 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -15,18 +17,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Use EXTERNAL_SUPABASE_URL + SERVICE_ROLE_KEY via REST API instead of direct DB connection
-    const extUrl = (Deno.env.get('EXTERNAL_SUPABASE_URL') || '').trim();
-    const extKey = (Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || '').trim();
-
-    if (!extUrl || !extKey) {
-      return new Response(JSON.stringify({ error: 'External Supabase credentials not configured' }), { 
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      });
-    }
-
-    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-    const supabase = createClient(extUrl, extKey);
+    // Use Lovable Cloud's own DB (local Supabase) to store filter settings
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const boardIds = lead_status_board_ids && lead_status_board_ids.length > 0 
       ? lead_status_board_ids 
@@ -36,13 +30,13 @@ Deno.serve(async (req) => {
       : null;
 
     const { error } = await supabase
-      .from('wjia_command_shortcuts')
-      .update({
+      .from('agent_filter_settings')
+      .upsert({
+        agent_id,
         lead_status_board_ids: boardIds,
         lead_status_filter: statusFilter,
         updated_at: new Date().toISOString()
-      })
-      .eq('id', agent_id);
+      }, { onConflict: 'agent_id' });
 
     if (error) {
       return new Response(JSON.stringify({ error: error.message }), { 
@@ -54,7 +48,7 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message, stack: error.stack?.substring(0, 300) }), { 
+    return new Response(JSON.stringify({ error: error.message }), { 
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
   }
