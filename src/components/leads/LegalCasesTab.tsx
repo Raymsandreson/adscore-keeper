@@ -60,6 +60,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   const [caseNucleusId, setCaseNucleusId] = useState('');
   const [caseNotes, setCaseNotes] = useState('');
   const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null);
+  const [processRefreshKey, setProcessRefreshKey] = useState(0);
   const [selectedProcesses, setSelectedProcesses] = useState<Set<string>>(new Set());
 
   const PREDEFINED_PROCESSES = [
@@ -147,6 +148,9 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     }
     setShowCaseDialog(false);
     resetCaseForm();
+    // Force CaseCard to re-fetch processes
+    setProcessRefreshKey(prev => prev + 1);
+    await fetchCases();
   };
 
   const openEditCase = (c: LegalCase) => {
@@ -221,6 +225,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
             statusColors={caseStatusColors}
             statusLabels={caseStatusLabels}
             onViewContact={onViewContact}
+            refreshKey={processRefreshKey}
           />
         ))}
       </div>
@@ -313,9 +318,10 @@ interface CaseCardProps {
   statusColors: Record<string, string>;
   statusLabels: Record<string, string>;
   onViewContact?: (contactId: string) => void;
+  refreshKey?: number;
 }
 
-function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChange, onDelete, statusColors, statusLabels, onViewContact }: CaseCardProps) {
+function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChange, onDelete, statusColors, statusLabels, onViewContact, refreshKey }: CaseCardProps) {
   const { processes, loading: procLoading, fetchProcesses, addProcess, updateProcess, deleteProcess } = useLeadProcesses(legalCase.id);
   const [showProcessDialog, setShowProcessDialog] = useState(false);
   const [editingProcess, setEditingProcess] = useState<LeadProcess | null>(null);
@@ -332,7 +338,7 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
 
   useEffect(() => {
     if (expanded) fetchProcesses();
-  }, [expanded]);
+  }, [expanded, refreshKey]);
 
   const resetProcessForm = () => {
     setProcessType('judicial');

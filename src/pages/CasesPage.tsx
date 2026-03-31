@@ -399,6 +399,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       toast.success('Caso atualizado');
       setShowEditDialog(false);
       setSelectedProcesses(new Set());
+      // Reload processes immediately so they appear in the UI
+      loadDetails();
       onCaseUpdated();
     } catch {
       toast.error('Erro ao atualizar caso');
