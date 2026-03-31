@@ -21,12 +21,10 @@ import { FollowupActivityPanel } from './FollowupActivityPanel';
 import { AIEnrichmentMonitorPanel } from './AIEnrichmentMonitorPanel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DashboardChatPreview } from './DashboardChatPreview';
-import { format, differenceInMinutes, differenceInHours, subDays, startOfWeek, startOfMonth, startOfYear, endOfDay } from 'date-fns';
+import { format, differenceInMinutes, subDays, startOfWeek, startOfMonth, startOfYear, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { cn } from '@/lib/utils';
-import type { DateRange } from 'react-day-picker';
 
 interface AgentData {
   id: string;
