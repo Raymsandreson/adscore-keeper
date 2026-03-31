@@ -18,16 +18,21 @@ Deno.serve(async (req) => {
     const cloudKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const cloudClient = createClient(cloudUrl, cloudKey);
 
-    // Verify the user token
+    // Verify the user token using getClaims (works with Cloud ES256 signing)
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await cloudClient.auth.getUser(token);
+    const { data: claimsData, error: claimsError } = await cloudClient.auth.getClaims(token);
 
-    if (authError || !user) {
+    if (claimsError || !claimsData?.claims?.sub) {
+      console.error('Auth error:', claimsError?.message);
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    const userId = claimsData.claims.sub as string;
+    const userEmail = claimsData.claims.email as string;
+    const userMetadata = claimsData.claims.user_metadata as Record<string, any> || {};
 
     // External DB - single source of truth for all data
     const externalUrl = resolveSupabaseUrl();
