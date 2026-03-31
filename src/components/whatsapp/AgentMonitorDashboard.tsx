@@ -465,12 +465,13 @@ export function AgentMonitorDashboard() {
     setAllLeadStatusCounts(statusCounts);
   }, [acolhedorFilter, allGroupsRaw, allLeadsWithStatus]);
 
-  // Get unique acolhedor values for filter
+  // Get unique acolhedor values from both conversations AND all leads
   const acolhedorOptions = useMemo(() => {
     const set = new Set<string>();
     conversations.forEach(c => { if (c.lead_acolhedor) set.add(c.lead_acolhedor); });
+    allLeadsWithStatus.forEach(l => { if (l.acolhedor) set.add(l.acolhedor); });
     return Array.from(set).sort();
-  }, [conversations]);
+  }, [conversations, allLeadsWithStatus]);
 
   const activatedByLabel = (val: string | null) => {
     switch (val) {
