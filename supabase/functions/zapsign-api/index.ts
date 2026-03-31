@@ -21,6 +21,7 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = RESOLVED_SUPABASE_URL
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
+    console.log('Supabase URL resolved:', supabaseUrl ? `${supabaseUrl.substring(0, 30)}...` : 'EMPTY');
     const zapsignToken = Deno.env.get('ZAPSIGN_API_TOKEN')
 
     if (!zapsignToken) {
