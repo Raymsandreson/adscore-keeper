@@ -603,6 +603,23 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               <Label>Observações</Label>
               <Textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={2} />
             </div>
+            <div>
+              <Label className="flex items-center gap-2 mb-2">Criar processos automaticamente</Label>
+              <div className="border rounded-md p-2 space-y-1 max-h-48 overflow-y-auto">
+                {PREDEFINED_PROCESSES.map(name => (
+                  <label key={name} className="flex items-center gap-2 cursor-pointer hover:bg-accent/50 rounded px-2 py-1.5">
+                    <Checkbox
+                      checked={selectedProcesses.has(name)}
+                      onCheckedChange={() => toggleProcess(name)}
+                    />
+                    <span className="text-sm">{name}</span>
+                  </label>
+                ))}
+              </div>
+              {selectedProcesses.size > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">{selectedProcesses.size} processo(s) será(ão) criado(s)</p>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowEditDialog(false)}>Cancelar</Button>
