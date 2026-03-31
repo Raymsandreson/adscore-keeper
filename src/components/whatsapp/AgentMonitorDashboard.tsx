@@ -123,7 +123,8 @@ export function AgentMonitorDashboard() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const startDate = subDays(new Date(), periodDays).toISOString();
+      const startDate = dateRange.from.toISOString();
+      const endDate = endOfDay(dateRange.to).toISOString();
 
       // Fetch agents
       const { data: agentsData } = await supabase
