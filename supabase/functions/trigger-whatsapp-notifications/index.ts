@@ -26,9 +26,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = RESOLVED_SUPABASE_URL
-    const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    // External DB for business data (notification config, leads, activities, messages)
+    const supabase = createClient(EXTERNAL_URL, EXTERNAL_KEY)
+    // Cloud DB for profiles & whatsapp_instances (auth user_ids match)
+    const cloudDb = createClient(CLOUD_URL, CLOUD_KEY)
 
     let targetUserId: string | null = null
     let isScheduled = false
