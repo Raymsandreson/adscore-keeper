@@ -327,18 +327,53 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
     const repeatForever = config.followup_repeat_forever ?? false;
     const nextStepIndex = lastLog ? (lastLog.step_index + 1) : 0;
 
-    if (!repeatForever && nextStepIndex >= steps.length) continue;
+    // Cap repeat_forever to max 3 full cycles to prevent infinite spam
+    const MAX_REPEAT_CYCLES = 3;
+    const maxSteps = repeatForever ? steps.length * MAX_REPEAT_CYCLES : steps.length;
+    if (nextStepIndex >= maxSteps) {
+      console.log(`[AGENT] Max follow-up cycles reached for ${conv.phone} (${nextStepIndex}/${maxSteps}), stopping`);
+      continue;
+    }
 
     const effectiveStepIndex = nextStepIndex % steps.length;
     const step = steps[effectiveStepIndex];
     const delayMinutes = step.delay_minutes || 60;
 
+    // For call steps, enforce a minimum delay of 30 minutes to prevent spam
+    const effectiveDelayMinutes = step.action_type === "call" ? Math.max(delayMinutes, 30) : delayMinutes;
+
     // Reference time: last log execution OR last outbound message
     const referenceTime = lastLog?.executed_at || lastOutbound.created_at;
     const timeSince = Date.now() - new Date(referenceTime).getTime();
-    const delayMs = delayMinutes * 60 * 1000;
+    const delayMs = effectiveDelayMinutes * 60 * 1000;
 
     if (timeSince < delayMs) continue;
+
+    // For call steps, check if previous calls to this phone all failed (busy/not answered)
+    // If 3+ consecutive failed calls, skip the call step
+    if (step.action_type === "call") {
+      const { data: recentCalls } = await supabase
+        .from("call_records")
+        .select("call_result")
+        .or(`contact_phone.ilike.%${conv.phone.slice(-8)}%`)
+        .order("created_at", { ascending: false })
+        .limit(3);
+
+      const allFailed = recentCalls?.length >= 3 && recentCalls.every(
+        (c: any) => c.call_result === 'ocupado' || c.call_result === 'não_atendeu' || c.call_result === 'nao_atendeu'
+      );
+      if (allFailed) {
+        console.log(`[AGENT] Skipping call for ${conv.phone}: ${recentCalls.length} consecutive failed calls`);
+        // Log it as skipped and move to next step
+        await supabase.from("wjia_followup_log").insert({
+          session_id: trackingId, rule_id: null, step_index: nextStepIndex,
+          action_type: step.action_type, action_result: "skipped_consecutive_failures",
+          next_execution_at: null,
+        });
+        actionsExecuted++;
+        continue;
+      }
+    }
 
     processed++;
     console.log(`[AGENT] Executing step ${effectiveStepIndex} (${step.action_type}) for ${conv.phone} (agent: ${config.shortcut_name})`);
