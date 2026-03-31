@@ -221,6 +221,7 @@ export function BoardGroupInstancesConfig() {
         process_nucleus_id: data.process_nucleus_id || '',
         process_workflow_board_id: data.process_workflow_board_id || '',
         process_auto_activities: data.process_auto_activities || [],
+        process_workflows: data.process_workflows || [],
       });
       if (data.ai_generated_message) {
         setPreviewMessage(data.ai_generated_message);
