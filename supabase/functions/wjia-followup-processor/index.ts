@@ -225,7 +225,7 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
   const agentIds = [...new Set(conversations.map((c: any) => c.agent_id))];
   const { data: agentConfigs } = await supabase
     .from("wjia_command_shortcuts")
-    .select("id, followup_steps, human_reply_pause_minutes, followup_repeat_forever, send_window_start_hour, send_window_end_hour, base_prompt, shortcut_name")
+    .select("id, followup_steps, human_reply_pause_minutes, followup_repeat_forever, send_window_start_hour, send_window_end_hour, base_prompt, shortcut_name, max_repeat_cycles, min_call_delay_minutes, max_consecutive_call_failures, max_call_attempts")
     .in("id", agentIds);
 
   if (!agentConfigs?.length) return 0;
