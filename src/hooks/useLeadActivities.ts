@@ -68,8 +68,19 @@ export function useLeadActivities() {
       if (filters?.assigned_to) {
         const vals = Array.isArray(filters.assigned_to) ? filters.assigned_to : [filters.assigned_to];
         const filtered = vals.filter(v => v !== 'all');
-        if (filtered.length === 1) query = query.eq('assigned_to', filtered[0]);
-        else if (filtered.length > 1) query = query.in('assigned_to', filtered);
+        const hasUnassigned = filtered.includes('__unassigned__');
+        const userIds = filtered.filter(v => v !== '__unassigned__');
+        
+        if (hasUnassigned && userIds.length > 0) {
+          // Include both specific users AND unassigned activities
+          query = query.or(`assigned_to.in.(${userIds.join(',')}),assigned_to.is.null`);
+        } else if (hasUnassigned) {
+          query = query.is('assigned_to', null);
+        } else if (userIds.length === 1) {
+          query = query.eq('assigned_to', userIds[0]);
+        } else if (userIds.length > 1) {
+          query = query.in('assigned_to', userIds);
+        }
       }
       if (filters?.lead_id) {
         const vals = Array.isArray(filters.lead_id) ? filters.lead_id : [filters.lead_id];
