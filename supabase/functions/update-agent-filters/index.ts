@@ -35,18 +35,14 @@ Deno.serve(async (req) => {
       ? lead_status_filter 
       : null;
 
-    await sql`
-      UPDATE public.wjia_command_shortcuts 
-      SET lead_status_board_ids = ${boardIds},
-          lead_status_filter = ${statusFilter},
-          updated_at = now()
-      WHERE id = ${agent_id}::uuid
-    `;
-
-    // Refresh PostgREST schema cache
-    await sql`NOTIFY pgrst, 'reload schema'`;
-
-    await sql.end();
+    const { error } = await supabase
+      .from('wjia_command_shortcuts')
+      .update({
+        lead_status_board_ids: boardIds,
+        lead_status_filter: statusFilter,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', agent_id);
 
     return new Response(JSON.stringify({ success: true }), { 
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
