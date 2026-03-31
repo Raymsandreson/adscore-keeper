@@ -337,7 +337,7 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
 
   useEffect(() => {
     if (expanded) fetchProcesses();
-  }, [expanded]);
+  }, [expanded, refreshKey]);
 
   const resetProcessForm = () => {
     setProcessType('judicial');
