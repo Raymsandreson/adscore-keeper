@@ -125,6 +125,10 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
         nucleus_id: caseNucleusId && caseNucleusId !== '__none__' ? caseNucleusId : null,
         notes: caseNotes || null,
       } as Partial<LegalCase>);
+      // Auto-create selected processes on edit too
+      if (selectedProcesses.size > 0) {
+        await autoCreateProcesses(editingCase.id, leadId);
+      }
     } else {
       const newCase = await createCase({
         lead_id: leadId,
@@ -135,6 +139,10 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
         case_number: caseCaseNumber || undefined,
       });
       setExpandedCaseId(newCase.id);
+      // Auto-create selected processes
+      if (selectedProcesses.size > 0) {
+        await autoCreateProcesses(newCase.id, leadId);
+      }
     }
     setShowCaseDialog(false);
     resetCaseForm();
