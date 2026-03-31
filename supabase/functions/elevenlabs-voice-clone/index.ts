@@ -25,14 +25,12 @@ serve(async (req) => {
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Auth
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("Not authenticated");
-    const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
-    if (authError || !user) throw new Error("Not authenticated");
-
     const body = await req.json();
-    const { action } = body;
+    const { action, user_id } = body;
+
+    // Auth - hybrid architecture: accept user_id from body
+    if (!user_id) throw new Error("Not authenticated: user_id required");
+    const userId = user_id;
 
     // List available preset voices
     if (action === "list_presets") {
