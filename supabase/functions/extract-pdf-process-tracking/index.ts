@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
+import { geminiChat } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,11 +24,6 @@ serve(async (req) => {
 
     const arrayBuffer = await file.arrayBuffer();
     const base64 = base64Encode(arrayBuffer);
-
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY not configured");
-    }
 
     const prompt = `Analise este PDF e extraia todos os registros de processos/casos encontrados. 
 Para cada registro, extraia os seguintes campos (use null se não encontrar):
@@ -60,42 +56,27 @@ Retorne APENAS um JSON array válido com os registros encontrados. Exemplo:
 Se o PDF for uma planilha/tabela, extraia cada linha como um registro separado.
 Se não encontrar dados de processos, retorne um array vazio [].`;
 
-    const response = await fetch("https://api.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: prompt },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:application/pdf;base64,${base64}`,
-                },
+    const result = await geminiChat({
+      model: 'google/gemini-2.5-flash',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:application/pdf;base64,${base64}`,
               },
-            ],
-          },
-        ],
-        temperature: 0.1,
-      }),
+            },
+          ],
+        },
+      ],
+      temperature: 0.1,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("AI API error:", errorText);
-      throw new Error("Erro ao processar PDF com IA");
-    }
-
-    const aiResult = await response.json();
-    const content = aiResult.choices?.[0]?.message?.content || "[]";
+    const content = result.choices?.[0]?.message?.content || "[]";
     
-    // Extract JSON from the response (may be wrapped in ```json ... ```)
     let jsonStr = content;
     const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonMatch) {
