@@ -99,21 +99,13 @@ export function WhatsAppCommandConfig() {
 
   const loadData = async () => {
     setLoading(true);
-    const [profilesRes, shortcutsRes, filterSettingsRes] = await Promise.all([
+    const [profilesRes, shortcutsRes] = await Promise.all([
       supabase.from('profiles').select('user_id, full_name').order('full_name'),
       supabase.from('wjia_command_shortcuts').select('*').order('display_order') as any,
-      supabase.from('agent_filter_settings').select('*') as any,
     ]);
     setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
     
-    // Build a map of filter settings by agent_id
-    const filterMap: Record<string, any> = {};
-    (filterSettingsRes.data || []).forEach((f: any) => {
-      filterMap[f.agent_id] = f;
-    });
-    
     setShortcuts((shortcutsRes.data || []).map((s: any) => {
-      const filters = filterMap[s.id] || {};
       return {
         ...s,
         followup_steps: s.followup_steps || [],
@@ -131,8 +123,8 @@ export function WhatsAppCommandConfig() {
         respond_in_groups: s.respond_in_groups ?? false,
         send_window_start_hour: (s as any).send_window_start_hour ?? 8,
         send_window_end_hour: (s as any).send_window_end_hour ?? 20,
-        lead_status_board_ids: filters.lead_status_board_ids || s.lead_status_board_ids || [],
-        lead_status_filter: filters.lead_status_filter || s.lead_status_filter || [],
+        lead_status_board_ids: s.lead_status_board_ids || [],
+        lead_status_filter: s.lead_status_filter || [],
       };
     }) as Shortcut[]);
     
@@ -197,8 +189,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; media_extraction_prompt?: string; followup_steps: FollowupStep[] } | null>(null);
   const [leadStatusFilter, setLeadStatusFilter] = useState<string[]>([]);
-  const [leadStatusBoardIds, setLeadStatusBoardIds] = useState<string[]>([]);
-  const [availableBoards, setAvailableBoards] = useState<{ id: string; name: string }[]>([]);
   const [form, setForm] = useState({
     shortcut_name: '', description: '', template_token: '', template_name: '',
     prompt_instructions: '', media_extraction_prompt: '',
@@ -253,12 +243,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       const customList = (customs || []).map((v: any) => ({ id: v.id, name: `🎤 ${v.name} (personalizada)` }));
       setAvailableVoices([...builtins, ...customList]);
     };
-    const fetchBoards = async () => {
-      const { data } = await supabase.from('kanban_boards').select('id, name').order('display_order');
-      setAvailableBoards((data || []) as { id: string; name: string }[]);
-    };
     fetchVoices();
-    fetchBoards();
   }, []);
 
   const loadZapSignTemplates = useCallback(async () => {
@@ -303,7 +288,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     setFollowupSteps([]);
     setHumanReplyPauseMinutes(0);
     setLeadStatusFilter([]);
-    setLeadStatusBoardIds([]);
+    
     setEditingId(null);
     setShowForm(false);
     setAiEditConfig(null);
@@ -357,7 +342,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
     setFollowupRepeatForever((s as any).followup_repeat_forever ?? false);
     setLeadStatusFilter((s as any).lead_status_filter || []);
-    setLeadStatusBoardIds((s as any).lead_status_board_ids || []);
+    
     setEditingId(s.id);
     setShowForm(true);
     setFormSection('general');
@@ -421,33 +406,17 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_call_followup_audio: form.send_call_followup_audio ?? false,
     };
 
-    // Filter fields are stored separately in agent_filter_settings
-    const corePayload = payload;
-    
     let error;
-    let savedId = editingId;
     if (editingId) {
-      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).update(corePayload).eq('id', editingId));
+      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).update(payload).eq('id', editingId));
     } else {
-      const { data: insertData, error: insertError } = await (supabase.from('wjia_command_shortcuts') as any)
-        .insert({ ...corePayload, display_order: shortcuts.length }).select('id').single();
+      const { error: insertError } = await (supabase.from('wjia_command_shortcuts') as any)
+        .insert({ ...payload, display_order: shortcuts.length }).select('id').single();
       error = insertError;
-      savedId = insertData?.id;
     }
     if (error) { toast.error(error.message); return; }
 
-    // Save filter fields via edge function (stored in agent_filter_settings table)
-    if (savedId && (leadStatusBoardIds.length > 0 || leadStatusFilter.length > 0)) {
-      const { error: filterError } = await cloudFunctions.invoke('update-agent-filters', { body: {
-        agent_id: savedId,
-        lead_status_board_ids: leadStatusBoardIds.length > 0 ? leadStatusBoardIds : null,
-        lead_status_filter: leadStatusFilter.length > 0 ? leadStatusFilter : null,
-      }});
-      if (filterError) {
-        console.warn('Filter save failed:', filterError);
-        toast.warning('Salvo, mas filtro de funil pode não ter sido salvo.');
-      }
-    }
+    // No separate filter save needed - filters are part of the view/base table
 
     toast.success(editingId ? 'Agente atualizado!' : 'Agente criado!');
     resetForm();
@@ -770,31 +739,12 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     ))}
                   </div>
 
-                   {/* Board filter - dropdown */}
-                   {leadStatusFilter.length > 0 && availableBoards.length > 0 && (
-                     <div className="space-y-1.5 pt-1 border-t">
-                       <Label className="text-[10px] font-medium text-muted-foreground">📋 Filtrar por Funil (opcional)</Label>
-                       <select
-                         className="w-full text-xs border rounded-md px-2 py-1.5 bg-background text-foreground"
-                         value={leadStatusBoardIds[0] || ''}
-                         onChange={(e) => {
-                           setLeadStatusBoardIds(e.target.value ? [e.target.value] : []);
-                         }}
-                       >
-                         <option value="">Todos os funis</option>
-                         {availableBoards.map(board => (
-                           <option key={board.id} value={board.id}>{board.name}</option>
-                         ))}
-                       </select>
-                     </div>
-                   )}
-
                   {leadStatusFilter.length > 0 && (
                     <p className="text-[10px] text-primary font-medium">
                       Este agente será ativado automaticamente quando um contato vinculado a um lead com status {leadStatusFilter.map(s => {
                         const labels: Record<string, string> = { active: 'Em andamento', closed: 'Fechado', refused: 'Recusado', unviable: 'Inviável' };
                         return labels[s] || s;
-                      }).join(', ')}{leadStatusBoardIds.length > 0 ? ` nos funis: ${leadStatusBoardIds.map(id => availableBoards.find(b => b.id === id)?.name || id).join(', ')}` : ''} enviar mensagem.
+                      }).join(', ')} enviar mensagem.
                     </p>
                   )}
                 </div>
