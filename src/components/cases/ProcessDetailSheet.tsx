@@ -511,6 +511,61 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
               </>
             )}
 
+            {activeTab === 'atividades' && (
+              <div className="space-y-2">
+                {loadingActivities ? (
+                  <div className="text-center py-6 text-muted-foreground text-xs">
+                    <Loader2 className="h-4 w-4 animate-spin mx-auto mb-1" />
+                    Carregando atividades...
+                  </div>
+                ) : activities.length === 0 ? (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <ClipboardList className="h-6 w-6 mx-auto mb-1 opacity-50" />
+                    <p className="text-xs">Nenhuma atividade vinculada a este processo.</p>
+                  </div>
+                ) : (
+                  activities.map(act => {
+                    const isDone = act.status === 'concluida' || act.status === 'concluído';
+                    const statusLabel = isDone ? 'Concluída' : act.status === 'pendente' ? 'Pendente' : act.status === 'em_andamento' ? 'Em andamento' : act.status;
+                    const statusColor = isDone
+                      ? 'bg-muted text-muted-foreground'
+                      : act.status === 'em_andamento'
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                        : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
+                    const createdDate = act.created_at ? new Date(act.created_at).toLocaleDateString('pt-BR') : '';
+                    const deadlineDate = act.deadline ? new Date(act.deadline + 'T00:00:00').toLocaleDateString('pt-BR') : '';
+                    const completedDate = act.completed_at ? new Date(act.completed_at).toLocaleDateString('pt-BR') : '';
+                    let duration = '';
+                    if (act.created_at) {
+                      const start = new Date(act.created_at);
+                      const end = act.completed_at ? new Date(act.completed_at) : new Date();
+                      const days = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                      duration = days > 0 ? `${days} dia${days > 1 ? 's' : ''}` : '';
+                    }
+                    return (
+                      <div key={act.id} className={`border rounded-lg p-3 space-y-1.5 ${isDone ? 'opacity-60' : 'border-primary/30'}`}>
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2">
+                            {isDone ? <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" /> : <Clock className="h-3.5 w-3.5 text-primary" />}
+                            <span className="text-xs font-medium">{act.title}</span>
+                          </div>
+                          <Badge className={`text-[9px] ${statusColor}`}>{statusLabel}</Badge>
+                        </div>
+                        {act.description && <p className="text-[10px] text-muted-foreground pl-5">{act.description}</p>}
+                        {duration && <p className="text-[10px] text-muted-foreground pl-5">Tempo: {duration}</p>}
+                        <div className="flex items-center gap-3 pl-5 text-[10px] text-muted-foreground">
+                          {createdDate && <span>Criada: {createdDate}</span>}
+                          {deadlineDate && <span className="text-primary font-medium">Prazo: {deadlineDate}</span>}
+                          {completedDate && <span className="text-destructive">Concluída: {completedDate}</span>}
+                        </div>
+                        {act.assigned_to_name && <p className="text-[10px] text-muted-foreground pl-5">Responsável: {act.assigned_to_name}</p>}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
             {activeTab === 'notas' && (
               <>
                 <EditableTextarea label="Descrição" value={form.description || ''} onChange={v => set('description', v)} />
