@@ -15,16 +15,18 @@ Deno.serve(async (req) => {
       });
     }
 
-    const dbUrl = (Deno.env.get('EXTERNAL_DB_URL') || '').trim();
+    // Use EXTERNAL_SUPABASE_URL + SERVICE_ROLE_KEY via REST API instead of direct DB connection
+    const extUrl = (Deno.env.get('EXTERNAL_SUPABASE_URL') || '').trim();
+    const extKey = (Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || '').trim();
 
-    if (!dbUrl) {
-      return new Response(JSON.stringify({ error: 'EXTERNAL_DB_URL not configured' }), { 
+    if (!extUrl || !extKey) {
+      return new Response(JSON.stringify({ error: 'External Supabase credentials not configured' }), { 
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
     }
 
-    const { default: postgres } = await import('https://deno.land/x/postgresjs@v3.4.4/mod.js');
-    const sql = postgres(dbUrl, { ssl: 'require' });
+    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+    const supabase = createClient(extUrl, extKey);
 
     const boardIds = lead_status_board_ids && lead_status_board_ids.length > 0 
       ? lead_status_board_ids 
@@ -33,18 +35,20 @@ Deno.serve(async (req) => {
       ? lead_status_filter 
       : null;
 
-    await sql`
-      UPDATE public.wjia_command_shortcuts 
-      SET lead_status_board_ids = ${boardIds},
-          lead_status_filter = ${statusFilter},
-          updated_at = now()
-      WHERE id = ${agent_id}::uuid
-    `;
+    const { error } = await supabase
+      .from('wjia_command_shortcuts')
+      .update({
+        lead_status_board_ids: boardIds,
+        lead_status_filter: statusFilter,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', agent_id);
 
-    // Refresh PostgREST schema cache
-    await sql`NOTIFY pgrst, 'reload schema'`;
-
-    await sql.end();
+    if (error) {
+      return new Response(JSON.stringify({ error: error.message }), { 
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
 
     return new Response(JSON.stringify({ success: true }), { 
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
