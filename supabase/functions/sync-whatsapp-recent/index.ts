@@ -169,11 +169,13 @@ Deno.serve(async (req) => {
       });
     }
 
+    const userId = typeof body.user_id === 'string' ? body.user_id : null;
+
     const { data: permission } = await serviceClient
       .from('whatsapp_instance_users')
       .select('id')
       .eq('instance_id', instance.id)
-      .eq('user_id', authData.user.id)
+      .eq('user_id', userId)
       .limit(1)
       .maybeSingle();
 
