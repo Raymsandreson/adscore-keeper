@@ -167,7 +167,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
       } as Partial<LegalCase>);
       // Auto-create selected processes on edit too
       if (selectedProcesses.size > 0) {
-        await autoCreateProcesses(editingCase.id, leadId);
+        await autoCreateProcesses(editingCase.id, leadId, editingCase.case_number);
       }
     } else {
       const newCase = await createCase({
@@ -181,7 +181,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
       setExpandedCaseId(newCase.id);
       // Auto-create selected processes
       if (selectedProcesses.size > 0) {
-        await autoCreateProcesses(newCase.id, leadId);
+        await autoCreateProcesses(newCase.id, leadId, newCase.case_number);
       }
     }
     setShowCaseDialog(false);
