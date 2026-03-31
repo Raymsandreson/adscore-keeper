@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 
 type AppRole = 'admin' | 'member';
 
@@ -9,9 +10,6 @@ interface UserRole {
   isMember: boolean;
   loading: boolean;
 }
-
-const CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
-const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38';
 
 export function useUserRole(): UserRole {
   const { user } = useAuthContext();
@@ -27,26 +25,19 @@ export function useUserRole(): UserRole {
 
     const fetchRole = async () => {
       try {
-        // Fetch role from external DB via edge function
-        const res = await fetch(`${CLOUD_URL}/functions/v1/sync-user-to-external`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${ANON_KEY}`,
-            'apikey': ANON_KEY,
-          },
-          body: JSON.stringify({
+        // Use supabase client to invoke edge function with proper auth token
+        const { data, error } = await supabase.functions.invoke('sync-user-to-external', {
+          body: {
             user_id: user.id,
             email: user.email,
             full_name: user.user_metadata?.full_name || '',
-          }),
+          },
         });
 
-        if (res.ok) {
-          const data = await res.json();
+        if (!error && data) {
           setRole((data?.role as AppRole) || 'member');
         } else {
-          console.error('Error fetching user role via sync:', res.status);
+          console.error('Error fetching user role via sync:', error);
           setRole('member');
         }
       } catch (error) {
