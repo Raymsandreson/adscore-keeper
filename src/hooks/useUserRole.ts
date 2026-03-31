@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 type AppRole = 'admin' | 'member';
 
@@ -25,13 +26,14 @@ export function useUserRole(): UserRole {
 
     const fetchRole = async () => {
       try {
-        // Use supabase client to invoke edge function with proper auth token
-        const { data, error } = await supabase.functions.invoke('sync-user-to-external', {
+        const { data: { session } } = await supabase.auth.getSession();
+        const { data, error } = await cloudFunctions.invoke('sync-user-to-external', {
           body: {
             user_id: user.id,
             email: user.email,
             full_name: user.user_metadata?.full_name || '',
           },
+          authToken: session?.access_token,
         });
 
         if (!error && data) {
