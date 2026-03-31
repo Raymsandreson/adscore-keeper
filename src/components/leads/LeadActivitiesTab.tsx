@@ -473,6 +473,21 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
                 </div>
               </div>
               <div>
+                <Label className="text-xs">Responsável</Label>
+                <Select value={editAssignedTo} onValueChange={val => {
+                  setEditAssignedTo(val);
+                  const p = profiles.find(pr => pr.user_id === val);
+                  setEditAssignedToName(p?.full_name || '');
+                }}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {profiles.map(p => (
+                      <SelectItem key={p.user_id} value={p.user_id}>{p.full_name || p.email}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
                 <Label className="text-xs">Prazo</Label>
                 <Input type="datetime-local" value={editDeadline} onChange={e => setEditDeadline(e.target.value)} className="h-8 text-sm" />
               </div>
