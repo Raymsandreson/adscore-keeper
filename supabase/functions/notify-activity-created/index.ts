@@ -22,7 +22,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(RESOLVED_SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY);
+    // Use Cloud client for profiles/instances (user_ids from Cloud auth)
+    const supabase = createClient(CLOUD_URL, CLOUD_KEY);
 
     const body = await req.json();
     const {
