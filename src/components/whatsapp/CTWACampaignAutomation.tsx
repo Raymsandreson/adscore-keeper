@@ -133,6 +133,10 @@ export function CTWACampaignAutomation() {
     if (!accessToken || !adAccountId) {
       console.warn('CTWA: No Meta credentials found in localStorage. Keys present:', 
         Object.keys(localStorage).filter(k => k.includes('meta')));
+      toast.error('Token Meta não configurado', {
+        description: 'Vá até a página de Marketing/Anúncios e configure sua conta Meta primeiro.',
+        duration: 6000,
+      });
       setUseManualInput(true);
       return;
     }
