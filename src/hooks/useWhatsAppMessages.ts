@@ -247,6 +247,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         body: {
           instance_id: instance.id,
           max_chats: 80,
+          user_id: user?.id || null,
         },
         authToken: session?.access_token,
       });
@@ -262,7 +263,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     } finally {
       syncInFlightRef.current = false;
     }
-  }, []);
+  }, [user?.id]);
 
   const fetchMessages = useCallback(async (silent = false, triggerSync = false) => {
     if (isFetchingRef.current) return;
