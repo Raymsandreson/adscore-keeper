@@ -342,7 +342,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
     setFollowupRepeatForever((s as any).followup_repeat_forever ?? false);
     setLeadStatusFilter((s as any).lead_status_filter || []);
-    setLeadStatusBoardIds((s as any).lead_status_board_ids || []);
+    
     setEditingId(s.id);
     setShowForm(true);
     setFormSection('general');
