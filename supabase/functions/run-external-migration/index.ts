@@ -7,61 +7,67 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const connStr = (Deno.env.get('EXTERNAL_DB_URL') || '').trim();
-    const results: any = {};
+    const body = await req.json().catch(() => ({}));
+    const sqlStatements: string[] = body.sql ? (Array.isArray(body.sql) ? body.sql : [body.sql]) : [];
 
-    if (!connStr) {
-      return new Response(JSON.stringify({ error: 'EXTERNAL_DB_URL not configured' }), { 
+    if (sqlStatements.length === 0) {
+      return new Response(JSON.stringify({ error: 'No SQL statements provided. Send { "sql": "ALTER TABLE ..." } or { "sql": ["stmt1", "stmt2"] }' }), { 
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+
+    // Use the external Supabase Management API via service role + rpc
+    const externalUrl = (Deno.env.get('EXTERNAL_SUPABASE_URL') || '').trim();
+    const serviceKey = (Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || '').trim();
+
+    if (!externalUrl || !serviceKey) {
+      return new Response(JSON.stringify({ error: 'External Supabase credentials not configured' }), { 
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
     }
 
-    const { default: postgres } = await import('https://deno.land/x/postgresjs@v3.4.4/mod.js');
-    const sql = postgres(connStr, { ssl: 'require' });
+    // Try direct PostgreSQL first, fallback to REST API
+    let useDirectPg = false;
+    const connStr = (Deno.env.get('EXTERNAL_DB_URL') || '').trim();
+    
+    if (connStr) {
+      try {
+        const { default: postgres } = await import('https://deno.land/x/postgresjs@v3.4.4/mod.js');
+        const sql = postgres(connStr, { ssl: 'require', connect_timeout: 5 });
+        
+        const results: any[] = [];
+        for (const stmt of sqlStatements) {
+          try {
+            const res = await sql.unsafe(stmt);
+            results.push({ sql: stmt.substring(0, 100), success: true, rows: res?.length || 0 });
+          } catch (e: any) {
+            results.push({ sql: stmt.substring(0, 100), success: false, error: e.message });
+          }
+        }
 
-    // Check which DB we're on
-    const dbCheck = await sql`SELECT current_database()`;
-    results.database = dbCheck[0]?.current_database;
+        await sql.unsafe("NOTIFY pgrst, 'reload schema'");
+        await sql.end();
+        useDirectPg = true;
 
-    // Check columns
-    const cols = await sql`
-      SELECT column_name FROM information_schema.columns 
-      WHERE table_schema = 'public' AND table_name = 'wjia_command_shortcuts'
-      AND column_name IN ('lead_status_board_ids', 'lead_status_filter')
-    `;
-    results.existing_columns = cols.map((r: any) => r.column_name);
-
-    // Add columns if missing
-    if (!cols.some((r: any) => r.column_name === 'lead_status_board_ids')) {
-      await sql`ALTER TABLE public.wjia_command_shortcuts ADD COLUMN IF NOT EXISTS lead_status_board_ids text[] DEFAULT NULL`;
-      results.added_board_ids = true;
+        return new Response(JSON.stringify({ success: true, method: 'direct_pg', results, schema_cache_reloaded: true }), { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        });
+      } catch (pgErr: any) {
+        console.log('Direct PG failed, trying REST API:', pgErr.message);
+      }
     }
-    if (!cols.some((r: any) => r.column_name === 'lead_status_filter')) {
-      await sql`ALTER TABLE public.wjia_command_shortcuts ADD COLUMN IF NOT EXISTS lead_status_filter text[] DEFAULT NULL`;
-      results.added_status_filter = true;
-    }
 
-    // Force schema refresh - multiple techniques
-    await sql`ALTER TABLE public.wjia_command_shortcuts ADD COLUMN IF NOT EXISTS _temp boolean DEFAULT NULL`;
-    await sql`ALTER TABLE public.wjia_command_shortcuts DROP COLUMN IF EXISTS _temp`;
-    await sql`NOTIFY pgrst, 'reload schema'`;
-    results.schema_refreshed = true;
-
-    // Verify
-    const verify = await sql`
-      SELECT column_name FROM information_schema.columns 
-      WHERE table_schema = 'public' AND table_name = 'wjia_command_shortcuts'
-      AND column_name IN ('lead_status_board_ids', 'lead_status_filter')
-    `;
-    results.final_columns = verify.map((r: any) => r.column_name);
-
-    await sql.end();
-
-    return new Response(JSON.stringify({ success: true, ...results }), { 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    // Fallback: Use Supabase REST API with service role to call rpc
+    // For DDL we need to use the pg_execute approach or just report failure
+    return new Response(JSON.stringify({ 
+      error: 'Direct PostgreSQL connection failed. Please update the EXTERNAL_DB_URL secret with the correct database password.',
+      hint: 'Go to your external Supabase project > Settings > Database > Connection string and copy the correct URI'
+    }), { 
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message, stack: error.stack?.substring(0, 300) }), { 
+
+  } catch (error: any) {
+    return new Response(JSON.stringify({ error: error.message }), { 
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
   }
