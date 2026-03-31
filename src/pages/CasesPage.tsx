@@ -649,6 +649,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
         onOpenChange={(open) => { if (!open) setSelectedProcess(null); }}
         process={selectedProcess}
         onUpdated={onCaseUpdated}
+        mode="dialog"
       />
     </>
   );
