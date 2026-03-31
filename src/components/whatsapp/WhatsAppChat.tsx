@@ -1021,6 +1021,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {isPrivate && <Lock className="h-4 w-4 text-amber-500" />}
+          {isMuted && (
+            <Badge variant="outline" className="text-[9px] gap-1 text-destructive border-destructive/30 px-1.5 py-0 cursor-pointer" onClick={() => handleToggleMute(null)}>
+              <VolumeX className="h-3 w-3" /> Mudo
+            </Badge>
+          )}
           {conversation.lead_id && <Badge variant="outline" className="text-[10px] gap-1 text-blue-600 px-1.5 py-0"><Link2 className="h-3 w-3" /> Lead</Badge>}
           {agentEnabled && activeAgentName && (
             <Badge variant="default" className="text-[9px] gap-1 bg-emerald-600 hover:bg-emerald-700 px-1.5 py-0 cursor-pointer" onClick={handleAgentToggle}>
