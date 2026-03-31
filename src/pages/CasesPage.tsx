@@ -304,7 +304,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
 
   const PREDEFINED_PROCESSES = [
     'Indenização', 'Relatório de Acidente', 'TRCT + Verbas', 'Seguro de Vida',
-    'Pensão por morte', 'Inquérito Policial', 'Organizar docs', 'Onboarding',
+    'Benefício INSS', 'Inquérito Policial', 'Organizar docs', 'Onboarding',
   ];
 
   const toggleProcess = (name: string) => {
