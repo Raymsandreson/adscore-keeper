@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useEffect } from 'react';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 type AppRole = 'admin' | 'member';
@@ -10,6 +9,9 @@ interface UserRole {
   isMember: boolean;
   loading: boolean;
 }
+
+const CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38';
 
 export function useUserRole(): UserRole {
   const { user } = useAuthContext();
@@ -25,14 +27,28 @@ export function useUserRole(): UserRole {
 
     const fetchRole = async () => {
       try {
-        const { data, error } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .maybeSingle();
+        // Fetch role from external DB via edge function
+        const res = await fetch(`${CLOUD_URL}/functions/v1/sync-user-to-external`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${ANON_KEY}`,
+            'apikey': ANON_KEY,
+          },
+          body: JSON.stringify({
+            user_id: user.id,
+            email: user.email,
+            full_name: user.user_metadata?.full_name || '',
+          }),
+        });
 
-        if (error) throw error;
-        setRole((data?.role as AppRole) || 'member');
+        if (res.ok) {
+          const data = await res.json();
+          setRole((data?.role as AppRole) || 'member');
+        } else {
+          console.error('Error fetching user role via sync:', res.status);
+          setRole('member');
+        }
       } catch (error) {
         console.error('Error fetching user role:', error);
         setRole('member');
