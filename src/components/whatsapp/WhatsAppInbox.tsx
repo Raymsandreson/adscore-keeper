@@ -263,11 +263,13 @@ export function WhatsAppInbox() {
     return filtered;
   }, [conversations, privateConvs, sharedMessages, user, canViewPrivate]);
 
-  const selectedConversation = visibleConversations.find(c => c.phone === selectedPhone) || null;
+  const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
+  const selectedConversation = visibleConversations.find(c => c.phone === selectedPhone && (!selectedInstance || c.instance_name === selectedInstance)) || visibleConversations.find(c => c.phone === selectedPhone) || null;
   const totalUnread = visibleConversations.reduce((sum, c) => sum + c.unread_count, 0);
 
   const handleSelectConversation = (conv: WhatsAppConversation) => {
     setSelectedPhone(conv.phone);
+    setSelectedInstance(conv.instance_name);
     // Load full message history for this conversation
     fetchFullConversation(conv.phone);
     if (conv.unread_count > 0) {
