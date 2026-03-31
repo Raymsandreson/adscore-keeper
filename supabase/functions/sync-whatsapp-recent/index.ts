@@ -138,24 +138,26 @@ Deno.serve(async (req) => {
       });
     }
 
-    const userClient = createClient(
-      RESOLVED_SUPABASE_URL,
-      RESOLVED_ANON_KEY,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const serviceClient = createClient(
-      RESOLVED_SUPABASE_URL,
-      RESOLVED_SERVICE_ROLE_KEY,
-    );
-
-    const { data: authData, error: authError } = await userClient.auth.getUser();
-    if (authError || !authData?.user) {
+    // Validate JWT using Cloud's own Supabase (tokens come from Lovable Cloud auth)
+    const cloudUrl = Deno.env.get('SUPABASE_URL')!;
+    const cloudAnon = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const cloudClient = createClient(cloudUrl, cloudAnon, {
+      global: { headers: { Authorization: authHeader } }
+    });
+    const token = authHeader.replace('Bearer ', '');
+    const { data: claimsData, error: claimsError } = await cloudClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims?.sub) {
+      console.error('Auth claims error:', claimsError);
       return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    const serviceClient = createClient(
+      RESOLVED_SUPABASE_URL,
+      RESOLVED_SERVICE_ROLE_KEY,
+    );
 
     const body = await req.json().catch(() => ({}));
     const instanceId = typeof body.instance_id === 'string' ? body.instance_id : null;
