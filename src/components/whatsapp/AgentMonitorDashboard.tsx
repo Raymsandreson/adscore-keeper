@@ -71,16 +71,6 @@ interface ConversationDetail {
   whatsapp_group_id: string | null;
 }
 
-interface GroupInfo {
-  lead_id: string;
-  lead_name: string;
-  whatsapp_group_id: string;
-  lead_phone: string | null;
-  board_name: string | null;
-  stage_name: string | null;
-  acolhedor: string | null;
-  created_at: string | null;
-}
 
 interface AgentStats {
   agent_id: string;
