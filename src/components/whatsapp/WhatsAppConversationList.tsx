@@ -339,7 +339,8 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   ) : null;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      {switchingOverlay}
       {/* Search */}
       <div className="p-3 border-b">
         <div className="relative">
