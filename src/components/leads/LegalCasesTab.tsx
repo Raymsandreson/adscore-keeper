@@ -83,6 +83,37 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     setCaseNucleusId('');
     setCaseNotes('');
     setEditingCase(null);
+    setSelectedProcesses(new Set());
+  };
+
+  const toggleProcess = (name: string) => {
+    setSelectedProcesses(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const autoCreateProcesses = async (caseId: string, caseLeadId: string) => {
+    if (selectedProcesses.size === 0) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    for (const title of selectedProcesses) {
+      try {
+        await supabase.from('lead_processes').insert({
+          lead_id: caseLeadId,
+          case_id: caseId,
+          process_type: 'administrativo',
+          title,
+          status: 'em_andamento',
+          started_at: new Date().toISOString().slice(0, 10),
+          created_by: user?.id,
+        } as any);
+      } catch (err) {
+        console.warn(`Error creating process "${title}":`, err);
+      }
+    }
+    toast.success(`${selectedProcesses.size} processo(s) criado(s) automaticamente`);
   };
 
   const handleSaveCase = async () => {
