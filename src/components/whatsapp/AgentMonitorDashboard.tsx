@@ -382,15 +382,57 @@ export function AgentMonitorDashboard() {
     const refused = kpiConversations.filter(c => c.lead_status === 'refused').length;
     const unviable = kpiConversations.filter(c => c.lead_status === 'unviable').length;
     const activeLeads = kpiConversations.filter(c => c.lead_status === 'active').length;
-    return { total, active, paused, noResponse, totalFollowups, totalMsgsSent, totalMsgsReceived, closed, refused, unviable, activeLeads };
+    const groupsCreated = kpiConversations.filter(c => !!c.whatsapp_group_id).length;
+    return { total, active, paused, noResponse, totalFollowups, totalMsgsSent, totalMsgsReceived, closed, refused, unviable, activeLeads, groupsCreated };
   }, [kpiConversations]);
 
-  // Get unique acolhedor values for filter
-  const acolhedorOptions = useMemo(() => {
-    const set = new Set<string>();
-    conversations.forEach(c => { if (c.lead_acolhedor) set.add(c.lead_acolhedor); });
-    return Array.from(set).sort();
-  }, [conversations]);
+  // Separate groups data for the groups sheet (from all leads, not just conversation agents)
+  const [allGroups, setAllGroups] = useState<Array<{ id: string; lead_name: string; whatsapp_group_id: string; lead_phone: string | null; board_name: string | null; stage_name: string | null; acolhedor: string | null; created_at: string }>>([]);
+  
+  useEffect(() => {
+    const fetchGroups = async () => {
+      const startDate = subDays(new Date(), periodDays).toISOString();
+      const { data: groupLeads } = await supabase
+        .from('leads')
+        .select('id, lead_name, whatsapp_group_id, lead_phone, board_id, status, acolhedor, created_at')
+        .not('whatsapp_group_id', 'is', null)
+        .gte('created_at', startDate)
+        .order('created_at', { ascending: false });
+      
+      if (!groupLeads) { setAllGroups([]); return; }
+      
+      const { data: boards } = await supabase.from('kanban_boards').select('id, name, stages');
+      const boardMap = new Map((boards || []).map((b: any) => [b.id, b]));
+      
+      const mapped = groupLeads.map((l: any) => {
+        let boardName = null;
+        let stageName = null;
+        if (l.board_id) {
+          const board = boardMap.get(l.board_id);
+          if (board) {
+            boardName = board.name;
+            const stages = board.stages as any[];
+            if (stages && l.status) {
+              const stage = stages.find((s: any) => s.id === l.status);
+              stageName = stage?.name || null;
+            }
+          }
+        }
+        return {
+          id: l.id,
+          lead_name: l.lead_name || 'Sem nome',
+          whatsapp_group_id: l.whatsapp_group_id,
+          lead_phone: l.lead_phone,
+          board_name: boardName,
+          stage_name: stageName,
+          acolhedor: l.acolhedor,
+          created_at: l.created_at,
+        };
+      });
+      setAllGroups(mapped);
+    };
+    fetchGroups();
+  }, [periodDays]);
 
   const activatedByLabel = (val: string | null) => {
     switch (val) {
