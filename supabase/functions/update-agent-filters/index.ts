@@ -15,11 +15,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Use SUPABASE_DB_URL for direct PostgreSQL connection to external DB
-    const dbUrl = (Deno.env.get('SUPABASE_DB_URL') || '').trim();
+    // Use EXTERNAL_DB_URL for direct PostgreSQL connection to external DB
+    const dbUrl = (Deno.env.get('EXTERNAL_DB_URL') || '').trim();
 
     if (!dbUrl) {
-      return new Response(JSON.stringify({ error: 'SUPABASE_DB_URL not configured' }), { 
+      return new Response(JSON.stringify({ error: 'EXTERNAL_DB_URL not configured' }), { 
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
     }
@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     const withoutScheme = dbUrl.replace(/^postgresql:\/\//, '');
     const lastAtIndex = withoutScheme.lastIndexOf('@');
     if (lastAtIndex === -1) {
-      return new Response(JSON.stringify({ error: 'Cannot parse SUPABASE_DB_URL: no @ found' }), { 
+      return new Response(JSON.stringify({ error: 'Cannot parse EXTERNAL_DB_URL: no @ found' }), { 
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
     }
