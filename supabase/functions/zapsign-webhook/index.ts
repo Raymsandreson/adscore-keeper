@@ -51,6 +51,8 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = RESOLVED_SUPABASE_URL
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
+    const cloudFunctionsUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
+    const cloudAnonKey = RESOLVED_ANON_KEY
     const zapsignToken = Deno.env.get('ZAPSIGN_API_TOKEN')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
