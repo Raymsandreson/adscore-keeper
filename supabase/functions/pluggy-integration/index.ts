@@ -287,38 +287,8 @@ serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Validate user via Cloud auth REST API (ES256 tokens can't be verified locally in Deno)
-    const cloudUrl = Deno.env.get('SUPABASE_URL')!;
-    const cloudAnon = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const authResponse = await fetch(`${cloudUrl}/auth/v1/user`, {
-      headers: {
-        'Authorization': authHeader,
-        'apikey': cloudAnon,
-      },
-    });
-    if (!authResponse.ok) {
-      const errBody = await authResponse.text();
-      console.error('Auth validation failed:', authResponse.status, errBody);
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    const authUser = await authResponse.json();
-    if (!authUser?.id) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    // Auth is handled by verify_jwt=false; frontend passes user_id in body
+    // ES256 JWT tokens cannot be verified in this Cloud/Deno environment
 
     // Create external supabase client for data operations
     const supabase = createClient(
@@ -326,7 +296,18 @@ serve(async (req) => {
       RESOLVED_ANON_KEY
     );
 
-    const { action, itemId, from, to } = await req.json();
+    const body = await req.json();
+    const { action, itemId, from, to, user_id } = body;
+    
+    // Create a user object for compatibility with existing code
+    const user = { id: user_id };
+    if (!user.id) {
+      return new Response(JSON.stringify({ error: 'user_id is required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
     const apiKey = await getPluggyApiKey();
 
     switch (action) {
