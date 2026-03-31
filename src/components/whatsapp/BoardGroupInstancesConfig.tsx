@@ -124,6 +124,10 @@ export function BoardGroupInstancesConfig() {
     audio_voice_id: '',
     auto_close_lead_on_sign: false,
     auto_create_group_on_sign: false,
+    auto_create_process: false,
+    process_nucleus_id: '',
+    process_workflow_board_id: '',
+    process_auto_activities: [],
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -131,6 +135,8 @@ export function BoardGroupInstancesConfig() {
   const [refineInput, setRefineInput] = useState('');
   const [refineLoading, setRefineLoading] = useState(false);
   const [adminNotes, setAdminNotes] = useState<string | null>(null);
+  const [nuclei, setNuclei] = useState<{id: string; name: string; prefix: string}[]>([]);
+  const [teamMembers, setTeamMembers] = useState<{user_id: string; full_name: string}[]>([]);
 
   useEffect(() => {
     fetchData();
