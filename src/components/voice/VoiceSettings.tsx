@@ -136,8 +136,9 @@ export function VoiceSettings() {
   const deleteVoice = async (recordId: string, elevenlabsVoiceId: string | null) => {
     if (!confirm('Tem certeza que deseja excluir esta voz?')) return;
     try {
+      const uid = await getUserId();
       const { error } = await cloudFunctions.invoke('elevenlabs-voice-clone', {
-        body: { action: 'delete', record_id: recordId, voice_id: elevenlabsVoiceId },
+        body: { action: 'delete', record_id: recordId, voice_id: elevenlabsVoiceId, user_id: uid },
       });
       if (error) throw error;
       toast.success('Voz excluída!');
