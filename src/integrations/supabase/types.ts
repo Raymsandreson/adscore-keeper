@@ -626,7 +626,7 @@ export type Database = {
             foreignKeyName: "ambassador_referrals_ambassador_id_fkey"
             columns: ["ambassador_id"]
             isOneToOne: false
-            referencedRelation: "ambassadors"
+            referencedRelation: "contacts"
             referencedColumns: ["id"]
           },
           {
