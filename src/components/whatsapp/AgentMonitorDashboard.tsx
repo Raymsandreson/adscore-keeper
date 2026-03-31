@@ -107,7 +107,9 @@ export function AgentMonitorDashboard() {
   const [stateFilter, setStateFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [acolhedorFilter, setAcolhedorFilter] = useState('all');
-  const [periodDays, setPeriodDays] = useState(7);
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({ from: subDays(new Date(), 7), to: new Date() });
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [allLeadStatusCounts, setAllLeadStatusCounts] = useState<{ closed: number; refused: number; unviable: number; active: number }>({ closed: 0, refused: 0, unviable: 0, active: 0 });
   const [kpiSheet, setKpiSheet] = useState<{ filter: string; label: string } | null>(null);
   const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
   const [sheetAgentFilter, setSheetAgentFilter] = useState('all');
