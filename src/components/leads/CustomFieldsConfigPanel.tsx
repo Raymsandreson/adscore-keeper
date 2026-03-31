@@ -469,6 +469,39 @@ export function CustomFieldsConfigPanel({
               <Switch checked={isRequired} onCheckedChange={setIsRequired} id="cfg-required" />
               <Label htmlFor="cfg-required">Campo obrigatório</Label>
             </div>
+
+            {/* Inline stage selection when required is ON */}
+            {isRequired && currentBoard && currentBoard.stages.length > 0 && (
+              <div className="space-y-2 pl-1">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <ShieldCheck className="h-3 w-3" />
+                  Obrigatório em quais fases?
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Selecione as fases onde este campo deve ser preenchido para o lead avançar. Se nenhuma fase for selecionada, será obrigatório em todas.
+                </p>
+                <div className="space-y-1 border rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                  {currentBoard.stages.map((stage) => (
+                    <label
+                      key={stage.id}
+                      className="flex items-center gap-3 px-3 py-2 border-b last:border-b-0 hover:bg-accent/30 cursor-pointer transition-colors"
+                    >
+                      <Checkbox
+                        checked={selectedStageIds.includes(stage.id)}
+                        onCheckedChange={() => toggleStageSelection(stage.id)}
+                      />
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color }} />
+                      <span className="text-sm">{stage.name}</span>
+                    </label>
+                  ))}
+                </div>
+                {selectedStageIds.length > 0 && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                    ⚠️ Obrigatório em {selectedStageIds.length} fase(s) selecionada(s)
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFieldDialogOpen(false)}>Cancelar</Button>
