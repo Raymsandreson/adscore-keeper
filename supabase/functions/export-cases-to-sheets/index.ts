@@ -82,14 +82,22 @@ serve(async (req) => {
       RESOLVED_ANON_KEY,
     );
 
-    // Validate user via Cloud auth (ES256 tokens can't be verified locally in Deno)
+    // Validate user via Cloud auth REST API (ES256 tokens can't be verified locally in Deno)
     const cloudUrl = Deno.env.get('SUPABASE_URL')!;
     const cloudAnon = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const cloudClient = createClient(cloudUrl, cloudAnon, {
-      global: { headers: { Authorization: authHeader } }
+    const authResponse = await fetch(`${cloudUrl}/auth/v1/user`, {
+      headers: {
+        'Authorization': authHeader,
+        'apikey': cloudAnon,
+      },
     });
-    const { data: userData, error: userError } = await cloudClient.auth.getUser();
-    if (userError || !userData?.user?.id) {
+    if (!authResponse.ok) {
+      const errBody = await authResponse.text();
+      console.error('Auth validation failed:', authResponse.status, errBody);
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+    }
+    const authUser = await authResponse.json();
+    if (!authUser?.id) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
     }
 
