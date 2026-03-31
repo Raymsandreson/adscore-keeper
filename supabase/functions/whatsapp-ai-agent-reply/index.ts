@@ -8,6 +8,8 @@ import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-u
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
 const RESOLVED_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+const cloudFunctionsUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
+const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
 
 
 const corsHeaders = {
@@ -683,7 +685,7 @@ REGRAS IMPORTANTES:
             const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
             
             // Fire wjia-agent to create session and start/continue collection
-            fetch(`${supabaseUrl}/functions/v1/wjia-agent`, {
+            fetch(`${cloudFunctionsUrl}/functions/v1/wjia-agent`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",

@@ -7,6 +7,8 @@ import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-u
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
 const RESOLVED_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+const cloudFunctionsUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
+const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
 
 
 const corsHeaders = {
@@ -345,11 +347,11 @@ Deno.serve(async (req) => {
           console.log(`Found ${recentMessages.length} messages for extraction`)
           
           // Call extract-conversation-data
-          const extractRes = await fetch(`${supabaseUrl}/functions/v1/extract-conversation-data`, {
+          const extractRes = await fetch(`${cloudFunctionsUrl}/functions/v1/extract-conversation-data`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseKey}`,
+              'Authorization': `Bearer ${cloudAnonKey}`,
             },
             body: JSON.stringify({
               messages: recentMessages,

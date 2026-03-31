@@ -10,6 +10,8 @@ function resolveSupabaseUrl(): string {
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = (Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
 const RESOLVED_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+const cloudFunctionsUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
+const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
 
 
 const corsHeaders = {
@@ -447,11 +449,11 @@ async function callAgentReply(supabase: any, phone: string, instanceName: string
   const supabaseUrl = RESOLVED_SUPABASE_URL;
   const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
 
-  const resp = await fetch(`${supabaseUrl}/functions/v1/whatsapp-ai-agent-reply`, {
+  const resp = await fetch(`${cloudFunctionsUrl}/functions/v1/whatsapp-ai-agent-reply`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${supabaseKey}`,
+      "Authorization": `Bearer ${cloudAnonKey}`,
     },
     body: JSON.stringify({
       phone,

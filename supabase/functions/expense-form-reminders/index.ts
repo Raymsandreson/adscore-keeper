@@ -7,6 +7,8 @@ import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-u
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
 const RESOLVED_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+const cloudFunctionsUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
+const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
 
 
 const corsHeaders = {
@@ -120,11 +122,11 @@ serve(async (req) => {
         const message = `${urgencyEmoji} *Lembrete: Despesas pendentes de classificação*\n\n${urgencyText}\n\nCartão: *****${token.card_last_digits}*\nTransações pendentes: *${txCount}*\nPeríodo: ${token.date_from} a ${token.date_to}\n\nPor favor, cadastre o lead e a categoria de cada despesa:\n\n👉 ${link}`;
 
         // Send via WhatsApp
-        const sendResponse = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
+        const sendResponse = await fetch(`${cloudFunctionsUrl}/functions/v1/send-whatsapp`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${serviceRoleKey}`,
+            Authorization: `Bearer ${cloudAnonKey}`,
           },
           body: JSON.stringify({
             phone,
