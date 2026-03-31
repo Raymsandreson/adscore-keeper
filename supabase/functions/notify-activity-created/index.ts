@@ -1,8 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// Profiles and WhatsApp instances live in the Cloud (local) Supabase
-const CLOUD_URL = Deno.env.get('SUPABASE_URL')!;
-const CLOUD_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
+
+// Use external Supabase project when configured (hybrid architecture)
+const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
+const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
 
 
 const corsHeaders = {
@@ -16,7 +18,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(CLOUD_URL, CLOUD_SERVICE_KEY);
+    const supabase = createClient(RESOLVED_SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY);
 
     const body = await req.json();
     const {
@@ -155,7 +157,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${instance.instance_token}`,
+        'token': instance.instance_token,
       },
       body: JSON.stringify({
         number: phone,
