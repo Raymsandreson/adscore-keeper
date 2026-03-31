@@ -1772,6 +1772,18 @@ const ActivitiesPage = () => {
                       </CommandItem>
                     );
                   })}
+                  <CommandItem value="__unassigned__" onSelect={() => toggleFilter(setFilterAssignee, filterAssignee, '__unassigned__')}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", filterAssignee.includes('__unassigned__') ? "opacity-100" : "opacity-0")} />
+                    <span className="flex-1 truncate text-muted-foreground italic">Sem responsável</span>
+                    <span className="ml-2 flex gap-1 text-[10px]">
+                      <Badge variant="outline" className="px-1 py-0 text-[10px]">
+                        {allActivitiesRaw.filter(a => !a.assigned_to && a.status !== 'concluida').length}⏳
+                      </Badge>
+                      <Badge variant="secondary" className="px-1 py-0 text-[10px]">
+                        {allActivitiesRaw.filter(a => !a.assigned_to && a.status === 'concluida').length}✓
+                      </Badge>
+                    </span>
+                  </CommandItem>
                 </CommandGroup>
               </CommandList>
             </Command>
