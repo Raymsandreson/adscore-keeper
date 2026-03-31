@@ -982,15 +982,19 @@ async function forwardDocuments(
       .order('created_at', { ascending: false })
       .limit(5)
 
-    // Get ZapSign signed documents
+    // Get ZapSign signed documents - always check for these regardless of type filter
     let signedDocs: any[] = []
-    if (docTypes.includes('zapsign_signed') || docTypes.includes('procuracao')) {
-      const { data } = await supabase
-        .from('zapsign_documents')
-        .select('*')
-        .eq('lead_id', leadData.id)
-        .not('signed_file_url', 'is', null)
-      signedDocs = data || []
+    const { data: zapSignData, error: zapSignError } = await supabase
+      .from('zapsign_documents')
+      .select('*')
+      .eq('lead_id', leadData.id)
+      .not('signed_file_url', 'is', null)
+    
+    if (zapSignError) {
+      console.error('[forward-docs] ZapSign query error:', zapSignError)
+    } else {
+      signedDocs = zapSignData || []
+      console.log(`[forward-docs] Found ${signedDocs.length} ZapSign signed documents`)
     }
 
     const docLabels: Record<string, string> = {
