@@ -99,6 +99,44 @@ export function WhatsAppInbox() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
 
+  const handleOpenChatByPhone = useCallback(async (phone: string) => {
+    if (!phone) return;
+
+    try {
+      const { data: latestMessage } = await supabase
+        .from('whatsapp_messages')
+        .select('instance_name')
+        .eq('phone', phone)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const targetInstanceName = latestMessage?.instance_name || null;
+      if (targetInstanceName) {
+        const targetInstance = instances.find((instance) => instance.instance_name === targetInstanceName);
+        if (targetInstance && selectedInstanceId !== targetInstance.id) {
+          setSelectedInstanceId(targetInstance.id);
+        } else if (!targetInstance && selectedInstanceId !== 'all') {
+          setSelectedInstanceId('all');
+        }
+        setSelectedInstance(targetInstanceName);
+      } else {
+        if (selectedInstanceId !== 'all') {
+          setSelectedInstanceId('all');
+        }
+        setSelectedInstance(null);
+      }
+
+      setSelectedPhone(phone);
+      fetchFullConversation(phone);
+    } catch (error) {
+      console.error('Error opening chat by phone:', error);
+      setSelectedInstance(null);
+      setSelectedPhone(phone);
+      fetchFullConversation(phone);
+    }
+  }, [instances, selectedInstanceId, fetchFullConversation]);
+
   // Deep link: auto-open chat from URL params (openChat, contactId, leadId)
   useEffect(() => {
     if (!hasLoaded) return;
@@ -107,35 +145,32 @@ export function WhatsAppInbox() {
     const leadId = searchParams.get('leadId');
 
     if (openChat) {
-      setSelectedPhone(openChat);
+      handleOpenChatByPhone(openChat);
       searchParams.delete('openChat');
       setSearchParams(searchParams, { replace: true });
     } else if (contactId) {
-      // Resolve contactId → phone
       supabase.from('contacts').select('phone').eq('id', contactId).single().then(({ data }) => {
         if (data?.phone) {
           const normalized = data.phone.replace(/\D/g, '');
-          // Try to find conversation by phone
           const match = conversations.find(c => c.phone.replace(/\D/g, '').endsWith(normalized.slice(-8)));
-          setSelectedPhone(match?.phone || normalized);
+          handleOpenChatByPhone(match?.phone || normalized);
         }
       });
       searchParams.delete('contactId');
       setSearchParams(searchParams, { replace: true });
     } else if (leadId) {
-      // Resolve leadId → contact → phone
       supabase.from('contact_leads').select('contact_id, contacts(phone)').eq('lead_id', leadId).limit(1).single().then(({ data }) => {
         const phone = (data as any)?.contacts?.phone;
         if (phone) {
           const normalized = phone.replace(/\D/g, '');
           const match = conversations.find(c => c.phone.replace(/\D/g, '').endsWith(normalized.slice(-8)));
-          setSelectedPhone(match?.phone || normalized);
+          handleOpenChatByPhone(match?.phone || normalized);
         }
       });
       searchParams.delete('leadId');
       setSearchParams(searchParams, { replace: true });
     }
-  }, [searchParams, hasLoaded, conversations]);
+  }, [searchParams, hasLoaded, conversations, handleOpenChatByPhone, setSearchParams]);
   const [showSetup, setShowSetup] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showGooglePanel, setShowGooglePanel] = useState(false);
