@@ -294,7 +294,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         const inferredEndMs = lastActivityMs ? lastActivityMs + SESSION_INACTIVITY_GRACE_MS : nowMs;
 
         const rawEnd = endedAtMs === null
-          ? nowMs
+          ? Math.min(inferredEndMs, nowMs)
           : (durationEndMs ?? endedAtMs ?? Math.min(inferredEndMs, nowMs));
         const boundedStart = Math.max(start, rangeStartMs);
         const boundedEnd = Math.min(rawEnd, rangeEndMs, nowMs);
