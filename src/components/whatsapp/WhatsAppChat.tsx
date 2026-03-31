@@ -208,7 +208,72 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     finally { setAgentLoading(false); }
   };
 
-  // Detect if this is a group conversation
+  // ========== MUTE STATE (Cloud DB) ==========
+  const CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
+  const CLOUD_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38';
+
+  useEffect(() => {
+    const fetchMuteState = async () => {
+      try {
+        const res = await fetch(
+          `${CLOUD_URL}/rest/v1/whatsapp_muted_chats?phone=eq.${conversation.phone}&instance_name=eq.${encodeURIComponent(conversation.instance_name)}&select=mute_type&limit=1`,
+          { headers: { 'apikey': CLOUD_ANON, 'Authorization': `Bearer ${CLOUD_ANON}` } }
+        );
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setIsMuted(true);
+          setMuteType(data[0].mute_type);
+        } else {
+          setIsMuted(false);
+          setMuteType(null);
+        }
+      } catch { /* ignore */ }
+    };
+    fetchMuteState();
+  }, [conversation.phone, conversation.instance_name]);
+
+  const handleToggleMute = async (newMuteType: string | null) => {
+    setMuteLoading(true);
+    try {
+      if (newMuteType === null) {
+        // Unmute
+        await fetch(
+          `${CLOUD_URL}/rest/v1/whatsapp_muted_chats?phone=eq.${conversation.phone}&instance_name=eq.${encodeURIComponent(conversation.instance_name)}`,
+          { method: 'DELETE', headers: { 'apikey': CLOUD_ANON, 'Authorization': `Bearer ${CLOUD_ANON}` } }
+        );
+        setIsMuted(false);
+        setMuteType(null);
+        toast.success('🔔 Conversa reativada');
+      } else {
+        // Mute (upsert)
+        await fetch(`${CLOUD_URL}/rest/v1/whatsapp_muted_chats`, {
+          method: 'POST',
+          headers: {
+            'apikey': CLOUD_ANON,
+            'Authorization': `Bearer ${CLOUD_ANON}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates',
+          },
+          body: JSON.stringify({
+            phone: conversation.phone,
+            instance_name: conversation.instance_name,
+            mute_type: newMuteType,
+            muted_by: profile?.full_name || null,
+          }),
+        });
+        setIsMuted(true);
+        setMuteType(newMuteType);
+        const labels: Record<string, string> = { all: '🔇 Conversa silenciada (envio + recebimento)', receive: '🔇 Recebimento desativado', send: '🔇 Envio desativado' };
+        toast.success(labels[newMuteType] || '🔇 Conversa silenciada');
+      }
+    } catch (e: any) {
+      toast.error('Erro ao alterar mute: ' + e.message);
+    } finally {
+      setMuteLoading(false);
+    }
+  };
+
+
   const isGroup = messages.some(msg => {
     const meta = msg.metadata;
     if (!meta) return false;
