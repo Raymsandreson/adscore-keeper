@@ -425,7 +425,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
           agent_id: editingId,
           lead_status_board_ids: lead_status_board_ids || null,
           lead_status_filter: lead_status_filter || null,
-        });
+        }});
         if (filterError) {
           console.warn('Filter save via edge function failed:', filterError);
           toast.warning('Salvo, mas filtro de funil pode não ter sido salvo.');
