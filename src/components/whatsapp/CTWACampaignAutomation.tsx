@@ -1264,6 +1264,12 @@ export function CTWACampaignAutomation() {
                       if (convLeadFilter === 'funnel' && !(conv.has_lead && conv.lead_status === 'active')) return false;
                       if (convLeadFilter === 'closed' && !(conv.has_lead && conv.lead_status === 'closed')) return false;
                       if (convLeadFilter === 'refused' && !(conv.has_lead && conv.lead_status === 'refused')) return false;
+                      if (dateFrom && conv.first_message_at) {
+                        if (new Date(conv.first_message_at).toISOString().slice(0, 10) < dateFrom) return false;
+                      }
+                      if (dateTo && conv.first_message_at) {
+                        if (new Date(conv.first_message_at).toISOString().slice(0, 10) > dateTo) return false;
+                      }
                       return true;
                     }).length;
                   })()} conversas)
