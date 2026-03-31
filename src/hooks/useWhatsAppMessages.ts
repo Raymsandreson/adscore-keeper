@@ -60,6 +60,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [instanceSwitching, setInstanceSwitching] = useState(false);
+  const [switchProgress, setSwitchProgress] = useState(0);
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [instanceStats, setInstanceStats] = useState<InstanceStats[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
