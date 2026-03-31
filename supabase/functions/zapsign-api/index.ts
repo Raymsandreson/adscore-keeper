@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 import { geminiChat } from "../_shared/gemini.ts";
 
 // Use external Supabase project when configured (hybrid architecture)
