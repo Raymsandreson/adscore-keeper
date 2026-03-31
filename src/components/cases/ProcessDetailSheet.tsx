@@ -13,7 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
-  Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw
+  Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock
 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
