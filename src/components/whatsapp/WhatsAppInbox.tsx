@@ -70,6 +70,7 @@ export function WhatsAppInbox() {
   const { isConnected: googleConnected, importContacts: googleImportContacts } = useGoogleIntegration();
   const [importingGoogle, setImportingGoogle] = useState(false);
   const [importingWhatsApp, setImportingWhatsApp] = useState(false);
+  const [creatingLead, setCreatingLead] = useState(false);
 
   const disconnectedSignature = useMemo(
     () => disconnectedInstances.map((inst) => inst.id).sort().join('|'),
