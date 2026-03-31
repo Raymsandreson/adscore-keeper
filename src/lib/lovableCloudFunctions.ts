@@ -44,7 +44,7 @@ export async function invokeCloudFunction<T = any>(
 // Compatible proxy that mimics supabase.functions interface
 // Use: replace `supabase.functions.invoke(...)` with `cloudFunctions.invoke(...)`
 export const cloudFunctions = {
-  invoke: async <T = any>(functionName: string, options?: { body?: any }): Promise<{ data: T | null; error: Error | null }> => {
-    return invokeCloudFunction<T>(functionName, options?.body);
+  invoke: async <T = any>(functionName: string, options?: { body?: any; authToken?: string }): Promise<{ data: T | null; error: Error | null }> => {
+    return invokeCloudFunction<T>(functionName, options?.body, { authToken: options?.authToken });
   }
 };
