@@ -158,6 +158,7 @@ export function VoiceSettings() {
 
     setPreviewingId(voiceId);
     try {
+      const uid = await getUserId();
       const response = await fetch(
         `https://gliigkupoebmlbwyvijp.supabase.co/functions/v1/elevenlabs-voice-clone`,
         {
@@ -167,7 +168,7 @@ export function VoiceSettings() {
             apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
             Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
           },
-          body: JSON.stringify({ action: 'preview', voice_id: voiceId }),
+          body: JSON.stringify({ action: 'preview', voice_id: voiceId, user_id: uid }),
         }
       );
 
