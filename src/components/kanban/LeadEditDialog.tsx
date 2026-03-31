@@ -641,6 +641,11 @@ ${scrapeData.content || ''}
         news_link: newsLink || null,
         legal_viability: legalViability || null,
         board_id: selectedBoardId || null,
+        ...(selectedBoardId && selectedBoardId !== (lead as any).board_id ? (() => {
+          const newBoard = boards.find(b => b.id === selectedBoardId);
+          const firstStage = newBoard?.stages?.[0] as any;
+          return firstStage?.id ? { status: firstStage.id } : {};
+        })() : {}),
         expected_birth_date: expectedBirthDate || null,
         became_client_date: leadOutcome === 'closed' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
         classification_date: leadOutcome === 'refused' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
@@ -648,7 +653,7 @@ ${scrapeData.content || ''}
         inviavel_date: leadOutcome === 'inviavel' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
         lead_status_reason: leadOutcomeReason || null,
         case_number: caseNumber || null,
-      } as Partial<Lead>);
+      } as any);
 
       // Save custom field values
       if (Object.keys(localFieldValues).length > 0) {
@@ -1340,11 +1345,27 @@ ${scrapeData.content || ''}
                 {boards.length > 0 && (
                   <div className="col-span-2">
                     <Label>Funil / Quadro Kanban</Label>
-                    <Select value={selectedBoardId || '__none__'} onValueChange={(val) => setSelectedBoardId(val === '__none__' ? '' : val)}>
+                    <Select 
+                      value={selectedBoardId || '__none__'} 
+                      onValueChange={(val) => {
+                        const newBoardId = val === '__none__' ? '' : val;
+                        setSelectedBoardId(newBoardId);
+                        // Reset stage to the first stage of the new board
+                        if (newBoardId && newBoardId !== (lead as any)?.board_id) {
+                          const newBoard = boards.find(b => b.id === newBoardId);
+                          if (newBoard?.stages?.length > 0) {
+                            const firstStage = (newBoard.stages as any[])[0];
+                            if (firstStage?.id) {
+                              // We'll include status reset in the save
+                            }
+                          }
+                        }
+                      }}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione um funil..." />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="pointer-events-auto z-[200]">
                         <SelectItem value="__none__">Sem funil</SelectItem>
                         {boards.map(b => (
                           <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
