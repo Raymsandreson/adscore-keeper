@@ -21,6 +21,63 @@ const RATE_LIMIT_RETRIES = 3
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+function normalizePhone(rawValue: string | null | undefined): string {
+  return String(rawValue || '')
+    .replace(/@s\.whatsapp\.net|@g\.us|@lid/g, '')
+    .replace(/\D/g, '')
+    .trim()
+}
+
+function phoneMatches(actual: string, expected: string): boolean {
+  if (!actual || !expected) return false
+  if (actual === expected) return true
+
+  const actualSuffix = actual.slice(-8)
+  const expectedSuffix = expected.slice(-8)
+  return actualSuffix.length === 8 && actualSuffix === expectedSuffix
+}
+
+function extractParticipantPhones(rawParticipants: any[]): string[] {
+  return (rawParticipants || [])
+    .map((participant: any) => normalizePhone(
+      participant?.id || participant?.jid || participant?.participant || participant?.phone || participant?.user || participant
+    ))
+    .filter(Boolean)
+}
+
+function countMatchedParticipants(rawParticipants: any[], expectedPhones: string[]): number {
+  const actualPhones = extractParticipantPhones(rawParticipants)
+  return expectedPhones.filter((expectedPhone) =>
+    actualPhones.some((actualPhone) => phoneMatches(actualPhone, expectedPhone))
+  ).length
+}
+
+async function fetchGroupInfo(baseUrl: string, token: string, groupId: string) {
+  const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
+
+  try {
+    const infoRes = await fetch(`${baseUrl}/group/info`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', token },
+      body: JSON.stringify({ id: groupJid }),
+    })
+
+    if (!infoRes.ok) {
+      console.warn('Group info request failed:', infoRes.status, await infoRes.text())
+      return null
+    }
+
+    const groupData = await infoRes.json()
+    return {
+      groupName: groupData?.subject || groupData?.name || groupData?.data?.subject || '',
+      participants: groupData?.participants || groupData?.data?.participants || [],
+    }
+  } catch (error) {
+    console.warn('Error fetching group info:', error)
+    return null
+  }
+}
+
 function normalizeGroupName(rawName: string): string {
   const cleaned = (rawName || '')
     .replace(/[\n\r\t]+/g, ' ')
@@ -132,7 +189,7 @@ Deno.serve(async (req) => {
     }
 
     // Get lead data
-    const normalizedPhone = (contact_phone || phone || '').replace(/\D/g, '')
+    const normalizedPhone = normalizePhone(contact_phone || phone || '')
     if (lead_id) {
       const { data } = await supabase.from('leads').select('*').eq('id', lead_id).maybeSingle()
       leadData = data
@@ -172,24 +229,11 @@ Deno.serve(async (req) => {
       groupName = parts.join(' ')
     }
 
-    // Idempotência: se o lead já possui grupo, não cria novamente e não consome sequência
-    if (leadData?.whatsapp_group_id) {
-      return new Response(JSON.stringify({
-        success: true,
-        existing: true,
-        group_id: leadData.whatsapp_group_id,
-        group_name: groupName,
-        participants_count: 0,
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
     groupName = normalizeGroupName(groupName)
 
     // Build participant list
     const participants: string[] = []
-    const normalizedContact = (contact_phone || phone || '').replace(/\D/g, '')
+    const normalizedContact = normalizePhone(contact_phone || phone || '')
     if (normalizedContact) {
       participants.push(normalizedContact)
     }
@@ -224,11 +268,41 @@ Deno.serve(async (req) => {
     // Add board instances' owner phones (except creator's own phone)
     for (const inst of boardInstances) {
       if (inst.owner_phone && inst.id !== creatorInstance.id) {
-        const p = inst.owner_phone.replace(/\D/g, '')
+        const p = normalizePhone(inst.owner_phone)
         if (p && !participants.includes(p)) {
           participants.push(p)
         }
       }
+    }
+
+    if (participants.length === 0) {
+      throw new Error('Nenhum participante encontrado para criar o grupo.')
+    }
+
+    // Idempotência: só reaproveita se o grupo existente realmente tiver participantes esperados.
+    if (leadData?.whatsapp_group_id) {
+      const existingGroupInfo = await fetchGroupInfo(baseUrl, creatorInstance.instance_token, leadData.whatsapp_group_id)
+      const existingMatchedParticipants = countMatchedParticipants(existingGroupInfo?.participants || [], participants)
+      const existingParticipantsTotal = existingGroupInfo?.participants?.length || 0
+
+      if (existingGroupInfo && (existingMatchedParticipants > 0 || existingParticipantsTotal > 1)) {
+        return new Response(JSON.stringify({
+          success: true,
+          existing: true,
+          group_id: leadData.whatsapp_group_id,
+          group_name: existingGroupInfo.groupName || groupName,
+          participants_count: existingMatchedParticipants || existingParticipantsTotal,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      console.warn('Stale whatsapp_group_id found on lead, ignoring and creating a new group:', leadData.whatsapp_group_id)
+      await supabase
+        .from('leads')
+        .update({ whatsapp_group_id: null } as any)
+        .eq('id', leadData.id)
+        .eq('whatsapp_group_id', leadData.whatsapp_group_id)
     }
 
     console.log(`Creating group "${groupName}" via instance ${creatorInstance.instance_name} with ${participants.length} participants:`, JSON.stringify(participants))
@@ -262,6 +336,8 @@ Deno.serve(async (req) => {
 
     console.log(`Valid participants for group: ${validParticipants.length}/${participants.length}`, JSON.stringify(validParticipants))
 
+    const participantsToCreate = validParticipants.length > 0 ? validParticipants : participants
+
     // Create group - try with valid participants first, fallback to creating empty group
     let createdWithoutParticipants = false
 
@@ -271,9 +347,24 @@ Deno.serve(async (req) => {
       '/group/create',
       {
         name: groupName,
-        participants: validParticipants,
+        participants: participantsToCreate,
       },
     )
+
+    if (!createRes.ok && validParticipants.length > 0 && validParticipants.length !== participants.length) {
+      const errText = await createRes.text()
+      console.warn('Group create with validated participants failed:', createRes.status, errText, '- Retrying with raw participants')
+
+      createRes = await postUazApiWithRetry(
+        baseUrl,
+        creatorInstance.instance_token,
+        '/group/create',
+        {
+          name: groupName,
+          participants,
+        },
+      )
+    }
 
     // If creation fails with participants, try creating with no participants then adding them
     if (!createRes.ok) {
@@ -321,14 +412,6 @@ Deno.serve(async (req) => {
       if (sequenceError) {
         console.error('Error updating board sequence after group creation:', sequenceError)
       }
-    }
-
-    if (groupId && leadData?.id) {
-      await supabase
-        .from('leads')
-        .update({ whatsapp_group_id: groupId } as any)
-        .eq('id', leadData.id)
-        .is('whatsapp_group_id', null)
     }
 
     // Extract conversation data and update lead
@@ -425,9 +508,9 @@ Deno.serve(async (req) => {
     await new Promise(resolve => setTimeout(resolve, 3000))
 
     // If group was created empty, add participants one by one
-    if (groupId && createdWithoutParticipants && validParticipants.length > 0) {
+    if (groupId && createdWithoutParticipants && participantsToCreate.length > 0) {
       const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
-      for (const p of validParticipants) {
+      for (const p of participantsToCreate) {
         try {
           const addRes = await postUazApiWithRetry(
             baseUrl,
@@ -444,6 +527,55 @@ Deno.serve(async (req) => {
         }
         await sleep(600)
       }
+    }
+
+    let participantsCount = participantsToCreate.length
+
+    if (groupId) {
+      let groupInfo = await fetchGroupInfo(baseUrl, creatorInstance.instance_token, groupId)
+      let matchedParticipants = countMatchedParticipants(groupInfo?.participants || [], participantsToCreate)
+      let mainContactAdded = normalizedContact ? countMatchedParticipants(groupInfo?.participants || [], [normalizedContact]) > 0 : true
+
+      if (normalizedContact && !mainContactAdded) {
+        const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
+        try {
+          const addMainContactRes = await postUazApiWithRetry(
+            baseUrl,
+            creatorInstance.instance_token,
+            '/group/updateParticipants',
+            { groupjid: groupJid, action: 'add', participants: [normalizedContact] },
+          )
+
+          if (!addMainContactRes.ok) {
+            console.warn('Failed to re-add main contact to group:', await addMainContactRes.text())
+          } else {
+            await sleep(1200)
+            groupInfo = await fetchGroupInfo(baseUrl, creatorInstance.instance_token, groupId)
+            matchedParticipants = countMatchedParticipants(groupInfo?.participants || [], participantsToCreate)
+            mainContactAdded = countMatchedParticipants(groupInfo?.participants || [], [normalizedContact]) > 0
+          }
+        } catch (error) {
+          console.warn('Error re-adding main contact to group:', error)
+        }
+      }
+
+      participantsCount = matchedParticipants || participantsToCreate.length
+
+      if (normalizedContact && !mainContactAdded) {
+        throw new Error('O grupo foi criado, mas o contato principal não entrou automaticamente.')
+      }
+
+      if (participantsToCreate.length > 0 && matchedParticipants === 0) {
+        throw new Error('O grupo foi criado, mas nenhum participante entrou automaticamente.')
+      }
+    }
+
+    if (groupId && leadData?.id) {
+      await supabase
+        .from('leads')
+        .update({ whatsapp_group_id: groupId } as any)
+        .eq('id', leadData.id)
+        .is('whatsapp_group_id', null)
     }
 
     // Promote ALL board instances as admins (except lead contact)
@@ -605,7 +737,7 @@ Deno.serve(async (req) => {
       success: true,
       group_id: groupId,
       group_name: groupName,
-      participants_count: participants.length,
+      participants_count: participantsCount,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
