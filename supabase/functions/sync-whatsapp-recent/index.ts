@@ -138,16 +138,25 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Validate JWT using Cloud's own Supabase (tokens come from Lovable Cloud auth)
+    // Validate user via Cloud auth REST API (ES256 tokens can't be verified locally in Deno)
     const cloudUrl = Deno.env.get('SUPABASE_URL')!;
     const cloudAnon = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const cloudClient = createClient(cloudUrl, cloudAnon, {
-      global: { headers: { Authorization: authHeader } }
+    const authResponse = await fetch(`${cloudUrl}/auth/v1/user`, {
+      headers: {
+        'Authorization': authHeader,
+        'apikey': cloudAnon,
+      },
     });
-    const token = authHeader.replace('Bearer ', '');
-    const { data: claimsData, error: claimsError } = await cloudClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims?.sub) {
-      console.error('Auth claims error:', claimsError);
+    if (!authResponse.ok) {
+      const errBody = await authResponse.text();
+      console.error('Auth validation failed:', authResponse.status, errBody);
+      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const authUser = await authResponse.json();
+    if (!authUser?.id) {
       return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
