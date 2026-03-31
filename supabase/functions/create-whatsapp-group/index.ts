@@ -968,7 +968,7 @@ async function sendAudioMessage(
 
 async function forwardDocuments(
   supabase: any, settings: any, leadData: any, groupId: string,
-  baseUrl: string, creatorInstance: any
+  baseUrl: string, creatorInstance: any, sentUrls: Set<string>
 ) {
   try {
     const docTypes = settings.forward_document_types || []
