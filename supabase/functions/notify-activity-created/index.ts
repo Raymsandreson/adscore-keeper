@@ -2,8 +2,13 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
-const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
-const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
+// External DB for business data
+const EXTERNAL_URL = resolveSupabaseUrl();
+const EXTERNAL_KEY = resolveServiceRoleKey();
+
+// Cloud DB for profiles & whatsapp_instances (auth user_ids match)
+const CLOUD_URL = Deno.env.get('SUPABASE_URL') || '';
+const CLOUD_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
 
 const corsHeaders = {
