@@ -39,15 +39,14 @@ Deno.serve(async (req) => {
     const externalKey = resolveServiceRoleKey();
     const externalClient = createClient(externalUrl, externalKey);
 
-    const fullName = user.user_metadata?.full_name || user.email?.split('@')[0] || '';
-    const phone = user.user_metadata?.phone || user.phone || null;
+    const fullName = userMetadata?.full_name || userEmail?.split('@')[0] || '';
 
     // Upsert profile in external DB
     const { data: profile, error: profileError } = await externalClient
       .from('profiles')
       .upsert({
-        user_id: user.id,
-        email: user.email,
+        user_id: userId,
+        email: userEmail,
         full_name: fullName,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' })
