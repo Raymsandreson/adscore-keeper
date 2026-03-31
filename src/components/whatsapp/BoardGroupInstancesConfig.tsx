@@ -698,6 +698,177 @@ export function BoardGroupInstancesConfig() {
           </div>
 
 
+          {/* Auto-Create Process */}
+          <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary" />
+              <h4 className="font-medium text-xs">Criação Automática de Processo</h4>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Ao criar o grupo, cria automaticamente um caso jurídico vinculado ao lead com atividades pré-definidas.
+            </p>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="auto_create_process"
+                checked={settings.auto_create_process}
+                onCheckedChange={(checked) => setSettings(prev => ({ ...prev, auto_create_process: !!checked }))}
+              />
+              <Label htmlFor="auto_create_process" className="text-xs cursor-pointer">
+                ⚖️ Criar <strong>processo jurídico</strong> automaticamente ao criar grupo
+              </Label>
+            </div>
+
+            {settings.auto_create_process && (
+              <div className="space-y-3 pl-2 border-l-2 border-primary/20 ml-1">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] text-muted-foreground">Núcleo Especializado</Label>
+                    <Select value={settings.process_nucleus_id} onValueChange={v => setSettings(prev => ({ ...prev, process_nucleus_id: v }))}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Selecione o núcleo..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {nuclei.map(n => (
+                          <SelectItem key={n.id} value={n.id}>{n.prefix} - {n.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px] text-muted-foreground">Fluxo de Trabalho</Label>
+                    <Select value={settings.process_workflow_board_id} onValueChange={v => setSettings(prev => ({ ...prev, process_workflow_board_id: v }))}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Selecione o fluxo..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {boards.map(b => (
+                          <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Auto Activities */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[11px] text-muted-foreground">Atividades automáticas</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[10px] gap-1"
+                      onClick={() => setSettings(prev => ({
+                        ...prev,
+                        process_auto_activities: [...prev.process_auto_activities, {
+                          title: '',
+                          activity_type: 'tarefa',
+                          assigned_to: '',
+                          deadline_days: 1,
+                          priority: 'normal',
+                        }],
+                      }))}
+                    >
+                      + Adicionar atividade
+                    </Button>
+                  </div>
+
+                  {settings.process_auto_activities.map((act, idx) => (
+                    <div key={idx} className="p-2 rounded border bg-background space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-medium text-muted-foreground">Atividade {idx + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => setSettings(prev => ({
+                            ...prev,
+                            process_auto_activities: prev.process_auto_activities.filter((_, i) => i !== idx),
+                          }))}
+                          className="text-destructive hover:text-destructive/80 text-xs"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <Input
+                        value={act.title}
+                        onChange={e => {
+                          const updated = [...settings.process_auto_activities];
+                          updated[idx] = { ...updated[idx], title: e.target.value };
+                          setSettings(prev => ({ ...prev, process_auto_activities: updated }));
+                        }}
+                        placeholder="Título da atividade (ex: Protocolar processo)"
+                        className="h-7 text-[11px]"
+                      />
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <Label className="text-[10px] text-muted-foreground">Responsável</Label>
+                          <Select
+                            value={act.assigned_to}
+                            onValueChange={v => {
+                              const updated = [...settings.process_auto_activities];
+                              updated[idx] = { ...updated[idx], assigned_to: v };
+                              setSettings(prev => ({ ...prev, process_auto_activities: updated }));
+                            }}
+                          >
+                            <SelectTrigger className="h-7 text-[10px]">
+                              <SelectValue placeholder="Selecionar..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {teamMembers.map(m => (
+                                <SelectItem key={m.user_id} value={m.user_id}>{m.full_name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-[10px] text-muted-foreground">Prazo (dias)</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={act.deadline_days}
+                            onChange={e => {
+                              const updated = [...settings.process_auto_activities];
+                              updated[idx] = { ...updated[idx], deadline_days: parseInt(e.target.value) || 1 };
+                              setSettings(prev => ({ ...prev, process_auto_activities: updated }));
+                            }}
+                            className="h-7 text-[10px]"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[10px] text-muted-foreground">Prioridade</Label>
+                          <Select
+                            value={act.priority}
+                            onValueChange={v => {
+                              const updated = [...settings.process_auto_activities];
+                              updated[idx] = { ...updated[idx], priority: v };
+                              setSettings(prev => ({ ...prev, process_auto_activities: updated }));
+                            }}
+                          >
+                            <SelectTrigger className="h-7 text-[10px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="baixa">Baixa</SelectItem>
+                              <SelectItem value="normal">Normal</SelectItem>
+                              <SelectItem value="alta">Alta</SelectItem>
+                              <SelectItem value="urgente">Urgente</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {settings.process_auto_activities.length === 0 && (
+                    <p className="text-[10px] text-muted-foreground text-center py-2">
+                      Nenhuma atividade configurada. Adicione atividades que serão criadas automaticamente dentro do processo.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-primary" />
