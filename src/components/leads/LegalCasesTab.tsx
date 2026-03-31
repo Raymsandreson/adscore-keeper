@@ -317,6 +317,7 @@ interface CaseCardProps {
   statusColors: Record<string, string>;
   statusLabels: Record<string, string>;
   onViewContact?: (contactId: string) => void;
+  refreshKey?: number;
 }
 
 function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChange, onDelete, statusColors, statusLabels, onViewContact }: CaseCardProps) {
