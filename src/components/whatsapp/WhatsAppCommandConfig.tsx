@@ -235,13 +235,14 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
 
   useEffect(() => {
     const fetchVoices = async () => {
+      const instanceOwner = { id: 'instance_owner', name: '👤 Dono da instância' };
       const builtins = BUILTIN_VOICES.map(v => ({ id: v.id, name: v.name }));
       const { data: customs } = await supabase
         .from('custom_voices')
         .select('id, name, elevenlabs_voice_id, status')
         .eq('status', 'ready');
       const customList = (customs || []).map((v: any) => ({ id: v.id, name: `🎤 ${v.name} (personalizada)` }));
-      setAvailableVoices([...builtins, ...customList]);
+      setAvailableVoices([instanceOwner, ...builtins, ...customList]);
     };
     fetchVoices();
   }, []);
