@@ -13,10 +13,12 @@ const COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#3b82f6','#8b
 
 export function NucleiSettings() {
   const { nuclei, loading, addNucleus, updateNucleus, deleteNucleus } = useSpecializedNuclei();
-  const { activeCompanies } = useCompanies();
+  const { activeCompanies, addCompany, fetchCompanies } = useCompanies();
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', prefix: '', color: COLORS[0], description: '', company_id: '' });
+  const [showNewCompany, setShowNewCompany] = useState(false);
+  const [newCompanyName, setNewCompanyName] = useState('');
 
   const resetForm = () => {
     setForm({ name: '', prefix: '', color: COLORS[0], description: '', company_id: '' });
