@@ -55,12 +55,25 @@ export function useSpecializedNuclei() {
 
   const updateNucleus = useCallback(async (id: string, updates: Partial<SpecializedNucleus>) => {
     try {
-      const { data, error } = await supabase
+      // Try with company_id first, fallback without it if schema cache is stale
+      let result = await supabase
         .from('specialized_nuclei')
         .update(updates as any)
         .eq('id', id)
         .select()
         .single();
+      
+      if (result.error?.code === 'PGRST204' && 'company_id' in updates) {
+        const { company_id, ...rest } = updates as any;
+        result = await supabase
+          .from('specialized_nuclei')
+          .update(rest)
+          .eq('id', id)
+          .select()
+          .single();
+      }
+      
+      const { data, error } = result;
       if (error) throw error;
       setNuclei(prev => prev.map(n => n.id === id ? (data as SpecializedNucleus) : n));
       toast.success('Núcleo atualizado');
