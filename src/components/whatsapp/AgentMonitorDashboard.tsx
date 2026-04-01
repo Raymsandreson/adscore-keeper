@@ -821,7 +821,12 @@ export function AgentMonitorDashboard() {
           </Tabs>
         </TabsContent>
 
-        {/* ═══════════ TAB 3: INDICAÇÕES ═══════════ */}
+        {/* ═══════════ TAB 3: ATIVIDADES IA ═══════════ */}
+        <TabsContent value="ai-activities" className="space-y-4">
+          <AIActivitiesPanel />
+        </TabsContent>
+
+        {/* ═══════════ TAB 4: INDICAÇÕES ═══════════ */}
         <TabsContent value="referrals" className="space-y-4">
           {/* Referral KPIs */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
