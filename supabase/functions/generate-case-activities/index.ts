@@ -183,7 +183,7 @@ DADOS DO LEAD:
       messages: [
         {
           role: "system",
-          content: `Você é um coordenador jurídico inteligente. Analise o caso fechado abaixo e crie atividades específicas para cada membro da equipe processual, baseando-se na DESCRIÇÃO DO CARGO de cada um.
+          content: custom_prompt || `Você é um coordenador jurídico inteligente. Analise o caso fechado abaixo e crie atividades específicas para cada membro da equipe processual, baseando-se na DESCRIÇÃO DO CARGO de cada um.
 
 Regras:
 - Crie atividades RELEVANTES para o caso específico, não genéricas
