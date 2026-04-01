@@ -55,21 +55,56 @@ export function NucleiSettings() {
         <Input placeholder="Prefixo (ex: ATT)" value={form.prefix} onChange={e => setForm(f => ({ ...f, prefix: e.target.value.toUpperCase() }))} maxLength={5} />
       </div>
       <Input placeholder="Descrição (opcional)" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
-      <div className="flex items-center gap-2">
-        <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-        <Select value={form.company_id} onValueChange={v => setForm(f => ({ ...f, company_id: v === '_none' ? '' : v }))}>
-          <SelectTrigger className="h-8 text-xs flex-1">
-            <SelectValue placeholder="Vincular a empresa (opcional)" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_none">Nenhuma empresa</SelectItem>
-            {activeCompanies.map(c => (
-              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+          <Select value={form.company_id} onValueChange={v => setForm(f => ({ ...f, company_id: v === '_none' ? '' : v }))}>
+            <SelectTrigger className="h-8 text-xs flex-1">
+              <SelectValue placeholder="Vincular a empresa (opcional)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_none">Nenhuma empresa</SelectItem>
+              {activeCompanies.map(c => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button type="button" size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={() => setShowNewCompany(s => !s)}>
+            <Plus className="h-3 w-3 mr-1" />Nova
+          </Button>
+        </div>
+        {showNewCompany && (
+          <div className="flex items-center gap-2 pl-6">
+            <Input
+              placeholder="Nome da empresa"
+              value={newCompanyName}
+              onChange={e => setNewCompanyName(e.target.value)}
+              className="h-8 text-xs"
+            />
+            <Button
+              size="sm"
+              className="h-8 text-xs shrink-0"
+              disabled={!newCompanyName.trim()}
+              onClick={async () => {
+                try {
+                  const company = await addCompany({ name: newCompanyName.trim() });
+                  setForm(f => ({ ...f, company_id: company.id }));
+                  setNewCompanyName('');
+                  setShowNewCompany(false);
+                  toast.success('Empresa criada');
+                } catch (e) {
+                  toast.error('Erro ao criar empresa');
+                }
+              }}
+            >
+              <Check className="h-3 w-3 mr-1" />Criar
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 text-xs shrink-0" onClick={() => { setShowNewCompany(false); setNewCompanyName(''); }}>
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
       </div>
-      <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">Cor:</span>
         {COLORS.map(c => (
           <button key={c} onClick={() => setForm(f => ({ ...f, color: c }))}
