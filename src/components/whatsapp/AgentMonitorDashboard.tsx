@@ -557,6 +557,34 @@ export function AgentMonitorDashboard() {
                 </p>
               )}
               <p className="text-[9px] text-muted-foreground">📩 {c.inbound_count} 📤 {c.outbound_count}</p>
+              {status === 'fechado' && c.lead_id && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-5 text-[9px] px-1.5 gap-0.5 mt-1"
+                  disabled={generatingLeadId === c.lead_id}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    setGeneratingLeadId(c.lead_id!);
+                    try {
+                      const { data: { session } } = await supabase.auth.getSession();
+                      const { data, error } = await cloudFunctions.invoke('generate-case-activities', {
+                        body: { lead_id: c.lead_id },
+                        authToken: session?.access_token,
+                      });
+                      if (error) throw error;
+                      toast({ title: 'Atividades geradas', description: data?.message || 'Sucesso' });
+                    } catch (err: any) {
+                      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+                    } finally {
+                      setGeneratingLeadId(null);
+                    }
+                  }}
+                >
+                  {generatingLeadId === c.lead_id ? <RefreshCw className="h-2.5 w-2.5 animate-spin" /> : <Sparkles className="h-2.5 w-2.5" />}
+                  Gerar Atv
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>
