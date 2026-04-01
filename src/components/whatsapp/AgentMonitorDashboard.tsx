@@ -20,6 +20,7 @@ import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
 import { AIEnrichmentMonitorPanel } from './AIEnrichmentMonitorPanel';
 import { AIActivitiesPanel } from './AIActivitiesPanel';
+import { AIActivityPromptDialog } from './AIActivityPromptDialog';
 import { DashboardChatPreview } from './DashboardChatPreview';
 import { format, differenceInMinutes, subDays, startOfWeek, startOfMonth, startOfYear, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -102,6 +103,8 @@ export function AgentMonitorDashboard() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [generatingLeadId, setGeneratingLeadId] = useState<string | null>(null);
+  const [promptDialogOpen, setPromptDialogOpen] = useState(false);
+  const [promptDialogLead, setPromptDialogLead] = useState<{ id: string; name: string } | null>(null);
 
   // Filters
   const [agentFilter, setAgentFilter] = useState('all');
@@ -563,22 +566,10 @@ export function AgentMonitorDashboard() {
                   size="sm"
                   className="h-5 text-[9px] px-1.5 gap-0.5 mt-1"
                   disabled={generatingLeadId === c.lead_id}
-                  onClick={async (e) => {
+                  onClick={(e) => {
                     e.stopPropagation();
-                    setGeneratingLeadId(c.lead_id!);
-                    try {
-                      const { data: { session } } = await supabase.auth.getSession();
-                      const { data, error } = await cloudFunctions.invoke('generate-case-activities', {
-                        body: { lead_id: c.lead_id },
-                        authToken: session?.access_token,
-                      });
-                      if (error) throw error;
-                      toast({ title: 'Atividades geradas', description: data?.message || 'Sucesso' });
-                    } catch (err: any) {
-                      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
-                    } finally {
-                      setGeneratingLeadId(null);
-                    }
+                    setPromptDialogLead({ id: c.lead_id!, name: c.contact_name || c.phone });
+                    setPromptDialogOpen(true);
                   }}
                 >
                   {generatingLeadId === c.lead_id ? <RefreshCw className="h-2.5 w-2.5 animate-spin" /> : <Sparkles className="h-2.5 w-2.5" />}
@@ -973,6 +964,32 @@ export function AgentMonitorDashboard() {
         hasContact={!!chatPreview?.contact_name}
         wasResponded={chatPreview ? chatPreview.inbound_count > 0 : false}
         responseTimeMinutes={null}
+      />
+
+      {/* AI Activity Prompt Dialog */}
+      <AIActivityPromptDialog
+        open={promptDialogOpen}
+        onOpenChange={setPromptDialogOpen}
+        leadName={promptDialogLead?.name || ''}
+        loading={!!generatingLeadId}
+        onConfirm={async (customPrompt) => {
+          if (!promptDialogLead) return;
+          setGeneratingLeadId(promptDialogLead.id);
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const { data, error } = await cloudFunctions.invoke('generate-case-activities', {
+              body: { lead_id: promptDialogLead.id, custom_prompt: customPrompt },
+              authToken: session?.access_token,
+            });
+            if (error) throw error;
+            toast({ title: 'Atividades geradas', description: data?.message || 'Sucesso' });
+            setPromptDialogOpen(false);
+          } catch (err: any) {
+            toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+          } finally {
+            setGeneratingLeadId(null);
+          }
+        }}
       />
     </div>
   );

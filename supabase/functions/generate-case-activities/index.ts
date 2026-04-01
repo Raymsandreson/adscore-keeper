@@ -15,7 +15,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { lead_id, regenerate } = await req.json();
+    const { lead_id, regenerate, custom_prompt } = await req.json();
     if (!lead_id) {
       return new Response(JSON.stringify({ error: "lead_id é obrigatório" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -183,7 +183,7 @@ DADOS DO LEAD:
       messages: [
         {
           role: "system",
-          content: `Você é um coordenador jurídico inteligente. Analise o caso fechado abaixo e crie atividades específicas para cada membro da equipe processual, baseando-se na DESCRIÇÃO DO CARGO de cada um.
+          content: custom_prompt || `Você é um coordenador jurídico inteligente. Analise o caso fechado abaixo e crie atividades específicas para cada membro da equipe processual, baseando-se na DESCRIÇÃO DO CARGO de cada um.
 
 Regras:
 - Crie atividades RELEVANTES para o caso específico, não genéricas
