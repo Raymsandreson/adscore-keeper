@@ -87,6 +87,17 @@ export const useAuth = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        // Handle token errors - clear stale session
+        if (_event === 'TOKEN_REFRESHED' && !session) {
+          console.warn('[AUTH] Token refresh falhou, limpando sessão...');
+          localStorage.removeItem('sb-gliigkupoebmlbwyvijp-auth-token');
+          setUser(null);
+          setSession(null);
+          setProfile(null);
+          settle();
+          return;
+        }
+
         setSession(session);
         setUser(session?.user ?? null);
         
@@ -131,8 +142,19 @@ export const useAuth = () => {
         }
       }
       settle();
-    }).catch((err) => {
-      settle(`Erro ao obter sessão: ${err?.message || 'desconhecido'}`);
+    }).catch(async (err) => {
+      // If refresh token is invalid/expired, clear local storage and show login
+      if (err?.message?.includes('Refresh Token') || err?.code === 'refresh_token_not_found') {
+        console.warn('[AUTH] Token inválido detectado, limpando sessão local...');
+        await supabase.auth.signOut({ scope: 'local' });
+        localStorage.removeItem('sb-gliigkupoebmlbwyvijp-auth-token');
+        setUser(null);
+        setSession(null);
+        setProfile(null);
+        settle();
+      } else {
+        settle(`Erro ao obter sessão: ${err?.message || 'desconhecido'}`);
+      }
     });
 
     return () => {
