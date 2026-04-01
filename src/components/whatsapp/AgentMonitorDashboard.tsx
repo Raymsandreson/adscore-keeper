@@ -965,6 +965,32 @@ export function AgentMonitorDashboard() {
         wasResponded={chatPreview ? chatPreview.inbound_count > 0 : false}
         responseTimeMinutes={null}
       />
+
+      {/* AI Activity Prompt Dialog */}
+      <AIActivityPromptDialog
+        open={promptDialogOpen}
+        onOpenChange={setPromptDialogOpen}
+        leadName={promptDialogLead?.name || ''}
+        loading={!!generatingLeadId}
+        onConfirm={async (customPrompt) => {
+          if (!promptDialogLead) return;
+          setGeneratingLeadId(promptDialogLead.id);
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const { data, error } = await cloudFunctions.invoke('generate-case-activities', {
+              body: { lead_id: promptDialogLead.id, custom_prompt: customPrompt },
+              authToken: session?.access_token,
+            });
+            if (error) throw error;
+            toast({ title: 'Atividades geradas', description: data?.message || 'Sucesso' });
+            setPromptDialogOpen(false);
+          } catch (err: any) {
+            toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+          } finally {
+            setGeneratingLeadId(null);
+          }
+        }}
+      />
     </div>
   );
 }
