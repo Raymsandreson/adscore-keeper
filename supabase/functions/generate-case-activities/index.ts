@@ -15,7 +15,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { lead_id, regenerate } = await req.json();
+    const { lead_id, regenerate, custom_prompt } = await req.json();
     if (!lead_id) {
       return new Response(JSON.stringify({ error: "lead_id é obrigatório" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
