@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,11 +14,12 @@ import {
   Bot, MessageCircle, Clock, TrendingUp, Search, RefreshCw,
   CheckCircle, XCircle, Zap,
   MapPin, Phone, PhoneCall, Megaphone, Sparkles,
-  CalendarIcon, Inbox, BarChart3, Heart, AlertCircle, Eye
+  CalendarIcon, Inbox, BarChart3, Heart, AlertCircle, Eye, ClipboardList
 } from 'lucide-react';
 import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
 import { AIEnrichmentMonitorPanel } from './AIEnrichmentMonitorPanel';
+import { AIActivitiesPanel } from './AIActivitiesPanel';
 import { DashboardChatPreview } from './DashboardChatPreview';
 import { format, differenceInMinutes, subDays, startOfWeek, startOfMonth, startOfYear, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -91,12 +94,14 @@ interface ReferralData {
 type CaseStatus = 'sem_resposta' | 'em_andamento' | 'fechado' | 'recusado' | 'inviavel';
 
 export function AgentMonitorDashboard() {
+  const { toast } = useToast();
   const [agents, setAgents] = useState<AgentData[]>([]);
   const [conversations, setConversations] = useState<ConversationDetail[]>([]);
   const [agentStats, setAgentStats] = useState<AgentStats[]>([]);
   const [referrals, setReferrals] = useState<ReferralData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [generatingLeadId, setGeneratingLeadId] = useState<string | null>(null);
 
   // Filters
   const [agentFilter, setAgentFilter] = useState('all');
@@ -552,6 +557,34 @@ export function AgentMonitorDashboard() {
                 </p>
               )}
               <p className="text-[9px] text-muted-foreground">📩 {c.inbound_count} 📤 {c.outbound_count}</p>
+              {status === 'fechado' && c.lead_id && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-5 text-[9px] px-1.5 gap-0.5 mt-1"
+                  disabled={generatingLeadId === c.lead_id}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    setGeneratingLeadId(c.lead_id!);
+                    try {
+                      const { data: { session } } = await supabase.auth.getSession();
+                      const { data, error } = await cloudFunctions.invoke('generate-case-activities', {
+                        body: { lead_id: c.lead_id },
+                        authToken: session?.access_token,
+                      });
+                      if (error) throw error;
+                      toast({ title: 'Atividades geradas', description: data?.message || 'Sucesso' });
+                    } catch (err: any) {
+                      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+                    } finally {
+                      setGeneratingLeadId(null);
+                    }
+                  }}
+                >
+                  {generatingLeadId === c.lead_id ? <RefreshCw className="h-2.5 w-2.5 animate-spin" /> : <Sparkles className="h-2.5 w-2.5" />}
+                  Gerar Atv
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>
@@ -616,12 +649,15 @@ export function AgentMonitorDashboard() {
 
       {/* Main tabs */}
       <Tabs defaultValue="queue" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 max-w-lg">
+        <TabsList className="grid w-full grid-cols-4 max-w-xl">
           <TabsTrigger value="queue" className="text-xs flex items-center gap-1.5">
             <Inbox className="h-3.5 w-3.5" /> Fila de Casos
           </TabsTrigger>
           <TabsTrigger value="agents" className="text-xs flex items-center gap-1.5">
             <BarChart3 className="h-3.5 w-3.5" /> Painel de Agentes
+          </TabsTrigger>
+          <TabsTrigger value="ai-activities" className="text-xs flex items-center gap-1.5">
+            <ClipboardList className="h-3.5 w-3.5" /> Atividades IA
           </TabsTrigger>
           <TabsTrigger value="referrals" className="text-xs flex items-center gap-1.5">
             <Heart className="h-3.5 w-3.5" /> Indicações
@@ -817,7 +853,12 @@ export function AgentMonitorDashboard() {
           </Tabs>
         </TabsContent>
 
-        {/* ═══════════ TAB 3: INDICAÇÕES ═══════════ */}
+        {/* ═══════════ TAB 3: ATIVIDADES IA ═══════════ */}
+        <TabsContent value="ai-activities" className="space-y-4">
+          <AIActivitiesPanel />
+        </TabsContent>
+
+        {/* ═══════════ TAB 4: INDICAÇÕES ═══════════ */}
         <TabsContent value="referrals" className="space-y-4">
           {/* Referral KPIs */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">

@@ -4090,6 +4090,7 @@ export type Database = {
           action_source: string | null
           action_source_detail: string | null
           activity_type: string
+          ai_generation_context: Json | null
           assigned_to: string | null
           assigned_to_name: string | null
           case_id: string | null
@@ -4101,6 +4102,7 @@ export type Database = {
           contact_name: string | null
           created_at: string
           created_by: string | null
+          created_by_ai: boolean | null
           current_status_notes: string | null
           deadline: string | null
           description: string | null
@@ -4124,6 +4126,7 @@ export type Database = {
           action_source?: string | null
           action_source_detail?: string | null
           activity_type?: string
+          ai_generation_context?: Json | null
           assigned_to?: string | null
           assigned_to_name?: string | null
           case_id?: string | null
@@ -4135,6 +4138,7 @@ export type Database = {
           contact_name?: string | null
           created_at?: string
           created_by?: string | null
+          created_by_ai?: boolean | null
           current_status_notes?: string | null
           deadline?: string | null
           description?: string | null
@@ -4158,6 +4162,7 @@ export type Database = {
           action_source?: string | null
           action_source_detail?: string | null
           activity_type?: string
+          ai_generation_context?: Json | null
           assigned_to?: string | null
           assigned_to_name?: string | null
           case_id?: string | null
@@ -4169,6 +4174,7 @@ export type Database = {
           contact_name?: string | null
           created_at?: string
           created_by?: string | null
+          created_by_ai?: boolean | null
           current_status_notes?: string | null
           deadline?: string | null
           description?: string | null

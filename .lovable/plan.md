@@ -1,23 +1,40 @@
 
+## Plano: Atividades Processuais Automáticas via IA
 
-## Plano: Adicionar campo "Assessor responsável" no formulário de nova atividade do lead
+### O que será feito
 
-### Resumo
-Adicionar um select de assessor (membro da equipe) no formulário de criação de atividade dentro do card do lead (`LeadActivitiesTab`), usando o hook `useProfilesList` já existente.
+Quando um caso é fechado, a IA analisa as mensagens do WhatsApp + dados do lead + dados do processo, e cria atividades específicas para cada membro do time processual com base na **descrição do cargo** (job_positions) de cada um. O coordenador também pode disparar/regenerar manualmente.
 
-### Alterações em `src/components/leads/LeadActivitiesTab.tsx`
+### Etapas
 
-1. **Importar** `useProfilesList` de `@/hooks/useProfilesList`
+#### 1. Edge Function `generate-case-activities`
+- **Gatilho duplo**: chamada automática quando `lead_status` muda para `closed` + botão manual
+- **Coleta de contexto**:
+  - Últimas mensagens do WhatsApp do lead (phone + instance)
+  - Dados do lead (nome, produto, núcleo, dados coletados)
+  - Dados do `case_process_tracking` se existir
+- **Consulta os membros** do time com cargos via `job_positions` + `profiles`
+- **Prompt para Gemini**: Recebe o contexto do caso + lista de cargos com descrições → gera atividades estruturadas (título, descrição, responsável, prazo estimado, prioridade)
+- **Insere** na tabela `lead_activities` com `created_by_ai = true` para rastreabilidade
 
-2. **Adicionar estado** para o assessor selecionado:
-   - `newAssignedTo` (user_id) e `newAssignedToName` (nome do assessor)
+#### 2. Migração: campo `created_by_ai` na tabela `lead_activities`
+- Adicionar coluna `created_by_ai BOOLEAN DEFAULT false`
+- Permitir filtrar atividades geradas pela IA vs manuais
 
-3. **Adicionar select** entre Prioridade e Prazo no formulário de criação:
-   - Label "Responsável"
-   - Select com lista de perfis da equipe
-   - Ao selecionar, armazena `user_id` e `full_name`
+#### 3. Nova aba "Atividades IA" no Monitor
+- Lista todas as atividades com `created_by_ai = true`
+- Mostra: caso de origem, responsável, cargo, status, data de criação
+- Filtros: por núcleo, por cargo, por status da atividade
+- Possibilidade de editar/ajustar antes de notificar
 
-4. **Incluir no insert** os campos `assigned_to` e `assigned_to_name` ao criar a atividade
+#### 4. Botão manual "Gerar Atividades" 
+- Na Fila de Casos do monitor, ao expandir um caso fechado
+- Permite regenerar se as atividades não ficaram boas
 
-5. **Resetar** os campos ao fechar/criar
-
+### Fluxo
+```
+Lead fecha → Edge Function coleta contexto →
+Gemini analisa mensagens + dados + cargos →
+Cria atividades distribuídas por cargo →
+Aparece na aba "Atividades IA" do Monitor
+```
