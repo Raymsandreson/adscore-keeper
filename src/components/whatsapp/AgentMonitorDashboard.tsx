@@ -617,12 +617,15 @@ export function AgentMonitorDashboard() {
 
       {/* Main tabs */}
       <Tabs defaultValue="queue" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 max-w-lg">
+        <TabsList className="grid w-full grid-cols-4 max-w-xl">
           <TabsTrigger value="queue" className="text-xs flex items-center gap-1.5">
             <Inbox className="h-3.5 w-3.5" /> Fila de Casos
           </TabsTrigger>
           <TabsTrigger value="agents" className="text-xs flex items-center gap-1.5">
             <BarChart3 className="h-3.5 w-3.5" /> Painel de Agentes
+          </TabsTrigger>
+          <TabsTrigger value="ai-activities" className="text-xs flex items-center gap-1.5">
+            <ClipboardList className="h-3.5 w-3.5" /> Atividades IA
           </TabsTrigger>
           <TabsTrigger value="referrals" className="text-xs flex items-center gap-1.5">
             <Heart className="h-3.5 w-3.5" /> Indicações
