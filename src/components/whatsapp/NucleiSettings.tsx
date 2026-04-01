@@ -48,78 +48,29 @@ export function NucleiSettings() {
     await deleteNucleus(id);
   };
 
-  const FormRow = ({ onSave, onCancel }: { onSave: () => void; onCancel: () => void }) => (
-    <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
-      <div className="grid grid-cols-2 gap-2">
-        <Input placeholder="Nome" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-        <Input placeholder="Prefixo (ex: ATT)" value={form.prefix} onChange={e => setForm(f => ({ ...f, prefix: e.target.value.toUpperCase() }))} maxLength={5} />
-      </div>
-      <Input placeholder="Descrição (opcional)" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-          <Select value={form.company_id} onValueChange={v => setForm(f => ({ ...f, company_id: v === '_none' ? '' : v }))}>
-            <SelectTrigger className="h-8 text-xs flex-1">
-              <SelectValue placeholder="Vincular a empresa (opcional)" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="_none">Nenhuma empresa</SelectItem>
-              {activeCompanies.map(c => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button type="button" size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={() => setShowNewCompany(s => !s)}>
-            <Plus className="h-3 w-3 mr-1" />Nova
-          </Button>
-        </div>
-        {showNewCompany && (
-          <div className="flex items-center gap-2 pl-6">
-            <Input
-              placeholder="Nome da empresa"
-              value={newCompanyName}
-              onChange={e => setNewCompanyName(e.target.value)}
-              className="h-8 text-xs"
-            />
-            <Button
-              size="sm"
-              className="h-8 text-xs shrink-0"
-              disabled={!newCompanyName.trim()}
-              onClick={async () => {
-                try {
-                  const company = await addCompany({ name: newCompanyName.trim() });
-                  setForm(f => ({ ...f, company_id: company.id }));
-                  setNewCompanyName('');
-                  setShowNewCompany(false);
-                  toast.success('Empresa criada');
-                } catch (e) {
-                  toast.error('Erro ao criar empresa');
-                }
-              }}
-            >
-              <Check className="h-3 w-3 mr-1" />Criar
-            </Button>
-            <Button size="sm" variant="ghost" className="h-8 text-xs shrink-0" onClick={() => { setShowNewCompany(false); setNewCompanyName(''); }}>
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
-        )}
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">Cor:</span>
-        {COLORS.map(c => (
-          <button key={c} onClick={() => setForm(f => ({ ...f, color: c }))}
-            className="h-6 w-6 rounded-full border-2 transition-transform"
-            style={{ backgroundColor: c, borderColor: form.color === c ? 'white' : 'transparent', transform: form.color === c ? 'scale(1.2)' : 'scale(1)' }}
-          />
-        ))}
-      </div>
-      <div className="flex gap-2 justify-end">
-        <Button size="sm" variant="ghost" onClick={onCancel}><X className="h-4 w-4 mr-1" />Cancelar</Button>
-        <Button size="sm" onClick={onSave}><Check className="h-4 w-4 mr-1" />Salvar</Button>
-      </div>
-    </div>
+  return (
+    <NucleiSettingsView
+      nuclei={nuclei}
+      loading={loading}
+      adding={adding}
+      editingId={editingId}
+      form={form}
+      setForm={setForm}
+      showNewCompany={showNewCompany}
+      setShowNewCompany={setShowNewCompany}
+      newCompanyName={newCompanyName}
+      setNewCompanyName={setNewCompanyName}
+      activeCompanies={activeCompanies}
+      onAdd={handleAdd}
+      onUpdate={handleUpdate}
+      onDelete={handleDelete}
+      onStartEdit={startEdit}
+      onReset={resetForm}
+      onSetAdding={setAdding}
+      onAddCompany={addCompany}
+    />
   );
+}
 
   return (
     <Card>
