@@ -1,0 +1,1 @@
+COMMENT ON COLUMN public.specialized_nuclei.company_id IS 'ID da empresa vinculada ao núcleo';
