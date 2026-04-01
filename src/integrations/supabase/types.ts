@@ -6330,6 +6330,7 @@ export type Database = {
       specialized_nuclei: {
         Row: {
           color: string
+          company_id: string | null
           created_at: string
           description: string | null
           id: string
@@ -6341,6 +6342,7 @@ export type Database = {
         }
         Insert: {
           color?: string
+          company_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -6352,6 +6354,7 @@ export type Database = {
         }
         Update: {
           color?: string
+          company_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -6361,7 +6364,15 @@ export type Database = {
           sequence_counter?: number
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "specialized_nuclei_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       system_settings: {
         Row: {
