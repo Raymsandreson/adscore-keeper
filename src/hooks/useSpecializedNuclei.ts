@@ -10,6 +10,7 @@ export interface SpecializedNucleus {
   description: string | null;
   is_active: boolean;
   sequence_counter: number;
+  company_id: string | null;
   created_at: string;
   updated_at: string;
 }

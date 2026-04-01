@@ -358,18 +358,24 @@ export function EcosystemConnectionsMap({
         </div>
 
         {/* Flow arrows hint */}
-        <div className="flex items-center justify-center gap-2 pt-2 text-muted-foreground">
+        <div className="flex items-center justify-center gap-2 pt-2 text-muted-foreground flex-wrap">
+          <span className="text-[10px] font-medium">Empresa</span>
+          <ArrowRight className="h-3 w-3" />
           <span className="text-[10px] font-medium">Núcleo</span>
           <ArrowRight className="h-3 w-3" />
           <span className="text-[10px] font-medium">Produto</span>
           <ArrowRight className="h-3 w-3" />
-          <span className="text-[10px] font-medium">Funil</span>
+          <span className="text-[10px] font-medium">Funil de Vendas</span>
           <ArrowRight className="h-3 w-3" />
           <span className="text-[10px] font-medium">Time</span>
           <span className="text-[10px] mx-1">|</span>
-          <span className="text-[10px] font-medium">Produto</span>
+          <span className="text-[10px] font-medium">Fechado</span>
           <ArrowRight className="h-3 w-3" />
-          <span className="text-[10px] font-medium">Empresa</span>
+          <span className="text-[10px] font-medium">Caso</span>
+          <ArrowRight className="h-3 w-3" />
+          <span className="text-[10px] font-medium">Processos</span>
+          <ArrowRight className="h-3 w-3" />
+          <span className="text-[10px] font-medium">Fluxo de Trabalho</span>
         </div>
       </CardContent>
     </Card>
