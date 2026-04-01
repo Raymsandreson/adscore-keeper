@@ -37,8 +37,26 @@ serve(async (req) => {
       });
     }
 
-    // 2. If regenerating, delete previous AI activities for this lead
-    if (regenerate) {
+    // 2. Check for existing AI activities
+    const { data: existingActivities } = await sb
+      .from("lead_activities")
+      .select("id, title, status, assigned_to_name, created_at")
+      .eq("lead_id", lead_id)
+      .eq("created_by_ai", true);
+
+    if (existingActivities && existingActivities.length > 0 && !regenerate) {
+      return new Response(JSON.stringify({
+        activities: existingActivities,
+        count: existingActivities.length,
+        message: `Lead já possui ${existingActivities.length} atividades IA geradas. Use regenerate=true para recriar.`,
+        already_exists: true,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // If regenerating, delete previous AI activities
+    if (regenerate && existingActivities && existingActivities.length > 0) {
       await sb.from("lead_activities").delete()
         .eq("lead_id", lead_id)
         .eq("created_by_ai", true);
