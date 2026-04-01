@@ -37,11 +37,23 @@ export function useSpecializedNuclei() {
 
   const addNucleus = useCallback(async (nucleus: Partial<SpecializedNucleus>) => {
     try {
-      const { data, error } = await supabase
+      // Try with company_id first, fallback without it if schema cache is stale
+      let result = await supabase
         .from('specialized_nuclei')
         .insert(nucleus as any)
         .select()
         .single();
+      
+      if (result.error?.code === 'PGRST204' && 'company_id' in (nucleus as any)) {
+        const { company_id, ...rest } = nucleus as any;
+        result = await supabase
+          .from('specialized_nuclei')
+          .insert(rest)
+          .select()
+          .single();
+      }
+      
+      const { data, error } = result;
       if (error) throw error;
       setNuclei(prev => [...prev, data as SpecializedNucleus]);
       toast.success('Núcleo criado');
