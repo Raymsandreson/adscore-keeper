@@ -5704,6 +5704,42 @@ export type Database = {
         }
         Relationships: []
       }
+      nucleus_companies: {
+        Row: {
+          company_id: string
+          created_at: string
+          id: string
+          nucleus_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          id?: string
+          nucleus_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          id?: string
+          nucleus_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nucleus_companies_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nucleus_companies_nucleus_id_fkey"
+            columns: ["nucleus_id"]
+            isOneToOne: false
+            referencedRelation: "specialized_nuclei"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       outbound_goal_history: {
         Row: {
           achieved_at: string

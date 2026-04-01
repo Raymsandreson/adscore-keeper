@@ -2,6 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
+export interface NucleusCompanyLink {
+  id: string;
+  nucleus_id: string;
+  company_id: string;
+}
+
 export interface SpecializedNucleus {
   id: string;
   name: string;
@@ -10,7 +16,8 @@ export interface SpecializedNucleus {
   description: string | null;
   is_active: boolean;
   sequence_counter: number;
-  company_id: string | null;
+  company_id: string | null; // legacy, kept for compatibility
+  company_ids: string[]; // new N:N
   created_at: string;
   updated_at: string;
 }
@@ -22,12 +29,25 @@ export function useSpecializedNuclei() {
   const fetchNuclei = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('specialized_nuclei')
-        .select('*')
-        .order('name');
-      if (error) throw error;
-      setNuclei((data || []) as SpecializedNucleus[]);
+      const [nucleiRes, linksRes] = await Promise.all([
+        supabase.from('specialized_nuclei').select('*').order('name'),
+        supabase.from('nucleus_companies').select('*'),
+      ]);
+      if (nucleiRes.error) throw nucleiRes.error;
+
+      const links = (linksRes.data || []) as NucleusCompanyLink[];
+      const linksByNucleus: Record<string, string[]> = {};
+      links.forEach(l => {
+        if (!linksByNucleus[l.nucleus_id]) linksByNucleus[l.nucleus_id] = [];
+        linksByNucleus[l.nucleus_id].push(l.company_id);
+      });
+
+      const enriched = (nucleiRes.data || []).map((n: any) => ({
+        ...n,
+        company_ids: linksByNucleus[n.id] || [],
+      })) as SpecializedNucleus[];
+
+      setNuclei(enriched);
     } catch (error) {
       console.error('Error fetching nuclei:', error);
     } finally {
@@ -35,74 +55,71 @@ export function useSpecializedNuclei() {
     }
   }, []);
 
-  const addNucleus = useCallback(async (nucleus: Partial<SpecializedNucleus>) => {
+  const syncCompanyLinks = useCallback(async (nucleusId: string, companyIds: string[]) => {
+    // Delete existing links
+    await supabase.from('nucleus_companies').delete().eq('nucleus_id', nucleusId);
+    // Insert new links
+    if (companyIds.length > 0) {
+      const rows = companyIds.map(cid => ({ nucleus_id: nucleusId, company_id: cid }));
+      await supabase.from('nucleus_companies').insert(rows as any);
+    }
+  }, []);
+
+  const addNucleus = useCallback(async (nucleus: Partial<SpecializedNucleus> & { company_ids?: string[] }) => {
     try {
-      // Try with company_id first, fallback without it if schema cache is stale
-      let result = await supabase
+      const { company_ids, company_id, ...rest } = nucleus as any;
+      const { data, error } = await supabase
         .from('specialized_nuclei')
-        .insert(nucleus as any)
+        .insert(rest)
         .select()
         .single();
-      
-      if (result.error?.code === 'PGRST204' && 'company_id' in (nucleus as any)) {
-        const { company_id, ...rest } = nucleus as any;
-        result = await supabase
-          .from('specialized_nuclei')
-          .insert(rest)
-          .select()
-          .single();
-      }
-      
-      const { data, error } = result;
       if (error) throw error;
-      setNuclei(prev => [...prev, data as SpecializedNucleus]);
+
+      const ids = company_ids || (company_id ? [company_id] : []);
+      if (ids.length > 0) {
+        await syncCompanyLinks(data.id, ids);
+      }
+
+      const enriched = { ...data, company_ids: ids } as SpecializedNucleus;
+      setNuclei(prev => [...prev, enriched]);
       toast.success('Núcleo criado');
-      return data as SpecializedNucleus;
+      return enriched;
     } catch (error) {
       console.error('Error adding nucleus:', error);
       toast.error('Erro ao criar núcleo');
       throw error;
     }
-  }, []);
+  }, [syncCompanyLinks]);
 
-  const updateNucleus = useCallback(async (id: string, updates: Partial<SpecializedNucleus>) => {
+  const updateNucleus = useCallback(async (id: string, updates: Partial<SpecializedNucleus> & { company_ids?: string[] }) => {
     try {
-      // Try with company_id first, fallback without it if schema cache is stale
-      let result = await supabase
+      const { company_ids, company_id, ...rest } = updates as any;
+      const { data, error } = await supabase
         .from('specialized_nuclei')
-        .update(updates as any)
+        .update(rest)
         .eq('id', id)
         .select()
         .single();
-      
-      if (result.error?.code === 'PGRST204' && 'company_id' in updates) {
-        const { company_id, ...rest } = updates as any;
-        result = await supabase
-          .from('specialized_nuclei')
-          .update(rest)
-          .eq('id', id)
-          .select()
-          .single();
-      }
-      
-      const { data, error } = result;
       if (error) throw error;
-      setNuclei(prev => prev.map(n => n.id === id ? (data as SpecializedNucleus) : n));
+
+      if (company_ids !== undefined) {
+        await syncCompanyLinks(id, company_ids);
+      }
+
+      const enriched = { ...data, company_ids: company_ids || [] } as SpecializedNucleus;
+      setNuclei(prev => prev.map(n => n.id === id ? enriched : n));
       toast.success('Núcleo atualizado');
-      return data as SpecializedNucleus;
+      return enriched;
     } catch (error) {
       console.error('Error updating nucleus:', error);
       toast.error('Erro ao atualizar núcleo');
       throw error;
     }
-  }, []);
+  }, [syncCompanyLinks]);
 
   const deleteNucleus = useCallback(async (id: string) => {
     try {
-      const { error } = await supabase
-        .from('specialized_nuclei')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('specialized_nuclei').delete().eq('id', id);
       if (error) throw error;
       setNuclei(prev => prev.filter(n => n.id !== id));
       toast.success('Núcleo removido');
