@@ -105,6 +105,7 @@ export function NucleiSettings() {
           </div>
         )}
       </div>
+      <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">Cor:</span>
         {COLORS.map(c => (
           <button key={c} onClick={() => setForm(f => ({ ...f, color: c }))}
