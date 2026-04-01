@@ -107,6 +107,10 @@ export function NucleiSettings() {
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{n.name}</span>
                   <Badge variant="outline" className="text-[10px]">{n.prefix}</Badge>
+                  {n.company_id && (() => {
+                    const company = activeCompanies.find(c => c.id === n.company_id);
+                    return company ? <Badge variant="secondary" className="text-[10px]"><Building2 className="h-2.5 w-2.5 mr-0.5" />{company.trading_name || company.name}</Badge> : null;
+                  })()}
                 </div>
                 {n.description && <p className="text-xs text-muted-foreground truncate">{n.description}</p>}
               </div>
