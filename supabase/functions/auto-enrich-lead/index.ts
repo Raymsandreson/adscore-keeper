@@ -129,7 +129,15 @@ Analise a conversa e extraia TODAS as informações pessoais e profissionais do 
   "case_type": "tipo do caso",
   "liability_type": "tipo de responsabilidade",
   "lead_status": "status do lead baseado na conversa: use null na maioria dos casos. Só preencha com 'closed' se houve assinatura/contrato EXPLÍCITO, 'refused' APENAS se o cliente disse CLARAMENTE que NÃO quer prosseguir (ex: 'não quero', 'desisto', 'não tenho interesse'), 'unviable' APENAS se o atendente determinou EXPLICITAMENTE que o caso é inviável. Em caso de QUALQUER dúvida, use null. Conversas em andamento, triagem, identificação = null (NÃO é refused).",
-  "lead_status_reason": "motivo resumido em 1-2 frases para o status identificado. OBRIGATÓRIO se lead_status não for null. Use null se status for null."
+  "lead_status_reason": "motivo resumido em 1-2 frases para o status identificado. OBRIGATÓRIO se lead_status não for null. Use null se status for null.",
+  "referrals": [
+    {
+      "name": "nome da pessoa indicada",
+      "phone": "telefone da indicação",
+      "product_type": "auxilio_maternidade | auxilio_acidente | bpc_loas_autista | indenizacao_acidente_trabalho",
+      "context": "contexto breve (ex: gestante de 7 meses, filho autista de 3 anos, acidentou há 2 anos)"
+    }
+  ]
 }
 
 REGRAS:
@@ -137,6 +145,8 @@ REGRAS:
 - Use null para campos não encontrados
 - IMPORTANTE: lead_status deve ser null na grande maioria dos casos. Só marque como 'refused' se o cliente EXPLICITAMENTE recusou. Conversas sem resposta, em triagem, ou em fase inicial NÃO são 'refused'. Na dúvida, use null.
 - lead_status_reason é OBRIGATÓRIO quando lead_status não for null
+- INDICAÇÕES: Se o cliente mencionou alguém que pode ter direito a algum benefício (gestante, mãe de autista, acidentado nos últimos 5 anos com carteira assinada), extraia na lista "referrals". Use [] se não houver indicações.
+- product_type DEVE ser um dos valores: auxilio_maternidade, auxilio_acidente, bpc_loas_autista, indenizacao_acidente_trabalho
 - Retorne APENAS o JSON`
 
     const result = await geminiChat({
@@ -335,7 +345,79 @@ REGRAS:
 
     console.log(`[auto-enrich] Enrichment complete for phone=${phone}`)
 
-    return new Response(JSON.stringify({ ok: true, enriched: cleaned }), {
+    // Process referrals if any
+    const referrals = Array.isArray(cleaned.referrals) ? cleaned.referrals : []
+    const productBoardMap: Record<string, string> = {
+      'auxilio_maternidade': '48d6581d-b138-45f9-bb63-84d90ba86ec2',
+      'auxilio_acidente': 'b922f490-3600-4652-a629-5d63110501ca',
+      'bpc_loas_autista': 'c8e8c466-c441-43a9-88d2-8197324c47a4',
+      'indenizacao_acidente_trabalho': '2dcd54b5-502b-413b-b795-5e24a20797d2',
+    }
+    const productIdMap: Record<string, string> = {
+      'auxilio_maternidade': 'a1000001-0000-0000-0000-000000000001',
+      'auxilio_acidente': 'a1000002-0000-0000-0000-000000000002',
+      'bpc_loas_autista': 'a1000003-0000-0000-0000-000000000003',
+      'indenizacao_acidente_trabalho': 'a1000004-0000-0000-0000-000000000004',
+    }
+
+    const createdReferrals: any[] = []
+    for (const ref of referrals) {
+      if (!ref.name || !ref.phone) continue
+      const targetBoardId = productBoardMap[ref.product_type] || 'ccd46376-5a8c-42ea-a0f4-3360ed2b1e7a' // fallback: Leads Inbound
+      const targetProductId = productIdMap[ref.product_type] || null
+
+      // Get first stage of target board
+      const { data: stages } = await supabase
+        .from('kanban_stages')
+        .select('id')
+        .eq('board_id', targetBoardId)
+        .order('position', { ascending: true })
+        .limit(1)
+
+      const firstStageId = stages?.[0]?.id || null
+
+      // Create new lead from referral
+      const { data: newLead, error: leadErr } = await supabase
+        .from('leads')
+        .insert({
+          lead_name: ref.name,
+          lead_phone: ref.phone,
+          board_id: targetBoardId,
+          status: firstStageId,
+          product_service_id: targetProductId,
+          lead_source: 'indicacao',
+          notes: `Indicado por ${cleaned.full_name || phone}. ${ref.context || ''}`,
+          lead_status: 'active',
+        })
+        .select('id')
+        .single()
+
+      if (leadErr) {
+        console.error('[auto-enrich] Referral lead creation error:', leadErr)
+        continue
+      }
+
+      console.log(`[auto-enrich] Created referral lead ${newLead.id} for ${ref.name} → ${ref.product_type}`)
+
+      // Register as ambassador referral if we have a contact_id
+      if (contact_id && newLead) {
+        await supabase.from('ambassador_referrals').insert({
+          ambassador_id: contact_id,
+          lead_id: newLead.id,
+          member_user_id: '00000000-0000-0000-0000-000000000000', // system
+          status: 'pending',
+          notes: ref.context || `Indicação via WhatsApp - ${ref.product_type}`,
+        })
+      }
+
+      createdReferrals.push({ lead_id: newLead.id, name: ref.name, product: ref.product_type })
+    }
+
+    if (createdReferrals.length > 0) {
+      console.log(`[auto-enrich] Created ${createdReferrals.length} referral leads`)
+    }
+
+    return new Response(JSON.stringify({ ok: true, enriched: cleaned, referrals_created: createdReferrals }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error: any) {
