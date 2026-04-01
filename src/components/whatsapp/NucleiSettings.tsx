@@ -19,7 +19,7 @@ export function NucleiSettings() {
   const [form, setForm] = useState({ name: '', prefix: '', color: COLORS[0], description: '', company_id: '' });
 
   const resetForm = () => {
-    setForm({ name: '', prefix: '', color: COLORS[0], description: '' });
+    setForm({ name: '', prefix: '', color: COLORS[0], description: '', company_id: '' });
     setAdding(false);
     setEditingId(null);
   };
