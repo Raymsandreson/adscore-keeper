@@ -37,7 +37,7 @@ export function NucleiSettings() {
 
   const handleUpdate = async () => {
     if (!editingId || !form.name || !form.prefix) return;
-    await updateNucleus(editingId, form);
+    await updateNucleus(editingId, { ...form, company_id: form.company_id || null });
     resetForm();
   };
 
