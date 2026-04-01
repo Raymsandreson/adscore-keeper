@@ -247,7 +247,7 @@ export function EcosystemConnectionsMap({
           Mapa de Conexões do Ecossistema
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Clique em qualquer item para ver suas conexões. Cadeia: Núcleo → Produto → Funil → Time | Produto → Empresa
+          Clique em qualquer item para ver suas conexões. Cadeia: Empresa → Núcleo → Produto → Funil → Time
         </p>
         {hasSelection && (
           <Button variant="ghost" size="sm" className="self-start text-xs mt-1" onClick={() => { setSelectedType(null); setSelectedId(null); }}>
