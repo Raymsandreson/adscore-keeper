@@ -32,7 +32,7 @@ export function NucleiSettings() {
 
   const startEdit = (n: SpecializedNucleus) => {
     setEditingId(n.id);
-    setForm({ name: n.name, prefix: n.prefix, color: n.color, description: n.description || '' });
+    setForm({ name: n.name, prefix: n.prefix, color: n.color, description: n.description || '', company_id: n.company_id || '' });
   };
 
   const handleUpdate = async () => {
