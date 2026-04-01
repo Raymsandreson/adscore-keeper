@@ -115,9 +115,8 @@ export function EcosystemConnectionsMap({
       return product?.nucleus_id ? activeNuclei.filter(n => n.id === product.nucleus_id) : [];
     }
     if (type === 'company') {
-      const companyProducts = activeProducts.filter(p => p.company_id === id);
-      const nucleusIds = [...new Set(companyProducts.map(p => p.nucleus_id).filter(Boolean))];
-      return activeNuclei.filter(n => nucleusIds.includes(n.id));
+      // Direct: nuclei with company_id matching
+      return activeNuclei.filter(n => n.company_id === id);
     }
     if (type === 'team') {
       const team = teams.find(t => t.id === id);
