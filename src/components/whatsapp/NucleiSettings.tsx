@@ -26,7 +26,7 @@ export function NucleiSettings() {
 
   const handleAdd = async () => {
     if (!form.name || !form.prefix) return toast.error('Nome e prefixo são obrigatórios');
-    await addNucleus(form);
+    await addNucleus({ ...form, company_id: form.company_id || null });
     resetForm();
   };
 
