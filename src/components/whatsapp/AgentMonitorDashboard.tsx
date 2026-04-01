@@ -20,6 +20,7 @@ import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
 import { AIEnrichmentMonitorPanel } from './AIEnrichmentMonitorPanel';
 import { AIActivitiesPanel } from './AIActivitiesPanel';
+import { AIActivityPromptDialog } from './AIActivityPromptDialog';
 import { DashboardChatPreview } from './DashboardChatPreview';
 import { format, differenceInMinutes, subDays, startOfWeek, startOfMonth, startOfYear, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
