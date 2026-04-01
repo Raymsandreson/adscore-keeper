@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,49 +6,38 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Pencil, Trash2, Check, X, Building2 } from 'lucide-react';
 import { useSpecializedNuclei, SpecializedNucleus } from '@/hooks/useSpecializedNuclei';
-import { useCompanies } from '@/hooks/useCompanies';
+import { useCompanies, Company } from '@/hooks/useCompanies';
 import { toast } from 'sonner';
 
 const COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#6b7280'];
 
-export function NucleiSettings() {
-  const { nuclei, loading, addNucleus, updateNucleus, deleteNucleus } = useSpecializedNuclei();
-  const { activeCompanies, addCompany, fetchCompanies } = useCompanies();
-  const [adding, setAdding] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: '', prefix: '', color: COLORS[0], description: '', company_id: '' });
-  const [showNewCompany, setShowNewCompany] = useState(false);
-  const [newCompanyName, setNewCompanyName] = useState('');
+interface FormState {
+  name: string;
+  prefix: string;
+  color: string;
+  description: string;
+  company_id: string;
+}
 
-  const resetForm = () => {
-    setForm({ name: '', prefix: '', color: COLORS[0], description: '', company_id: '' });
-    setAdding(false);
-    setEditingId(null);
-  };
+interface FormRowProps {
+  form: FormState;
+  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  showNewCompany: boolean;
+  setShowNewCompany: React.Dispatch<React.SetStateAction<boolean>>;
+  newCompanyName: string;
+  setNewCompanyName: React.Dispatch<React.SetStateAction<string>>;
+  activeCompanies: Company[];
+  onAddCompany: (data: { name: string }) => Promise<Company>;
+  onSave: () => void;
+  onCancel: () => void;
+}
 
-  const handleAdd = async () => {
-    if (!form.name || !form.prefix) return toast.error('Nome e prefixo são obrigatórios');
-    await addNucleus({ ...form, company_id: form.company_id || null });
-    resetForm();
-  };
-
-  const startEdit = (n: SpecializedNucleus) => {
-    setEditingId(n.id);
-    setForm({ name: n.name, prefix: n.prefix, color: n.color, description: n.description || '', company_id: n.company_id || '' });
-  };
-
-  const handleUpdate = async () => {
-    if (!editingId || !form.name || !form.prefix) return;
-    await updateNucleus(editingId, { ...form, company_id: form.company_id || null });
-    resetForm();
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Remover este núcleo?')) return;
-    await deleteNucleus(id);
-  };
-
-  const FormRow = ({ onSave, onCancel }: { onSave: () => void; onCancel: () => void }) => (
+const FormRow = memo(function FormRow({
+  form, setForm, showNewCompany, setShowNewCompany,
+  newCompanyName, setNewCompanyName, activeCompanies,
+  onAddCompany, onSave, onCancel
+}: FormRowProps) {
+  return (
     <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
       <div className="grid grid-cols-2 gap-2">
         <Input placeholder="Nome" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
@@ -80,6 +69,7 @@ export function NucleiSettings() {
               value={newCompanyName}
               onChange={e => setNewCompanyName(e.target.value)}
               className="h-8 text-xs"
+              autoFocus
             />
             <Button
               size="sm"
@@ -87,7 +77,7 @@ export function NucleiSettings() {
               disabled={!newCompanyName.trim()}
               onClick={async () => {
                 try {
-                  const company = await addCompany({ name: newCompanyName.trim() });
+                  const company = await onAddCompany({ name: newCompanyName.trim() });
                   setForm(f => ({ ...f, company_id: company.id }));
                   setNewCompanyName('');
                   setShowNewCompany(false);
@@ -120,6 +110,50 @@ export function NucleiSettings() {
       </div>
     </div>
   );
+});
+
+export function NucleiSettings() {
+  const { nuclei, loading, addNucleus, updateNucleus, deleteNucleus } = useSpecializedNuclei();
+  const { activeCompanies, addCompany } = useCompanies();
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>({ name: '', prefix: '', color: COLORS[0], description: '', company_id: '' });
+  const [showNewCompany, setShowNewCompany] = useState(false);
+  const [newCompanyName, setNewCompanyName] = useState('');
+
+  const resetForm = () => {
+    setForm({ name: '', prefix: '', color: COLORS[0], description: '', company_id: '' });
+    setAdding(false);
+    setEditingId(null);
+  };
+
+  const handleAdd = async () => {
+    if (!form.name || !form.prefix) return toast.error('Nome e prefixo são obrigatórios');
+    await addNucleus({ ...form, company_id: form.company_id || null });
+    resetForm();
+  };
+
+  const startEdit = (n: SpecializedNucleus) => {
+    setEditingId(n.id);
+    setForm({ name: n.name, prefix: n.prefix, color: n.color, description: n.description || '', company_id: n.company_id || '' });
+  };
+
+  const handleUpdate = async () => {
+    if (!editingId || !form.name || !form.prefix) return;
+    await updateNucleus(editingId, { ...form, company_id: form.company_id || null });
+    resetForm();
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Remover este núcleo?')) return;
+    await deleteNucleus(id);
+  };
+
+  const formRowProps = {
+    form, setForm, showNewCompany, setShowNewCompany,
+    newCompanyName, setNewCompanyName, activeCompanies,
+    onAddCompany: addCompany,
+  };
 
   return (
     <Card>
@@ -130,7 +164,7 @@ export function NucleiSettings() {
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        {adding && <FormRow onSave={handleAdd} onCancel={resetForm} />}
+        {adding && <FormRow {...formRowProps} onSave={handleAdd} onCancel={resetForm} />}
 
         {loading ? (
           <p className="text-sm text-muted-foreground text-center py-4">Carregando...</p>
@@ -138,7 +172,7 @@ export function NucleiSettings() {
           <p className="text-sm text-muted-foreground text-center py-4">Nenhum núcleo cadastrado</p>
         ) : (
           nuclei.map(n => editingId === n.id ? (
-            <FormRow key={n.id} onSave={handleUpdate} onCancel={resetForm} />
+            <FormRow key={n.id} {...formRowProps} onSave={handleUpdate} onCancel={resetForm} />
           ) : (
             <div key={n.id} className="flex items-center gap-3 p-3 rounded-lg border">
               <div className="h-4 w-4 rounded-full shrink-0" style={{ backgroundColor: n.color }} />
