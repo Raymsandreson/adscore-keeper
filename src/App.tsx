@@ -56,14 +56,17 @@ function lazyRetry<T extends ComponentType<any>>(
 // Error boundary to prevent blank screens
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
-  { hasError: boolean }
+  { hasError: boolean; errorMessage: string }
 > {
   constructor(props: { children: React.ReactNode }) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, errorMessage: '' };
   }
-  static getDerivedStateFromError() {
-    return { hasError: true };
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, errorMessage: error?.message || 'Erro desconhecido' };
+  }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[ErrorBoundary]', error?.message, error?.stack, info?.componentStack);
   }
   render() {
     if (this.state.hasError) {
@@ -71,6 +74,10 @@ class ErrorBoundary extends React.Component<
         <div className="flex flex-col items-center justify-center h-screen gap-4 p-4 text-center">
           <p className="text-lg font-semibold">Algo deu errado</p>
           <p className="text-sm text-muted-foreground">Tente recarregar a página.</p>
+          <details className="text-xs text-muted-foreground max-w-md">
+            <summary className="cursor-pointer">Detalhes do erro</summary>
+            <pre className="mt-2 text-left whitespace-pre-wrap break-all bg-muted p-2 rounded">{this.state.errorMessage}</pre>
+          </details>
           <button
             onClick={() => {
               sessionStorage.clear();
