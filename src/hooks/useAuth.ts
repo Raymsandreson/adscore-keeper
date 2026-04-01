@@ -164,8 +164,20 @@ export const useAuth = () => {
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    return { error };
+    try {
+      const { error } = await supabase.auth.signOut();
+      // Ignore "session_not_found" or "Auth session missing" - user is already logged out
+      if (error && !error.message?.includes('session_not_found') && !error.message?.includes('Auth session missing')) {
+        return { error };
+      }
+    } catch (err) {
+      // Network errors during signout are fine - clear local state anyway
+    }
+    // Always clear local state
+    setUser(null);
+    setSession(null);
+    setProfile(null);
+    return { error: null };
   };
 
   const updateProfile = async (updates: Partial<Profile>) => {
