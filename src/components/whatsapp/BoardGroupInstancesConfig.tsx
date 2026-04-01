@@ -778,18 +778,61 @@ export function BoardGroupInstancesConfig() {
                         <div className="px-2 pb-2 space-y-2 border-t mx-2 pt-2">
                           <div className="flex items-center justify-between">
                             <Label className="text-[10px] text-muted-foreground">Atividades automáticas</Label>
-                            <Button type="button" variant="outline" size="sm" className="h-5 text-[9px] gap-1 px-2"
-                              onClick={() => setSettings(prev => ({
-                                ...prev,
-                                process_workflows: prev.process_workflows.map(w =>
-                                  w.workflow_board_id === workflow.id
-                                    ? { ...w, activities: [...w.activities, { title: '', activity_type: 'tarefa', assigned_to: '', deadline_days: 1, priority: 'normal' }] }
-                                    : w
-                                ),
-                              }))}
-                            >+ Atividade</Button>
+                            <div className="flex items-center gap-2">
+                              <label className="flex items-center gap-1 cursor-pointer">
+                                <Checkbox
+                                  checked={workflowEntry.use_ai_activities || false}
+                                  onCheckedChange={(checked) => setSettings(prev => ({
+                                    ...prev,
+                                    process_workflows: prev.process_workflows.map(w =>
+                                      w.workflow_board_id === workflow.id
+                                        ? { ...w, use_ai_activities: !!checked }
+                                        : w
+                                    ),
+                                  }))}
+                                  className="h-3 w-3"
+                                />
+                                <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                                  <Sparkles className="h-2.5 w-2.5" /> Gerar com IA
+                                </span>
+                              </label>
+                              {!workflowEntry.use_ai_activities && (
+                                <Button type="button" variant="outline" size="sm" className="h-5 text-[9px] gap-1 px-2"
+                                  onClick={() => setSettings(prev => ({
+                                    ...prev,
+                                    process_workflows: prev.process_workflows.map(w =>
+                                      w.workflow_board_id === workflow.id
+                                        ? { ...w, activities: [...w.activities, { title: '', activity_type: 'tarefa', assigned_to: '', deadline_days: 1, priority: 'normal' }] }
+                                        : w
+                                    ),
+                                  }))}
+                                >+ Atividade</Button>
+                              )}
+                            </div>
                           </div>
 
+                          {workflowEntry.use_ai_activities ? (
+                            <div className="space-y-1.5">
+                              <p className="text-[9px] text-muted-foreground">
+                                A IA gerará atividades automaticamente com base no prompt do agente, mensagens e cargos da equipe.
+                              </p>
+                              <Textarea
+                                value={workflowEntry.ai_activities_prompt || ''}
+                                onChange={e => setSettings(prev => ({
+                                  ...prev,
+                                  process_workflows: prev.process_workflows.map(w =>
+                                    w.workflow_board_id === workflow.id
+                                      ? { ...w, ai_activities_prompt: e.target.value }
+                                      : w
+                                  ),
+                                }))}
+                                rows={4}
+                                className="text-[9px] font-mono leading-relaxed"
+                                placeholder="Instruções adicionais para a IA (opcional). Ex: Foque em prazos administrativos, priorize atividades de protocolo..."
+                              />
+                            </div>
+                          ) : (
+                            <>
                           {workflowEntry.activities.map((act, actIdx) => (
                             <div key={actIdx} className="p-1.5 rounded border bg-muted/30 space-y-1.5">
                               <div className="flex items-center justify-between">
@@ -870,6 +913,8 @@ export function BoardGroupInstancesConfig() {
 
                           {workflowEntry.activities.length === 0 && (
                             <p className="text-[9px] text-muted-foreground text-center py-1">Sem atividades automáticas.</p>
+                          )}
+                            </>
                           )}
                         </div>
                       )}
