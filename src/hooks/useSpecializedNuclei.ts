@@ -94,19 +94,32 @@ export function useSpecializedNuclei() {
   const updateNucleus = useCallback(async (id: string, updates: Partial<SpecializedNucleus> & { company_ids?: string[] }) => {
     try {
       const { company_ids, company_id, ...rest } = updates as any;
-      const { data, error } = await supabase
-        .from('specialized_nuclei')
-        .update(rest)
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
+      let updatedData: any = null;
+
+      // Only update the nucleus row if there are actual column changes
+      const hasColumnUpdates = Object.keys(rest).length > 0;
+      if (hasColumnUpdates) {
+        const { data, error } = await supabase
+          .from('specialized_nuclei')
+          .update(rest)
+          .eq('id', id)
+          .select()
+          .maybeSingle();
+        if (error) throw error;
+        updatedData = data;
+      }
 
       if (company_ids !== undefined) {
         await syncCompanyLinks(id, company_ids);
       }
 
-      const enriched = { ...data, company_ids: company_ids || [] } as SpecializedNucleus;
+      // If we didn't update the row, find the existing nucleus for state
+      if (!updatedData) {
+        const existing = nuclei.find(n => n.id === id);
+        updatedData = existing ? { ...existing } : { id };
+      }
+
+      const enriched = { ...updatedData, company_ids: company_ids ?? (nuclei.find(n => n.id === id)?.company_ids || []) } as SpecializedNucleus;
       setNuclei(prev => prev.map(n => n.id === id ? enriched : n));
       toast.success('Núcleo atualizado');
       return enriched;
@@ -115,7 +128,7 @@ export function useSpecializedNuclei() {
       toast.error('Erro ao atualizar núcleo');
       throw error;
     }
-  }, [syncCompanyLinks]);
+  }, [syncCompanyLinks, nuclei]);
 
   const deleteNucleus = useCallback(async (id: string) => {
     try {
