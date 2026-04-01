@@ -32,6 +32,8 @@ interface InstanceConfig {
 interface ProcessWorkflow {
   workflow_board_id: string;
   activities: ProcessActivity[];
+  use_ai_activities?: boolean;
+  ai_activities_prompt?: string;
 }
 
 interface GroupSettings {
