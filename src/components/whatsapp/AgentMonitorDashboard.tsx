@@ -94,12 +94,14 @@ interface ReferralData {
 type CaseStatus = 'sem_resposta' | 'em_andamento' | 'fechado' | 'recusado' | 'inviavel';
 
 export function AgentMonitorDashboard() {
+  const { toast } = useToast();
   const [agents, setAgents] = useState<AgentData[]>([]);
   const [conversations, setConversations] = useState<ConversationDetail[]>([]);
   const [agentStats, setAgentStats] = useState<AgentStats[]>([]);
   const [referrals, setReferrals] = useState<ReferralData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [generatingLeadId, setGeneratingLeadId] = useState<string | null>(null);
 
   // Filters
   const [agentFilter, setAgentFilter] = useState('all');
