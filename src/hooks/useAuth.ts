@@ -87,6 +87,17 @@ export const useAuth = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        // Handle token errors - clear stale session
+        if (_event === 'TOKEN_REFRESHED' && !session) {
+          console.warn('[AUTH] Token refresh falhou, limpando sessão...');
+          localStorage.removeItem('sb-gliigkupoebmlbwyvijp-auth-token');
+          setUser(null);
+          setSession(null);
+          setProfile(null);
+          settle();
+          return;
+        }
+
         setSession(session);
         setUser(session?.user ?? null);
         
