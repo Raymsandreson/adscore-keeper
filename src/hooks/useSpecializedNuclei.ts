@@ -99,7 +99,7 @@ export function useSpecializedNuclei() {
         .update(rest)
         .eq('id', id)
         .select()
-        .single();
+        .maybeSingle();
       if (error) throw error;
 
       if (company_ids !== undefined) {
