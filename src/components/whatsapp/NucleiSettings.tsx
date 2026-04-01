@@ -3,11 +3,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Pencil, Trash2, Check, X, Building2 } from 'lucide-react';
 import { useSpecializedNuclei, SpecializedNucleus } from '@/hooks/useSpecializedNuclei';
 import { useCompanies, Company } from '@/hooks/useCompanies';
 import { toast } from 'sonner';
+import { Checkbox } from '@/components/ui/checkbox';
 
 const COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#6b7280'];
 
@@ -16,7 +16,7 @@ interface FormState {
   prefix: string;
   color: string;
   description: string;
-  company_id: string;
+  company_ids: string[];
 }
 
 interface FormRowProps {
@@ -37,6 +37,15 @@ const FormRow = memo(function FormRow({
   newCompanyName, setNewCompanyName, activeCompanies,
   onAddCompany, onSave, onCancel
 }: FormRowProps) {
+  const toggleCompany = (companyId: string) => {
+    setForm(f => ({
+      ...f,
+      company_ids: f.company_ids.includes(companyId)
+        ? f.company_ids.filter(id => id !== companyId)
+        : [...f.company_ids, companyId]
+    }));
+  };
+
   return (
     <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
       <div className="grid grid-cols-2 gap-2">
@@ -47,21 +56,24 @@ const FormRow = memo(function FormRow({
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-          <Select value={form.company_id} onValueChange={v => setForm(f => ({ ...f, company_id: v === '_none' ? '' : v }))}>
-            <SelectTrigger className="h-8 text-xs flex-1">
-              <SelectValue placeholder="Vincular a empresa (opcional)" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="_none">Nenhuma empresa</SelectItem>
-              {activeCompanies.map(c => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button type="button" size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={() => setShowNewCompany(s => !s)}>
+          <span className="text-xs text-muted-foreground">Empresas vinculadas:</span>
+          <Button type="button" size="sm" variant="outline" className="h-7 text-xs shrink-0 ml-auto" onClick={() => setShowNewCompany(s => !s)}>
             <Plus className="h-3 w-3 mr-1" />Nova
           </Button>
         </div>
+        {activeCompanies.length > 0 && (
+          <div className="grid grid-cols-1 gap-1.5 pl-6 max-h-32 overflow-y-auto">
+            {activeCompanies.map(c => (
+              <label key={c.id} className="flex items-center gap-2 cursor-pointer text-xs hover:bg-muted/50 rounded px-1 py-0.5">
+                <Checkbox
+                  checked={form.company_ids.includes(c.id)}
+                  onCheckedChange={() => toggleCompany(c.id)}
+                />
+                <span>{c.trading_name || c.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
         {showNewCompany && (
           <div className="flex items-center gap-2 pl-6">
             <Input
@@ -78,7 +90,7 @@ const FormRow = memo(function FormRow({
               onClick={async () => {
                 try {
                   const company = await onAddCompany({ name: newCompanyName.trim() });
-                  setForm(f => ({ ...f, company_id: company.id }));
+                  setForm(f => ({ ...f, company_ids: [...f.company_ids, company.id] }));
                   setNewCompanyName('');
                   setShowNewCompany(false);
                   toast.success('Empresa criada');
@@ -117,30 +129,30 @@ export function NucleiSettings() {
   const { activeCompanies, addCompany } = useCompanies();
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>({ name: '', prefix: '', color: COLORS[0], description: '', company_id: '' });
+  const [form, setForm] = useState<FormState>({ name: '', prefix: '', color: COLORS[0], description: '', company_ids: [] });
   const [showNewCompany, setShowNewCompany] = useState(false);
   const [newCompanyName, setNewCompanyName] = useState('');
 
   const resetForm = () => {
-    setForm({ name: '', prefix: '', color: COLORS[0], description: '', company_id: '' });
+    setForm({ name: '', prefix: '', color: COLORS[0], description: '', company_ids: [] });
     setAdding(false);
     setEditingId(null);
   };
 
   const handleAdd = async () => {
     if (!form.name || !form.prefix) return toast.error('Nome e prefixo são obrigatórios');
-    await addNucleus({ ...form, company_id: form.company_id || null });
+    await addNucleus({ ...form });
     resetForm();
   };
 
   const startEdit = (n: SpecializedNucleus) => {
     setEditingId(n.id);
-    setForm({ name: n.name, prefix: n.prefix, color: n.color, description: n.description || '', company_id: n.company_id || '' });
+    setForm({ name: n.name, prefix: n.prefix, color: n.color, description: n.description || '', company_ids: n.company_ids || [] });
   };
 
   const handleUpdate = async () => {
     if (!editingId || !form.name || !form.prefix) return;
-    await updateNucleus(editingId, { ...form, company_id: form.company_id || null });
+    await updateNucleus(editingId, { ...form });
     resetForm();
   };
 
@@ -177,13 +189,17 @@ export function NucleiSettings() {
             <div key={n.id} className="flex items-center gap-3 p-3 rounded-lg border">
               <div className="h-4 w-4 rounded-full shrink-0" style={{ backgroundColor: n.color }} />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-medium">{n.name}</span>
                   <Badge variant="outline" className="text-[10px]">{n.prefix}</Badge>
-                  {n.company_id && (() => {
-                    const company = activeCompanies.find(c => c.id === n.company_id);
-                    return company ? <Badge variant="secondary" className="text-[10px]"><Building2 className="h-2.5 w-2.5 mr-0.5" />{company.trading_name || company.name}</Badge> : null;
-                  })()}
+                  {(n.company_ids || []).map(cid => {
+                    const company = activeCompanies.find(c => c.id === cid);
+                    return company ? (
+                      <Badge key={cid} variant="secondary" className="text-[10px]">
+                        <Building2 className="h-2.5 w-2.5 mr-0.5" />{company.trading_name || company.name}
+                      </Badge>
+                    ) : null;
+                  })}
                 </div>
                 {n.description && <p className="text-xs text-muted-foreground truncate">{n.description}</p>}
               </div>
