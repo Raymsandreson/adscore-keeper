@@ -248,7 +248,7 @@ REGRAS:
           const dateField = statusMap[cleaned.lead_status]
           const today = new Date().toISOString().slice(0, 10)
           const statusUpdate: Record<string, any> = {
-            lead_status: cleaned.lead_status === 'unviable' ? 'unviable' : cleaned.lead_status,
+            lead_status: cleaned.lead_status === 'unviable' ? 'inviavel' : cleaned.lead_status,
             lead_status_reason: cleaned.lead_status_reason || null,
             lead_status_changed_at: new Date().toISOString(),
             [dateField]: today,
