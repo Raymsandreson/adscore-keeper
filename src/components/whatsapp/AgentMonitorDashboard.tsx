@@ -103,6 +103,8 @@ export function AgentMonitorDashboard() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [generatingLeadId, setGeneratingLeadId] = useState<string | null>(null);
+  const [promptDialogOpen, setPromptDialogOpen] = useState(false);
+  const [promptDialogLead, setPromptDialogLead] = useState<{ id: string; name: string } | null>(null);
 
   // Filters
   const [agentFilter, setAgentFilter] = useState('all');
