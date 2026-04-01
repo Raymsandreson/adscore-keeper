@@ -52,7 +52,20 @@ export function NucleiSettings() {
         <Input placeholder="Nome" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
         <Input placeholder="Prefixo (ex: ATT)" value={form.prefix} onChange={e => setForm(f => ({ ...f, prefix: e.target.value.toUpperCase() }))} maxLength={5} />
       </div>
-      <Input placeholder="Descrição (opcional)" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+      <div className="flex items-center gap-2">
+        <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+        <Select value={form.company_id} onValueChange={v => setForm(f => ({ ...f, company_id: v === '_none' ? '' : v }))}>
+          <SelectTrigger className="h-8 text-xs flex-1">
+            <SelectValue placeholder="Vincular a empresa (opcional)" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="_none">Nenhuma empresa</SelectItem>
+            {activeCompanies.map(c => (
+              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">Cor:</span>
         {COLORS.map(c => (
