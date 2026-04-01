@@ -131,20 +131,31 @@ export function EcosystemConnectionsMap({
   };
 
   const getConnectedCompanies = (type: EntityType, id: string) => {
-    if (type === 'product') {
-      const product = activeProducts.find(p => p.id === id);
-      return product?.company_id ? activeCompanies.filter(c => c.id === product.company_id) : [];
-    }
     if (type === 'nucleus') {
-      const nucleusProducts = activeProducts.filter(p => p.nucleus_id === id);
-      const companyIds = [...new Set(nucleusProducts.map(p => p.company_id).filter(Boolean))];
-      return activeCompanies.filter(c => companyIds.includes(c.id));
+      // Direct: nucleus.company_id
+      const nucleus = activeNuclei.find(n => n.id === id);
+      return nucleus?.company_id ? activeCompanies.filter(c => c.id === nucleus.company_id) : [];
+    }
+    if (type === 'product') {
+      // Via product.company_id OR product.nucleus.company_id
+      const product = activeProducts.find(p => p.id === id);
+      if (product?.company_id) return activeCompanies.filter(c => c.id === product.company_id);
+      if (product?.nucleus_id) {
+        const nucleus = activeNuclei.find(n => n.id === product.nucleus_id);
+        return nucleus?.company_id ? activeCompanies.filter(c => c.id === nucleus.company_id) : [];
+      }
+      return [];
     }
     if (type === 'board') {
       const board = boards.find(b => b.id === id);
       if (!board?.product_service_id) return [];
       const product = activeProducts.find(p => p.id === board.product_service_id);
-      return product?.company_id ? activeCompanies.filter(c => c.id === product.company_id) : [];
+      if (product?.company_id) return activeCompanies.filter(c => c.id === product.company_id);
+      if (product?.nucleus_id) {
+        const nucleus = activeNuclei.find(n => n.id === product.nucleus_id);
+        return nucleus?.company_id ? activeCompanies.filter(c => c.id === nucleus.company_id) : [];
+      }
+      return [];
     }
     if (type === 'team') {
       const team = teams.find(t => t.id === id);
@@ -152,7 +163,12 @@ export function EcosystemConnectionsMap({
       const board = boards.find(b => b.id === team.board_id);
       if (!board?.product_service_id) return [];
       const product = activeProducts.find(p => p.id === board.product_service_id);
-      return product?.company_id ? activeCompanies.filter(c => c.id === product.company_id) : [];
+      if (product?.company_id) return activeCompanies.filter(c => c.id === product.company_id);
+      if (product?.nucleus_id) {
+        const nucleus = activeNuclei.find(n => n.id === product.nucleus_id);
+        return nucleus?.company_id ? activeCompanies.filter(c => c.id === nucleus.company_id) : [];
+      }
+      return [];
     }
     return [];
   };
