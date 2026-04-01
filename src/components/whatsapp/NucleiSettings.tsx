@@ -3,38 +3,41 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Pencil, Trash2, Check, X } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Plus, Pencil, Trash2, Check, X, Building2 } from 'lucide-react';
 import { useSpecializedNuclei, SpecializedNucleus } from '@/hooks/useSpecializedNuclei';
+import { useCompanies } from '@/hooks/useCompanies';
 import { toast } from 'sonner';
 
 const COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#6b7280'];
 
 export function NucleiSettings() {
   const { nuclei, loading, addNucleus, updateNucleus, deleteNucleus } = useSpecializedNuclei();
+  const { activeCompanies } = useCompanies();
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: '', prefix: '', color: COLORS[0], description: '' });
+  const [form, setForm] = useState({ name: '', prefix: '', color: COLORS[0], description: '', company_id: '' });
 
   const resetForm = () => {
-    setForm({ name: '', prefix: '', color: COLORS[0], description: '' });
+    setForm({ name: '', prefix: '', color: COLORS[0], description: '', company_id: '' });
     setAdding(false);
     setEditingId(null);
   };
 
   const handleAdd = async () => {
     if (!form.name || !form.prefix) return toast.error('Nome e prefixo são obrigatórios');
-    await addNucleus(form);
+    await addNucleus({ ...form, company_id: form.company_id || null });
     resetForm();
   };
 
   const startEdit = (n: SpecializedNucleus) => {
     setEditingId(n.id);
-    setForm({ name: n.name, prefix: n.prefix, color: n.color, description: n.description || '' });
+    setForm({ name: n.name, prefix: n.prefix, color: n.color, description: n.description || '', company_id: n.company_id || '' });
   };
 
   const handleUpdate = async () => {
     if (!editingId || !form.name || !form.prefix) return;
-    await updateNucleus(editingId, form);
+    await updateNucleus(editingId, { ...form, company_id: form.company_id || null });
     resetForm();
   };
 
@@ -50,6 +53,20 @@ export function NucleiSettings() {
         <Input placeholder="Prefixo (ex: ATT)" value={form.prefix} onChange={e => setForm(f => ({ ...f, prefix: e.target.value.toUpperCase() }))} maxLength={5} />
       </div>
       <Input placeholder="Descrição (opcional)" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+      <div className="flex items-center gap-2">
+        <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+        <Select value={form.company_id} onValueChange={v => setForm(f => ({ ...f, company_id: v === '_none' ? '' : v }))}>
+          <SelectTrigger className="h-8 text-xs flex-1">
+            <SelectValue placeholder="Vincular a empresa (opcional)" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="_none">Nenhuma empresa</SelectItem>
+            {activeCompanies.map(c => (
+              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">Cor:</span>
         {COLORS.map(c => (
@@ -91,6 +108,10 @@ export function NucleiSettings() {
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{n.name}</span>
                   <Badge variant="outline" className="text-[10px]">{n.prefix}</Badge>
+                  {n.company_id && (() => {
+                    const company = activeCompanies.find(c => c.id === n.company_id);
+                    return company ? <Badge variant="secondary" className="text-[10px]"><Building2 className="h-2.5 w-2.5 mr-0.5" />{company.trading_name || company.name}</Badge> : null;
+                  })()}
                 </div>
                 {n.description && <p className="text-xs text-muted-foreground truncate">{n.description}</p>}
               </div>

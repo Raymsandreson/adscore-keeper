@@ -115,9 +115,8 @@ export function EcosystemConnectionsMap({
       return product?.nucleus_id ? activeNuclei.filter(n => n.id === product.nucleus_id) : [];
     }
     if (type === 'company') {
-      const companyProducts = activeProducts.filter(p => p.company_id === id);
-      const nucleusIds = [...new Set(companyProducts.map(p => p.nucleus_id).filter(Boolean))];
-      return activeNuclei.filter(n => nucleusIds.includes(n.id));
+      // Direct: nuclei with company_id matching
+      return activeNuclei.filter(n => n.company_id === id);
     }
     if (type === 'team') {
       const team = teams.find(t => t.id === id);
@@ -131,20 +130,31 @@ export function EcosystemConnectionsMap({
   };
 
   const getConnectedCompanies = (type: EntityType, id: string) => {
-    if (type === 'product') {
-      const product = activeProducts.find(p => p.id === id);
-      return product?.company_id ? activeCompanies.filter(c => c.id === product.company_id) : [];
-    }
     if (type === 'nucleus') {
-      const nucleusProducts = activeProducts.filter(p => p.nucleus_id === id);
-      const companyIds = [...new Set(nucleusProducts.map(p => p.company_id).filter(Boolean))];
-      return activeCompanies.filter(c => companyIds.includes(c.id));
+      // Direct: nucleus.company_id
+      const nucleus = activeNuclei.find(n => n.id === id);
+      return nucleus?.company_id ? activeCompanies.filter(c => c.id === nucleus.company_id) : [];
+    }
+    if (type === 'product') {
+      // Via product.company_id OR product.nucleus.company_id
+      const product = activeProducts.find(p => p.id === id);
+      if (product?.company_id) return activeCompanies.filter(c => c.id === product.company_id);
+      if (product?.nucleus_id) {
+        const nucleus = activeNuclei.find(n => n.id === product.nucleus_id);
+        return nucleus?.company_id ? activeCompanies.filter(c => c.id === nucleus.company_id) : [];
+      }
+      return [];
     }
     if (type === 'board') {
       const board = boards.find(b => b.id === id);
       if (!board?.product_service_id) return [];
       const product = activeProducts.find(p => p.id === board.product_service_id);
-      return product?.company_id ? activeCompanies.filter(c => c.id === product.company_id) : [];
+      if (product?.company_id) return activeCompanies.filter(c => c.id === product.company_id);
+      if (product?.nucleus_id) {
+        const nucleus = activeNuclei.find(n => n.id === product.nucleus_id);
+        return nucleus?.company_id ? activeCompanies.filter(c => c.id === nucleus.company_id) : [];
+      }
+      return [];
     }
     if (type === 'team') {
       const team = teams.find(t => t.id === id);
@@ -152,7 +162,12 @@ export function EcosystemConnectionsMap({
       const board = boards.find(b => b.id === team.board_id);
       if (!board?.product_service_id) return [];
       const product = activeProducts.find(p => p.id === board.product_service_id);
-      return product?.company_id ? activeCompanies.filter(c => c.id === product.company_id) : [];
+      if (product?.company_id) return activeCompanies.filter(c => c.id === product.company_id);
+      if (product?.nucleus_id) {
+        const nucleus = activeNuclei.find(n => n.id === product.nucleus_id);
+        return nucleus?.company_id ? activeCompanies.filter(c => c.id === nucleus.company_id) : [];
+      }
+      return [];
     }
     return [];
   };
@@ -231,7 +246,7 @@ export function EcosystemConnectionsMap({
           Mapa de Conexões do Ecossistema
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Clique em qualquer item para ver suas conexões. Cadeia: Núcleo → Produto → Funil → Time | Produto → Empresa
+          Clique em qualquer item para ver suas conexões. Cadeia: Empresa → Núcleo → Produto → Funil → Time
         </p>
         {hasSelection && (
           <Button variant="ghost" size="sm" className="self-start text-xs mt-1" onClick={() => { setSelectedType(null); setSelectedId(null); }}>
@@ -342,18 +357,24 @@ export function EcosystemConnectionsMap({
         </div>
 
         {/* Flow arrows hint */}
-        <div className="flex items-center justify-center gap-2 pt-2 text-muted-foreground">
+        <div className="flex items-center justify-center gap-2 pt-2 text-muted-foreground flex-wrap">
+          <span className="text-[10px] font-medium">Empresa</span>
+          <ArrowRight className="h-3 w-3" />
           <span className="text-[10px] font-medium">Núcleo</span>
           <ArrowRight className="h-3 w-3" />
           <span className="text-[10px] font-medium">Produto</span>
           <ArrowRight className="h-3 w-3" />
-          <span className="text-[10px] font-medium">Funil</span>
+          <span className="text-[10px] font-medium">Funil de Vendas</span>
           <ArrowRight className="h-3 w-3" />
           <span className="text-[10px] font-medium">Time</span>
           <span className="text-[10px] mx-1">|</span>
-          <span className="text-[10px] font-medium">Produto</span>
+          <span className="text-[10px] font-medium">Fechado</span>
           <ArrowRight className="h-3 w-3" />
-          <span className="text-[10px] font-medium">Empresa</span>
+          <span className="text-[10px] font-medium">Caso</span>
+          <ArrowRight className="h-3 w-3" />
+          <span className="text-[10px] font-medium">Processos</span>
+          <ArrowRight className="h-3 w-3" />
+          <span className="text-[10px] font-medium">Fluxo de Trabalho</span>
         </div>
       </CardContent>
     </Card>
