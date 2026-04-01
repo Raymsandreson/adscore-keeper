@@ -131,8 +131,19 @@ export const useAuth = () => {
         }
       }
       settle();
-    }).catch((err) => {
-      settle(`Erro ao obter sessão: ${err?.message || 'desconhecido'}`);
+    }).catch(async (err) => {
+      // If refresh token is invalid/expired, clear local storage and show login
+      if (err?.message?.includes('Refresh Token') || err?.code === 'refresh_token_not_found') {
+        console.warn('[AUTH] Token inválido detectado, limpando sessão local...');
+        await supabase.auth.signOut({ scope: 'local' });
+        localStorage.removeItem('sb-gliigkupoebmlbwyvijp-auth-token');
+        setUser(null);
+        setSession(null);
+        setProfile(null);
+        settle();
+      } else {
+        settle(`Erro ao obter sessão: ${err?.message || 'desconhecido'}`);
+      }
     });
 
     return () => {
