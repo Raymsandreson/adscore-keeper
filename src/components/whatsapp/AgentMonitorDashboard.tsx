@@ -12,7 +12,7 @@ import {
   Bot, MessageCircle, Clock, TrendingUp, Search, RefreshCw,
   CheckCircle, XCircle, Zap,
   MapPin, Phone, PhoneCall, Megaphone, Sparkles,
-  CalendarIcon, Inbox, BarChart3, Heart, AlertCircle, Eye
+  CalendarIcon, Inbox, BarChart3, Heart, AlertCircle, Eye, ClipboardList
 } from 'lucide-react';
 import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
