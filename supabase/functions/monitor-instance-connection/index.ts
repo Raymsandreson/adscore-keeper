@@ -23,7 +23,7 @@ interface InstanceStatus {
   connected: boolean;
 }
 
-async function checkInstanceConnection(inst: { id: string; instance_name: string; instance_token: string; base_url: string | null; owner_phone: string | null }): Promise<InstanceStatus> {
+async function checkInstanceConnection(inst: { id: string; instance_name: string; instance_token: string; base_url: string | null; owner_phone: string | null; notify_on_disconnect?: boolean }): Promise<InstanceStatus> {
   const baseUrl = inst.base_url || 'https://abraci.uazapi.com';
   try {
     const resp = await fetch(`${baseUrl}/instance/status`, {
