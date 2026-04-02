@@ -85,6 +85,19 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     if (!user) return;
 
     try {
+      // Admins see all active instances
+      if (isAdmin) {
+        const { data, error } = await supabase
+          .from('whatsapp_instances')
+          .select('*')
+          .eq('is_active', true)
+          .order('instance_name');
+        if (error) throw error;
+        setInstances((data || []) as WhatsAppInstance[]);
+        return;
+      }
+
+      // Members: only see explicitly assigned instances
       const [{ data: permissions, error: permissionsError }, { data: profile, error: profileError }] = await Promise.all([
         supabase
           .from('whatsapp_instance_users')
@@ -106,13 +119,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         allowedIds.add(profile.default_instance_id);
       }
 
-      // If user has no explicit permissions, show nothing (unless admin)
       if (allowedIds.size === 0) {
         setInstances([]);
         return;
       }
 
-      let query = supabase
+      const { data, error } = await supabase
         .from('whatsapp_instances')
         .select('*')
         .eq('is_active', true)
