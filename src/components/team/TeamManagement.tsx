@@ -436,7 +436,7 @@ export function TeamManagement() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Email</TableHead>
-                  <TableHead>Permissão</TableHead>
+                  <TableHead>Perfil</TableHead>
                   <TableHead>Expira em</TableHead>
                   <TableHead className="w-20"></TableHead>
                 </TableRow>
