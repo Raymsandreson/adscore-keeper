@@ -159,29 +159,40 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
 
     setApplyingProfile(true);
     try {
-      // Delete existing module permissions
-      await supabase.from('member_module_permissions').delete().eq('user_id', member.user_id);
+      const isSystemProfile = (profile as any).is_system;
+      const newRole = isSystemProfile ? 'admin' : 'member';
 
-      // Insert new module permissions
-      if (profile.module_permissions.length > 0) {
-        await supabase.from('member_module_permissions').insert(
-          profile.module_permissions.map((p: any) => ({
-            user_id: member.user_id,
-            module_key: p.module_key,
-            access_level: p.access_level,
-          }))
-        );
-      }
+      // Update role and profile link
+      await supabase
+        .from('user_roles')
+        .update({ role: newRole, access_profile_id: selectedProfileId } as any)
+        .eq('user_id', member.user_id);
 
-      // Update WhatsApp instance permissions
-      await supabase.from('whatsapp_instance_users').delete().eq('user_id', member.user_id);
-      if (profile.whatsapp_instance_ids.length > 0) {
-        await supabase.from('whatsapp_instance_users').insert(
-          profile.whatsapp_instance_ids.map((instId: string) => ({
-            user_id: member.user_id,
-            instance_id: instId,
-          }))
-        );
+      if (!isSystemProfile) {
+        // Delete existing module permissions
+        await supabase.from('member_module_permissions').delete().eq('user_id', member.user_id);
+
+        // Insert new module permissions
+        if (profile.module_permissions.length > 0) {
+          await supabase.from('member_module_permissions').insert(
+            profile.module_permissions.map((p: any) => ({
+              user_id: member.user_id,
+              module_key: p.module_key,
+              access_level: p.access_level,
+            }))
+          );
+        }
+
+        // Update WhatsApp instance permissions
+        await supabase.from('whatsapp_instance_users').delete().eq('user_id', member.user_id);
+        if (profile.whatsapp_instance_ids.length > 0) {
+          await supabase.from('whatsapp_instance_users').insert(
+            profile.whatsapp_instance_ids.map((instId: string) => ({
+              user_id: member.user_id,
+              instance_id: instId,
+            }))
+          );
+        }
       }
 
       toast.success(`Perfil "${profile.name}" aplicado com sucesso!`);
