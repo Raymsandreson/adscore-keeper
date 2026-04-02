@@ -357,46 +357,121 @@ REGRAS:
     const inst = instanceRes.data;
 
     if (startWithDocs) {
-      // Ask for documents first
-      const requiredDocs: string[] = documentTypes
-        .filter((t: string) => t !== 'outros')
-        .filter((t: string) => (documentTypeModes[t] || 'required') === 'required')
-        .map((t: string) => DOC_TYPE_LABELS[t] || t);
-      const optionalDocs: string[] = documentTypes
-        .filter((t: string) => t !== 'outros')
-        .filter((t: string) => documentTypeModes[t] === 'optional')
-        .map((t: string) => DOC_TYPE_LABELS[t] || t);
-      if (documentTypes.includes('outros') && customDocumentNames.length > 0) {
-        const outrosMode = documentTypeModes['outros'] || 'required';
-        if (outrosMode === 'required') {
-          requiredDocs.push(...customDocumentNames.filter((n: string) => n.trim()));
-        } else {
-          optionalDocs.push(...customDocumentNames.filter((n: string) => n.trim()));
+      // Check if conversation history already has media (images/documents) that can be used
+      const mediaMessages = messages.filter((m: any) =>
+        m.direction === "inbound" &&
+        m.media_url &&
+        (m.message_type === "image" || m.message_type === "document")
+      );
+
+      if (mediaMessages.length > 0) {
+        // Already have media in conversation — extract from them automatically instead of asking again
+        console.log(`WJIA: Found ${mediaMessages.length} media messages in history, auto-extracting instead of asking for docs`);
+
+        const mediaUrls = mediaMessages.map((m: any) => m.media_url).filter(Boolean);
+        const docTypeGuesses = mediaMessages.map(() => "outros");
+
+        let customPrompt: string | null = null;
+        if (matchedShortcut?.media_extraction_prompt) {
+          customPrompt = matchedShortcut.media_extraction_prompt;
         }
-      } else if (documentTypes.includes('outros')) {
-        const outrosMode = documentTypeModes['outros'] || 'required';
-        if (outrosMode === 'required') requiredDocs.push('Outros documentos');
-        else optionalDocs.push('Outros documentos');
+
+        try {
+          const { extractedFields: autoExtracted, signerName: autoSigner } =
+            await extractFromDocuments(mediaUrls, catalog, fieldsData, customPrompt, docTypeGuesses);
+
+          for (const f of autoExtracted) upsertCollectedField(fieldsData, f.variable, f.value);
+          if (autoSigner) collectedData.signer_name = autoSigner;
+          syncNameFields(fieldsData);
+          applyDefaults(fieldsData);
+          autoFillDates(fieldsData, catalog);
+          autoSyncCityState(fieldsData, catalog);
+
+          const stillMissing = computeMissingFields(catalog, fieldsData);
+          console.log(`WJIA auto-extract: extracted ${autoExtracted.length} fields, still missing ${stillMissing.length}`);
+
+          // Update session with extracted data
+          const receivedDocs = mediaMessages.map((m: any) => ({
+            type: "outros", media_url: m.media_url, via: "history_auto",
+          }));
+
+          await supabase.from("wjia_collection_sessions").update({
+            collected_data: { ...collectedData, fields: fieldsData, signer_name: collectedData.signer_name || signerName, signer_phone: signerPhone },
+            received_documents: receivedDocs,
+            missing_fields: stillMissing,
+            status: stillMissing.length > 0 ? "collecting" : "ready",
+            updated_at: new Date().toISOString(),
+          }).eq("id", session.id);
+
+          if (stillMissing.length === 0) {
+            // All data extracted from history! Skip to confirmation/generation
+            // Fall through to the "ready" handling below by updating session status
+            session.status = "ready";
+            session.collected_data = { ...collectedData, fields: fieldsData };
+            session.missing_fields = [];
+            // Don't return — let it fall through to generate
+          } else {
+            // Some fields still missing — go to collecting phase (text-based), not docs phase
+            if (inst?.instance_token) {
+              const filledCount = fieldsData.filter((f: any) => f.para).length;
+              const missingList = stillMissing.map((f: any) => `• ${f.friendly_name}`).join("\n");
+              const collectMsg = `📋 Encontrei ${filledCount} dados nos documentos que você já enviou!\n\nAinda preciso de:\n${missingList}\n\nPor favor, me informe esses dados. 🙏`;
+              await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, collectMsg, contact_id, lead_id, "wjia_collect");
+            }
+            return new Response(JSON.stringify({
+              success: true, action: "collection_started",
+              message: `🔄 *Dados extraídos do histórico*\nDocumento: *${parsed.template_name}*\n📊 Dados encontrados: ${fieldsData.filter((f: any) => f.para).length}\n⚠️ Faltantes: ${stillMissing.length}`,
+              session_id: session.id, missing_count: stillMissing.length, auto_extracted: true,
+            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
+        } catch (extractErr) {
+          console.error("Auto-extract from history error:", extractErr);
+          // Fall through to normal doc collection flow
+        }
       }
 
-      let docsFirstMsg = `📝 Para preparar o documento *${parsed.template_name || "Documento"}*, preciso de algumas informações:\n\n`;
-      if (requiredDocs.length > 0) {
-        docsFirstMsg += `📎 *Envie obrigatoriamente:*\n• ${requiredDocs.join('\n• ')}\n\n`;
-      }
-      if (optionalDocs.length > 0) {
-        docsFirstMsg += `💬 *Opcional (envie o documento OU informe os dados por mensagem):*\n• ${optionalDocs.join('\n• ')}\n\n`;
-      }
-      docsFirstMsg += `📸 Envie a *foto ou arquivo* de cada documento. Vou extrair as informações automaticamente!\n\nSe não tiver algum agora, digite *pular*.`;
+      // Only ask for documents if we didn't auto-extract successfully above
+      if (session.status !== "ready") {
+        const requiredDocs: string[] = documentTypes
+          .filter((t: string) => t !== 'outros')
+          .filter((t: string) => (documentTypeModes[t] || 'required') === 'required')
+          .map((t: string) => DOC_TYPE_LABELS[t] || t);
+        const optionalDocs: string[] = documentTypes
+          .filter((t: string) => t !== 'outros')
+          .filter((t: string) => documentTypeModes[t] === 'optional')
+          .map((t: string) => DOC_TYPE_LABELS[t] || t);
+        if (documentTypes.includes('outros') && customDocumentNames.length > 0) {
+          const outrosMode = documentTypeModes['outros'] || 'required';
+          if (outrosMode === 'required') {
+            requiredDocs.push(...customDocumentNames.filter((n: string) => n.trim()));
+          } else {
+            optionalDocs.push(...customDocumentNames.filter((n: string) => n.trim()));
+          }
+        } else if (documentTypes.includes('outros')) {
+          const outrosMode = documentTypeModes['outros'] || 'required';
+          if (outrosMode === 'required') requiredDocs.push('Outros documentos');
+          else optionalDocs.push('Outros documentos');
+        }
 
-      if (inst?.instance_token) {
-        await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, docsFirstMsg, contact_id, lead_id, "wjia_docsfirst");
-      }
+        let docsFirstMsg = `📝 Para preparar o documento *${parsed.template_name || "Documento"}*, preciso de algumas informações:\n\n`;
+        if (requiredDocs.length > 0) {
+          docsFirstMsg += `📎 *Envie obrigatoriamente:*\n• ${requiredDocs.join('\n• ')}\n\n`;
+        }
+        if (optionalDocs.length > 0) {
+          docsFirstMsg += `💬 *Opcional (envie o documento OU informe os dados por mensagem):*\n• ${optionalDocs.join('\n• ')}\n\n`;
+        }
+        docsFirstMsg += `📸 Envie a *foto ou arquivo* de cada documento. Vou extrair as informações automaticamente!\n\nSe não tiver algum agora, digite *pular*.`;
 
-      return new Response(JSON.stringify({
-        success: true, action: "collection_started",
-        message: `🔄 *Coleta de documentos iniciada*\nDocumento: *${parsed.template_name}*\n📎 Pedindo documentos ao cliente.\n📊 Dados encontrados: ${fieldsData.filter((f: any) => f.para).length}\n⚠️ Faltantes: ${missingFields.length}`,
-        session_id: session.id, missing_count: missingFields.length, docs_first: true,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (inst?.instance_token) {
+          await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, docsFirstMsg, contact_id, lead_id, "wjia_docsfirst");
+        }
+
+        return new Response(JSON.stringify({
+          success: true, action: "collection_started",
+          message: `🔄 *Coleta de documentos iniciada*\nDocumento: *${parsed.template_name}*\n📎 Pedindo documentos ao cliente.\n📊 Dados encontrados: ${fieldsData.filter((f: any) => f.para).length}\n⚠️ Faltantes: ${missingFields.length}`,
+          session_id: session.id, missing_count: missingFields.length, docs_first: true,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
     }
 
     // Normal flow: send collection message
