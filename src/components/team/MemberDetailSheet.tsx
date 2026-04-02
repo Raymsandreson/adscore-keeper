@@ -696,6 +696,44 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
               </p>
             </div>
 
+            {/* Apply Access Profile */}
+            {member.role === 'member' && accessProfiles.length > 0 && (
+              <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
+                <Label className="flex items-center gap-1.5 text-sm font-semibold">
+                  <Shield className="h-3.5 w-3.5" />
+                  Aplicar Perfil de Acesso
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Substitui todas as permissões atuais do membro pelas do perfil selecionado.
+                </p>
+                <div className="flex gap-2">
+                  <Select value={selectedProfileId} onValueChange={setSelectedProfileId}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Selecione um perfil..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accessProfiles.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="secondary"
+                    disabled={!selectedProfileId || applyingProfile}
+                    onClick={handleApplyProfile}
+                  >
+                    {applyingProfile ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Aplicar'
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" />
