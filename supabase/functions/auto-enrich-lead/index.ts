@@ -128,7 +128,7 @@ Analise a conversa e extraia TODAS as informações pessoais e profissionais do 
   "sector": "setor de atuação",
   "case_type": "tipo do caso",
   "liability_type": "tipo de responsabilidade",
-  "lead_status": "status do lead baseado na conversa: use null na maioria dos casos. Só preencha com 'closed' se houve assinatura/contrato EXPLÍCITO, 'refused' APENAS se o cliente disse CLARAMENTE que NÃO quer prosseguir (ex: 'não quero', 'desisto', 'não tenho interesse'), 'unviable' APENAS se o atendente determinou EXPLICITAMENTE que o caso é inviável. Em caso de QUALQUER dúvida, use null. Conversas em andamento, triagem, identificação = null (NÃO é refused).",
+  "lead_status": "status do lead baseado na conversa: use null na maioria dos casos. Só preencha com 'closed' se houve assinatura/contrato EXPLÍCITO, 'refused' APENAS se o cliente disse CLARAMENTE que NÃO quer prosseguir (ex: 'não quero', 'desisto', 'não tenho interesse'), 'unviable' se: (1) o atendente determinou que o caso é inviável, OU (2) o cliente claramente NÃO é o público-alvo (ex: confundiu com outra pessoa, ligação engano, homem em campanha de maternidade, pessoa sem nenhuma relação com o serviço oferecido), OU (3) o cliente demonstra total desinteresse/irrelevância com o assunto. Em caso de QUALQUER dúvida, use null. Conversas em andamento, triagem, identificação = null (NÃO é refused).",
   "lead_status_reason": "motivo resumido em 1-2 frases para o status identificado. OBRIGATÓRIO se lead_status não for null. Use null se status for null.",
   "referrals": [
     {
@@ -143,7 +143,7 @@ Analise a conversa e extraia TODAS as informações pessoais e profissionais do 
 REGRAS:
 - Extraia APENAS informações explícitas na conversa
 - Use null para campos não encontrados
-- IMPORTANTE: lead_status deve ser null na grande maioria dos casos. Só marque como 'refused' se o cliente EXPLICITAMENTE recusou. Conversas sem resposta, em triagem, ou em fase inicial NÃO são 'refused'. Na dúvida, use null.
+- IMPORTANTE: lead_status deve ser null na grande maioria dos casos. Só marque como 'refused' se o cliente EXPLICITAMENTE recusou. Marque como 'unviable' se a pessoa claramente não tem relação com o serviço (engano, confusão, perfil incompatível). Conversas sem resposta, em triagem, ou em fase inicial NÃO são 'refused' nem 'unviable'. Na dúvida, use null.
 - lead_status_reason é OBRIGATÓRIO quando lead_status não for null
 - INDICAÇÕES: Se o cliente mencionou alguém que pode ter direito a algum benefício (gestante, mãe de autista, acidentado nos últimos 5 anos com carteira assinada), extraia na lista "referrals". Use [] se não houver indicações.
 - product_type DEVE ser um dos valores: auxilio_maternidade, auxilio_acidente, bpc_loas_autista, indenizacao_acidente_trabalho
