@@ -21,6 +21,7 @@ interface TeamInvitation {
   accepted_at: string | null;
   expires_at: string;
   created_at: string;
+  access_profile_id: string | null;
 }
 
 export function useTeamMembers() {
