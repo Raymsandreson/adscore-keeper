@@ -124,24 +124,23 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data: instData, error: instError } = await supabase
         .from('whatsapp_instances')
         .select('*')
         .eq('is_active', true)
         .in('id', Array.from(allowedIds))
         .order('instance_name');
 
-      const { data, error } = await query;
-      if (error) throw error;
+      if (instError) throw instError;
 
-      setInstances((data || []) as WhatsAppInstance[]);
+      setInstances((instData || []) as WhatsAppInstance[]);
     } catch (error) {
       console.error('Error fetching WhatsApp instances:', error);
       setInstances([]);
     } finally {
       setStatsLoading(false);
     }
-  }, [user]);
+  }, [user, isAdmin]);
 
   // Lightweight stats fetch — only counts, no full message data
   const fetchInstanceStats = useCallback(async () => {
