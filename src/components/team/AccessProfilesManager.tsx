@@ -134,6 +134,12 @@ export function AccessProfilesManager() {
       return;
     }
 
+    const hasWhatsApp = Object.entries(modules).some(([key, level]) => key === 'whatsapp' && level !== 'none');
+    if (hasWhatsApp && selectedInstances.length === 0) {
+      toast.error('Selecione pelo menos uma instância de WhatsApp para este perfil');
+      return;
+    }
+
     const modulePerms = Object.entries(modules)
       .filter(([, level]) => level !== 'none')
       .map(([module_key, access_level]) => ({ module_key, access_level }));
