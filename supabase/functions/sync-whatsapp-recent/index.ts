@@ -269,18 +269,28 @@ Deno.serve(async (req) => {
     }
 
     const phones = [...new Set(snapshots.map((s) => s.phone))];
-    const { data: latestRows } = await dataClient
-      .from('whatsapp_messages')
-      .select('phone, created_at')
-      .eq('instance_name', instance.instance_name)
-      .in('phone', phones)
-      .order('created_at', { ascending: false });
+
+    // Check latest messages in BOTH databases to avoid duplicates
+    const [extLatest, cloudLatest] = await Promise.all([
+      dataClient
+        .from('whatsapp_messages')
+        .select('phone, created_at')
+        .eq('instance_name', instance.instance_name)
+        .in('phone', phones)
+        .order('created_at', { ascending: false }),
+      internalClient
+        .from('whatsapp_messages')
+        .select('phone, created_at')
+        .eq('instance_name', instance.instance_name)
+        .in('phone', phones)
+        .order('created_at', { ascending: false }),
+    ]);
 
     const latestByPhone = new Map<string, number>();
-    for (const row of latestRows || []) {
-      if (!latestByPhone.has(row.phone)) {
-        latestByPhone.set(row.phone, new Date(row.created_at).getTime());
-      }
+    for (const row of [...(extLatest.data || []), ...(cloudLatest.data || [])]) {
+      const existing = latestByPhone.get(row.phone) || 0;
+      const rowMs = new Date(row.created_at).getTime();
+      if (rowMs > existing) latestByPhone.set(row.phone, rowMs);
     }
 
     const inserts = snapshots
@@ -307,13 +317,20 @@ Deno.serve(async (req) => {
       }));
 
     if (inserts.length > 0) {
-      const { error: insertError } = await dataClient
-        .from('whatsapp_messages')
-        .insert(inserts);
+      // Write to BOTH databases: external (source of truth) + Cloud (frontend reads)
+      const [extResult, cloudResult] = await Promise.all([
+        dataClient.from('whatsapp_messages').insert(inserts),
+        internalClient.from('whatsapp_messages').insert(inserts),
+      ]);
 
-      if (insertError) {
-        console.error('sync-whatsapp-recent insert error:', insertError);
-        return new Response(JSON.stringify({ success: false, error: insertError.message }), {
+      if (extResult.error) {
+        console.error('sync-whatsapp-recent external insert error:', extResult.error);
+      }
+      if (cloudResult.error) {
+        console.error('sync-whatsapp-recent cloud insert error:', cloudResult.error);
+      }
+      if (extResult.error && cloudResult.error) {
+        return new Response(JSON.stringify({ success: false, error: extResult.error.message }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
