@@ -165,13 +165,13 @@ export function TeamManagement() {
     );
   }
 
-  if (!isAdmin) {
+  if (!canManageTeam) {
     return (
       <Card>
         <CardContent className="p-8 text-center">
           <Shield className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <p className="text-muted-foreground">
-            Apenas administradores podem gerenciar a equipe
+            Você não tem permissão para gerenciar a equipe
           </p>
         </CardContent>
       </Card>
