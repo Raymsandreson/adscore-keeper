@@ -868,22 +868,28 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
   // Load all messages for a specific conversation (when selected)
   // Also refreshes the conversation list for up-to-date sidebar
-  const fetchFullConversation = useCallback(async (phone: string) => {
+  const fetchFullConversation = useCallback(async (phone: string, instanceName?: string | null) => {
     activePhoneRef.current = phone;
     // Refresh conversation list in background when opening/switching chats
     fetchMessages(true);
     try {
-      // Paginate to get ALL messages for this phone (up to 3000)
+      // Paginate to get ALL messages for this phone/instance (up to 3000)
       const allMsgs: WhatsAppMessage[] = [];
       let from = 0;
       const pageSize = 1000;
       const maxPages = 3;
 
       for (let page = 0; page < maxPages; page++) {
-        const { data, error } = await supabase
+        let query = supabase
           .from('whatsapp_messages')
           .select('*')
-          .eq('phone', phone)
+          .eq('phone', phone);
+
+        if (instanceName) {
+          query = query.eq('instance_name', instanceName);
+        }
+
+        const { data, error } = await query
           .order('created_at', { ascending: false })
           .range(from, from + pageSize - 1);
 
@@ -912,13 +918,15 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       const firstNamedMessage = deduped.find(m => m.contact_name || m.contact_id || m.lead_id) || deduped[0] || null;
       const lastMessage = deduped[0] || null;
       const unreadCount = deduped.filter(m => !m.read_at && m.direction === 'inbound').length;
+      const targetInstanceName = instanceName || lastMessage?.instance_name || null;
 
       setConversations(prev => {
-        const existingIndex = prev.findIndex(c => c.phone === phone);
+        const existingIndex = prev.findIndex(c => c.phone === phone && (!targetInstanceName || c.instance_name === targetInstanceName));
 
         if (existingIndex >= 0) {
           return prev.map(c => {
-            if (c.phone !== phone) return c;
+            const isTargetConversation = c.phone === phone && (!targetInstanceName || c.instance_name === targetInstanceName);
+            if (!isTargetConversation) return c;
             return {
               ...c,
               messages: deduped,
@@ -928,23 +936,23 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
               last_message: lastMessage?.message_text || c.last_message,
               last_message_at: lastMessage?.created_at || c.last_message_at,
               unread_count: unreadCount,
-              instance_name: lastMessage?.instance_name || c.instance_name,
+              instance_name: c.instance_name || targetInstanceName,
             };
           });
         }
 
-        if (!lastMessage) return prev;
+        if (!lastMessage && !targetInstanceName) return prev;
 
         const next = [{
           phone,
           contact_name: firstNamedMessage?.contact_name || null,
           contact_id: firstNamedMessage?.contact_id || null,
           lead_id: firstNamedMessage?.lead_id || null,
-          last_message: lastMessage.message_text,
-          last_message_at: lastMessage.created_at,
+          last_message: lastMessage?.message_text || null,
+          last_message_at: lastMessage?.created_at || new Date().toISOString(),
           unread_count: unreadCount,
           messages: deduped,
-          instance_name: lastMessage.instance_name,
+          instance_name: targetInstanceName,
         }, ...prev];
 
         return next.sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
