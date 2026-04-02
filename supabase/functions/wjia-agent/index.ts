@@ -1124,7 +1124,30 @@ REGRAS:
   }
 
   if (allCollected) {
-    // Show summary for confirmation
+    // Skip confirmation: auto-generate when all data is collected
+    if (skipConfirmation && zapsignToken) {
+      console.log(`WJIA skip_confirmation: all fields collected, auto-generating document`);
+      await supabase.from("wjia_collection_sessions").update({
+        collected_data: updatedCollectedData, missing_fields: [], status: "ready",
+        updated_at: new Date().toISOString(),
+      }).eq("id", session.id);
+
+      // Send a brief confirmation message before generating
+      const summaryLines = currentFields.filter(f => f.para).map(f => `• *${getFieldLabel(f, catalog)}*: ${f.para}`).join("\n");
+      const confirmMsg = `✅ *Dados completos!*\n\n${summaryLines}\n\n📄 Gerando o documento *${session.template_name}*... Aguarde!`;
+      await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, confirmMsg, session.contact_id, session.lead_id, "wjia_autoconfirm", splitOpts);
+
+      session.received_documents = receivedDocs;
+      const signerName = collectedData.signer_name || "Cliente";
+      const signerPhone = collectedData.signer_phone || normalizedPhone;
+      const docData = await generateZapSignDocument(supabase, session, currentFields, signerName, signerPhone, normalizedPhone, instance_name, inst, zapsignToken);
+
+      return new Response(JSON.stringify({
+        active_session: true, processed: true, confirmed: true, generated: !!docData, session_id: session.id, auto_confirmed: true,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Show summary for manual confirmation
     const summaryLines = currentFields.filter(f => f.para).map(f => `• *${getFieldLabel(f, catalog)}*: ${f.para}`).join("\n");
     const docsSection = receivedDocs.length > 0
       ? `\n\n📎 *Documentos anexados:*\n${receivedDocs.map((d: any) => `• ✅ ${DOC_TYPE_LABELS[d.type] || d.type}`).join("\n")}` : "";
