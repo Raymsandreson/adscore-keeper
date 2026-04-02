@@ -79,7 +79,12 @@ export function useTeamMembers() {
     fetchMembers();
   }, [fetchMembers]);
 
-  const inviteMember = useCallback(async (email: string, role: 'admin' | 'member' = 'member') => {
+  const inviteMember = useCallback(async (
+    email: string,
+    role: 'admin' | 'member' = 'member',
+    modulePermissions?: Array<{ module_key: string; access_level: string }>,
+    whatsappInstanceIds?: string[],
+  ) => {
     if (!isAdmin) {
       throw new Error('Only admins can invite members');
     }
@@ -87,14 +92,16 @@ export function useTeamMembers() {
     const { data: user } = await supabase.auth.getUser();
     const normalizedEmail = email.toLowerCase().trim();
     
-    // Insert invitation into database
+    // Insert invitation into database with pre-configured permissions
     const { error } = await supabase
       .from('team_invitations')
       .insert({
         email: normalizedEmail,
         role,
         invited_by: user.user?.id,
-      });
+        module_permissions: modulePermissions || [],
+        whatsapp_instance_ids: whatsappInstanceIds || [],
+      } as any);
 
     if (error) throw error;
 
@@ -124,7 +131,6 @@ export function useTeamMembers() {
       }
     } catch (emailError) {
       console.error('Failed to send invitation email:', emailError);
-      // Don't throw - invitation was created, email is just a bonus
     }
 
     await fetchMembers();
