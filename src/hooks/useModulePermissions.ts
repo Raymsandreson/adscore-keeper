@@ -92,7 +92,7 @@ export function useModulePermissions() {
     const result: Record<string, AccessLevel> = {};
     MODULE_DEFINITIONS.forEach(mod => {
       const perm = permissions.find(p => p.user_id === userId && p.module_key === mod.key);
-      result[mod.key] = perm ? perm.access_level as AccessLevel : 'edit';
+      result[mod.key] = perm ? perm.access_level as AccessLevel : 'none';
     });
     return result;
   }, [permissions]);
