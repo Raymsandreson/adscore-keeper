@@ -18,6 +18,7 @@ import { CareerPlanManager } from '@/components/team/CareerPlanManager';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
 import { MetricsManager } from '@/components/team/MetricsManager';
 import { AmbassadorCentral } from '@/components/ambassadors/AmbassadorCentral';
+import { AccessProfilesManager } from '@/components/team/AccessProfilesManager';
 import { cn } from '@/lib/utils';
 import {
   Users,
