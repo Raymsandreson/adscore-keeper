@@ -80,6 +80,27 @@ export function TeamManagement() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sendingNotifUserId, setSendingNotifUserId] = useState<string | null>(null);
+  const [showPermissions, setShowPermissions] = useState(false);
+
+  // Module permissions state
+  const [selectedModules, setSelectedModules] = useState<Record<string, AccessLevel>>(() => {
+    const init: Record<string, AccessLevel> = {};
+    MODULE_DEFINITIONS.forEach(m => { init[m.key] = 'none'; });
+    return init;
+  });
+
+  // WhatsApp instances
+  const [whatsappInstances, setWhatsappInstances] = useState<WhatsAppInstanceOption[]>([]);
+  const [selectedInstances, setSelectedInstances] = useState<string[]>([]);
+
+  useEffect(() => {
+    supabase
+      .from('whatsapp_instances')
+      .select('id, instance_name')
+      .eq('is_active', true)
+      .order('instance_name')
+      .then(({ data }) => setWhatsappInstances((data || []) as WhatsAppInstanceOption[]));
+  }, []);
 
   const filteredMembers = members.filter((member) => {
     if (!searchTerm.trim()) return true;
