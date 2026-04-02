@@ -56,6 +56,8 @@ export interface InstanceStats {
   unread_count: number;
 }
 
+const getConversationKey = (phone: string, instanceName?: string | null) => `${phone}__${instanceName || ''}`;
+
 export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const { user } = useAuthContext();
   const { isAdmin } = useUserRole();
