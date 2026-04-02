@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_instances ADD COLUMN IF NOT EXISTS notify_on_disconnect BOOLEAN NOT NULL DEFAULT true;
