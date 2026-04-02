@@ -61,6 +61,7 @@ const ALL_TABS: TabDef[] = [
   { key: 'permissions', label: 'Cartões', icon: CreditCard },
   { key: 'accounts', label: 'Contas', icon: Landmark },
   { key: 'modules', label: 'Acessos', icon: Lock },
+  { key: 'profiles', label: 'Perfis', icon: Shield },
 ];
 
 function TeamTabContent({ tab, availableCards }: { tab: string; availableCards: string[] }) {
