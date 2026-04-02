@@ -113,7 +113,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
 
   useEffect(() => {
     const fetchInstances = async () => {
-      const [instRes, presetRes, customRes] = await Promise.all([
+      const [instRes, presetRes, customRes, profilesRes] = await Promise.all([
         supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
         Promise.resolve([
           { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura' },
@@ -128,10 +128,16 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
           { id: 'SAz9YHcvj6GT2YYXdXww', name: 'River' },
         ]),
         supabase.from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
+        supabase.from('access_profiles').select('id, name, description, module_permissions, whatsapp_instance_ids').eq('is_active', true).order('name'),
       ]);
       setInstances(instRes.data || []);
       const customVoices = (customRes.data || []).map((v: any) => ({ id: v.elevenlabs_voice_id, name: `🎤 ${v.name}` }));
       setVoices([...presetRes, ...customVoices]);
+      setAccessProfiles((profilesRes.data || []).map((p: any) => ({
+        ...p,
+        module_permissions: Array.isArray(p.module_permissions) ? p.module_permissions : [],
+        whatsapp_instance_ids: p.whatsapp_instance_ids || [],
+      })));
     };
     fetchInstances();
   }, []);
@@ -140,10 +146,53 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     if (member) {
       setFullName(member.full_name || '');
       setEmail(member.email || '');
+      setSelectedProfileId('');
       fetchProfileExtras();
       fetchMemberData();
     }
   }, [member]);
+
+  const handleApplyProfile = async () => {
+    if (!member || !selectedProfileId) return;
+    const profile = accessProfiles.find(p => p.id === selectedProfileId);
+    if (!profile) return;
+
+    setApplyingProfile(true);
+    try {
+      // Delete existing module permissions
+      await supabase.from('member_module_permissions').delete().eq('user_id', member.user_id);
+
+      // Insert new module permissions
+      if (profile.module_permissions.length > 0) {
+        await supabase.from('member_module_permissions').insert(
+          profile.module_permissions.map((p: any) => ({
+            user_id: member.user_id,
+            module_key: p.module_key,
+            access_level: p.access_level,
+          }))
+        );
+      }
+
+      // Update WhatsApp instance permissions
+      await supabase.from('whatsapp_instance_users').delete().eq('user_id', member.user_id);
+      if (profile.whatsapp_instance_ids.length > 0) {
+        await supabase.from('whatsapp_instance_users').insert(
+          profile.whatsapp_instance_ids.map((instId: string) => ({
+            user_id: member.user_id,
+            instance_id: instId,
+          }))
+        );
+      }
+
+      toast.success(`Perfil "${profile.name}" aplicado com sucesso!`);
+      setSelectedProfileId('');
+      onUpdate();
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao aplicar perfil');
+    } finally {
+      setApplyingProfile(false);
+    }
+  };
 
   const fetchProfileExtras = async () => {
     if (!member) return;
