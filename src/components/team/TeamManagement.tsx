@@ -85,7 +85,7 @@ export function TeamManagement() {
 
   // Access profiles
   const [accessProfiles, setAccessProfiles] = useState<Array<{
-    id: string; name: string;
+    id: string; name: string; description: string | null; is_system: boolean;
     module_permissions: Array<{ module_key: string; access_level: string }>;
     whatsapp_instance_ids: string[];
   }>>([]);
