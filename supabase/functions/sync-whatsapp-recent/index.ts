@@ -1,11 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
-
-// Use external Supabase project when configured (hybrid architecture)
-const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
-const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
-const RESOLVED_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+// Use the native Supabase (Lovable Cloud) for all DB operations
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 
 const corsHeaders = {
@@ -133,8 +130,8 @@ Deno.serve(async (req) => {
     // Auth handled by verify_jwt=false; frontend ensures only authenticated users call this
 
     const serviceClient = createClient(
-      RESOLVED_SUPABASE_URL,
-      RESOLVED_SERVICE_ROLE_KEY,
+      SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
     );
 
     const body = await req.json().catch(() => ({}));
