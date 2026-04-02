@@ -238,30 +238,31 @@ Deno.serve(async (req) => {
           alert_count: 0,
         }).eq('instance_id', status.id);
 
-        if (senderInstance) {
-          const usersWithAccess = (instanceUsers || [])
-            .filter((iu: any) => iu.instance_id === status.id)
-            .map((iu: any) => iu.user_id);
+        const usersWithAccess = (instanceUsers || [])
+          .filter((iu: any) => iu.instance_id === status.id)
+          .map((iu: any) => iu.user_id);
 
-          const disconnectedDuration = log?.disconnected_at
-            ? Math.round((now.getTime() - new Date(log.disconnected_at).getTime()) / 60000)
-            : 0;
+        const disconnectedDuration = log?.disconnected_at
+          ? Math.round((now.getTime() - new Date(log.disconnected_at).getTime()) / 60000)
+          : 0;
 
-          for (const userId of usersWithAccess) {
-            const profile = (profiles || []).find((p: any) => p.user_id === userId);
-            if (!profile?.phone) continue;
+        for (const userId of usersWithAccess) {
+          const profile = (profiles || []).find((p: any) => p.user_id === userId);
+          if (!profile?.phone) continue;
 
-            const msg =
-              `🟢 *Instância Reconectada!*\n\n` +
-              `Olá ${profile.full_name || ''}!\n\n` +
-              `A instância *${status.instance_name}* foi reconectada com sucesso! ✅\n` +
-              (disconnectedDuration > 0
-                ? `⏱️ Ficou desconectada por ${disconnectedDuration} minuto${disconnectedDuration !== 1 ? 's' : ''}.\n`
-                : '') +
-              `\nTudo voltou ao normal. 👍`;
+          const userSender = getSenderForUser(userId);
+          if (!userSender) continue;
 
-            await sendWhatsAppMessage(profile.phone, msg, senderInstance.id);
-          }
+          const msg =
+            `🟢 *Instância Reconectada!*\n\n` +
+            `Olá ${profile.full_name || ''}!\n\n` +
+            `A instância *${status.instance_name}* foi reconectada com sucesso! ✅\n` +
+            (disconnectedDuration > 0
+              ? `⏱️ Ficou desconectada por ${disconnectedDuration} minuto${disconnectedDuration !== 1 ? 's' : ''}.\n`
+              : '') +
+            `\nTudo voltou ao normal. 👍`;
+
+          await sendWhatsAppMessage(profile.phone, msg, userSender.id);
         }
 
         results.push({ instance: status.instance_name, event: 'reconnected', alerted: true });
