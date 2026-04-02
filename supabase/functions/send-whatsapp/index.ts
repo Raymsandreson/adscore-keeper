@@ -496,21 +496,16 @@ Deno.serve(async (req) => {
 })
 
 async function getInstance(supabase: any, instance_id?: string) {
-  if (instance_id) {
-    const { data } = await supabase
-      .from('whatsapp_instances')
-      .select('*')
-      .eq('id', instance_id)
-      .eq('is_active', true)
-      .single()
-    if (data) return data
+  if (!instance_id) {
+    return null
   }
-  
+
   const { data } = await supabase
     .from('whatsapp_instances')
     .select('*')
+    .eq('id', instance_id)
     .eq('is_active', true)
-    .limit(1)
     .single()
-  return data
+
+  return data || null
 }
