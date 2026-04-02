@@ -815,7 +815,7 @@ export function WhatsAppInbox() {
               toast.info('Atualizando conversas...');
               await Promise.all([refetch(), refetchStatus()]);
               if (selectedPhone) {
-                await fetchFullConversation(selectedPhone);
+                await fetchFullConversation(selectedPhone, selectedInstance);
               }
               toast.success('Conversas atualizadas');
             }}
