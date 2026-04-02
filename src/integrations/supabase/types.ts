@@ -6539,7 +6539,9 @@ export type Database = {
           expires_at: string
           id: string
           invited_by: string | null
+          module_permissions: Json | null
           role: Database["public"]["Enums"]["app_role"]
+          whatsapp_instance_ids: string[] | null
         }
         Insert: {
           accepted_at?: string | null
@@ -6548,7 +6550,9 @@ export type Database = {
           expires_at?: string
           id?: string
           invited_by?: string | null
+          module_permissions?: Json | null
           role?: Database["public"]["Enums"]["app_role"]
+          whatsapp_instance_ids?: string[] | null
         }
         Update: {
           accepted_at?: string | null
@@ -6557,7 +6561,9 @@ export type Database = {
           expires_at?: string
           id?: string
           invited_by?: string | null
+          module_permissions?: Json | null
           role?: Database["public"]["Enums"]["app_role"]
+          whatsapp_instance_ids?: string[] | null
         }
         Relationships: []
       }

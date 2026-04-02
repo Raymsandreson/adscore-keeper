@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -47,11 +48,17 @@ import {
 } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useUserRole } from '@/hooks/useUserRole';
+import { MODULE_DEFINITIONS, AccessLevel } from '@/hooks/useModulePermissions';
 import { MemberDetailSheet } from './MemberDetailSheet';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+
+interface WhatsAppInstanceOption {
+  id: string;
+  instance_name: string;
+}
 
 interface TeamMember {
   id: string;
@@ -73,6 +80,27 @@ export function TeamManagement() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sendingNotifUserId, setSendingNotifUserId] = useState<string | null>(null);
+  const [showPermissions, setShowPermissions] = useState(false);
+
+  // Module permissions state
+  const [selectedModules, setSelectedModules] = useState<Record<string, AccessLevel>>(() => {
+    const init: Record<string, AccessLevel> = {};
+    MODULE_DEFINITIONS.forEach(m => { init[m.key] = 'none'; });
+    return init;
+  });
+
+  // WhatsApp instances
+  const [whatsappInstances, setWhatsappInstances] = useState<WhatsAppInstanceOption[]>([]);
+  const [selectedInstances, setSelectedInstances] = useState<string[]>([]);
+
+  useEffect(() => {
+    supabase
+      .from('whatsapp_instances')
+      .select('id, instance_name')
+      .eq('is_active', true)
+      .order('instance_name')
+      .then(({ data }) => setWhatsappInstances((data || []) as WhatsAppInstanceOption[]));
+  }, []);
 
   const filteredMembers = members.filter((member) => {
     if (!searchTerm.trim()) return true;
@@ -112,10 +140,21 @@ export function TeamManagement() {
 
     setInviting(true);
     try {
-      await inviteMember(email, role);
-      toast.success('Convite enviado! O usuário receberá acesso ao fazer cadastro.');
+      const modulePerms = role === 'admin' ? [] : Object.entries(selectedModules)
+        .filter(([, level]) => level !== 'none')
+        .map(([module_key, access_level]) => ({ module_key, access_level }));
+
+      const instanceIds = role === 'admin' ? [] : selectedInstances;
+
+      await inviteMember(email, role, modulePerms, instanceIds);
+      toast.success('Convite enviado com permissões configuradas!');
       setEmail('');
       setRole('member');
+      setShowPermissions(false);
+      setSelectedInstances([]);
+      const reset: Record<string, AccessLevel> = {};
+      MODULE_DEFINITIONS.forEach(m => { reset[m.key] = 'none'; });
+      setSelectedModules(reset);
     } catch (error: any) {
       toast.error(error.message || 'Erro ao enviar convite');
     } finally {
@@ -215,7 +254,17 @@ export function TeamManagement() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
+              {role === 'member' && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowPermissions(!showPermissions)}
+                  type="button"
+                >
+                  <Shield className="h-4 w-4 mr-2" />
+                  {showPermissions ? 'Ocultar Acessos' : 'Definir Acessos'}
+                </Button>
+              )}
               <Button onClick={handleInvite} disabled={inviting}>
                 {inviting ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -226,6 +275,60 @@ export function TeamManagement() {
               </Button>
             </div>
           </div>
+
+          {/* Permission configuration panel */}
+          {showPermissions && role === 'member' && (
+            <div className="mt-6 border rounded-lg p-4 space-y-5 bg-muted/30">
+              {/* Module Permissions */}
+              <div>
+                <Label className="text-sm font-semibold mb-3 block">Módulos</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {MODULE_DEFINITIONS.map(mod => (
+                    <div key={mod.key} className="flex items-center justify-between rounded-md border px-3 py-2 bg-background">
+                      <span className="text-sm">{mod.label}</span>
+                      <Select
+                        value={selectedModules[mod.key] || 'none'}
+                        onValueChange={(v) => setSelectedModules(prev => ({ ...prev, [mod.key]: v as AccessLevel }))}
+                      >
+                        <SelectTrigger className="w-24 h-7 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sem acesso</SelectItem>
+                          <SelectItem value="view">Ver</SelectItem>
+                          <SelectItem value="edit">Editar</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* WhatsApp Instances */}
+              {whatsappInstances.length > 0 && (
+                <div>
+                  <Label className="text-sm font-semibold mb-3 block">Instâncias WhatsApp</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {whatsappInstances.map(inst => (
+                      <label key={inst.id} className="flex items-center gap-2 rounded-md border px-3 py-2 bg-background cursor-pointer hover:bg-muted/50">
+                        <Checkbox
+                          checked={selectedInstances.includes(inst.id)}
+                          onCheckedChange={(checked) => {
+                            setSelectedInstances(prev =>
+                              checked
+                                ? [...prev, inst.id]
+                                : prev.filter(id => id !== inst.id)
+                            );
+                          }}
+                        />
+                        <span className="text-sm">{inst.instance_name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
