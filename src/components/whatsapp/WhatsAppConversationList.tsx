@@ -399,11 +399,11 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
         ))}
       </div>
 
-      {/* Advanced filters */}
-      <div className="px-2 py-2 border-b space-y-1.5">
+      {/* Advanced filters - compact horizontal row */}
+      <div className="px-2 py-1.5 border-b flex flex-wrap gap-1">
         {/* Funil */}
         <Select value={selectedBoardId} onValueChange={v => { setSelectedBoardId(v); setSelectedStageId('all'); }}>
-          <SelectTrigger className="h-7 text-xs">
+          <SelectTrigger className="h-6 text-[11px] w-auto min-w-0 max-w-[120px] px-1.5 gap-0.5">
             <SelectValue placeholder="Funil" />
           </SelectTrigger>
           <SelectContent>
@@ -417,7 +417,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
         {/* Fase */}
         {selectedBoardId !== 'all' && availableStages.length > 0 && (
           <Select value={selectedStageId} onValueChange={setSelectedStageId}>
-            <SelectTrigger className="h-7 text-xs">
+            <SelectTrigger className="h-6 text-[11px] w-auto min-w-0 max-w-[120px] px-1.5 gap-0.5">
               <SelectValue placeholder="Fase" />
             </SelectTrigger>
             <SelectContent>
@@ -436,13 +436,13 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full h-7 text-xs justify-between font-normal px-2"
+                className="h-6 text-[11px] justify-between font-normal px-1.5 gap-0.5"
               >
-                <span className="flex items-center gap-1.5">
+                <span className="flex items-center gap-1">
                   <CheckSquare className="h-3 w-3 text-muted-foreground" />
                   {selectedChecklistItemIds.length === 0
-                    ? 'Filtrar por passos'
-                    : `${selectedChecklistItemIds.length} passo${selectedChecklistItemIds.length > 1 ? 's' : ''} selecionado${selectedChecklistItemIds.length > 1 ? 's' : ''}`
+                    ? 'Passos'
+                    : `${selectedChecklistItemIds.length}`
                   }
                 </span>
                 <ChevronDown className="h-3 w-3 text-muted-foreground" />
@@ -463,14 +463,12 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
                   <span className="text-xs font-medium text-muted-foreground">Selecionar todos</span>
                 </div>
                 <div className="border-t my-1" />
-                {/* Hierarchical: Template (Objetivo) → Items (Passos) */}
                 {checklistTemplates.map(tmpl => {
                   const tmplItemIds = tmpl.items.map(i => i.id);
                   const allSelected = tmplItemIds.length > 0 && tmplItemIds.every(id => selectedChecklistItemIds.includes(id));
                   const someSelected = tmplItemIds.some(id => selectedChecklistItemIds.includes(id));
                   return (
                     <div key={tmpl.id} className="space-y-0.5">
-                      {/* Template header - toggle all items */}
                       <div
                         className="flex items-center gap-2 px-2 py-1 rounded hover:bg-accent cursor-pointer"
                         onClick={() => {
@@ -489,7 +487,6 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
                         />
                         <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{tmpl.name}</span>
                       </div>
-                      {/* Individual items */}
                       {tmpl.items.map(item => (
                         <div
                           key={item.id}
@@ -527,10 +524,10 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
 
         {/* Documentos filter */}
         <Select value={docFilter} onValueChange={v => setDocFilter(v as DocFilter)}>
-          <SelectTrigger className="h-7 text-xs">
-            <div className="flex items-center gap-1.5">
+          <SelectTrigger className="h-6 text-[11px] w-auto min-w-0 max-w-[120px] px-1.5 gap-0.5">
+            <div className="flex items-center gap-1">
               <FileText className="h-3 w-3 text-muted-foreground" />
-              <SelectValue placeholder="Documentos" />
+              <SelectValue placeholder="Docs" />
             </div>
           </SelectTrigger>
           <SelectContent>
