@@ -476,19 +476,10 @@ export function TeamManagement() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <Select
-                      value={member.role}
-                      onValueChange={(v) => handleRoleChange(member.user_id, v as 'admin' | 'member')}
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="member">Membro</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <TableCell>
+                    <Badge variant={member.role === 'admin' ? 'default' : 'secondary'}>
+                      {getProfileName(member.access_profile_id)}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {format(new Date(member.created_at), "dd/MM/yyyy", { locale: ptBR })}
