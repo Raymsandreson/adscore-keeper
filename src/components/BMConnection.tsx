@@ -145,12 +145,6 @@ const BMConnection = ({
     }
   };
 
-  // Salvar no localStorage quando muda
-  const saveToStorage = (accounts: SavedAccount[]) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
-    setSavedAccounts(accounts);
-  };
-
   const handleSelectAccount = (id: string) => {
     if (id === "new") {
       setShowNewForm(true);
@@ -167,13 +161,12 @@ const BMConnection = ({
         setAccessToken(account.accessToken);
         setAccountId(account.accountId);
         setAccountName(account.name);
-        // Validar token da conta selecionada
         validateToken(account.accessToken);
       }
     }
   };
 
-  const handleSaveAccount = () => {
+  const handleSaveAccount = async () => {
     if (!accessToken.trim() || !accountId.trim()) {
       toast({
         title: "Campos obrigatórios",
@@ -184,39 +177,39 @@ const BMConnection = ({
     }
 
     const name = accountName.trim() || `Conta ${accountId.replace('act_', '')}`;
-    const newAccount: SavedAccount = {
-      id: `account_${Date.now()}`,
+    const newAccount = await addAccount({
       name,
       accessToken: accessToken.trim(),
       accountId: accountId.trim()
-    };
-
-    const updated = [...savedAccounts, newAccount];
-    saveToStorage(updated);
-    setSelectedAccountId(newAccount.id);
-    setShowNewForm(false);
-    
-    toast({
-      title: "✅ Conta salva",
-      description: `"${name}" foi salva com sucesso`,
     });
+
+    if (newAccount) {
+      setSelectedAccountId(newAccount.id);
+      setShowNewForm(false);
+      toast({
+        title: "✅ Conta salva",
+        description: `"${name}" foi salva com sucesso`,
+      });
+    }
   };
 
-  const handleDeleteAccount = (id: string) => {
+  const handleDeleteAccount = async (id: string) => {
     const account = savedAccounts.find(a => a.id === id);
-    const updated = savedAccounts.filter(a => a.id !== id);
-    saveToStorage(updated);
+    await removeAccount(id);
     
+    const remaining = savedAccounts.filter(a => a.id !== id);
     if (selectedAccountId === id) {
-      setSelectedAccountId(updated.length > 0 ? updated[0].id : "");
-      if (updated.length === 0) {
+      if (remaining.length <= 1) {
+        // Will be 0 after deletion
+        setSelectedAccountId("");
         setShowNewForm(true);
         setAccessToken("");
         setAccountId("");
         setAccountName("");
         setTokenInfo(null);
       } else {
-        const firstAccount = updated[0];
+        const firstAccount = remaining.find(a => a.id !== id) || remaining[0];
+        setSelectedAccountId(firstAccount.id);
         setAccessToken(firstAccount.accessToken);
         setAccountId(firstAccount.accountId);
         setAccountName(firstAccount.name);
