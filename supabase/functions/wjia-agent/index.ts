@@ -9,7 +9,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { geminiChat, callGemini, parseGeminiResponse } from "../_shared/gemini.ts";
+import { geminiChat } from "../_shared/gemini.ts";
 import {
   ZAPSIGN_API_URL, DOC_TYPE_LABELS,
   buildTemplateFieldCatalog, getFieldLabel, normalizeFieldKey, hasFieldValue,
