@@ -1,8 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
-// Use the native Supabase (Lovable Cloud) for all DB operations
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+// Use external Supabase project (where webhook saves data)
+const SUPABASE_URL = resolveSupabaseUrl();
+const SUPABASE_SERVICE_ROLE_KEY = resolveServiceRoleKey();
 
 
 const corsHeaders = {
