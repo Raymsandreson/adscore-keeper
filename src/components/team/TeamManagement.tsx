@@ -104,7 +104,7 @@ export function TeamManagement() {
   useEffect(() => {
     Promise.all([
       supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
-      supabase.from('access_profiles').select('id, name, module_permissions, whatsapp_instance_ids').eq('is_active', true).order('name'),
+      supabase.from('access_profiles').select('id, name, description, module_permissions, whatsapp_instance_ids, is_system').eq('is_active', true).order('name'),
     ]).then(([instRes, profRes]) => {
       setWhatsappInstances((instRes.data || []) as WhatsAppInstanceOption[]);
       setAccessProfiles((profRes.data || []) as any[]);
