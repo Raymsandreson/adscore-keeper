@@ -529,7 +529,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
             </div>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos (documentos)</SelectItem>
+            <SelectItem value="all">Docs</SelectItem>
             <SelectItem value="has_doc">Com documento</SelectItem>
             <SelectItem value="signed">Assinado</SelectItem>
             <SelectItem value="unsigned">Não assinado</SelectItem>
