@@ -93,6 +93,15 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+
+  // Access profile state
+  const [accessProfiles, setAccessProfiles] = useState<Array<{
+    id: string; name: string; description: string | null;
+    module_permissions: Array<{ module_key: string; access_level: string }>;
+    whatsapp_instance_ids: string[];
+  }>>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState('');
+  const [applyingProfile, setApplyingProfile] = useState(false);
   
   // OAB search state
   const [oabSearchQuery, setOabSearchQuery] = useState('');
