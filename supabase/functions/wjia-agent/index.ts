@@ -320,7 +320,7 @@ REGRAS:
 
   const fieldsData = parsed.extracted_fields || [];
   const missingFields = parsed.missing_fields || [];
-  const signerName = parsed.signer_name || contactData.full_name || leadData.victim_name || "Cliente";
+  let signerName = parsed.signer_name || contactData.full_name || leadData.victim_name || "Cliente";
   const signerPhone = parsed.signer_phone || contactData.phone || normalizedPhone;
 
   applyDefaults(fieldsData);
