@@ -380,6 +380,7 @@ REGRAS:
         const catalog = buildTemplateFieldCatalog({ required_fields: templateFields, missing_fields: missingFields });
 
         try {
+          const collectedData = { fields: fieldsData, signer_name: signerName, signer_phone: signerPhone };
           const { extractedFields: autoExtracted, signerName: autoSigner } =
             await extractFromDocuments(mediaUrls, catalog, fieldsData, customPrompt, docTypeGuesses);
 
@@ -399,7 +400,7 @@ REGRAS:
           }));
 
           await supabase.from("wjia_collection_sessions").update({
-            collected_data: { ...collectedData, fields: fieldsData, signer_name: collectedData.signer_name || signerName, signer_phone: signerPhone },
+            collected_data: { ...collectedData, fields: fieldsData },
             received_documents: receivedDocs,
             missing_fields: stillMissing,
             status: stillMissing.length > 0 ? "collecting" : "ready",
@@ -408,10 +409,7 @@ REGRAS:
 
           if (stillMissing.length === 0) {
             // All data extracted from history! Skip to confirmation/generation
-            // Fall through to the "ready" handling below by updating session status
             session.status = "ready";
-            session.collected_data = { ...collectedData, fields: fieldsData };
-            session.missing_fields = [];
             // Don't return — let it fall through to generate
           } else {
             // Some fields still missing — go to collecting phase (text-based), not docs phase
