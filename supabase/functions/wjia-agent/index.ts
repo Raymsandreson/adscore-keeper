@@ -361,27 +361,45 @@ REGRAS:
       let customPrompt: string | null = matchedShortcut?.media_extraction_prompt || null;
 
       // Step 1: Extract data from TEXT/AUDIO messages in history using AI
-      const textMessages = messages.filter((m: any) =>
-        m.direction === "inbound" && m.message_text?.trim()
-      );
+      // Include BOTH inbound and outbound messages for full context (AI may have summarized data)
+      const textMessages = messages.filter((m: any) => m.message_text?.trim());
 
       if (textMessages.length > 0) {
         try {
-          const historyText = textMessages.map((m: any) => m.message_text).join("\n");
-          const fieldsList = catalog.map((f: any) => `${f.variable} (${f.friendly_name || f.label})`).join(", ");
+          const historyText = textMessages.map((m: any) => 
+            `[${m.direction === "inbound" ? "Cliente" : "Atendente"}]: ${m.message_text}`
+          ).join("\n");
           
-          const extractPrompt = `Analise o texto abaixo enviado por um cliente e extraia TODOS os dados que correspondem aos campos do documento.
+          const fieldsDetail = catalog.map((f: any) => 
+            `- ${f.variable}: ${f.friendly_name || f.label || f.variable.replace(/[{}]/g, '')}`
+          ).join("\n");
+          
+          const extractPrompt = `Você é um extrator de dados. Analise a conversa abaixo e extraia TODOS os dados que correspondem aos campos listados.
 
-CAMPOS DO DOCUMENTO: ${fieldsList}
+CAMPOS QUE PRECISO PREENCHER:
+${fieldsDetail}
 
-TEXTO DO CLIENTE:
+CONVERSA:
 ${historyText}
 
-REGRAS:
-- Extraia QUALQUER dado mencionado: nome completo, CPF, RG, endereço, cidade, estado, CEP, profissão, nacionalidade, estado civil, email, telefone, data de nascimento, etc.
-- Se encontrou um CPF brasileiro, deduza nacionalidade como "brasileiro(a)" conforme o gênero.
-- Retorne APENAS JSON array: [{"variable":"{{CAMPO}}","value":"valor extraído"}]
-- Se não encontrou nenhum dado, retorne: []`;
+REGRAS DE EXTRAÇÃO:
+1. Mapeie cada dado encontrado para o campo correto usando EXATAMENTE o nome da variável (com {{}}).
+2. Exemplos de mapeamento:
+   - "Estado civil: Solteira" → {{ESTADO_CIVIL}} = "Solteira"
+   - "CPF: 060.766.902-08" → {{CPF}} = "060.766.902-08"  
+   - "Profissão: Jovem aprendiz" → {{PROFISSAO}} = "Jovem aprendiz"
+   - "Nome da mãe: Maria" → {{NOME_MAE}} = "Maria" (se existir no template)
+   - "Estado: Pará" → {{UF}} = "PA" (converta para sigla)
+   - "RG: 8657920" → {{RG}} = "8657920"
+   - Nome mencionado → {{NOME_COMPLETO}} = nome encontrado
+3. Se tem CPF brasileiro, deduza {{NACIONALIDADE}} = "brasileiro(a)".
+4. Extraia TUDO que encontrar, mesmo dados parciais.
+5. Use a sigla do estado para {{UF}} (ex: PA, SP, RJ).
+
+Responda APENAS com JSON array válido:
+[{"variable":"{{CAMPO}}","value":"valor"}]
+
+Se não encontrou nada, retorne: []`;
 
           const extractResult = await geminiChat({
             model: 'google/gemini-2.5-flash',
@@ -389,6 +407,7 @@ REGRAS:
             temperature: 0.1,
           });
           const extractText = extractResult?.choices?.[0]?.message?.content || "";
+          console.log(`WJIA text extraction AI response: ${extractText.substring(0, 500)}`);
           
           try {
             const jsonMatch = extractText.match(/\[[\s\S]*\]/);
