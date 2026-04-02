@@ -44,6 +44,8 @@ export function AccessProfilesManager() {
     return init;
   });
   const [selectedInstances, setSelectedInstances] = useState<string[]>([]);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
