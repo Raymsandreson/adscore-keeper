@@ -114,11 +114,12 @@ export function TeamManagement() {
   // When a profile is selected, apply its permissions to the form
   const handleProfileSelect = (profileId: string) => {
     setSelectedProfileId(profileId);
-    if (profileId === 'custom') {
+    if (!profileId) {
       const init: Record<string, AccessLevel> = {};
       MODULE_DEFINITIONS.forEach(m => { init[m.key] = 'none'; });
       setSelectedModules(init);
       setSelectedInstances([]);
+      setShowPermissions(false);
       return;
     }
     const profile = accessProfiles.find(p => p.id === profileId);
@@ -130,8 +131,19 @@ export function TeamManagement() {
       });
       setSelectedModules(mods);
       setSelectedInstances(profile.whatsapp_instance_ids || []);
-      setShowPermissions(true);
+      setShowPermissions(!profile.is_system); // Don't show permissions for Admin (system)
     }
+  };
+
+  const getSelectedRole = (): 'admin' | 'member' => {
+    const profile = accessProfiles.find(p => p.id === selectedProfileId);
+    return profile?.is_system ? 'admin' : 'member';
+  };
+
+  const getProfileName = (profileId: string | null): string => {
+    if (!profileId) return 'Sem perfil';
+    const profile = accessProfiles.find(p => p.id === profileId);
+    return profile?.name || 'Sem perfil';
   };
 
   const filteredMembers = members.filter((member) => {
