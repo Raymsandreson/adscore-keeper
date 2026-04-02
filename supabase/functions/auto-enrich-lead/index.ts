@@ -143,7 +143,7 @@ Analise a conversa e extraia TODAS as informações pessoais e profissionais do 
 REGRAS:
 - Extraia APENAS informações explícitas na conversa
 - Use null para campos não encontrados
-- IMPORTANTE: lead_status deve ser null na grande maioria dos casos. Só marque como 'refused' se o cliente EXPLICITAMENTE recusou. Conversas sem resposta, em triagem, ou em fase inicial NÃO são 'refused'. Na dúvida, use null.
+- IMPORTANTE: lead_status deve ser null na grande maioria dos casos. Só marque como 'refused' se o cliente EXPLICITAMENTE recusou. Marque como 'unviable' se a pessoa claramente não tem relação com o serviço (engano, confusão, perfil incompatível). Conversas sem resposta, em triagem, ou em fase inicial NÃO são 'refused' nem 'unviable'. Na dúvida, use null.
 - lead_status_reason é OBRIGATÓRIO quando lead_status não for null
 - INDICAÇÕES: Se o cliente mencionou alguém que pode ter direito a algum benefício (gestante, mãe de autista, acidentado nos últimos 5 anos com carteira assinada), extraia na lista "referrals". Use [] se não houver indicações.
 - product_type DEVE ser um dos valores: auxilio_maternidade, auxilio_acidente, bpc_loas_autista, indenizacao_acidente_trabalho
