@@ -520,10 +520,22 @@ export function TeamManagement() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <Badge variant={member.role === 'admin' ? 'default' : 'secondary'}>
-                      {getProfileName(member.access_profile_id)}
-                    </Badge>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Select
+                      value={member.access_profile_id || ''}
+                      onValueChange={(v) => handleInlineProfileChange(member.user_id, v)}
+                    >
+                      <SelectTrigger className="w-40 h-8 text-xs">
+                        <SelectValue placeholder="Sem perfil" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {accessProfiles.map(p => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.is_system ? `👑 ${p.name}` : p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {format(new Date(member.created_at), "dd/MM/yyyy", { locale: ptBR })}
