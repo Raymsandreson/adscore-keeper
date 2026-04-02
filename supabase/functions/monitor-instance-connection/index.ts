@@ -241,8 +241,7 @@ Deno.serve(async (req) => {
           const profile = (profiles || []).find((p: any) => p.user_id === userId);
           if (!profile?.phone) continue;
 
-          const userSender = getSenderForUser(userId);
-          if (!userSender) continue;
+          if (!senderInstance) continue;
 
           const msg =
             `🟢 *Instância Reconectada!*\n\n` +
@@ -253,7 +252,7 @@ Deno.serve(async (req) => {
               : '') +
             `\nTudo voltou ao normal. 👍`;
 
-          await sendWhatsAppMessage(profile.phone, msg, userSender.id);
+          await sendWhatsAppMessage(profile.phone, msg, senderInstance.id);
         }
 
         results.push({ instance: status.instance_name, event: 'reconnected', alerted: true });
