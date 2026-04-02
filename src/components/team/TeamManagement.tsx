@@ -48,7 +48,7 @@ import {
 } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useUserRole } from '@/hooks/useUserRole';
-import { MODULE_DEFINITIONS, AccessLevel } from '@/hooks/useModulePermissions';
+import { MODULE_DEFINITIONS, AccessLevel, useModulePermissions } from '@/hooks/useModulePermissions';
 import { MemberDetailSheet } from './MemberDetailSheet';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
