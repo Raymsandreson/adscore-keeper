@@ -286,6 +286,22 @@ export function TeamManagement() {
                 </SelectContent>
               </Select>
             </div>
+            {role === 'member' && accessProfiles.length > 0 && (
+              <div className="w-full sm:w-48">
+                <Label>Perfil de Acesso</Label>
+                <Select value={selectedProfileId} onValueChange={handleProfileSelect}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="custom">Personalizado</SelectItem>
+                    {accessProfiles.map(p => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="flex items-end gap-2">
               {role === 'member' && (
                 <Button
