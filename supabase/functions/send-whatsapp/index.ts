@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
       }
       const inviteCode = match[1]
 
-      const instance = await getInstance(supabase, instance_id)
+      const instance = await getInstance(internalClient, instance_id)
       if (!instance) {
         return new Response(
           JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
         )
       }
 
-      const instance = await getInstance(supabase, instance_id)
+      const instance = await getInstance(internalClient, instance_id)
       if (!instance) {
         return new Response(
           JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
@@ -273,7 +273,7 @@ Deno.serve(async (req) => {
         )
       }
 
-      const instance = await getInstance(supabase, instance_id)
+      const instance = await getInstance(internalClient, instance_id)
       if (!instance) {
         return new Response(
           JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
@@ -364,7 +364,7 @@ Deno.serve(async (req) => {
         )
       }
 
-      const instance = await getInstance(supabase, instance_id)
+      const instance = await getInstance(internalClient, instance_id)
       if (!instance) {
         return new Response(
           JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
@@ -431,7 +431,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    const instance = await getInstance(supabase, instance_id)
+    const instance = await getInstance(internalClient, instance_id)
     if (!instance) {
       return new Response(
         JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
