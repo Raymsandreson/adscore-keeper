@@ -1510,6 +1510,34 @@ Deno.serve(async (req) => {
 
     console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName, 'StoredMedia:', storedMediaUrl ? 'yes' : 'no')
 
+    // Mirror message to Cloud DB so frontend inbox can read it
+    try {
+      const cloudClient = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      );
+      await cloudClient.from('whatsapp_messages').insert({
+        phone,
+        contact_name: contactName,
+        message_text: messageText,
+        message_type: messageType,
+        media_url: storedMediaUrl,
+        media_type: mediaType,
+        direction,
+        status: direction === 'inbound' ? 'received' : 'sent',
+        contact_id: contactId,
+        lead_id: leadId,
+        external_message_id: externalMessageId,
+        instance_name: instanceName,
+        instance_token: instanceToken,
+        campaign_id: detectedCampaignId || null,
+        campaign_name: detectedCampaignName || null,
+        created_at: message.created_at,
+      });
+    } catch (mirrorErr) {
+      console.warn('Cloud mirror insert failed (non-blocking):', mirrorErr);
+    }
+
     // ========== AUTO-ENRICH LEAD/CONTACT (after X inbound messages) ==========
     if (direction === 'inbound' && instanceName && phone && (leadId || contactId)) {
       try {
