@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Volume2 } from 'lucide-react';
+import { Volume2, Shield } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
