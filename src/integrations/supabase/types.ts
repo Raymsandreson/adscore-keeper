@@ -3937,6 +3937,51 @@ export type Database = {
         }
         Relationships: []
       }
+      instance_connection_log: {
+        Row: {
+          alert_count: number
+          created_at: string
+          disconnected_at: string | null
+          id: string
+          instance_id: string
+          instance_name: string
+          is_connected: boolean
+          last_alert_sent_at: string | null
+          last_call_made_at: string | null
+          reconnected_at: string | null
+          updated_at: string
+          was_connected: boolean
+        }
+        Insert: {
+          alert_count?: number
+          created_at?: string
+          disconnected_at?: string | null
+          id?: string
+          instance_id: string
+          instance_name: string
+          is_connected?: boolean
+          last_alert_sent_at?: string | null
+          last_call_made_at?: string | null
+          reconnected_at?: string | null
+          updated_at?: string
+          was_connected?: boolean
+        }
+        Update: {
+          alert_count?: number
+          created_at?: string
+          disconnected_at?: string | null
+          id?: string
+          instance_id?: string
+          instance_name?: string
+          is_connected?: boolean
+          last_alert_sent_at?: string | null
+          last_call_made_at?: string | null
+          reconnected_at?: string | null
+          updated_at?: string
+          was_connected?: boolean
+        }
+        Relationships: []
+      }
       investments: {
         Row: {
           amount_original: number | null
