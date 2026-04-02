@@ -128,12 +128,12 @@ export function WhatsAppInbox() {
       }
 
       setSelectedPhone(phone);
-      fetchFullConversation(phone);
+      fetchFullConversation(phone, targetInstanceName);
     } catch (error) {
       console.error('Error opening chat by phone:', error);
       setSelectedInstance(null);
       setSelectedPhone(phone);
-      fetchFullConversation(phone);
+      fetchFullConversation(phone, null);
     }
   }, [instances, selectedInstanceId, fetchFullConversation]);
 
@@ -305,8 +305,7 @@ export function WhatsAppInbox() {
   const handleSelectConversation = (conv: WhatsAppConversation) => {
     setSelectedPhone(conv.phone);
     setSelectedInstance(conv.instance_name);
-    // Load full message history for this conversation
-    fetchFullConversation(conv.phone);
+    fetchFullConversation(conv.phone, conv.instance_name);
     if (conv.unread_count > 0) {
       markAsRead(conv.phone);
     }
@@ -675,7 +674,7 @@ export function WhatsAppInbox() {
         )}
 
         {instances.length > 0 && (
-          <Select value={selectedInstanceId} onValueChange={(val) => { setSelectedInstanceId(val); setSelectedPhone(null); }}>
+          <Select value={selectedInstanceId} onValueChange={(val) => { setSelectedInstanceId(val); setSelectedPhone(null); setSelectedInstance(null); }}>
             <SelectTrigger className="w-52 h-8 text-xs ml-0 md:ml-2">
               <Smartphone className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
               <SelectValue placeholder="Todas instâncias" />
@@ -816,7 +815,7 @@ export function WhatsAppInbox() {
               toast.info('Atualizando conversas...');
               await Promise.all([refetch(), refetchStatus()]);
               if (selectedPhone) {
-                await fetchFullConversation(selectedPhone);
+                await fetchFullConversation(selectedPhone, selectedInstance);
               }
               toast.success('Conversas atualizadas');
             }}
@@ -975,7 +974,10 @@ export function WhatsAppInbox() {
           {selectedConversation ? (
             <WhatsAppChat
               conversation={selectedConversation}
-              onBack={() => setSelectedPhone(null)}
+              onBack={() => {
+                setSelectedPhone(null);
+                setSelectedInstance(null);
+              }}
               onSendMessage={(() => {
                 const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
                 if (share) {
