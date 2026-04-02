@@ -305,8 +305,7 @@ export function WhatsAppInbox() {
   const handleSelectConversation = (conv: WhatsAppConversation) => {
     setSelectedPhone(conv.phone);
     setSelectedInstance(conv.instance_name);
-    // Load full message history for this conversation
-    fetchFullConversation(conv.phone);
+    fetchFullConversation(conv.phone, conv.instance_name);
     if (conv.unread_count > 0) {
       markAsRead(conv.phone);
     }
