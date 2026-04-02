@@ -159,29 +159,40 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
 
     setApplyingProfile(true);
     try {
-      // Delete existing module permissions
-      await supabase.from('member_module_permissions').delete().eq('user_id', member.user_id);
+      const isSystemProfile = (profile as any).is_system;
+      const newRole = isSystemProfile ? 'admin' : 'member';
 
-      // Insert new module permissions
-      if (profile.module_permissions.length > 0) {
-        await supabase.from('member_module_permissions').insert(
-          profile.module_permissions.map((p: any) => ({
-            user_id: member.user_id,
-            module_key: p.module_key,
-            access_level: p.access_level,
-          }))
-        );
-      }
+      // Update role and profile link
+      await supabase
+        .from('user_roles')
+        .update({ role: newRole, access_profile_id: selectedProfileId } as any)
+        .eq('user_id', member.user_id);
 
-      // Update WhatsApp instance permissions
-      await supabase.from('whatsapp_instance_users').delete().eq('user_id', member.user_id);
-      if (profile.whatsapp_instance_ids.length > 0) {
-        await supabase.from('whatsapp_instance_users').insert(
-          profile.whatsapp_instance_ids.map((instId: string) => ({
-            user_id: member.user_id,
-            instance_id: instId,
-          }))
-        );
+      if (!isSystemProfile) {
+        // Delete existing module permissions
+        await supabase.from('member_module_permissions').delete().eq('user_id', member.user_id);
+
+        // Insert new module permissions
+        if (profile.module_permissions.length > 0) {
+          await supabase.from('member_module_permissions').insert(
+            profile.module_permissions.map((p: any) => ({
+              user_id: member.user_id,
+              module_key: p.module_key,
+              access_level: p.access_level,
+            }))
+          );
+        }
+
+        // Update WhatsApp instance permissions
+        await supabase.from('whatsapp_instance_users').delete().eq('user_id', member.user_id);
+        if (profile.whatsapp_instance_ids.length > 0) {
+          await supabase.from('whatsapp_instance_users').insert(
+            profile.whatsapp_instance_ids.map((instId: string) => ({
+              user_id: member.user_id,
+              instance_id: instId,
+            }))
+          );
+        }
       }
 
       toast.success(`Perfil "${profile.name}" aplicado com sucesso!`);
@@ -697,14 +708,14 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
             </div>
 
             {/* Apply Access Profile */}
-            {member.role === 'member' && accessProfiles.length > 0 && (
+            {accessProfiles.length > 0 && (
               <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
                 <Label className="flex items-center gap-1.5 text-sm font-semibold">
                   <Shield className="h-3.5 w-3.5" />
-                  Aplicar Perfil de Acesso
+                  Perfil de Acesso
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Substitui todas as permissões atuais do membro pelas do perfil selecionado.
+                  Altera o perfil e todas as permissões do usuário.
                 </p>
                 <div className="flex gap-2">
                   <Select value={selectedProfileId} onValueChange={setSelectedProfileId}>

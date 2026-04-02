@@ -48,7 +48,7 @@ import {
 } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useUserRole } from '@/hooks/useUserRole';
-import { MODULE_DEFINITIONS, AccessLevel } from '@/hooks/useModulePermissions';
+import { MODULE_DEFINITIONS, AccessLevel, useModulePermissions } from '@/hooks/useModulePermissions';
 import { MemberDetailSheet } from './MemberDetailSheet';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -67,25 +67,27 @@ interface TeamMember {
   email: string | null;
   full_name: string | null;
   created_at: string;
+  access_profile_id: string | null;
 }
 
 export function TeamManagement() {
   const { isAdmin, loading: roleLoading } = useUserRole();
+  const { canEdit } = useModulePermissions();
+  const canManageTeam = isAdmin || canEdit('team_management');
   const { members, invitations, loading, inviteMember, cancelInvitation, updateMemberRole, removeMember, refetch } = useTeamMembers();
   
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'admin' | 'member'>('member');
   const [inviting, setInviting] = useState(false);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sendingNotifUserId, setSendingNotifUserId] = useState<string | null>(null);
   const [showPermissions, setShowPermissions] = useState(false);
-  const [selectedProfileId, setSelectedProfileId] = useState<string>('custom');
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('');
 
   // Access profiles
   const [accessProfiles, setAccessProfiles] = useState<Array<{
-    id: string; name: string;
+    id: string; name: string; description: string | null; is_system: boolean;
     module_permissions: Array<{ module_key: string; access_level: string }>;
     whatsapp_instance_ids: string[];
   }>>([]);
@@ -104,7 +106,7 @@ export function TeamManagement() {
   useEffect(() => {
     Promise.all([
       supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
-      supabase.from('access_profiles').select('id, name, module_permissions, whatsapp_instance_ids').eq('is_active', true).order('name'),
+      supabase.from('access_profiles').select('id, name, description, module_permissions, whatsapp_instance_ids, is_system').eq('is_active', true).order('name'),
     ]).then(([instRes, profRes]) => {
       setWhatsappInstances((instRes.data || []) as WhatsAppInstanceOption[]);
       setAccessProfiles((profRes.data || []) as any[]);
@@ -114,11 +116,12 @@ export function TeamManagement() {
   // When a profile is selected, apply its permissions to the form
   const handleProfileSelect = (profileId: string) => {
     setSelectedProfileId(profileId);
-    if (profileId === 'custom') {
+    if (!profileId) {
       const init: Record<string, AccessLevel> = {};
       MODULE_DEFINITIONS.forEach(m => { init[m.key] = 'none'; });
       setSelectedModules(init);
       setSelectedInstances([]);
+      setShowPermissions(false);
       return;
     }
     const profile = accessProfiles.find(p => p.id === profileId);
@@ -130,8 +133,19 @@ export function TeamManagement() {
       });
       setSelectedModules(mods);
       setSelectedInstances(profile.whatsapp_instance_ids || []);
-      setShowPermissions(true);
+      setShowPermissions(!profile.is_system); // Don't show permissions for Admin (system)
     }
+  };
+
+  const getSelectedRole = (): 'admin' | 'member' => {
+    const profile = accessProfiles.find(p => p.id === selectedProfileId);
+    return profile?.is_system ? 'admin' : 'member';
+  };
+
+  const getProfileName = (profileId: string | null): string => {
+    if (!profileId) return 'Sem perfil';
+    const profile = accessProfiles.find(p => p.id === profileId);
+    return profile?.name || 'Sem perfil';
   };
 
   const filteredMembers = members.filter((member) => {
@@ -151,13 +165,13 @@ export function TeamManagement() {
     );
   }
 
-  if (!isAdmin) {
+  if (!canManageTeam) {
     return (
       <Card>
         <CardContent className="p-8 text-center">
           <Shield className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <p className="text-muted-foreground">
-            Apenas administradores podem gerenciar a equipe
+            Você não tem permissão para gerenciar a equipe
           </p>
         </CardContent>
       </Card>
@@ -169,6 +183,12 @@ export function TeamManagement() {
       toast.error('Informe o email');
       return;
     }
+    if (!selectedProfileId) {
+      toast.error('Selecione um perfil de acesso');
+      return;
+    }
+
+    const role = getSelectedRole();
 
     setInviting(true);
     try {
@@ -181,7 +201,7 @@ export function TeamManagement() {
       await inviteMember(email, role, modulePerms, instanceIds);
       toast.success('Convite enviado com permissões configuradas!');
       setEmail('');
-      setRole('member');
+      setSelectedProfileId('');
       setShowPermissions(false);
       setSelectedInstances([]);
       const reset: Record<string, AccessLevel> = {};
@@ -264,53 +284,33 @@ export function TeamManagement() {
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
-            <div className="w-full sm:w-40">
-              <Label>Permissão</Label>
-              <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'member')}>
+            <div className="w-full sm:w-56">
+              <Label>Perfil de Acesso</Label>
+              <Select value={selectedProfileId} onValueChange={handleProfileSelect}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Selecione um perfil..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="member">
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      Membro
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="admin">
-                    <div className="flex items-center gap-2">
-                      <Crown className="h-4 w-4" />
-                      Admin
-                    </div>
-                  </SelectItem>
+                  {accessProfiles.map(p => (
+                    <SelectItem key={p.id} value={p.id}>
+                      <div className="flex items-center gap-2">
+                        {p.is_system ? <Crown className="h-4 w-4" /> : <User className="h-4 w-4" />}
+                        {p.name}
+                      </div>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            {role === 'member' && accessProfiles.length > 0 && (
-              <div className="w-full sm:w-48">
-                <Label>Perfil de Acesso</Label>
-                <Select value={selectedProfileId} onValueChange={handleProfileSelect}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="custom">Personalizado</SelectItem>
-                    {accessProfiles.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
             <div className="flex items-end gap-2">
-              {role === 'member' && (
+              {selectedProfileId && getSelectedRole() === 'member' && (
                 <Button
                   variant="outline"
                   onClick={() => setShowPermissions(!showPermissions)}
                   type="button"
                 >
                   <Shield className="h-4 w-4 mr-2" />
-                  {showPermissions ? 'Ocultar Acessos' : 'Definir Acessos'}
+                  {showPermissions ? 'Ocultar Acessos' : 'Ver Acessos'}
                 </Button>
               )}
               <Button onClick={handleInvite} disabled={inviting}>
@@ -325,7 +325,7 @@ export function TeamManagement() {
           </div>
 
           {/* Permission configuration panel */}
-          {showPermissions && role === 'member' && (
+          {showPermissions && selectedProfileId && getSelectedRole() === 'member' && (
             <div className="mt-6 border rounded-lg p-4 space-y-5 bg-muted/30">
               {/* Module Permissions */}
               <div>
@@ -452,7 +452,7 @@ export function TeamManagement() {
             <TableHeader>
               <TableRow>
                 <TableHead>Membro</TableHead>
-                <TableHead>Permissão</TableHead>
+                <TableHead>Perfil</TableHead>
                 <TableHead>Desde</TableHead>
                 <TableHead className="w-20"></TableHead>
               </TableRow>
@@ -478,19 +478,10 @@ export function TeamManagement() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <Select
-                      value={member.role}
-                      onValueChange={(v) => handleRoleChange(member.user_id, v as 'admin' | 'member')}
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="member">Membro</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <TableCell>
+                    <Badge variant={member.role === 'admin' ? 'default' : 'secondary'}>
+                      {getProfileName(member.access_profile_id)}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {format(new Date(member.created_at), "dd/MM/yyyy", { locale: ptBR })}

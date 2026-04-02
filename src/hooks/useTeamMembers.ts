@@ -10,6 +10,7 @@ interface TeamMember {
   email: string | null;
   full_name: string | null;
   created_at: string;
+  access_profile_id: string | null;
 }
 
 interface TeamInvitation {
@@ -33,7 +34,7 @@ export function useTeamMembers() {
       // Fetch user roles with profile info
       const { data: roles, error: rolesError } = await supabase
         .from('user_roles')
-        .select('id, user_id, role, created_at');
+        .select('id, user_id, role, created_at, access_profile_id');
 
       if (rolesError) throw rolesError;
 
@@ -53,6 +54,7 @@ export function useTeamMembers() {
           role: r.role as 'admin' | 'member',
           email: profileMap.get(r.user_id)?.email || null,
           full_name: profileMap.get(r.user_id)?.full_name || null,
+          access_profile_id: (r as any).access_profile_id || null,
         }));
 
         setMembers(membersWithProfiles);
