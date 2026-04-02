@@ -1,40 +1,40 @@
 
-## Plano: Atividades Processuais Automáticas via IA
+## Objetivo
+Eliminar a distinção Admin/Membro e usar exclusivamente **Perfis de Acesso** para controlar permissões. Admin passa a ser um perfil especial com acesso total fixo.
 
-### O que será feito
+## Mudanças
 
-Quando um caso é fechado, a IA analisa as mensagens do WhatsApp + dados do lead + dados do processo, e cria atividades específicas para cada membro do time processual com base na **descrição do cargo** (job_positions) de cada um. O coordenador também pode disparar/regenerar manualmente.
+### 1. Novo módulo: "Gestão de Equipe"
+- Adicionar `team_management` ao `MODULE_DEFINITIONS` 
+- Quem tiver esse módulo com `edit` pode convidar, remover e alterar permissões de membros
+- Admins têm acesso automático
 
-### Etapas
+### 2. Lógica de permissões
+- Manter a tabela `user_roles` mas simplificar: `admin` continua dando acesso total fixo
+- A UI deixa de mostrar "Admin/Membro" como conceito separado — mostra o **nome do perfil** aplicado
+- Ao convidar, o admin escolhe um perfil (incluindo "Admin") em vez de escolher role + módulos separadamente
 
-#### 1. Edge Function `generate-case-activities`
-- **Gatilho duplo**: chamada automática quando `lead_status` muda para `closed` + botão manual
-- **Coleta de contexto**:
-  - Últimas mensagens do WhatsApp do lead (phone + instance)
-  - Dados do lead (nome, produto, núcleo, dados coletados)
-  - Dados do `case_process_tracking` se existir
-- **Consulta os membros** do time com cargos via `job_positions` + `profiles`
-- **Prompt para Gemini**: Recebe o contexto do caso + lista de cargos com descrições → gera atividades estruturadas (título, descrição, responsável, prazo estimado, prioridade)
-- **Insere** na tabela `lead_activities` com `created_by_ai = true` para rastreabilidade
+### 3. UI - Tela de Membros
+- Substituir o seletor "Admin/Membro" por seletor de **Perfil de Acesso**
+- Ao selecionar "Admin", o user_role é setado como `admin`
+- Ao selecionar qualquer outro perfil, o role é `member` e as permissões do perfil são aplicadas
+- Coluna "Permissão" na tabela mostra o nome do perfil em vez de "Admin/Membro"
 
-#### 2. Migração: campo `created_by_ai` na tabela `lead_activities`
-- Adicionar coluna `created_by_ai BOOLEAN DEFAULT false`
-- Permitir filtrar atividades geradas pela IA vs manuais
+### 4. UI - Convite
+- Substituir o seletor de role por seletor de perfil
+- Remover o painel manual de módulos (já vem do perfil)
+- Manter opção de customizar se necessário
 
-#### 3. Nova aba "Atividades IA" no Monitor
-- Lista todas as atividades com `created_by_ai = true`
-- Mostra: caso de origem, responsável, cargo, status, data de criação
-- Filtros: por núcleo, por cargo, por status da atividade
-- Possibilidade de editar/ajustar antes de notificar
+### 5. Perfil "Admin" como perfil de acesso
+- Garantir que existe um perfil "Administrador" na tabela `access_profiles` (fixo, não deletável)
+- Marcar com flag `is_system = true` para impedir edição/exclusão
 
-#### 4. Botão manual "Gerar Atividades" 
-- Na Fila de Casos do monitor, ao expandir um caso fechado
-- Permite regenerar se as atividades não ficaram boas
+### 6. Guardar perfil aplicado no membro
+- Adicionar coluna `access_profile_id` na tabela `user_roles` para saber qual perfil está aplicado
+- Facilita mostrar o nome do perfil na lista de membros
 
-### Fluxo
-```
-Lead fecha → Edge Function coleta contexto →
-Gemini analisa mensagens + dados + cargos →
-Cria atividades distribuídas por cargo →
-Aparece na aba "Atividades IA" do Monitor
-```
+## O que NÃO muda
+- Tabela `user_roles` continua existindo (admin tem acesso total)
+- `has_role()` e `is_admin()` continuam funcionando
+- RLS policies não mudam
+- Lógica de `member_module_permissions` continua igual (perfil apenas popula essa tabela)
