@@ -75,14 +75,13 @@ export function TeamManagement() {
   const { members, invitations, loading, inviteMember, cancelInvitation, updateMemberRole, removeMember, refetch } = useTeamMembers();
   
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'admin' | 'member'>('member');
   const [inviting, setInviting] = useState(false);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sendingNotifUserId, setSendingNotifUserId] = useState<string | null>(null);
   const [showPermissions, setShowPermissions] = useState(false);
-  const [selectedProfileId, setSelectedProfileId] = useState<string>('custom');
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('');
 
   // Access profiles
   const [accessProfiles, setAccessProfiles] = useState<Array<{
