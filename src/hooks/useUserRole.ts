@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 type AppRole = 'admin' | 'member';
 
@@ -26,20 +25,16 @@ export function useUserRole(): UserRole {
 
     const fetchRole = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const { data, error } = await cloudFunctions.invoke('sync-user-to-external', {
-          body: {
-            user_id: user.id,
-            email: user.email,
-            full_name: user.user_metadata?.full_name || '',
-          },
-          authToken: session?.access_token,
-        });
+        const { data, error } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .maybeSingle();
 
         if (!error && data) {
-          setRole((data?.role as AppRole) || 'member');
+          setRole((data.role as AppRole) || 'member');
         } else {
-          console.error('Error fetching user role via sync:', error);
+          console.error('Error fetching user role:', error);
           setRole('member');
         }
       } catch (error) {
