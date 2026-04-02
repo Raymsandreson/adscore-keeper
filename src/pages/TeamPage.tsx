@@ -81,6 +81,7 @@ function TeamTabContent({ tab, availableCards }: { tab: string; availableCards: 
     case 'permissions': return <CardPermissionsManager availableCards={availableCards} />;
     case 'accounts': return <AccountPermissionsManager />;
     case 'modules': return <ModulePermissionsManager />;
+    case 'profiles': return <AccessProfilesManager />;
     default: return null;
   }
 }
