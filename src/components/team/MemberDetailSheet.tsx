@@ -708,14 +708,14 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
             </div>
 
             {/* Apply Access Profile */}
-            {member.role === 'member' && accessProfiles.length > 0 && (
+            {accessProfiles.length > 0 && (
               <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
                 <Label className="flex items-center gap-1.5 text-sm font-semibold">
                   <Shield className="h-3.5 w-3.5" />
-                  Aplicar Perfil de Acesso
+                  Perfil de Acesso
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Substitui todas as permissões atuais do membro pelas do perfil selecionado.
+                  Altera o perfil e todas as permissões do usuário.
                 </p>
                 <div className="flex gap-2">
                   <Select value={selectedProfileId} onValueChange={setSelectedProfileId}>
