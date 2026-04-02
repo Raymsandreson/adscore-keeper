@@ -4,9 +4,10 @@ import {
   LayoutDashboard, Users, CalendarDays, TrendingUp, Trophy, UsersRound,
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
-  LogOut, MessagesSquare, Settings, ChevronRight,
+  LogOut, MessagesSquare, Settings, ChevronRight, User,
   MessageSquare as MessageSquareIcon,
 } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Sidebar,
   SidebarContent,
@@ -51,7 +52,7 @@ interface NavSection {
 export function AppSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, signOut } = useAuthContext();
+  const { user, profile, signOut } = useAuthContext();
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const unreadMentions = useUnreadMentionsCount();
@@ -310,6 +311,27 @@ export function AppSidebar() {
             </SidebarMenuItem>
 
             <SidebarSeparator />
+
+            {/* User Profile */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => handleNavigate('/profile')}
+                isActive={isActive('/profile')}
+                tooltip={profile?.full_name || user?.email || 'Perfil'}
+              >
+                <Avatar className="h-5 w-5">
+                  <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-bold">
+                    {profile?.full_name
+                      ? profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+                      : user?.email?.slice(0, 2).toUpperCase() || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col min-w-0">
+                  <span className="truncate text-sm font-medium">{profile?.full_name || 'Usuário'}</span>
+                  <span className="truncate text-[10px] text-muted-foreground">{user?.email}</span>
+                </div>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
 
             {/* Settings */}
             <SidebarMenuItem>
