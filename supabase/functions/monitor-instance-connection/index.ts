@@ -166,8 +166,7 @@ Deno.serve(async (req) => {
           const profile = (profiles || []).find((p: any) => p.user_id === userId);
           if (!profile?.phone) continue;
 
-          const userSender = getSenderForUser(userId);
-          if (!userSender) continue;
+          if (!senderInstance) continue;
 
           const accessibleNames = getUserAccessibleInstances(userId, instanceUsers || [], instances);
           const disconnectedFromAccess = accessibleNames.filter(
