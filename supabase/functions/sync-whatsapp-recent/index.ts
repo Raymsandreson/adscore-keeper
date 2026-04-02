@@ -130,8 +130,8 @@ Deno.serve(async (req) => {
     // Auth handled by verify_jwt=false; frontend ensures only authenticated users call this
 
     const serviceClient = createClient(
-      RESOLVED_SUPABASE_URL,
-      RESOLVED_SERVICE_ROLE_KEY,
+      SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
     );
 
     const body = await req.json().catch(() => ({}));
