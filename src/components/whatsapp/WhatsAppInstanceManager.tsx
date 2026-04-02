@@ -348,6 +348,30 @@ export function WhatsAppInstanceManager() {
                       </div>
                     )}
                     {/* Voice moved to team member profile */}
+                    {/* Notify on disconnect toggle */}
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">🔔 Alertar ao desconectar:</span>
+                      <Switch
+                        id={`notify-${inst.id}`}
+                        checked={(inst as any).notify_on_disconnect !== false}
+                        onCheckedChange={async (checked) => {
+                          setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, notify_on_disconnect: checked } as any : i));
+                          const { error } = await supabase
+                            .from('whatsapp_instances')
+                            .update({ notify_on_disconnect: checked } as any)
+                            .eq('id', inst.id);
+                          if (error) {
+                            toast.error('Erro ao salvar configuração');
+                            setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, notify_on_disconnect: !checked } as any : i));
+                          } else {
+                            toast.success(checked ? '🔔 Alertas de desconexão ativados' : '🔕 Alertas de desconexão desativados');
+                          }
+                        }}
+                      />
+                      <span className="text-[11px] text-muted-foreground italic">
+                        {(inst as any).notify_on_disconnect !== false ? 'Liga e avisa quando cair' : 'Sem alerta'}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="flex items-center gap-1.5">
