@@ -524,7 +524,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         const { data } = await supabase.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle();
         if (data?.id) targetInstanceId = data.id;
       }
-      if (!targetInstanceId && instances.length > 0) targetInstanceId = instances[0].id;
+      if (!targetInstanceId) {
+        toast.error('Erro: instância não identificada para envio de mídia.');
+        return false;
+      }
 
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
@@ -584,7 +587,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         const { data } = await supabase.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle();
         if (data?.id) targetInstanceId = data.id;
       }
-      if (!targetInstanceId && instances.length > 0) targetInstanceId = instances[0].id;
+      if (!targetInstanceId) {
+        toast.error('Erro: instância não identificada para envio de localização.');
+        return false;
+      }
 
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
