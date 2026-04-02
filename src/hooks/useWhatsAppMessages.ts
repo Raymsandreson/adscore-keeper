@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
@@ -57,6 +58,7 @@ export interface InstanceStats {
 
 export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const { user } = useAuthContext();
+  const { isAdmin } = useUserRole();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -83,6 +85,19 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     if (!user) return;
 
     try {
+      // Admins see all active instances
+      if (isAdmin) {
+        const { data, error } = await supabase
+          .from('whatsapp_instances')
+          .select('*')
+          .eq('is_active', true)
+          .order('instance_name');
+        if (error) throw error;
+        setInstances((data || []) as WhatsAppInstance[]);
+        return;
+      }
+
+      // Members: only see explicitly assigned instances
       const [{ data: permissions, error: permissionsError }, { data: profile, error: profileError }] = await Promise.all([
         supabase
           .from('whatsapp_instance_users')
@@ -104,29 +119,28 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         allowedIds.add(profile.default_instance_id);
       }
 
-      let query = supabase
+      if (allowedIds.size === 0) {
+        setInstances([]);
+        return;
+      }
+
+      const { data: instData, error: instError } = await supabase
         .from('whatsapp_instances')
         .select('*')
         .eq('is_active', true)
+        .in('id', Array.from(allowedIds))
         .order('instance_name');
 
-      // Backward compatibility: when no per-user mapping exists yet,
-      // keep the inbox usable by loading active instances instead of zeroing the UI.
-      if (allowedIds.size > 0) {
-        query = query.in('id', Array.from(allowedIds));
-      }
+      if (instError) throw instError;
 
-      const { data, error } = await query;
-      if (error) throw error;
-
-      setInstances((data || []) as WhatsAppInstance[]);
+      setInstances((instData || []) as WhatsAppInstance[]);
     } catch (error) {
       console.error('Error fetching WhatsApp instances:', error);
       setInstances([]);
     } finally {
       setStatsLoading(false);
     }
-  }, [user]);
+  }, [user, isAdmin]);
 
   // Lightweight stats fetch — only counts, no full message data
   const fetchInstanceStats = useCallback(async () => {
