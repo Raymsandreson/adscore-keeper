@@ -72,6 +72,8 @@ interface TeamMember {
 
 export function TeamManagement() {
   const { isAdmin, loading: roleLoading } = useUserRole();
+  const { canEdit } = useModulePermissions();
+  const canManageTeam = isAdmin || canEdit('team_management');
   const { members, invitations, loading, inviteMember, cancelInvitation, updateMemberRole, removeMember, refetch } = useTeamMembers();
   
   const [email, setEmail] = useState('');
