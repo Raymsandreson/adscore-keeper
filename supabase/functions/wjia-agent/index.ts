@@ -760,15 +760,19 @@ async function handleFollowUp(opts: {
     console.log(`WJIA batching delay complete for ${normalizedPhone}`);
   }
 
-  // Load split message settings from shortcut config
+  // Load split message settings and skip_confirmation from shortcut config
   let splitOpts: { splitMessages?: boolean; splitDelaySeconds?: number } | undefined;
+  let skipConfirmation = true; // default true
   if (session.shortcut_name) {
     const { data: scSplit } = await supabase.from("wjia_command_shortcuts")
-      .select("split_messages, split_delay_seconds")
+      .select("split_messages, split_delay_seconds, skip_confirmation")
       .eq("shortcut_name", session.shortcut_name).maybeSingle();
     if (scSplit?.split_messages) {
       splitOpts = { splitMessages: true, splitDelaySeconds: scSplit.split_delay_seconds || 3 };
       console.log(`WJIA split enabled: delay=${splitOpts.splitDelaySeconds}s`);
+    }
+    if (scSplit && typeof scSplit.skip_confirmation === 'boolean') {
+      skipConfirmation = scSplit.skip_confirmation;
     }
   }
 
