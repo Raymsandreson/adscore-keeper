@@ -121,12 +121,22 @@ Deno.serve(async (req) => {
     // 4. Get all instance_users and profiles for notifications
     const [{ data: instanceUsers }, { data: profiles }] = await Promise.all([
       cloudDb.from('whatsapp_instance_users').select('instance_id, user_id'),
-      cloudDb.from('profiles').select('user_id, phone, full_name'),
+      cloudDb.from('profiles').select('user_id, phone, full_name, default_instance_id'),
     ]);
 
-    // Find an active connected instance for sending messages
-    const senderInstance = statuses.find((s) => s.connected);
-    if (!senderInstance) {
+    // Helper: resolve the best sender instance for a given user
+    // Priority: user's default_instance_id (if connected) > any connected instance
+    const fallbackSender = statuses.find((s) => s.connected);
+    function getSenderForUser(userId: string): InstanceStatus | undefined {
+      const profile = (profiles || []).find((p: any) => p.user_id === userId);
+      if (profile?.default_instance_id) {
+        const defaultInst = statuses.find((s) => s.id === profile.default_instance_id && s.connected);
+        if (defaultInst) return defaultInst;
+      }
+      return fallbackSender;
+    }
+
+    if (!fallbackSender) {
       console.warn('No connected instance available to send alerts');
     }
 
@@ -154,36 +164,35 @@ Deno.serve(async (req) => {
           alert_count: 1,
         }, { onConflict: 'instance_id' });
 
-        if (senderInstance) {
-          // Send alert to users who have access to this instance
-          const usersWithAccess = (instanceUsers || [])
-            .filter((iu: any) => iu.instance_id === status.id)
-            .map((iu: any) => iu.user_id);
+        // Send alert to users who have access to this instance
+        const usersWithAccess = (instanceUsers || [])
+          .filter((iu: any) => iu.instance_id === status.id)
+          .map((iu: any) => iu.user_id);
 
-          for (const userId of usersWithAccess) {
-            const profile = (profiles || []).find((p: any) => p.user_id === userId);
-            if (!profile?.phone) continue;
+        for (const userId of usersWithAccess) {
+          const profile = (profiles || []).find((p: any) => p.user_id === userId);
+          if (!profile?.phone) continue;
 
-            const accessibleNames = getUserAccessibleInstances(userId, instanceUsers || [], instances);
-            const disconnectedFromAccess = accessibleNames.filter(
-              (name) => statuses.find((s) => s.instance_name === name && !s.connected)
-            );
+          const userSender = getSenderForUser(userId);
+          if (!userSender) continue;
 
-            const msg =
-              `🔴 *ALERTA: Instância Desconectada*\n\n` +
-              `Olá ${profile.full_name || ''}!\n\n` +
-              `A instância *${status.instance_name}* acabou de desconectar.\n\n` +
-              (disconnectedFromAccess.length > 1
-                ? `⚠️ Instâncias desconectadas que você tem acesso:\n${disconnectedFromAccess.map((n) => `  • ${n}`).join('\n')}\n\n`
-                : '') +
-              `Por favor, reconecte o quanto antes para não perder mensagens.\n` +
-              `📱 _Você receberá uma ligação a cada 10 minutos enquanto estiver desconectado._`;
+          const accessibleNames = getUserAccessibleInstances(userId, instanceUsers || [], instances);
+          const disconnectedFromAccess = accessibleNames.filter(
+            (name) => statuses.find((s) => s.instance_name === name && !s.connected)
+          );
 
-            await sendWhatsAppMessage(profile.phone, msg, senderInstance.id);
+          const msg =
+            `🔴 *ALERTA: Instância Desconectada*\n\n` +
+            `Olá ${profile.full_name || ''}!\n\n` +
+            `A instância *${status.instance_name}* acabou de desconectar.\n\n` +
+            (disconnectedFromAccess.length > 1
+              ? `⚠️ Instâncias desconectadas que você tem acesso:\n${disconnectedFromAccess.map((n) => `  • ${n}`).join('\n')}\n\n`
+              : '') +
+            `Por favor, reconecte o quanto antes para não perder mensagens.\n` +
+            `📱 _Você receberá uma ligação a cada 10 minutos enquanto estiver desconectado._`;
 
-            // Make initial call
-            await makeCall(profile.phone, senderInstance.id);
-          }
+          await sendWhatsAppMessage(profile.phone, msg, userSender.id);
+          await makeCall(profile.phone, userSender.id);
         }
 
         results.push({ instance: status.instance_name, event: 'disconnected', alerted: true });
@@ -193,7 +202,7 @@ Deno.serve(async (req) => {
         const lastCallAt = log?.last_call_made_at ? new Date(log.last_call_made_at).getTime() : 0;
         const elapsed = now.getTime() - lastCallAt;
 
-        if (elapsed >= CALL_INTERVAL_MS && senderInstance) {
+        if (elapsed >= CALL_INTERVAL_MS) {
           console.log(`📞 ${status.instance_name} still disconnected, calling users (${Math.round(elapsed / 60000)}min since last call)`);
 
           const usersWithAccess = (instanceUsers || [])
@@ -203,7 +212,9 @@ Deno.serve(async (req) => {
           for (const userId of usersWithAccess) {
             const profile = (profiles || []).find((p: any) => p.user_id === userId);
             if (!profile?.phone) continue;
-            await makeCall(profile.phone, senderInstance.id);
+            const userSender = getSenderForUser(userId);
+            if (!userSender) continue;
+            await makeCall(profile.phone, userSender.id);
           }
 
           await cloudDb.from('instance_connection_log').update({
@@ -227,30 +238,31 @@ Deno.serve(async (req) => {
           alert_count: 0,
         }).eq('instance_id', status.id);
 
-        if (senderInstance) {
-          const usersWithAccess = (instanceUsers || [])
-            .filter((iu: any) => iu.instance_id === status.id)
-            .map((iu: any) => iu.user_id);
+        const usersWithAccess = (instanceUsers || [])
+          .filter((iu: any) => iu.instance_id === status.id)
+          .map((iu: any) => iu.user_id);
 
-          const disconnectedDuration = log?.disconnected_at
-            ? Math.round((now.getTime() - new Date(log.disconnected_at).getTime()) / 60000)
-            : 0;
+        const disconnectedDuration = log?.disconnected_at
+          ? Math.round((now.getTime() - new Date(log.disconnected_at).getTime()) / 60000)
+          : 0;
 
-          for (const userId of usersWithAccess) {
-            const profile = (profiles || []).find((p: any) => p.user_id === userId);
-            if (!profile?.phone) continue;
+        for (const userId of usersWithAccess) {
+          const profile = (profiles || []).find((p: any) => p.user_id === userId);
+          if (!profile?.phone) continue;
 
-            const msg =
-              `🟢 *Instância Reconectada!*\n\n` +
-              `Olá ${profile.full_name || ''}!\n\n` +
-              `A instância *${status.instance_name}* foi reconectada com sucesso! ✅\n` +
-              (disconnectedDuration > 0
-                ? `⏱️ Ficou desconectada por ${disconnectedDuration} minuto${disconnectedDuration !== 1 ? 's' : ''}.\n`
-                : '') +
-              `\nTudo voltou ao normal. 👍`;
+          const userSender = getSenderForUser(userId);
+          if (!userSender) continue;
 
-            await sendWhatsAppMessage(profile.phone, msg, senderInstance.id);
-          }
+          const msg =
+            `🟢 *Instância Reconectada!*\n\n` +
+            `Olá ${profile.full_name || ''}!\n\n` +
+            `A instância *${status.instance_name}* foi reconectada com sucesso! ✅\n` +
+            (disconnectedDuration > 0
+              ? `⏱️ Ficou desconectada por ${disconnectedDuration} minuto${disconnectedDuration !== 1 ? 's' : ''}.\n`
+              : '') +
+            `\nTudo voltou ao normal. 👍`;
+
+          await sendWhatsAppMessage(profile.phone, msg, userSender.id);
         }
 
         results.push({ instance: status.instance_name, event: 'reconnected', alerted: true });
