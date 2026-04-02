@@ -197,7 +197,7 @@ Deno.serve(async (req) => {
       // Try to delete from WhatsApp via UazAPI if we have the external ID
       if (external_message_id && instance_id) {
         try {
-          const { data: instance } = await supabase
+          const { data: instance } = await internalClient
             .from('whatsapp_instances')
             .select('*')
             .eq('id', instance_id)
