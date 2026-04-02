@@ -34,7 +34,7 @@ export function useTeamMembers() {
       // Fetch user roles with profile info
       const { data: roles, error: rolesError } = await supabase
         .from('user_roles')
-        .select('id, user_id, role, created_at');
+        .select('id, user_id, role, created_at, access_profile_id');
 
       if (rolesError) throw rolesError;
 
