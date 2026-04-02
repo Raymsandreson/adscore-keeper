@@ -54,6 +54,7 @@ export function useTeamMembers() {
           role: r.role as 'admin' | 'member',
           email: profileMap.get(r.user_id)?.email || null,
           full_name: profileMap.get(r.user_id)?.full_name || null,
+          access_profile_id: (r as any).access_profile_id || null,
         }));
 
         setMembers(membersWithProfiles);
