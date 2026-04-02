@@ -254,7 +254,17 @@ export function TeamManagement() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
+              {role === 'member' && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowPermissions(!showPermissions)}
+                  type="button"
+                >
+                  <Shield className="h-4 w-4 mr-2" />
+                  {showPermissions ? 'Ocultar Acessos' : 'Definir Acessos'}
+                </Button>
+              )}
               <Button onClick={handleInvite} disabled={inviting}>
                 {inviting ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -265,6 +275,60 @@ export function TeamManagement() {
               </Button>
             </div>
           </div>
+
+          {/* Permission configuration panel */}
+          {showPermissions && role === 'member' && (
+            <div className="mt-6 border rounded-lg p-4 space-y-5 bg-muted/30">
+              {/* Module Permissions */}
+              <div>
+                <Label className="text-sm font-semibold mb-3 block">Módulos</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {MODULE_DEFINITIONS.map(mod => (
+                    <div key={mod.key} className="flex items-center justify-between rounded-md border px-3 py-2 bg-background">
+                      <span className="text-sm">{mod.label}</span>
+                      <Select
+                        value={selectedModules[mod.key] || 'none'}
+                        onValueChange={(v) => setSelectedModules(prev => ({ ...prev, [mod.key]: v as AccessLevel }))}
+                      >
+                        <SelectTrigger className="w-24 h-7 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sem acesso</SelectItem>
+                          <SelectItem value="view">Ver</SelectItem>
+                          <SelectItem value="edit">Editar</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* WhatsApp Instances */}
+              {whatsappInstances.length > 0 && (
+                <div>
+                  <Label className="text-sm font-semibold mb-3 block">Instâncias WhatsApp</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {whatsappInstances.map(inst => (
+                      <label key={inst.id} className="flex items-center gap-2 rounded-md border px-3 py-2 bg-background cursor-pointer hover:bg-muted/50">
+                        <Checkbox
+                          checked={selectedInstances.includes(inst.id)}
+                          onCheckedChange={(checked) => {
+                            setSelectedInstances(prev =>
+                              checked
+                                ? [...prev, inst.id]
+                                : prev.filter(id => id !== inst.id)
+                            );
+                          }}
+                        />
+                        <span className="text-sm">{inst.instance_name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
