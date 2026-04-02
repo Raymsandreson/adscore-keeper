@@ -42,7 +42,7 @@ const BMConnection = ({
   const [accessToken, setAccessToken] = useState("");
   const [accountId, setAccountId] = useState("");
   const [accountName, setAccountName] = useState("");
-  const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
+  const { accounts: savedAccounts, loading: accountsLoading, addAccount, deleteAccount: removeAccount } = useMetaAdAccounts();
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [showNewForm, setShowNewForm] = useState(false);
   const [connectedAccountName, setConnectedAccountName] = useState("");
@@ -52,25 +52,16 @@ const BMConnection = ({
   const [showConfigGuide, setShowConfigGuide] = useState(false);
   const { toast } = useToast();
 
-  // Carregar contas salvas do localStorage
+  // Selecionar primeira conta quando carregam do DB
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const accounts = JSON.parse(saved);
-        setSavedAccounts(accounts);
-        if (accounts.length > 0 && !showNewForm) {
-          const firstAccount = accounts[0];
-          setSelectedAccountId(firstAccount.id);
-          setAccessToken(firstAccount.accessToken);
-          setAccountId(firstAccount.accountId);
-          setAccountName(firstAccount.name);
-        }
-      } catch (e) {
-        console.error("Error loading saved accounts:", e);
-      }
+    if (savedAccounts.length > 0 && !selectedAccountId && !showNewForm) {
+      const firstAccount = savedAccounts[0];
+      setSelectedAccountId(firstAccount.id);
+      setAccessToken(firstAccount.accessToken);
+      setAccountId(firstAccount.accountId);
+      setAccountName(firstAccount.name);
     }
-  }, []);
+  }, [savedAccounts]);
 
   // Validar token quando o token mudar
   const validateToken = async (token: string) => {
