@@ -204,9 +204,8 @@ Deno.serve(async (req) => {
           for (const userId of usersWithAccess) {
             const profile = (profiles || []).find((p: any) => p.user_id === userId);
             if (!profile?.phone) continue;
-            const userSender = getSenderForUser(userId);
-            if (!userSender) continue;
-            await makeCall(profile.phone, userSender.id);
+            if (!senderInstance) continue;
+            await makeCall(profile.phone, senderInstance.id);
           }
 
           await cloudDb.from('instance_connection_log').update({
