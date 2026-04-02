@@ -376,6 +376,9 @@ REGRAS:
           customPrompt = matchedShortcut.media_extraction_prompt;
         }
 
+        // Build catalog from template fields for extraction
+        const catalog = buildTemplateFieldCatalog({ required_fields: templateFields, missing_fields: missingFields });
+
         try {
           const { extractedFields: autoExtracted, signerName: autoSigner } =
             await extractFromDocuments(mediaUrls, catalog, fieldsData, customPrompt, docTypeGuesses);
