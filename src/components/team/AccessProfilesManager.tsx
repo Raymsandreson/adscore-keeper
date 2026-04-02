@@ -68,6 +68,50 @@ export function AccessProfilesManager() {
     setModules(init);
     setSelectedInstances([]);
     setEditing(null);
+    setAiPrompt('');
+  };
+
+  const handleAiGenerate = async () => {
+    if (!aiPrompt.trim()) {
+      toast.error('Digite uma descrição para o perfil');
+      return;
+    }
+    setAiLoading(true);
+    try {
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-access-profile`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ prompt: aiPrompt.trim() }),
+        }
+      );
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.error || 'Erro ao gerar perfil');
+      }
+      const profile = await resp.json();
+      
+      // Fill form with AI result
+      setName(profile.name || '');
+      setDescription(profile.description || '');
+      const mods: Record<string, AccessLevel> = {};
+      MODULE_DEFINITIONS.forEach(m => { mods[m.key] = 'none'; });
+      (profile.module_permissions || []).forEach((p: any) => {
+        if (mods[p.module_key] !== undefined) {
+          mods[p.module_key] = p.access_level as AccessLevel;
+        }
+      });
+      setModules(mods);
+      toast.success('Perfil gerado pela IA! Revise e salve.');
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao gerar com IA');
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const openEdit = (profile: AccessProfile) => {
