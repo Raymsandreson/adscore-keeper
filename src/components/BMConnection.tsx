@@ -9,13 +9,7 @@ import { Wifi, WifiOff, AlertCircle, RefreshCw, Save, Trash2, Plus, Clock, Check
 import { useToast } from "@/hooks/use-toast";
 import { MetaAPIConfig } from "@/services/metaAPI";
 import TokenConfigGuide from "./TokenConfigGuide";
-
-interface SavedAccount {
-  id: string;
-  name: string;
-  accessToken: string;
-  accountId: string;
-}
+import { useMetaAdAccounts } from "@/hooks/useMetaAdAccounts";
 
 interface TokenInfo {
   isValid: boolean;
@@ -36,8 +30,6 @@ interface BMConnectionProps {
   onDisconnect: () => void;
   onRefresh: () => Promise<void>;
 }
-
-const STORAGE_KEY = "meta_saved_accounts";
 
 const BMConnection = ({ 
   isConnected, 
