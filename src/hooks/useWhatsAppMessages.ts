@@ -260,6 +260,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       const { data, error } = await cloudFunctions.invoke('sync-whatsapp-recent', {
         body: {
           instance_id: instance.id,
+          instance_name: instance.instance_name,
           max_chats: 80,
           user_id: user?.id || null,
         },

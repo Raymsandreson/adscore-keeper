@@ -1,9 +1,13 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
-// Use external Supabase project (where webhook saves data)
-const SUPABASE_URL = resolveSupabaseUrl();
-const SUPABASE_SERVICE_ROLE_KEY = resolveServiceRoleKey();
+// Internal project DB stores instance registry + user access.
+const INTERNAL_SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const INTERNAL_SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+// External DB stores WhatsApp business data/messages.
+const EXTERNAL_SUPABASE_URL = resolveSupabaseUrl();
+const EXTERNAL_SUPABASE_SERVICE_ROLE_KEY = resolveServiceRoleKey();
 
 
 const corsHeaders = {
@@ -130,14 +134,21 @@ Deno.serve(async (req) => {
   try {
     // Auth handled by verify_jwt=false; frontend ensures only authenticated users call this
 
-    const serviceClient = createClient(
-      SUPABASE_URL,
-      SUPABASE_SERVICE_ROLE_KEY,
+    const internalClient = createClient(
+      INTERNAL_SUPABASE_URL,
+      INTERNAL_SUPABASE_SERVICE_ROLE_KEY,
+    );
+
+    const dataClient = createClient(
+      EXTERNAL_SUPABASE_URL,
+      EXTERNAL_SUPABASE_SERVICE_ROLE_KEY,
     );
 
     const body = await req.json().catch(() => ({}));
     const instanceId = typeof body.instance_id === 'string' ? body.instance_id : null;
-    const instanceName = typeof body.instance_name === 'string' ? body.instance_name : null;
+    const instanceName = typeof body.instance_name === 'string' && body.instance_name.trim()
+      ? body.instance_name.trim()
+      : null;
     const maxChats = Math.min(Math.max(Number(body.max_chats) || 60, 20), 150);
 
     console.log(`sync-whatsapp-recent: instanceId=${instanceId} instanceName=${instanceName}`);
@@ -149,19 +160,27 @@ Deno.serve(async (req) => {
       });
     }
 
-    let instanceQuery = serviceClient
+    const baseInstanceQuery = internalClient
       .from('whatsapp_instances')
       .select('id, instance_name, instance_token, base_url, is_active')
       .eq('is_active', true)
       .limit(1);
 
+    let instanceQuery = baseInstanceQuery;
     if (instanceId) {
       instanceQuery = instanceQuery.eq('id', instanceId);
     } else {
       instanceQuery = instanceQuery.ilike('instance_name', `%${instanceName}%`);
     }
 
-    const { data: instance, error: instanceError } = await instanceQuery.maybeSingle();
+    let { data: instance, error: instanceError } = await instanceQuery.maybeSingle();
+
+    if (!instance && instanceId && instanceName) {
+      const fallbackResult = await baseInstanceQuery.ilike('instance_name', `%${instanceName}%`).maybeSingle();
+      instance = fallbackResult.data;
+      instanceError = fallbackResult.error;
+    }
+
     console.log(`sync-whatsapp-recent: query result instance=${instance?.instance_name || 'null'} error=${instanceError?.message || 'none'}`);
     if (instanceError || !instance) {
       return new Response(JSON.stringify({ success: false, error: 'Instance not found', debug: { instanceId, instanceName, dbError: instanceError?.message } }), {
@@ -177,7 +196,7 @@ Deno.serve(async (req) => {
     let hasAccess = false;
 
     if (userId) {
-      const { data: permission } = await serviceClient
+      const { data: permission } = await internalClient
         .from('whatsapp_instance_users')
         .select('id')
         .eq('instance_id', instance.id)
@@ -189,7 +208,7 @@ Deno.serve(async (req) => {
         hasAccess = true;
       } else {
         // Fallback: check if user has any role (admin or member can sync)
-        const { data: role } = await serviceClient
+        const { data: role } = await internalClient
           .from('user_roles')
           .select('id')
           .eq('user_id', userId)
@@ -250,7 +269,7 @@ Deno.serve(async (req) => {
     }
 
     const phones = [...new Set(snapshots.map((s) => s.phone))];
-    const { data: latestRows } = await serviceClient
+    const { data: latestRows } = await dataClient
       .from('whatsapp_messages')
       .select('phone, created_at')
       .eq('instance_name', instance.instance_name)
@@ -288,7 +307,7 @@ Deno.serve(async (req) => {
       }));
 
     if (inserts.length > 0) {
-      const { error: insertError } = await serviceClient
+      const { error: insertError } = await dataClient
         .from('whatsapp_messages')
         .insert(inserts);
 
