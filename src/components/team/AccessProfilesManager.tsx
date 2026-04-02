@@ -10,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { MODULE_DEFINITIONS, AccessLevel } from '@/hooks/useModulePermissions';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Shield, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Shield, Loader2, Sparkles } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { supabase as supabaseClient } from '@/integrations/supabase/client';
 
 interface AccessProfile {
   id: string;
