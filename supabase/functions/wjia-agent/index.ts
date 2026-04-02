@@ -474,16 +474,19 @@ REGRAS:
       }
     }
 
-    // Normal flow: send collection message
-    if (inst?.instance_token && parsed.collection_message) {
-      await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, parsed.collection_message, contact_id, lead_id, "wjia_collect");
-    }
+    // Normal flow: send collection message (only if not auto-extracted to ready)
+    if (!startWithDocs || session.status !== "ready") {
+      if (inst?.instance_token && parsed.collection_message) {
+        await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, parsed.collection_message, contact_id, lead_id, "wjia_collect");
+      }
 
-    return new Response(JSON.stringify({
-      success: true, action: "collection_started",
-      message: `🔄 *Coleta de dados iniciada*\nDocumento: *${parsed.template_name}*\n📊 Dados encontrados: ${fieldsData.filter((f: any) => f.para).length}\n⚠️ Faltantes: ${missingFields.length}\n\nO robô vai coletar:\n${missingFields.map((f: any) => `• ${f.friendly_name}`).join("\n")}`,
-      session_id: session.id, missing_count: missingFields.length,
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({
+        success: true, action: "collection_started",
+        message: `🔄 *Coleta de dados iniciada*\nDocumento: *${parsed.template_name}*\n📊 Dados encontrados: ${fieldsData.filter((f: any) => f.para).length}\n⚠️ Faltantes: ${missingFields.length}\n\nO robô vai coletar:\n${missingFields.map((f: any) => `• ${f.friendly_name}`).join("\n")}`,
+        session_id: session.id, missing_count: missingFields.length,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    // If we reach here, auto-extraction filled all fields — fall through to generate
   }
 
   // All data available → generate immediately
