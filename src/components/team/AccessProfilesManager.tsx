@@ -216,6 +216,32 @@ export function AccessProfilesManager() {
               <DialogTitle>{editing ? 'Editar Perfil' : 'Novo Perfil de Acesso'}</DialogTitle>
             </DialogHeader>
             <div className="space-y-5 pt-2">
+              {!editing && (
+                <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4 space-y-3">
+                  <Label className="text-sm font-semibold flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    Gerar com IA
+                  </Label>
+                  <Textarea
+                    placeholder="Ex: Crie um perfil para estagiário de marketing que só pode ver leads e editar Instagram..."
+                    value={aiPrompt}
+                    onChange={e => setAiPrompt(e.target.value)}
+                    rows={2}
+                    className="resize-none text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAiGenerate}
+                    disabled={aiLoading || !aiPrompt.trim()}
+                  >
+                    {aiLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                    {aiLoading ? 'Gerando...' : 'Gerar Perfil'}
+                  </Button>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label>Nome</Label>
