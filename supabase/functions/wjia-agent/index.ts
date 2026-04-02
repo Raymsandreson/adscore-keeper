@@ -679,7 +679,10 @@ Se não encontrou nada, retorne: []`;
   }
 
   if (inst?.instance_token && signUrl) {
-    const clientMsg = `📝 *Documento para assinatura*\n\nOlá ${signerName.split(" ")[0]}! Segue o link:\n\n👉 ${signUrl}\n\n1. Clique no link\n2. Confira seus dados e assine digitalmente\n\nQualquer dúvida, estou à disposição! 🙏`;
+    const hasPartialData = hasMissing && skipConfirmation;
+    const clientMsg = hasPartialData
+      ? `📝 *Documento para preenchimento e assinatura*\n\nOlá ${signerName.split(" ")[0]}! Preparei o documento *${parsed.template_name}* com os dados que já tenho.\n\n👉 ${signUrl}\n\n1. Clique no link\n2. *Complete os campos que estiverem em branco*\n3. Confira tudo e assine digitalmente\n\nQualquer dúvida, estou à disposição! 🙏`
+      : `📝 *Documento para assinatura*\n\nOlá ${signerName.split(" ")[0]}! Segue o link:\n\n👉 ${signUrl}\n\n1. Clique no link\n2. Confira seus dados e assine digitalmente\n\nQualquer dúvida, estou à disposição! 🙏`;
     await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, clientMsg, contact_id, lead_id, "wjia_doc");
   }
 
