@@ -10,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { MODULE_DEFINITIONS, AccessLevel } from '@/hooks/useModulePermissions';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Shield, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Shield, Loader2, Sparkles } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { supabase as supabaseClient } from '@/integrations/supabase/client';
 
 interface AccessProfile {
   id: string;
@@ -42,6 +44,8 @@ export function AccessProfilesManager() {
     return init;
   });
   const [selectedInstances, setSelectedInstances] = useState<string[]>([]);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -64,6 +68,50 @@ export function AccessProfilesManager() {
     setModules(init);
     setSelectedInstances([]);
     setEditing(null);
+    setAiPrompt('');
+  };
+
+  const handleAiGenerate = async () => {
+    if (!aiPrompt.trim()) {
+      toast.error('Digite uma descrição para o perfil');
+      return;
+    }
+    setAiLoading(true);
+    try {
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-access-profile`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ prompt: aiPrompt.trim() }),
+        }
+      );
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.error || 'Erro ao gerar perfil');
+      }
+      const profile = await resp.json();
+      
+      // Fill form with AI result
+      setName(profile.name || '');
+      setDescription(profile.description || '');
+      const mods: Record<string, AccessLevel> = {};
+      MODULE_DEFINITIONS.forEach(m => { mods[m.key] = 'none'; });
+      (profile.module_permissions || []).forEach((p: any) => {
+        if (mods[p.module_key] !== undefined) {
+          mods[p.module_key] = p.access_level as AccessLevel;
+        }
+      });
+      setModules(mods);
+      toast.success('Perfil gerado pela IA! Revise e salve.');
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao gerar com IA');
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const openEdit = (profile: AccessProfile) => {
@@ -168,6 +216,32 @@ export function AccessProfilesManager() {
               <DialogTitle>{editing ? 'Editar Perfil' : 'Novo Perfil de Acesso'}</DialogTitle>
             </DialogHeader>
             <div className="space-y-5 pt-2">
+              {!editing && (
+                <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4 space-y-3">
+                  <Label className="text-sm font-semibold flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    Gerar com IA
+                  </Label>
+                  <Textarea
+                    placeholder="Ex: Crie um perfil para estagiário de marketing que só pode ver leads e editar Instagram..."
+                    value={aiPrompt}
+                    onChange={e => setAiPrompt(e.target.value)}
+                    rows={2}
+                    className="resize-none text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAiGenerate}
+                    disabled={aiLoading || !aiPrompt.trim()}
+                  >
+                    {aiLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                    {aiLoading ? 'Gerando...' : 'Gerar Perfil'}
+                  </Button>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label>Nome</Label>
