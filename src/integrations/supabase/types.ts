@@ -20,6 +20,7 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean
+          is_system: boolean
           module_permissions: Json
           name: string
           updated_at: string
@@ -30,6 +31,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          is_system?: boolean
           module_permissions?: Json
           name: string
           updated_at?: string
@@ -40,6 +42,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          is_system?: boolean
           module_permissions?: Json
           name?: string
           updated_at?: string
@@ -6937,24 +6940,35 @@ export type Database = {
       }
       user_roles: {
         Row: {
+          access_profile_id: string | null
           created_at: string
           id: string
           role: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Insert: {
+          access_profile_id?: string | null
           created_at?: string
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Update: {
+          access_profile_id?: string | null
           created_at?: string
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_roles_access_profile_id_fkey"
+            columns: ["access_profile_id"]
+            isOneToOne: false
+            referencedRelation: "access_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_sessions: {
         Row: {
