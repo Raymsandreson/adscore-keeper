@@ -19,6 +19,7 @@ interface InstanceStatus {
   instance_token: string;
   base_url: string;
   owner_phone: string | null;
+  notify_on_disconnect: boolean;
   connected: boolean;
 }
 
