@@ -450,7 +450,7 @@ export function TeamManagement() {
             <TableHeader>
               <TableRow>
                 <TableHead>Membro</TableHead>
-                <TableHead>Permissão</TableHead>
+                <TableHead>Perfil</TableHead>
                 <TableHead>Desde</TableHead>
                 <TableHead className="w-20"></TableHead>
               </TableRow>
