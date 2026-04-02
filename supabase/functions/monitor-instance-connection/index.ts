@@ -202,7 +202,7 @@ Deno.serve(async (req) => {
         const lastCallAt = log?.last_call_made_at ? new Date(log.last_call_made_at).getTime() : 0;
         const elapsed = now.getTime() - lastCallAt;
 
-        if (elapsed >= CALL_INTERVAL_MS && senderInstance) {
+        if (elapsed >= CALL_INTERVAL_MS) {
           console.log(`📞 ${status.instance_name} still disconnected, calling users (${Math.round(elapsed / 60000)}min since last call)`);
 
           const usersWithAccess = (instanceUsers || [])
@@ -212,7 +212,9 @@ Deno.serve(async (req) => {
           for (const userId of usersWithAccess) {
             const profile = (profiles || []).find((p: any) => p.user_id === userId);
             if (!profile?.phone) continue;
-            await makeCall(profile.phone, senderInstance.id);
+            const userSender = getSenderForUser(userId);
+            if (!userSender) continue;
+            await makeCall(profile.phone, userSender.id);
           }
 
           await cloudDb.from('instance_connection_log').update({
