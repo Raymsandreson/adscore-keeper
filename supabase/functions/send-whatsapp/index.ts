@@ -2,10 +2,13 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
-// Use external Supabase project when configured (hybrid architecture)
+// External DB for data (messages, etc.)
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
-const RESOLVED_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+// Internal (Cloud) DB for metadata (instances, permissions)
+const INTERNAL_SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const INTERNAL_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 
 const corsHeaders = {
@@ -33,6 +36,8 @@ Deno.serve(async (req) => {
     const supabaseUrl = RESOLVED_SUPABASE_URL
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
     const supabase = createClient(supabaseUrl, supabaseKey)
+    // Internal client for instance lookups (Cloud DB)
+    const internalClient = createClient(INTERNAL_SUPABASE_URL, INTERNAL_SERVICE_ROLE_KEY)
 
     const body = await req.json()
     // Normalize phone in body if present
@@ -64,7 +69,7 @@ Deno.serve(async (req) => {
       }
       const inviteCode = match[1]
 
-      const instance = await getInstance(supabase, instance_id)
+      const instance = await getInstance(internalClient, instance_id)
       if (!instance) {
         return new Response(
           JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
@@ -131,7 +136,7 @@ Deno.serve(async (req) => {
         )
       }
 
-      const instance = await getInstance(supabase, instance_id)
+      const instance = await getInstance(internalClient, instance_id)
       if (!instance) {
         return new Response(
           JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
@@ -192,7 +197,7 @@ Deno.serve(async (req) => {
       // Try to delete from WhatsApp via UazAPI if we have the external ID
       if (external_message_id && instance_id) {
         try {
-          const { data: instance } = await supabase
+          const { data: instance } = await internalClient
             .from('whatsapp_instances')
             .select('*')
             .eq('id', instance_id)
@@ -268,7 +273,7 @@ Deno.serve(async (req) => {
         )
       }
 
-      const instance = await getInstance(supabase, instance_id)
+      const instance = await getInstance(internalClient, instance_id)
       if (!instance) {
         return new Response(
           JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
@@ -359,7 +364,7 @@ Deno.serve(async (req) => {
         )
       }
 
-      const instance = await getInstance(supabase, instance_id)
+      const instance = await getInstance(internalClient, instance_id)
       if (!instance) {
         return new Response(
           JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
@@ -426,7 +431,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    const instance = await getInstance(supabase, instance_id)
+    const instance = await getInstance(internalClient, instance_id)
     if (!instance) {
       return new Response(
         JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
