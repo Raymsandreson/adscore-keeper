@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
         // ── JUST DISCONNECTED ──
         console.log(`🔴 ${status.instance_name} DISCONNECTED`);
 
-        // Upsert connection log
+        // Still log the disconnection even if notifications are off
         await cloudDb.from('instance_connection_log').upsert({
           instance_id: status.id,
           instance_name: status.instance_name,
