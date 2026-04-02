@@ -31,7 +31,7 @@ async function checkInstanceConnection(inst: { id: string; instance_name: string
       signal: AbortSignal.timeout(5000),
     });
     if (!resp.ok) {
-      return { ...inst, base_url: baseUrl, connected: false };
+      return { ...inst, base_url: baseUrl, notify_on_disconnect: inst.notify_on_disconnect !== false, connected: false };
     }
     const data = await resp.json();
     const status = data?.instance?.status?.toLowerCase() || 'unknown';
