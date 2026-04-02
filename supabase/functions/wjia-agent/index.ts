@@ -509,6 +509,16 @@ Se não encontrou nada, retorne: []`;
         // All data extracted from history! Skip to generation
         session.status = "ready";
         // Don't return — let it fall through to generate
+      } else if (skipConfirmation) {
+        // skip_confirmation mode: generate document with partial data, client fills rest on ZapSign
+        console.log(`WJIA skip_confirmation: ${stillMissing.length} fields missing, generating with partial data`);
+        
+        // Update session to generated state
+        await supabase.from("wjia_collection_sessions").update({
+          status: "ready", updated_at: new Date().toISOString(),
+        }).eq("id", session.id);
+        session.status = "ready";
+        // Fall through to generate — ZapSign will show editable fields for missing data
       } else if (filledCount > 0) {
         // Found some data but still missing — tell client what we found and ask only for what's missing
         if (inst?.instance_token) {
