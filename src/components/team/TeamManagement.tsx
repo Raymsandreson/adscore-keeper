@@ -181,6 +181,12 @@ export function TeamManagement() {
       toast.error('Informe o email');
       return;
     }
+    if (!selectedProfileId) {
+      toast.error('Selecione um perfil de acesso');
+      return;
+    }
+
+    const role = getSelectedRole();
 
     setInviting(true);
     try {
@@ -193,7 +199,7 @@ export function TeamManagement() {
       await inviteMember(email, role, modulePerms, instanceIds);
       toast.success('Convite enviado com permissões configuradas!');
       setEmail('');
-      setRole('member');
+      setSelectedProfileId('');
       setShowPermissions(false);
       setSelectedInstances([]);
       const reset: Record<string, AccessLevel> = {};
