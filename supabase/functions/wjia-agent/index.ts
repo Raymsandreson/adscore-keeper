@@ -485,7 +485,17 @@ Se não encontrou nada, retorne: []`;
       } else if (filledCount > 0) {
         // Found some data but still missing — tell client what we found and ask only for what's missing
         if (inst?.instance_token) {
-          const missingList = stillMissing.map((f: any) => `• ${f.friendly_name}`).join("\n");
+          const FRIENDLY_LABELS: Record<string, string> = {
+            'NOME_COMPLETO': 'Nome completo', 'NACIONALIDADE': 'Nacionalidade', 'ESTADO_CIVIL': 'Estado civil',
+            'PROFISSAO': 'Profissão', 'CPF': 'CPF', 'RG': 'RG', 'ENDERECO_COMPLETO': 'Endereço completo',
+            'CIDADE': 'Cidade', 'UF': 'Estado (UF)', 'CEP': 'CEP', 'DATA_NASCIMENTO': 'Data de nascimento',
+            'NOME_MAE': 'Nome da mãe', 'EMAIL': 'E-mail', 'TELEFONE': 'Telefone', 'BAIRRO': 'Bairro',
+            'NUMERO': 'Número', 'COMPLEMENTO': 'Complemento',
+          };
+          const missingList = stillMissing.map((f: any) => {
+            const key = (f.friendly_name || f.field_name || '').replace(/[{}]/g, '');
+            return `• ${FRIENDLY_LABELS[key] || f.friendly_name || key}`;
+          }).join("\n");
           const collectMsg = `📋 Encontrei ${filledCount} dados na nossa conversa!\n\nAinda preciso de:\n${missingList}\n\nPor favor, me informe esses dados ou envie fotos dos documentos. 🙏`;
           await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, collectMsg, contact_id, lead_id, "wjia_collect");
         }
