@@ -223,6 +223,48 @@ export function TeamManagement() {
     }
   };
 
+  const handleInlineProfileChange = async (userId: string, profileId: string) => {
+    const profile = accessProfiles.find(p => p.id === profileId);
+    if (!profile) return;
+
+    try {
+      const isSystem = profile.is_system;
+      const newRole = isSystem ? 'admin' : 'member';
+
+      await supabase
+        .from('user_roles')
+        .update({ role: newRole, access_profile_id: profileId } as any)
+        .eq('user_id', userId);
+
+      if (!isSystem) {
+        await supabase.from('member_module_permissions').delete().eq('user_id', userId);
+        if (profile.module_permissions.length > 0) {
+          await supabase.from('member_module_permissions').insert(
+            profile.module_permissions.map((p: any) => ({
+              user_id: userId,
+              module_key: p.module_key,
+              access_level: p.access_level,
+            }))
+          );
+        }
+        await supabase.from('whatsapp_instance_users').delete().eq('user_id', userId);
+        if (profile.whatsapp_instance_ids.length > 0) {
+          await supabase.from('whatsapp_instance_users').insert(
+            profile.whatsapp_instance_ids.map((instId: string) => ({
+              user_id: userId,
+              instance_id: instId,
+            }))
+          );
+        }
+      }
+
+      toast.success(`Perfil "${profile.name}" aplicado!`);
+      refetch();
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao alterar perfil');
+    }
+  };
+
   const handleRemove = async (userId: string) => {
     try {
       await removeMember(userId);
@@ -478,10 +520,22 @@ export function TeamManagement() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <Badge variant={member.role === 'admin' ? 'default' : 'secondary'}>
-                      {getProfileName(member.access_profile_id)}
-                    </Badge>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Select
+                      value={member.access_profile_id || ''}
+                      onValueChange={(v) => handleInlineProfileChange(member.user_id, v)}
+                    >
+                      <SelectTrigger className="w-40 h-8 text-xs">
+                        <SelectValue placeholder="Sem perfil" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {accessProfiles.map(p => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.is_system ? `👑 ${p.name}` : p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {format(new Date(member.created_at), "dd/MM/yyyy", { locale: ptBR })}
