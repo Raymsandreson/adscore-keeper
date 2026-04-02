@@ -282,53 +282,33 @@ export function TeamManagement() {
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
-            <div className="w-full sm:w-40">
-              <Label>Permissão</Label>
-              <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'member')}>
+            <div className="w-full sm:w-56">
+              <Label>Perfil de Acesso</Label>
+              <Select value={selectedProfileId} onValueChange={handleProfileSelect}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Selecione um perfil..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="member">
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      Membro
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="admin">
-                    <div className="flex items-center gap-2">
-                      <Crown className="h-4 w-4" />
-                      Admin
-                    </div>
-                  </SelectItem>
+                  {accessProfiles.map(p => (
+                    <SelectItem key={p.id} value={p.id}>
+                      <div className="flex items-center gap-2">
+                        {p.is_system ? <Crown className="h-4 w-4" /> : <User className="h-4 w-4" />}
+                        {p.name}
+                      </div>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            {role === 'member' && accessProfiles.length > 0 && (
-              <div className="w-full sm:w-48">
-                <Label>Perfil de Acesso</Label>
-                <Select value={selectedProfileId} onValueChange={handleProfileSelect}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="custom">Personalizado</SelectItem>
-                    {accessProfiles.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
             <div className="flex items-end gap-2">
-              {role === 'member' && (
+              {selectedProfileId && getSelectedRole() === 'member' && (
                 <Button
                   variant="outline"
                   onClick={() => setShowPermissions(!showPermissions)}
                   type="button"
                 >
                   <Shield className="h-4 w-4 mr-2" />
-                  {showPermissions ? 'Ocultar Acessos' : 'Definir Acessos'}
+                  {showPermissions ? 'Ocultar Acessos' : 'Ver Acessos'}
                 </Button>
               )}
               <Button onClick={handleInvite} disabled={inviting}>
@@ -343,7 +323,7 @@ export function TeamManagement() {
           </div>
 
           {/* Permission configuration panel */}
-          {showPermissions && role === 'member' && (
+          {showPermissions && selectedProfileId && getSelectedRole() === 'member' && (
             <div className="mt-6 border rounded-lg p-4 space-y-5 bg-muted/30">
               {/* Module Permissions */}
               <div>
