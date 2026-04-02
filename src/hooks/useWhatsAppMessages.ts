@@ -56,6 +56,8 @@ export interface InstanceStats {
   unread_count: number;
 }
 
+const getConversationKey = (phone: string, instanceName?: string | null) => `${phone}__${instanceName || ''}`;
+
 export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const { user } = useAuthContext();
   const { isAdmin } = useUserRole();
@@ -204,9 +206,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     const convMap = new Map<string, WhatsAppConversation>();
 
     for (const msg of msgs) {
-      const existing = convMap.get(msg.phone);
+      const conversationKey = getConversationKey(msg.phone, msg.instance_name);
+      const existing = convMap.get(conversationKey);
       if (!existing) {
-        convMap.set(msg.phone, {
+        convMap.set(conversationKey, {
           phone: msg.phone,
           contact_name: msg.contact_name,
           contact_id: msg.contact_id,

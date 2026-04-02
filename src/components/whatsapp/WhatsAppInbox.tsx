@@ -299,7 +299,9 @@ export function WhatsAppInbox() {
   }, [conversations, privateConvs, sharedMessages, user, canViewPrivate]);
 
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
-  const selectedConversation = visibleConversations.find(c => c.phone === selectedPhone && (!selectedInstance || c.instance_name === selectedInstance)) || visibleConversations.find(c => c.phone === selectedPhone) || null;
+  const selectedConversation = visibleConversations.find(
+    c => c.phone === selectedPhone && c.instance_name === selectedInstance
+  ) || null;
   const totalUnread = visibleConversations.reduce((sum, c) => sum + c.unread_count, 0);
 
   const handleSelectConversation = (conv: WhatsAppConversation) => {
