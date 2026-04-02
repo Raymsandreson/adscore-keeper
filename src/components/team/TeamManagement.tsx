@@ -81,6 +81,14 @@ export function TeamManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sendingNotifUserId, setSendingNotifUserId] = useState<string | null>(null);
   const [showPermissions, setShowPermissions] = useState(false);
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('custom');
+
+  // Access profiles
+  const [accessProfiles, setAccessProfiles] = useState<Array<{
+    id: string; name: string;
+    module_permissions: Array<{ module_key: string; access_level: string }>;
+    whatsapp_instance_ids: string[];
+  }>>([]);
 
   // Module permissions state
   const [selectedModules, setSelectedModules] = useState<Record<string, AccessLevel>>(() => {
@@ -94,13 +102,37 @@ export function TeamManagement() {
   const [selectedInstances, setSelectedInstances] = useState<string[]>([]);
 
   useEffect(() => {
-    supabase
-      .from('whatsapp_instances')
-      .select('id, instance_name')
-      .eq('is_active', true)
-      .order('instance_name')
-      .then(({ data }) => setWhatsappInstances((data || []) as WhatsAppInstanceOption[]));
+    Promise.all([
+      supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+      supabase.from('access_profiles').select('id, name, module_permissions, whatsapp_instance_ids').eq('is_active', true).order('name'),
+    ]).then(([instRes, profRes]) => {
+      setWhatsappInstances((instRes.data || []) as WhatsAppInstanceOption[]);
+      setAccessProfiles((profRes.data || []) as any[]);
+    });
   }, []);
+
+  // When a profile is selected, apply its permissions to the form
+  const handleProfileSelect = (profileId: string) => {
+    setSelectedProfileId(profileId);
+    if (profileId === 'custom') {
+      const init: Record<string, AccessLevel> = {};
+      MODULE_DEFINITIONS.forEach(m => { init[m.key] = 'none'; });
+      setSelectedModules(init);
+      setSelectedInstances([]);
+      return;
+    }
+    const profile = accessProfiles.find(p => p.id === profileId);
+    if (profile) {
+      const mods: Record<string, AccessLevel> = {};
+      MODULE_DEFINITIONS.forEach(m => { mods[m.key] = 'none'; });
+      (profile.module_permissions || []).forEach((p: any) => {
+        mods[p.module_key] = p.access_level as AccessLevel;
+      });
+      setSelectedModules(mods);
+      setSelectedInstances(profile.whatsapp_instance_ids || []);
+      setShowPermissions(true);
+    }
+  };
 
   const filteredMembers = members.filter((member) => {
     if (!searchTerm.trim()) return true;
@@ -254,6 +286,22 @@ export function TeamManagement() {
                 </SelectContent>
               </Select>
             </div>
+            {role === 'member' && accessProfiles.length > 0 && (
+              <div className="w-full sm:w-48">
+                <Label>Perfil de Acesso</Label>
+                <Select value={selectedProfileId} onValueChange={handleProfileSelect}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="custom">Personalizado</SelectItem>
+                    {accessProfiles.map(p => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="flex items-end gap-2">
               {role === 'member' && (
                 <Button

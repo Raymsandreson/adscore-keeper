@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      access_profiles: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          module_permissions: Json
+          name: string
+          updated_at: string
+          whatsapp_instance_ids: string[]
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          module_permissions?: Json
+          name: string
+          updated_at?: string
+          whatsapp_instance_ids?: string[]
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          module_permissions?: Json
+          name?: string
+          updated_at?: string
+          whatsapp_instance_ids?: string[]
+        }
+        Relationships: []
+      }
       account_category_links: {
         Row: {
           category_id: string
@@ -6534,6 +6567,7 @@ export type Database = {
       team_invitations: {
         Row: {
           accepted_at: string | null
+          access_profile_id: string | null
           created_at: string
           email: string
           expires_at: string
@@ -6545,6 +6579,7 @@ export type Database = {
         }
         Insert: {
           accepted_at?: string | null
+          access_profile_id?: string | null
           created_at?: string
           email: string
           expires_at?: string
@@ -6556,6 +6591,7 @@ export type Database = {
         }
         Update: {
           accepted_at?: string | null
+          access_profile_id?: string | null
           created_at?: string
           email?: string
           expires_at?: string
@@ -6565,7 +6601,15 @@ export type Database = {
           role?: Database["public"]["Enums"]["app_role"]
           whatsapp_instance_ids?: string[] | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "team_invitations_access_profile_id_fkey"
+            columns: ["access_profile_id"]
+            isOneToOne: false
+            referencedRelation: "access_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       team_members: {
         Row: {

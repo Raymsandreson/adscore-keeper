@@ -18,6 +18,7 @@ import { CareerPlanManager } from '@/components/team/CareerPlanManager';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
 import { MetricsManager } from '@/components/team/MetricsManager';
 import { AmbassadorCentral } from '@/components/ambassadors/AmbassadorCentral';
+import { AccessProfilesManager } from '@/components/team/AccessProfilesManager';
 import { cn } from '@/lib/utils';
 import {
   Users,
@@ -36,6 +37,7 @@ import {
   TrendingUp,
   Activity,
   Handshake,
+  Shield,
 } from 'lucide-react';
 
 interface TabDef {
@@ -60,6 +62,7 @@ const ALL_TABS: TabDef[] = [
   { key: 'permissions', label: 'Cartões', icon: CreditCard },
   { key: 'accounts', label: 'Contas', icon: Landmark },
   { key: 'modules', label: 'Acessos', icon: Lock },
+  { key: 'profiles', label: 'Perfis', icon: Shield },
 ];
 
 function TeamTabContent({ tab, availableCards }: { tab: string; availableCards: string[] }) {
@@ -78,6 +81,7 @@ function TeamTabContent({ tab, availableCards }: { tab: string; availableCards: 
     case 'permissions': return <CardPermissionsManager availableCards={availableCards} />;
     case 'accounts': return <AccountPermissionsManager />;
     case 'modules': return <ModulePermissionsManager />;
+    case 'profiles': return <AccessProfilesManager />;
     default: return null;
   }
 }
