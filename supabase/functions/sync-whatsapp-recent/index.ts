@@ -196,7 +196,7 @@ Deno.serve(async (req) => {
     let hasAccess = false;
 
     if (userId) {
-      const { data: permission } = await serviceClient
+      const { data: permission } = await internalClient
         .from('whatsapp_instance_users')
         .select('id')
         .eq('instance_id', instance.id)
@@ -208,7 +208,7 @@ Deno.serve(async (req) => {
         hasAccess = true;
       } else {
         // Fallback: check if user has any role (admin or member can sync)
-        const { data: role } = await serviceClient
+        const { data: role } = await internalClient
           .from('user_roles')
           .select('id')
           .eq('user_id', userId)
@@ -307,7 +307,7 @@ Deno.serve(async (req) => {
       }));
 
     if (inserts.length > 0) {
-      const { error: insertError } = await serviceClient
+      const { error: insertError } = await dataClient
         .from('whatsapp_messages')
         .insert(inserts);
 
