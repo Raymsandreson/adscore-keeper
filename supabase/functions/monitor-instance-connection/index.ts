@@ -183,8 +183,8 @@ Deno.serve(async (req) => {
             `Por favor, reconecte o quanto antes para não perder mensagens.\n` +
             `📱 _Você receberá uma ligação a cada 10 minutos enquanto estiver desconectado._`;
 
-          await sendWhatsAppMessage(profile.phone, msg, userSender.id);
-          await makeCall(profile.phone, userSender.id);
+          await sendWhatsAppMessage(profile.phone, msg, senderInstance.id);
+          await makeCall(profile.phone, senderInstance.id);
         }
 
         results.push({ instance: status.instance_name, event: 'disconnected', alerted: true });
