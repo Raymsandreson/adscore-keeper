@@ -450,7 +450,10 @@ export function TeamManagement() {
                     </TableCell>
                     <TableCell>
                       <Badge variant={invite.role === 'admin' ? 'default' : 'secondary'}>
-                        {invite.role === 'admin' ? 'Admin' : 'Membro'}
+                        {(() => {
+                          const profile = accessProfiles.find(p => p.id === invite.access_profile_id);
+                          return profile ? profile.name : (invite.role === 'admin' ? 'Administrador' : 'Membro');
+                        })()}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
