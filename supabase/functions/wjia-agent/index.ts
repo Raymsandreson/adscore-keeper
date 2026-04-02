@@ -552,9 +552,17 @@ Se não encontrou nada, retorne: []`;
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      // No data extracted — ask for documents or data
+      // No data extracted — ask for documents or data (only if NOT skip_confirmation)
       if (session.status !== "ready" && filledCount === 0) {
-        if (startWithDocs) {
+        if (skipConfirmation) {
+          // Even with no data, generate and let client fill on ZapSign
+          console.log(`WJIA skip_confirmation: no data extracted, generating empty doc for client to fill`);
+          await supabase.from("wjia_collection_sessions").update({
+            status: "ready", updated_at: new Date().toISOString(),
+          }).eq("id", session.id);
+          session.status = "ready";
+          // Fall through to generate
+        } else if (startWithDocs) {
           const requiredDocs: string[] = documentTypes
             .filter((t: string) => t !== 'outros')
             .filter((t: string) => (documentTypeModes[t] || 'required') === 'required')
@@ -598,7 +606,7 @@ Se não encontrou nada, retorne: []`;
       }
     }
 
-    // Normal flow: send collection message (only if not auto-extracted to ready)
+    // Normal flow: send collection message (only if not auto-extracted to ready and not skip_confirmation)
     if (session.status !== "ready") {
       if (inst?.instance_token && parsed.collection_message) {
         await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, parsed.collection_message, contact_id, lead_id, "wjia_collect");
