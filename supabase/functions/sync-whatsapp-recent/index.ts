@@ -142,6 +142,8 @@ Deno.serve(async (req) => {
     const instanceName = typeof body.instance_name === 'string' ? body.instance_name : null;
     const maxChats = Math.min(Math.max(Number(body.max_chats) || 60, 20), 150);
 
+    console.log(`sync-whatsapp-recent: instanceId=${instanceId} instanceName=${instanceName}`);
+
     if (!instanceId && !instanceName) {
       return new Response(JSON.stringify({ success: false, error: 'instance_id or instance_name is required' }), {
         status: 400,
@@ -162,8 +164,9 @@ Deno.serve(async (req) => {
     }
 
     const { data: instance, error: instanceError } = await instanceQuery.maybeSingle();
+    console.log(`sync-whatsapp-recent: query result instance=${instance?.instance_name || 'null'} error=${instanceError?.message || 'none'}`);
     if (instanceError || !instance) {
-      return new Response(JSON.stringify({ success: false, error: 'Instance not found' }), {
+      return new Response(JSON.stringify({ success: false, error: 'Instance not found', debug: { instanceId, instanceName, dbError: instanceError?.message } }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
