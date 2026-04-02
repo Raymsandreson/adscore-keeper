@@ -357,7 +357,59 @@ REGRAS:
     const inst = instanceRes.data;
 
     if (startWithDocs) {
-      // Check if conversation history already has media (images/documents) that can be used
+      const catalog = buildTemplateFieldCatalog({ required_fields: templateFields, missing_fields: missingFields });
+      let customPrompt: string | null = matchedShortcut?.media_extraction_prompt || null;
+
+      // Step 1: Extract data from TEXT/AUDIO messages in history using AI
+      const textMessages = messages.filter((m: any) =>
+        m.direction === "inbound" && m.message_text?.trim()
+      );
+
+      if (textMessages.length > 0) {
+        try {
+          const historyText = textMessages.map((m: any) => m.message_text).join("\n");
+          const fieldsList = catalog.map((f: any) => `${f.variable} (${f.friendly_name || f.label})`).join(", ");
+          
+          const extractPrompt = `Analise o texto abaixo enviado por um cliente e extraia TODOS os dados que correspondem aos campos do documento.
+
+CAMPOS DO DOCUMENTO: ${fieldsList}
+
+TEXTO DO CLIENTE:
+${historyText}
+
+REGRAS:
+- Extraia QUALQUER dado mencionado: nome completo, CPF, RG, endereço, cidade, estado, CEP, profissão, nacionalidade, estado civil, email, telefone, data de nascimento, etc.
+- Se encontrou um CPF brasileiro, deduza nacionalidade como "brasileiro(a)" conforme o gênero.
+- Retorne APENAS JSON array: [{"variable":"{{CAMPO}}","value":"valor extraído"}]
+- Se não encontrou nenhum dado, retorne: []`;
+
+          const extractResult = await geminiChat({
+            model: 'google/gemini-2.5-flash',
+            messages: [{ role: "user", content: extractPrompt }],
+            temperature: 0.1,
+          });
+          const extractText = extractResult?.choices?.[0]?.message?.content || "";
+          
+          try {
+            const jsonMatch = extractText.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+              const extracted = JSON.parse(jsonMatch[0]);
+              if (Array.isArray(extracted)) {
+                for (const f of extracted) {
+                  if (f.variable && f.value) upsertCollectedField(fieldsData, f.variable, f.value);
+                }
+                console.log(`WJIA: Extracted ${extracted.length} fields from text/audio history`);
+              }
+            }
+          } catch (jsonErr) {
+            console.error("Error parsing text extraction result:", jsonErr);
+          }
+        } catch (textExtractErr) {
+          console.error("Text history extraction error:", textExtractErr);
+        }
+      }
+
+      // Step 2: Check if conversation history has media (images/documents) 
       const mediaMessages = messages.filter((m: any) =>
         m.direction === "inbound" &&
         m.media_url &&
@@ -371,14 +423,6 @@ REGRAS:
         const mediaUrls = mediaMessages.map((m: any) => m.media_url).filter(Boolean);
         const docTypeGuesses = mediaMessages.map(() => "outros");
 
-        let customPrompt: string | null = null;
-        if (matchedShortcut?.media_extraction_prompt) {
-          customPrompt = matchedShortcut.media_extraction_prompt;
-        }
-
-        // Build catalog from template fields for extraction
-        const catalog = buildTemplateFieldCatalog({ required_fields: templateFields, missing_fields: missingFields });
-
         try {
           const collectedData = { fields: fieldsData, signer_name: signerName, signer_phone: signerPhone };
           const { extractedFields: autoExtracted, signerName: autoSigner } =
@@ -386,53 +430,55 @@ REGRAS:
 
           for (const f of autoExtracted) upsertCollectedField(fieldsData, f.variable, f.value);
           if (autoSigner) collectedData.signer_name = autoSigner;
-          syncNameFields(fieldsData);
-          applyDefaults(fieldsData);
-          autoFillDates(fieldsData, catalog);
-          autoSyncCityState(fieldsData, catalog);
-
-          const stillMissing = computeMissingFields(catalog, fieldsData);
-          console.log(`WJIA auto-extract: extracted ${autoExtracted.length} fields, still missing ${stillMissing.length}`);
-
-          // Update session with extracted data
-          const receivedDocs = mediaMessages.map((m: any) => ({
-            type: "outros", media_url: m.media_url, via: "history_auto",
-          }));
-
-          await supabase.from("wjia_collection_sessions").update({
-            collected_data: { ...collectedData, fields: fieldsData },
-            received_documents: receivedDocs,
-            missing_fields: stillMissing,
-            status: stillMissing.length > 0 ? "collecting" : "ready",
-            updated_at: new Date().toISOString(),
-          }).eq("id", session.id);
-
-          if (stillMissing.length === 0) {
-            // All data extracted from history! Skip to confirmation/generation
-            session.status = "ready";
-            // Don't return — let it fall through to generate
-          } else {
-            // Some fields still missing — go to collecting phase (text-based), not docs phase
-            if (inst?.instance_token) {
-              const filledCount = fieldsData.filter((f: any) => f.para).length;
-              const missingList = stillMissing.map((f: any) => `• ${f.friendly_name}`).join("\n");
-              const collectMsg = `📋 Encontrei ${filledCount} dados nos documentos que você já enviou!\n\nAinda preciso de:\n${missingList}\n\nPor favor, me informe esses dados. 🙏`;
-              await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, collectMsg, contact_id, lead_id, "wjia_collect");
-            }
-            return new Response(JSON.stringify({
-              success: true, action: "collection_started",
-              message: `🔄 *Dados extraídos do histórico*\nDocumento: *${parsed.template_name}*\n📊 Dados encontrados: ${fieldsData.filter((f: any) => f.para).length}\n⚠️ Faltantes: ${stillMissing.length}`,
-              session_id: session.id, missing_count: stillMissing.length, auto_extracted: true,
-            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-          }
         } catch (extractErr) {
-          console.error("Auto-extract from history error:", extractErr);
-          // Fall through to normal doc collection flow
+          console.error("Auto-extract from history media error:", extractErr);
         }
       }
 
-      // Only ask for documents if we didn't auto-extract successfully above
-      if (session.status !== "ready") {
+      // Step 3: Sync and compute what's still missing after all extractions
+      syncNameFields(fieldsData);
+      applyDefaults(fieldsData);
+      autoFillDates(fieldsData, catalog);
+      autoSyncCityState(fieldsData, catalog);
+
+      const stillMissing = computeMissingFields(catalog, fieldsData);
+      const filledCount = fieldsData.filter((f: any) => f.para).length;
+      console.log(`WJIA auto-extract total: filled ${filledCount} fields, still missing ${stillMissing.length}`);
+
+      // Update session with all extracted data
+      const collectedData = { fields: fieldsData, signer_name: signerName, signer_phone: signerPhone };
+      const receivedDocs = mediaMessages.map((m: any) => ({
+        type: "outros", media_url: m.media_url, via: "history_auto",
+      }));
+
+      await supabase.from("wjia_collection_sessions").update({
+        collected_data: { ...collectedData, fields: fieldsData },
+        received_documents: receivedDocs.length > 0 ? receivedDocs : undefined,
+        missing_fields: stillMissing,
+        status: stillMissing.length > 0 ? "collecting" : "ready",
+        updated_at: new Date().toISOString(),
+      }).eq("id", session.id);
+
+      if (stillMissing.length === 0) {
+        // All data extracted from history! Skip to generation
+        session.status = "ready";
+        // Don't return — let it fall through to generate
+      } else if (filledCount > 0) {
+        // Found some data but still missing — tell client what we found and ask only for what's missing
+        if (inst?.instance_token) {
+          const missingList = stillMissing.map((f: any) => `• ${f.friendly_name}`).join("\n");
+          const collectMsg = `📋 Encontrei ${filledCount} dados na nossa conversa!\n\nAinda preciso de:\n${missingList}\n\nPor favor, me informe esses dados ou envie fotos dos documentos. 🙏`;
+          await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, collectMsg, contact_id, lead_id, "wjia_collect");
+        }
+        return new Response(JSON.stringify({
+          success: true, action: "collection_started",
+          message: `🔄 *Dados extraídos do histórico*\nDocumento: *${parsed.template_name}*\n📊 Dados encontrados: ${filledCount}\n⚠️ Faltantes: ${stillMissing.length}`,
+          session_id: session.id, missing_count: stillMissing.length, auto_extracted: true,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // Only ask for documents if we didn't extract anything from history
+      if (session.status !== "ready" && filledCount === 0) {
         const requiredDocs: string[] = documentTypes
           .filter((t: string) => t !== 'outros')
           .filter((t: string) => (documentTypeModes[t] || 'required') === 'required')
@@ -469,7 +515,7 @@ REGRAS:
 
         return new Response(JSON.stringify({
           success: true, action: "collection_started",
-          message: `🔄 *Coleta de documentos iniciada*\nDocumento: *${parsed.template_name}*\n📎 Pedindo documentos ao cliente.\n📊 Dados encontrados: ${fieldsData.filter((f: any) => f.para).length}\n⚠️ Faltantes: ${missingFields.length}`,
+          message: `🔄 *Coleta de documentos iniciada*\nDocumento: *${parsed.template_name}*\n📎 Pedindo documentos ao cliente.\n📊 Dados encontrados: ${filledCount}\n⚠️ Faltantes: ${missingFields.length}`,
           session_id: session.id, missing_count: missingFields.length, docs_first: true,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
