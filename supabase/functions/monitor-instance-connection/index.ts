@@ -35,7 +35,7 @@ async function checkInstanceConnection(inst: { id: string; instance_name: string
     }
     const data = await resp.json();
     const status = data?.instance?.status?.toLowerCase() || 'unknown';
-    return { ...inst, base_url: baseUrl, connected: status === 'connected' };
+    return { ...inst, base_url: baseUrl, notify_on_disconnect: inst.notify_on_disconnect !== false, connected: status === 'connected' };
   } catch {
     return { ...inst, base_url: baseUrl, connected: false };
   }
