@@ -37,6 +37,7 @@ import {
   TrendingUp,
   Activity,
   Handshake,
+  Shield,
 } from 'lucide-react';
 
 interface TabDef {
