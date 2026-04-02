@@ -527,6 +527,25 @@ REGRAS:
     instance_name: instance_name,
   });
 
+  // If there's an active session (from auto-extraction), update it with the generated doc info
+  if (hasMissing && signUrl) {
+    const normalPhone = normalizedPhone;
+    const { data: activeSession } = await supabase
+      .from("wjia_collection_sessions")
+      .select("id")
+      .eq("phone", normalPhone)
+      .eq("instance_name", instance_name)
+      .eq("status", "ready")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (activeSession) {
+      await supabase.from("wjia_collection_sessions").update({
+        status: "generated", sign_url: signUrl, updated_at: new Date().toISOString(),
+      }).eq("id", activeSession.id);
+    }
+  }
+
   if (inst?.instance_token && signUrl) {
     const clientMsg = `📝 *Documento para assinatura*\n\nOlá ${signerName.split(" ")[0]}! Segue o link:\n\n👉 ${signUrl}\n\n1. Clique no link\n2. Confira seus dados e assine digitalmente\n\nQualquer dúvida, estou à disposição! 🙏`;
     await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, clientMsg, contact_id, lead_id, "wjia_doc");
