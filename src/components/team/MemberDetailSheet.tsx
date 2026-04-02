@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Volume2 } from 'lucide-react';
+import { Volume2, Shield } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -93,6 +93,15 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+
+  // Access profile state
+  const [accessProfiles, setAccessProfiles] = useState<Array<{
+    id: string; name: string; description: string | null;
+    module_permissions: Array<{ module_key: string; access_level: string }>;
+    whatsapp_instance_ids: string[];
+  }>>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState('');
+  const [applyingProfile, setApplyingProfile] = useState(false);
   
   // OAB search state
   const [oabSearchQuery, setOabSearchQuery] = useState('');
@@ -104,7 +113,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
 
   useEffect(() => {
     const fetchInstances = async () => {
-      const [instRes, presetRes, customRes] = await Promise.all([
+      const [instRes, presetRes, customRes, profilesRes] = await Promise.all([
         supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
         Promise.resolve([
           { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura' },
@@ -119,10 +128,16 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
           { id: 'SAz9YHcvj6GT2YYXdXww', name: 'River' },
         ]),
         supabase.from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
+        supabase.from('access_profiles').select('id, name, description, module_permissions, whatsapp_instance_ids').eq('is_active', true).order('name'),
       ]);
       setInstances(instRes.data || []);
       const customVoices = (customRes.data || []).map((v: any) => ({ id: v.elevenlabs_voice_id, name: `🎤 ${v.name}` }));
       setVoices([...presetRes, ...customVoices]);
+      setAccessProfiles((profilesRes.data || []).map((p: any) => ({
+        ...p,
+        module_permissions: Array.isArray(p.module_permissions) ? p.module_permissions : [],
+        whatsapp_instance_ids: p.whatsapp_instance_ids || [],
+      })));
     };
     fetchInstances();
   }, []);
@@ -131,10 +146,53 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     if (member) {
       setFullName(member.full_name || '');
       setEmail(member.email || '');
+      setSelectedProfileId('');
       fetchProfileExtras();
       fetchMemberData();
     }
   }, [member]);
+
+  const handleApplyProfile = async () => {
+    if (!member || !selectedProfileId) return;
+    const profile = accessProfiles.find(p => p.id === selectedProfileId);
+    if (!profile) return;
+
+    setApplyingProfile(true);
+    try {
+      // Delete existing module permissions
+      await supabase.from('member_module_permissions').delete().eq('user_id', member.user_id);
+
+      // Insert new module permissions
+      if (profile.module_permissions.length > 0) {
+        await supabase.from('member_module_permissions').insert(
+          profile.module_permissions.map((p: any) => ({
+            user_id: member.user_id,
+            module_key: p.module_key,
+            access_level: p.access_level,
+          }))
+        );
+      }
+
+      // Update WhatsApp instance permissions
+      await supabase.from('whatsapp_instance_users').delete().eq('user_id', member.user_id);
+      if (profile.whatsapp_instance_ids.length > 0) {
+        await supabase.from('whatsapp_instance_users').insert(
+          profile.whatsapp_instance_ids.map((instId: string) => ({
+            user_id: member.user_id,
+            instance_id: instId,
+          }))
+        );
+      }
+
+      toast.success(`Perfil "${profile.name}" aplicado com sucesso!`);
+      setSelectedProfileId('');
+      onUpdate();
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao aplicar perfil');
+    } finally {
+      setApplyingProfile(false);
+    }
+  };
 
   const fetchProfileExtras = async () => {
     if (!member) return;
@@ -637,6 +695,44 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
                 Voz personalizada para áudios enviados por este membro
               </p>
             </div>
+
+            {/* Apply Access Profile */}
+            {member.role === 'member' && accessProfiles.length > 0 && (
+              <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
+                <Label className="flex items-center gap-1.5 text-sm font-semibold">
+                  <Shield className="h-3.5 w-3.5" />
+                  Aplicar Perfil de Acesso
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Substitui todas as permissões atuais do membro pelas do perfil selecionado.
+                </p>
+                <div className="flex gap-2">
+                  <Select value={selectedProfileId} onValueChange={setSelectedProfileId}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Selecione um perfil..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accessProfiles.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="secondary"
+                    disabled={!selectedProfileId || applyingProfile}
+                    onClick={handleApplyProfile}
+                  >
+                    {applyingProfile ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Aplicar'
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
