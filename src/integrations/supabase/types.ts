@@ -8257,6 +8257,7 @@ export type Database = {
           send_window_end_hour: number
           send_window_start_hour: number
           shortcut_name: string
+          skip_confirmation: boolean
           split_delay_seconds: number | null
           split_messages: boolean | null
           temperature: number | null
@@ -8301,6 +8302,7 @@ export type Database = {
           send_window_end_hour?: number
           send_window_start_hour?: number
           shortcut_name: string
+          skip_confirmation?: boolean
           split_delay_seconds?: number | null
           split_messages?: boolean | null
           temperature?: number | null
@@ -8345,6 +8347,7 @@ export type Database = {
           send_window_end_hour?: number
           send_window_start_hour?: number
           shortcut_name?: string
+          skip_confirmation?: boolean
           split_delay_seconds?: number | null
           split_messages?: boolean | null
           temperature?: number | null
