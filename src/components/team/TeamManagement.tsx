@@ -67,6 +67,7 @@ interface TeamMember {
   email: string | null;
   full_name: string | null;
   created_at: string;
+  access_profile_id: string | null;
 }
 
 export function TeamManagement() {
