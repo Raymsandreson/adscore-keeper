@@ -223,6 +223,48 @@ export function TeamManagement() {
     }
   };
 
+  const handleInlineProfileChange = async (userId: string, profileId: string) => {
+    const profile = accessProfiles.find(p => p.id === profileId);
+    if (!profile) return;
+
+    try {
+      const isSystem = profile.is_system;
+      const newRole = isSystem ? 'admin' : 'member';
+
+      await supabase
+        .from('user_roles')
+        .update({ role: newRole, access_profile_id: profileId } as any)
+        .eq('user_id', userId);
+
+      if (!isSystem) {
+        await supabase.from('member_module_permissions').delete().eq('user_id', userId);
+        if (profile.module_permissions.length > 0) {
+          await supabase.from('member_module_permissions').insert(
+            profile.module_permissions.map((p: any) => ({
+              user_id: userId,
+              module_key: p.module_key,
+              access_level: p.access_level,
+            }))
+          );
+        }
+        await supabase.from('whatsapp_instance_users').delete().eq('user_id', userId);
+        if (profile.whatsapp_instance_ids.length > 0) {
+          await supabase.from('whatsapp_instance_users').insert(
+            profile.whatsapp_instance_ids.map((instId: string) => ({
+              user_id: userId,
+              instance_id: instId,
+            }))
+          );
+        }
+      }
+
+      toast.success(`Perfil "${profile.name}" aplicado!`);
+      refetch();
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao alterar perfil');
+    }
+  };
+
   const handleRemove = async (userId: string) => {
     try {
       await removeMember(userId);
