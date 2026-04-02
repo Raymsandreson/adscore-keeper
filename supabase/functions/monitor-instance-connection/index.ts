@@ -19,10 +19,11 @@ interface InstanceStatus {
   instance_token: string;
   base_url: string;
   owner_phone: string | null;
+  notify_on_disconnect: boolean;
   connected: boolean;
 }
 
-async function checkInstanceConnection(inst: { id: string; instance_name: string; instance_token: string; base_url: string | null; owner_phone: string | null }): Promise<InstanceStatus> {
+async function checkInstanceConnection(inst: { id: string; instance_name: string; instance_token: string; base_url: string | null; owner_phone: string | null; notify_on_disconnect?: boolean }): Promise<InstanceStatus> {
   const baseUrl = inst.base_url || 'https://abraci.uazapi.com';
   try {
     const resp = await fetch(`${baseUrl}/instance/status`, {
@@ -30,13 +31,13 @@ async function checkInstanceConnection(inst: { id: string; instance_name: string
       signal: AbortSignal.timeout(5000),
     });
     if (!resp.ok) {
-      return { ...inst, base_url: baseUrl, connected: false };
+      return { ...inst, base_url: baseUrl, notify_on_disconnect: inst.notify_on_disconnect !== false, connected: false };
     }
     const data = await resp.json();
     const status = data?.instance?.status?.toLowerCase() || 'unknown';
-    return { ...inst, base_url: baseUrl, connected: status === 'connected' };
+    return { ...inst, base_url: baseUrl, notify_on_disconnect: inst.notify_on_disconnect !== false, connected: status === 'connected' };
   } catch {
-    return { ...inst, base_url: baseUrl, connected: false };
+    return { ...inst, base_url: baseUrl, notify_on_disconnect: inst.notify_on_disconnect !== false, connected: false };
   }
 }
 
@@ -99,7 +100,7 @@ Deno.serve(async (req) => {
     // 1. Get all active instances from Cloud (registry)
     const { data: instances, error: instErr } = await cloudDb
       .from('whatsapp_instances')
-      .select('id, instance_name, instance_token, base_url, owner_phone')
+      .select('id, instance_name, instance_token, base_url, owner_phone, notify_on_disconnect')
       .eq('is_active', true);
 
     if (instErr || !instances?.length) {
@@ -144,7 +145,7 @@ Deno.serve(async (req) => {
         // ── JUST DISCONNECTED ──
         console.log(`🔴 ${status.instance_name} DISCONNECTED`);
 
-        // Upsert connection log
+        // Still log the disconnection even if notifications are off
         await cloudDb.from('instance_connection_log').upsert({
           instance_id: status.id,
           instance_name: status.instance_name,
@@ -157,46 +158,8 @@ Deno.serve(async (req) => {
           alert_count: 1,
         }, { onConflict: 'instance_id' });
 
-        // Send alert to users who have access to this instance
-        const usersWithAccess = (instanceUsers || [])
-          .filter((iu: any) => iu.instance_id === status.id)
-          .map((iu: any) => iu.user_id);
-
-        for (const userId of usersWithAccess) {
-          const profile = (profiles || []).find((p: any) => p.user_id === userId);
-          if (!profile?.phone) continue;
-
-          if (!senderInstance) continue;
-
-          const accessibleNames = getUserAccessibleInstances(userId, instanceUsers || [], instances);
-          const disconnectedFromAccess = accessibleNames.filter(
-            (name) => statuses.find((s) => s.instance_name === name && !s.connected)
-          );
-
-          const msg =
-            `🔴 *ALERTA: Instância Desconectada*\n\n` +
-            `Olá ${profile.full_name || ''}!\n\n` +
-            `A instância *${status.instance_name}* acabou de desconectar.\n\n` +
-            (disconnectedFromAccess.length > 1
-              ? `⚠️ Instâncias desconectadas que você tem acesso:\n${disconnectedFromAccess.map((n) => `  • ${n}`).join('\n')}\n\n`
-              : '') +
-            `Por favor, reconecte o quanto antes para não perder mensagens.\n` +
-            `📱 _Você receberá uma ligação a cada 10 minutos enquanto estiver desconectado._`;
-
-          await sendWhatsAppMessage(profile.phone, msg, senderInstance.id);
-          await makeCall(profile.phone, senderInstance.id);
-        }
-
-        results.push({ instance: status.instance_name, event: 'disconnected', alerted: true });
-
-      } else if (!status.connected && !wasConnected) {
-        // ── STILL DISCONNECTED — check if we need to call again ──
-        const lastCallAt = log?.last_call_made_at ? new Date(log.last_call_made_at).getTime() : 0;
-        const elapsed = now.getTime() - lastCallAt;
-
-        if (elapsed >= CALL_INTERVAL_MS) {
-          console.log(`📞 ${status.instance_name} still disconnected, calling users (${Math.round(elapsed / 60000)}min since last call)`);
-
+        // Only send notifications if notify_on_disconnect is enabled
+        if (status.notify_on_disconnect) {
           const usersWithAccess = (instanceUsers || [])
             .filter((iu: any) => iu.instance_id === status.id)
             .map((iu: any) => iu.user_id);
@@ -205,17 +168,62 @@ Deno.serve(async (req) => {
             const profile = (profiles || []).find((p: any) => p.user_id === userId);
             if (!profile?.phone) continue;
             if (!senderInstance) continue;
+
+            const accessibleNames = getUserAccessibleInstances(userId, instanceUsers || [], instances);
+            const disconnectedFromAccess = accessibleNames.filter(
+              (name) => statuses.find((s) => s.instance_name === name && !s.connected)
+            );
+
+            const msg =
+              `🔴 *ALERTA: Instância Desconectada*\n\n` +
+              `Olá ${profile.full_name || ''}!\n\n` +
+              `A instância *${status.instance_name}* acabou de desconectar.\n\n` +
+              (disconnectedFromAccess.length > 1
+                ? `⚠️ Instâncias desconectadas que você tem acesso:\n${disconnectedFromAccess.map((n) => `  • ${n}`).join('\n')}\n\n`
+                : '') +
+              `Por favor, reconecte o quanto antes para não perder mensagens.\n` +
+              `📱 _Você receberá uma ligação a cada 10 minutos enquanto estiver desconectado._`;
+
+            await sendWhatsAppMessage(profile.phone, msg, senderInstance.id);
             await makeCall(profile.phone, senderInstance.id);
           }
-
-          await cloudDb.from('instance_connection_log').update({
-            last_call_made_at: now.toISOString(),
-            alert_count: (log?.alert_count || 0) + 1,
-          }).eq('instance_id', status.id);
-
-          results.push({ instance: status.instance_name, event: 'still_disconnected', called: true });
+          results.push({ instance: status.instance_name, event: 'disconnected', alerted: true });
         } else {
-          results.push({ instance: status.instance_name, event: 'still_disconnected', called: false, next_call_in: Math.round((CALL_INTERVAL_MS - elapsed) / 60000) + 'min' });
+          console.log(`🔕 ${status.instance_name} disconnected but notifications disabled`);
+          results.push({ instance: status.instance_name, event: 'disconnected', alerted: false, reason: 'notifications_disabled' });
+        }
+
+      } else if (!status.connected && !wasConnected) {
+        // ── STILL DISCONNECTED — check if we need to call again ──
+        if (!status.notify_on_disconnect) {
+          results.push({ instance: status.instance_name, event: 'still_disconnected', called: false, reason: 'notifications_disabled' });
+        } else {
+          const lastCallAt = log?.last_call_made_at ? new Date(log.last_call_made_at).getTime() : 0;
+          const elapsed = now.getTime() - lastCallAt;
+
+          if (elapsed >= CALL_INTERVAL_MS) {
+            console.log(`📞 ${status.instance_name} still disconnected, calling users (${Math.round(elapsed / 60000)}min since last call)`);
+
+            const usersWithAccess = (instanceUsers || [])
+              .filter((iu: any) => iu.instance_id === status.id)
+              .map((iu: any) => iu.user_id);
+
+            for (const userId of usersWithAccess) {
+              const profile = (profiles || []).find((p: any) => p.user_id === userId);
+              if (!profile?.phone) continue;
+              if (!senderInstance) continue;
+              await makeCall(profile.phone, senderInstance.id);
+            }
+
+            await cloudDb.from('instance_connection_log').update({
+              last_call_made_at: now.toISOString(),
+              alert_count: (log?.alert_count || 0) + 1,
+            }).eq('instance_id', status.id);
+
+            results.push({ instance: status.instance_name, event: 'still_disconnected', called: true });
+          } else {
+            results.push({ instance: status.instance_name, event: 'still_disconnected', called: false, next_call_in: Math.round((CALL_INTERVAL_MS - elapsed) / 60000) + 'min' });
+          }
         }
 
       } else if (status.connected && !wasConnected) {
@@ -229,33 +237,34 @@ Deno.serve(async (req) => {
           alert_count: 0,
         }).eq('instance_id', status.id);
 
-        const usersWithAccess = (instanceUsers || [])
-          .filter((iu: any) => iu.instance_id === status.id)
-          .map((iu: any) => iu.user_id);
+        if (status.notify_on_disconnect) {
+          const usersWithAccess = (instanceUsers || [])
+            .filter((iu: any) => iu.instance_id === status.id)
+            .map((iu: any) => iu.user_id);
 
-        const disconnectedDuration = log?.disconnected_at
-          ? Math.round((now.getTime() - new Date(log.disconnected_at).getTime()) / 60000)
-          : 0;
+          const disconnectedDuration = log?.disconnected_at
+            ? Math.round((now.getTime() - new Date(log.disconnected_at).getTime()) / 60000)
+            : 0;
 
-        for (const userId of usersWithAccess) {
-          const profile = (profiles || []).find((p: any) => p.user_id === userId);
-          if (!profile?.phone) continue;
+          for (const userId of usersWithAccess) {
+            const profile = (profiles || []).find((p: any) => p.user_id === userId);
+            if (!profile?.phone) continue;
+            if (!senderInstance) continue;
 
-          if (!senderInstance) continue;
+            const msg =
+              `🟢 *Instância Reconectada!*\n\n` +
+              `Olá ${profile.full_name || ''}!\n\n` +
+              `A instância *${status.instance_name}* foi reconectada com sucesso! ✅\n` +
+              (disconnectedDuration > 0
+                ? `⏱️ Ficou desconectada por ${disconnectedDuration} minuto${disconnectedDuration !== 1 ? 's' : ''}.\n`
+                : '') +
+              `\nTudo voltou ao normal. 👍`;
 
-          const msg =
-            `🟢 *Instância Reconectada!*\n\n` +
-            `Olá ${profile.full_name || ''}!\n\n` +
-            `A instância *${status.instance_name}* foi reconectada com sucesso! ✅\n` +
-            (disconnectedDuration > 0
-              ? `⏱️ Ficou desconectada por ${disconnectedDuration} minuto${disconnectedDuration !== 1 ? 's' : ''}.\n`
-              : '') +
-            `\nTudo voltou ao normal. 👍`;
-
-          await sendWhatsAppMessage(profile.phone, msg, senderInstance.id);
+            await sendWhatsAppMessage(profile.phone, msg, senderInstance.id);
+          }
         }
 
-        results.push({ instance: status.instance_name, event: 'reconnected', alerted: true });
+        results.push({ instance: status.instance_name, event: 'reconnected', alerted: status.notify_on_disconnect });
 
       } else {
         // ── STILL CONNECTED — ensure log exists ──
