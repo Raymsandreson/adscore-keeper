@@ -104,17 +104,18 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         allowedIds.add(profile.default_instance_id);
       }
 
+      // If user has no explicit permissions, show nothing (unless admin)
+      if (allowedIds.size === 0) {
+        setInstances([]);
+        return;
+      }
+
       let query = supabase
         .from('whatsapp_instances')
         .select('*')
         .eq('is_active', true)
+        .in('id', Array.from(allowedIds))
         .order('instance_name');
-
-      // Backward compatibility: when no per-user mapping exists yet,
-      // keep the inbox usable by loading active instances instead of zeroing the UI.
-      if (allowedIds.size > 0) {
-        query = query.in('id', Array.from(allowedIds));
-      }
 
       const { data, error } = await query;
       if (error) throw error;

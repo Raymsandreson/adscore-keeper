@@ -56,10 +56,12 @@ export function useModulePermissions() {
   const getAccess = useCallback((moduleKey: string, userId?: string): AccessLevel => {
     const uid = userId || user?.id;
     if (!uid) return 'none';
+    // Admins always have full access
+    if (isAdmin && !userId) return 'edit';
     const perm = permissions.find(p => p.user_id === uid && p.module_key === moduleKey);
-    // Default: if no permission record exists, grant edit (backward compat)
-    return perm ? perm.access_level as AccessLevel : 'edit';
-  }, [permissions, user]);
+    // Members: only access explicitly granted modules; default is 'none'
+    return perm ? perm.access_level as AccessLevel : 'none';
+  }, [permissions, user, isAdmin]);
 
   const canView = useCallback((moduleKey: string, userId?: string): boolean => {
     const level = getAccess(moduleKey, userId);
