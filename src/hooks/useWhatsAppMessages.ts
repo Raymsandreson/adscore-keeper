@@ -426,8 +426,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       if (instanceResult?.data?.id) {
         targetInstanceId = instanceResult.data.id;
       }
-      if (!targetInstanceId && instances.length > 0) {
-        targetInstanceId = instances[0].id;
+      if (!targetInstanceId) {
+        toast.error('Erro: instância não identificada. Selecione uma instância antes de enviar.');
+        return false;
       }
 
       if (profileResult?.data) {
