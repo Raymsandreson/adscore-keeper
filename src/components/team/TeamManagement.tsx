@@ -140,10 +140,21 @@ export function TeamManagement() {
 
     setInviting(true);
     try {
-      await inviteMember(email, role);
-      toast.success('Convite enviado! O usuário receberá acesso ao fazer cadastro.');
+      const modulePerms = role === 'admin' ? [] : Object.entries(selectedModules)
+        .filter(([, level]) => level !== 'none')
+        .map(([module_key, access_level]) => ({ module_key, access_level }));
+
+      const instanceIds = role === 'admin' ? [] : selectedInstances;
+
+      await inviteMember(email, role, modulePerms, instanceIds);
+      toast.success('Convite enviado com permissões configuradas!');
       setEmail('');
       setRole('member');
+      setShowPermissions(false);
+      setSelectedInstances([]);
+      const reset: Record<string, AccessLevel> = {};
+      MODULE_DEFINITIONS.forEach(m => { reset[m.key] = 'none'; });
+      setSelectedModules(reset);
     } catch (error: any) {
       toast.error(error.message || 'Erro ao enviar convite');
     } finally {
