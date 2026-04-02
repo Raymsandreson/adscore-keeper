@@ -171,6 +171,7 @@ async function handleNewCommand(opts: {
   const shortcutModel = matchedShortcut?.model || 'google/gemini-2.5-flash';
   const shortcutTemperature = matchedShortcut?.temperature ?? 0.1;
   const shortcutBasePrompt = matchedShortcut?.base_prompt || '';
+  const skipConfirmation = matchedShortcut?.skip_confirmation !== false; // default true
 
   // For assistant-only mode, just respond with AI
   if (assistantType === 'assistant') {
@@ -508,6 +509,16 @@ Se não encontrou nada, retorne: []`;
         // All data extracted from history! Skip to generation
         session.status = "ready";
         // Don't return — let it fall through to generate
+      } else if (skipConfirmation) {
+        // skip_confirmation mode: generate document with partial data, client fills rest on ZapSign
+        console.log(`WJIA skip_confirmation: ${stillMissing.length} fields missing, generating with partial data`);
+        
+        // Update session to generated state
+        await supabase.from("wjia_collection_sessions").update({
+          status: "ready", updated_at: new Date().toISOString(),
+        }).eq("id", session.id);
+        session.status = "ready";
+        // Fall through to generate — ZapSign will show editable fields for missing data
       } else if (filledCount > 0) {
         // Found some data but still missing — tell client what we found and ask only for what's missing
         if (inst?.instance_token) {
@@ -541,9 +552,17 @@ Se não encontrou nada, retorne: []`;
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      // No data extracted — ask for documents or data
+      // No data extracted — ask for documents or data (only if NOT skip_confirmation)
       if (session.status !== "ready" && filledCount === 0) {
-        if (startWithDocs) {
+        if (skipConfirmation) {
+          // Even with no data, generate and let client fill on ZapSign
+          console.log(`WJIA skip_confirmation: no data extracted, generating empty doc for client to fill`);
+          await supabase.from("wjia_collection_sessions").update({
+            status: "ready", updated_at: new Date().toISOString(),
+          }).eq("id", session.id);
+          session.status = "ready";
+          // Fall through to generate
+        } else if (startWithDocs) {
           const requiredDocs: string[] = documentTypes
             .filter((t: string) => t !== 'outros')
             .filter((t: string) => (documentTypeModes[t] || 'required') === 'required')
@@ -587,7 +606,7 @@ Se não encontrou nada, retorne: []`;
       }
     }
 
-    // Normal flow: send collection message (only if not auto-extracted to ready)
+    // Normal flow: send collection message (only if not auto-extracted to ready and not skip_confirmation)
     if (session.status !== "ready") {
       if (inst?.instance_token && parsed.collection_message) {
         await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, parsed.collection_message, contact_id, lead_id, "wjia_collect");
@@ -660,7 +679,10 @@ Se não encontrou nada, retorne: []`;
   }
 
   if (inst?.instance_token && signUrl) {
-    const clientMsg = `📝 *Documento para assinatura*\n\nOlá ${signerName.split(" ")[0]}! Segue o link:\n\n👉 ${signUrl}\n\n1. Clique no link\n2. Confira seus dados e assine digitalmente\n\nQualquer dúvida, estou à disposição! 🙏`;
+    const hasPartialData = hasMissing && skipConfirmation;
+    const clientMsg = hasPartialData
+      ? `📝 *Documento para preenchimento e assinatura*\n\nOlá ${signerName.split(" ")[0]}! Preparei o documento *${parsed.template_name}* com os dados que já tenho.\n\n👉 ${signUrl}\n\n1. Clique no link\n2. *Complete os campos que estiverem em branco*\n3. Confira tudo e assine digitalmente\n\nQualquer dúvida, estou à disposição! 🙏`
+      : `📝 *Documento para assinatura*\n\nOlá ${signerName.split(" ")[0]}! Segue o link:\n\n👉 ${signUrl}\n\n1. Clique no link\n2. Confira seus dados e assine digitalmente\n\nQualquer dúvida, estou à disposição! 🙏`;
     await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, clientMsg, contact_id, lead_id, "wjia_doc");
   }
 
