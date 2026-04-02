@@ -118,26 +118,19 @@ Deno.serve(async (req) => {
 
     const logByInstance = new Map((logs || []).map((l: any) => [l.instance_id, l]));
 
-    // 4. Get all instance_users and profiles for notifications
-    const [{ data: instanceUsers }, { data: profiles }] = await Promise.all([
+    // 4. Get all instance_users, profiles, and member assistant config
+    const [{ data: instanceUsers }, { data: profiles }, { data: memberConfig }] = await Promise.all([
       cloudDb.from('whatsapp_instance_users').select('instance_id, user_id'),
       cloudDb.from('profiles').select('user_id, phone, full_name, default_instance_id'),
+      cloudDb.from('member_assistant_config').select('instance_id').limit(1).maybeSingle(),
     ]);
 
-    // Helper: resolve the best sender instance for a given user
-    // Priority: user's default_instance_id (if connected) > any connected instance
-    const fallbackSender = statuses.find((s) => s.connected);
-    function getSenderForUser(userId: string): InstanceStatus | undefined {
-      const profile = (profiles || []).find((p: any) => p.user_id === userId);
-      if (profile?.default_instance_id) {
-        const defaultInst = statuses.find((s) => s.id === profile.default_instance_id && s.connected);
-        if (defaultInst) return defaultInst;
-      }
-      return fallbackSender;
-    }
+    // The sender instance for alerts/calls is the IA Interna instance
+    const iaInternaId = memberConfig?.instance_id;
+    const senderInstance = iaInternaId ? statuses.find((s) => s.id === iaInternaId && s.connected) : statuses.find((s) => s.connected);
 
-    if (!fallbackSender) {
-      console.warn('No connected instance available to send alerts');
+    if (!senderInstance) {
+      console.warn('No connected sender instance (IA Interna) available to send alerts');
     }
 
     const now = new Date();
@@ -173,8 +166,7 @@ Deno.serve(async (req) => {
           const profile = (profiles || []).find((p: any) => p.user_id === userId);
           if (!profile?.phone) continue;
 
-          const userSender = getSenderForUser(userId);
-          if (!userSender) continue;
+          if (!senderInstance) continue;
 
           const accessibleNames = getUserAccessibleInstances(userId, instanceUsers || [], instances);
           const disconnectedFromAccess = accessibleNames.filter(
@@ -191,8 +183,8 @@ Deno.serve(async (req) => {
             `Por favor, reconecte o quanto antes para não perder mensagens.\n` +
             `📱 _Você receberá uma ligação a cada 10 minutos enquanto estiver desconectado._`;
 
-          await sendWhatsAppMessage(profile.phone, msg, userSender.id);
-          await makeCall(profile.phone, userSender.id);
+          await sendWhatsAppMessage(profile.phone, msg, senderInstance.id);
+          await makeCall(profile.phone, senderInstance.id);
         }
 
         results.push({ instance: status.instance_name, event: 'disconnected', alerted: true });
@@ -212,9 +204,8 @@ Deno.serve(async (req) => {
           for (const userId of usersWithAccess) {
             const profile = (profiles || []).find((p: any) => p.user_id === userId);
             if (!profile?.phone) continue;
-            const userSender = getSenderForUser(userId);
-            if (!userSender) continue;
-            await makeCall(profile.phone, userSender.id);
+            if (!senderInstance) continue;
+            await makeCall(profile.phone, senderInstance.id);
           }
 
           await cloudDb.from('instance_connection_log').update({
@@ -250,8 +241,7 @@ Deno.serve(async (req) => {
           const profile = (profiles || []).find((p: any) => p.user_id === userId);
           if (!profile?.phone) continue;
 
-          const userSender = getSenderForUser(userId);
-          if (!userSender) continue;
+          if (!senderInstance) continue;
 
           const msg =
             `🟢 *Instância Reconectada!*\n\n` +
@@ -262,7 +252,7 @@ Deno.serve(async (req) => {
               : '') +
             `\nTudo voltou ao normal. 👍`;
 
-          await sendWhatsAppMessage(profile.phone, msg, userSender.id);
+          await sendWhatsAppMessage(profile.phone, msg, senderInstance.id);
         }
 
         results.push({ instance: status.instance_name, event: 'reconnected', alerted: true });
