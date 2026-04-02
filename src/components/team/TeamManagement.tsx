@@ -48,11 +48,17 @@ import {
 } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useUserRole } from '@/hooks/useUserRole';
+import { MODULE_DEFINITIONS, AccessLevel } from '@/hooks/useModulePermissions';
 import { MemberDetailSheet } from './MemberDetailSheet';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+
+interface WhatsAppInstanceOption {
+  id: string;
+  instance_name: string;
+}
 
 interface TeamMember {
   id: string;
