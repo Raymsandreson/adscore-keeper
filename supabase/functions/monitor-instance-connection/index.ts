@@ -121,12 +121,22 @@ Deno.serve(async (req) => {
     // 4. Get all instance_users and profiles for notifications
     const [{ data: instanceUsers }, { data: profiles }] = await Promise.all([
       cloudDb.from('whatsapp_instance_users').select('instance_id, user_id'),
-      cloudDb.from('profiles').select('user_id, phone, full_name'),
+      cloudDb.from('profiles').select('user_id, phone, full_name, default_instance_id'),
     ]);
 
-    // Find an active connected instance for sending messages
-    const senderInstance = statuses.find((s) => s.connected);
-    if (!senderInstance) {
+    // Helper: resolve the best sender instance for a given user
+    // Priority: user's default_instance_id (if connected) > any connected instance
+    const fallbackSender = statuses.find((s) => s.connected);
+    function getSenderForUser(userId: string): InstanceStatus | undefined {
+      const profile = (profiles || []).find((p: any) => p.user_id === userId);
+      if (profile?.default_instance_id) {
+        const defaultInst = statuses.find((s) => s.id === profile.default_instance_id && s.connected);
+        if (defaultInst) return defaultInst;
+      }
+      return fallbackSender;
+    }
+
+    if (!fallbackSender) {
       console.warn('No connected instance available to send alerts');
     }
 
