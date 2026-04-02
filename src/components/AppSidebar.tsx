@@ -52,7 +52,7 @@ interface NavSection {
 export function AppSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, signOut } = useAuthContext();
+  const { user, profile, signOut } = useAuthContext();
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const unreadMentions = useUnreadMentionsCount();
