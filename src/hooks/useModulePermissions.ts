@@ -14,7 +14,6 @@ export interface ModulePermission {
 export const MODULE_DEFINITIONS = [
   { key: 'activities', label: 'Atividades', icon: 'CheckSquare', route: '/' },
   { key: 'leads', label: 'Leads / Funis', icon: 'Users', route: '/leads' },
-  
   { key: 'analytics', label: 'Analytics / Métricas', icon: 'BarChart3', route: '/analytics' },
   { key: 'finance', label: 'Financeiro', icon: 'DollarSign', route: '/finance' },
   { key: 'instagram', label: 'Instagram / Comentários', icon: 'MessageCircle', route: '/workflow' },
@@ -22,6 +21,7 @@ export const MODULE_DEFINITIONS = [
   { key: 'whatsapp', label: 'WhatsApp', icon: 'MessageSquare', route: '/whatsapp' },
   { key: 'whatsapp_private', label: 'Conversas Privadas', icon: 'Lock', route: '/whatsapp' },
   { key: 'contacts', label: 'Contatos', icon: 'Contact', route: '/leaderboard' },
+  { key: 'team_management', label: 'Gestão de Equipe', icon: 'Settings', route: '/team' },
 ] as const;
 
 export function useModulePermissions() {
