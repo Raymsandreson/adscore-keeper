@@ -120,7 +120,7 @@ async function handleNewCommand(opts: {
           .select("direction, message_text, message_type, media_url, media_type, created_at")
           .eq("phone", normalizedPhone);
         if (instance_name) query = query.eq("instance_name", instance_name);
-        return query.order("created_at", { ascending: false }).limit(25);
+        return query.order("created_at", { ascending: false }).limit(50);
       })();
 
   const [messagesRes, contactRes, leadRes, templatesRes, instanceRes, shortcutsRes] = await Promise.all([
@@ -320,7 +320,7 @@ REGRAS:
 
   const fieldsData = parsed.extracted_fields || [];
   const missingFields = parsed.missing_fields || [];
-  const signerName = parsed.signer_name || contactData.full_name || leadData.victim_name || "Cliente";
+  let signerName = parsed.signer_name || contactData.full_name || leadData.victim_name || "Cliente";
   const signerPhone = parsed.signer_phone || contactData.phone || normalizedPhone;
 
   applyDefaults(fieldsData);
@@ -356,15 +356,40 @@ REGRAS:
 
     const inst = instanceRes.data;
 
-    if (startWithDocs) {
+    // ALWAYS run auto-extraction from history (text + media + CRM), not just when requestDocuments is on
+    {
       const catalog = buildTemplateFieldCatalog({ required_fields: templateFields, missing_fields: missingFields });
       let customPrompt: string | null = matchedShortcut?.media_extraction_prompt || null;
 
-      // Step 1: Extract data from TEXT/AUDIO messages in history using AI
-      // Include BOTH inbound and outbound messages for full context (AI may have summarized data)
-      const textMessages = messages.filter((m: any) => m.message_text?.trim());
+      // Build CRM data string for extraction context
+      const crmDataForExtraction: string[] = [];
+      if (contactData.full_name) crmDataForExtraction.push(`Nome completo: ${contactData.full_name}`);
+      if (contactData.cpf) crmDataForExtraction.push(`CPF: ${contactData.cpf}`);
+      if (contactData.rg) crmDataForExtraction.push(`RG: ${contactData.rg}`);
+      if (contactData.email) crmDataForExtraction.push(`E-mail: ${contactData.email}`);
+      if (contactData.phone) crmDataForExtraction.push(`Telefone: ${contactData.phone}`);
+      if (contactData.nationality) crmDataForExtraction.push(`Nacionalidade: ${contactData.nationality}`);
+      if (contactData.marital_status) crmDataForExtraction.push(`Estado civil: ${contactData.marital_status}`);
+      if (contactData.profession) crmDataForExtraction.push(`Profissão: ${contactData.profession}`);
+      if (contactData.address_street) crmDataForExtraction.push(`Rua: ${contactData.address_street}`);
+      if (contactData.address_number) crmDataForExtraction.push(`Número: ${contactData.address_number}`);
+      if (contactData.address_complement) crmDataForExtraction.push(`Complemento: ${contactData.address_complement}`);
+      if (contactData.address_neighborhood || contactData.neighborhood) crmDataForExtraction.push(`Bairro: ${contactData.address_neighborhood || contactData.neighborhood}`);
+      if (contactData.city) crmDataForExtraction.push(`Cidade: ${contactData.city}`);
+      if (contactData.state) crmDataForExtraction.push(`Estado: ${contactData.state}`);
+      if (contactData.zip_code || contactData.cep) crmDataForExtraction.push(`CEP: ${contactData.zip_code || contactData.cep}`);
+      if (contactData.birth_date) crmDataForExtraction.push(`Data de nascimento: ${contactData.birth_date}`);
+      if (contactData.mother_name) crmDataForExtraction.push(`Nome da mãe: ${contactData.mother_name}`);
+      // Lead data
+      if (leadData.victim_name && !contactData.full_name) crmDataForExtraction.push(`Nome: ${leadData.victim_name}`);
+      if (leadData.victim_cpf && !contactData.cpf) crmDataForExtraction.push(`CPF: ${leadData.victim_cpf}`);
+      if (leadData.lead_email && !contactData.email) crmDataForExtraction.push(`E-mail: ${leadData.lead_email}`);
 
-      if (textMessages.length > 0) {
+      // Step 1: Extract data from TEXT/AUDIO messages + CRM data using AI
+      const textMessages = messages.filter((m: any) => m.message_text?.trim());
+      const hasCrmData = crmDataForExtraction.length > 0;
+
+      if (textMessages.length > 0 || hasCrmData) {
         try {
           const historyText = textMessages.map((m: any) => 
             `[${m.direction === "inbound" ? "Cliente" : "Atendente"}]: ${m.message_text}`
@@ -374,17 +399,20 @@ REGRAS:
             `- ${f.variable}: ${f.friendly_name || f.label || f.variable.replace(/[{}]/g, '')}`
           ).join("\n");
           
-          const extractPrompt = `Você é um extrator de dados. Analise a conversa abaixo e extraia TODOS os dados que correspondem aos campos listados.
+          const crmSection = hasCrmData 
+            ? `\nDADOS DO CRM/CADASTRO (prioridade alta):\n${crmDataForExtraction.join("\n")}\n` 
+            : '';
+          
+          const extractPrompt = `Você é um extrator de dados. Analise TODAS as fontes abaixo e extraia TODOS os dados que correspondem aos campos listados.
 
 CAMPOS QUE PRECISO PREENCHER:
 ${fieldsDetail}
-
-CONVERSA:
-${historyText}
-
+${crmSection}
+${historyText ? `\nCONVERSA:\n${historyText}\n` : ''}
 REGRAS DE EXTRAÇÃO:
 1. Mapeie cada dado encontrado para o campo correto usando EXATAMENTE o nome da variável (com {{}}).
-2. Exemplos de mapeamento:
+2. PRIORIZE dados do CRM/cadastro — eles são mais confiáveis.
+3. Exemplos de mapeamento:
    - "Estado civil: Solteira" → {{ESTADO_CIVIL}} = "Solteira"
    - "CPF: 060.766.902-08" → {{CPF}} = "060.766.902-08"  
    - "Profissão: Jovem aprendiz" → {{PROFISSAO}} = "Jovem aprendiz"
@@ -392,9 +420,10 @@ REGRAS DE EXTRAÇÃO:
    - "Estado: Pará" → {{UF}} = "PA" (converta para sigla)
    - "RG: 8657920" → {{RG}} = "8657920"
    - Nome mencionado → {{NOME_COMPLETO}} = nome encontrado
-3. Se tem CPF brasileiro, deduza {{NACIONALIDADE}} = "brasileiro(a)".
-4. Extraia TUDO que encontrar, mesmo dados parciais.
-5. Use a sigla do estado para {{UF}} (ex: PA, SP, RJ).
+4. Se tem CPF brasileiro, deduza {{NACIONALIDADE}} = "brasileiro(a)".
+5. Extraia TUDO que encontrar, mesmo dados parciais.
+6. Use a sigla do estado para {{UF}} (ex: PA, SP, RJ).
+7. Tente mapear variantes do nome do campo (NOME, NOME_COMPLETO, NOME_CLIENTE são o mesmo).
 
 Responda APENAS com JSON array válido:
 [{"variable":"{{CAMPO}}","value":"valor"}]
@@ -407,7 +436,7 @@ Se não encontrou nada, retorne: []`;
             temperature: 0.1,
           });
           const extractText = extractResult?.choices?.[0]?.message?.content || "";
-          console.log(`WJIA text extraction AI response: ${extractText.substring(0, 500)}`);
+          console.log(`WJIA text+CRM extraction AI response: ${extractText.substring(0, 500)}`);
           
           try {
             const jsonMatch = extractText.match(/\[[\s\S]*\]/);
@@ -417,14 +446,14 @@ Se não encontrou nada, retorne: []`;
                 for (const f of extracted) {
                   if (f.variable && f.value) upsertCollectedField(fieldsData, f.variable, f.value);
                 }
-                console.log(`WJIA: Extracted ${extracted.length} fields from text/audio history`);
+                console.log(`WJIA: Extracted ${extracted.length} fields from text+CRM`);
               }
             }
           } catch (jsonErr) {
             console.error("Error parsing text extraction result:", jsonErr);
           }
         } catch (textExtractErr) {
-          console.error("Text history extraction error:", textExtractErr);
+          console.error("Text/CRM extraction error:", textExtractErr);
         }
       }
 
@@ -436,19 +465,16 @@ Se não encontrou nada, retorne: []`;
       );
 
       if (mediaMessages.length > 0) {
-        // Already have media in conversation — extract from them automatically instead of asking again
-        console.log(`WJIA: Found ${mediaMessages.length} media messages in history, auto-extracting instead of asking for docs`);
-
+        console.log(`WJIA: Found ${mediaMessages.length} media messages in history, auto-extracting`);
         const mediaUrls = mediaMessages.map((m: any) => m.media_url).filter(Boolean);
         const docTypeGuesses = mediaMessages.map(() => "outros");
 
         try {
-          const collectedData = { fields: fieldsData, signer_name: signerName, signer_phone: signerPhone };
           const { extractedFields: autoExtracted, signerName: autoSigner } =
             await extractFromDocuments(mediaUrls, catalog, fieldsData, customPrompt, docTypeGuesses);
 
           for (const f of autoExtracted) upsertCollectedField(fieldsData, f.variable, f.value);
-          if (autoSigner) collectedData.signer_name = autoSigner;
+          if (autoSigner) signerName = autoSigner;
         } catch (extractErr) {
           console.error("Auto-extract from history media error:", extractErr);
         }
@@ -491,6 +517,15 @@ Se não encontrou nada, retorne: []`;
             'CIDADE': 'Cidade', 'UF': 'Estado (UF)', 'CEP': 'CEP', 'DATA_NASCIMENTO': 'Data de nascimento',
             'NOME_MAE': 'Nome da mãe', 'EMAIL': 'E-mail', 'TELEFONE': 'Telefone', 'BAIRRO': 'Bairro',
             'NUMERO': 'Número', 'COMPLEMENTO': 'Complemento',
+            'NOME': 'Nome completo', 'NOME_CLIENTE': 'Nome completo',
+            'CPF_CLIENTE': 'CPF', 'RG_CLIENTE': 'RG',
+            'NACIONALIDADE_CLIENTE': 'Nacionalidade', 'ESTADO_CIVIL_CLIENTE': 'Estado civil',
+            'PROFISSAO_CLIENTE': 'Profissão', 'EMAIL_CLIENTE': 'E-mail',
+            'ENDERECO_RUA': 'Rua', 'ENDERECO_NUMERO': 'Número', 'ENDERECO_BAIRRO': 'Bairro',
+            'ENDERECO_CIDADE': 'Cidade', 'ENDERECO_ESTADO': 'Estado', 'ENDERECO_CEP': 'CEP',
+            'ENDERECO_CLIENTE_RUA': 'Rua', 'ENDERECO_CLIENTE_NUMERO': 'Número',
+            'ENDERECO_CLIENTE_BAIRRO': 'Bairro', 'ENDERECO_CLIENTE_CIDADE': 'Cidade',
+            'ENDERECO_CLIENTE_ESTADO': 'Estado', 'ENDERECO_CLIENTE_CEP': 'CEP',
           };
           const missingList = stillMissing.map((f: any) => {
             const key = (f.friendly_name || f.field_name || '').replace(/[{}]/g, '');
@@ -506,52 +541,54 @@ Se não encontrou nada, retorne: []`;
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      // Only ask for documents if we didn't extract anything from history
+      // No data extracted — ask for documents or data
       if (session.status !== "ready" && filledCount === 0) {
-        const requiredDocs: string[] = documentTypes
-          .filter((t: string) => t !== 'outros')
-          .filter((t: string) => (documentTypeModes[t] || 'required') === 'required')
-          .map((t: string) => DOC_TYPE_LABELS[t] || t);
-        const optionalDocs: string[] = documentTypes
-          .filter((t: string) => t !== 'outros')
-          .filter((t: string) => documentTypeModes[t] === 'optional')
-          .map((t: string) => DOC_TYPE_LABELS[t] || t);
-        if (documentTypes.includes('outros') && customDocumentNames.length > 0) {
-          const outrosMode = documentTypeModes['outros'] || 'required';
-          if (outrosMode === 'required') {
-            requiredDocs.push(...customDocumentNames.filter((n: string) => n.trim()));
-          } else {
-            optionalDocs.push(...customDocumentNames.filter((n: string) => n.trim()));
+        if (startWithDocs) {
+          const requiredDocs: string[] = documentTypes
+            .filter((t: string) => t !== 'outros')
+            .filter((t: string) => (documentTypeModes[t] || 'required') === 'required')
+            .map((t: string) => DOC_TYPE_LABELS[t] || t);
+          const optionalDocs: string[] = documentTypes
+            .filter((t: string) => t !== 'outros')
+            .filter((t: string) => documentTypeModes[t] === 'optional')
+            .map((t: string) => DOC_TYPE_LABELS[t] || t);
+          if (documentTypes.includes('outros') && customDocumentNames.length > 0) {
+            const outrosMode = documentTypeModes['outros'] || 'required';
+            if (outrosMode === 'required') {
+              requiredDocs.push(...customDocumentNames.filter((n: string) => n.trim()));
+            } else {
+              optionalDocs.push(...customDocumentNames.filter((n: string) => n.trim()));
+            }
+          } else if (documentTypes.includes('outros')) {
+            const outrosMode = documentTypeModes['outros'] || 'required';
+            if (outrosMode === 'required') requiredDocs.push('Outros documentos');
+            else optionalDocs.push('Outros documentos');
           }
-        } else if (documentTypes.includes('outros')) {
-          const outrosMode = documentTypeModes['outros'] || 'required';
-          if (outrosMode === 'required') requiredDocs.push('Outros documentos');
-          else optionalDocs.push('Outros documentos');
-        }
 
-        let docsFirstMsg = `📝 Para preparar o documento *${parsed.template_name || "Documento"}*, preciso de algumas informações:\n\n`;
-        if (requiredDocs.length > 0) {
-          docsFirstMsg += `📎 *Envie obrigatoriamente:*\n• ${requiredDocs.join('\n• ')}\n\n`;
-        }
-        if (optionalDocs.length > 0) {
-          docsFirstMsg += `💬 *Opcional (envie o documento OU informe os dados por mensagem):*\n• ${optionalDocs.join('\n• ')}\n\n`;
-        }
-        docsFirstMsg += `📸 Envie a *foto ou arquivo* de cada documento. Vou extrair as informações automaticamente!\n\nSe não tiver algum agora, digite *pular*.`;
+          let docsFirstMsg = `📝 Para preparar o documento *${parsed.template_name || "Documento"}*, preciso de algumas informações:\n\n`;
+          if (requiredDocs.length > 0) {
+            docsFirstMsg += `📎 *Envie obrigatoriamente:*\n• ${requiredDocs.join('\n• ')}\n\n`;
+          }
+          if (optionalDocs.length > 0) {
+            docsFirstMsg += `💬 *Opcional (envie o documento OU informe os dados por mensagem):*\n• ${optionalDocs.join('\n• ')}\n\n`;
+          }
+          docsFirstMsg += `📸 Envie a *foto ou arquivo* de cada documento. Vou extrair as informações automaticamente!\n\nSe não tiver algum agora, digite *pular*.`;
 
-        if (inst?.instance_token) {
-          await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, docsFirstMsg, contact_id, lead_id, "wjia_docsfirst");
-        }
+          if (inst?.instance_token) {
+            await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, docsFirstMsg, contact_id, lead_id, "wjia_docsfirst");
+          }
 
-        return new Response(JSON.stringify({
-          success: true, action: "collection_started",
-          message: `🔄 *Coleta de documentos iniciada*\nDocumento: *${parsed.template_name}*\n📎 Pedindo documentos ao cliente.\n📊 Dados encontrados: ${filledCount}\n⚠️ Faltantes: ${missingFields.length}`,
-          session_id: session.id, missing_count: missingFields.length, docs_first: true,
-        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          return new Response(JSON.stringify({
+            success: true, action: "collection_started",
+            message: `🔄 *Coleta de documentos iniciada*\nDocumento: *${parsed.template_name}*\n📎 Pedindo documentos ao cliente.\n⚠️ Faltantes: ${missingFields.length}`,
+            session_id: session.id, missing_count: missingFields.length, docs_first: true,
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
       }
     }
 
     // Normal flow: send collection message (only if not auto-extracted to ready)
-    if (!startWithDocs || session.status !== "ready") {
+    if (session.status !== "ready") {
       if (inst?.instance_token && parsed.collection_message) {
         await sendWhatsApp(supabase, inst, normalizedPhone, instance_name, parsed.collection_message, contact_id, lead_id, "wjia_collect");
       }
