@@ -4,9 +4,10 @@ import {
   LayoutDashboard, Users, CalendarDays, TrendingUp, Trophy, UsersRound,
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
-  LogOut, MessagesSquare, Settings, ChevronRight,
+  LogOut, MessagesSquare, Settings, ChevronRight, User,
   MessageSquare as MessageSquareIcon,
 } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Sidebar,
   SidebarContent,
