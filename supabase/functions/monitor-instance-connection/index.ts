@@ -158,37 +158,40 @@ Deno.serve(async (req) => {
           alert_count: 1,
         }, { onConflict: 'instance_id' });
 
-        // Send alert to users who have access to this instance
-        const usersWithAccess = (instanceUsers || [])
-          .filter((iu: any) => iu.instance_id === status.id)
-          .map((iu: any) => iu.user_id);
+        // Only send notifications if notify_on_disconnect is enabled
+        if (status.notify_on_disconnect) {
+          const usersWithAccess = (instanceUsers || [])
+            .filter((iu: any) => iu.instance_id === status.id)
+            .map((iu: any) => iu.user_id);
 
-        for (const userId of usersWithAccess) {
-          const profile = (profiles || []).find((p: any) => p.user_id === userId);
-          if (!profile?.phone) continue;
+          for (const userId of usersWithAccess) {
+            const profile = (profiles || []).find((p: any) => p.user_id === userId);
+            if (!profile?.phone) continue;
+            if (!senderInstance) continue;
 
-          if (!senderInstance) continue;
+            const accessibleNames = getUserAccessibleInstances(userId, instanceUsers || [], instances);
+            const disconnectedFromAccess = accessibleNames.filter(
+              (name) => statuses.find((s) => s.instance_name === name && !s.connected)
+            );
 
-          const accessibleNames = getUserAccessibleInstances(userId, instanceUsers || [], instances);
-          const disconnectedFromAccess = accessibleNames.filter(
-            (name) => statuses.find((s) => s.instance_name === name && !s.connected)
-          );
+            const msg =
+              `🔴 *ALERTA: Instância Desconectada*\n\n` +
+              `Olá ${profile.full_name || ''}!\n\n` +
+              `A instância *${status.instance_name}* acabou de desconectar.\n\n` +
+              (disconnectedFromAccess.length > 1
+                ? `⚠️ Instâncias desconectadas que você tem acesso:\n${disconnectedFromAccess.map((n) => `  • ${n}`).join('\n')}\n\n`
+                : '') +
+              `Por favor, reconecte o quanto antes para não perder mensagens.\n` +
+              `📱 _Você receberá uma ligação a cada 10 minutos enquanto estiver desconectado._`;
 
-          const msg =
-            `🔴 *ALERTA: Instância Desconectada*\n\n` +
-            `Olá ${profile.full_name || ''}!\n\n` +
-            `A instância *${status.instance_name}* acabou de desconectar.\n\n` +
-            (disconnectedFromAccess.length > 1
-              ? `⚠️ Instâncias desconectadas que você tem acesso:\n${disconnectedFromAccess.map((n) => `  • ${n}`).join('\n')}\n\n`
-              : '') +
-            `Por favor, reconecte o quanto antes para não perder mensagens.\n` +
-            `📱 _Você receberá uma ligação a cada 10 minutos enquanto estiver desconectado._`;
-
-          await sendWhatsAppMessage(profile.phone, msg, senderInstance.id);
-          await makeCall(profile.phone, senderInstance.id);
+            await sendWhatsAppMessage(profile.phone, msg, senderInstance.id);
+            await makeCall(profile.phone, senderInstance.id);
+          }
+          results.push({ instance: status.instance_name, event: 'disconnected', alerted: true });
+        } else {
+          console.log(`🔕 ${status.instance_name} disconnected but notifications disabled`);
+          results.push({ instance: status.instance_name, event: 'disconnected', alerted: false, reason: 'notifications_disabled' });
         }
-
-        results.push({ instance: status.instance_name, event: 'disconnected', alerted: true });
 
       } else if (!status.connected && !wasConnected) {
         // ── STILL DISCONNECTED — check if we need to call again ──
