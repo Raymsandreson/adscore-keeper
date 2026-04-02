@@ -383,8 +383,12 @@ REGRAS:
 - Retorne APENAS JSON array: [{"variable":"{{CAMPO}}","value":"valor extraído"}]
 - Se não encontrou nenhum dado, retorne: []`;
 
-          const extractResult = await callGemini(extractPrompt, 'google/gemini-2.5-flash', 0.1);
-          const extractText = parseGeminiResponse(extractResult);
+          const extractResult = await geminiChat({
+            model: 'google/gemini-2.5-flash',
+            messages: [{ role: "user", content: extractPrompt }],
+            temperature: 0.1,
+          });
+          const extractText = extractResult?.choices?.[0]?.message?.content || "";
           
           try {
             const jsonMatch = extractText.match(/\[[\s\S]*\]/);
