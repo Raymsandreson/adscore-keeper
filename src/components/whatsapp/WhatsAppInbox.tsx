@@ -128,12 +128,12 @@ export function WhatsAppInbox() {
       }
 
       setSelectedPhone(phone);
-      fetchFullConversation(phone);
+      fetchFullConversation(phone, targetInstanceName);
     } catch (error) {
       console.error('Error opening chat by phone:', error);
       setSelectedInstance(null);
       setSelectedPhone(phone);
-      fetchFullConversation(phone);
+      fetchFullConversation(phone, null);
     }
   }, [instances, selectedInstanceId, fetchFullConversation]);
 
