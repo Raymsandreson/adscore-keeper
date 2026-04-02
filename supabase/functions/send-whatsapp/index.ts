@@ -36,6 +36,8 @@ Deno.serve(async (req) => {
     const supabaseUrl = RESOLVED_SUPABASE_URL
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
     const supabase = createClient(supabaseUrl, supabaseKey)
+    // Internal client for instance lookups (Cloud DB)
+    const internalClient = createClient(INTERNAL_SUPABASE_URL, INTERNAL_SERVICE_ROLE_KEY)
 
     const body = await req.json()
     // Normalize phone in body if present
