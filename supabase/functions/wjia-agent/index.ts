@@ -120,7 +120,7 @@ async function handleNewCommand(opts: {
           .select("direction, message_text, message_type, media_url, media_type, created_at")
           .eq("phone", normalizedPhone);
         if (instance_name) query = query.eq("instance_name", instance_name);
-        return query.order("created_at", { ascending: false }).limit(25);
+        return query.order("created_at", { ascending: false }).limit(50);
       })();
 
   const [messagesRes, contactRes, leadRes, templatesRes, instanceRes, shortcutsRes] = await Promise.all([
