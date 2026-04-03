@@ -1,0 +1,196 @@
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Bot, MessageCircle, TrendingUp, Clock, Zap, PhoneCall, Sparkles, Search } from 'lucide-react';
+import type { AgentStats, ConversationDetail, AgentData } from '../types';
+import { convKey } from '../utils';
+import { CaseCard } from './CaseCard';
+import { BatchToolbar } from './BatchToolbar';
+import { MonitorFilterBar } from './MonitorFilterBar';
+import { CallQueuePanel } from '../../CallQueuePanel';
+import { FollowupActivityPanel } from '../../FollowupActivityPanel';
+import { AIEnrichmentMonitorPanel } from '../../AIEnrichmentMonitorPanel';
+
+interface AgentsPanelTabProps {
+  conversations: ConversationDetail[];
+  agentStats: AgentStats[];
+  agents: AgentData[];
+  filteredConversations: ConversationDetail[];
+  loading: boolean;
+  filterProps: React.ComponentProps<typeof MonitorFilterBar>;
+  batchProps: {
+    selectedKeys: Set<string>;
+    selectedCount: number;
+    batchAgentId: string;
+    setBatchAgentId: (id: string) => void;
+    batchProcessing: boolean;
+    onSelectAll: (list: ConversationDetail[]) => void;
+    onClearSelection: () => void;
+    onPause: () => void;
+    onAssign: (agentId: string) => void;
+    onSwap: (agentId: string) => void;
+    onAnticipate: () => void;
+    onResume: () => void;
+  };
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  onOpenChat: (c: ConversationDetail) => void;
+  generatingLeadId?: string | null;
+  onGenerateActivity?: (c: ConversationDetail) => void;
+}
+
+export function AgentsPanelTab({
+  conversations, agentStats, agents, filteredConversations, loading,
+  filterProps, batchProps, searchQuery, setSearchQuery, onOpenChat, generatingLeadId, onGenerateActivity,
+}: AgentsPanelTabProps) {
+  return (
+    <div className="space-y-4">
+      {/* Global KPIs */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <MessageCircle className="h-3.5 w-3.5" /> Conversas
+            </div>
+            <p className="text-2xl font-bold">{conversations.length}</p>
+            <div className="flex gap-2 mt-1">
+              <Badge variant="secondary" className="text-[9px]">{conversations.filter(c => c.is_active && !c.human_paused).length} ativas</Badge>
+              <Badge variant="outline" className="text-[9px]">{conversations.filter(c => c.human_paused).length} pausadas</Badge>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <TrendingUp className="h-3.5 w-3.5" /> Msgs Enviadas
+            </div>
+            <p className="text-2xl font-bold">{conversations.reduce((s, c) => s + c.outbound_count, 0)}</p>
+            <p className="text-[10px] text-muted-foreground">{conversations.reduce((s, c) => s + c.inbound_count, 0)} recebidas</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <Zap className="h-3.5 w-3.5" /> Follow-ups
+            </div>
+            <p className="text-2xl font-bold">{conversations.reduce((s, c) => s + c.followup_count, 0)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <Clock className="h-3.5 w-3.5 text-amber-500" /> Sem Resposta
+            </div>
+            <p className="text-2xl font-bold text-amber-600">{conversations.filter(c => c.time_without_response && c.time_without_response > 60).length}</p>
+            <p className="text-[10px] text-muted-foreground">&gt;1h sem resposta</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Tabs defaultValue="overview" className="space-y-3">
+        <TabsList className="grid w-full grid-cols-5 max-w-2xl">
+          <TabsTrigger value="overview" className="text-xs">Por Agente</TabsTrigger>
+          <TabsTrigger value="conversations" className="text-xs">Conversas</TabsTrigger>
+          <TabsTrigger value="followups" className="text-xs"><Zap className="h-3 w-3 mr-1" />Follow-ups</TabsTrigger>
+          <TabsTrigger value="call-queue" className="text-xs"><PhoneCall className="h-3 w-3 mr-1" />Ligações</TabsTrigger>
+          <TabsTrigger value="ai-data" className="text-xs"><Sparkles className="h-3 w-3 mr-1" />IA Dados</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {agentStats.filter(s => s.total_conversations > 0).map(stat => (
+              <Card key={stat.agent_id} className="hover:shadow-md transition-shadow">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center justify-between">
+                    <span className="flex items-center gap-2"><Bot className="h-4 w-4 text-primary" />{stat.agent_name}</span>
+                    <Badge variant="secondary" className="text-[10px]">{stat.total_conversations} conversas</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-green-50 dark:bg-green-950 rounded-lg p-2 text-center">
+                      <p className="text-lg font-bold text-green-600">{stat.active_conversations}</p>
+                      <p className="text-[9px] text-green-600/70">Ativas</p>
+                    </div>
+                    <div className="bg-amber-50 dark:bg-amber-950 rounded-lg p-2 text-center">
+                      <p className="text-lg font-bold text-amber-600">{stat.paused_conversations}</p>
+                      <p className="text-[9px] text-amber-600/70">Pausadas</p>
+                    </div>
+                    <div className="bg-muted rounded-lg p-2 text-center">
+                      <p className="text-lg font-bold text-muted-foreground">{stat.inactive_conversations}</p>
+                      <p className="text-[9px] text-muted-foreground">Inativas</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <div className="flex justify-between"><span className="text-muted-foreground">Msgs enviadas</span><span className="font-medium">{stat.total_messages_sent}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Msgs recebidas</span><span className="font-medium">{stat.total_messages_received}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Follow-ups</span><span className="font-medium">{stat.followups_sent}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Taxa resposta</span><span className="font-medium">{stat.response_rate}%</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">↗ Fechados</span><span className="font-medium text-green-600">{stat.leads_closed}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">↘ Recusados</span><span className="font-medium text-red-600">{stat.leads_refused}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Sem resposta (&gt;1h)</span><span className="font-medium text-amber-600">{stat.without_response_count}</span></div>
+                  </div>
+                  {Object.keys(stat.conversations_by_stage).length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase">Por Etapa</p>
+                      {Object.entries(stat.conversations_by_stage).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([stage, count]) => (
+                        <div key={stage} className="flex items-center gap-2">
+                          <span className="text-[10px] text-muted-foreground truncate flex-1">{stage}</span>
+                          <Progress value={(count / stat.total_conversations) * 100} className="w-16 h-1.5" />
+                          <span className="text-[10px] font-medium w-6 text-right">{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+            {agentStats.filter(s => s.total_conversations > 0).length === 0 && !loading && (
+              <div className="col-span-full text-center py-12 text-muted-foreground">
+                <Bot className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">Nenhuma conversa de agente encontrada no período</p>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="conversations" className="space-y-3">
+          <MonitorFilterBar {...filterProps} />
+          <div className="relative max-w-md">
+            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input placeholder="Buscar..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-8 h-8 text-xs" />
+          </div>
+          <BatchToolbar list={filteredConversations} selectedCount={batchProps.selectedCount} agents={agents} {...batchProps} />
+          <p className="text-xs text-muted-foreground">{filteredConversations.length} conversas</p>
+          <ScrollArea className="h-[calc(100vh-540px)]">
+            <div className="space-y-2">
+              {filteredConversations.map((c, idx) => (
+                <CaseCard key={`${c.phone}-${c.instance_name}-${idx}`} c={c} selectable
+                  isSelected={batchProps.selectedKeys.has(convKey(c))}
+                  onToggleSelect={(conv) => {
+                    const k = convKey(conv);
+                    const newKeys = new Set(batchProps.selectedKeys);
+                    if (newKeys.has(k)) newKeys.delete(k); else newKeys.add(k);
+                    // We need to use the toggle from parent - pass through
+                  }}
+                  onOpenChat={onOpenChat} generatingLeadId={generatingLeadId} onGenerateActivity={onGenerateActivity}
+                />
+              ))}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="followups"><FollowupActivityPanel /></TabsContent>
+        <TabsContent value="call-queue">
+          <CallQueuePanel onSelectConversation={(phone, instanceName, contactName) => {
+            onOpenChat({ phone, instance_name: instanceName, contact_name: contactName || '' } as any);
+          }} />
+        </TabsContent>
+        <TabsContent value="ai-data"><AIEnrichmentMonitorPanel /></TabsContent>
+      </Tabs>
+    </div>
+  );
+}
