@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
-import { Bot, MessageCircle, UserPlus, Zap, Phone, FileText, ArrowRight, Activity, Filter } from 'lucide-react';
+import { Bot, MessageCircle, UserPlus, Zap, Phone, FileText, Activity, ClipboardList } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-export type FeedEventType = 'message_sent' | 'message_received' | 'lead_created' | 'followup_sent' | 'agent_activated' | 'agent_paused' | 'session_generated';
+export type FeedEventType = 'message_sent' | 'message_received' | 'lead_created' | 'followup_sent' | 'agent_activated' | 'agent_paused' | 'session_generated' | 'call_queued' | 'activity_created';
 
 export interface FeedEvent {
   id: string;
@@ -30,6 +29,8 @@ function eventIcon(type: FeedEvent['type']) {
     case 'agent_activated': return <Bot className="h-3.5 w-3.5 text-green-500" />;
     case 'agent_paused': return <Phone className="h-3.5 w-3.5 text-orange-500" />;
     case 'session_generated': return <FileText className="h-3.5 w-3.5 text-purple-500" />;
+    case 'call_queued': return <Phone className="h-3.5 w-3.5 text-blue-400" />;
+    case 'activity_created': return <ClipboardList className="h-3.5 w-3.5 text-teal-500" />;
     default: return <Activity className="h-3.5 w-3.5 text-muted-foreground" />;
   }
 }
@@ -43,6 +44,8 @@ function eventColor(type: FeedEvent['type']) {
     case 'agent_activated': return 'border-l-green-500';
     case 'agent_paused': return 'border-l-orange-500';
     case 'session_generated': return 'border-l-purple-500';
+    case 'call_queued': return 'border-l-blue-400';
+    case 'activity_created': return 'border-l-teal-500';
     default: return 'border-l-muted';
   }
 }
@@ -55,6 +58,8 @@ const EVENT_TYPE_LABELS: Record<FeedEventType, string> = {
   agent_activated: 'Ativações',
   agent_paused: 'Pausas',
   session_generated: 'Sessões',
+  call_queued: 'Ligações',
+  activity_created: 'Atividades',
 };
 
 interface AIRealtimeFeedProps {
@@ -83,14 +88,15 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
     return events.filter(e => activeFilters.has(e.type));
   }, [events, activeFilters]);
 
-  // Count by type for filter badges
   const typeCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    events.forEach(e => {
-      counts[e.type] = (counts[e.type] || 0) + 1;
-    });
+    events.forEach(e => { counts[e.type] = (counts[e.type] || 0) + 1; });
     return counts;
   }, [events]);
+
+  const addEvent = (ev: FeedEvent) => {
+    setEvents(prev => [ev, ...prev].slice(0, 150));
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -99,82 +105,89 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
       setLoading(true);
       try {
         const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-
-        // Get current user
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { if (mounted) setLoading(false); return; }
 
-        // Get user's permitted instances and active agent conversations in parallel
         const [permRes, convAgentsRes] = await Promise.all([
           supabase.from('whatsapp_instance_users').select('instance_id').eq('user_id', user.id),
           supabase.from('whatsapp_conversation_agents').select('phone, instance_name').eq('is_active', true),
         ]);
 
-        // Get instance names from IDs
         const instanceIds = (permRes.data || []).map((p: any) => p.instance_id);
         let allowedInstanceNames: string[] = [];
         if (instanceIds.length > 0) {
-          const { data: instances } = await supabase
-            .from('whatsapp_instances')
-            .select('instance_name')
-            .in('id', instanceIds);
+          const { data: instances } = await supabase.from('whatsapp_instances').select('instance_name').in('id', instanceIds);
           allowedInstanceNames = (instances || []).map((i: any) => i.instance_name);
         }
 
-        // Store refs for realtime filtering
         const agentConvKeys = new Set<string>();
-        (convAgentsRes.data || []).forEach((ca: any) => {
-          agentConvKeys.add(`${ca.phone}|${ca.instance_name}`);
-        });
+        (convAgentsRes.data || []).forEach((ca: any) => { agentConvKeys.add(`${ca.phone}|${ca.instance_name}`); });
         agentConvKeysRef.current = agentConvKeys;
         allowedInstancesRef.current = new Set(allowedInstanceNames);
 
-        const [msgsRes] = await Promise.all([
-          supabase
-            .from('whatsapp_messages')
-            .select('id, phone, direction, message_text, contact_name, instance_name, created_at, campaign_name, lead_id')
+        // Fetch messages, activities, and call queue in parallel
+        const instFilter = allowedInstanceNames.length > 0 ? allowedInstanceNames : ['__none__'];
+        const [msgsRes, activitiesRes, callsRes] = await Promise.all([
+          supabase.from('whatsapp_messages')
+            .select('id, phone, direction, message_text, contact_name, instance_name, created_at, lead_id')
+            .gte('created_at', since).in('instance_name', instFilter)
+            .order('created_at', { ascending: false }).limit(200),
+          supabase.from('lead_activities')
+            .select('id, title, description, activity_type, lead_name, created_at, lead_id')
             .gte('created_at', since)
-            .in('instance_name', allowedInstanceNames.length > 0 ? allowedInstanceNames : ['__none__'])
-            .order('created_at', { ascending: false })
-            .limit(200),
+            .order('created_at', { ascending: false }).limit(50),
+          supabase.from('whatsapp_call_queue')
+            .select('id, phone, instance_name, status, contact_name, created_at')
+            .gte('created_at', since).in('instance_name', instFilter)
+            .order('created_at', { ascending: false }).limit(50),
         ]);
 
         const feedEvents: FeedEvent[] = [];
 
         (msgsRes.data || []).forEach((m: any) => {
-          // Only include messages from conversations with an active agent
           const convKey = `${m.phone}|${m.instance_name}`;
           if (!agentConvKeys.has(convKey)) return;
+          feedEvents.push({
+            id: `msg-${m.id}`,
+            type: m.direction === 'outbound' ? 'message_sent' : 'message_received',
+            title: m.direction === 'outbound'
+              ? `Msg enviada → ${m.contact_name || m.phone}`
+              : `${m.contact_name || m.phone} respondeu`,
+            detail: m.message_text?.slice(0, 80) || '',
+            timestamp: m.created_at,
+            phone: m.phone,
+            instance_name: m.instance_name,
+            contact_name: m.contact_name,
+            lead_id: m.lead_id,
+          });
+        });
 
-          if (m.direction === 'outbound') {
-            feedEvents.push({
-              id: `msg-${m.id}`,
-              type: 'message_sent',
-              title: `Mensagem enviada para ${m.contact_name || m.phone}`,
-              detail: m.message_text?.slice(0, 80) || '',
-              timestamp: m.created_at,
-              phone: m.phone,
-              instance_name: m.instance_name,
-              contact_name: m.contact_name,
-              lead_id: m.lead_id,
-            });
-          } else if (m.direction === 'inbound') {
-            feedEvents.push({
-              id: `msg-${m.id}`,
-              type: 'message_received',
-              title: `${m.contact_name || m.phone} respondeu`,
-              detail: m.message_text?.slice(0, 80) || '',
-              timestamp: m.created_at,
-              phone: m.phone,
-              instance_name: m.instance_name,
-              contact_name: m.contact_name,
-              lead_id: m.lead_id,
-            });
-          }
+        (activitiesRes.data || []).forEach((a: any) => {
+          feedEvents.push({
+            id: `act-${a.id}`,
+            type: 'activity_created',
+            title: `Atividade: ${a.title}`,
+            detail: a.lead_name || a.description?.slice(0, 60) || '',
+            timestamp: a.created_at,
+            lead_id: a.lead_id,
+          });
+        });
+
+        (callsRes.data || []).forEach((c: any) => {
+          feedEvents.push({
+            id: `call-${c.id}`,
+            type: 'call_queued',
+            title: `Ligação enfileirada → ${c.contact_name || c.phone}`,
+            detail: `Instância: ${c.instance_name} | Status: ${c.status}`,
+            timestamp: c.created_at,
+            phone: c.phone,
+            instance_name: c.instance_name,
+            contact_name: c.contact_name,
+          });
         });
 
         feedEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        if (mounted) setEvents(feedEvents.slice(0, 80));
+        if (mounted) setEvents(feedEvents.slice(0, 100));
       } catch (e) {
         console.error('Feed fetch error:', e);
       } finally {
@@ -184,23 +197,19 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
 
     fetchRecent();
 
+    // Realtime subscriptions for all relevant tables
     const channel = supabase
-      .channel('ai-feed-realtime')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'whatsapp_messages',
-      }, (payload: any) => {
+      .channel('ai-feed-realtime-v2')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' }, (payload: any) => {
         const m = payload.new;
         if (!m) return;
-        // Filter: only allowed instances and agent-managed conversations
         if (!allowedInstancesRef.current.has(m.instance_name)) return;
         if (!agentConvKeysRef.current.has(`${m.phone}|${m.instance_name}`)) return;
-        const newEvent: FeedEvent = {
+        addEvent({
           id: `msg-${m.id}`,
           type: m.direction === 'outbound' ? 'message_sent' : 'message_received',
           title: m.direction === 'outbound'
-            ? `Mensagem enviada para ${m.contact_name || m.phone}`
+            ? `Msg enviada → ${m.contact_name || m.phone}`
             : `${m.contact_name || m.phone} respondeu`,
           detail: m.message_text?.slice(0, 80) || '',
           timestamp: m.created_at,
@@ -208,8 +217,74 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
           instance_name: m.instance_name,
           contact_name: m.contact_name,
           lead_id: m.lead_id,
-        };
-        setEvents(prev => [newEvent, ...prev].slice(0, 100));
+        });
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'lead_activities' }, (payload: any) => {
+        const a = payload.new;
+        if (!a) return;
+        addEvent({
+          id: `act-${a.id}`,
+          type: 'activity_created',
+          title: `Atividade: ${a.title}`,
+          detail: a.lead_name || a.description?.slice(0, 60) || '',
+          timestamp: a.created_at,
+          lead_id: a.lead_id,
+        });
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'whatsapp_call_queue' }, (payload: any) => {
+        const c = payload.new;
+        if (!c) return;
+        if (!allowedInstancesRef.current.has(c.instance_name)) return;
+        addEvent({
+          id: `call-${c.id}`,
+          type: 'call_queued',
+          title: `Ligação enfileirada → ${c.contact_name || c.phone}`,
+          detail: `Instância: ${c.instance_name}`,
+          timestamp: c.created_at,
+          phone: c.phone,
+          instance_name: c.instance_name,
+          contact_name: c.contact_name,
+        });
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'whatsapp_conversation_agents' }, (payload: any) => {
+        const ca = payload.new;
+        if (!ca) return;
+        if (!allowedInstancesRef.current.has(ca.instance_name)) return;
+        if (ca.is_active) {
+          agentConvKeysRef.current.add(`${ca.phone}|${ca.instance_name}`);
+          addEvent({
+            id: `agent-${ca.id}-${Date.now()}`,
+            type: 'agent_activated',
+            title: `Agente ativado → ${ca.phone}`,
+            detail: `Instância: ${ca.instance_name}`,
+            timestamp: new Date().toISOString(),
+            phone: ca.phone,
+            instance_name: ca.instance_name,
+          });
+        } else {
+          agentConvKeysRef.current.delete(`${ca.phone}|${ca.instance_name}`);
+          addEvent({
+            id: `agent-${ca.id}-${Date.now()}`,
+            type: 'agent_paused',
+            title: `Agente pausado → ${ca.phone}`,
+            detail: `Instância: ${ca.instance_name}`,
+            timestamp: new Date().toISOString(),
+            phone: ca.phone,
+            instance_name: ca.instance_name,
+          });
+        }
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'lead_followups' }, (payload: any) => {
+        const f = payload.new;
+        if (!f) return;
+        addEvent({
+          id: `fu-${f.id}`,
+          type: 'followup_sent',
+          title: `Follow-up registrado`,
+          detail: f.notes?.slice(0, 60) || f.followup_type || '',
+          timestamp: f.created_at || new Date().toISOString(),
+          lead_id: f.lead_id,
+        });
       })
       .subscribe();
 
@@ -229,13 +304,6 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
     return format(new Date(ts), 'HH:mm', { locale: ptBR });
   };
 
-  // Which types actually exist in current events
-  const availableTypes = useMemo(() => {
-    const types = new Set<FeedEventType>();
-    events.forEach(e => types.add(e.type));
-    return Array.from(types);
-  }, [events]);
-
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -250,7 +318,6 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
         </div>
       </div>
 
-      {/* Event type filters */}
       <div className="flex flex-wrap gap-1">
         {(Object.keys(EVENT_TYPE_LABELS) as FeedEventType[]).filter(t => (typeCounts[t] || 0) > 0 || activeFilters.has(t)).map(type => {
           const isActive = activeFilters.has(type);
