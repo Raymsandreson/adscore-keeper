@@ -590,7 +590,7 @@ export function AgentMonitorDashboard() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Bot className="h-6 w-6 text-primary" />
-            Central de Automações
+            Monitor de IA
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">Monitore agentes, fila de casos e indicações em tempo real</p>
         </div>
