@@ -837,8 +837,18 @@ REGRAS IMPORTANTES:
             // Use agent's configured voice or fallback to Laura
             let voiceId = (agent as any).reply_voice_id || "FGY2WhTYpPnrIDTdsKH5";
             
+            // Resolve "instance_owner" to the instance's configured voice
+            if (voiceId === "instance_owner") {
+              const { data: inst } = await supabase
+                .from("whatsapp_instances")
+                .select("voice_id")
+                .eq("instance_name", instanceName)
+                .maybeSingle();
+              voiceId = inst?.voice_id || "FGY2WhTYpPnrIDTdsKH5";
+              console.log(`Resolved instance_owner voice to: ${voiceId}`);
+            }
             // If voice ID looks like a custom_voices UUID, resolve the ElevenLabs voice ID
-            if (voiceId.length === 36 && voiceId.includes("-")) {
+            else if (voiceId.length === 36 && voiceId.includes("-")) {
               const { data: customVoice } = await supabase
                 .from("custom_voices")
                 .select("elevenlabs_voice_id")

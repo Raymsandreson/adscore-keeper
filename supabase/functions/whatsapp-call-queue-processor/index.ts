@@ -67,7 +67,7 @@ serve(async (req) => {
     const instanceName = (nextCall as any).instance_name;
     const { data: instance } = await supabase
       .from("whatsapp_instances")
-      .select("base_url, instance_token, instance_name")
+      .select("base_url, instance_token, instance_name, voice_id, owner_name")
       .eq("instance_name", instanceName)
       .maybeSingle();
 
