@@ -1,15 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { geminiChat } from "../_shared/gemini.ts";
+import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
-// Use external Supabase project when configured (hybrid architecture)
-function resolveSupabaseUrl(): string {
-  const candidates = [Deno.env.get('EXTERNAL_SUPABASE_URL'), Deno.env.get('SUPABASE_URL')];
-  for (const c of candidates) { const v = (c || '').trim(); if (v.startsWith('https://') || v.startsWith('http://')) return v; }
-  return 'https://kmedldlepwiityjsdahz.supabase.co';
-}
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
-const RESOLVED_SERVICE_ROLE_KEY = (Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
+const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
 
 
 const corsHeaders = {
