@@ -1224,6 +1224,8 @@ export function AgentMonitorDashboard() {
                 if (sheetResponseFilter === 'waiting' && !(c.outbound_count > 0 && c.inbound_count === 0)) return false;
                 if (sheetLeadFilter === 'com_lead' && !c.lead_id) return false;
                 if (sheetLeadFilter === 'sem_lead' && c.lead_id) return false;
+                if (sheetAgentStatusFilter === 'ativo' && !c.is_active) return false;
+                if (sheetAgentStatusFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
                 return true;
               }).map((c, idx) => (
                 <CaseCard key={`sheet-${c.phone}-${c.instance_name}-${idx}`} c={c} />
