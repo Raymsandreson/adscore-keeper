@@ -691,8 +691,8 @@ export function AgentMonitorDashboard() {
             ]).map(({ key, icon: Icon, color }) => (
               <Card
                 key={key}
-                className={`cursor-pointer hover:shadow-md transition-all ${caseStatusFilter === key ? 'ring-2 ring-primary' : ''}`}
-                onClick={() => setCaseStatusFilter(prev => prev === key ? 'all' : key)}
+                className={`cursor-pointer hover:shadow-md transition-all ${sheetStatusFilter === key ? 'ring-2 ring-primary' : ''}`}
+                onClick={() => setSheetStatusFilter(prev => prev === key ? null : key)}
               >
                 <CardContent className="p-3 text-center">
                   <Icon className={`h-4 w-4 mx-auto mb-1 ${color}`} />
