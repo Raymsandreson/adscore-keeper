@@ -223,6 +223,8 @@ async function processAgentConversationFollowups(supabase: any, targetPhone?: st
   if (targetInstance) convQuery = convQuery.eq("instance_name", targetInstance);
 
   const { data: conversations, error: convError } = await convQuery;
+
+  if (convError || !conversations?.length) {
     console.log(`[AGENT] No active conversations found`);
     return 0;
   }
