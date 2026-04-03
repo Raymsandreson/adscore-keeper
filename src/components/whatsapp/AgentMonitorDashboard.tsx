@@ -120,6 +120,7 @@ export function AgentMonitorDashboard() {
   const [boardFilter, setBoardFilter] = useState('all');
   const [campaignFilter, setCampaignFilter] = useState('all');
   const [caseStatusFilter, setCaseStatusFilter] = useState<CaseStatus | 'all'>('all');
+  const [agentActiveFilter, setAgentActiveFilter] = useState<'all' | 'ativo' | 'pausado'>('all');
   const [sheetStatusFilter, setSheetStatusFilter] = useState<CaseStatus | null>(null);
 
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({ from: subDays(new Date(), 7), to: new Date() });
@@ -470,13 +471,15 @@ export function AgentMonitorDashboard() {
         if (campaignFilter !== '__none__' && c.campaign_name !== campaignFilter) return false;
       }
       if (caseStatusFilter !== 'all' && getCaseStatus(c) !== caseStatusFilter) return false;
+      if (agentActiveFilter === 'ativo' && !c.is_active) return false;
+      if (agentActiveFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         return c.phone.includes(q) || c.contact_name?.toLowerCase().includes(q) || c.lead_name?.toLowerCase().includes(q);
       }
       return true;
     });
-  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter, caseStatusFilter, searchQuery]);
+  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter, caseStatusFilter, agentActiveFilter, searchQuery]);
 
   // Pipeline counts
   const pipelineCounts = useMemo(() => {
@@ -641,6 +644,17 @@ export function AgentMonitorDashboard() {
           </SelectContent>
         </Select>
       )}
+
+      <Select value={agentActiveFilter} onValueChange={(v) => setAgentActiveFilter(v as 'all' | 'ativo' | 'pausado')}>
+        <SelectTrigger className="w-[130px] h-8 text-xs">
+          <SelectValue placeholder="Status Agente" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Todos Status</SelectItem>
+          <SelectItem value="ativo">Ativo</SelectItem>
+          <SelectItem value="pausado">Pausado</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
   );
 
