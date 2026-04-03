@@ -539,6 +539,7 @@ export function AgentMonitorDashboard() {
       case 'recusado': return 'text-red-600 bg-red-50 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-800';
       case 'inviavel': return 'text-muted-foreground bg-muted border-border';
       case 'bloqueado': return 'text-orange-600 bg-orange-50 border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-800';
+      case 'pausado': return 'text-gray-600 bg-gray-50 border-gray-200 dark:bg-gray-950 dark:text-gray-400 dark:border-gray-800';
     }
   };
 
