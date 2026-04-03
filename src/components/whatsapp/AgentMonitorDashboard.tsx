@@ -990,26 +990,60 @@ export function AgentMonitorDashboard() {
               {sheetStatusFilter ? statusLabel(sheetStatusFilter) : ''} ({sheetCases.length})
             </SheetTitle>
           </SheetHeader>
-          <div className="p-3 border-b">
+          <div className="px-3 pt-2 pb-1 border-b space-y-1.5">
             <div className="relative">
               <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
               <Input placeholder="Buscar por nome ou telefone..." value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)} className="pl-8 h-8 text-xs" />
+                onChange={e => setSearchQuery(e.target.value)} className="pl-8 h-7 text-xs" />
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {([['all', 'Todas'], ['responded', 'Respondidas'], ['waiting', 'Aguardando']] as const).map(([k, label]) => {
+                const count = sheetCases.filter(c => {
+                  if (k === 'responded') return c.inbound_count > 0 && c.outbound_count > 0;
+                  if (k === 'waiting') return c.outbound_count > 0 && c.inbound_count === 0;
+                  return true;
+                }).length;
+                return (
+                  <Badge key={k} variant={sheetResponseFilter === k ? 'default' : 'outline'}
+                    className="cursor-pointer text-[10px] px-1.5 py-0 h-5"
+                    onClick={() => setSheetResponseFilter(k)}>{label} ({count})</Badge>
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap gap-1 pb-1">
+              {([['all', 'Todos'], ['com_lead', 'Com Lead'], ['sem_lead', 'Sem Lead']] as const).map(([k, label]) => {
+                const count = sheetCases.filter(c => {
+                  if (k === 'com_lead') return !!c.lead_id;
+                  if (k === 'sem_lead') return !c.lead_id;
+                  return true;
+                }).length;
+                return (
+                  <Badge key={k} variant={sheetLeadFilter === k ? 'default' : 'outline'}
+                    className="cursor-pointer text-[10px] px-1.5 py-0 h-5"
+                    onClick={() => setSheetLeadFilter(k)}>{label} ({count})</Badge>
+                );
+              })}
             </div>
           </div>
           <ScrollArea className="flex-1">
-            <div className="p-3 space-y-2">
+            <div className="p-2 space-y-1.5">
               {sheetCases.filter(c => {
-                if (!searchQuery) return true;
-                const q = searchQuery.toLowerCase();
-                return c.phone.includes(q) || c.contact_name?.toLowerCase().includes(q) || c.lead_name?.toLowerCase().includes(q);
+                if (searchQuery) {
+                  const q = searchQuery.toLowerCase();
+                  if (!c.phone.includes(q) && !c.contact_name?.toLowerCase().includes(q) && !c.lead_name?.toLowerCase().includes(q)) return false;
+                }
+                if (sheetResponseFilter === 'responded' && !(c.inbound_count > 0 && c.outbound_count > 0)) return false;
+                if (sheetResponseFilter === 'waiting' && !(c.outbound_count > 0 && c.inbound_count === 0)) return false;
+                if (sheetLeadFilter === 'com_lead' && !c.lead_id) return false;
+                if (sheetLeadFilter === 'sem_lead' && c.lead_id) return false;
+                return true;
               }).map((c, idx) => (
                 <CaseCard key={`sheet-${c.phone}-${c.instance_name}-${idx}`} c={c} />
               ))}
               {sheetCases.length === 0 && (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Inbox className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">Nenhum caso encontrado</p>
+                <div className="text-center py-8 text-muted-foreground">
+                  <Inbox className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-xs">Nenhum caso encontrado</p>
                 </div>
               )}
             </div>
