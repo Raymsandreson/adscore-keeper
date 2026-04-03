@@ -34,6 +34,7 @@ serve(async (req) => {
     const targetPhone = body?.target_phone || null;
     const targetInstance = body?.target_instance || null;
     const forceImmediate = body?.force_immediate === true;
+    const resetCycle = body?.reset_cycle === true;
 
     let actionsExecuted = 0;
 
