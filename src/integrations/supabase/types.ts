@@ -5638,6 +5638,7 @@ export type Database = {
           name: string
           updated_at: string
           user_id: string
+          waba_id: string | null
         }
         Insert: {
           access_token: string
@@ -5647,6 +5648,7 @@ export type Database = {
           name?: string
           updated_at?: string
           user_id: string
+          waba_id?: string | null
         }
         Update: {
           access_token?: string
@@ -5656,6 +5658,31 @@ export type Database = {
           name?: string
           updated_at?: string
           user_id?: string
+          waba_id?: string | null
+        }
+        Relationships: []
+      }
+      meta_capi_config: {
+        Row: {
+          created_at: string
+          dataset_id: string
+          id: string
+          updated_at: string
+          waba_id: string
+        }
+        Insert: {
+          created_at?: string
+          dataset_id: string
+          id?: string
+          updated_at?: string
+          waba_id: string
+        }
+        Update: {
+          created_at?: string
+          dataset_id?: string
+          id?: string
+          updated_at?: string
+          waba_id?: string
         }
         Relationships: []
       }

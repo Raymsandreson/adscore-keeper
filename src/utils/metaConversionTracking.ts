@@ -1,7 +1,12 @@
 /**
- * Send lead quality signals back to Meta Conversions API (CAPI).
- * When a CTWA lead changes status (closed, refused, inviavel),
- * we send the event to Meta so the algorithm can optimize for the right audience.
+ * Send lead quality signals back to Meta Conversions API (CAPI)
+ * using the official Business Messaging format.
+ * 
+ * Docs: https://developers.facebook.com/docs/marketing-api/conversions-api/business-messaging/
+ * 
+ * Required data from the lead:
+ * - ctwa_context.ctwa_clid: Click-to-WhatsApp Click ID (unique per ad click)
+ * - waba_id: WhatsApp Business Account ID (from meta_ad_accounts)
  */
 import { supabase } from "@/integrations/supabase/client";
 
@@ -21,33 +26,42 @@ export async function sendLeadConversionEvent(lead: {
   campaign_id?: string;
   contract_value?: number;
 }, newStatus: LeadStatus) {
-  // Only send for CTWA leads (came from Meta ads)
-  if (!lead.ctwa_context && !lead.campaign_id) return;
+  // Only send for CTWA leads that have a ctwa_clid
+  const ctwaClid = lead.ctwa_context?.ctwa_clid;
+  if (!ctwaClid) {
+    console.log('[Meta CAPI] Skipping - no ctwa_clid available for lead', lead.id);
+    return;
+  }
 
   const mapping = STATUS_EVENT_MAP[newStatus];
   if (!mapping) return;
 
   try {
-    const phone = lead.lead_phone?.replace(/\D/g, '') || '';
-    const nameParts = (lead.lead_name || '').trim().split(' ');
-    const firstName = nameParts[0] || '';
-    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+    // Get WABA ID from meta_ad_accounts (use raw query to avoid type issues)
+    const { data: adAccounts } = await supabase
+      .from('meta_ad_accounts')
+      .select('*')
+      .limit(1);
 
-    const event: any = {
+    const wabaId = (adAccounts as any)?.[0]?.waba_id;
+    if (!wabaId) {
+      console.warn('[Meta CAPI] No WABA ID configured in meta_ad_accounts. Cannot send event.');
+      return;
+    }
+
+    const event = {
       event_name: mapping.event_name,
       event_time: Math.floor(Date.now() / 1000),
-      action_source: 'chat',
+      action_source: 'business_messaging' as const,
+      messaging_channel: 'whatsapp' as const,
       user_data: {
-        ...(phone && { ph: phone }),
-        ...(firstName && { fn: firstName }),
-        ...(lastName && { ln: lastName }),
-        external_id: lead.id,
+        whatsapp_business_account_id: wabaId,
+        ctwa_clid: ctwaClid,
       },
       custom_data: {
         content_category: mapping.content_category,
         lead_id: lead.id,
         status: newStatus,
-        ...(lead.campaign_id && { content_ids: [lead.campaign_id] }),
         ...(newStatus === 'closed' && lead.contract_value && {
           value: lead.contract_value,
           currency: 'BRL',
@@ -56,12 +70,14 @@ export async function sendLeadConversionEvent(lead: {
     };
 
     await supabase.functions.invoke('facebook-capi', {
-      body: { events: [event] },
+      body: { 
+        events: [event],
+        mode: 'business_messaging',
+      },
     });
 
-    console.log(`[Meta CAPI] Sent ${mapping.event_name} (${mapping.content_category}) for lead ${lead.id}`);
+    console.log(`[Meta CAPI] Sent ${mapping.event_name} (${mapping.content_category}) for lead ${lead.id} via Business Messaging API`);
   } catch (err) {
-    // Don't block the user flow — just log
     console.error('[Meta CAPI] Failed to send conversion event:', err);
   }
 }
