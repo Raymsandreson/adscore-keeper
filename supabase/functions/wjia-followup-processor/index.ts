@@ -294,8 +294,37 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
     // Only follow up if our last message is newer than client's last message
     if (!lastOutbound) continue;
     if (lastInbound && new Date(lastInbound.created_at) > new Date(lastOutbound.created_at)) {
-      // Client already responded, no need for follow-up. Clean any existing logs.
+      // Client already responded, no need for follow-up.
       continue;
+    }
+
+    // Block detection: check if last N outbound messages are all stuck at "sent" (never delivered)
+    // This indicates the contact likely blocked us
+    const { data: recentOutbound } = await supabase
+      .from("whatsapp_messages")
+      .select("status, created_at")
+      .eq("phone", conv.phone)
+      .eq("instance_name", conv.instance_name)
+      .eq("direction", "outbound")
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    if (recentOutbound && recentOutbound.length >= 3) {
+      const allSentOnly = recentOutbound.every((m: any) => m.status === "sent");
+      // Only flag as blocked if the oldest of these messages is at least 1 hour old
+      const oldestMsg = recentOutbound[recentOutbound.length - 1];
+      const oldestAge = Date.now() - new Date(oldestMsg.created_at).getTime();
+      if (allSentOnly && oldestAge > 60 * 60 * 1000) {
+        console.log(`[AGENT] Possible block detected for ${conv.phone} on ${conv.instance_name}: ${recentOutbound.length} messages stuck at 'sent'. Stopping followup.`);
+        // Deactivate the agent for this conversation
+        await supabase
+          .from("whatsapp_conversation_agents")
+          .update({ is_active: false })
+          .eq("phone", conv.phone)
+          .eq("instance_name", conv.instance_name);
+        actionsExecuted++;
+        continue;
+      }
     }
 
     // Check human_reply_pause_minutes - pause if a human (non-agent) recently replied
