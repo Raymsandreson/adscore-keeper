@@ -195,11 +195,13 @@ serve(async (req) => {
         console.log(`[AGENT] Force-immediate direct reply for ${targetPhone} on ${targetInstance}`);
         let actionType = "ai_reply";
         let actionResult = "success";
+        let messagePreview = "";
         try {
-          const aiReply = await callAgentReply(supabase, targetPhone, targetInstance);
-          if (aiReply) {
+          const aiResult = await callAgentReply(supabase, targetPhone, targetInstance);
+          if (aiResult.success) {
             console.log(`[AGENT] Force AI reply sent for ${targetPhone}`);
             actionsExecuted++;
+            messagePreview = aiResult.reply || "";
           } else {
             actionResult = "failed";
             console.error(`[AGENT] Force AI reply failed for ${targetPhone}`);
@@ -214,6 +216,7 @@ serve(async (req) => {
           actions_executed: actionsExecuted,
           action_type: actionType,
           action_result: actionResult,
+          message_preview: messagePreview,
           phone: targetPhone,
           instance: targetInstance,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -369,8 +372,8 @@ async function processAgentConversationFollowups(supabase: any, targetPhone?: st
         processed++;
         console.log(`[AGENT] Force-immediate: triggering AI reply for unanswered ${conv.phone} on ${conv.instance_name}`);
         try {
-          const aiReply = await callAgentReply(supabase, conv.phone, conv.instance_name);
-          if (aiReply) {
+          const aiResult = await callAgentReply(supabase, conv.phone, conv.instance_name);
+          if (aiResult.success) {
             console.log(`[AGENT] Force AI reply sent for ${conv.phone}`);
             actionsExecuted++;
           } else {
@@ -514,8 +517,8 @@ async function processAgentConversationFollowups(supabase: any, targetPhone?: st
     if (step.action_type === "whatsapp_message") {
       // Use AI to generate contextual follow-up message
       try {
-        const aiReply = await callAgentReply(supabase, conv.phone, conv.instance_name);
-        if (aiReply) {
+        const aiResult = await callAgentReply(supabase, conv.phone, conv.instance_name);
+        if (aiResult.success) {
           console.log(`[AGENT] AI followup sent for ${conv.phone}`);
         } else {
           actionResult = "error";
@@ -606,10 +609,7 @@ async function processAgentConversationFollowups(supabase: any, targetPhone?: st
 }
 
 // Call the existing AI agent reply endpoint for follow-up messages
-async function callAgentReply(supabase: any, phone: string, instanceName: string): Promise<boolean> {
-  const supabaseUrl = RESOLVED_SUPABASE_URL;
-  const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
-
+async function callAgentReply(supabase: any, phone: string, instanceName: string): Promise<{ success: boolean; reply?: string }> {
   const resp = await fetch(`${cloudFunctionsUrl}/functions/v1/whatsapp-ai-agent-reply`, {
     method: "POST",
     headers: {
@@ -627,10 +627,15 @@ async function callAgentReply(supabase: any, phone: string, instanceName: string
   if (!resp.ok) {
     const errText = await resp.text();
     console.error(`[AGENT] Reply error for ${phone}: ${resp.status} - ${errText}`);
-    return false;
+    return { success: false };
   }
 
-  return true;
+  try {
+    const data = await resp.json();
+    return { success: true, reply: data.reply || '' };
+  } catch {
+    return { success: true };
+  }
 }
 
 // Generate a deterministic UUID v5-like tracking ID for conversation follow-ups
