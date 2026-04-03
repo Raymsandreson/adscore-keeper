@@ -113,6 +113,7 @@ export function AgentMonitorDashboard() {
   const [boardFilter, setBoardFilter] = useState('all');
   const [campaignFilter, setCampaignFilter] = useState('all');
   const [caseStatusFilter, setCaseStatusFilter] = useState<CaseStatus | 'all'>('all');
+  const [sheetStatusFilter, setSheetStatusFilter] = useState<CaseStatus | null>(null);
 
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({ from: subDays(new Date(), 7), to: new Date() });
   const [datePickerOpen, setDatePickerOpen] = useState(false);
