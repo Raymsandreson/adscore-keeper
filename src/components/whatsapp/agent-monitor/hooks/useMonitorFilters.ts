@@ -8,7 +8,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
   const [boardFilter, setBoardFilter] = useState('all');
   const [campaignFilter, setCampaignFilter] = useState('all');
   const [caseStatusFilter, setCaseStatusFilter] = useState<CaseStatus | 'all'>('all');
-  const [agentActiveFilter, setAgentActiveFilter] = useState<'all' | 'ativo' | 'pausado'>('all');
+  const [agentActiveFilter, setAgentActiveFilter] = useState<'all' | 'ativo'>('all');
   const [followupConfigFilter, setFollowupConfigFilter] = useState<'all' | 'com_followup' | 'sem_followup'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
