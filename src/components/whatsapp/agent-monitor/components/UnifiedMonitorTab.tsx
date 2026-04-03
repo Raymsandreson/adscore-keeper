@@ -13,40 +13,18 @@ import { AIRealtimeFeed } from '../../AIRealtimeFeed';
 interface UnifiedMonitorTabProps {
   conversations: ConversationDetail[];
   agentStats: AgentStats[];
-  agents: AgentData[];
-  filteredConversations: ConversationDetail[];
   loading: boolean;
   pipelineCounts: Record<CaseStatus, number>;
   onPipelineClick: (status: CaseStatus) => void;
   activeStatus: CaseStatus | null;
-  filterProps: React.ComponentProps<typeof MonitorFilterBar>;
-  batchProps: {
-    selectedKeys: Set<string>;
-    selectedCount: number;
-    batchAgentId: string;
-    setBatchAgentId: (id: string) => void;
-    batchProcessing: boolean;
-    onSelectAll: (list: ConversationDetail[]) => void;
-    onClearSelection: () => void;
-    onPause: () => void;
-    onAssign: (agentId: string) => void;
-    onSwap: (agentId: string) => void;
-    onAnticipate: () => void;
-    onResume: () => void;
-  };
-  searchQuery: string;
-  setSearchQuery: (q: string) => void;
   onOpenChat: (c: ConversationDetail) => void;
   onEventClick: (event: any) => void;
-  generatingLeadId?: string | null;
-  onGenerateActivity?: (c: ConversationDetail) => void;
 }
 
 export function UnifiedMonitorTab({
-  conversations, agentStats, agents, filteredConversations, loading,
+  conversations, agentStats, loading,
   pipelineCounts, onPipelineClick, activeStatus,
-  filterProps, batchProps, searchQuery, setSearchQuery,
-  onOpenChat, onEventClick, generatingLeadId, onGenerateActivity,
+  onOpenChat, onEventClick,
 }: UnifiedMonitorTabProps) {
   return (
     <div className="space-y-4">
