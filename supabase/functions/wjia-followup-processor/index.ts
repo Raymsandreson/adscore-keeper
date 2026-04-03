@@ -31,6 +31,9 @@ serve(async (req) => {
     let body: any = {};
     try { body = await req.json(); } catch { /* empty body ok */ }
     const targetSessionId = body?.session_id || null;
+    const targetPhone = body?.target_phone || null;
+    const targetInstance = body?.target_instance || null;
+    const forceImmediate = body?.force_immediate === true;
 
     let actionsExecuted = 0;
 
@@ -185,7 +188,7 @@ serve(async (req) => {
     // PART 2: Agent conversation follow-ups (NEW)
     // ============================================================
     if (!targetSessionId) {
-      const result = await processAgentConversationFollowups(supabase);
+      const result = await processAgentConversationFollowups(supabase, targetPhone, targetInstance, forceImmediate);
       actionsExecuted += result;
     }
 
@@ -203,18 +206,23 @@ serve(async (req) => {
   }
 });
 
-async function processAgentConversationFollowups(supabase: any): Promise<number> {
+async function processAgentConversationFollowups(supabase: any, targetPhone?: string | null, targetInstance?: string | null, forceImmediate?: boolean): Promise<number> {
   let actionsExecuted = 0;
 
   // Check current hour in Brasilia timezone
   const nowBrasilia = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
   const currentHour = nowBrasilia.getHours();
 
-  // Get all active conversation-agent assignments where the shortcut has follow-up steps
-  const { data: conversations, error: convError } = await supabase
+  // Get active conversation-agent assignments (optionally filtered)
+  let convQuery = supabase
     .from("whatsapp_conversation_agents")
     .select("phone, instance_name, agent_id, human_paused_until")
     .eq("is_active", true);
+
+  if (targetPhone) convQuery = convQuery.eq("phone", targetPhone);
+  if (targetInstance) convQuery = convQuery.eq("instance_name", targetInstance);
+
+  const { data: conversations, error: convError } = await convQuery;
 
   if (convError || !conversations?.length) {
     console.log(`[AGENT] No active conversations found`);
@@ -259,10 +267,12 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
     const config = agentMap.get(conv.agent_id);
     if (!config) continue;
 
-    // Check send window
-    const windowStart = config.send_window_start_hour ?? 8;
-    const windowEnd = config.send_window_end_hour ?? 20;
-    if (currentHour < windowStart || currentHour >= windowEnd) continue;
+    // Check send window (skip if forced)
+    if (!forceImmediate) {
+      const windowStart = config.send_window_start_hour ?? 8;
+      const windowEnd = config.send_window_end_hour ?? 20;
+      if (currentHour < windowStart || currentHour >= windowEnd) continue;
+    }
 
     // Check human_paused_until
     if (conv.human_paused_until && new Date(conv.human_paused_until) > new Date()) continue;
@@ -381,7 +391,7 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
     const timeSince = Date.now() - new Date(referenceTime).getTime();
     const delayMs = effectiveDelayMinutes * 60 * 1000;
 
-    if (timeSince < delayMs) continue;
+    if (!forceImmediate && timeSince < delayMs) continue;
 
     // For call steps, check if previous calls to this phone all failed (busy/not answered)
     // If 3+ consecutive failed calls, skip the call step
