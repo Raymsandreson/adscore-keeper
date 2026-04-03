@@ -1362,6 +1362,20 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       }}
       mode="sheet"
     />
+
+    {/* ZapSign Document Dialog */}
+    {showZapSign && phone && (
+      <ZapSignDocumentDialog
+        open={showZapSign}
+        onOpenChange={setShowZapSign}
+        leadId={linkedLead?.id}
+        leadName={linkedLead?.lead_name}
+        contactId={linkedContact?.id}
+        contactName={linkedContact?.full_name || contactName || undefined}
+        contactPhone={phone}
+        instanceName={instanceName || messages.find(m => m.instance_name)?.instance_name || undefined}
+      />
+    )}
     </>
   );
 }
