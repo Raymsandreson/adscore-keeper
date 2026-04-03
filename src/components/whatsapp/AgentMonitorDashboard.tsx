@@ -211,6 +211,44 @@ export function AgentMonitorDashboard() {
     }
   };
 
+  const batchFollowupAction = async (action: 'trigger' | 'anticipate') => {
+    if (selectedConversations.length === 0) return;
+    setBatchProcessing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      let success = 0;
+      let fail = 0;
+      for (const c of selectedConversations) {
+        try {
+          const { error } = await cloudFunctions.invoke('whatsapp-ai-agent-reply', {
+            body: { 
+              phone: c.phone, 
+              instance_name: c.instance_name, 
+              is_followup: true,
+              force_immediate: action === 'anticipate',
+            },
+            authToken: session?.access_token,
+          });
+          if (error) throw error;
+          success++;
+          // Small delay to avoid rate limiting
+          await new Promise(r => setTimeout(r, 1500));
+        } catch {
+          fail++;
+        }
+      }
+      toast({ 
+        title: action === 'trigger' ? 'Follow-up disparado' : 'Follow-up antecipado',
+        description: `${success} sucesso${fail > 0 ? `, ${fail} falha(s)` : ''}` 
+      });
+      clearSelection();
+    } catch (err: any) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+    } finally {
+      setBatchProcessing(false);
+    }
+  };
+
   // Boards data
   const [boards, setBoards] = useState<Array<{ id: string; name: string; stages: any[] }>>([]);
 
