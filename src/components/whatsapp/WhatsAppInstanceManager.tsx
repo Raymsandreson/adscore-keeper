@@ -344,7 +344,6 @@ export function WhatsAppInstanceManager() {
                               const agentName = agents.find(a => a.id === newVal)?.name;
                               toast.success(newVal ? `🤖 Agente "${agentName}" definido como padrão` : 'Agente padrão removido');
                             }
-                            }
                           }}
                         >
                           <SelectTrigger className="h-7 text-xs w-48">
