@@ -377,12 +377,17 @@ export async function sendWhatsApp(
       headers: { "Content-Type": "application/json", token: inst.instance_token },
       body: JSON.stringify({ number: phone, text: parts[i] }),
     }).catch(e => console.error("Send error:", e));
-    await supabase.from("whatsapp_messages").insert({
+    const msgRow = {
       phone, instance_name: instanceName, message_text: parts[i], message_type: "text", direction: "outbound",
       contact_id: contactId || null, lead_id: leadId || null,
       external_message_id: `${msgIdPrefix}_${Date.now()}_${i}`,
       action_source: 'system', action_source_detail: 'WJIA Agent (comando)',
-    });
+    };
+    await supabase.from("whatsapp_messages").insert(msgRow);
+    // Mirror to Cloud DB for frontend visibility
+    if (options?.cloudClient) {
+      await options.cloudClient.from("whatsapp_messages").insert(msgRow).catch((e: any) => console.error("Cloud mirror error:", e));
+    }
   }
 }
 
