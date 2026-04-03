@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { metaAPIService, MetaAPIConfig, AdInsights, CampaignInsight, DailyInsight, PlacementInsight } from '@/services/metaAPI';
+import { supabase } from '@/integrations/supabase/client';
 
 export type DateRangeOption = 
   | 'today' 
@@ -173,6 +174,37 @@ export const useMetaAPI = () => {
     setPlacementData([]);
     setError(null);
   }, []);
+
+  // Auto-reconnect from saved account in DB
+  const autoConnectAttempted = useRef(false);
+  useEffect(() => {
+    if (isConnected || autoConnectAttempted.current) return;
+    autoConnectAttempted.current = true;
+
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data } = await supabase
+          .from('meta_ad_accounts')
+          .select('access_token, account_id')
+          .order('created_at', { ascending: true })
+          .limit(1);
+
+        if (data && data.length > 0) {
+          const account = data[0];
+          console.log('🔄 Auto-reconectando conta Meta salva...');
+          await connectToMeta({
+            accessToken: account.access_token,
+            accountId: account.account_id
+          });
+        }
+      } catch (err) {
+        console.error('Auto-reconnect failed:', err);
+      }
+    })();
+  }, [isConnected, connectToMeta]);
 
   useEffect(() => {
     if (!isConnected || !config) return;
