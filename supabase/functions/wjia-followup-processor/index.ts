@@ -189,7 +189,22 @@ serve(async (req) => {
     // PART 2: Agent conversation follow-ups (NEW)
     // ============================================================
     if (!targetSessionId) {
-      if (resetCycle && targetPhone && targetInstance) {
+      // For force_immediate with specific target: directly trigger AI reply
+      // This bypasses conversation_agents lookup which may be in a different DB
+      if (forceImmediate && targetPhone && targetInstance) {
+        console.log(`[AGENT] Force-immediate direct reply for ${targetPhone} on ${targetInstance}`);
+        try {
+          const aiReply = await callAgentReply(supabase, targetPhone, targetInstance);
+          if (aiReply) {
+            console.log(`[AGENT] Force AI reply sent for ${targetPhone}`);
+            actionsExecuted++;
+          } else {
+            console.error(`[AGENT] Force AI reply failed for ${targetPhone}`);
+          }
+        } catch (e) {
+          console.error(`[AGENT] Force AI reply error for ${targetPhone}:`, e);
+        }
+      } else if (resetCycle && targetPhone && targetInstance) {
         // Reset: find conversation agent, get the synthetic session_id, delete logs
         const { data: ca } = await supabase
           .from("whatsapp_conversation_agents")
@@ -199,7 +214,6 @@ serve(async (req) => {
           .maybeSingle();
 
         if (ca?.agent_id) {
-          // Generate the same synthetic UUID used by processAgentConversationFollowups
           const encoder = new TextEncoder();
           const rawStr = `${targetPhone}|${targetInstance}|${ca.agent_id}`;
           const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(rawStr));
@@ -207,7 +221,6 @@ serve(async (req) => {
           const hex = Array.from(hashArray).map(b => b.toString(16).padStart(2, "0")).join("");
           const syntheticId = `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20,32)}`;
 
-          // Delete all followup logs for this synthetic session
           await supabase.from("wjia_followup_log").delete().eq("session_id", syntheticId);
           console.log(`[RESET] Cleared followup logs for ${targetPhone} session ${syntheticId}`);
           actionsExecuted++;
@@ -216,10 +229,10 @@ serve(async (req) => {
         return new Response(JSON.stringify({
           success: true, reset: true, actions_executed: actionsExecuted,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } else {
+        const result = await processAgentConversationFollowups(supabase, targetPhone, targetInstance, forceImmediate);
+        actionsExecuted += result;
       }
-
-      const result = await processAgentConversationFollowups(supabase, targetPhone, targetInstance, forceImmediate);
-      actionsExecuted += result;
     }
 
     return new Response(JSON.stringify({
