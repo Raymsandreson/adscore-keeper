@@ -264,6 +264,7 @@ export function AgentMonitorDashboard() {
 
       // Build maps
       const agentMap = new Map(agentsData.map((a: any) => [a.id, a.shortcut_name]));
+      const agentFollowupMap = new Map(agentsData.map((a: any) => [a.id, !!(a.followup_steps && Array.isArray(a.followup_steps) && a.followup_steps.length > 0)]));
       const leadPhoneMap = new Map<string, any>();
       leads.forEach((l: any) => {
         if (l.lead_phone) {
