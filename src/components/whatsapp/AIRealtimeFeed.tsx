@@ -66,6 +66,8 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
   const [loading, setLoading] = useState(true);
   const [activeFilters, setActiveFilters] = useState<Set<FeedEventType>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const allowedInstancesRef = useRef<Set<string>>(new Set());
+  const agentConvKeysRef = useRef<Set<string>>(new Set());
 
   const toggleFilter = (type: FeedEventType) => {
     setActiveFilters(prev => {
@@ -98,18 +100,52 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
       try {
         const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
 
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) { if (mounted) setLoading(false); return; }
+
+        // Get user's permitted instances and active agent conversations in parallel
+        const [permRes, convAgentsRes] = await Promise.all([
+          supabase.from('whatsapp_instance_users').select('instance_id').eq('user_id', user.id),
+          supabase.from('whatsapp_conversation_agents').select('phone, instance_name').eq('is_active', true),
+        ]);
+
+        // Get instance names from IDs
+        const instanceIds = (permRes.data || []).map((p: any) => p.instance_id);
+        let allowedInstanceNames: string[] = [];
+        if (instanceIds.length > 0) {
+          const { data: instances } = await supabase
+            .from('whatsapp_instances')
+            .select('instance_name')
+            .in('id', instanceIds);
+          allowedInstanceNames = (instances || []).map((i: any) => i.instance_name);
+        }
+
+        // Store refs for realtime filtering
+        const agentConvKeys = new Set<string>();
+        (convAgentsRes.data || []).forEach((ca: any) => {
+          agentConvKeys.add(`${ca.phone}|${ca.instance_name}`);
+        });
+        agentConvKeysRef.current = agentConvKeys;
+        allowedInstancesRef.current = new Set(allowedInstanceNames);
+
         const [msgsRes] = await Promise.all([
           supabase
             .from('whatsapp_messages')
             .select('id, phone, direction, message_text, contact_name, instance_name, created_at, campaign_name, lead_id')
             .gte('created_at', since)
+            .in('instance_name', allowedInstanceNames.length > 0 ? allowedInstanceNames : ['__none__'])
             .order('created_at', { ascending: false })
-            .limit(100),
+            .limit(200),
         ]);
 
         const feedEvents: FeedEvent[] = [];
 
         (msgsRes.data || []).forEach((m: any) => {
+          // Only include messages from conversations with an active agent
+          const convKey = `${m.phone}|${m.instance_name}`;
+          if (!agentConvKeys.has(convKey)) return;
+
           if (m.direction === 'outbound') {
             feedEvents.push({
               id: `msg-${m.id}`,
@@ -157,6 +193,9 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
       }, (payload: any) => {
         const m = payload.new;
         if (!m) return;
+        // Filter: only allowed instances and agent-managed conversations
+        if (!allowedInstancesRef.current.has(m.instance_name)) return;
+        if (!agentConvKeysRef.current.has(`${m.phone}|${m.instance_name}`)) return;
         const newEvent: FeedEvent = {
           id: `msg-${m.id}`,
           type: m.direction === 'outbound' ? 'message_sent' : 'message_received',
