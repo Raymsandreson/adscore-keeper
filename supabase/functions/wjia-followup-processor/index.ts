@@ -206,20 +206,23 @@ serve(async (req) => {
   }
 });
 
-async function processAgentConversationFollowups(supabase: any): Promise<number> {
+async function processAgentConversationFollowups(supabase: any, targetPhone?: string | null, targetInstance?: string | null, forceImmediate?: boolean): Promise<number> {
   let actionsExecuted = 0;
 
   // Check current hour in Brasilia timezone
   const nowBrasilia = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
   const currentHour = nowBrasilia.getHours();
 
-  // Get all active conversation-agent assignments where the shortcut has follow-up steps
-  const { data: conversations, error: convError } = await supabase
+  // Get active conversation-agent assignments (optionally filtered)
+  let convQuery = supabase
     .from("whatsapp_conversation_agents")
     .select("phone, instance_name, agent_id, human_paused_until")
     .eq("is_active", true);
 
-  if (convError || !conversations?.length) {
+  if (targetPhone) convQuery = convQuery.eq("phone", targetPhone);
+  if (targetInstance) convQuery = convQuery.eq("instance_name", targetInstance);
+
+  const { data: conversations, error: convError } = await convQuery;
     console.log(`[AGENT] No active conversations found`);
     return 0;
   }
