@@ -1065,12 +1065,28 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                         </div>
                       )}
                       <div className={cn("flex", isInbound ? "justify-start" : "justify-end")}>
-                        <div className={cn(
-                          "max-w-[80%] rounded-lg px-3 py-1.5 text-xs",
-                          isInbound
-                            ? "bg-muted text-foreground rounded-tl-none"
-                            : "bg-primary text-primary-foreground rounded-tr-none"
-                        )}>
+                        <div
+                          className={cn(
+                            "max-w-[80%] rounded-lg px-3 py-1.5 text-xs cursor-pointer select-text active:opacity-70 transition-opacity",
+                            isInbound
+                              ? "bg-muted text-foreground rounded-tl-none"
+                              : "bg-primary text-primary-foreground rounded-tr-none"
+                          )}
+                          onClick={() => {
+                            if (msg.message_text) {
+                              navigator.clipboard.writeText(msg.message_text);
+                              toast.success('Mensagem copiada!');
+                            }
+                          }}
+                          onContextMenu={(e) => {
+                            if (msg.message_text) {
+                              e.preventDefault();
+                              navigator.clipboard.writeText(msg.message_text);
+                              toast.success('Mensagem copiada!');
+                            }
+                          }}
+                          title="Toque para copiar"
+                        >
                           {renderMediaContent(msg)}
                           {!msg.media_url && msg.media_type && !msg.message_text && (
                             <span className="italic text-[10px] opacity-70">
