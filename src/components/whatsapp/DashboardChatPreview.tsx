@@ -66,12 +66,13 @@ interface Props {
   hasContact: boolean;
   wasResponded: boolean;
   responseTimeMinutes: number | null;
+  onConversationUpdated?: () => void;
   onOpenChat?: (phone: string) => void;
   campaignBoardId?: string | null;
   campaignStageId?: string | null;
 }
 
-export function DashboardChatPreview({ open, onOpenChange, phone, contactName, instanceName, hasLead, hasContact, wasResponded, responseTimeMinutes, onOpenChat, campaignBoardId, campaignStageId }: Props) {
+export function DashboardChatPreview({ open, onOpenChange, phone, contactName, instanceName, hasLead, hasContact, wasResponded, responseTimeMinutes, onConversationUpdated, onOpenChat, campaignBoardId, campaignStageId }: Props) {
   const { user, profile } = useAuthContext();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -708,6 +709,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         .update({ is_active: newActive, human_paused_until: newActive ? null : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() } as any)
         .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
       setAgentInfo({ ...agentInfo, is_active: newActive });
+      onConversationUpdated?.();
       toast.success(newActive ? 'Agente ativado!' : 'Agente desativado!');
     } catch (e) {
       toast.error('Erro ao alterar agente');
@@ -937,7 +939,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                   >
                     <Bot className="h-3 w-3" />
                     {agentInfo.name}
-                    {!agentInfo.is_active && ' (pausado)'}
+                    {!agentInfo.is_active && ' (desativado)'}
                   </Badge>
                   {agentInfo.activated_by && (
                     <span className="text-[9px] text-muted-foreground">via {agentInfo.activated_by}</span>
@@ -987,7 +989,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                     {creatingGroup ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Users className="h-4 w-4 mr-2" />}
                     Criar Grupo WhatsApp
                   </DropdownMenuItem>
-                  {availableAgents.length > 0 && (
+                  {agentInfo && (
                     <>
                       <DropdownMenuSeparator />
                       {agentInfo && agentInfo.is_active ? (
@@ -999,28 +1001,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                           <Bot className="h-4 w-4 mr-2" /> Reativar Agente ({agentInfo.name})
                         </DropdownMenuItem>
                       ) : null}
-                      <DropdownMenuSub>
-                        <DropdownMenuSubTrigger>
-                          <Bot className="h-4 w-4 mr-2" /> {agentInfo ? 'Trocar Agente' : 'Ativar Agente IA'}
-                        </DropdownMenuSubTrigger>
-                        <DropdownMenuSubContent>
-                          {availableAgents.map(agent => (
-                            <DropdownMenuItem key={agent.id} onClick={() => handleSelectAgent(agent.id)}>
-                              <Bot className="h-3.5 w-3.5 mr-2" />
-                              <span className="flex-1">{agent.name}</span>
-                              {agentInfo && agentInfo.name === agent.name && <Badge variant="default" className="text-[9px] h-4 px-1 ml-1">ativo</Badge>}
-                            </DropdownMenuItem>
-                          ))}
-                          {agentInfo && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={handleRemoveAgent} className="text-destructive">
-                                <BotOff className="h-3.5 w-3.5 mr-2" /> Remover agente
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuSubContent>
-                      </DropdownMenuSub>
                     </>
                   )}
                   <DropdownMenuSeparator />

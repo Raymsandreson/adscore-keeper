@@ -61,11 +61,12 @@ export function useBatchActions(conversations: ConversationDetail[], fetchData: 
       let fail = 0;
       for (const c of selectedConversations) {
         try {
-          const { error } = await cloudFunctions.invoke('wjia-followup-processor', {
+          const { data, error } = await cloudFunctions.invoke<{ actions_executed?: number }>('wjia-followup-processor', {
             body: { target_phone: c.phone, target_instance: c.instance_name, force_immediate: true },
             authToken: session?.access_token,
           });
           if (error) throw error;
+          if (!data?.actions_executed) throw new Error('Nenhuma ação executada');
           success++;
           await new Promise(r => setTimeout(r, 1500));
         } catch {

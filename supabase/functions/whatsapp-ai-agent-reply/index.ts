@@ -775,6 +775,7 @@ REGRAS IMPORTANTES:
         const baseUrl = (instance as any).base_url || "https://abraci.uazapi.com";
         const token = (instance as any).instance_token;
         const delayBetween = ((agent as any).split_delay_seconds || 2) * 1000;
+        let sendSucceeded = false;
 
         // Check if we should reply with audio:
         // 1. Agent setting enabled + incoming was audio (mirror format)
@@ -897,6 +898,7 @@ REGRAS IMPORTANTES:
                   console.error("UazAPI audio send error:", sendRes.status, await sendRes.text());
                 } else {
                   console.log(`UazAPI audio reply sent chunk ${ci + 1}/${ttsChunks.length} to ${phone}`);
+                  sendSucceeded = true;
                 }
               }
 
@@ -909,11 +911,12 @@ REGRAS IMPORTANTES:
             console.error("TTS audio reply failed, falling back to text:", ttsErr);
             // Fallback: send as text
             for (let i = 0; i < messageParts.length; i++) {
-              await fetch(`${baseUrl}/send/text`, {
+              const fallbackRes = await fetch(`${baseUrl}/send/text`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "token": token },
                 body: JSON.stringify({ number: phone, text: messageParts[i] }),
               });
+              if (fallbackRes.ok) sendSucceeded = true;
               if (i < messageParts.length - 1) await new Promise(r => setTimeout(r, delayBetween));
             }
           }
@@ -931,6 +934,7 @@ REGRAS IMPORTANTES:
               console.error("UazAPI send error:", sendRes.status, errText);
             } else {
               console.log(`UazAPI send success part ${i + 1}/${messageParts.length} to ${phone}`);
+              sendSucceeded = true;
             }
             if (i < messageParts.length - 1) {
               await new Promise(r => setTimeout(r, delayBetween));
@@ -939,6 +943,15 @@ REGRAS IMPORTANTES:
         }
       } else {
         console.error("No instance found for", instance_name);
+        return new Response(JSON.stringify({ error: "No instance found", success: false }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (!sendSucceeded) {
+        return new Response(JSON.stringify({ error: "Failed to send WhatsApp message", success: false }), {
+          status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
       // Save outbound message (full reply)

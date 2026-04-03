@@ -87,14 +87,10 @@ export function AgentMonitorDashboard() {
   const batchProps = {
     selectedKeys: batch.selectedKeys,
     selectedCount: batch.selectedKeys.size,
-    batchAgentId: batch.batchAgentId,
-    setBatchAgentId: batch.setBatchAgentId,
     batchProcessing: batch.batchProcessing,
     onSelectAll: batch.selectAll,
     onClearSelection: batch.clearSelection,
-    onPause: () => batch.batchAction('pause'),
-    onAssign: (id: string) => batch.batchAction('assign', id),
-    onSwap: (id: string) => batch.batchAction('swap', id),
+    onDeactivate: () => batch.batchAction('deactivate'),
     onAnticipate: () => batch.batchFollowupAction('anticipate'),
     onResume: () => batch.batchFollowupAction('resume'),
   };
@@ -137,6 +133,7 @@ export function AgentMonitorDashboard() {
         instanceName={chatPreview?.instance_name || null} hasLead={!!chatPreview?.lead_name}
         hasContact={!!chatPreview?.contact_name} wasResponded={chatPreview ? chatPreview.inbound_count > 0 : false}
         responseTimeMinutes={null}
+        onConversationUpdated={fetchData}
       />
 
       <AIActivityPromptDialog
