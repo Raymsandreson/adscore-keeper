@@ -37,7 +37,7 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
   const [searchQuery, setSearchQuery] = useState('');
   const [responseFilter, setResponseFilter] = useState<'all' | 'responded' | 'waiting'>('all');
   const [leadFilter, setLeadFilter] = useState<'all' | 'com_lead' | 'sem_lead'>('all');
-  const [agentStatusFilter, setAgentStatusFilter] = useState<'all' | 'ativo' | 'pausado'>('all');
+  const [agentStatusFilter, setAgentStatusFilter] = useState<'all' | 'ativo'>('all');
   const [followupFilter, setFollowupFilter] = useState<'all' | 'com_followup' | 'sem_followup'>('all');
   const [followupProcessing, setFollowupProcessing] = useState(false);
   const [activityLog, setActivityLog] = useState<LogEntry[]>([]);
