@@ -123,8 +123,6 @@ export function useMonitorData() {
           agent_name: agentName,
           agent_id: ca.agent_id,
           is_active: ca.is_active,
-          is_blocked: ca.is_blocked ?? false,
-          human_paused: !!isPaused,
           contact_name: msgs[0]?.contact_name || null,
           lead_name: lead?.lead_name || null,
           lead_id: lead?.id || null,
