@@ -1006,11 +1006,12 @@ export function AgentMonitorDashboard() {
                 <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input placeholder="Buscar..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-8 h-8 text-xs" />
               </div>
+              <BatchToolbar list={filteredConversations} />
               <p className="text-xs text-muted-foreground">{filteredConversations.length} conversas</p>
-              <ScrollArea className="h-[calc(100vh-500px)]">
+              <ScrollArea className="h-[calc(100vh-540px)]">
                 <div className="space-y-2">
                   {filteredConversations.map((c, idx) => (
-                    <CaseCard key={`${c.phone}-${c.instance_name}-${idx}`} c={c} />
+                    <CaseCard key={`${c.phone}-${c.instance_name}-${idx}`} c={c} selectable />
                   ))}
                 </div>
               </ScrollArea>
