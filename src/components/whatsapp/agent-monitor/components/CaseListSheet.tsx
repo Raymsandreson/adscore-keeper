@@ -3,7 +3,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Search, AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, PauseCircle, Inbox } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Search, AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, PauseCircle, Inbox, Zap, Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { useToast } from '@/hooks/use-toast';
 import type { ConversationDetail, CaseStatus } from '../types';
 import { getCaseStatus, statusLabel } from '../utils';
 import { CaseCard } from './CaseCard';
@@ -19,11 +23,13 @@ interface CaseListSheetProps {
 }
 
 export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, onClose, onOpenChat, generatingLeadId, onGenerateActivity }: CaseListSheetProps) {
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [responseFilter, setResponseFilter] = useState<'all' | 'responded' | 'waiting'>('all');
   const [leadFilter, setLeadFilter] = useState<'all' | 'com_lead' | 'sem_lead'>('all');
   const [agentStatusFilter, setAgentStatusFilter] = useState<'all' | 'ativo' | 'pausado'>('all');
   const [followupFilter, setFollowupFilter] = useState<'all' | 'com_followup' | 'sem_followup'>('all');
+  const [followupProcessing, setFollowupProcessing] = useState(false);
 
   const sheetCases = useMemo(() => {
     if (!statusFilter) return [];
@@ -54,6 +60,39 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
       return true;
     });
   }, [sheetCases, searchQuery, responseFilter, leadFilter, agentStatusFilter, followupFilter]);
+
+  const followupCases = useMemo(() => filteredCases.filter(c => c.has_followup_config && c.is_active), [filteredCases]);
+
+  const handleBulkFollowup = async () => {
+    if (followupCases.length === 0) return;
+    setFollowupProcessing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      let success = 0;
+      let fail = 0;
+      for (const c of followupCases) {
+        try {
+          const { error } = await cloudFunctions.invoke('wjia-followup-processor', {
+            body: { target_phone: c.phone, target_instance: c.instance_name, force_immediate: true },
+            authToken: session?.access_token,
+          });
+          if (error) throw error;
+          success++;
+          await new Promise(r => setTimeout(r, 1500));
+        } catch {
+          fail++;
+        }
+      }
+      toast({
+        title: 'Follow-up antecipado',
+        description: `${success} sucesso${fail > 0 ? `, ${fail} falha(s)` : ''}`,
+      });
+    } catch (err: any) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+    } finally {
+      setFollowupProcessing(false);
+    }
+  };
 
   const icons: Record<CaseStatus, typeof AlertCircle> = {
     sem_resposta: AlertCircle, em_andamento: MessageCircle, fechado: CheckCircle,
@@ -119,6 +158,15 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
             <FilterChips options={[['all', 'Todos'], ['com_followup', 'Com Follow-up'], ['sem_followup', 'Sem Follow-up']]} value={followupFilter} onChange={setFollowupFilter} cases={sheetCases} />
           </div>
         </div>
+        {followupCases.length > 0 && (
+          <div className="px-3 py-2 border-b">
+            <Button size="sm" variant="outline" className="w-full text-xs h-7 gap-1.5"
+              disabled={followupProcessing} onClick={handleBulkFollowup}>
+              {followupProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+              Antecipar Follow-up ({followupCases.length} conversas)
+            </Button>
+          </div>
+        )}
         <ScrollArea className="flex-1">
           <div className="p-2 space-y-1.5">
             {filteredCases.map((c, idx) => (
