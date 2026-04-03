@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_conversation_agents ADD COLUMN is_blocked BOOLEAN NOT NULL DEFAULT false;

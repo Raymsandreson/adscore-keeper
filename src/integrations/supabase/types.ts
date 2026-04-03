@@ -7745,6 +7745,7 @@ export type Database = {
           id: string
           instance_name: string
           is_active: boolean
+          is_blocked: boolean
           phone: string
           updated_at: string
         }
@@ -7756,6 +7757,7 @@ export type Database = {
           id?: string
           instance_name: string
           is_active?: boolean
+          is_blocked?: boolean
           phone: string
           updated_at?: string
         }
@@ -7767,6 +7769,7 @@ export type Database = {
           id?: string
           instance_name?: string
           is_active?: boolean
+          is_blocked?: boolean
           phone?: string
           updated_at?: string
         }
