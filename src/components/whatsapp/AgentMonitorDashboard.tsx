@@ -112,15 +112,11 @@ export function AgentMonitorDashboard() {
 
         <TabsContent value="monitor" className="space-y-4">
           <UnifiedMonitorTab
-            conversations={conversations} agentStats={agentStats} agents={agents}
-            filteredConversations={filteredConversations} loading={loading}
+            conversations={conversations} agentStats={agentStats} loading={loading}
             pipelineCounts={pipelineCounts}
             onPipelineClick={(s) => setSheetStatusFilter(prev => prev === s ? null : s)}
             activeStatus={sheetStatusFilter}
-            filterProps={filterBarProps} batchProps={batchProps}
-            searchQuery={filters.searchQuery} setSearchQuery={filters.setSearchQuery}
             onOpenChat={handleOpenChat} onEventClick={handleEventClick}
-            generatingLeadId={generatingLeadId} onGenerateActivity={handleGenerateActivity}
           />
         </TabsContent>
 

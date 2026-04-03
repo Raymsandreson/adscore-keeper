@@ -1,16 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bot, MessageCircle, Zap, PhoneCall, Sparkles, Search, Radio } from 'lucide-react';
-import type { AgentStats, ConversationDetail, AgentData, CaseStatus } from '../types';
-import { convKey } from '../utils';
+import { Bot, Zap, PhoneCall, Sparkles, Radio } from 'lucide-react';
+import type { AgentStats, ConversationDetail, CaseStatus } from '../types';
 import { PipelineCards } from './PipelineCards';
-import { CaseCard } from './CaseCard';
-import { BatchToolbar } from './BatchToolbar';
-import { MonitorFilterBar } from './MonitorFilterBar';
 import { CallQueuePanel } from '../../CallQueuePanel';
 import { FollowupActivityPanel } from '../../FollowupActivityPanel';
 import { AIEnrichmentMonitorPanel } from '../../AIEnrichmentMonitorPanel';
@@ -19,40 +13,18 @@ import { AIRealtimeFeed } from '../../AIRealtimeFeed';
 interface UnifiedMonitorTabProps {
   conversations: ConversationDetail[];
   agentStats: AgentStats[];
-  agents: AgentData[];
-  filteredConversations: ConversationDetail[];
   loading: boolean;
   pipelineCounts: Record<CaseStatus, number>;
   onPipelineClick: (status: CaseStatus) => void;
   activeStatus: CaseStatus | null;
-  filterProps: React.ComponentProps<typeof MonitorFilterBar>;
-  batchProps: {
-    selectedKeys: Set<string>;
-    selectedCount: number;
-    batchAgentId: string;
-    setBatchAgentId: (id: string) => void;
-    batchProcessing: boolean;
-    onSelectAll: (list: ConversationDetail[]) => void;
-    onClearSelection: () => void;
-    onPause: () => void;
-    onAssign: (agentId: string) => void;
-    onSwap: (agentId: string) => void;
-    onAnticipate: () => void;
-    onResume: () => void;
-  };
-  searchQuery: string;
-  setSearchQuery: (q: string) => void;
   onOpenChat: (c: ConversationDetail) => void;
   onEventClick: (event: any) => void;
-  generatingLeadId?: string | null;
-  onGenerateActivity?: (c: ConversationDetail) => void;
 }
 
 export function UnifiedMonitorTab({
-  conversations, agentStats, agents, filteredConversations, loading,
+  conversations, agentStats, loading,
   pipelineCounts, onPipelineClick, activeStatus,
-  filterProps, batchProps, searchQuery, setSearchQuery,
-  onOpenChat, onEventClick, generatingLeadId, onGenerateActivity,
+  onOpenChat, onEventClick,
 }: UnifiedMonitorTabProps) {
   return (
     <div className="space-y-4">
@@ -61,10 +33,9 @@ export function UnifiedMonitorTab({
 
       {/* Sub-tabs */}
       <Tabs defaultValue="feed" className="space-y-3">
-        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 max-w-2xl">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 max-w-2xl">
           <TabsTrigger value="feed" className="text-xs"><Radio className="h-3 w-3 mr-1" />Tempo Real</TabsTrigger>
           <TabsTrigger value="overview" className="text-xs"><Bot className="h-3 w-3 mr-1" />Por Agente</TabsTrigger>
-          <TabsTrigger value="conversations" className="text-xs"><MessageCircle className="h-3 w-3 mr-1" />Conversas</TabsTrigger>
           <TabsTrigger value="followups" className="text-xs"><Zap className="h-3 w-3 mr-1" />Follow-ups</TabsTrigger>
           <TabsTrigger value="call-queue" className="text-xs"><PhoneCall className="h-3 w-3 mr-1" />Ligações</TabsTrigger>
           <TabsTrigger value="ai-data" className="text-xs"><Sparkles className="h-3 w-3 mr-1" />IA Dados</TabsTrigger>
@@ -132,30 +103,6 @@ export function UnifiedMonitorTab({
           </div>
         </TabsContent>
 
-        <TabsContent value="conversations" className="space-y-3">
-          <MonitorFilterBar {...filterProps} />
-          <div className="relative max-w-md">
-            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input placeholder="Buscar..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-8 h-8 text-xs" />
-          </div>
-          <BatchToolbar list={filteredConversations} selectedCount={batchProps.selectedCount} agents={agents} {...batchProps} />
-          <p className="text-xs text-muted-foreground">{filteredConversations.length} conversas</p>
-          <ScrollArea className="h-[calc(100vh-540px)]">
-            <div className="space-y-2">
-              {filteredConversations.map((c, idx) => (
-                <CaseCard key={`${c.phone}-${c.instance_name}-${idx}`} c={c} selectable
-                  isSelected={batchProps.selectedKeys.has(convKey(c))}
-                  onToggleSelect={(conv) => {
-                    const k = convKey(conv);
-                    const newKeys = new Set(batchProps.selectedKeys);
-                    if (newKeys.has(k)) newKeys.delete(k); else newKeys.add(k);
-                  }}
-                  onOpenChat={onOpenChat} generatingLeadId={generatingLeadId} onGenerateActivity={onGenerateActivity}
-                />
-              ))}
-            </div>
-          </ScrollArea>
-        </TabsContent>
 
         <TabsContent value="followups"><FollowupActivityPanel /></TabsContent>
         <TabsContent value="call-queue">
