@@ -479,13 +479,15 @@ export function AgentMonitorDashboard() {
       if (caseStatusFilter !== 'all' && getCaseStatus(c) !== caseStatusFilter) return false;
       if (agentActiveFilter === 'ativo' && !c.is_active) return false;
       if (agentActiveFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
+      if (followupConfigFilter === 'com_followup' && !c.has_followup_config) return false;
+      if (followupConfigFilter === 'sem_followup' && c.has_followup_config) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         return c.phone.includes(q) || c.contact_name?.toLowerCase().includes(q) || c.lead_name?.toLowerCase().includes(q);
       }
       return true;
     });
-  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter, caseStatusFilter, agentActiveFilter, searchQuery]);
+  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter, caseStatusFilter, agentActiveFilter, followupConfigFilter, searchQuery]);
 
   // Pipeline counts
   const pipelineCounts = useMemo(() => {
