@@ -372,8 +372,8 @@ async function processAgentConversationFollowups(supabase: any, targetPhone?: st
         processed++;
         console.log(`[AGENT] Force-immediate: triggering AI reply for unanswered ${conv.phone} on ${conv.instance_name}`);
         try {
-          const aiReply = await callAgentReply(supabase, conv.phone, conv.instance_name);
-          if (aiReply) {
+          const aiResult = await callAgentReply(supabase, conv.phone, conv.instance_name);
+          if (aiResult.success) {
             console.log(`[AGENT] Force AI reply sent for ${conv.phone}`);
             actionsExecuted++;
           } else {
