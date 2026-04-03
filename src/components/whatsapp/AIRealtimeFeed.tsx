@@ -87,19 +87,7 @@ export function AIRealtimeFeed() {
           }
         });
 
-        // Sessions
-        (sessionsRes.data || []).forEach((s: any) => {
-          if (s.status === 'generated') {
-            feedEvents.push({
-              id: `sess-${s.id}`,
-              type: 'session_generated',
-              title: `Documento gerado: ${s.shortcut_name}`,
-              detail: `${s.contact_name || s.phone}`,
-              agent_name: s.shortcut_name,
-              timestamp: s.created_at,
-            });
-          }
-        });
+
 
         feedEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
         if (mounted) setEvents(feedEvents.slice(0, 80));
