@@ -253,7 +253,7 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
               onClick={() => onEventClick?.(event)}
               className={`flex items-start gap-2 p-2 rounded-md border-l-2 bg-card hover:bg-muted/50 transition-colors cursor-pointer ${eventColor(event.type)}`}
             >
-              <div className="mt-0.5 shrink-0">{eventIcon(event)}</div>
+              <div className="mt-0.5 shrink-0">{eventIcon(event.type)}</div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium leading-tight truncate">{event.title}</p>
                 {event.detail && (
