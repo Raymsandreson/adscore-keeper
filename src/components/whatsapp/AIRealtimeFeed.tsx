@@ -121,11 +121,13 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
           allowedInstanceNames = (instances || []).map((i: any) => i.instance_name);
         }
 
-        // Build set of agent-managed phone|instance keys
+        // Store refs for realtime filtering
         const agentConvKeys = new Set<string>();
         (convAgentsRes.data || []).forEach((ca: any) => {
           agentConvKeys.add(`${ca.phone}|${ca.instance_name}`);
         });
+        agentConvKeysRef.current = agentConvKeys;
+        allowedInstancesRef.current = new Set(allowedInstanceNames);
 
         const [msgsRes] = await Promise.all([
           supabase
