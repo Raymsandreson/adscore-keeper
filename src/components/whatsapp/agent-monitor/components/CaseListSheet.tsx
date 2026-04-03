@@ -1,15 +1,25 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Search, AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, PauseCircle, Inbox, Zap, Loader2 } from 'lucide-react';
+import { Search, AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, PauseCircle, Inbox, Zap, Loader2, Phone, FileText, Send, X as XIcon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import type { ConversationDetail, CaseStatus } from '../types';
 import { getCaseStatus, statusLabel } from '../utils';
 import { CaseCard } from './CaseCard';
+
+interface LogEntry {
+  id: number;
+  time: string;
+  phone: string;
+  contactName: string;
+  actionType: 'ai_reply' | 'call_queued' | 'activity_created' | 'error' | 'processing';
+  status: 'success' | 'failed' | 'processing';
+  instance: string;
+}
 
 interface CaseListSheetProps {
   statusFilter: CaseStatus | null;
@@ -29,6 +39,16 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
   const [agentStatusFilter, setAgentStatusFilter] = useState<'all' | 'ativo' | 'pausado'>('all');
   const [followupFilter, setFollowupFilter] = useState<'all' | 'com_followup' | 'sem_followup'>('all');
   const [followupProcessing, setFollowupProcessing] = useState(false);
+  const [activityLog, setActivityLog] = useState<LogEntry[]>([]);
+  const [showLog, setShowLog] = useState(false);
+  const logEndRef = useRef<HTMLDivElement>(null);
+  const logIdRef = useRef(0);
+
+  useEffect(() => {
+    if (logEndRef.current && showLog) {
+      logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [activityLog, showLog]);
 
   const sheetCases = useMemo(() => {
     if (!statusFilter) return [];
@@ -63,9 +83,24 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
   const followupCases = useMemo(() => filteredCases.filter(c => c.has_followup_config && c.is_active), [filteredCases]);
   const [followupProgress, setFollowupProgress] = useState({ current: 0, total: 0, success: 0, fail: 0 });
 
+  const addLogEntry = (entry: Omit<LogEntry, 'id' | 'time'>) => {
+    const now = new Date();
+    const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+    const id = ++logIdRef.current;
+    setActivityLog(prev => [...prev, { ...entry, id, time }]);
+    return id;
+  };
+
+  const updateLogEntry = (id: number, updates: Partial<LogEntry>) => {
+    setActivityLog(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+  };
+
   const handleBulkFollowup = async () => {
     if (followupCases.length === 0) return;
     setFollowupProcessing(true);
+    setShowLog(true);
+    setActivityLog([]);
+    logIdRef.current = 0;
     const total = followupCases.length;
     setFollowupProgress({ current: 0, total, success: 0, fail: 0 });
     try {
@@ -74,7 +109,17 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
       let fail = 0;
       for (let i = 0; i < followupCases.length; i++) {
         const c = followupCases[i];
+        const contactLabel = c.contact_name || c.lead_name || c.phone;
         setFollowupProgress({ current: i + 1, total, success, fail });
+
+        const logId = addLogEntry({
+          phone: c.phone,
+          contactName: contactLabel,
+          actionType: 'processing',
+          status: 'processing',
+          instance: c.instance_name,
+        });
+
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 25000);
@@ -94,13 +139,18 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
           const result = await res.json();
           if (result.actions_executed > 0) {
             success++;
+            const actionType = result.action_type === 'call_queued' ? 'call_queued'
+              : result.action_type === 'activity_created' ? 'activity_created'
+              : 'ai_reply';
+            updateLogEntry(logId, { actionType, status: 'success' });
           } else {
             fail++;
+            updateLogEntry(logId, { actionType: 'error', status: 'failed' });
           }
         } catch {
           fail++;
+          updateLogEntry(logId, { actionType: 'error', status: 'failed' });
         }
-        // Wait 2.5s between calls to avoid overwhelming the function
         if (i < followupCases.length - 1) {
           await new Promise(r => setTimeout(r, 2500));
         }
@@ -130,6 +180,8 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
     setLeadFilter('all');
     setAgentStatusFilter('all');
     setFollowupFilter('all');
+    setShowLog(false);
+    setActivityLog([]);
     onClose();
   };
 
@@ -161,6 +213,28 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
     </div>
   );
 
+  const ActionIcon = ({ type, status }: { type: LogEntry['actionType']; status: LogEntry['status'] }) => {
+    if (status === 'processing') return <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />;
+    if (status === 'failed') return <XCircle className="h-3 w-3 text-destructive" />;
+    switch (type) {
+      case 'ai_reply': return <Send className="h-3 w-3 text-green-600" />;
+      case 'call_queued': return <Phone className="h-3 w-3 text-blue-600" />;
+      case 'activity_created': return <FileText className="h-3 w-3 text-orange-600" />;
+      default: return <XCircle className="h-3 w-3 text-destructive" />;
+    }
+  };
+
+  const actionLabel = (type: LogEntry['actionType'], status: LogEntry['status']) => {
+    if (status === 'processing') return 'Processando...';
+    if (status === 'failed') return 'Falha';
+    switch (type) {
+      case 'ai_reply': return 'Mensagem enviada';
+      case 'call_queued': return 'Ligação enfileirada';
+      case 'activity_created': return 'Atividade criada';
+      default: return 'Erro';
+    }
+  };
+
   return (
     <Sheet open={!!statusFilter} onOpenChange={(open) => { if (!open) handleClose(); }}>
       <SheetContent side="right" className="w-full sm:w-[450px] sm:max-w-[450px] p-0 flex flex-col">
@@ -170,51 +244,112 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
             {statusFilter ? statusLabel(statusFilter) : ''} ({sheetCases.length})
           </SheetTitle>
         </SheetHeader>
-        <div className="px-3 pt-2 pb-1 border-b space-y-1.5">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input placeholder="Buscar por nome ou telefone..." value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)} className="pl-8 h-7 text-xs" />
-          </div>
-          <FilterChips options={[['all', 'Todas'], ['responded', 'Respondidas'], ['waiting', 'Aguardando']]} value={responseFilter} onChange={setResponseFilter} cases={sheetCases} />
-          <FilterChips options={[['all', 'Todos'], ['com_lead', 'Com Lead'], ['sem_lead', 'Sem Lead']]} value={leadFilter} onChange={setLeadFilter} cases={sheetCases} />
-          <FilterChips options={[['all', 'Todos'], ['ativo', 'Ativo'], ['pausado', 'Pausado']]} value={agentStatusFilter} onChange={setAgentStatusFilter} cases={sheetCases} />
-          <div className="pb-1">
-            <FilterChips options={[['all', 'Todos'], ['com_followup', 'Com Follow-up'], ['sem_followup', 'Sem Follow-up']]} value={followupFilter} onChange={setFollowupFilter} cases={sheetCases} />
-          </div>
-        </div>
-        {followupCases.length > 0 && (
-          <div className="px-3 py-2 border-b">
-            <Button size="sm" variant="outline" className="w-full text-xs h-8 gap-1.5 bg-green-50 border-green-200 hover:bg-green-100"
-              disabled={followupProcessing} onClick={handleBulkFollowup}>
-              {followupProcessing ? (
-                <>
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Processando {followupProgress.current}/{followupProgress.total} ({followupProgress.success}✓ {followupProgress.fail}✗)
-                </>
-              ) : (
-                <>
+
+        {!showLog && (
+          <>
+            <div className="px-3 pt-2 pb-1 border-b space-y-1.5">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input placeholder="Buscar por nome ou telefone..." value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)} className="pl-8 h-7 text-xs" />
+              </div>
+              <FilterChips options={[['all', 'Todas'], ['responded', 'Respondidas'], ['waiting', 'Aguardando']]} value={responseFilter} onChange={setResponseFilter} cases={sheetCases} />
+              <FilterChips options={[['all', 'Todos'], ['com_lead', 'Com Lead'], ['sem_lead', 'Sem Lead']]} value={leadFilter} onChange={setLeadFilter} cases={sheetCases} />
+              <FilterChips options={[['all', 'Todos'], ['ativo', 'Ativo'], ['pausado', 'Pausado']]} value={agentStatusFilter} onChange={setAgentStatusFilter} cases={sheetCases} />
+              <div className="pb-1">
+                <FilterChips options={[['all', 'Todos'], ['com_followup', 'Com Follow-up'], ['sem_followup', 'Sem Follow-up']]} value={followupFilter} onChange={setFollowupFilter} cases={sheetCases} />
+              </div>
+            </div>
+            {followupCases.length > 0 && (
+              <div className="px-3 py-2 border-b">
+                <Button size="sm" variant="outline" className="w-full text-xs h-8 gap-1.5 bg-green-50 border-green-200 hover:bg-green-100"
+                  disabled={followupProcessing} onClick={handleBulkFollowup}>
                   <Zap className="h-3 w-3" />
                   Antecipar Follow-up ({followupCases.length} conversas)
-                </>
-              )}
-            </Button>
-          </div>
-        )}
-        <ScrollArea className="flex-1">
-          <div className="p-2 space-y-1.5">
-            {filteredCases.map((c, idx) => (
-              <CaseCard key={`sheet-${c.phone}-${c.instance_name}-${idx}`} c={c} onOpenChat={onOpenChat}
-                generatingLeadId={generatingLeadId} onGenerateActivity={onGenerateActivity} />
-            ))}
-            {filteredCases.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                <Inbox className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                <p className="text-xs">Nenhum caso encontrado</p>
+                </Button>
               </div>
             )}
+          </>
+        )}
+
+        {showLog && (
+          <div className="flex flex-col flex-1 min-h-0">
+            {/* Log header with progress */}
+            <div className="px-3 py-2 border-b bg-muted/30">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-medium flex items-center gap-1.5">
+                  {followupProcessing ? (
+                    <><Loader2 className="h-3 w-3 animate-spin" /> Processando Follow-ups</>
+                  ) : (
+                    <><CheckCircle className="h-3 w-3 text-green-600" /> Concluído</>
+                  )}
+                </span>
+                {!followupProcessing && (
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => { setShowLog(false); setActivityLog([]); }}>
+                    <XIcon className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+              {(followupProcessing || followupProgress.total > 0) && (
+                <div className="space-y-1">
+                  <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="bg-primary h-full rounded-full transition-all duration-300"
+                      style={{ width: `${followupProgress.total ? (followupProgress.current / followupProgress.total) * 100 : 0}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>{followupProgress.current}/{followupProgress.total}</span>
+                    <span className="flex gap-2">
+                      <span className="text-green-600">{followupProgress.success}✓</span>
+                      <span className="text-destructive">{followupProgress.fail}✗</span>
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Activity log feed */}
+            <ScrollArea className="flex-1">
+              <div className="p-2 space-y-0.5">
+                {activityLog.map(entry => (
+                  <div key={entry.id} className={`flex items-center gap-2 px-2 py-1.5 rounded text-[11px] transition-colors ${
+                    entry.status === 'processing' ? 'bg-muted/50 animate-pulse' :
+                    entry.status === 'failed' ? 'bg-destructive/5' : 'bg-green-50/50'
+                  }`}>
+                    <ActionIcon type={entry.actionType} status={entry.status} />
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium truncate block">{entry.contactName}</span>
+                      <span className="text-muted-foreground text-[10px]">
+                        {actionLabel(entry.actionType, entry.status)}
+                        {entry.instance && ` · ${entry.instance}`}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground shrink-0">{entry.time}</span>
+                  </div>
+                ))}
+                <div ref={logEndRef} />
+              </div>
+            </ScrollArea>
           </div>
-        </ScrollArea>
+        )}
+
+        {!showLog && (
+          <ScrollArea className="flex-1">
+            <div className="p-2 space-y-1.5">
+              {filteredCases.map((c, idx) => (
+                <CaseCard key={`sheet-${c.phone}-${c.instance_name}-${idx}`} c={c} onOpenChat={onOpenChat}
+                  generatingLeadId={generatingLeadId} onGenerateActivity={onGenerateActivity} />
+              ))}
+              {filteredCases.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Inbox className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-xs">Nenhum caso encontrado</p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        )}
       </SheetContent>
     </Sheet>
   );
