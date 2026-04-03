@@ -222,7 +222,7 @@ export function AgentMonitorDashboard() {
 
       // Parallel fetches
       const [agentsRes, convAgentsRes, messagesRes, leadsRes, boardsRes, followupsRes, referralsRes] = await Promise.all([
-        supabase.from('wjia_command_shortcuts').select('id, shortcut_name, description, is_active').order('shortcut_name'),
+        supabase.from('wjia_command_shortcuts').select('id, shortcut_name, description, is_active, followup_steps, followup_repeat_forever').order('shortcut_name'),
         supabase.from('whatsapp_conversation_agents').select('*'),
         supabase.from('whatsapp_messages')
           .select('phone, instance_name, direction, created_at, contact_name, lead_id, campaign_name')
