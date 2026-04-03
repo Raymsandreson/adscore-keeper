@@ -194,7 +194,7 @@ Deno.serve(async (req) => {
         results.push({ instance: status.instance_name, event: 'disconnected', notify: status.notify_on_disconnect });
 
       } else if (!status.connected && !wasConnected) {
-        if (status.notify_on_disconnect) {
+        if (status.notify_on_disconnect && isWithinNotificationSchedule(status)) {
           const lastCallAt = log?.last_call_made_at ? new Date(log.last_call_made_at).getTime() : 0;
           const elapsed = now.getTime() - lastCallAt;
           if (elapsed >= CALL_INTERVAL_MS) {
