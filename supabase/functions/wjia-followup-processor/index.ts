@@ -517,8 +517,8 @@ async function processAgentConversationFollowups(supabase: any, targetPhone?: st
     if (step.action_type === "whatsapp_message") {
       // Use AI to generate contextual follow-up message
       try {
-        const aiReply = await callAgentReply(supabase, conv.phone, conv.instance_name);
-        if (aiReply) {
+        const aiResult = await callAgentReply(supabase, conv.phone, conv.instance_name);
+        if (aiResult.success) {
           console.log(`[AGENT] AI followup sent for ${conv.phone}`);
         } else {
           actionResult = "error";
