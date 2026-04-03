@@ -3,9 +3,6 @@ import type { ConversationDetail, CaseStatus } from './types';
 export const convKey = (c: { phone: string; instance_name: string }) => `${c.phone}|${c.instance_name}`;
 
 export const getCaseStatus = (c: ConversationDetail): CaseStatus => {
-  if (c.is_blocked) return 'bloqueado';
-  if (c.human_paused) return 'pausado';
-  if (!c.is_active) return 'pausado';
   if (c.lead_status === 'closed') return 'fechado';
   if (c.lead_status === 'refused') return 'recusado';
   if (c.lead_status === 'unviable') return 'inviavel';
