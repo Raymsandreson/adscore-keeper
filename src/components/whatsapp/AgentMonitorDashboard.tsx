@@ -1233,7 +1233,7 @@ export function AgentMonitorDashboard() {
 
       {/* Chat Preview */}
       {/* Sheet lateral para lista filtrada por status */}
-      <Sheet open={!!sheetStatusFilter} onOpenChange={(open) => { if (!open) { setSheetStatusFilter(null); setSheetResponseFilter('all'); setSheetLeadFilter('all'); setSheetAgentStatusFilter('all'); setSearchQuery(''); } }}>
+      <Sheet open={!!sheetStatusFilter} onOpenChange={(open) => { if (!open) { setSheetStatusFilter(null); setSheetResponseFilter('all'); setSheetLeadFilter('all'); setSheetAgentStatusFilter('all'); setSheetFollowupFilter('all'); setSearchQuery(''); } }}>
         <SheetContent side="right" className="w-full sm:w-[450px] sm:max-w-[450px] p-0 flex flex-col">
           <SheetHeader className="p-4 pb-2 border-b">
             <SheetTitle className="flex items-center gap-2">
