@@ -641,6 +641,17 @@ export function AgentMonitorDashboard() {
           </SelectContent>
         </Select>
       )}
+
+      <Select value={agentActiveFilter} onValueChange={(v) => setAgentActiveFilter(v as 'all' | 'ativo' | 'pausado')}>
+        <SelectTrigger className="w-[130px] h-8 text-xs">
+          <SelectValue placeholder="Status Agente" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Todos Status</SelectItem>
+          <SelectItem value="ativo">Ativo</SelectItem>
+          <SelectItem value="pausado">Pausado</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
   );
 
