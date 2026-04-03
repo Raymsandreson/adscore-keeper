@@ -55,19 +55,13 @@ export function AIRealtimeFeed() {
       try {
         const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(); // last 2h
 
-        const [msgsRes, sessionsRes] = await Promise.all([
+        const [msgsRes] = await Promise.all([
           supabase
             .from('whatsapp_messages')
             .select('id, phone, direction, message_text, contact_name, instance_name, created_at, campaign_name, lead_id')
             .gte('created_at', since)
             .order('created_at', { ascending: false })
             .limit(100),
-          supabase
-            .from('wjia_sessions')
-            .select('id, phone, instance_name, shortcut_name, status, contact_name, created_at')
-            .gte('created_at', since)
-            .order('created_at', { ascending: false })
-            .limit(50),
         ]);
 
         const feedEvents: FeedEvent[] = [];
