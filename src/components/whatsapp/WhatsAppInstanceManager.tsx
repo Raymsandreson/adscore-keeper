@@ -547,6 +547,70 @@ export function WhatsAppInstanceManager() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Confirm stop all conversations when removing default agent */}
+      <AlertDialog open={!!pendingAgentRemoval} onOpenChange={(open) => { if (!open) setPendingAgentRemoval(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover agente padrão?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O agente "{pendingAgentRemoval?.agentName}" será removido como padrão da instância "{pendingAgentRemoval?.instanceName}".
+              <br /><br />
+              <strong>Deseja também parar o agente em todas as conversas ativas desta instância?</strong>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <Button variant="outline" disabled={stoppingAll} onClick={async () => {
+              if (!pendingAgentRemoval) return;
+              // Just remove default, keep conversations active
+              const { instanceId, oldAgentId } = pendingAgentRemoval;
+              setInstances(prev => prev.map(i => i.id === instanceId ? { ...i, default_agent_id: null } : i));
+              await supabase.from('whatsapp_instances').update({ default_agent_id: null } as any).eq('id', instanceId);
+              toast.success('Agente padrão removido (conversas mantidas ativas)');
+              setPendingAgentRemoval(null);
+            }}>
+              Só remover padrão
+            </Button>
+            <AlertDialogAction disabled={stoppingAll} onClick={async () => {
+              if (!pendingAgentRemoval) return;
+              setStoppingAll(true);
+              const { instanceId, instanceName, oldAgentId } = pendingAgentRemoval;
+              try {
+                // Remove default agent
+                setInstances(prev => prev.map(i => i.id === instanceId ? { ...i, default_agent_id: null } : i));
+                await supabase.from('whatsapp_instances').update({ default_agent_id: null } as any).eq('id', instanceId);
+                
+                // Stop agent in all conversations of this instance
+                const { data: convs, error: fetchErr } = await supabase
+                  .from('whatsapp_conversation_agents')
+                  .select('id')
+                  .eq('instance_name', instanceName)
+                  .eq('agent_id', oldAgentId)
+                  .eq('is_active', true);
+                
+                if (!fetchErr && convs && convs.length > 0) {
+                  const ids = convs.map((c: any) => c.id);
+                  await supabase
+                    .from('whatsapp_conversation_agents')
+                    .update({ is_active: false } as any)
+                    .in('id', ids);
+                  toast.success(`Agente removido e parado em ${convs.length} conversas`);
+                } else {
+                  toast.success('Agente padrão removido (nenhuma conversa ativa encontrada)');
+                }
+              } catch (err: any) {
+                toast.error('Erro: ' + err.message);
+              } finally {
+                setStoppingAll(false);
+                setPendingAgentRemoval(null);
+              }
+            }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {stoppingAll ? 'Parando...' : 'Remover e parar todas'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
