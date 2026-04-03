@@ -350,6 +350,7 @@ export function AgentMonitorDashboard() {
           inbound_count: inboundMsgs.length,
           outbound_count: outboundMsgs.length,
           followup_count: lead ? (followupsByLead.get(lead.id) || 0) : 0,
+          has_followup_config: agentFollowupMap.get(ca.agent_id) || false,
           time_without_response: timeWithoutResponse,
           campaign_name: campaignByPhone.get(key) || msgs.find((m: any) => m.campaign_name)?.campaign_name || lead?.campaign_name || null,
           activated_by: ca.activated_by || null,
