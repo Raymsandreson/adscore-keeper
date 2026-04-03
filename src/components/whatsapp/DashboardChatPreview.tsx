@@ -101,6 +101,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [isMuted, setIsMuted] = useState(false);
   const [muteLoading, setMuteLoading] = useState(false);
   const [showZapSign, setShowZapSign] = useState(false);
+  const [selectedMsgId, setSelectedMsgId] = useState<string | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
 
