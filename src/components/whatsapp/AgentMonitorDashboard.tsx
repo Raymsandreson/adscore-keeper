@@ -833,6 +833,10 @@ export function AgentMonitorDashboard() {
           onClick={() => batchFollowupAction('anticipate')}>
           <FastForward className="h-3 w-3" /> Antecipar Follow-up
         </Button>
+        <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1 text-green-600" disabled={batchProcessing}
+          onClick={() => batchFollowupAction('resume')}>
+          <RotateCcw className="h-3 w-3" /> Retomar Follow-up
+        </Button>
       </div>
     );
   };
