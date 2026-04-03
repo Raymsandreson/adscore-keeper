@@ -220,18 +220,22 @@ export function AgentMonitorDashboard() {
       let fail = 0;
       for (const c of selectedConversations) {
         try {
-          const { error } = await cloudFunctions.invoke('whatsapp-ai-agent-reply', {
-            body: { 
-              phone: c.phone, 
-              instance_name: c.instance_name, 
-              is_followup: true,
-              force_immediate: action === 'anticipate',
-            },
-            authToken: session?.access_token,
-          });
-          if (error) throw error;
+          if (action === 'trigger') {
+            // Trigger = send an AI followup message now
+            const { error } = await cloudFunctions.invoke('whatsapp-ai-agent-reply', {
+              body: { phone: c.phone, instance_name: c.instance_name, is_followup: true },
+              authToken: session?.access_token,
+            });
+            if (error) throw error;
+          } else {
+            // Anticipate = execute the next scheduled followup step immediately
+            const { error } = await cloudFunctions.invoke('wjia-followup-processor', {
+              body: { target_phone: c.phone, target_instance: c.instance_name, force_immediate: true },
+              authToken: session?.access_token,
+            });
+            if (error) throw error;
+          }
           success++;
-          // Small delay to avoid rate limiting
           await new Promise(r => setTimeout(r, 1500));
         } catch {
           fail++;
