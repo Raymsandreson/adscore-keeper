@@ -172,7 +172,7 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
 
   const icons: Record<CaseStatus, typeof AlertCircle> = {
     sem_resposta: AlertCircle, em_andamento: MessageCircle, fechado: CheckCircle,
-    recusado: XCircle, inviavel: Eye, bloqueado: StopCircle, pausado: PauseCircle,
+    recusado: XCircle, inviavel: Eye,
   };
 
   const handleClose = () => {
