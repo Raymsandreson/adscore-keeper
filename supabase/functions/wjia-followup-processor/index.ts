@@ -31,6 +31,9 @@ serve(async (req) => {
     let body: any = {};
     try { body = await req.json(); } catch { /* empty body ok */ }
     const targetSessionId = body?.session_id || null;
+    const targetPhone = body?.target_phone || null;
+    const targetInstance = body?.target_instance || null;
+    const forceImmediate = body?.force_immediate === true;
 
     let actionsExecuted = 0;
 
