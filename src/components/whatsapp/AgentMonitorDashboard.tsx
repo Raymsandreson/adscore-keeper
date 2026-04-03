@@ -221,9 +221,9 @@ export function AgentMonitorDashboard() {
       for (const c of selectedConversations) {
         try {
           if (action === 'resume') {
-            // Resume = reset the followup cycle so it restarts from step 0
+            // Resume = continue followup from where it stopped (re-trigger processing without resetting logs)
             const { error } = await cloudFunctions.invoke('wjia-followup-processor', {
-              body: { target_phone: c.phone, target_instance: c.instance_name, reset_cycle: true },
+              body: { target_phone: c.phone, target_instance: c.instance_name, force_immediate: true },
               authToken: session?.access_token,
             });
             if (error) throw error;
