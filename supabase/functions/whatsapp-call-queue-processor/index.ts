@@ -67,7 +67,7 @@ serve(async (req) => {
     const instanceName = (nextCall as any).instance_name;
     const { data: instance } = await supabase
       .from("whatsapp_instances")
-      .select("base_url, instance_token, instance_name")
+      .select("base_url, instance_token, instance_name, voice_id, owner_name")
       .eq("instance_name", instanceName)
       .maybeSingle();
 
@@ -211,7 +211,14 @@ async function sendCallFollowupAudio(
     const agentName = agent.shortcut_name || "Assistente";
     const followupPrompt = agent.base_prompt || "";
 
-    if (agent.reply_voice_id) {
+    if (agent.reply_voice_id === "instance_owner") {
+      // Resolve voice from instance
+      const instanceVoice = (instance as any).voice_id;
+      if (instanceVoice) {
+        voiceId = instanceVoice;
+        console.log(`Resolved instance_owner voice to: ${voiceId}`);
+      }
+    } else if (agent.reply_voice_id) {
       if (agent.reply_voice_id.length === 36 && agent.reply_voice_id.includes("-")) {
         const { data: cv } = await supabase
           .from("custom_voices")
