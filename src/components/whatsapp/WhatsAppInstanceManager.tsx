@@ -71,6 +71,8 @@ export function WhatsAppInstanceManager() {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Instance | null>(null);
+  const [pendingAgentRemoval, setPendingAgentRemoval] = useState<{ instanceId: string; instanceName: string; oldAgentId: string; agentName: string } | null>(null);
+  const [stoppingAll, setStoppingAll] = useState(false);
 
   const syncPhones = async () => {
     setSyncing(true);
