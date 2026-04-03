@@ -136,7 +136,7 @@ export function CTWACampaignAutomation() {
   };
 
   const fetchMetaCampaigns = async () => {
-    const { accessToken, adAccountId } = getMetaCredentials();
+    const { accessToken, adAccountId } = await getMetaCredentials();
     console.log('CTWA: credentials check', { hasToken: !!accessToken, hasAccount: !!adAccountId });
     if (!accessToken || !adAccountId) {
       console.warn('CTWA: No Meta credentials found in localStorage. Keys present:', 
