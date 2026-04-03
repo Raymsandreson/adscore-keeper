@@ -37,7 +37,7 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
   const [searchQuery, setSearchQuery] = useState('');
   const [responseFilter, setResponseFilter] = useState<'all' | 'responded' | 'waiting'>('all');
   const [leadFilter, setLeadFilter] = useState<'all' | 'com_lead' | 'sem_lead'>('all');
-  const [agentStatusFilter, setAgentStatusFilter] = useState<'all' | 'ativo' | 'pausado'>('all');
+  const [agentStatusFilter, setAgentStatusFilter] = useState<'all' | 'ativo'>('all');
   const [followupFilter, setFollowupFilter] = useState<'all' | 'com_followup' | 'sem_followup'>('all');
   const [followupProcessing, setFollowupProcessing] = useState(false);
   const [activityLog, setActivityLog] = useState<LogEntry[]>([]);
@@ -74,7 +74,6 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
       if (leadFilter === 'com_lead' && !c.lead_id) return false;
       if (leadFilter === 'sem_lead' && c.lead_id) return false;
       if (agentStatusFilter === 'ativo' && !c.is_active) return false;
-      if (agentStatusFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
       if (followupFilter === 'com_followup' && !c.has_followup_config) return false;
       if (followupFilter === 'sem_followup' && c.has_followup_config) return false;
       return true;
@@ -200,7 +199,6 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
           if (k === 'com_lead') return !!c.lead_id;
           if (k === 'sem_lead') return !c.lead_id;
           if (k === 'ativo') return c.is_active;
-          if (k === 'pausado') return !c.is_active && !c.is_blocked;
           if (k === 'com_followup') return c.has_followup_config;
           if (k === 'sem_followup') return !c.has_followup_config;
           return true;
@@ -256,7 +254,7 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
               </div>
               <FilterChips options={[['all', 'Todas'], ['responded', 'Respondidas'], ['waiting', 'Aguardando']]} value={responseFilter} onChange={setResponseFilter} cases={sheetCases} />
               <FilterChips options={[['all', 'Todos'], ['com_lead', 'Com Lead'], ['sem_lead', 'Sem Lead']]} value={leadFilter} onChange={setLeadFilter} cases={sheetCases} />
-              <FilterChips options={[['all', 'Todos'], ['ativo', 'Ativo'], ['pausado', 'Pausado']]} value={agentStatusFilter} onChange={setAgentStatusFilter} cases={sheetCases} />
+              <FilterChips options={[['all', 'Todos'], ['ativo', 'Ativo']]} value={agentStatusFilter} onChange={setAgentStatusFilter} cases={sheetCases} />
               <div className="pb-1">
                 <FilterChips options={[['all', 'Todos'], ['com_followup', 'Com Follow-up'], ['sem_followup', 'Sem Follow-up']]} value={followupFilter} onChange={setFollowupFilter} cases={sheetCases} />
               </div>

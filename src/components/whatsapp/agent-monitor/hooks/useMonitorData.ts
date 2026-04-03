@@ -19,7 +19,7 @@ export function useMonitorData() {
 
       const [agentsRes, convAgentsRes, messagesRes, leadsRes, boardsRes, followupsRes, referralsRes] = await Promise.all([
         supabase.from('wjia_command_shortcuts').select('id, shortcut_name, description, is_active, followup_steps, followup_repeat_forever').order('shortcut_name'),
-        supabase.from('whatsapp_conversation_agents').select('*').eq('is_active', true).or('is_blocked.is.null,is_blocked.eq.false'),
+        supabase.from('whatsapp_conversation_agents').select('*').eq('is_active', true),
         supabase.from('whatsapp_messages')
           .select('phone, instance_name, direction, created_at, contact_name, lead_id, campaign_name')
           .gte('created_at', startDate).lte('created_at', endDate).order('created_at', { ascending: false }),
@@ -111,7 +111,6 @@ export function useMonitorData() {
           }
         }
 
-        const isPaused = ca.human_paused_until && new Date(ca.human_paused_until) > new Date();
         const timeWithoutResponse = lastOutbound && !lastInbound
           ? differenceInMinutes(new Date(), new Date(lastOutbound))
           : lastOutbound && lastInbound && new Date(lastOutbound) > new Date(lastInbound)
@@ -124,8 +123,6 @@ export function useMonitorData() {
           agent_name: agentName,
           agent_id: ca.agent_id,
           is_active: ca.is_active,
-          is_blocked: ca.is_blocked ?? false,
-          human_paused: !!isPaused,
           contact_name: msgs[0]?.contact_name || null,
           lead_name: lead?.lead_name || null,
           lead_id: lead?.id || null,
@@ -169,9 +166,7 @@ export function useMonitorData() {
         const stat = statsMap.get(c.agent_id);
         if (!stat) return;
         stat.total_conversations++;
-        if (c.is_active && !c.human_paused) stat.active_conversations++;
-        else if (c.human_paused) stat.paused_conversations++;
-        else stat.inactive_conversations++;
+        stat.active_conversations++;
         stat.total_messages_sent += c.outbound_count;
         stat.total_messages_received += c.inbound_count;
         stat.followups_sent += c.followup_count;

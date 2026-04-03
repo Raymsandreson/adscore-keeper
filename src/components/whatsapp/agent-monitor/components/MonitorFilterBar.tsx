@@ -14,8 +14,8 @@ interface MonitorFilterBarProps {
   setBoardFilter: (v: string) => void;
   campaignFilter: string;
   setCampaignFilter: (v: string) => void;
-  agentActiveFilter: 'all' | 'ativo' | 'pausado';
-  setAgentActiveFilter: (v: 'all' | 'ativo' | 'pausado') => void;
+  agentActiveFilter: 'all' | 'ativo';
+  setAgentActiveFilter: (v: 'all' | 'ativo') => void;
   followupConfigFilter: 'all' | 'com_followup' | 'sem_followup';
   setFollowupConfigFilter: (v: 'all' | 'com_followup' | 'sem_followup') => void;
 }
@@ -67,14 +67,6 @@ export function MonitorFilterBar({
         </Select>
       )}
 
-      <Select value={agentActiveFilter} onValueChange={(v) => setAgentActiveFilter(v as any)}>
-        <SelectTrigger className="w-[130px] h-8 text-xs"><SelectValue placeholder="Status Agente" /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Todos Status</SelectItem>
-          <SelectItem value="ativo">Ativo</SelectItem>
-          <SelectItem value="pausado">Pausado</SelectItem>
-        </SelectContent>
-      </Select>
 
       <Select value={followupConfigFilter} onValueChange={(v) => setFollowupConfigFilter(v as any)}>
         <SelectTrigger className="w-[140px] h-8 text-xs"><SelectValue placeholder="Follow-up" /></SelectTrigger>

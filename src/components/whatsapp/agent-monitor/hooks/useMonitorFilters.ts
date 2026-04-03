@@ -8,7 +8,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
   const [boardFilter, setBoardFilter] = useState('all');
   const [campaignFilter, setCampaignFilter] = useState('all');
   const [caseStatusFilter, setCaseStatusFilter] = useState<CaseStatus | 'all'>('all');
-  const [agentActiveFilter, setAgentActiveFilter] = useState<'all' | 'ativo' | 'pausado'>('all');
+  const [agentActiveFilter, setAgentActiveFilter] = useState<'all' | 'ativo'>('all');
   const [followupConfigFilter, setFollowupConfigFilter] = useState<'all' | 'com_followup' | 'sem_followup'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -35,7 +35,6 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       if (!applyBaseFilters(c)) return false;
       if (caseStatusFilter !== 'all' && getCaseStatus(c) !== caseStatusFilter) return false;
       if (agentActiveFilter === 'ativo' && !c.is_active) return false;
-      if (agentActiveFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
       if (followupConfigFilter === 'com_followup' && !c.has_followup_config) return false;
       if (followupConfigFilter === 'sem_followup' && c.has_followup_config) return false;
       if (searchQuery) {

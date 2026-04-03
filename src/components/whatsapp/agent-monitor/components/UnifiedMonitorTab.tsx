@@ -33,8 +33,8 @@ interface UnifiedMonitorTabProps {
     setBoardFilter: (v: string) => void;
     campaignFilter: string;
     setCampaignFilter: (v: string) => void;
-    agentActiveFilter: 'all' | 'ativo' | 'pausado';
-    setAgentActiveFilter: (v: 'all' | 'ativo' | 'pausado') => void;
+    agentActiveFilter: 'all' | 'ativo';
+    setAgentActiveFilter: (v: 'all' | 'ativo') => void;
     followupConfigFilter: 'all' | 'com_followup' | 'sem_followup';
     setFollowupConfigFilter: (v: 'all' | 'com_followup' | 'sem_followup') => void;
   };
