@@ -61,10 +61,9 @@ export function UnifiedMonitorTab({
 
       {/* Sub-tabs */}
       <Tabs defaultValue="feed" className="space-y-3">
-        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 max-w-2xl">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 max-w-2xl">
           <TabsTrigger value="feed" className="text-xs"><Radio className="h-3 w-3 mr-1" />Tempo Real</TabsTrigger>
           <TabsTrigger value="overview" className="text-xs"><Bot className="h-3 w-3 mr-1" />Por Agente</TabsTrigger>
-          <TabsTrigger value="conversations" className="text-xs"><MessageCircle className="h-3 w-3 mr-1" />Conversas</TabsTrigger>
           <TabsTrigger value="followups" className="text-xs"><Zap className="h-3 w-3 mr-1" />Follow-ups</TabsTrigger>
           <TabsTrigger value="call-queue" className="text-xs"><PhoneCall className="h-3 w-3 mr-1" />Ligações</TabsTrigger>
           <TabsTrigger value="ai-data" className="text-xs"><Sparkles className="h-3 w-3 mr-1" />IA Dados</TabsTrigger>
