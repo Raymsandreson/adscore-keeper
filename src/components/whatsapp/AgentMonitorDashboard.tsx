@@ -1184,7 +1184,7 @@ export function AgentMonitorDashboard() {
                 );
               })}
             </div>
-            <div className="flex flex-wrap gap-1 pb-1">
+            <div className="flex flex-wrap gap-1">
               {([['all', 'Todos'], ['com_lead', 'Com Lead'], ['sem_lead', 'Sem Lead']] as const).map(([k, label]) => {
                 const count = sheetCases.filter(c => {
                   if (k === 'com_lead') return !!c.lead_id;
@@ -1195,6 +1195,20 @@ export function AgentMonitorDashboard() {
                   <Badge key={k} variant={sheetLeadFilter === k ? 'default' : 'outline'}
                     className="cursor-pointer text-[10px] px-1.5 py-0 h-5"
                     onClick={() => setSheetLeadFilter(k)}>{label} ({count})</Badge>
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap gap-1 pb-1">
+              {([['all', 'Todos'], ['ativo', 'Ativo'], ['pausado', 'Pausado']] as const).map(([k, label]) => {
+                const count = sheetCases.filter(c => {
+                  if (k === 'ativo') return c.is_active;
+                  if (k === 'pausado') return !c.is_active && !c.is_blocked;
+                  return true;
+                }).length;
+                return (
+                  <Badge key={k} variant={sheetAgentStatusFilter === k ? 'default' : 'outline'}
+                    className="cursor-pointer text-[10px] px-1.5 py-0 h-5"
+                    onClick={() => setSheetAgentStatusFilter(k)}>{label} ({count})</Badge>
                 );
               })}
             </div>
