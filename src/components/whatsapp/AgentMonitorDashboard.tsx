@@ -1151,7 +1151,7 @@ export function AgentMonitorDashboard() {
           <SheetHeader className="p-4 pb-2 border-b">
             <SheetTitle className="flex items-center gap-2">
               {sheetStatusFilter && (() => {
-                const icons: Record<CaseStatus, typeof AlertCircle> = { sem_resposta: AlertCircle, em_andamento: MessageCircle, fechado: CheckCircle, recusado: XCircle, inviavel: Eye };
+                const icons: Record<CaseStatus, typeof AlertCircle> = { sem_resposta: AlertCircle, em_andamento: MessageCircle, fechado: CheckCircle, recusado: XCircle, inviavel: Eye, bloqueado: StopCircle };
                 const Icon = icons[sheetStatusFilter];
                 return <Icon className="h-5 w-5" />;
               })()}
