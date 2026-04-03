@@ -91,7 +91,12 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
           });
           clearTimeout(timeoutId);
           if (!res.ok) throw new Error(`${res.status}`);
-          success++;
+          const result = await res.json();
+          if (result.actions_executed > 0) {
+            success++;
+          } else {
+            fail++;
+          }
         } catch {
           fail++;
         }

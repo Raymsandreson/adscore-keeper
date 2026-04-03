@@ -189,7 +189,22 @@ serve(async (req) => {
     // PART 2: Agent conversation follow-ups (NEW)
     // ============================================================
     if (!targetSessionId) {
-      if (resetCycle && targetPhone && targetInstance) {
+      // For force_immediate with specific target: directly trigger AI reply
+      // This bypasses conversation_agents lookup which may be in a different DB
+      if (forceImmediate && targetPhone && targetInstance) {
+        console.log(`[AGENT] Force-immediate direct reply for ${targetPhone} on ${targetInstance}`);
+        try {
+          const aiReply = await callAgentReply(supabase, targetPhone, targetInstance);
+          if (aiReply) {
+            console.log(`[AGENT] Force AI reply sent for ${targetPhone}`);
+            actionsExecuted++;
+          } else {
+            console.error(`[AGENT] Force AI reply failed for ${targetPhone}`);
+          }
+        } catch (e) {
+          console.error(`[AGENT] Force AI reply error for ${targetPhone}:`, e);
+        }
+      } else if (resetCycle && targetPhone && targetInstance) {
         // Reset: find conversation agent, get the synthetic session_id, delete logs
         const { data: ca } = await supabase
           .from("whatsapp_conversation_agents")
@@ -199,7 +214,6 @@ serve(async (req) => {
           .maybeSingle();
 
         if (ca?.agent_id) {
-          // Generate the same synthetic UUID used by processAgentConversationFollowups
           const encoder = new TextEncoder();
           const rawStr = `${targetPhone}|${targetInstance}|${ca.agent_id}`;
           const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(rawStr));
@@ -207,7 +221,6 @@ serve(async (req) => {
           const hex = Array.from(hashArray).map(b => b.toString(16).padStart(2, "0")).join("");
           const syntheticId = `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20,32)}`;
 
-          // Delete all followup logs for this synthetic session
           await supabase.from("wjia_followup_log").delete().eq("session_id", syntheticId);
           console.log(`[RESET] Cleared followup logs for ${targetPhone} session ${syntheticId}`);
           actionsExecuted++;
@@ -216,10 +229,10 @@ serve(async (req) => {
         return new Response(JSON.stringify({
           success: true, reset: true, actions_executed: actionsExecuted,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } else {
+        const result = await processAgentConversationFollowups(supabase, targetPhone, targetInstance, forceImmediate);
+        actionsExecuted += result;
       }
-
-      const result = await processAgentConversationFollowups(supabase, targetPhone, targetInstance, forceImmediate);
-      actionsExecuted += result;
     }
 
     return new Response(JSON.stringify({
@@ -253,6 +266,8 @@ async function processAgentConversationFollowups(supabase: any, targetPhone?: st
   if (targetInstance) convQuery = convQuery.eq("instance_name", targetInstance);
 
   const { data: conversations, error: convError } = await convQuery;
+
+  console.log(`[AGENT] Query: phone=${targetPhone}, instance=${targetInstance}, found=${conversations?.length || 0}, error=${convError?.message || 'none'}, forceImmediate=${forceImmediate}`);
 
   if (convError || !conversations?.length) {
     console.log(`[AGENT] No active conversations found`);
@@ -332,10 +347,32 @@ async function processAgentConversationFollowups(supabase: any, targetPhone?: st
       .maybeSingle();
 
     // Only follow up if our last message is newer than client's last message
-    if (!lastOutbound) continue;
-    if (lastInbound && new Date(lastInbound.created_at) > new Date(lastOutbound.created_at)) {
-      // Client already responded, no need for follow-up.
-      continue;
+    // When force_immediate: if client sent a message and we never replied (or client replied after us),
+    // trigger the AI to respond immediately instead of skipping
+    if (forceImmediate) {
+      // If there's no outbound at all, or client's message is newer, directly trigger AI reply
+      const clientNeedsReply = !lastOutbound || (lastInbound && new Date(lastInbound.created_at) > new Date(lastOutbound.created_at));
+      if (clientNeedsReply) {
+        processed++;
+        console.log(`[AGENT] Force-immediate: triggering AI reply for unanswered ${conv.phone} on ${conv.instance_name}`);
+        try {
+          const aiReply = await callAgentReply(supabase, conv.phone, conv.instance_name);
+          if (aiReply) {
+            console.log(`[AGENT] Force AI reply sent for ${conv.phone}`);
+            actionsExecuted++;
+          } else {
+            console.error(`[AGENT] Force AI reply failed for ${conv.phone}`);
+          }
+        } catch (e) {
+          console.error(`[AGENT] Force AI reply error for ${conv.phone}:`, e);
+        }
+        continue;
+      }
+    } else {
+      if (!lastOutbound) continue;
+      if (lastInbound && new Date(lastInbound.created_at) > new Date(lastOutbound.created_at)) {
+        continue;
+      }
     }
 
     // Block detection: check if last N outbound messages are all stuck at "sent" (never delivered)
