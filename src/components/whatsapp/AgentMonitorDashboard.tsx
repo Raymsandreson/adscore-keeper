@@ -707,7 +707,47 @@ export function AgentMonitorDashboard() {
           </div>
 
           {/* Real-time AI activity feed */}
-          <AIRealtimeFeed />
+          <AIRealtimeFeed onEventClick={(event) => {
+            if (event.phone && event.instance_name) {
+              // Find matching conversation or create a minimal one for chat preview
+              const match = conversations.find(c => c.phone === event.phone && c.instance_name === event.instance_name);
+              if (match) {
+                setChatPreview(match);
+              } else {
+                // Open with minimal data
+                setChatPreview({
+                  phone: event.phone,
+                  instance_name: event.instance_name,
+                  agent_name: event.agent_name || '',
+                  agent_id: '',
+                  is_active: false,
+                  human_paused: false,
+                  contact_name: event.contact_name || null,
+                  lead_name: null,
+                  lead_id: event.lead_id || null,
+                  lead_status: null,
+                  lead_city: null,
+                  lead_state: null,
+                  lead_acolhedor: null,
+                  board_id: null,
+                  board_name: null,
+                  stage_name: null,
+                  last_inbound_at: null,
+                  last_outbound_at: null,
+                  total_messages: 0,
+                  inbound_count: 0,
+                  outbound_count: 0,
+                  followup_count: 0,
+                  time_without_response: null,
+                  campaign_name: null,
+                  activated_by: null,
+                  activated_at: null,
+                  whatsapp_group_id: null,
+                  created_at: null,
+                });
+              }
+            }
+          }} />
         </TabsContent>
 
         {/* ═══════════ TAB 2: PAINEL DE AGENTES ═══════════ */}
