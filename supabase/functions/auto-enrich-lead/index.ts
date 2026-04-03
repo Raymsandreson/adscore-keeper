@@ -283,6 +283,59 @@ REGRAS:
               changed_by: null,
               changed_by_type: 'ai',
             })
+
+            // Send conversion event to Meta CAPI for CTWA leads
+            try {
+              const { data: leadForCapi } = await supabase
+                .from('leads')
+                .select('lead_name, lead_phone, ctwa_context, campaign_id, contract_value')
+                .eq('id', lead_id)
+                .single()
+
+              if (leadForCapi && (leadForCapi.ctwa_context || leadForCapi.campaign_id)) {
+                const finalStatus = cleaned.lead_status === 'unviable' ? 'inviavel' : cleaned.lead_status
+                const eventMap: Record<string, { event_name: string; content_category: string }> = {
+                  closed: { event_name: 'Purchase', content_category: 'lead_converted' },
+                  refused: { event_name: 'Lead', content_category: 'lead_refused' },
+                  inviavel: { event_name: 'Lead', content_category: 'lead_unqualified' },
+                }
+                const mapping = eventMap[finalStatus]
+                if (mapping) {
+                  const phone = (leadForCapi.lead_phone || '').replace(/\D/g, '')
+                  const nameParts = (leadForCapi.lead_name || '').trim().split(' ')
+                  const capiEvent = {
+                    event_name: mapping.event_name,
+                    event_time: Math.floor(Date.now() / 1000),
+                    action_source: 'chat',
+                    user_data: {
+                      ...(phone && { ph: phone }),
+                      ...(nameParts[0] && { fn: nameParts[0] }),
+                      ...(nameParts.length > 1 && { ln: nameParts.slice(1).join(' ') }),
+                      external_id: lead_id,
+                    },
+                    custom_data: {
+                      content_category: mapping.content_category,
+                      lead_id,
+                      status: finalStatus,
+                      ...(leadForCapi.campaign_id && { content_ids: [leadForCapi.campaign_id] }),
+                    },
+                  }
+                  // Call facebook-capi function
+                  const capiUrl = `${RESOLVED_SUPABASE_URL.replace('gliigkupoebmlbwyvijp', 'gliigkupoebmlbwyvijp')}/functions/v1/facebook-capi`
+                  await fetch(capiUrl, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${RESOLVED_ANON_KEY}`,
+                    },
+                    body: JSON.stringify({ events: [capiEvent] }),
+                  })
+                  console.log(`[auto-enrich] Sent Meta CAPI event: ${mapping.event_name} (${mapping.content_category})`)
+                }
+              }
+            } catch (capiErr) {
+              console.error('[auto-enrich] Meta CAPI error (non-blocking):', capiErr)
+            }
           }
         }
       }
