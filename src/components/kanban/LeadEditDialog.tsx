@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { sendLeadConversionEvent } from '@/utils/metaConversionTracking';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { generateLeadName } from '@/utils/generateLeadName';
