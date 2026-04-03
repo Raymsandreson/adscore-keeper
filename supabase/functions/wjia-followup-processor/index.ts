@@ -391,7 +391,7 @@ async function processAgentConversationFollowups(supabase: any, targetPhone?: st
     const timeSince = Date.now() - new Date(referenceTime).getTime();
     const delayMs = effectiveDelayMinutes * 60 * 1000;
 
-    if (timeSince < delayMs) continue;
+    if (!forceImmediate && timeSince < delayMs) continue;
 
     // For call steps, check if previous calls to this phone all failed (busy/not answered)
     // If 3+ consecutive failed calls, skip the call step
