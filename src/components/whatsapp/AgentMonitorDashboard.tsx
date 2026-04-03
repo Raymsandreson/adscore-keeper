@@ -63,6 +63,7 @@ interface ConversationDetail {
   inbound_count: number;
   outbound_count: number;
   followup_count: number;
+  has_followup_config: boolean;
   time_without_response: number | null;
   campaign_name: string | null;
   activated_by: string | null;
