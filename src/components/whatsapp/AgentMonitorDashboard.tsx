@@ -1297,8 +1297,8 @@ export function AgentMonitorDashboard() {
             <div className="flex flex-wrap gap-1 pb-1">
               {([['all', 'Todos'], ['com_followup', 'Com Follow-up'], ['sem_followup', 'Sem Follow-up']] as const).map(([k, label]) => {
                 const count = sheetCases.filter(c => {
-                  if (k === 'com_followup') return c.has_followup_config;
-                  if (k === 'sem_followup') return !c.has_followup_config;
+                  if (k === 'com_followup') return c.followup_count > 0;
+                  if (k === 'sem_followup') return c.followup_count === 0;
                   return true;
                 }).length;
                 return (
