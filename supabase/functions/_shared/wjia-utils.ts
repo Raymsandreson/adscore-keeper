@@ -342,7 +342,7 @@ export async function convertImageToPdf(fileBuffer: ArrayBuffer, contentType: st
 export async function sendWhatsApp(
   supabase: any, inst: any, phone: string, instanceName: string, text: string,
   contactId?: string, leadId?: string, msgIdPrefix = "wjia",
-  options?: { splitMessages?: boolean; splitDelaySeconds?: number }
+  options?: { splitMessages?: boolean; splitDelaySeconds?: number; cloudClient?: any }
 ) {
   if (!inst?.instance_token) return;
   const baseUrl = inst.base_url || "https://abraci.uazapi.com";
