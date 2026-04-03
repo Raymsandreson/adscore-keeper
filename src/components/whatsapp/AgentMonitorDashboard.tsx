@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -112,6 +113,7 @@ export function AgentMonitorDashboard() {
   const [boardFilter, setBoardFilter] = useState('all');
   const [campaignFilter, setCampaignFilter] = useState('all');
   const [caseStatusFilter, setCaseStatusFilter] = useState<CaseStatus | 'all'>('all');
+  const [sheetStatusFilter, setSheetStatusFilter] = useState<CaseStatus | null>(null);
 
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({ from: subDays(new Date(), 7), to: new Date() });
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -468,6 +470,25 @@ export function AgentMonitorDashboard() {
     });
   }, [filteredConversations]);
 
+  // Filtered cases for the Sheet panel
+  const sheetCases = useMemo(() => {
+    if (!sheetStatusFilter) return [];
+    return conversations.filter(c => {
+      if (agentFilter !== 'all' && c.agent_id !== agentFilter) return false;
+      if (instanceFilter !== 'all' && c.instance_name !== instanceFilter) return false;
+      if (boardFilter !== 'all' && c.board_id !== boardFilter) return false;
+      if (campaignFilter !== 'all') {
+        if (campaignFilter === '__none__' && c.campaign_name) return false;
+        if (campaignFilter !== '__none__' && c.campaign_name !== campaignFilter) return false;
+      }
+      return getCaseStatus(c) === sheetStatusFilter;
+    }).sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA;
+    });
+  }, [conversations, sheetStatusFilter, agentFilter, instanceFilter, boardFilter, campaignFilter]);
+
   const FilterBar = () => (
     <div className="flex flex-wrap gap-2">
       <Select value={agentFilter} onValueChange={setAgentFilter}>
@@ -670,8 +691,8 @@ export function AgentMonitorDashboard() {
             ]).map(({ key, icon: Icon, color }) => (
               <Card
                 key={key}
-                className={`cursor-pointer hover:shadow-md transition-all ${caseStatusFilter === key ? 'ring-2 ring-primary' : ''}`}
-                onClick={() => setCaseStatusFilter(prev => prev === key ? 'all' : key)}
+                className={`cursor-pointer hover:shadow-md transition-all ${sheetStatusFilter === key ? 'ring-2 ring-primary' : ''}`}
+                onClick={() => setSheetStatusFilter(prev => prev === key ? null : key)}
               >
                 <CardContent className="p-3 text-center">
                   <Icon className={`h-4 w-4 mx-auto mb-1 ${color}`} />
@@ -954,6 +975,46 @@ export function AgentMonitorDashboard() {
       </Tabs>
 
       {/* Chat Preview */}
+      {/* Sheet lateral para lista filtrada por status */}
+      <Sheet open={!!sheetStatusFilter} onOpenChange={(open) => { if (!open) setSheetStatusFilter(null); }}>
+        <SheetContent side="right" className="w-full sm:w-[450px] sm:max-w-[450px] p-0 flex flex-col">
+          <SheetHeader className="p-4 pb-2 border-b">
+            <SheetTitle className="flex items-center gap-2">
+              {sheetStatusFilter && (() => {
+                const icons: Record<CaseStatus, typeof AlertCircle> = { sem_resposta: AlertCircle, em_andamento: MessageCircle, fechado: CheckCircle, recusado: XCircle, inviavel: Eye };
+                const Icon = icons[sheetStatusFilter];
+                return <Icon className="h-5 w-5" />;
+              })()}
+              {sheetStatusFilter ? statusLabel(sheetStatusFilter) : ''} ({sheetCases.length})
+            </SheetTitle>
+          </SheetHeader>
+          <div className="p-3 border-b">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input placeholder="Buscar por nome ou telefone..." value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)} className="pl-8 h-8 text-xs" />
+            </div>
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="p-3 space-y-2">
+              {sheetCases.filter(c => {
+                if (!searchQuery) return true;
+                const q = searchQuery.toLowerCase();
+                return c.phone.includes(q) || c.contact_name?.toLowerCase().includes(q) || c.lead_name?.toLowerCase().includes(q);
+              }).map((c, idx) => (
+                <CaseCard key={`sheet-${c.phone}-${c.instance_name}-${idx}`} c={c} />
+              ))}
+              {sheetCases.length === 0 && (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Inbox className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Nenhum caso encontrado</p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
       <DashboardChatPreview
         open={!!chatPreview}
         onOpenChange={(open) => { if (!open) setChatPreview(null); }}
