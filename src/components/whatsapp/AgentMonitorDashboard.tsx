@@ -470,6 +470,25 @@ export function AgentMonitorDashboard() {
     });
   }, [filteredConversations]);
 
+  // Filtered cases for the Sheet panel
+  const sheetCases = useMemo(() => {
+    if (!sheetStatusFilter) return [];
+    return conversations.filter(c => {
+      if (agentFilter !== 'all' && c.agent_id !== agentFilter) return false;
+      if (instanceFilter !== 'all' && c.instance_name !== instanceFilter) return false;
+      if (boardFilter !== 'all' && c.board_id !== boardFilter) return false;
+      if (campaignFilter !== 'all') {
+        if (campaignFilter === '__none__' && c.campaign_name) return false;
+        if (campaignFilter !== '__none__' && c.campaign_name !== campaignFilter) return false;
+      }
+      return getCaseStatus(c) === sheetStatusFilter;
+    }).sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA;
+    });
+  }, [conversations, sheetStatusFilter, agentFilter, instanceFilter, boardFilter, campaignFilter]);
+
   const FilterBar = () => (
     <div className="flex flex-wrap gap-2">
       <Select value={agentFilter} onValueChange={setAgentFilter}>
