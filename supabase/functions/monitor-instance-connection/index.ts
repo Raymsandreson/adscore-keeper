@@ -20,7 +20,34 @@ interface InstanceStatus {
   base_url: string;
   owner_phone: string | null;
   notify_on_disconnect: boolean;
+  notify_start_hour: number;
+  notify_end_hour: number;
+  notify_weekdays_only: boolean;
   connected: boolean;
+}
+
+function isWithinNotificationSchedule(inst: InstanceStatus): boolean {
+  // Check if current time (Brasília) is within notification window
+  const now = new Date();
+  // Brasília = UTC-3
+  const brasiliaOffset = -3;
+  const utcHour = now.getUTCHours();
+  const brasiliaHour = (utcHour + brasiliaOffset + 24) % 24;
+  const brasiliaDay = new Date(now.getTime() + brasiliaOffset * 3600000).getUTCDay(); // 0=Sun, 6=Sat
+
+  // Check weekday
+  if (inst.notify_weekdays_only && (brasiliaDay === 0 || brasiliaDay === 6)) {
+    return false;
+  }
+
+  // Check hour range
+  const start = inst.notify_start_hour ?? 8;
+  const end = inst.notify_end_hour ?? 18;
+  if (start <= end) {
+    return brasiliaHour >= start && brasiliaHour < end;
+  }
+  // Overnight range (e.g., 22-06)
+  return brasiliaHour >= start || brasiliaHour < end;
 }
 
 async function checkInstanceConnection(inst: { id: string; instance_name: string; instance_token: string; base_url: string | null; owner_phone: string | null; notify_on_disconnect?: boolean }): Promise<InstanceStatus> {

@@ -372,6 +372,57 @@ export function WhatsAppInstanceManager() {
                         {(inst as any).notify_on_disconnect !== false ? 'Liga e avisa quando cair' : 'Sem alerta'}
                       </span>
                     </div>
+                    {/* Notification schedule */}
+                    {(inst as any).notify_on_disconnect !== false && (
+                      <div className="mt-2 p-2 rounded-md bg-muted/40 space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-muted-foreground">⏰ Horário:</span>
+                          <select
+                            className="text-xs border rounded px-1.5 py-0.5 bg-background"
+                            value={(inst as any).notify_start_hour ?? 8}
+                            onChange={async (e) => {
+                              const val = parseInt(e.target.value);
+                              setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, notify_start_hour: val } as any : i));
+                              await supabase.from('whatsapp_instances').update({ notify_start_hour: val } as any).eq('id', inst.id);
+                            }}
+                          >
+                            {Array.from({ length: 24 }, (_, h) => (
+                              <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                            ))}
+                          </select>
+                          <span className="text-xs text-muted-foreground">às</span>
+                          <select
+                            className="text-xs border rounded px-1.5 py-0.5 bg-background"
+                            value={(inst as any).notify_end_hour ?? 18}
+                            onChange={async (e) => {
+                              const val = parseInt(e.target.value);
+                              setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, notify_end_hour: val } as any : i));
+                              await supabase.from('whatsapp_instances').update({ notify_end_hour: val } as any).eq('id', inst.id);
+                            }}
+                          >
+                            {Array.from({ length: 24 }, (_, h) => (
+                              <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id={`weekdays-${inst.id}`}
+                            className="rounded"
+                            checked={(inst as any).notify_weekdays_only !== false}
+                            onChange={async (e) => {
+                              const val = e.target.checked;
+                              setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, notify_weekdays_only: val } as any : i));
+                              await supabase.from('whatsapp_instances').update({ notify_weekdays_only: val } as any).eq('id', inst.id);
+                            }}
+                          />
+                          <label htmlFor={`weekdays-${inst.id}`} className="text-xs text-muted-foreground">
+                            Apenas dias úteis (seg-sex)
+                          </label>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="flex items-center gap-1.5">
