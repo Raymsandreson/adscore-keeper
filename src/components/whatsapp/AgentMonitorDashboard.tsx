@@ -17,7 +17,8 @@ import {
   CheckCircle, XCircle, Zap,
   MapPin, Phone, PhoneCall, Megaphone, Sparkles,
   CalendarIcon, Inbox, BarChart3, Heart, AlertCircle, Eye, ClipboardList,
-  Square, CheckSquare, StopCircle, ArrowRightLeft, UserPlus, PauseCircle
+  Square, CheckSquare, StopCircle, ArrowRightLeft, UserPlus, PauseCircle,
+  FastForward, Play
 } from 'lucide-react';
 import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
@@ -62,6 +63,7 @@ interface ConversationDetail {
   inbound_count: number;
   outbound_count: number;
   followup_count: number;
+  has_followup_config: boolean;
   time_without_response: number | null;
   campaign_name: string | null;
   activated_by: string | null;
@@ -110,6 +112,7 @@ export function AgentMonitorDashboard() {
   const [sheetResponseFilter, setSheetResponseFilter] = useState<'all' | 'responded' | 'waiting'>('all');
   const [sheetLeadFilter, setSheetLeadFilter] = useState<'all' | 'com_lead' | 'sem_lead'>('all');
   const [sheetAgentStatusFilter, setSheetAgentStatusFilter] = useState<'all' | 'ativo' | 'pausado'>('all');
+  const [sheetFollowupFilter, setSheetFollowupFilter] = useState<'all' | 'com_followup' | 'sem_followup'>('all');
   const [generatingLeadId, setGeneratingLeadId] = useState<string | null>(null);
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [promptDialogLead, setPromptDialogLead] = useState<{ id: string; name: string } | null>(null);
@@ -121,6 +124,7 @@ export function AgentMonitorDashboard() {
   const [campaignFilter, setCampaignFilter] = useState('all');
   const [caseStatusFilter, setCaseStatusFilter] = useState<CaseStatus | 'all'>('all');
   const [agentActiveFilter, setAgentActiveFilter] = useState<'all' | 'ativo' | 'pausado'>('all');
+  const [followupConfigFilter, setFollowupConfigFilter] = useState<'all' | 'com_followup' | 'sem_followup'>('all');
   const [sheetStatusFilter, setSheetStatusFilter] = useState<CaseStatus | null>(null);
 
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({ from: subDays(new Date(), 7), to: new Date() });
@@ -207,6 +211,44 @@ export function AgentMonitorDashboard() {
     }
   };
 
+  const batchFollowupAction = async (action: 'trigger' | 'anticipate') => {
+    if (selectedConversations.length === 0) return;
+    setBatchProcessing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      let success = 0;
+      let fail = 0;
+      for (const c of selectedConversations) {
+        try {
+          const { error } = await cloudFunctions.invoke('whatsapp-ai-agent-reply', {
+            body: { 
+              phone: c.phone, 
+              instance_name: c.instance_name, 
+              is_followup: true,
+              force_immediate: action === 'anticipate',
+            },
+            authToken: session?.access_token,
+          });
+          if (error) throw error;
+          success++;
+          // Small delay to avoid rate limiting
+          await new Promise(r => setTimeout(r, 1500));
+        } catch {
+          fail++;
+        }
+      }
+      toast({ 
+        title: action === 'trigger' ? 'Follow-up disparado' : 'Follow-up antecipado',
+        description: `${success} sucesso${fail > 0 ? `, ${fail} falha(s)` : ''}` 
+      });
+      clearSelection();
+    } catch (err: any) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+    } finally {
+      setBatchProcessing(false);
+    }
+  };
+
   // Boards data
   const [boards, setBoards] = useState<Array<{ id: string; name: string; stages: any[] }>>([]);
 
@@ -218,7 +260,7 @@ export function AgentMonitorDashboard() {
 
       // Parallel fetches
       const [agentsRes, convAgentsRes, messagesRes, leadsRes, boardsRes, followupsRes, referralsRes] = await Promise.all([
-        supabase.from('wjia_command_shortcuts').select('id, shortcut_name, description, is_active').order('shortcut_name'),
+        supabase.from('wjia_command_shortcuts').select('id, shortcut_name, description, is_active, followup_steps, followup_repeat_forever').order('shortcut_name'),
         supabase.from('whatsapp_conversation_agents').select('*'),
         supabase.from('whatsapp_messages')
           .select('phone, instance_name, direction, created_at, contact_name, lead_id, campaign_name')
@@ -260,6 +302,7 @@ export function AgentMonitorDashboard() {
 
       // Build maps
       const agentMap = new Map(agentsData.map((a: any) => [a.id, a.shortcut_name]));
+      const agentFollowupMap = new Map(agentsData.map((a: any) => [a.id, !!(a.followup_steps && Array.isArray(a.followup_steps) && a.followup_steps.length > 0)]));
       const leadPhoneMap = new Map<string, any>();
       leads.forEach((l: any) => {
         if (l.lead_phone) {
@@ -345,6 +388,7 @@ export function AgentMonitorDashboard() {
           inbound_count: inboundMsgs.length,
           outbound_count: outboundMsgs.length,
           followup_count: lead ? (followupsByLead.get(lead.id) || 0) : 0,
+          has_followup_config: agentFollowupMap.get(ca.agent_id) || false,
           time_without_response: timeWithoutResponse,
           campaign_name: campaignByPhone.get(key) || msgs.find((m: any) => m.campaign_name)?.campaign_name || lead?.campaign_name || null,
           activated_by: ca.activated_by || null,
@@ -473,13 +517,15 @@ export function AgentMonitorDashboard() {
       if (caseStatusFilter !== 'all' && getCaseStatus(c) !== caseStatusFilter) return false;
       if (agentActiveFilter === 'ativo' && !c.is_active) return false;
       if (agentActiveFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
+      if (followupConfigFilter === 'com_followup' && !c.has_followup_config) return false;
+      if (followupConfigFilter === 'sem_followup' && c.has_followup_config) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         return c.phone.includes(q) || c.contact_name?.toLowerCase().includes(q) || c.lead_name?.toLowerCase().includes(q);
       }
       return true;
     });
-  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter, caseStatusFilter, agentActiveFilter, searchQuery]);
+  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter, caseStatusFilter, agentActiveFilter, followupConfigFilter, searchQuery]);
 
   // Pipeline counts
   const pipelineCounts = useMemo(() => {
@@ -655,6 +701,17 @@ export function AgentMonitorDashboard() {
           <SelectItem value="pausado">Pausado</SelectItem>
         </SelectContent>
       </Select>
+
+      <Select value={followupConfigFilter} onValueChange={(v) => setFollowupConfigFilter(v as 'all' | 'com_followup' | 'sem_followup')}>
+        <SelectTrigger className="w-[140px] h-8 text-xs">
+          <SelectValue placeholder="Follow-up" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Todos Follow-up</SelectItem>
+          <SelectItem value="com_followup">Com Follow-up</SelectItem>
+          <SelectItem value="sem_followup">Sem Follow-up</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
   );
 
@@ -690,6 +747,7 @@ export function AgentMonitorDashboard() {
                 {c.campaign_name && <Badge variant="secondary" className="text-[9px] h-4"><Megaphone className="h-2.5 w-2.5 mr-0.5" /> {c.campaign_name}</Badge>}
                 {c.board_name && c.stage_name && <Badge variant="outline" className="text-[9px] h-4">{c.board_name} → {c.stage_name}</Badge>}
                 {c.activated_by && <Badge variant="outline" className="text-[9px] h-4 border-blue-200 text-blue-600 dark:border-blue-800 dark:text-blue-400">⚡ {activatedByLabel(c.activated_by)}</Badge>}
+                {c.has_followup_config && <Badge variant="outline" className="text-[9px] h-4 border-purple-200 text-purple-600 dark:border-purple-800 dark:text-purple-400"><Zap className="h-2.5 w-2.5 mr-0.5" /> Follow-up</Badge>}
               </div>
             </div>
             <div className="text-right shrink-0 space-y-1">
@@ -766,6 +824,15 @@ export function AgentMonitorDashboard() {
             <ArrowRightLeft className="h-3 w-3" /> Trocar
           </Button>
         </div>
+        <div className="border-l border-border h-4 mx-1" />
+        <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" disabled={batchProcessing}
+          onClick={() => batchFollowupAction('trigger')}>
+          <Play className="h-3 w-3" /> Disparar Follow-up
+        </Button>
+        <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" disabled={batchProcessing}
+          onClick={() => batchFollowupAction('anticipate')}>
+          <FastForward className="h-3 w-3" /> Antecipar Follow-up
+        </Button>
       </div>
     );
   };
@@ -904,6 +971,7 @@ export function AgentMonitorDashboard() {
                   inbound_count: 0,
                   outbound_count: 0,
                   followup_count: 0,
+                  has_followup_config: false,
                   time_without_response: null,
                   campaign_name: null,
                   activated_by: null,
@@ -1166,7 +1234,7 @@ export function AgentMonitorDashboard() {
 
       {/* Chat Preview */}
       {/* Sheet lateral para lista filtrada por status */}
-      <Sheet open={!!sheetStatusFilter} onOpenChange={(open) => { if (!open) { setSheetStatusFilter(null); setSheetResponseFilter('all'); setSheetLeadFilter('all'); setSheetAgentStatusFilter('all'); setSearchQuery(''); } }}>
+      <Sheet open={!!sheetStatusFilter} onOpenChange={(open) => { if (!open) { setSheetStatusFilter(null); setSheetResponseFilter('all'); setSheetLeadFilter('all'); setSheetAgentStatusFilter('all'); setSheetFollowupFilter('all'); setSearchQuery(''); } }}>
         <SheetContent side="right" className="w-full sm:w-[450px] sm:max-w-[450px] p-0 flex flex-col">
           <SheetHeader className="p-4 pb-2 border-b">
             <SheetTitle className="flex items-center gap-2">
@@ -1226,6 +1294,20 @@ export function AgentMonitorDashboard() {
                 );
               })}
             </div>
+            <div className="flex flex-wrap gap-1 pb-1">
+              {([['all', 'Todos'], ['com_followup', 'Com Follow-up'], ['sem_followup', 'Sem Follow-up']] as const).map(([k, label]) => {
+                const count = sheetCases.filter(c => {
+                  if (k === 'com_followup') return c.has_followup_config;
+                  if (k === 'sem_followup') return !c.has_followup_config;
+                  return true;
+                }).length;
+                return (
+                  <Badge key={k} variant={sheetFollowupFilter === k ? 'default' : 'outline'}
+                    className="cursor-pointer text-[10px] px-1.5 py-0 h-5"
+                    onClick={() => setSheetFollowupFilter(k)}>{label} ({count})</Badge>
+                );
+              })}
+            </div>
           </div>
           <ScrollArea className="flex-1">
             <div className="p-2 space-y-1.5">
@@ -1240,6 +1322,8 @@ export function AgentMonitorDashboard() {
                 if (sheetLeadFilter === 'sem_lead' && c.lead_id) return false;
                 if (sheetAgentStatusFilter === 'ativo' && !c.is_active) return false;
                 if (sheetAgentStatusFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
+                if (sheetFollowupFilter === 'com_followup' && !c.has_followup_config) return false;
+                if (sheetFollowupFilter === 'sem_followup' && c.has_followup_config) return false;
                 return true;
               }).map((c, idx) => (
                 <CaseCard key={`sheet-${c.phone}-${c.instance_name}-${idx}`} c={c} />
