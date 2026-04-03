@@ -314,19 +314,26 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
             <ScrollArea className="flex-1">
               <div className="p-2 space-y-0.5">
                 {activityLog.map(entry => (
-                  <div key={entry.id} className={`flex items-center gap-2 px-2 py-1.5 rounded text-[11px] transition-colors ${
+                  <div key={entry.id} className={`flex flex-col gap-0.5 px-2 py-1.5 rounded text-[11px] transition-colors ${
                     entry.status === 'processing' ? 'bg-muted/50 animate-pulse' :
                     entry.status === 'failed' ? 'bg-destructive/5' : 'bg-green-50/50'
                   }`}>
-                    <ActionIcon type={entry.actionType} status={entry.status} />
-                    <div className="flex-1 min-w-0">
-                      <span className="font-medium truncate block">{entry.contactName}</span>
-                      <span className="text-muted-foreground text-[10px]">
-                        {actionLabel(entry.actionType, entry.status)}
-                        {entry.instance && ` · ${entry.instance}`}
-                      </span>
+                    <div className="flex items-center gap-2">
+                      <ActionIcon type={entry.actionType} status={entry.status} />
+                      <div className="flex-1 min-w-0">
+                        <span className="font-medium truncate block">{entry.contactName}</span>
+                        <span className="text-muted-foreground text-[10px]">
+                          {actionLabel(entry.actionType, entry.status)}
+                          {entry.instance && ` · ${entry.instance}`}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground shrink-0">{entry.time}</span>
                     </div>
-                    <span className="text-[10px] text-muted-foreground shrink-0">{entry.time}</span>
+                    {entry.messagePreview && (
+                      <div className="ml-5 mt-0.5 text-[10px] text-muted-foreground italic bg-background/50 rounded px-2 py-1 border border-border/30 line-clamp-2">
+                        "{entry.messagePreview}"
+                      </div>
+                    )}
                   </div>
                 ))}
                 <div ref={logEndRef} />
