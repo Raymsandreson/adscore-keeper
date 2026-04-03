@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -15,7 +16,8 @@ import {
   Bot, MessageCircle, Clock, TrendingUp, Search, RefreshCw,
   CheckCircle, XCircle, Zap,
   MapPin, Phone, PhoneCall, Megaphone, Sparkles,
-  CalendarIcon, Inbox, BarChart3, Heart, AlertCircle, Eye, ClipboardList
+  CalendarIcon, Inbox, BarChart3, Heart, AlertCircle, Eye, ClipboardList,
+  Square, CheckSquare, StopCircle, ArrowRightLeft, UserPlus
 } from 'lucide-react';
 import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
@@ -121,6 +123,86 @@ export function AgentMonitorDashboard() {
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({ from: subDays(new Date(), 7), to: new Date() });
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
+  
+  // Batch selection
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [batchAgentId, setBatchAgentId] = useState<string>('');
+  const [batchProcessing, setBatchProcessing] = useState(false);
+
+  const convKey = (c: { phone: string; instance_name: string }) => `${c.phone}|${c.instance_name}`;
+  
+  const toggleSelection = (c: ConversationDetail) => {
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      const k = convKey(c);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
+  };
+
+  const selectAll = (list: ConversationDetail[]) => {
+    setSelectedKeys(new Set(list.map(convKey)));
+  };
+
+  const clearSelection = () => setSelectedKeys(new Set());
+
+  const selectedConversations = useMemo(() => {
+    return conversations.filter(c => selectedKeys.has(convKey(c)));
+  }, [conversations, selectedKeys]);
+
+  const batchAction = async (action: 'pause' | 'assign' | 'swap', agentId?: string) => {
+    if (selectedConversations.length === 0) return;
+    setBatchProcessing(true);
+    try {
+      // Get IDs from whatsapp_conversation_agents
+      const keys = selectedConversations.map(c => ({ phone: c.phone, instance: c.instance_name }));
+      
+      for (const { phone, instance } of keys) {
+        if (action === 'pause') {
+          await supabase
+            .from('whatsapp_conversation_agents')
+            .update({ is_active: false } as any)
+            .eq('phone', phone)
+            .eq('instance_name', instance);
+        } else if (action === 'assign' && agentId) {
+          // Check if exists
+          const { data: existing } = await supabase
+            .from('whatsapp_conversation_agents')
+            .select('id')
+            .eq('phone', phone)
+            .eq('instance_name', instance)
+            .maybeSingle();
+          
+          if (existing) {
+            await supabase
+              .from('whatsapp_conversation_agents')
+              .update({ agent_id: agentId, is_active: true, human_paused_until: null } as any)
+              .eq('phone', phone)
+              .eq('instance_name', instance);
+          } else {
+            await supabase
+              .from('whatsapp_conversation_agents')
+              .insert({ phone, instance_name: instance, agent_id: agentId, is_active: true } as any);
+          }
+        } else if (action === 'swap' && agentId) {
+          await supabase
+            .from('whatsapp_conversation_agents')
+            .update({ agent_id: agentId } as any)
+            .eq('phone', phone)
+            .eq('instance_name', instance);
+        }
+      }
+      
+      toast({ title: 'Sucesso', description: `Ação aplicada em ${keys.length} conversas` });
+      clearSelection();
+      setBatchAgentId('');
+      fetchData();
+    } catch (err: any) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+    } finally {
+      setBatchProcessing(false);
+    }
+  };
 
   // Boards data
   const [boards, setBoards] = useState<Array<{ id: string; name: string; stages: any[] }>>([]);
@@ -551,16 +633,25 @@ export function AgentMonitorDashboard() {
     </div>
   );
 
-  const CaseCard = ({ c }: { c: ConversationDetail }) => {
+  const CaseCard = ({ c, selectable = false }: { c: ConversationDetail; selectable?: boolean }) => {
     const status = getCaseStatus(c);
+    const isSelected = selectedKeys.has(convKey(c));
     return (
       <Card
-        className="cursor-pointer hover:shadow-md transition-shadow"
-        onClick={() => setChatPreview(c)}
+        className={`cursor-pointer hover:shadow-md transition-shadow ${isSelected ? 'ring-2 ring-primary' : ''}`}
+        onClick={() => selectable ? toggleSelection(c) : setChatPreview(c)}
       >
         <CardContent className="p-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
+          <div className="flex items-start gap-2">
+            {selectable && (
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => toggleSelection(c)}
+                onClick={(e) => e.stopPropagation()}
+                className="mt-1 shrink-0"
+              />
+            )}
+            <div className="flex-1 min-w-0" onClick={(e) => { if (selectable) { e.stopPropagation(); setChatPreview(c); } }}>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-semibold truncate">{c.contact_name || c.lead_name || c.phone}</span>
                 <Badge className={`text-[9px] h-4 border ${statusColor(status)}`}>{statusLabel(status)}</Badge>
@@ -604,6 +695,53 @@ export function AgentMonitorDashboard() {
           </div>
         </CardContent>
       </Card>
+    );
+  };
+
+  const BatchToolbar = ({ list }: { list: ConversationDetail[] }) => {
+    if (selectedKeys.size === 0) return (
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => selectAll(list)}>
+          <CheckSquare className="h-3 w-3" /> Selecionar tudo ({list.length})
+        </Button>
+      </div>
+    );
+
+    return (
+      <div className="flex flex-wrap items-center gap-2 p-2 bg-primary/5 border border-primary/20 rounded-lg">
+        <span className="text-xs font-medium">{selectedKeys.size} selecionada(s)</span>
+        <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" onClick={clearSelection}>
+          <Square className="h-3 w-3" /> Limpar
+        </Button>
+        <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" onClick={() => selectAll(list)}>
+          <CheckSquare className="h-3 w-3" /> Todas
+        </Button>
+        <div className="border-l border-border h-4 mx-1" />
+        <Button variant="destructive" size="sm" className="h-6 text-[10px] gap-1" disabled={batchProcessing}
+          onClick={() => batchAction('pause')}>
+          <StopCircle className="h-3 w-3" /> Pausar agente
+        </Button>
+        <div className="flex items-center gap-1">
+          <Select value={batchAgentId} onValueChange={setBatchAgentId}>
+            <SelectTrigger className="h-6 text-[10px] w-[130px]">
+              <SelectValue placeholder="Agente..." />
+            </SelectTrigger>
+            <SelectContent>
+              {agents.map(a => (
+                <SelectItem key={a.id} value={a.id} className="text-xs">{a.shortcut_name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="secondary" size="sm" className="h-6 text-[10px] gap-1" disabled={!batchAgentId || batchProcessing}
+            onClick={() => batchAction('assign', batchAgentId)}>
+            <UserPlus className="h-3 w-3" /> Atribuir
+          </Button>
+          <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" disabled={!batchAgentId || batchProcessing}
+            onClick={() => batchAction('swap', batchAgentId)}>
+            <ArrowRightLeft className="h-3 w-3" /> Trocar
+          </Button>
+        </div>
+      </div>
     );
   };
 
@@ -868,11 +1006,12 @@ export function AgentMonitorDashboard() {
                 <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input placeholder="Buscar..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-8 h-8 text-xs" />
               </div>
+              <BatchToolbar list={filteredConversations} />
               <p className="text-xs text-muted-foreground">{filteredConversations.length} conversas</p>
-              <ScrollArea className="h-[calc(100vh-500px)]">
+              <ScrollArea className="h-[calc(100vh-540px)]">
                 <div className="space-y-2">
                   {filteredConversations.map((c, idx) => (
-                    <CaseCard key={`${c.phone}-${c.instance_name}-${idx}`} c={c} />
+                    <CaseCard key={`${c.phone}-${c.instance_name}-${idx}`} c={c} selectable />
                   ))}
                 </div>
               </ScrollArea>
