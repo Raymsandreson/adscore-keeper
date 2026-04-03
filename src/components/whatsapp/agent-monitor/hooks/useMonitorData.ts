@@ -111,7 +111,6 @@ export function useMonitorData() {
           }
         }
 
-        const isPaused = ca.human_paused_until && new Date(ca.human_paused_until) > new Date();
         const timeWithoutResponse = lastOutbound && !lastInbound
           ? differenceInMinutes(new Date(), new Date(lastOutbound))
           : lastOutbound && lastInbound && new Date(lastOutbound) > new Date(lastInbound)
