@@ -17,7 +17,7 @@ import {
   CheckCircle, XCircle, Zap,
   MapPin, Phone, PhoneCall, Megaphone, Sparkles,
   CalendarIcon, Inbox, BarChart3, Heart, AlertCircle, Eye, ClipboardList,
-  Square, CheckSquare, StopCircle, ArrowRightLeft, UserPlus
+  Square, CheckSquare, StopCircle, ArrowRightLeft, UserPlus, PauseCircle
 } from 'lucide-react';
 import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
@@ -97,7 +97,7 @@ interface ReferralData {
   campaign_name: string | null;
 }
 
-type CaseStatus = 'sem_resposta' | 'em_andamento' | 'fechado' | 'recusado' | 'inviavel' | 'bloqueado';
+type CaseStatus = 'sem_resposta' | 'em_andamento' | 'fechado' | 'recusado' | 'inviavel' | 'bloqueado' | 'pausado';
 
 export function AgentMonitorDashboard() {
   const { toast } = useToast();
@@ -450,6 +450,7 @@ export function AgentMonitorDashboard() {
   // Classify case status
   const getCaseStatus = (c: ConversationDetail): CaseStatus => {
     if (c.is_blocked) return 'bloqueado';
+    if (!c.is_active && !c.is_blocked) return 'pausado';
     if (c.lead_status === 'closed') return 'fechado';
     if (c.lead_status === 'refused') return 'recusado';
     if (c.lead_status === 'unviable') return 'inviavel';
@@ -495,6 +496,7 @@ export function AgentMonitorDashboard() {
       recusado: base.filter(c => getCaseStatus(c) === 'recusado').length,
       inviavel: base.filter(c => getCaseStatus(c) === 'inviavel').length,
       bloqueado: base.filter(c => getCaseStatus(c) === 'bloqueado').length,
+      pausado: base.filter(c => getCaseStatus(c) === 'pausado').length,
     };
   }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter]);
 
@@ -538,6 +540,7 @@ export function AgentMonitorDashboard() {
       case 'recusado': return 'text-red-600 bg-red-50 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-800';
       case 'inviavel': return 'text-muted-foreground bg-muted border-border';
       case 'bloqueado': return 'text-orange-600 bg-orange-50 border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-800';
+      case 'pausado': return 'text-gray-600 bg-gray-50 border-gray-200 dark:bg-gray-950 dark:text-gray-400 dark:border-gray-800';
     }
   };
 
@@ -549,6 +552,7 @@ export function AgentMonitorDashboard() {
       case 'recusado': return 'Recusado';
       case 'inviavel': return 'Inviável';
       case 'bloqueado': return 'Bloqueado';
+      case 'pausado': return 'Pausado';
     }
   };
 
@@ -828,7 +832,7 @@ export function AgentMonitorDashboard() {
           <FilterBar />
 
           {/* Pipeline status cards */}
-           <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+           <div className="grid grid-cols-2 sm:grid-cols-7 gap-2">
             {([
               { key: 'sem_resposta' as CaseStatus, icon: AlertCircle, color: 'text-amber-500' },
               { key: 'em_andamento' as CaseStatus, icon: MessageCircle, color: 'text-blue-500' },
@@ -836,6 +840,7 @@ export function AgentMonitorDashboard() {
               { key: 'recusado' as CaseStatus, icon: XCircle, color: 'text-red-500' },
               { key: 'inviavel' as CaseStatus, icon: Eye, color: 'text-muted-foreground' },
               { key: 'bloqueado' as CaseStatus, icon: StopCircle, color: 'text-orange-500' },
+              { key: 'pausado' as CaseStatus, icon: PauseCircle, color: 'text-gray-500' },
             ]).map(({ key, icon: Icon, color }) => (
               <Card
                 key={key}
@@ -1151,7 +1156,7 @@ export function AgentMonitorDashboard() {
           <SheetHeader className="p-4 pb-2 border-b">
             <SheetTitle className="flex items-center gap-2">
               {sheetStatusFilter && (() => {
-                const icons: Record<CaseStatus, typeof AlertCircle> = { sem_resposta: AlertCircle, em_andamento: MessageCircle, fechado: CheckCircle, recusado: XCircle, inviavel: Eye, bloqueado: StopCircle };
+                const icons: Record<CaseStatus, typeof AlertCircle> = { sem_resposta: AlertCircle, em_andamento: MessageCircle, fechado: CheckCircle, recusado: XCircle, inviavel: Eye, bloqueado: StopCircle, pausado: PauseCircle };
                 const Icon = icons[sheetStatusFilter];
                 return <Icon className="h-5 w-5" />;
               })()}
