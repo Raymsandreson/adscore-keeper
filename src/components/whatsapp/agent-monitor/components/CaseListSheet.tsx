@@ -181,10 +181,19 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
         </div>
         {followupCases.length > 0 && (
           <div className="px-3 py-2 border-b">
-            <Button size="sm" variant="outline" className="w-full text-xs h-7 gap-1.5"
+            <Button size="sm" variant="outline" className="w-full text-xs h-8 gap-1.5 bg-green-50 border-green-200 hover:bg-green-100"
               disabled={followupProcessing} onClick={handleBulkFollowup}>
-              {followupProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
-              Antecipar Follow-up ({followupCases.length} conversas)
+              {followupProcessing ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Processando {followupProgress.current}/{followupProgress.total} ({followupProgress.success}✓ {followupProgress.fail}✗)
+                </>
+              ) : (
+                <>
+                  <Zap className="h-3 w-3" />
+                  Antecipar Follow-up ({followupCases.length} conversas)
+                </>
+              )}
             </Button>
           </div>
         )}
