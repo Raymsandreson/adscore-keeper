@@ -694,8 +694,11 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label className="text-xs">Máx. ciclos de repetição</Label>
-                        <p className="text-[10px] text-muted-foreground">Quantas vezes o ciclo completo de passos se repete (quando "repetir" está ativo)</p>
-                        <Input type="number" value={(editingAgent as any).max_repeat_cycles ?? 3} onChange={e => setEditingAgent({ ...editingAgent, max_repeat_cycles: parseInt(e.target.value) || 3 } as any)} min={1} max={20} />
+                        <p className="text-[10px] text-muted-foreground">0 = infinito (até o cliente responder ou bloquear). Padrão: 3 ciclos.</p>
+                        <Input type="number" value={(editingAgent as any).max_repeat_cycles ?? 3} onChange={e => setEditingAgent({ ...editingAgent, max_repeat_cycles: parseInt(e.target.value) >= 0 ? parseInt(e.target.value) : 0 } as any)} min={0} max={999} />
+                        {(editingAgent as any).max_repeat_cycles === 0 && (
+                          <p className="text-[10px] text-orange-500 font-medium mt-1">⚠️ Modo infinito: o follow-up só para quando o cliente responder ou bloquear.</p>
+                        )}
                       </div>
                       <div>
                         <Label className="text-xs">Delay mín. para ligação (min)</Label>
