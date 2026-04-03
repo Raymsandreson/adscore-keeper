@@ -866,6 +866,7 @@ export function AgentMonitorDashboard() {
                   agent_name: event.agent_name || '',
                   agent_id: '',
                   is_active: false,
+                  is_blocked: false,
                   human_paused: false,
                   contact_name: event.contact_name || null,
                   lead_name: null,
