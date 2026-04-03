@@ -158,6 +158,15 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
             <FilterChips options={[['all', 'Todos'], ['com_followup', 'Com Follow-up'], ['sem_followup', 'Sem Follow-up']]} value={followupFilter} onChange={setFollowupFilter} cases={sheetCases} />
           </div>
         </div>
+        {followupCases.length > 0 && (
+          <div className="px-3 py-2 border-b">
+            <Button size="sm" variant="outline" className="w-full text-xs h-7 gap-1.5"
+              disabled={followupProcessing} onClick={handleBulkFollowup}>
+              {followupProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+              Antecipar Follow-up ({followupCases.length} conversas)
+            </Button>
+          </div>
+        )}
         <ScrollArea className="flex-1">
           <div className="p-2 space-y-1.5">
             {filteredCases.map((c, idx) => (
