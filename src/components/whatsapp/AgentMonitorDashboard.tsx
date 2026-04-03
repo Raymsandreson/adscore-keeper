@@ -521,8 +521,8 @@ export function AgentMonitorDashboard() {
       if (caseStatusFilter !== 'all' && getCaseStatus(c) !== caseStatusFilter) return false;
       if (agentActiveFilter === 'ativo' && !c.is_active) return false;
       if (agentActiveFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
-      if (followupConfigFilter === 'com_followup' && !c.has_followup_config) return false;
-      if (followupConfigFilter === 'sem_followup' && c.has_followup_config) return false;
+      if (followupConfigFilter === 'com_followup' && c.followup_count === 0) return false;
+      if (followupConfigFilter === 'sem_followup' && c.followup_count > 0) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         return c.phone.includes(q) || c.contact_name?.toLowerCase().includes(q) || c.lead_name?.toLowerCase().includes(q);
@@ -1297,8 +1297,8 @@ export function AgentMonitorDashboard() {
             <div className="flex flex-wrap gap-1 pb-1">
               {([['all', 'Todos'], ['com_followup', 'Com Follow-up'], ['sem_followup', 'Sem Follow-up']] as const).map(([k, label]) => {
                 const count = sheetCases.filter(c => {
-                  if (k === 'com_followup') return c.has_followup_config;
-                  if (k === 'sem_followup') return !c.has_followup_config;
+                  if (k === 'com_followup') return c.followup_count > 0;
+                  if (k === 'sem_followup') return c.followup_count === 0;
                   return true;
                 }).length;
                 return (
@@ -1322,8 +1322,8 @@ export function AgentMonitorDashboard() {
                 if (sheetLeadFilter === 'sem_lead' && c.lead_id) return false;
                 if (sheetAgentStatusFilter === 'ativo' && !c.is_active) return false;
                 if (sheetAgentStatusFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
-                if (sheetFollowupFilter === 'com_followup' && !c.has_followup_config) return false;
-                if (sheetFollowupFilter === 'sem_followup' && c.has_followup_config) return false;
+                if (sheetFollowupFilter === 'com_followup' && c.followup_count === 0) return false;
+                if (sheetFollowupFilter === 'sem_followup' && c.followup_count > 0) return false;
                 return true;
               }).map((c, idx) => (
                 <CaseCard key={`sheet-${c.phone}-${c.instance_name}-${idx}`} c={c} />
