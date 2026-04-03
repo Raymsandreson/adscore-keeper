@@ -69,4 +69,4 @@ export interface BoardData {
   stages: any[];
 }
 
-export type CaseStatus = 'sem_resposta' | 'em_andamento' | 'fechado' | 'recusado' | 'inviavel';
+export type CaseStatus = 'sem_resposta' | 'em_andamento' | 'fechado' | 'recusado' | 'inviavel' | 'bloqueado';

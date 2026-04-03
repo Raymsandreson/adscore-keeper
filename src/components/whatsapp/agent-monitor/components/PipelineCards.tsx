@@ -20,7 +20,7 @@ const statusConfig: { key: CaseStatus; icon: typeof AlertCircle; color: string }
 
 export function PipelineCards({ counts, activeStatus, onToggle }: PipelineCardsProps) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
       {statusConfig.map(({ key, icon: Icon, color }) => (
         <Card
           key={key}

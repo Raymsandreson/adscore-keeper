@@ -52,5 +52,6 @@ export const statusLabel = (s: CaseStatus) => {
     case 'fechado': return 'Fechado';
     case 'recusado': return 'Recusado';
     case 'inviavel': return 'Inviável';
+    case 'bloqueado': return 'Bloqueado';
   }
 };
