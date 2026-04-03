@@ -44,6 +44,7 @@ interface ConversationDetail {
   agent_name: string;
   agent_id: string;
   is_active: boolean;
+  is_blocked: boolean;
   human_paused: boolean;
   contact_name: string | null;
   lead_name: string | null;
@@ -96,7 +97,7 @@ interface ReferralData {
   campaign_name: string | null;
 }
 
-type CaseStatus = 'sem_resposta' | 'em_andamento' | 'fechado' | 'recusado' | 'inviavel';
+type CaseStatus = 'sem_resposta' | 'em_andamento' | 'fechado' | 'recusado' | 'inviavel' | 'bloqueado';
 
 export function AgentMonitorDashboard() {
   const { toast } = useToast();
@@ -324,6 +325,7 @@ export function AgentMonitorDashboard() {
           agent_name: agentName,
           agent_id: ca.agent_id,
           is_active: ca.is_active,
+          is_blocked: ca.is_blocked ?? false,
           human_paused: !!isPaused,
           contact_name: msgs[0]?.contact_name || null,
           lead_name: lead?.lead_name || null,
@@ -447,6 +449,7 @@ export function AgentMonitorDashboard() {
 
   // Classify case status
   const getCaseStatus = (c: ConversationDetail): CaseStatus => {
+    if (c.is_blocked) return 'bloqueado';
     if (c.lead_status === 'closed') return 'fechado';
     if (c.lead_status === 'refused') return 'recusado';
     if (c.lead_status === 'unviable') return 'inviavel';
@@ -491,6 +494,7 @@ export function AgentMonitorDashboard() {
       fechado: base.filter(c => getCaseStatus(c) === 'fechado').length,
       recusado: base.filter(c => getCaseStatus(c) === 'recusado').length,
       inviavel: base.filter(c => getCaseStatus(c) === 'inviavel').length,
+      bloqueado: base.filter(c => getCaseStatus(c) === 'bloqueado').length,
     };
   }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter]);
 
@@ -533,6 +537,7 @@ export function AgentMonitorDashboard() {
       case 'fechado': return 'text-green-600 bg-green-50 border-green-200 dark:bg-green-950 dark:text-green-400 dark:border-green-800';
       case 'recusado': return 'text-red-600 bg-red-50 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-800';
       case 'inviavel': return 'text-muted-foreground bg-muted border-border';
+      case 'bloqueado': return 'text-orange-600 bg-orange-50 border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-800';
     }
   };
 
@@ -543,6 +548,7 @@ export function AgentMonitorDashboard() {
       case 'fechado': return 'Fechado';
       case 'recusado': return 'Recusado';
       case 'inviavel': return 'Inviável';
+      case 'bloqueado': return 'Bloqueado';
     }
   };
 
@@ -822,13 +828,14 @@ export function AgentMonitorDashboard() {
           <FilterBar />
 
           {/* Pipeline status cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+           <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
             {([
               { key: 'sem_resposta' as CaseStatus, icon: AlertCircle, color: 'text-amber-500' },
               { key: 'em_andamento' as CaseStatus, icon: MessageCircle, color: 'text-blue-500' },
               { key: 'fechado' as CaseStatus, icon: CheckCircle, color: 'text-green-500' },
               { key: 'recusado' as CaseStatus, icon: XCircle, color: 'text-red-500' },
               { key: 'inviavel' as CaseStatus, icon: Eye, color: 'text-muted-foreground' },
+              { key: 'bloqueado' as CaseStatus, icon: StopCircle, color: 'text-orange-500' },
             ]).map(({ key, icon: Icon, color }) => (
               <Card
                 key={key}
@@ -859,6 +866,7 @@ export function AgentMonitorDashboard() {
                   agent_name: event.agent_name || '',
                   agent_id: '',
                   is_active: false,
+                  is_blocked: false,
                   human_paused: false,
                   contact_name: event.contact_name || null,
                   lead_name: null,
@@ -1143,7 +1151,7 @@ export function AgentMonitorDashboard() {
           <SheetHeader className="p-4 pb-2 border-b">
             <SheetTitle className="flex items-center gap-2">
               {sheetStatusFilter && (() => {
-                const icons: Record<CaseStatus, typeof AlertCircle> = { sem_resposta: AlertCircle, em_andamento: MessageCircle, fechado: CheckCircle, recusado: XCircle, inviavel: Eye };
+                const icons: Record<CaseStatus, typeof AlertCircle> = { sem_resposta: AlertCircle, em_andamento: MessageCircle, fechado: CheckCircle, recusado: XCircle, inviavel: Eye, bloqueado: StopCircle };
                 const Icon = icons[sheetStatusFilter];
                 return <Icon className="h-5 w-5" />;
               })()}

@@ -319,7 +319,7 @@ async function processAgentConversationFollowups(supabase: any): Promise<number>
         // Deactivate the agent for this conversation
         await supabase
           .from("whatsapp_conversation_agents")
-          .update({ is_active: false })
+          .update({ is_active: false, is_blocked: true })
           .eq("phone", conv.phone)
           .eq("instance_name", conv.instance_name);
         actionsExecuted++;
