@@ -211,7 +211,14 @@ async function sendCallFollowupAudio(
     const agentName = agent.shortcut_name || "Assistente";
     const followupPrompt = agent.base_prompt || "";
 
-    if (agent.reply_voice_id) {
+    if (agent.reply_voice_id === "instance_owner") {
+      // Resolve voice from instance
+      const instanceVoice = (instance as any).voice_id;
+      if (instanceVoice) {
+        voiceId = instanceVoice;
+        console.log(`Resolved instance_owner voice to: ${voiceId}`);
+      }
+    } else if (agent.reply_voice_id) {
       if (agent.reply_voice_id.length === 36 && agent.reply_voice_id.includes("-")) {
         const { data: cv } = await supabase
           .from("custom_voices")
