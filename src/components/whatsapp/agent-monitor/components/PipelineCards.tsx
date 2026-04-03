@@ -1,5 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye } from 'lucide-react';
+import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle } from 'lucide-react';
 import type { CaseStatus } from '../types';
 import { statusLabel } from '../utils';
 
@@ -15,11 +15,12 @@ const statusConfig: { key: CaseStatus; icon: typeof AlertCircle; color: string }
   { key: 'fechado', icon: CheckCircle, color: 'text-green-500' },
   { key: 'recusado', icon: XCircle, color: 'text-red-500' },
   { key: 'inviavel', icon: Eye, color: 'text-muted-foreground' },
+  { key: 'bloqueado', icon: StopCircle, color: 'text-orange-500' },
 ];
 
 export function PipelineCards({ counts, activeStatus, onToggle }: PipelineCardsProps) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
       {statusConfig.map(({ key, icon: Icon, color }) => (
         <Card
           key={key}

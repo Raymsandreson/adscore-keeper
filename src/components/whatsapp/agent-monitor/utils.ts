@@ -3,6 +3,7 @@ import type { ConversationDetail, CaseStatus } from './types';
 export const convKey = (c: { phone: string; instance_name: string }) => `${c.phone}|${c.instance_name}`;
 
 export const getCaseStatus = (c: ConversationDetail): CaseStatus => {
+  if (c.is_blocked) return 'bloqueado';
   if (c.lead_status === 'closed') return 'fechado';
   if (c.lead_status === 'refused') return 'recusado';
   if (c.lead_status === 'unviable') return 'inviavel';
@@ -40,6 +41,7 @@ export const statusColor = (s: CaseStatus) => {
     case 'fechado': return 'text-green-600 bg-green-50 border-green-200 dark:bg-green-950 dark:text-green-400 dark:border-green-800';
     case 'recusado': return 'text-red-600 bg-red-50 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-800';
     case 'inviavel': return 'text-muted-foreground bg-muted border-border';
+    case 'bloqueado': return 'text-orange-600 bg-orange-50 border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-800';
   }
 };
 
@@ -50,5 +52,6 @@ export const statusLabel = (s: CaseStatus) => {
     case 'fechado': return 'Fechado';
     case 'recusado': return 'Recusado';
     case 'inviavel': return 'Inviável';
+    case 'bloqueado': return 'Bloqueado';
   }
 };

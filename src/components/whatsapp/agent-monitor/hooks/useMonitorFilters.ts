@@ -53,6 +53,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       fechado: base.filter(c => getCaseStatus(c) === 'fechado').length,
       recusado: base.filter(c => getCaseStatus(c) === 'recusado').length,
       inviavel: base.filter(c => getCaseStatus(c) === 'inviavel').length,
+      bloqueado: base.filter(c => getCaseStatus(c) === 'bloqueado').length,
     };
   }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter]);
 
