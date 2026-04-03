@@ -606,10 +606,7 @@ async function processAgentConversationFollowups(supabase: any, targetPhone?: st
 }
 
 // Call the existing AI agent reply endpoint for follow-up messages
-async function callAgentReply(supabase: any, phone: string, instanceName: string): Promise<boolean> {
-  const supabaseUrl = RESOLVED_SUPABASE_URL;
-  const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
-
+async function callAgentReply(supabase: any, phone: string, instanceName: string): Promise<{ success: boolean; reply?: string }> {
   const resp = await fetch(`${cloudFunctionsUrl}/functions/v1/whatsapp-ai-agent-reply`, {
     method: "POST",
     headers: {
@@ -627,10 +624,15 @@ async function callAgentReply(supabase: any, phone: string, instanceName: string
   if (!resp.ok) {
     const errText = await resp.text();
     console.error(`[AGENT] Reply error for ${phone}: ${resp.status} - ${errText}`);
-    return false;
+    return { success: false };
   }
 
-  return true;
+  try {
+    const data = await resp.json();
+    return { success: true, reply: data.reply || '' };
+  } catch {
+    return { success: true };
+  }
 }
 
 // Generate a deterministic UUID v5-like tracking ID for conversation follow-ups
