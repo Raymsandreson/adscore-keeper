@@ -254,7 +254,7 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
               </div>
               <FilterChips options={[['all', 'Todas'], ['responded', 'Respondidas'], ['waiting', 'Aguardando']]} value={responseFilter} onChange={setResponseFilter} cases={sheetCases} />
               <FilterChips options={[['all', 'Todos'], ['com_lead', 'Com Lead'], ['sem_lead', 'Sem Lead']]} value={leadFilter} onChange={setLeadFilter} cases={sheetCases} />
-              <FilterChips options={[['all', 'Todos'], ['ativo', 'Ativo'], ['pausado', 'Pausado']]} value={agentStatusFilter} onChange={setAgentStatusFilter} cases={sheetCases} />
+              <FilterChips options={[['all', 'Todos'], ['ativo', 'Ativo']]} value={agentStatusFilter} onChange={setAgentStatusFilter} cases={sheetCases} />
               <div className="pb-1">
                 <FilterChips options={[['all', 'Todos'], ['com_followup', 'Com Follow-up'], ['sem_followup', 'Sem Follow-up']]} value={followupFilter} onChange={setFollowupFilter} cases={sheetCases} />
               </div>
