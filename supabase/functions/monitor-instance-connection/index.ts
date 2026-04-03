@@ -188,7 +188,7 @@ Deno.serve(async (req) => {
           alert_count: 1,
         }, { onConflict: 'instance_id' });
 
-        if (status.notify_on_disconnect) {
+        if (status.notify_on_disconnect && isWithinNotificationSchedule(status)) {
           justDisconnected.push(status);
         }
         results.push({ instance: status.instance_name, event: 'disconnected', notify: status.notify_on_disconnect });
