@@ -830,10 +830,6 @@ export function AgentMonitorDashboard() {
         </div>
         <div className="border-l border-border h-4 mx-1" />
         <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" disabled={batchProcessing}
-          onClick={() => batchFollowupAction('trigger')}>
-          <Play className="h-3 w-3" /> Disparar Follow-up
-        </Button>
-        <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" disabled={batchProcessing}
           onClick={() => batchFollowupAction('anticipate')}>
           <FastForward className="h-3 w-3" /> Antecipar Follow-up
         </Button>
