@@ -1415,6 +1415,47 @@ export type Database = {
         }
         Relationships: []
       }
+      campaign_status_log: {
+        Row: {
+          campaign_id: string
+          campaign_name: string | null
+          created_at: string
+          id: string
+          instance_id: string | null
+          last_checked_at: string
+          last_error: string | null
+          last_status: string
+        }
+        Insert: {
+          campaign_id: string
+          campaign_name?: string | null
+          created_at?: string
+          id?: string
+          instance_id?: string | null
+          last_checked_at?: string
+          last_error?: string | null
+          last_status?: string
+        }
+        Update: {
+          campaign_id?: string
+          campaign_name?: string | null
+          created_at?: string
+          id?: string
+          instance_id?: string | null
+          last_checked_at?: string
+          last_error?: string | null
+          last_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_status_log_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       card_assignments: {
         Row: {
           card_last_digits: string
