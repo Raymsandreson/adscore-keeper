@@ -103,6 +103,8 @@ export function AgentMonitorDashboard() {
   const [referrals, setReferrals] = useState<ReferralData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sheetResponseFilter, setSheetResponseFilter] = useState<'all' | 'responded' | 'waiting'>('all');
+  const [sheetLeadFilter, setSheetLeadFilter] = useState<'all' | 'com_lead' | 'sem_lead'>('all');
   const [generatingLeadId, setGeneratingLeadId] = useState<string | null>(null);
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [promptDialogLead, setPromptDialogLead] = useState<{ id: string; name: string } | null>(null);
