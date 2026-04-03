@@ -37,14 +37,13 @@ export async function sendLeadConversionEvent(lead: {
   if (!mapping) return;
 
   try {
-    // Get WABA ID from meta_ad_accounts
+    // Get WABA ID from meta_ad_accounts (use raw query to avoid type issues)
     const { data: adAccounts } = await supabase
       .from('meta_ad_accounts')
-      .select('waba_id')
-      .not('waba_id', 'is', null)
+      .select('*')
       .limit(1);
 
-    const wabaId = adAccounts?.[0]?.waba_id;
+    const wabaId = (adAccounts as any)?.[0]?.waba_id;
     if (!wabaId) {
       console.warn('[Meta CAPI] No WABA ID configured in meta_ad_accounts. Cannot send event.');
       return;
@@ -79,7 +78,6 @@ export async function sendLeadConversionEvent(lead: {
 
     console.log(`[Meta CAPI] Sent ${mapping.event_name} (${mapping.content_category}) for lead ${lead.id} via Business Messaging API`);
   } catch (err) {
-    // Don't block the user flow — just log
     console.error('[Meta CAPI] Failed to send conversion event:', err);
   }
 }
