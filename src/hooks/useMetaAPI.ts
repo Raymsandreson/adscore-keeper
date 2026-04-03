@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { metaAPIService, MetaAPIConfig, AdInsights, CampaignInsight, DailyInsight, PlacementInsight } from '@/services/metaAPI';
+import { supabase } from '@/integrations/supabase/client';
 
 export type DateRangeOption = 
   | 'today' 
