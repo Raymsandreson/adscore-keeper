@@ -1075,14 +1075,14 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                           onClick={() => {
                             if (msg.message_text) {
                               navigator.clipboard.writeText(msg.message_text);
-                              toast({ title: 'Copiado!', description: 'Mensagem copiada', duration: 1500 });
+                              toast.success('Mensagem copiada!');
                             }
                           }}
                           onContextMenu={(e) => {
                             if (msg.message_text) {
                               e.preventDefault();
                               navigator.clipboard.writeText(msg.message_text);
-                              toast({ title: 'Copiado!', description: 'Mensagem copiada', duration: 1500 });
+                              toast.success('Mensagem copiada!');
                             }
                           }}
                           title="Toque para copiar"
