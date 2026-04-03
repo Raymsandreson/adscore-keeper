@@ -143,7 +143,7 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
             const actionType = result.action_type === 'call_queued' ? 'call_queued'
               : result.action_type === 'activity_created' ? 'activity_created'
               : 'ai_reply';
-            updateLogEntry(logId, { actionType, status: 'success' });
+            updateLogEntry(logId, { actionType, status: 'success', messagePreview: result.message_preview || '' });
           } else {
             fail++;
             updateLogEntry(logId, { actionType: 'error', status: 'failed' });
