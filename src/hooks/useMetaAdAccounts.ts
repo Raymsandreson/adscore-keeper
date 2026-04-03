@@ -7,9 +7,40 @@ export interface MetaAdAccount {
   name: string;
   accessToken: string;
   accountId: string;
+  wabaId?: string;
 }
 
 const LEGACY_STORAGE_KEY = "meta_saved_accounts";
+
+/**
+ * Try to fetch the WABA ID from the Meta API using the access token.
+ * This is needed for Conversions API for Business Messaging.
+ */
+async function fetchWabaId(accessToken: string): Promise<string | null> {
+  try {
+    // First try to get the business ID
+    const meResp = await fetch(
+      `https://graph.facebook.com/v21.0/me?fields=id&access_token=${accessToken}`
+    );
+    const meData = await meResp.json();
+    if (!meData.id) return null;
+
+    // Try to get WABA from the business
+    const wabaResp = await fetch(
+      `https://graph.facebook.com/v21.0/me/whatsapp_business_accounts?access_token=${accessToken}`
+    );
+    const wabaData = await wabaResp.json();
+    
+    if (wabaData.data && wabaData.data.length > 0) {
+      return wabaData.data[0].id;
+    }
+    
+    return null;
+  } catch (err) {
+    console.error('Error fetching WABA ID:', err);
+    return null;
+  }
+}
 
 export function useMetaAdAccounts() {
   const [accounts, setAccounts] = useState<MetaAdAccount[]>([]);
@@ -23,16 +54,17 @@ export function useMetaAdAccounts() {
 
       const { data, error } = await supabase
         .from('meta_ad_accounts')
-        .select('id, name, access_token, account_id')
+        .select('*')
         .order('created_at', { ascending: true });
 
       if (error) throw error;
 
-      const mapped: MetaAdAccount[] = (data || []).map(r => ({
+      const mapped: MetaAdAccount[] = (data || []).map((r: any) => ({
         id: r.id,
         name: r.name || '',
         accessToken: r.access_token,
         accountId: r.account_id,
+        wabaId: r.waba_id || undefined,
       }));
 
       // Migrate from localStorage if DB is empty
@@ -51,15 +83,16 @@ export function useMetaAdAccounts() {
               const { data: inserted, error: insertError } = await supabase
                 .from('meta_ad_accounts')
                 .insert(rows)
-                .select('id, name, access_token, account_id');
+                .select('*');
 
               if (!insertError && inserted) {
                 localStorage.removeItem(LEGACY_STORAGE_KEY);
-                setAccounts(inserted.map(r => ({
+                setAccounts(inserted.map((r: any) => ({
                   id: r.id,
                   name: r.name || '',
                   accessToken: r.access_token,
                   accountId: r.account_id,
+                  wabaId: r.waba_id || undefined,
                 })));
                 setLoading(false);
                 return;
@@ -85,15 +118,27 @@ export function useMetaAdAccounts() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
+    // Try to auto-detect WABA ID
+    let wabaId = account.wabaId || null;
+    if (!wabaId) {
+      wabaId = await fetchWabaId(account.accessToken);
+      if (wabaId) {
+        console.log('[Meta] Auto-detected WABA ID:', wabaId);
+      }
+    }
+
+    const insertData: any = {
+      user_id: user.id,
+      name: account.name,
+      access_token: account.accessToken,
+      account_id: account.accountId,
+    };
+    if (wabaId) insertData.waba_id = wabaId;
+
     const { data, error } = await supabase
       .from('meta_ad_accounts')
-      .insert({
-        user_id: user.id,
-        name: account.name,
-        access_token: account.accessToken,
-        account_id: account.accountId,
-      })
-      .select('id, name, access_token, account_id')
+      .insert(insertData)
+      .select('*')
       .single();
 
     if (error) {
@@ -103,11 +148,17 @@ export function useMetaAdAccounts() {
 
     const newAccount: MetaAdAccount = {
       id: data.id,
-      name: data.name || '',
-      accessToken: data.access_token,
-      accountId: data.account_id,
+      name: (data as any).name || '',
+      accessToken: (data as any).access_token,
+      accountId: (data as any).account_id,
+      wabaId: (data as any).waba_id || undefined,
     };
     setAccounts(prev => [...prev, newAccount]);
+
+    if (wabaId) {
+      toast({ title: 'WABA ID detectado', description: `Conversions API para WhatsApp configurada automaticamente (WABA: ${wabaId})` });
+    }
+
     return newAccount;
   }, [toast]);
 
@@ -125,6 +176,7 @@ export function useMetaAdAccounts() {
     if (updates.name !== undefined) payload.name = updates.name;
     if (updates.accessToken !== undefined) payload.access_token = updates.accessToken;
     if (updates.accountId !== undefined) payload.account_id = updates.accountId;
+    if (updates.wabaId !== undefined) payload.waba_id = updates.wabaId;
 
     const { error } = await supabase.from('meta_ad_accounts').update(payload).eq('id', id);
     if (error) {
