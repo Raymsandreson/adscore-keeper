@@ -19,6 +19,7 @@ interface LogEntry {
   actionType: 'ai_reply' | 'call_queued' | 'activity_created' | 'error' | 'processing';
   status: 'success' | 'failed' | 'processing';
   instance: string;
+  messagePreview?: string;
 }
 
 interface CaseListSheetProps {
