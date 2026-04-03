@@ -188,7 +188,7 @@ serve(async (req) => {
     // PART 2: Agent conversation follow-ups (NEW)
     // ============================================================
     if (!targetSessionId) {
-      const result = await processAgentConversationFollowups(supabase);
+      const result = await processAgentConversationFollowups(supabase, targetPhone, targetInstance, forceImmediate);
       actionsExecuted += result;
     }
 
