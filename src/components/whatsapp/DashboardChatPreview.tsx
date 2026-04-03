@@ -1103,25 +1103,28 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                       <div className={cn("flex", isInbound ? "justify-start" : "justify-end")}>
                         <div
                           className={cn(
-                            "max-w-[80%] rounded-lg px-3 py-1.5 text-xs cursor-pointer select-text active:opacity-70 transition-opacity",
+                            "max-w-[80%] rounded-lg px-3 py-1.5 text-xs select-text transition-all",
                             isInbound
                               ? "bg-muted text-foreground rounded-tl-none"
-                              : "bg-primary text-primary-foreground rounded-tr-none"
+                              : "bg-primary text-primary-foreground rounded-tr-none",
+                            selectedMsgId === msg.id && "ring-2 ring-primary/50 opacity-80"
                           )}
+                          onPointerDown={() => {
+                            longPressTimer.current = setTimeout(() => {
+                              setSelectedMsgId(msg.id);
+                            }, 500);
+                          }}
+                          onPointerUp={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
+                          onPointerLeave={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
                           onClick={() => {
-                            if (msg.message_text) {
-                              navigator.clipboard.writeText(msg.message_text);
-                              toast.success('Mensagem copiada!');
+                            if (selectedMsgId && selectedMsgId !== msg.id) {
+                              setSelectedMsgId(msg.id);
                             }
                           }}
                           onContextMenu={(e) => {
-                            if (msg.message_text) {
-                              e.preventDefault();
-                              navigator.clipboard.writeText(msg.message_text);
-                              toast.success('Mensagem copiada!');
-                            }
+                            e.preventDefault();
+                            setSelectedMsgId(msg.id);
                           }}
-                          title="Toque para copiar"
                         >
                           {renderMediaContent(msg)}
                           {!msg.media_url && msg.media_type && !msg.message_text && (
