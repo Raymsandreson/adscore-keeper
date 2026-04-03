@@ -267,10 +267,12 @@ async function processAgentConversationFollowups(supabase: any, targetPhone?: st
     const config = agentMap.get(conv.agent_id);
     if (!config) continue;
 
-    // Check send window
-    const windowStart = config.send_window_start_hour ?? 8;
-    const windowEnd = config.send_window_end_hour ?? 20;
-    if (currentHour < windowStart || currentHour >= windowEnd) continue;
+    // Check send window (skip if forced)
+    if (!forceImmediate) {
+      const windowStart = config.send_window_start_hour ?? 8;
+      const windowEnd = config.send_window_end_hour ?? 20;
+      if (currentHour < windowStart || currentHour >= windowEnd) continue;
+    }
 
     // Check human_paused_until
     if (conv.human_paused_until && new Date(conv.human_paused_until) > new Date()) continue;
