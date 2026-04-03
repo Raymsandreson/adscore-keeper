@@ -2,17 +2,23 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Bot, MessageCircle, UserPlus, Zap, Phone, FileText, ArrowRight, Activity } from 'lucide-react';
+import { Bot, MessageCircle, UserPlus, Zap, Phone, FileText, ArrowRight, Activity, Filter } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-interface FeedEvent {
+export type FeedEventType = 'message_sent' | 'message_received' | 'lead_created' | 'followup_sent' | 'agent_activated' | 'agent_paused' | 'session_generated';
+
+export interface FeedEvent {
   id: string;
-  type: 'message_sent' | 'message_received' | 'lead_created' | 'followup_sent' | 'agent_activated' | 'agent_paused' | 'session_generated';
+  type: FeedEventType;
   title: string;
   detail: string;
   agent_name?: string;
   timestamp: string;
+  phone?: string;
+  instance_name?: string;
+  contact_name?: string;
+  lead_id?: string;
 }
 
 function eventIcon(type: FeedEvent['type']) {
@@ -41,19 +47,56 @@ function eventColor(type: FeedEvent['type']) {
   }
 }
 
-export function AIRealtimeFeed() {
+const EVENT_TYPE_LABELS: Record<FeedEventType, string> = {
+  message_sent: 'Enviadas',
+  message_received: 'Recebidas',
+  lead_created: 'Leads',
+  followup_sent: 'Follow-ups',
+  agent_activated: 'Ativações',
+  agent_paused: 'Pausas',
+  session_generated: 'Sessões',
+};
+
+interface AIRealtimeFeedProps {
+  onEventClick?: (event: FeedEvent) => void;
+}
+
+export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
   const [events, setEvents] = useState<FeedEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeFilters, setActiveFilters] = useState<Set<FeedEventType>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Fetch recent AI activity: outbound messages, sessions, agent changes
+  const toggleFilter = (type: FeedEventType) => {
+    setActiveFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  };
+
+  const filteredEvents = useMemo(() => {
+    if (activeFilters.size === 0) return events;
+    return events.filter(e => activeFilters.has(e.type));
+  }, [events, activeFilters]);
+
+  // Count by type for filter badges
+  const typeCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    events.forEach(e => {
+      counts[e.type] = (counts[e.type] || 0) + 1;
+    });
+    return counts;
+  }, [events]);
+
   useEffect(() => {
     let mounted = true;
 
     const fetchRecent = async () => {
       setLoading(true);
       try {
-        const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(); // last 2h
+        const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
 
         const [msgsRes] = await Promise.all([
           supabase
@@ -66,7 +109,6 @@ export function AIRealtimeFeed() {
 
         const feedEvents: FeedEvent[] = [];
 
-        // Messages from AI agents (outbound)
         (msgsRes.data || []).forEach((m: any) => {
           if (m.direction === 'outbound') {
             feedEvents.push({
@@ -75,6 +117,10 @@ export function AIRealtimeFeed() {
               title: `Mensagem enviada para ${m.contact_name || m.phone}`,
               detail: m.message_text?.slice(0, 80) || '',
               timestamp: m.created_at,
+              phone: m.phone,
+              instance_name: m.instance_name,
+              contact_name: m.contact_name,
+              lead_id: m.lead_id,
             });
           } else if (m.direction === 'inbound') {
             feedEvents.push({
@@ -83,11 +129,13 @@ export function AIRealtimeFeed() {
               title: `${m.contact_name || m.phone} respondeu`,
               detail: m.message_text?.slice(0, 80) || '',
               timestamp: m.created_at,
+              phone: m.phone,
+              instance_name: m.instance_name,
+              contact_name: m.contact_name,
+              lead_id: m.lead_id,
             });
           }
         });
-
-
 
         feedEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
         if (mounted) setEvents(feedEvents.slice(0, 80));
@@ -100,7 +148,6 @@ export function AIRealtimeFeed() {
 
     fetchRecent();
 
-    // Subscribe to real-time message changes
     const channel = supabase
       .channel('ai-feed-realtime')
       .on('postgres_changes', {
@@ -118,12 +165,16 @@ export function AIRealtimeFeed() {
             : `${m.contact_name || m.phone} respondeu`,
           detail: m.message_text?.slice(0, 80) || '',
           timestamp: m.created_at,
+          phone: m.phone,
+          instance_name: m.instance_name,
+          contact_name: m.contact_name,
+          lead_id: m.lead_id,
         };
         setEvents(prev => [newEvent, ...prev].slice(0, 100));
       })
       .subscribe();
 
-    const interval = setInterval(fetchRecent, 60000); // refresh every minute
+    const interval = setInterval(fetchRecent, 60000);
 
     return () => {
       mounted = false;
@@ -139,6 +190,13 @@ export function AIRealtimeFeed() {
     return format(new Date(ts), 'HH:mm', { locale: ptBR });
   };
 
+  // Which types actually exist in current events
+  const availableTypes = useMemo(() => {
+    const types = new Set<FeedEventType>();
+    events.forEach(e => types.add(e.type));
+    return Array.from(types);
+  }, [events]);
+
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -153,12 +211,47 @@ export function AIRealtimeFeed() {
         </div>
       </div>
 
-      <ScrollArea className="h-[calc(100vh-520px)]">
+      {/* Event type filters */}
+      <div className="flex flex-wrap gap-1">
+        {(Object.keys(EVENT_TYPE_LABELS) as FeedEventType[]).filter(t => (typeCounts[t] || 0) > 0 || activeFilters.has(t)).map(type => {
+          const isActive = activeFilters.has(type);
+          return (
+            <button
+              key={type}
+              onClick={() => toggleFilter(type)}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
+                isActive
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'
+              }`}
+            >
+              {eventIcon(type)}
+              {EVENT_TYPE_LABELS[type]}
+              {(typeCounts[type] || 0) > 0 && (
+                <span className={`ml-0.5 text-[9px] ${isActive ? 'opacity-80' : 'opacity-60'}`}>
+                  {typeCounts[type]}
+                </span>
+              )}
+            </button>
+          );
+        })}
+        {activeFilters.size > 0 && (
+          <button
+            onClick={() => setActiveFilters(new Set())}
+            className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] text-muted-foreground hover:text-foreground border border-border hover:bg-muted transition-colors"
+          >
+            Limpar
+          </button>
+        )}
+      </div>
+
+      <ScrollArea className="h-[calc(100vh-560px)]">
         <div className="space-y-1" ref={scrollRef}>
-          {events.map(event => (
+          {filteredEvents.map(event => (
             <div
               key={event.id}
-              className={`flex items-start gap-2 p-2 rounded-md border-l-2 bg-card hover:bg-muted/50 transition-colors ${eventColor(event.type)}`}
+              onClick={() => onEventClick?.(event)}
+              className={`flex items-start gap-2 p-2 rounded-md border-l-2 bg-card hover:bg-muted/50 transition-colors cursor-pointer ${eventColor(event.type)}`}
             >
               <div className="mt-0.5 shrink-0">{eventIcon(event.type)}</div>
               <div className="flex-1 min-w-0">
@@ -171,11 +264,13 @@ export function AIRealtimeFeed() {
             </div>
           ))}
 
-          {events.length === 0 && !loading && (
+          {filteredEvents.length === 0 && !loading && (
             <div className="text-center py-8 text-muted-foreground">
               <Activity className="h-8 w-8 mx-auto mb-2 opacity-30" />
               <p className="text-xs">Nenhuma atividade recente</p>
-              <p className="text-[10px] mt-0.5">Eventos aparecerão aqui em tempo real</p>
+              <p className="text-[10px] mt-0.5">
+                {activeFilters.size > 0 ? 'Nenhum evento desse tipo encontrado' : 'Eventos aparecerão aqui em tempo real'}
+              </p>
             </div>
           )}
 
