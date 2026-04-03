@@ -20,6 +20,7 @@ import {
 import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
 import { AIEnrichmentMonitorPanel } from './AIEnrichmentMonitorPanel';
+import { AIRealtimeFeed } from './AIRealtimeFeed';
 import { AIActivitiesPanel } from './AIActivitiesPanel';
 import { AIActivityPromptDialog } from './AIActivityPromptDialog';
 import { DashboardChatPreview } from './DashboardChatPreview';
