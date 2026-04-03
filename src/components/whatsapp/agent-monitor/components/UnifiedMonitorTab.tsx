@@ -20,6 +20,24 @@ interface UnifiedMonitorTabProps {
   activeStatus: CaseStatus | null;
   onOpenChat: (c: ConversationDetail) => void;
   onEventClick: (event: any) => void;
+  filterBarProps: {
+    agents: AgentData[];
+    uniqueInstances: string[];
+    uniqueBoards: BoardData[];
+    uniqueCampaigns: string[];
+    agentFilter: string;
+    setAgentFilter: (v: string) => void;
+    instanceFilter: string;
+    setInstanceFilter: (v: string) => void;
+    boardFilter: string;
+    setBoardFilter: (v: string) => void;
+    campaignFilter: string;
+    setCampaignFilter: (v: string) => void;
+    agentActiveFilter: 'all' | 'ativo' | 'pausado';
+    setAgentActiveFilter: (v: 'all' | 'ativo' | 'pausado') => void;
+    followupConfigFilter: 'all' | 'com_followup' | 'sem_followup';
+    setFollowupConfigFilter: (v: 'all' | 'com_followup' | 'sem_followup') => void;
+  };
 }
 
 export function UnifiedMonitorTab({
