@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Search, AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, PauseCircle, Inbox, Zap, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useToast } from '@/hooks/use-toast';
 import type { ConversationDetail, CaseStatus } from '../types';
 import { getCaseStatus, statusLabel } from '../utils';
 import { CaseCard } from './CaseCard';
