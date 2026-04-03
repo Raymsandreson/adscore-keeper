@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Bot, Zap, PhoneCall, Sparkles, Radio } from 'lucide-react';
-import type { AgentStats, ConversationDetail, AgentData, CaseStatus } from '../types';
+import type { AgentStats, ConversationDetail, CaseStatus } from '../types';
 import { PipelineCards } from './PipelineCards';
 import { CallQueuePanel } from '../../CallQueuePanel';
 import { FollowupActivityPanel } from '../../FollowupActivityPanel';
