@@ -20,24 +20,52 @@ interface InstanceStatus {
   base_url: string;
   owner_phone: string | null;
   notify_on_disconnect: boolean;
+  notify_start_hour: number;
+  notify_end_hour: number;
+  notify_weekdays_only: boolean;
   connected: boolean;
 }
 
-async function checkInstanceConnection(inst: { id: string; instance_name: string; instance_token: string; base_url: string | null; owner_phone: string | null; notify_on_disconnect?: boolean }): Promise<InstanceStatus> {
+function isWithinNotificationSchedule(inst: InstanceStatus): boolean {
+  // Check if current time (Brasília) is within notification window
+  const now = new Date();
+  // Brasília = UTC-3
+  const brasiliaOffset = -3;
+  const utcHour = now.getUTCHours();
+  const brasiliaHour = (utcHour + brasiliaOffset + 24) % 24;
+  const brasiliaDay = new Date(now.getTime() + brasiliaOffset * 3600000).getUTCDay(); // 0=Sun, 6=Sat
+
+  // Check weekday
+  if (inst.notify_weekdays_only && (brasiliaDay === 0 || brasiliaDay === 6)) {
+    return false;
+  }
+
+  // Check hour range
+  const start = inst.notify_start_hour ?? 8;
+  const end = inst.notify_end_hour ?? 18;
+  if (start <= end) {
+    return brasiliaHour >= start && brasiliaHour < end;
+  }
+  // Overnight range (e.g., 22-06)
+  return brasiliaHour >= start || brasiliaHour < end;
+}
+
+async function checkInstanceConnection(inst: { id: string; instance_name: string; instance_token: string; base_url: string | null; owner_phone: string | null; notify_on_disconnect?: boolean; notify_start_hour?: number; notify_end_hour?: number; notify_weekdays_only?: boolean }): Promise<InstanceStatus> {
   const baseUrl = inst.base_url || 'https://abraci.uazapi.com';
+  const base = { ...inst, base_url: baseUrl, notify_on_disconnect: inst.notify_on_disconnect !== false, notify_start_hour: inst.notify_start_hour ?? 8, notify_end_hour: inst.notify_end_hour ?? 18, notify_weekdays_only: inst.notify_weekdays_only !== false };
   try {
     const resp = await fetch(`${baseUrl}/instance/status`, {
       headers: { token: inst.instance_token },
       signal: AbortSignal.timeout(5000),
     });
     if (!resp.ok) {
-      return { ...inst, base_url: baseUrl, notify_on_disconnect: inst.notify_on_disconnect !== false, connected: false };
+      return { ...base, connected: false };
     }
     const data = await resp.json();
     const status = data?.instance?.status?.toLowerCase() || 'unknown';
-    return { ...inst, base_url: baseUrl, notify_on_disconnect: inst.notify_on_disconnect !== false, connected: status === 'connected' };
+    return { ...base, connected: status === 'connected' };
   } catch {
-    return { ...inst, base_url: baseUrl, notify_on_disconnect: inst.notify_on_disconnect !== false, connected: false };
+    return { ...base, connected: false };
   }
 }
 
@@ -100,7 +128,7 @@ Deno.serve(async (req) => {
     // 1. Get all active instances from Cloud (registry)
     const { data: instances, error: instErr } = await cloudDb
       .from('whatsapp_instances')
-      .select('id, instance_name, instance_token, base_url, owner_phone, notify_on_disconnect')
+      .select('id, instance_name, instance_token, base_url, owner_phone, notify_on_disconnect, notify_start_hour, notify_end_hour, notify_weekdays_only')
       .eq('is_active', true);
 
     if (instErr || !instances?.length) {
@@ -160,13 +188,13 @@ Deno.serve(async (req) => {
           alert_count: 1,
         }, { onConflict: 'instance_id' });
 
-        if (status.notify_on_disconnect) {
+        if (status.notify_on_disconnect && isWithinNotificationSchedule(status)) {
           justDisconnected.push(status);
         }
         results.push({ instance: status.instance_name, event: 'disconnected', notify: status.notify_on_disconnect });
 
       } else if (!status.connected && !wasConnected) {
-        if (status.notify_on_disconnect) {
+        if (status.notify_on_disconnect && isWithinNotificationSchedule(status)) {
           const lastCallAt = log?.last_call_made_at ? new Date(log.last_call_made_at).getTime() : 0;
           const elapsed = now.getTime() - lastCallAt;
           if (elapsed >= CALL_INTERVAL_MS) {

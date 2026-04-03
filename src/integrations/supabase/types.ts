@@ -7779,7 +7779,10 @@ export type Database = {
           instance_token: string
           is_active: boolean | null
           is_paused: boolean
+          notify_end_hour: number
           notify_on_disconnect: boolean
+          notify_start_hour: number
+          notify_weekdays_only: boolean
           owner_name: string | null
           owner_phone: string | null
           receive_leads: boolean | null
@@ -7799,7 +7802,10 @@ export type Database = {
           instance_token: string
           is_active?: boolean | null
           is_paused?: boolean
+          notify_end_hour?: number
           notify_on_disconnect?: boolean
+          notify_start_hour?: number
+          notify_weekdays_only?: boolean
           owner_name?: string | null
           owner_phone?: string | null
           receive_leads?: boolean | null
@@ -7819,7 +7825,10 @@ export type Database = {
           instance_token?: string
           is_active?: boolean | null
           is_paused?: boolean
+          notify_end_hour?: number
           notify_on_disconnect?: boolean
+          notify_start_hour?: number
+          notify_weekdays_only?: boolean
           owner_name?: string | null
           owner_phone?: string | null
           receive_leads?: boolean | null
