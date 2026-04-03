@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -100,7 +100,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [togglingPrivate, setTogglingPrivate] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [muteLoading, setMuteLoading] = useState(false);
-  const [availableAgents, setAvailableAgents] = useState<Array<{ id: string; name: string }>>([]);
   const [showZapSign, setShowZapSign] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -229,16 +228,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     };
     fetchConversationStatus();
 
-    // Fetch available agents
-    const fetchAvailableAgents = async () => {
-      const { data } = await supabase
-        .from('whatsapp_ai_agents' as any)
-        .select('id, name')
-        .eq('is_active', true)
-        .order('name');
-      setAvailableAgents((data || []) as any[]);
-    };
-    fetchAvailableAgents();
   }, [open, phone]);
 
   // Realtime
@@ -763,49 +752,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       toast.error('Erro ao silenciar');
     } finally {
       setMuteLoading(false);
-    }
-  };
-
-  const handleSelectAgent = async (agentId: string) => {
-    if (!phone) return;
-    const normalizedPhone = phone.replace(/\D/g, '');
-    const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
-    try {
-      const { data: existing } = await supabase
-        .from('whatsapp_conversation_agents')
-        .select('id')
-        .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
-        .maybeSingle();
-      if (existing) {
-        await supabase.from('whatsapp_conversation_agents').update({
-          agent_id: agentId, is_active: true, activated_by: 'manual',
-          human_paused_until: null,
-        } as any).eq('id', existing.id);
-      } else {
-        await supabase.from('whatsapp_conversation_agents').insert({
-          phone: normalizedPhone, agent_id: agentId, is_active: true,
-          activated_by: 'manual', instance_name: msgInstanceName,
-        } as any);
-      }
-      const agent = availableAgents.find(a => a.id === agentId);
-      setAgentInfo({ name: agent?.name || 'Agente', activated_by: 'Manual', is_active: true });
-      toast.success(`Agente "${agent?.name}" ativado!`);
-    } catch {
-      toast.error('Erro ao ativar agente');
-    }
-  };
-
-  const handleRemoveAgent = async () => {
-    if (!phone) return;
-    const normalizedPhone = phone.replace(/\D/g, '');
-    try {
-      await supabase.from('whatsapp_conversation_agents')
-        .delete()
-        .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
-      setAgentInfo(null);
-      toast.success('Agente removido!');
-    } catch {
-      toast.error('Erro ao remover agente');
     }
   };
 
