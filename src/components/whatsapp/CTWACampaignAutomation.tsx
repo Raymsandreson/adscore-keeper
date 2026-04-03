@@ -1126,7 +1126,7 @@ export function CTWACampaignAutomation() {
 
       {/* Conversations Sheet */}
       <Sheet open={!!sheetLink} onOpenChange={(open) => { if (!open) setSheetLink(null); }}>
-        <SheetContent className="w-[400px] sm:w-[450px] p-0 flex flex-col">
+        <SheetContent side="right" className="w-full sm:w-[450px] sm:max-w-[450px] p-0 flex flex-col">
           <SheetHeader className="p-4 pb-2">
             <SheetTitle className="flex items-center gap-2 text-base">
               <MessageSquare className="h-5 w-5 text-primary" />
