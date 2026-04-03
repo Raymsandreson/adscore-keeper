@@ -910,6 +910,7 @@ export function AgentMonitorDashboard() {
                   inbound_count: 0,
                   outbound_count: 0,
                   followup_count: 0,
+                  has_followup_config: false,
                   time_without_response: null,
                   campaign_name: null,
                   activated_by: null,
