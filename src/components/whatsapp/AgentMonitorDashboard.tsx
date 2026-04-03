@@ -1246,6 +1246,20 @@ export function AgentMonitorDashboard() {
                 );
               })}
             </div>
+            <div className="flex flex-wrap gap-1 pb-1">
+              {([['all', 'Todos'], ['com_followup', 'Com Follow-up'], ['sem_followup', 'Sem Follow-up']] as const).map(([k, label]) => {
+                const count = sheetCases.filter(c => {
+                  if (k === 'com_followup') return c.has_followup_config;
+                  if (k === 'sem_followup') return !c.has_followup_config;
+                  return true;
+                }).length;
+                return (
+                  <Badge key={k} variant={sheetFollowupFilter === k ? 'default' : 'outline'}
+                    className="cursor-pointer text-[10px] px-1.5 py-0 h-5"
+                    onClick={() => setSheetFollowupFilter(k)}>{label} ({count})</Badge>
+                );
+              })}
+            </div>
           </div>
           <ScrollArea className="flex-1">
             <div className="p-2 space-y-1.5">
