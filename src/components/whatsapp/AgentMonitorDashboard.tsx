@@ -1326,8 +1326,8 @@ export function AgentMonitorDashboard() {
                 if (sheetLeadFilter === 'sem_lead' && c.lead_id) return false;
                 if (sheetAgentStatusFilter === 'ativo' && !c.is_active) return false;
                 if (sheetAgentStatusFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
-                if (sheetFollowupFilter === 'com_followup' && c.followup_count === 0) return false;
-                if (sheetFollowupFilter === 'sem_followup' && c.followup_count > 0) return false;
+                if (sheetFollowupFilter === 'com_followup' && !c.has_followup_config) return false;
+                if (sheetFollowupFilter === 'sem_followup' && c.has_followup_config) return false;
                 return true;
               }).map((c, idx) => (
                 <CaseCard key={`sheet-${c.phone}-${c.instance_name}-${idx}`} c={c} />
