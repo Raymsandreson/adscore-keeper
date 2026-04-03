@@ -74,7 +74,6 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
       if (leadFilter === 'com_lead' && !c.lead_id) return false;
       if (leadFilter === 'sem_lead' && c.lead_id) return false;
       if (agentStatusFilter === 'ativo' && !c.is_active) return false;
-      if (agentStatusFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
       if (followupFilter === 'com_followup' && !c.has_followup_config) return false;
       if (followupFilter === 'sem_followup' && c.has_followup_config) return false;
       return true;
