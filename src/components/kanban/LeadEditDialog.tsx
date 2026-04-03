@@ -681,6 +681,15 @@ ${scrapeData.content || ''}
         if (!wasAlreadyClosed) {
           // Also update lead_status
           await supabase.from('leads').update({ lead_status: 'closed' } as any).eq('id', lead.id);
+          // Send conversion event to Meta CAPI
+          sendLeadConversionEvent({
+            id: lead.id,
+            lead_name: lead.lead_name,
+            lead_phone: (lead as any).lead_phone,
+            ctwa_context: (lead as any).ctwa_context,
+            campaign_id: (lead as any).campaign_id,
+            contract_value: (lead as any).contract_value,
+          }, 'closed');
         }
 
         try {
@@ -762,8 +771,24 @@ ${scrapeData.content || ''}
         }
       } else if (leadOutcome === 'refused') {
         await supabase.from('leads').update({ lead_status: 'refused' } as any).eq('id', lead.id);
+        // Send conversion event to Meta CAPI
+        sendLeadConversionEvent({
+          id: lead.id,
+          lead_name: lead.lead_name,
+          lead_phone: (lead as any).lead_phone,
+          ctwa_context: (lead as any).ctwa_context,
+          campaign_id: (lead as any).campaign_id,
+        }, 'refused');
       } else if (leadOutcome === 'inviavel') {
         await supabase.from('leads').update({ lead_status: 'inviavel' } as any).eq('id', lead.id);
+        // Send conversion event to Meta CAPI
+        sendLeadConversionEvent({
+          id: lead.id,
+          lead_name: lead.lead_name,
+          lead_phone: (lead as any).lead_phone,
+          ctwa_context: (lead as any).ctwa_context,
+          campaign_id: (lead as any).campaign_id,
+        }, 'inviavel');
       } else if ((lead as any).became_client_date || (lead as any).inviavel_date) {
         // Was closed/inviável, now reopened
         await supabase.from('leads').update({ lead_status: 'active' } as any).eq('id', lead.id);
