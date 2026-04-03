@@ -1511,7 +1511,7 @@ Deno.serve(async (req) => {
         Deno.env.get('SUPABASE_URL')!,
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
       );
-      await cloudClient.from('whatsapp_messages').insert({
+      await cloudClient.from('whatsapp_messages').upsert({
         phone,
         contact_name: contactName,
         message_text: messageText,
@@ -1528,7 +1528,7 @@ Deno.serve(async (req) => {
         campaign_id: detectedCampaignId || null,
         campaign_name: detectedCampaignName || null,
         created_at: message.created_at,
-      });
+      }, { onConflict: 'external_message_id', ignoreDuplicates: true });
     } catch (mirrorErr) {
       console.warn('Cloud mirror insert failed (non-blocking):', mirrorErr);
     }

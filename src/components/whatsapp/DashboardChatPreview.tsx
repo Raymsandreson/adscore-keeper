@@ -101,6 +101,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [isMuted, setIsMuted] = useState(false);
   const [muteLoading, setMuteLoading] = useState(false);
   const [showZapSign, setShowZapSign] = useState(false);
+  const [selectedMsgId, setSelectedMsgId] = useState<string | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
 
@@ -1002,6 +1004,40 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           </div>
         )}
 
+        {/* Selection Toolbar - WhatsApp style */}
+        {selectedMsgId && (() => {
+          const selectedMsg = messages.find(m => m.id === selectedMsgId);
+          return (
+            <div className="flex items-center justify-between bg-primary px-3 py-2 border-b">
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20" onClick={() => setSelectedMsgId(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+              <span className="text-xs text-primary-foreground font-medium">1</span>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20" onClick={() => {
+                  if (selectedMsg?.message_text) {
+                    navigator.clipboard.writeText(selectedMsg.message_text);
+                    toast.success('Mensagem copiada!');
+                  }
+                  setSelectedMsgId(null);
+                }} title="Copiar">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                </Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20" onClick={async () => {
+                  if (selectedMsg) {
+                    await supabase.from('whatsapp_messages').delete().eq('id', selectedMsg.id);
+                    setMessages(prev => prev.filter(m => m.id !== selectedMsg.id));
+                    toast.success('Mensagem apagada');
+                  }
+                  setSelectedMsgId(null);
+                }} title="Apagar">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Messages & Call Records Timeline */}
         <div className="flex-1 min-h-0 px-4">
           {loading ? (
@@ -1067,25 +1103,28 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                       <div className={cn("flex", isInbound ? "justify-start" : "justify-end")}>
                         <div
                           className={cn(
-                            "max-w-[80%] rounded-lg px-3 py-1.5 text-xs cursor-pointer select-text active:opacity-70 transition-opacity",
+                            "max-w-[80%] rounded-lg px-3 py-1.5 text-xs select-text transition-all",
                             isInbound
                               ? "bg-muted text-foreground rounded-tl-none"
-                              : "bg-primary text-primary-foreground rounded-tr-none"
+                              : "bg-primary text-primary-foreground rounded-tr-none",
+                            selectedMsgId === msg.id && "ring-2 ring-primary/50 opacity-80"
                           )}
+                          onPointerDown={() => {
+                            longPressTimer.current = setTimeout(() => {
+                              setSelectedMsgId(msg.id);
+                            }, 500);
+                          }}
+                          onPointerUp={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
+                          onPointerLeave={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
                           onClick={() => {
-                            if (msg.message_text) {
-                              navigator.clipboard.writeText(msg.message_text);
-                              toast.success('Mensagem copiada!');
+                            if (selectedMsgId && selectedMsgId !== msg.id) {
+                              setSelectedMsgId(msg.id);
                             }
                           }}
                           onContextMenu={(e) => {
-                            if (msg.message_text) {
-                              e.preventDefault();
-                              navigator.clipboard.writeText(msg.message_text);
-                              toast.success('Mensagem copiada!');
-                            }
+                            e.preventDefault();
+                            setSelectedMsgId(msg.id);
                           }}
-                          title="Toque para copiar"
                         >
                           {renderMediaContent(msg)}
                           {!msg.media_url && msg.media_type && !msg.message_text && (
