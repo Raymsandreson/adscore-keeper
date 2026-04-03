@@ -195,11 +195,13 @@ serve(async (req) => {
         console.log(`[AGENT] Force-immediate direct reply for ${targetPhone} on ${targetInstance}`);
         let actionType = "ai_reply";
         let actionResult = "success";
+        let messagePreview = "";
         try {
-          const aiReply = await callAgentReply(supabase, targetPhone, targetInstance);
-          if (aiReply) {
+          const aiResult = await callAgentReply(supabase, targetPhone, targetInstance);
+          if (aiResult.success) {
             console.log(`[AGENT] Force AI reply sent for ${targetPhone}`);
             actionsExecuted++;
+            messagePreview = aiResult.reply || "";
           } else {
             actionResult = "failed";
             console.error(`[AGENT] Force AI reply failed for ${targetPhone}`);
@@ -214,6 +216,7 @@ serve(async (req) => {
           actions_executed: actionsExecuted,
           action_type: actionType,
           action_result: actionResult,
+          message_preview: messagePreview,
           phone: targetPhone,
           instance: targetInstance,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
