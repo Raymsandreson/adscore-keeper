@@ -59,48 +59,6 @@ export function UnifiedMonitorTab({
       {/* Pipeline Cards */}
       <PipelineCards counts={pipelineCounts} activeStatus={activeStatus} onToggle={onPipelineClick} />
 
-      {/* Global KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <MessageCircle className="h-3.5 w-3.5" /> Conversas
-            </div>
-            <p className="text-2xl font-bold">{conversations.length}</p>
-            <div className="flex gap-2 mt-1">
-              <Badge variant="secondary" className="text-[9px]">{conversations.filter(c => c.is_active && !c.human_paused).length} ativas</Badge>
-              <Badge variant="outline" className="text-[9px]">{conversations.filter(c => c.human_paused).length} pausadas</Badge>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <TrendingUp className="h-3.5 w-3.5" /> Msgs Enviadas
-            </div>
-            <p className="text-2xl font-bold">{conversations.reduce((s, c) => s + c.outbound_count, 0)}</p>
-            <p className="text-[10px] text-muted-foreground">{conversations.reduce((s, c) => s + c.inbound_count, 0)} recebidas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <Zap className="h-3.5 w-3.5" /> Follow-ups
-            </div>
-            <p className="text-2xl font-bold">{conversations.reduce((s, c) => s + c.followup_count, 0)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <Clock className="h-3.5 w-3.5 text-amber-500" /> Sem Resposta
-            </div>
-            <p className="text-2xl font-bold text-amber-600">{conversations.filter(c => c.time_without_response && c.time_without_response > 60).length}</p>
-            <p className="text-[10px] text-muted-foreground">&gt;1h sem resposta</p>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Sub-tabs */}
       <Tabs defaultValue="feed" className="space-y-3">
         <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 max-w-2xl">
