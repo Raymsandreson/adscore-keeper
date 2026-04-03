@@ -17,7 +17,7 @@ import {
   CheckCircle, XCircle, Zap,
   MapPin, Phone, PhoneCall, Megaphone, Sparkles,
   CalendarIcon, Inbox, BarChart3, Heart, AlertCircle, Eye, ClipboardList,
-  Square, CheckSquare, StopCircle, ArrowRightLeft, UserPlus
+  Square, CheckSquare, StopCircle, ArrowRightLeft, UserPlus, PauseCircle
 } from 'lucide-react';
 import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
