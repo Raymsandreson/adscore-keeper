@@ -332,10 +332,32 @@ async function processAgentConversationFollowups(supabase: any, targetPhone?: st
       .maybeSingle();
 
     // Only follow up if our last message is newer than client's last message
-    if (!lastOutbound) continue;
-    if (lastInbound && new Date(lastInbound.created_at) > new Date(lastOutbound.created_at)) {
-      // Client already responded, no need for follow-up.
-      continue;
+    // When force_immediate: if client sent a message and we never replied (or client replied after us),
+    // trigger the AI to respond immediately instead of skipping
+    if (forceImmediate) {
+      // If there's no outbound at all, or client's message is newer, directly trigger AI reply
+      const clientNeedsReply = !lastOutbound || (lastInbound && new Date(lastInbound.created_at) > new Date(lastOutbound.created_at));
+      if (clientNeedsReply) {
+        processed++;
+        console.log(`[AGENT] Force-immediate: triggering AI reply for unanswered ${conv.phone} on ${conv.instance_name}`);
+        try {
+          const aiReply = await callAgentReply(supabase, conv.phone, conv.instance_name);
+          if (aiReply) {
+            console.log(`[AGENT] Force AI reply sent for ${conv.phone}`);
+            actionsExecuted++;
+          } else {
+            console.error(`[AGENT] Force AI reply failed for ${conv.phone}`);
+          }
+        } catch (e) {
+          console.error(`[AGENT] Force AI reply error for ${conv.phone}:`, e);
+        }
+        continue;
+      }
+    } else {
+      if (!lastOutbound) continue;
+      if (lastInbound && new Date(lastInbound.created_at) > new Date(lastOutbound.created_at)) {
+        continue;
+      }
     }
 
     // Block detection: check if last N outbound messages are all stuck at "sent" (never delivered)
