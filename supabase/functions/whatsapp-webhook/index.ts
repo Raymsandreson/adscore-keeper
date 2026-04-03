@@ -1466,33 +1466,8 @@ Deno.serve(async (req) => {
       if (existing) {
         console.log('Duplicate message detected, skipping insert:', externalMessageId, 'instance:', instanceName || '(unknown)');
         
-        // Even for duplicates, trigger AI agent if it's an inbound message
-        // This handles cases where sync-to-cloud inserted the message before the webhook
-        if (direction === 'inbound' && instanceName && phone) {
-          try {
-            const cloudFnUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
-            const cloudKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
-            fetch(`${cloudFnUrl}/functions/v1/whatsapp-ai-agent-reply`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${cloudKey}`,
-              },
-              body: JSON.stringify({
-                phone,
-                instance_name: instanceName,
-                message_text: messageText,
-                message_type: messageType,
-                lead_id: leadId || null,
-                campaign_id: detectedCampaignId || null,
-                is_group: isGroup,
-                contact_name: contactName || null,
-              }),
-            }).catch(err => console.error('AI agent reply trigger error (dedup path):', err))
-          } catch (e) {
-            console.error('AI agent trigger error (dedup path):', e)
-          }
-        }
+        // DO NOT trigger AI agent here — the original insert path already handles it.
+        // Triggering again on duplicates causes multiple identical responses.
         
         return new Response(
           JSON.stringify({ success: true, skipped: true, reason: 'duplicate', existing_id: existing.id }),
