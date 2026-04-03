@@ -1,16 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bot, MessageCircle, Zap, PhoneCall, Sparkles, Search, Radio } from 'lucide-react';
+import { Bot, Zap, PhoneCall, Sparkles, Radio } from 'lucide-react';
 import type { AgentStats, ConversationDetail, AgentData, CaseStatus } from '../types';
-import { convKey } from '../utils';
 import { PipelineCards } from './PipelineCards';
-import { CaseCard } from './CaseCard';
-import { BatchToolbar } from './BatchToolbar';
-import { MonitorFilterBar } from './MonitorFilterBar';
 import { CallQueuePanel } from '../../CallQueuePanel';
 import { FollowupActivityPanel } from '../../FollowupActivityPanel';
 import { AIEnrichmentMonitorPanel } from '../../AIEnrichmentMonitorPanel';
