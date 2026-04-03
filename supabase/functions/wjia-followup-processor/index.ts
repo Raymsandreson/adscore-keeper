@@ -193,17 +193,30 @@ serve(async (req) => {
       // This bypasses conversation_agents lookup which may be in a different DB
       if (forceImmediate && targetPhone && targetInstance) {
         console.log(`[AGENT] Force-immediate direct reply for ${targetPhone} on ${targetInstance}`);
+        let actionType = "ai_reply";
+        let actionResult = "success";
         try {
           const aiReply = await callAgentReply(supabase, targetPhone, targetInstance);
           if (aiReply) {
             console.log(`[AGENT] Force AI reply sent for ${targetPhone}`);
             actionsExecuted++;
           } else {
+            actionResult = "failed";
             console.error(`[AGENT] Force AI reply failed for ${targetPhone}`);
           }
         } catch (e) {
+          actionResult = "error";
           console.error(`[AGENT] Force AI reply error for ${targetPhone}:`, e);
         }
+
+        return new Response(JSON.stringify({
+          success: actionResult === "success",
+          actions_executed: actionsExecuted,
+          action_type: actionType,
+          action_result: actionResult,
+          phone: targetPhone,
+          instance: targetInstance,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } else if (resetCycle && targetPhone && targetInstance) {
         // Reset: find conversation agent, get the synthetic session_id, delete logs
         const { data: ca } = await supabase
