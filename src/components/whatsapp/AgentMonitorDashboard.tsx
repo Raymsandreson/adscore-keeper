@@ -551,6 +551,7 @@ export function AgentMonitorDashboard() {
       case 'recusado': return 'Recusado';
       case 'inviavel': return 'Inviável';
       case 'bloqueado': return 'Bloqueado';
+      case 'pausado': return 'Pausado';
     }
   };
 
