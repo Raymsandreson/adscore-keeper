@@ -284,7 +284,7 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
         )}
       </div>
 
-      <ScrollArea className="flex-1 min-h-0">
+      <ScrollArea className="h-[calc(100vh-420px)]">
         <div className="space-y-1" ref={scrollRef}>
           {filteredEvents.map(event => (
             <div

@@ -824,7 +824,7 @@ export function AgentMonitorDashboard() {
         </TabsList>
 
         {/* ═══════════ TAB 1: FILA DE CASOS ═══════════ */}
-        <TabsContent value="queue" className="flex flex-col flex-1 min-h-0 space-y-4" style={{ minHeight: 'calc(100vh - 380px)' }}>
+        <TabsContent value="queue" className="flex flex-col space-y-4">
           <FilterBar />
 
           {/* Pipeline status cards */}
