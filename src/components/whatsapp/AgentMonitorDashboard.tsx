@@ -109,6 +109,7 @@ export function AgentMonitorDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sheetResponseFilter, setSheetResponseFilter] = useState<'all' | 'responded' | 'waiting'>('all');
   const [sheetLeadFilter, setSheetLeadFilter] = useState<'all' | 'com_lead' | 'sem_lead'>('all');
+  const [sheetAgentStatusFilter, setSheetAgentStatusFilter] = useState<'all' | 'ativo' | 'pausado'>('all');
   const [generatingLeadId, setGeneratingLeadId] = useState<string | null>(null);
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [promptDialogLead, setPromptDialogLead] = useState<{ id: string; name: string } | null>(null);
@@ -1151,7 +1152,7 @@ export function AgentMonitorDashboard() {
 
       {/* Chat Preview */}
       {/* Sheet lateral para lista filtrada por status */}
-      <Sheet open={!!sheetStatusFilter} onOpenChange={(open) => { if (!open) { setSheetStatusFilter(null); setSheetResponseFilter('all'); setSheetLeadFilter('all'); setSearchQuery(''); } }}>
+      <Sheet open={!!sheetStatusFilter} onOpenChange={(open) => { if (!open) { setSheetStatusFilter(null); setSheetResponseFilter('all'); setSheetLeadFilter('all'); setSheetAgentStatusFilter('all'); setSearchQuery(''); } }}>
         <SheetContent side="right" className="w-full sm:w-[450px] sm:max-w-[450px] p-0 flex flex-col">
           <SheetHeader className="p-4 pb-2 border-b">
             <SheetTitle className="flex items-center gap-2">
@@ -1183,7 +1184,7 @@ export function AgentMonitorDashboard() {
                 );
               })}
             </div>
-            <div className="flex flex-wrap gap-1 pb-1">
+            <div className="flex flex-wrap gap-1">
               {([['all', 'Todos'], ['com_lead', 'Com Lead'], ['sem_lead', 'Sem Lead']] as const).map(([k, label]) => {
                 const count = sheetCases.filter(c => {
                   if (k === 'com_lead') return !!c.lead_id;
@@ -1194,6 +1195,20 @@ export function AgentMonitorDashboard() {
                   <Badge key={k} variant={sheetLeadFilter === k ? 'default' : 'outline'}
                     className="cursor-pointer text-[10px] px-1.5 py-0 h-5"
                     onClick={() => setSheetLeadFilter(k)}>{label} ({count})</Badge>
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap gap-1 pb-1">
+              {([['all', 'Todos'], ['ativo', 'Ativo'], ['pausado', 'Pausado']] as const).map(([k, label]) => {
+                const count = sheetCases.filter(c => {
+                  if (k === 'ativo') return c.is_active;
+                  if (k === 'pausado') return !c.is_active && !c.is_blocked;
+                  return true;
+                }).length;
+                return (
+                  <Badge key={k} variant={sheetAgentStatusFilter === k ? 'default' : 'outline'}
+                    className="cursor-pointer text-[10px] px-1.5 py-0 h-5"
+                    onClick={() => setSheetAgentStatusFilter(k)}>{label} ({count})</Badge>
                 );
               })}
             </div>
@@ -1209,6 +1224,8 @@ export function AgentMonitorDashboard() {
                 if (sheetResponseFilter === 'waiting' && !(c.outbound_count > 0 && c.inbound_count === 0)) return false;
                 if (sheetLeadFilter === 'com_lead' && !c.lead_id) return false;
                 if (sheetLeadFilter === 'sem_lead' && c.lead_id) return false;
+                if (sheetAgentStatusFilter === 'ativo' && !c.is_active) return false;
+                if (sheetAgentStatusFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
                 return true;
               }).map((c, idx) => (
                 <CaseCard key={`sheet-${c.phone}-${c.instance_name}-${idx}`} c={c} />
