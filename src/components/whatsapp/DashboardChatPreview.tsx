@@ -210,6 +210,34 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       if (contactData) setLinkedContact(contactData as any);
     };
     fetchLinkedData();
+
+    // Fetch private/mute status
+    const fetchConversationStatus = async () => {
+      const { data } = await supabase
+        .from('whatsapp_conversations' as any)
+        .select('is_private, is_muted')
+        .eq('phone', normalizedPhone)
+        .maybeSingle();
+      if (data) {
+        setIsPrivate(!!(data as any).is_private);
+        setIsMuted(!!(data as any).is_muted);
+      } else {
+        setIsPrivate(false);
+        setIsMuted(false);
+      }
+    };
+    fetchConversationStatus();
+
+    // Fetch available agents
+    const fetchAvailableAgents = async () => {
+      const { data } = await supabase
+        .from('whatsapp_ai_agents' as any)
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+      setAvailableAgents((data || []) as any[]);
+    };
+    fetchAvailableAgents();
   }, [open, phone]);
 
   // Realtime
