@@ -66,6 +66,8 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
   const [loading, setLoading] = useState(true);
   const [activeFilters, setActiveFilters] = useState<Set<FeedEventType>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const allowedInstancesRef = useRef<Set<string>>(new Set());
+  const agentConvKeysRef = useRef<Set<string>>(new Set());
 
   const toggleFilter = (type: FeedEventType) => {
     setActiveFilters(prev => {
