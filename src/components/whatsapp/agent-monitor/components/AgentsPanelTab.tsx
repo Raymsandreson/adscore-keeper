@@ -5,7 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Bot, MessageCircle, TrendingUp, Clock, Zap, PhoneCall, Sparkles, Search } from 'lucide-react';
-import type { AgentStats, ConversationDetail, AgentData } from '../types';
+import type { AgentStats, ConversationDetail } from '../types';
 import { convKey } from '../utils';
 import { CaseCard } from './CaseCard';
 import { BatchToolbar } from './BatchToolbar';
@@ -17,21 +17,16 @@ import { AIEnrichmentMonitorPanel } from '../../AIEnrichmentMonitorPanel';
 interface AgentsPanelTabProps {
   conversations: ConversationDetail[];
   agentStats: AgentStats[];
-  agents: AgentData[];
   filteredConversations: ConversationDetail[];
   loading: boolean;
   filterProps: React.ComponentProps<typeof MonitorFilterBar>;
   batchProps: {
     selectedKeys: Set<string>;
     selectedCount: number;
-    batchAgentId: string;
-    setBatchAgentId: (id: string) => void;
     batchProcessing: boolean;
     onSelectAll: (list: ConversationDetail[]) => void;
     onClearSelection: () => void;
-    onPause: () => void;
-    onAssign: (agentId: string) => void;
-    onSwap: (agentId: string) => void;
+    onDeactivate: () => void;
     onAnticipate: () => void;
     onResume: () => void;
   };
@@ -43,7 +38,7 @@ interface AgentsPanelTabProps {
 }
 
 export function AgentsPanelTab({
-  conversations, agentStats, agents, filteredConversations, loading,
+  conversations, agentStats, filteredConversations, loading,
   filterProps, batchProps, searchQuery, setSearchQuery, onOpenChat, generatingLeadId, onGenerateActivity,
 }: AgentsPanelTabProps) {
   return (
@@ -162,7 +157,7 @@ export function AgentsPanelTab({
             <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
             <Input placeholder="Buscar..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-8 h-8 text-xs" />
           </div>
-          <BatchToolbar list={filteredConversations} selectedCount={batchProps.selectedCount} agents={agents} {...batchProps} />
+          <BatchToolbar list={filteredConversations} selectedCount={batchProps.selectedCount} {...batchProps} />
           <p className="text-xs text-muted-foreground">{filteredConversations.length} conversas</p>
           <ScrollArea className="h-[calc(100vh-540px)]">
             <div className="space-y-2">

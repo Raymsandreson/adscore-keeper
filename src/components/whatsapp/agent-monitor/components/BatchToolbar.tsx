@@ -1,27 +1,27 @@
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Square, CheckSquare, StopCircle, ArrowRightLeft, UserPlus, FastForward, RotateCcw } from 'lucide-react';
-import type { ConversationDetail, AgentData } from '../types';
+import { Square, CheckSquare, StopCircle, FastForward, RotateCcw } from 'lucide-react';
+import type { ConversationDetail } from '../types';
 
 interface BatchToolbarProps {
   list: ConversationDetail[];
   selectedCount: number;
-  agents: AgentData[];
-  batchAgentId: string;
-  setBatchAgentId: (id: string) => void;
   batchProcessing: boolean;
   onSelectAll: (list: ConversationDetail[]) => void;
   onClearSelection: () => void;
-  onPause: () => void;
-  onAssign: (agentId: string) => void;
-  onSwap: (agentId: string) => void;
+  onDeactivate: () => void;
   onAnticipate: () => void;
   onResume: () => void;
 }
 
 export function BatchToolbar({
-  list, selectedCount, agents, batchAgentId, setBatchAgentId, batchProcessing,
-  onSelectAll, onClearSelection, onPause, onAssign, onSwap, onAnticipate, onResume,
+  list,
+  selectedCount,
+  batchProcessing,
+  onSelectAll,
+  onClearSelection,
+  onDeactivate,
+  onAnticipate,
+  onResume,
 }: BatchToolbarProps) {
   if (selectedCount === 0) {
     return (
@@ -43,29 +43,9 @@ export function BatchToolbar({
         <CheckSquare className="h-3 w-3" /> Todas
       </Button>
       <div className="border-l border-border h-4 mx-1" />
-      <Button variant="destructive" size="sm" className="h-6 text-[10px] gap-1" disabled={batchProcessing} onClick={onPause}>
-        <StopCircle className="h-3 w-3" /> Pausar agente
+      <Button variant="destructive" size="sm" className="h-6 text-[10px] gap-1" disabled={batchProcessing} onClick={onDeactivate}>
+        <StopCircle className="h-3 w-3" /> Desativar
       </Button>
-      <div className="flex items-center gap-1">
-        <Select value={batchAgentId} onValueChange={setBatchAgentId}>
-          <SelectTrigger className="h-6 text-[10px] w-[130px]">
-            <SelectValue placeholder="Agente..." />
-          </SelectTrigger>
-          <SelectContent>
-            {agents.map(a => (
-              <SelectItem key={a.id} value={a.id} className="text-xs">{a.shortcut_name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button variant="secondary" size="sm" className="h-6 text-[10px] gap-1" disabled={!batchAgentId || batchProcessing}
-          onClick={() => onAssign(batchAgentId)}>
-          <UserPlus className="h-3 w-3" /> Atribuir
-        </Button>
-        <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" disabled={!batchAgentId || batchProcessing}
-          onClick={() => onSwap(batchAgentId)}>
-          <ArrowRightLeft className="h-3 w-3" /> Trocar
-        </Button>
-      </div>
       <div className="border-l border-border h-4 mx-1" />
       <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" disabled={batchProcessing} onClick={onAnticipate}>
         <FastForward className="h-3 w-3" /> Antecipar Follow-up

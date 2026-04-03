@@ -189,38 +189,7 @@ serve(async (req) => {
     // PART 2: Agent conversation follow-ups (NEW)
     // ============================================================
     if (!targetSessionId) {
-      // For force_immediate with specific target: directly trigger AI reply
-      // This bypasses conversation_agents lookup which may be in a different DB
-      if (forceImmediate && targetPhone && targetInstance) {
-        console.log(`[AGENT] Force-immediate direct reply for ${targetPhone} on ${targetInstance}`);
-        let actionType = "ai_reply";
-        let actionResult = "success";
-        let messagePreview = "";
-        try {
-          const aiResult = await callAgentReply(supabase, targetPhone, targetInstance);
-          if (aiResult.success) {
-            console.log(`[AGENT] Force AI reply sent for ${targetPhone}`);
-            actionsExecuted++;
-            messagePreview = aiResult.reply || "";
-          } else {
-            actionResult = "failed";
-            console.error(`[AGENT] Force AI reply failed for ${targetPhone}`);
-          }
-        } catch (e) {
-          actionResult = "error";
-          console.error(`[AGENT] Force AI reply error for ${targetPhone}:`, e);
-        }
-
-        return new Response(JSON.stringify({
-          success: actionResult === "success",
-          actions_executed: actionsExecuted,
-          action_type: actionType,
-          action_result: actionResult,
-          message_preview: messagePreview,
-          phone: targetPhone,
-          instance: targetInstance,
-        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      } else if (resetCycle && targetPhone && targetInstance) {
+      if (resetCycle && targetPhone && targetInstance) {
         // Reset: find conversation agent, get the synthetic session_id, delete logs
         const { data: ca } = await supabase
           .from("whatsapp_conversation_agents")
@@ -632,9 +601,12 @@ async function callAgentReply(supabase: any, phone: string, instanceName: string
 
   try {
     const data = await resp.json();
-    return { success: true, reply: data.reply || '' };
+    if (data?.success === true) {
+      return { success: true, reply: data.reply || '' };
+    }
+    return { success: false };
   } catch {
-    return { success: true };
+    return { success: false };
   }
 }
 
