@@ -963,7 +963,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                     <MoreVertical className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuItem onClick={() => handleAction('link')}>
                     <Link2 className="h-4 w-4 mr-2" /> Vincular Lead
                   </DropdownMenuItem>
@@ -976,9 +976,78 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                   <DropdownMenuItem onClick={() => handleAction('create_case')}>
                     <Scale className="h-4 w-4 mr-2" /> Criar Caso Jurídico
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleTogglePrivate} disabled={togglingPrivate}>
+                    {isPrivate ? <LockOpen className="h-4 w-4 mr-2" /> : <Lock className="h-4 w-4 mr-2" />}
+                    {isPrivate ? 'Tornar pública' : 'Trancar conversa'}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowZapSign(true)}>
+                    <FileSignature className="h-4 w-4 mr-2" /> Gerar Documento para Assinatura
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleCreateGroup} disabled={creatingGroup}>
                     {creatingGroup ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Users className="h-4 w-4 mr-2" />}
                     Criar Grupo WhatsApp
+                  </DropdownMenuItem>
+                  {availableAgents.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      {agentInfo && agentInfo.is_active ? (
+                        <DropdownMenuItem onClick={handleToggleAgent}>
+                          <BotOff className="h-4 w-4 mr-2" /> Desativar Agente ({agentInfo.name})
+                        </DropdownMenuItem>
+                      ) : agentInfo && !agentInfo.is_active ? (
+                        <DropdownMenuItem onClick={handleToggleAgent}>
+                          <Bot className="h-4 w-4 mr-2" /> Reativar Agente ({agentInfo.name})
+                        </DropdownMenuItem>
+                      ) : null}
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>
+                          <Bot className="h-4 w-4 mr-2" /> {agentInfo ? 'Trocar Agente' : 'Ativar Agente IA'}
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent>
+                          {availableAgents.map(agent => (
+                            <DropdownMenuItem key={agent.id} onClick={() => handleSelectAgent(agent.id)}>
+                              <Bot className="h-3.5 w-3.5 mr-2" />
+                              <span className="flex-1">{agent.name}</span>
+                              {agentInfo && agentInfo.name === agent.name && <Badge variant="default" className="text-[9px] h-4 px-1 ml-1">ativo</Badge>}
+                            </DropdownMenuItem>
+                          ))}
+                          {agentInfo && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={handleRemoveAgent} className="text-destructive">
+                                <BotOff className="h-3.5 w-3.5 mr-2" /> Remover agente
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    </>
+                  )}
+                  <DropdownMenuSeparator />
+                  {isMuted ? (
+                    <DropdownMenuItem onClick={() => handleToggleMute(null)} disabled={muteLoading}>
+                      <Volume2 className="h-4 w-4 mr-2" /> Reativar Conversa
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <VolumeX className="h-4 w-4 mr-2" /> Silenciar Conversa
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        <DropdownMenuItem onClick={() => handleToggleMute('all')}>
+                          <BellOff className="h-3.5 w-3.5 mr-2" /> Silenciar tudo
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleToggleMute('receive')}>
+                          <VolumeX className="h-3.5 w-3.5 mr-2" /> Desativar recebimento
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleToggleMute('send')}>
+                          <VolumeX className="h-3.5 w-3.5 mr-2" /> Desativar envio
+                        </DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  )}
+                  <DropdownMenuItem onClick={handleClearConversation} className="text-destructive focus:text-destructive">
+                    <Trash2 className="h-4 w-4 mr-2" /> Limpar Conversa
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
