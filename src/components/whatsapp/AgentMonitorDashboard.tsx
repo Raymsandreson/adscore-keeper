@@ -832,7 +832,7 @@ export function AgentMonitorDashboard() {
           <FilterBar />
 
           {/* Pipeline status cards */}
-           <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+           <div className="grid grid-cols-2 sm:grid-cols-7 gap-2">
             {([
               { key: 'sem_resposta' as CaseStatus, icon: AlertCircle, color: 'text-amber-500' },
               { key: 'em_andamento' as CaseStatus, icon: MessageCircle, color: 'text-blue-500' },
@@ -840,6 +840,7 @@ export function AgentMonitorDashboard() {
               { key: 'recusado' as CaseStatus, icon: XCircle, color: 'text-red-500' },
               { key: 'inviavel' as CaseStatus, icon: Eye, color: 'text-muted-foreground' },
               { key: 'bloqueado' as CaseStatus, icon: StopCircle, color: 'text-orange-500' },
+              { key: 'pausado' as CaseStatus, icon: PauseCircle, color: 'text-gray-500' },
             ]).map(({ key, icon: Icon, color }) => (
               <Card
                 key={key}
