@@ -61,7 +61,39 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
     });
   }, [sheetCases, searchQuery, responseFilter, leadFilter, agentStatusFilter, followupFilter]);
 
-  const icons: Record<CaseStatus, typeof AlertCircle> = {
+  const followupCases = useMemo(() => filteredCases.filter(c => c.has_followup_config && c.is_active), [filteredCases]);
+
+  const handleBulkFollowup = async () => {
+    if (followupCases.length === 0) return;
+    setFollowupProcessing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      let success = 0;
+      let fail = 0;
+      for (const c of followupCases) {
+        try {
+          const { error } = await cloudFunctions.invoke('wjia-followup-processor', {
+            body: { target_phone: c.phone, target_instance: c.instance_name, force_immediate: true },
+            authToken: session?.access_token,
+          });
+          if (error) throw error;
+          success++;
+          await new Promise(r => setTimeout(r, 1500));
+        } catch {
+          fail++;
+        }
+      }
+      toast({
+        title: 'Follow-up antecipado',
+        description: `${success} sucesso${fail > 0 ? `, ${fail} falha(s)` : ''}`,
+      });
+    } catch (err: any) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+    } finally {
+      setFollowupProcessing(false);
+    }
+  };
+
     sem_resposta: AlertCircle, em_andamento: MessageCircle, fechado: CheckCircle,
     recusado: XCircle, inviavel: Eye, bloqueado: StopCircle, pausado: PauseCircle,
   };
