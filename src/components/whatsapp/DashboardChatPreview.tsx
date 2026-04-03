@@ -95,6 +95,12 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [linkedContact, setLinkedContact] = useState<Contact | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
   const [showContactEdit, setShowContactEdit] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [togglingPrivate, setTogglingPrivate] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [muteLoading, setMuteLoading] = useState(false);
+  const [availableAgents, setAvailableAgents] = useState<Array<{ id: string; name: string }>>([]);
+  const [showZapSign, setShowZapSign] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
 
