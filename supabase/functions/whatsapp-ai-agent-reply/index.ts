@@ -771,11 +771,11 @@ REGRAS IMPORTANTES:
         .eq("instance_name", instance_name)
         .maybeSingle();
 
+      let sendSucceeded = false;
       if (instance) {
         const baseUrl = (instance as any).base_url || "https://abraci.uazapi.com";
         const token = (instance as any).instance_token;
         const delayBetween = ((agent as any).split_delay_seconds || 2) * 1000;
-        let sendSucceeded = false;
 
         // Check if we should reply with audio:
         // 1. Agent setting enabled + incoming was audio (mirror format)
