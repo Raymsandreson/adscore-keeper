@@ -62,35 +62,56 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
   }, [sheetCases, searchQuery, responseFilter, leadFilter, agentStatusFilter, followupFilter]);
 
   const followupCases = useMemo(() => filteredCases.filter(c => c.has_followup_config && c.is_active), [filteredCases]);
+  const [followupProgress, setFollowupProgress] = useState({ current: 0, total: 0, success: 0, fail: 0 });
 
   const handleBulkFollowup = async () => {
     if (followupCases.length === 0) return;
     setFollowupProcessing(true);
+    const total = followupCases.length;
+    setFollowupProgress({ current: 0, total, success: 0, fail: 0 });
     try {
       const { data: { session } } = await supabase.auth.getSession();
       let success = 0;
       let fail = 0;
-      for (const c of followupCases) {
+      for (let i = 0; i < followupCases.length; i++) {
+        const c = followupCases[i];
+        setFollowupProgress({ current: i + 1, total, success, fail });
         try {
-          const { error } = await cloudFunctions.invoke('wjia-followup-processor', {
-            body: { target_phone: c.phone, target_instance: c.instance_name, force_immediate: true },
-            authToken: session?.access_token,
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 25000);
+          const url = `https://gliigkupoebmlbwyvijp.supabase.co/functions/v1/wjia-followup-processor`;
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token || ''}`,
+              'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38',
+            },
+            body: JSON.stringify({ target_phone: c.phone, target_instance: c.instance_name, force_immediate: true }),
+            signal: controller.signal,
           });
-          if (error) throw error;
+          clearTimeout(timeoutId);
+          if (!res.ok) throw new Error(`${res.status}`);
           success++;
-          await new Promise(r => setTimeout(r, 1500));
         } catch {
           fail++;
         }
+        // Wait 2.5s between calls to avoid overwhelming the function
+        if (i < followupCases.length - 1) {
+          await new Promise(r => setTimeout(r, 2500));
+        }
       }
+      setFollowupProgress({ current: total, total, success, fail });
       toast({
-        title: 'Follow-up antecipado',
+        title: 'Follow-up antecipado concluído',
         description: `${success} sucesso${fail > 0 ? `, ${fail} falha(s)` : ''}`,
+        variant: fail > 0 && success === 0 ? 'destructive' : 'default',
       });
     } catch (err: any) {
       toast({ title: 'Erro', description: err.message, variant: 'destructive' });
     } finally {
       setFollowupProcessing(false);
+      setFollowupProgress({ current: 0, total: 0, success: 0, fail: 0 });
     }
   };
 
