@@ -237,7 +237,7 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
   }, [events]);
 
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col flex-1 min-h-0 space-y-2">
       <div className="flex items-center gap-2">
         <Activity className="h-4 w-4 text-primary" />
         <h3 className="text-sm font-semibold">Atividade em Tempo Real</h3>
@@ -284,7 +284,7 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
         )}
       </div>
 
-      <ScrollArea className="h-[calc(100vh-560px)]">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="space-y-1" ref={scrollRef}>
           {filteredEvents.map(event => (
             <div
