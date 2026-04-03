@@ -3,8 +3,9 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Bot, Zap, PhoneCall, Sparkles, Radio } from 'lucide-react';
-import type { AgentStats, ConversationDetail, CaseStatus } from '../types';
+import type { AgentStats, AgentData, BoardData, ConversationDetail, CaseStatus } from '../types';
 import { PipelineCards } from './PipelineCards';
+import { MonitorFilterBar } from './MonitorFilterBar';
 import { CallQueuePanel } from '../../CallQueuePanel';
 import { FollowupActivityPanel } from '../../FollowupActivityPanel';
 import { AIEnrichmentMonitorPanel } from '../../AIEnrichmentMonitorPanel';
@@ -19,15 +20,36 @@ interface UnifiedMonitorTabProps {
   activeStatus: CaseStatus | null;
   onOpenChat: (c: ConversationDetail) => void;
   onEventClick: (event: any) => void;
+  filterBarProps: {
+    agents: AgentData[];
+    uniqueInstances: string[];
+    uniqueBoards: BoardData[];
+    uniqueCampaigns: string[];
+    agentFilter: string;
+    setAgentFilter: (v: string) => void;
+    instanceFilter: string;
+    setInstanceFilter: (v: string) => void;
+    boardFilter: string;
+    setBoardFilter: (v: string) => void;
+    campaignFilter: string;
+    setCampaignFilter: (v: string) => void;
+    agentActiveFilter: 'all' | 'ativo' | 'pausado';
+    setAgentActiveFilter: (v: 'all' | 'ativo' | 'pausado') => void;
+    followupConfigFilter: 'all' | 'com_followup' | 'sem_followup';
+    setFollowupConfigFilter: (v: 'all' | 'com_followup' | 'sem_followup') => void;
+  };
 }
 
 export function UnifiedMonitorTab({
   conversations, agentStats, loading,
   pipelineCounts, onPipelineClick, activeStatus,
-  onOpenChat, onEventClick,
+  onOpenChat, onEventClick, filterBarProps,
 }: UnifiedMonitorTabProps) {
   return (
     <div className="space-y-4">
+      {/* Global Filters */}
+      <MonitorFilterBar {...filterBarProps} />
+
       {/* Pipeline Cards */}
       <PipelineCards counts={pipelineCounts} activeStatus={activeStatus} onToggle={onPipelineClick} />
 
