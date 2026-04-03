@@ -124,6 +124,7 @@ export function AgentMonitorDashboard() {
   const [campaignFilter, setCampaignFilter] = useState('all');
   const [caseStatusFilter, setCaseStatusFilter] = useState<CaseStatus | 'all'>('all');
   const [agentActiveFilter, setAgentActiveFilter] = useState<'all' | 'ativo' | 'pausado'>('all');
+  const [followupConfigFilter, setFollowupConfigFilter] = useState<'all' | 'com_followup' | 'sem_followup'>('all');
   const [sheetStatusFilter, setSheetStatusFilter] = useState<CaseStatus | null>(null);
 
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({ from: subDays(new Date(), 7), to: new Date() });
