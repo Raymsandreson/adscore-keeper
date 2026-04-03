@@ -225,7 +225,7 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
                   : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'
               }`}
             >
-              {eventIcon({ type } as FeedEvent)}
+              {eventIcon(event.type)}
               {EVENT_TYPE_LABELS[type]}
               {(typeCounts[type] || 0) > 0 && (
                 <span className={`ml-0.5 text-[9px] ${isActive ? 'opacity-80' : 'opacity-60'}`}>
