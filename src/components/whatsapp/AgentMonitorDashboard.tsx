@@ -548,6 +548,7 @@ export function AgentMonitorDashboard() {
       case 'fechado': return 'Fechado';
       case 'recusado': return 'Recusado';
       case 'inviavel': return 'Inviável';
+      case 'bloqueado': return 'Bloqueado';
     }
   };
 
