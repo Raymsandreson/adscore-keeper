@@ -9,11 +9,11 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from '@/components/ui/dropdown-menu';
 import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, Paperclip, Image, FileUp } from 'lucide-react';
+import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, Volume2, VolumeX, BellOff, Trash2 } from 'lucide-react';
 import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -21,6 +21,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+import { ZapSignDocumentDialog } from '@/components/whatsapp/ZapSignDocumentDialog';
 import type { Lead } from '@/hooks/useLeads';
 import type { Contact } from '@/hooks/useContacts';
 
@@ -94,6 +95,12 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [linkedContact, setLinkedContact] = useState<Contact | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
   const [showContactEdit, setShowContactEdit] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [togglingPrivate, setTogglingPrivate] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [muteLoading, setMuteLoading] = useState(false);
+  const [availableAgents, setAvailableAgents] = useState<Array<{ id: string; name: string }>>([]);
+  const [showZapSign, setShowZapSign] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
 
@@ -203,6 +210,34 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       if (contactData) setLinkedContact(contactData as any);
     };
     fetchLinkedData();
+
+    // Fetch private/mute status
+    const fetchConversationStatus = async () => {
+      const { data } = await supabase
+        .from('whatsapp_conversations' as any)
+        .select('is_private, is_muted')
+        .eq('phone', normalizedPhone)
+        .maybeSingle();
+      if (data) {
+        setIsPrivate(!!(data as any).is_private);
+        setIsMuted(!!(data as any).is_muted);
+      } else {
+        setIsPrivate(false);
+        setIsMuted(false);
+      }
+    };
+    fetchConversationStatus();
+
+    // Fetch available agents
+    const fetchAvailableAgents = async () => {
+      const { data } = await supabase
+        .from('whatsapp_ai_agents' as any)
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+      setAvailableAgents((data || []) as any[]);
+    };
+    fetchAvailableAgents();
   }, [open, phone]);
 
   // Realtime
@@ -679,6 +714,116 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
   };
 
+  const handleTogglePrivate = async () => {
+    if (!phone) return;
+    setTogglingPrivate(true);
+    const normalizedPhone = phone.replace(/\D/g, '');
+    const newVal = !isPrivate;
+    try {
+      const { data: existing } = await supabase
+        .from('whatsapp_conversations' as any)
+        .select('id')
+        .eq('phone', normalizedPhone)
+        .maybeSingle();
+      if (existing) {
+        await supabase.from('whatsapp_conversations' as any).update({ is_private: newVal } as any).eq('id', (existing as any).id);
+      } else {
+        await supabase.from('whatsapp_conversations' as any).insert({ phone: normalizedPhone, is_private: newVal } as any);
+      }
+      setIsPrivate(newVal);
+      toast.success(newVal ? 'Conversa trancada!' : 'Conversa desbloqueada!');
+    } catch {
+      toast.error('Erro ao alterar privacidade');
+    } finally {
+      setTogglingPrivate(false);
+    }
+  };
+
+  const handleToggleMute = async (mode: string | null) => {
+    if (!phone) return;
+    setMuteLoading(true);
+    const normalizedPhone = phone.replace(/\D/g, '');
+    const newMuted = mode !== null;
+    try {
+      const { data: existing } = await supabase
+        .from('whatsapp_conversations' as any)
+        .select('id')
+        .eq('phone', normalizedPhone)
+        .maybeSingle();
+      if (existing) {
+        await supabase.from('whatsapp_conversations' as any).update({ is_muted: newMuted, mute_mode: mode } as any).eq('id', (existing as any).id);
+      } else {
+        await supabase.from('whatsapp_conversations' as any).insert({ phone: normalizedPhone, is_muted: newMuted, mute_mode: mode } as any);
+      }
+      setIsMuted(newMuted);
+      toast.success(newMuted ? 'Conversa silenciada!' : 'Conversa reativada!');
+    } catch {
+      toast.error('Erro ao silenciar');
+    } finally {
+      setMuteLoading(false);
+    }
+  };
+
+  const handleSelectAgent = async (agentId: string) => {
+    if (!phone) return;
+    const normalizedPhone = phone.replace(/\D/g, '');
+    const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
+    try {
+      const { data: existing } = await supabase
+        .from('whatsapp_conversation_agents')
+        .select('id')
+        .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
+        .maybeSingle();
+      if (existing) {
+        await supabase.from('whatsapp_conversation_agents').update({
+          agent_id: agentId, is_active: true, activated_by: 'manual',
+          human_paused_until: null,
+        } as any).eq('id', existing.id);
+      } else {
+        await supabase.from('whatsapp_conversation_agents').insert({
+          phone: normalizedPhone, agent_id: agentId, is_active: true,
+          activated_by: 'manual', instance_name: msgInstanceName,
+        } as any);
+      }
+      const agent = availableAgents.find(a => a.id === agentId);
+      setAgentInfo({ name: agent?.name || 'Agente', activated_by: 'Manual', is_active: true });
+      toast.success(`Agente "${agent?.name}" ativado!`);
+    } catch {
+      toast.error('Erro ao ativar agente');
+    }
+  };
+
+  const handleRemoveAgent = async () => {
+    if (!phone) return;
+    const normalizedPhone = phone.replace(/\D/g, '');
+    try {
+      await supabase.from('whatsapp_conversation_agents')
+        .delete()
+        .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
+      setAgentInfo(null);
+      toast.success('Agente removido!');
+    } catch {
+      toast.error('Erro ao remover agente');
+    }
+  };
+
+  const handleClearConversation = async () => {
+    if (!phone) return;
+    if (!confirm('Tem certeza que deseja limpar todos os dados desta conversa? Esta ação não pode ser desfeita.')) return;
+    const normalizedPhone = phone.replace(/\D/g, '');
+    try {
+      await supabase.from('whatsapp_messages').delete().eq('phone', normalizedPhone);
+      await supabase.from('whatsapp_conversation_agents').delete()
+        .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
+      setMessages([]);
+      setAgentInfo(null);
+      toast.success('Conversa limpa!');
+      onOpenChange(false);
+    } catch {
+      toast.error('Erro ao limpar conversa');
+    }
+  };
+
   // Merge messages and call records into unified timeline
   const timelineItems = useMemo(() => {
     const items: Array<{ type: 'message'; data: Message } | { type: 'call'; data: CallRecord }> = [];
@@ -818,7 +963,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                     <MoreVertical className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuItem onClick={() => handleAction('link')}>
                     <Link2 className="h-4 w-4 mr-2" /> Vincular Lead
                   </DropdownMenuItem>
@@ -831,9 +976,78 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                   <DropdownMenuItem onClick={() => handleAction('create_case')}>
                     <Scale className="h-4 w-4 mr-2" /> Criar Caso Jurídico
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleTogglePrivate} disabled={togglingPrivate}>
+                    {isPrivate ? <LockOpen className="h-4 w-4 mr-2" /> : <Lock className="h-4 w-4 mr-2" />}
+                    {isPrivate ? 'Tornar pública' : 'Trancar conversa'}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowZapSign(true)}>
+                    <FileSignature className="h-4 w-4 mr-2" /> Gerar Documento para Assinatura
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleCreateGroup} disabled={creatingGroup}>
                     {creatingGroup ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Users className="h-4 w-4 mr-2" />}
                     Criar Grupo WhatsApp
+                  </DropdownMenuItem>
+                  {availableAgents.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      {agentInfo && agentInfo.is_active ? (
+                        <DropdownMenuItem onClick={handleToggleAgent}>
+                          <BotOff className="h-4 w-4 mr-2" /> Desativar Agente ({agentInfo.name})
+                        </DropdownMenuItem>
+                      ) : agentInfo && !agentInfo.is_active ? (
+                        <DropdownMenuItem onClick={handleToggleAgent}>
+                          <Bot className="h-4 w-4 mr-2" /> Reativar Agente ({agentInfo.name})
+                        </DropdownMenuItem>
+                      ) : null}
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>
+                          <Bot className="h-4 w-4 mr-2" /> {agentInfo ? 'Trocar Agente' : 'Ativar Agente IA'}
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent>
+                          {availableAgents.map(agent => (
+                            <DropdownMenuItem key={agent.id} onClick={() => handleSelectAgent(agent.id)}>
+                              <Bot className="h-3.5 w-3.5 mr-2" />
+                              <span className="flex-1">{agent.name}</span>
+                              {agentInfo && agentInfo.name === agent.name && <Badge variant="default" className="text-[9px] h-4 px-1 ml-1">ativo</Badge>}
+                            </DropdownMenuItem>
+                          ))}
+                          {agentInfo && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={handleRemoveAgent} className="text-destructive">
+                                <BotOff className="h-3.5 w-3.5 mr-2" /> Remover agente
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    </>
+                  )}
+                  <DropdownMenuSeparator />
+                  {isMuted ? (
+                    <DropdownMenuItem onClick={() => handleToggleMute(null)} disabled={muteLoading}>
+                      <Volume2 className="h-4 w-4 mr-2" /> Reativar Conversa
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <VolumeX className="h-4 w-4 mr-2" /> Silenciar Conversa
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        <DropdownMenuItem onClick={() => handleToggleMute('all')}>
+                          <BellOff className="h-3.5 w-3.5 mr-2" /> Silenciar tudo
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleToggleMute('receive')}>
+                          <VolumeX className="h-3.5 w-3.5 mr-2" /> Desativar recebimento
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleToggleMute('send')}>
+                          <VolumeX className="h-3.5 w-3.5 mr-2" /> Desativar envio
+                        </DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  )}
+                  <DropdownMenuItem onClick={handleClearConversation} className="text-destructive focus:text-destructive">
+                    <Trash2 className="h-4 w-4 mr-2" /> Limpar Conversa
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1148,6 +1362,19 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       }}
       mode="sheet"
     />
+
+    {/* ZapSign Document Dialog */}
+    {showZapSign && phone && (
+      <ZapSignDocumentDialog
+        open={showZapSign}
+        onOpenChange={setShowZapSign}
+        phone={phone}
+        leadId={linkedLead?.id}
+        contactId={linkedContact?.id}
+        contactName={linkedContact?.full_name || contactName || undefined}
+        instanceName={instanceName || messages.find(m => m.instance_name)?.instance_name || undefined}
+      />
+    )}
     </>
   );
 }
