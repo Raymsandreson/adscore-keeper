@@ -50,21 +50,22 @@ function isWithinNotificationSchedule(inst: InstanceStatus): boolean {
   return brasiliaHour >= start || brasiliaHour < end;
 }
 
-async function checkInstanceConnection(inst: { id: string; instance_name: string; instance_token: string; base_url: string | null; owner_phone: string | null; notify_on_disconnect?: boolean }): Promise<InstanceStatus> {
+async function checkInstanceConnection(inst: { id: string; instance_name: string; instance_token: string; base_url: string | null; owner_phone: string | null; notify_on_disconnect?: boolean; notify_start_hour?: number; notify_end_hour?: number; notify_weekdays_only?: boolean }): Promise<InstanceStatus> {
   const baseUrl = inst.base_url || 'https://abraci.uazapi.com';
+  const base = { ...inst, base_url: baseUrl, notify_on_disconnect: inst.notify_on_disconnect !== false, notify_start_hour: inst.notify_start_hour ?? 8, notify_end_hour: inst.notify_end_hour ?? 18, notify_weekdays_only: inst.notify_weekdays_only !== false };
   try {
     const resp = await fetch(`${baseUrl}/instance/status`, {
       headers: { token: inst.instance_token },
       signal: AbortSignal.timeout(5000),
     });
     if (!resp.ok) {
-      return { ...inst, base_url: baseUrl, notify_on_disconnect: inst.notify_on_disconnect !== false, connected: false };
+      return { ...base, connected: false };
     }
     const data = await resp.json();
     const status = data?.instance?.status?.toLowerCase() || 'unknown';
-    return { ...inst, base_url: baseUrl, notify_on_disconnect: inst.notify_on_disconnect !== false, connected: status === 'connected' };
+    return { ...base, connected: status === 'connected' };
   } catch {
-    return { ...inst, base_url: baseUrl, notify_on_disconnect: inst.notify_on_disconnect !== false, connected: false };
+    return { ...base, connected: false };
   }
 }
 
