@@ -97,7 +97,7 @@ interface ReferralData {
   campaign_name: string | null;
 }
 
-type CaseStatus = 'sem_resposta' | 'em_andamento' | 'fechado' | 'recusado' | 'inviavel' | 'bloqueado';
+type CaseStatus = 'sem_resposta' | 'em_andamento' | 'fechado' | 'recusado' | 'inviavel' | 'bloqueado' | 'pausado';
 
 export function AgentMonitorDashboard() {
   const { toast } = useToast();
