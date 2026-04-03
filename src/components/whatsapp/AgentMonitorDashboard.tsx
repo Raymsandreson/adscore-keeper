@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Inbox, BarChart3, ClipboardList, Heart } from 'lucide-react';
+import { ClipboardList, Heart, LayoutDashboard } from 'lucide-react';
 import { subDays } from 'date-fns';
 
 import { useMonitorData } from './agent-monitor/hooks/useMonitorData';
@@ -13,12 +13,9 @@ import type { ConversationDetail, CaseStatus } from './agent-monitor/types';
 import { convKey } from './agent-monitor/utils';
 
 import { MonitorHeader } from './agent-monitor/components/MonitorHeader';
-import { MonitorFilterBar } from './agent-monitor/components/MonitorFilterBar';
-import { PipelineCards } from './agent-monitor/components/PipelineCards';
+import { UnifiedMonitorTab } from './agent-monitor/components/UnifiedMonitorTab';
 import { CaseListSheet } from './agent-monitor/components/CaseListSheet';
-import { AgentsPanelTab } from './agent-monitor/components/AgentsPanelTab';
 import { ReferralsTab } from './agent-monitor/components/ReferralsTab';
-import { AIRealtimeFeed } from './AIRealtimeFeed';
 import { AIActivitiesPanel } from './AIActivitiesPanel';
 import { AIActivityPromptDialog } from './AIActivityPromptDialog';
 import { DashboardChatPreview } from './DashboardChatPreview';
@@ -106,27 +103,24 @@ export function AgentMonitorDashboard() {
     <div className="min-h-screen p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
       <MonitorHeader dateRange={dateRange} setDateRange={setDateRange} loading={loading} onRefresh={fetchData} />
 
-      <Tabs defaultValue="queue" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 max-w-xl">
-          <TabsTrigger value="queue" className="text-xs flex items-center gap-1.5"><Inbox className="h-3.5 w-3.5" /> Fila de Casos</TabsTrigger>
-          <TabsTrigger value="agents" className="text-xs flex items-center gap-1.5"><BarChart3 className="h-3.5 w-3.5" /> Painel de Agentes</TabsTrigger>
+      <Tabs defaultValue="monitor" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-3 max-w-md">
+          <TabsTrigger value="monitor" className="text-xs flex items-center gap-1.5"><LayoutDashboard className="h-3.5 w-3.5" /> Monitor</TabsTrigger>
           <TabsTrigger value="ai-activities" className="text-xs flex items-center gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Atividades IA</TabsTrigger>
           <TabsTrigger value="referrals" className="text-xs flex items-center gap-1.5"><Heart className="h-3.5 w-3.5" /> Indicações</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="queue" className="flex flex-col space-y-4">
-          <MonitorFilterBar {...filterBarProps} />
-          <PipelineCards counts={pipelineCounts} activeStatus={sheetStatusFilter} onToggle={(s) => setSheetStatusFilter(prev => prev === s ? null : s)} />
-          <AIRealtimeFeed onEventClick={handleEventClick} />
-        </TabsContent>
-
-        <TabsContent value="agents" className="space-y-4">
-          <AgentsPanelTab
+        <TabsContent value="monitor" className="space-y-4">
+          <UnifiedMonitorTab
             conversations={conversations} agentStats={agentStats} agents={agents}
             filteredConversations={filteredConversations} loading={loading}
+            pipelineCounts={pipelineCounts}
+            onPipelineClick={(s) => setSheetStatusFilter(prev => prev === s ? null : s)}
+            activeStatus={sheetStatusFilter}
             filterProps={filterBarProps} batchProps={batchProps}
             searchQuery={filters.searchQuery} setSearchQuery={filters.setSearchQuery}
-            onOpenChat={handleOpenChat} generatingLeadId={generatingLeadId} onGenerateActivity={handleGenerateActivity}
+            onOpenChat={handleOpenChat} onEventClick={handleEventClick}
+            generatingLeadId={generatingLeadId} onGenerateActivity={handleGenerateActivity}
           />
         </TabsContent>
 
