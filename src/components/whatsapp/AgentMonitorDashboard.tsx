@@ -663,6 +663,17 @@ export function AgentMonitorDashboard() {
           <SelectItem value="pausado">Pausado</SelectItem>
         </SelectContent>
       </Select>
+
+      <Select value={followupConfigFilter} onValueChange={(v) => setFollowupConfigFilter(v as 'all' | 'com_followup' | 'sem_followup')}>
+        <SelectTrigger className="w-[140px] h-8 text-xs">
+          <SelectValue placeholder="Follow-up" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Todos Follow-up</SelectItem>
+          <SelectItem value="com_followup">Com Follow-up</SelectItem>
+          <SelectItem value="sem_followup">Sem Follow-up</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
   );
 
