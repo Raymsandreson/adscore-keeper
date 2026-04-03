@@ -706,28 +706,8 @@ export function AgentMonitorDashboard() {
             ))}
           </div>
 
-          {/* Search */}
-          <div className="relative max-w-md">
-            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input placeholder="Buscar por nome ou telefone..." value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)} className="pl-8 h-8 text-xs" />
-          </div>
-
-          <p className="text-xs text-muted-foreground">{sortedCases.length} casos · Ordenados por chegada</p>
-
-          <ScrollArea className="h-[calc(100vh-500px)]">
-            <div className="space-y-2">
-              {sortedCases.map((c, idx) => (
-                <CaseCard key={`${c.phone}-${c.instance_name}-${idx}`} c={c} />
-              ))}
-              {sortedCases.length === 0 && !loading && (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Inbox className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">Nenhum caso encontrado com os filtros aplicados</p>
-                </div>
-              )}
-            </div>
-          </ScrollArea>
+          {/* Real-time AI activity feed */}
+          <AIRealtimeFeed />
         </TabsContent>
 
         {/* ═══════════ TAB 2: PAINEL DE AGENTES ═══════════ */}
