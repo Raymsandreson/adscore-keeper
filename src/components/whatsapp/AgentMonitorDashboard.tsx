@@ -747,6 +747,7 @@ export function AgentMonitorDashboard() {
                 {c.campaign_name && <Badge variant="secondary" className="text-[9px] h-4"><Megaphone className="h-2.5 w-2.5 mr-0.5" /> {c.campaign_name}</Badge>}
                 {c.board_name && c.stage_name && <Badge variant="outline" className="text-[9px] h-4">{c.board_name} → {c.stage_name}</Badge>}
                 {c.activated_by && <Badge variant="outline" className="text-[9px] h-4 border-blue-200 text-blue-600 dark:border-blue-800 dark:text-blue-400">⚡ {activatedByLabel(c.activated_by)}</Badge>}
+                {c.has_followup_config && <Badge variant="outline" className="text-[9px] h-4 border-purple-200 text-purple-600 dark:border-purple-800 dark:text-purple-400"><Zap className="h-2.5 w-2.5 mr-0.5" /> Follow-up</Badge>}
               </div>
             </div>
             <div className="text-right shrink-0 space-y-1">
