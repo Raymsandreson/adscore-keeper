@@ -18,7 +18,7 @@ import {
   MapPin, Phone, PhoneCall, Megaphone, Sparkles,
   CalendarIcon, Inbox, BarChart3, Heart, AlertCircle, Eye, ClipboardList,
   Square, CheckSquare, StopCircle, ArrowRightLeft, UserPlus, PauseCircle,
-  FastForward, Play
+  FastForward, Play, RotateCcw
 } from 'lucide-react';
 import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
@@ -211,7 +211,7 @@ export function AgentMonitorDashboard() {
     }
   };
 
-  const batchFollowupAction = async (action: 'trigger' | 'anticipate') => {
+  const batchFollowupAction = async (action: 'anticipate' | 'resume') => {
     if (selectedConversations.length === 0) return;
     setBatchProcessing(true);
     try {
@@ -220,10 +220,10 @@ export function AgentMonitorDashboard() {
       let fail = 0;
       for (const c of selectedConversations) {
         try {
-          if (action === 'trigger') {
-            // Trigger = send an AI followup message now
-            const { error } = await cloudFunctions.invoke('whatsapp-ai-agent-reply', {
-              body: { phone: c.phone, instance_name: c.instance_name, is_followup: true },
+          if (action === 'resume') {
+            // Resume = reset the followup cycle so it restarts from step 0
+            const { error } = await cloudFunctions.invoke('wjia-followup-processor', {
+              body: { target_phone: c.phone, target_instance: c.instance_name, reset_cycle: true },
               authToken: session?.access_token,
             });
             if (error) throw error;
@@ -242,7 +242,7 @@ export function AgentMonitorDashboard() {
         }
       }
       toast({ 
-        title: action === 'trigger' ? 'Follow-up disparado' : 'Follow-up antecipado',
+        title: action === 'resume' ? 'Follow-up retomado' : 'Follow-up antecipado',
         description: `${success} sucesso${fail > 0 ? `, ${fail} falha(s)` : ''}` 
       });
       clearSelection();
@@ -521,8 +521,8 @@ export function AgentMonitorDashboard() {
       if (caseStatusFilter !== 'all' && getCaseStatus(c) !== caseStatusFilter) return false;
       if (agentActiveFilter === 'ativo' && !c.is_active) return false;
       if (agentActiveFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
-      if (followupConfigFilter === 'com_followup' && c.followup_count === 0) return false;
-      if (followupConfigFilter === 'sem_followup' && c.followup_count > 0) return false;
+      if (followupConfigFilter === 'com_followup' && !c.has_followup_config) return false;
+      if (followupConfigFilter === 'sem_followup' && c.has_followup_config) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         return c.phone.includes(q) || c.contact_name?.toLowerCase().includes(q) || c.lead_name?.toLowerCase().includes(q);
@@ -832,6 +832,10 @@ export function AgentMonitorDashboard() {
         <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" disabled={batchProcessing}
           onClick={() => batchFollowupAction('anticipate')}>
           <FastForward className="h-3 w-3" /> Antecipar Follow-up
+        </Button>
+        <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1 text-green-600" disabled={batchProcessing}
+          onClick={() => batchFollowupAction('resume')}>
+          <RotateCcw className="h-3 w-3" /> Retomar Follow-up
         </Button>
       </div>
     );
@@ -1297,8 +1301,8 @@ export function AgentMonitorDashboard() {
             <div className="flex flex-wrap gap-1 pb-1">
               {([['all', 'Todos'], ['com_followup', 'Com Follow-up'], ['sem_followup', 'Sem Follow-up']] as const).map(([k, label]) => {
                 const count = sheetCases.filter(c => {
-                  if (k === 'com_followup') return c.followup_count > 0;
-                  if (k === 'sem_followup') return c.followup_count === 0;
+                  if (k === 'com_followup') return c.has_followup_config;
+                  if (k === 'sem_followup') return !c.has_followup_config;
                   return true;
                 }).length;
                 return (
@@ -1322,8 +1326,8 @@ export function AgentMonitorDashboard() {
                 if (sheetLeadFilter === 'sem_lead' && c.lead_id) return false;
                 if (sheetAgentStatusFilter === 'ativo' && !c.is_active) return false;
                 if (sheetAgentStatusFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
-                if (sheetFollowupFilter === 'com_followup' && c.followup_count === 0) return false;
-                if (sheetFollowupFilter === 'sem_followup' && c.followup_count > 0) return false;
+                if (sheetFollowupFilter === 'com_followup' && !c.has_followup_config) return false;
+                if (sheetFollowupFilter === 'sem_followup' && c.has_followup_config) return false;
                 return true;
               }).map((c, idx) => (
                 <CaseCard key={`sheet-${c.phone}-${c.instance_name}-${idx}`} c={c} />
