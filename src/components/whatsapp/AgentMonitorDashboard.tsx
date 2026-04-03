@@ -18,7 +18,7 @@ import {
   MapPin, Phone, PhoneCall, Megaphone, Sparkles,
   CalendarIcon, Inbox, BarChart3, Heart, AlertCircle, Eye, ClipboardList,
   Square, CheckSquare, StopCircle, ArrowRightLeft, UserPlus, PauseCircle,
-  FastForward, Play
+  FastForward, Play, RotateCcw
 } from 'lucide-react';
 import { CallQueuePanel } from './CallQueuePanel';
 import { FollowupActivityPanel } from './FollowupActivityPanel';
