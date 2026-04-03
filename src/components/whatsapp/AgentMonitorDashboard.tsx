@@ -211,7 +211,7 @@ export function AgentMonitorDashboard() {
     }
   };
 
-  const batchFollowupAction = async (action: 'trigger' | 'anticipate') => {
+  const batchFollowupAction = async (action: 'anticipate' | 'resume') => {
     if (selectedConversations.length === 0) return;
     setBatchProcessing(true);
     try {
@@ -220,10 +220,10 @@ export function AgentMonitorDashboard() {
       let fail = 0;
       for (const c of selectedConversations) {
         try {
-          if (action === 'trigger') {
-            // Trigger = send an AI followup message now
-            const { error } = await cloudFunctions.invoke('whatsapp-ai-agent-reply', {
-              body: { phone: c.phone, instance_name: c.instance_name, is_followup: true },
+          if (action === 'resume') {
+            // Resume = reset the followup cycle so it restarts from step 0
+            const { error } = await cloudFunctions.invoke('wjia-followup-processor', {
+              body: { target_phone: c.phone, target_instance: c.instance_name, reset_cycle: true },
               authToken: session?.access_token,
             });
             if (error) throw error;
@@ -242,7 +242,7 @@ export function AgentMonitorDashboard() {
         }
       }
       toast({ 
-        title: action === 'trigger' ? 'Follow-up disparado' : 'Follow-up antecipado',
+        title: action === 'resume' ? 'Follow-up retomado' : 'Follow-up antecipado',
         description: `${success} sucesso${fail > 0 ? `, ${fail} falha(s)` : ''}` 
       });
       clearSelection();
