@@ -59,7 +59,7 @@ export function AgentMonitorDashboard() {
         setChatPreview({
           phone: event.phone, instance_name: event.instance_name,
           agent_name: event.agent_name || '', agent_id: '',
-          is_active: false, is_blocked: false, human_paused: false,
+          is_active: false,
           contact_name: event.contact_name || null, lead_name: null,
           lead_id: event.lead_id || null, lead_status: null,
           lead_city: null, lead_state: null, lead_acolhedor: null,
