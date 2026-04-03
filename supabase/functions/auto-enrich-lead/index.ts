@@ -292,7 +292,9 @@ REGRAS:
                 .eq('id', lead_id)
                 .single()
 
-              if (leadForCapi && (leadForCapi.ctwa_context || leadForCapi.campaign_id)) {
+              // Only send CAPI events for CTWA leads with ctwa_clid (official Business Messaging API)
+              const ctwaClid = (leadForCapi?.ctwa_context as any)?.ctwa_clid
+              if (leadForCapi && ctwaClid) {
                 const finalStatus = cleaned.lead_status === 'unviable' ? 'inviavel' : cleaned.lead_status
                 const eventMap: Record<string, { event_name: string; content_category: string }> = {
                   closed: { event_name: 'Purchase', content_category: 'lead_converted' },
@@ -301,36 +303,46 @@ REGRAS:
                 }
                 const mapping = eventMap[finalStatus]
                 if (mapping) {
-                  const phone = (leadForCapi.lead_phone || '').replace(/\D/g, '')
-                  const nameParts = (leadForCapi.lead_name || '').trim().split(' ')
-                  const capiEvent = {
-                    event_name: mapping.event_name,
-                    event_time: Math.floor(Date.now() / 1000),
-                    action_source: 'chat',
-                    user_data: {
-                      ...(phone && { ph: phone }),
-                      ...(nameParts[0] && { fn: nameParts[0] }),
-                      ...(nameParts.length > 1 && { ln: nameParts.slice(1).join(' ') }),
-                      external_id: lead_id,
-                    },
-                    custom_data: {
-                      content_category: mapping.content_category,
-                      lead_id,
-                      status: finalStatus,
-                      ...(leadForCapi.campaign_id && { content_ids: [leadForCapi.campaign_id] }),
-                    },
+                  // Get WABA ID from meta_ad_accounts
+                  const { data: adAccounts } = await supabase
+                    .from('meta_ad_accounts')
+                    .select('*')
+                    .limit(1)
+                  const wabaId = (adAccounts as any)?.[0]?.waba_id
+
+                  if (wabaId) {
+                    const capiEvent = {
+                      event_name: mapping.event_name,
+                      event_time: Math.floor(Date.now() / 1000),
+                      action_source: 'business_messaging',
+                      messaging_channel: 'whatsapp',
+                      user_data: {
+                        whatsapp_business_account_id: wabaId,
+                        ctwa_clid: ctwaClid,
+                      },
+                      custom_data: {
+                        content_category: mapping.content_category,
+                        lead_id,
+                        status: finalStatus,
+                        ...(finalStatus === 'closed' && leadForCapi.contract_value && {
+                          value: leadForCapi.contract_value,
+                          currency: 'BRL',
+                        }),
+                      },
+                    }
+                    const capiUrl = `${RESOLVED_SUPABASE_URL}/functions/v1/facebook-capi`
+                    await fetch(capiUrl, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${RESOLVED_ANON_KEY}`,
+                      },
+                      body: JSON.stringify({ events: [capiEvent], mode: 'business_messaging' }),
+                    })
+                    console.log(`[auto-enrich] Sent Meta CAPI BM event: ${mapping.event_name} (${mapping.content_category})`)
+                  } else {
+                    console.log('[auto-enrich] No WABA ID configured, skipping CAPI event')
                   }
-                  // Call facebook-capi function
-                  const capiUrl = `${RESOLVED_SUPABASE_URL.replace('gliigkupoebmlbwyvijp', 'gliigkupoebmlbwyvijp')}/functions/v1/facebook-capi`
-                  await fetch(capiUrl, {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${RESOLVED_ANON_KEY}`,
-                    },
-                    body: JSON.stringify({ events: [capiEvent] }),
-                  })
-                  console.log(`[auto-enrich] Sent Meta CAPI event: ${mapping.event_name} (${mapping.content_category})`)
                 }
               }
             } catch (capiErr) {
