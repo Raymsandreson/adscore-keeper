@@ -942,14 +942,26 @@ REGRAS IMPORTANTES:
       }
 
       // Save outbound message (full reply)
-      await supabase.from("whatsapp_messages").insert({
+      const outboundMsg = {
         phone, instance_name, direction: "outbound",
         message_text: reply, metadata: { ai_agent: (agent as any).name, ai_agent_id: (agent as any).id, split_count: messageParts.length },
         campaign_id: campaign_id || null,
         campaign_name: null,
         action_source: 'agent',
         action_source_detail: `Agente: ${(agent as any).name}`,
-      });
+      };
+      await supabase.from("whatsapp_messages").insert(outboundMsg);
+
+      // Mirror to Cloud DB for frontend visibility
+      try {
+        const cloudClient = createClient(
+          Deno.env.get('SUPABASE_URL')!,
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+        );
+        await cloudClient.from("whatsapp_messages").insert(outboundMsg);
+      } catch (mirrorErr) {
+        console.error("Cloud mirror error:", mirrorErr);
+      }
 
       // ========== SCHEDULE FOLLOW-UP ==========
       if ((agent as any).followup_enabled) {
