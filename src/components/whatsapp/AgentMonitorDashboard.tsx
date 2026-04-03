@@ -471,13 +471,15 @@ export function AgentMonitorDashboard() {
         if (campaignFilter !== '__none__' && c.campaign_name !== campaignFilter) return false;
       }
       if (caseStatusFilter !== 'all' && getCaseStatus(c) !== caseStatusFilter) return false;
+      if (agentActiveFilter === 'ativo' && !c.is_active) return false;
+      if (agentActiveFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         return c.phone.includes(q) || c.contact_name?.toLowerCase().includes(q) || c.lead_name?.toLowerCase().includes(q);
       }
       return true;
     });
-  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter, caseStatusFilter, searchQuery]);
+  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter, caseStatusFilter, agentActiveFilter, searchQuery]);
 
   // Pipeline counts
   const pipelineCounts = useMemo(() => {
