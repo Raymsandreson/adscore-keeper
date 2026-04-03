@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
     // 1. Get all active instances from Cloud (registry)
     const { data: instances, error: instErr } = await cloudDb
       .from('whatsapp_instances')
-      .select('id, instance_name, instance_token, base_url, owner_phone, notify_on_disconnect')
+      .select('id, instance_name, instance_token, base_url, owner_phone, notify_on_disconnect, notify_start_hour, notify_end_hour, notify_weekdays_only')
       .eq('is_active', true);
 
     if (instErr || !instances?.length) {
