@@ -131,30 +131,6 @@ export function UnifiedMonitorTab({
           </div>
         </TabsContent>
 
-        <TabsContent value="conversations" className="space-y-3">
-          <MonitorFilterBar {...filterProps} />
-          <div className="relative max-w-md">
-            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input placeholder="Buscar..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-8 h-8 text-xs" />
-          </div>
-          <BatchToolbar list={filteredConversations} selectedCount={batchProps.selectedCount} agents={agents} {...batchProps} />
-          <p className="text-xs text-muted-foreground">{filteredConversations.length} conversas</p>
-          <ScrollArea className="h-[calc(100vh-540px)]">
-            <div className="space-y-2">
-              {filteredConversations.map((c, idx) => (
-                <CaseCard key={`${c.phone}-${c.instance_name}-${idx}`} c={c} selectable
-                  isSelected={batchProps.selectedKeys.has(convKey(c))}
-                  onToggleSelect={(conv) => {
-                    const k = convKey(conv);
-                    const newKeys = new Set(batchProps.selectedKeys);
-                    if (newKeys.has(k)) newKeys.delete(k); else newKeys.add(k);
-                  }}
-                  onOpenChat={onOpenChat} generatingLeadId={generatingLeadId} onGenerateActivity={onGenerateActivity}
-                />
-              ))}
-            </div>
-          </ScrollArea>
-        </TabsContent>
 
         <TabsContent value="followups"><FollowupActivityPanel /></TabsContent>
         <TabsContent value="call-queue">
