@@ -43,10 +43,13 @@ interface UnifiedMonitorTabProps {
 export function UnifiedMonitorTab({
   conversations, agentStats, loading,
   pipelineCounts, onPipelineClick, activeStatus,
-  onOpenChat, onEventClick,
+  onOpenChat, onEventClick, filterBarProps,
 }: UnifiedMonitorTabProps) {
   return (
     <div className="space-y-4">
+      {/* Global Filters */}
+      <MonitorFilterBar {...filterBarProps} />
+
       {/* Pipeline Cards */}
       <PipelineCards counts={pipelineCounts} activeStatus={activeStatus} onToggle={onPipelineClick} />
 

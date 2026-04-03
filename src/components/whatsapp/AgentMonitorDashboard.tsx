@@ -117,6 +117,7 @@ export function AgentMonitorDashboard() {
             onPipelineClick={(s) => setSheetStatusFilter(prev => prev === s ? null : s)}
             activeStatus={sheetStatusFilter}
             onOpenChat={handleOpenChat} onEventClick={handleEventClick}
+            filterBarProps={filterBarProps}
           />
         </TabsContent>
 
