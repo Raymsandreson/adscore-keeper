@@ -193,6 +193,9 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
       }, (payload: any) => {
         const m = payload.new;
         if (!m) return;
+        // Filter: only allowed instances and agent-managed conversations
+        if (!allowedInstancesRef.current.has(m.instance_name)) return;
+        if (!agentConvKeysRef.current.has(`${m.phone}|${m.instance_name}`)) return;
         const newEvent: FeedEvent = {
           id: `msg-${m.id}`,
           type: m.direction === 'outbound' ? 'message_sent' : 'message_received',
