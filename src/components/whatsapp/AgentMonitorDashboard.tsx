@@ -496,6 +496,7 @@ export function AgentMonitorDashboard() {
       recusado: base.filter(c => getCaseStatus(c) === 'recusado').length,
       inviavel: base.filter(c => getCaseStatus(c) === 'inviavel').length,
       bloqueado: base.filter(c => getCaseStatus(c) === 'bloqueado').length,
+      pausado: base.filter(c => getCaseStatus(c) === 'pausado').length,
     };
   }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter]);
 
