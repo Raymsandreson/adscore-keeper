@@ -11,8 +11,6 @@ export interface ConversationDetail {
   agent_name: string;
   agent_id: string;
   is_active: boolean;
-  is_blocked: boolean;
-  human_paused: boolean;
   contact_name: string | null;
   lead_name: string | null;
   lead_id: string | null;

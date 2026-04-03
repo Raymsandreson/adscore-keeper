@@ -166,9 +166,7 @@ export function useMonitorData() {
         const stat = statsMap.get(c.agent_id);
         if (!stat) return;
         stat.total_conversations++;
-        if (c.is_active && !c.human_paused) stat.active_conversations++;
-        else if (c.human_paused) stat.paused_conversations++;
-        else stat.inactive_conversations++;
+        stat.active_conversations++;
         stat.total_messages_sent += c.outbound_count;
         stat.total_messages_received += c.inbound_count;
         stat.followups_sent += c.followup_count;

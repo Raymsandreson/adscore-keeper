@@ -35,7 +35,6 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       if (!applyBaseFilters(c)) return false;
       if (caseStatusFilter !== 'all' && getCaseStatus(c) !== caseStatusFilter) return false;
       if (agentActiveFilter === 'ativo' && !c.is_active) return false;
-      if (agentActiveFilter === 'pausado' && (c.is_active || c.is_blocked)) return false;
       if (followupConfigFilter === 'com_followup' && !c.has_followup_config) return false;
       if (followupConfigFilter === 'sem_followup' && c.has_followup_config) return false;
       if (searchQuery) {

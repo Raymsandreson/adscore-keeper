@@ -199,7 +199,6 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
           if (k === 'com_lead') return !!c.lead_id;
           if (k === 'sem_lead') return !c.lead_id;
           if (k === 'ativo') return c.is_active;
-          if (k === 'pausado') return !c.is_active && !c.is_blocked;
           if (k === 'com_followup') return c.has_followup_config;
           if (k === 'sem_followup') return !c.has_followup_config;
           return true;

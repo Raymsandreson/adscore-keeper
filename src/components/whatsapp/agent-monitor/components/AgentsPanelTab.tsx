@@ -57,8 +57,7 @@ export function AgentsPanelTab({
             </div>
             <p className="text-2xl font-bold">{conversations.length}</p>
             <div className="flex gap-2 mt-1">
-              <Badge variant="secondary" className="text-[9px]">{conversations.filter(c => c.is_active && !c.human_paused).length} ativas</Badge>
-              <Badge variant="outline" className="text-[9px]">{conversations.filter(c => c.human_paused).length} pausadas</Badge>
+              <Badge variant="secondary" className="text-[9px]">{conversations.length} ativas</Badge>
             </div>
           </CardContent>
         </Card>
