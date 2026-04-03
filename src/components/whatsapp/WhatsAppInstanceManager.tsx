@@ -323,6 +323,15 @@ export function WhatsAppInstanceManager() {
                           value={inst.default_agent_id || 'none'}
                           onValueChange={async (v) => {
                             const newVal = v === 'none' ? null : v;
+                            const oldVal = inst.default_agent_id;
+                            
+                            // If removing agent (setting to none), ask about stopping in all conversations
+                            if (newVal === null && oldVal) {
+                              const agentName = agents.find(a => a.id === oldVal)?.name || 'agente';
+                              setPendingAgentRemoval({ instanceId: inst.id, instanceName: inst.instance_name, oldAgentId: oldVal, agentName });
+                              return;
+                            }
+                            
                             setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, default_agent_id: newVal } : i));
                             const { error } = await supabase
                               .from('whatsapp_instances')
@@ -330,10 +339,11 @@ export function WhatsAppInstanceManager() {
                               .eq('id', inst.id);
                             if (error) {
                               toast.error('Erro ao salvar agente padrão');
-                              setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, default_agent_id: inst.default_agent_id } : i));
+                              setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, default_agent_id: oldVal } : i));
                             } else {
                               const agentName = agents.find(a => a.id === newVal)?.name;
                               toast.success(newVal ? `🤖 Agente "${agentName}" definido como padrão` : 'Agente padrão removido');
+                            }
                             }
                           }}
                         >
