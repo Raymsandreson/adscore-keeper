@@ -123,6 +123,86 @@ export function AgentMonitorDashboard() {
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({ from: subDays(new Date(), 7), to: new Date() });
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
+  
+  // Batch selection
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [batchAgentId, setBatchAgentId] = useState<string>('');
+  const [batchProcessing, setBatchProcessing] = useState(false);
+
+  const convKey = (c: { phone: string; instance_name: string }) => `${c.phone}|${c.instance_name}`;
+  
+  const toggleSelection = (c: ConversationDetail) => {
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      const k = convKey(c);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
+  };
+
+  const selectAll = (list: ConversationDetail[]) => {
+    setSelectedKeys(new Set(list.map(convKey)));
+  };
+
+  const clearSelection = () => setSelectedKeys(new Set());
+
+  const selectedConversations = useMemo(() => {
+    return conversations.filter(c => selectedKeys.has(convKey(c)));
+  }, [conversations, selectedKeys]);
+
+  const batchAction = async (action: 'pause' | 'assign' | 'swap', agentId?: string) => {
+    if (selectedConversations.length === 0) return;
+    setBatchProcessing(true);
+    try {
+      // Get IDs from whatsapp_conversation_agents
+      const keys = selectedConversations.map(c => ({ phone: c.phone, instance: c.instance_name }));
+      
+      for (const { phone, instance } of keys) {
+        if (action === 'pause') {
+          await supabase
+            .from('whatsapp_conversation_agents')
+            .update({ is_active: false } as any)
+            .eq('phone', phone)
+            .eq('instance_name', instance);
+        } else if (action === 'assign' && agentId) {
+          // Check if exists
+          const { data: existing } = await supabase
+            .from('whatsapp_conversation_agents')
+            .select('id')
+            .eq('phone', phone)
+            .eq('instance_name', instance)
+            .maybeSingle();
+          
+          if (existing) {
+            await supabase
+              .from('whatsapp_conversation_agents')
+              .update({ agent_id: agentId, is_active: true, human_paused_until: null } as any)
+              .eq('phone', phone)
+              .eq('instance_name', instance);
+          } else {
+            await supabase
+              .from('whatsapp_conversation_agents')
+              .insert({ phone, instance_name: instance, agent_id: agentId, is_active: true } as any);
+          }
+        } else if (action === 'swap' && agentId) {
+          await supabase
+            .from('whatsapp_conversation_agents')
+            .update({ agent_id: agentId } as any)
+            .eq('phone', phone)
+            .eq('instance_name', instance);
+        }
+      }
+      
+      toast({ title: 'Sucesso', description: `Ação aplicada em ${keys.length} conversas` });
+      clearSelection();
+      setBatchAgentId('');
+      fetchData();
+    } catch (err: any) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+    } finally {
+      setBatchProcessing(false);
+    }
+  };
 
   // Boards data
   const [boards, setBoards] = useState<Array<{ id: string; name: string; stages: any[] }>>([]);
