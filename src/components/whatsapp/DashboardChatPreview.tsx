@@ -714,6 +714,116 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
   };
 
+  const handleTogglePrivate = async () => {
+    if (!phone) return;
+    setTogglingPrivate(true);
+    const normalizedPhone = phone.replace(/\D/g, '');
+    const newVal = !isPrivate;
+    try {
+      const { data: existing } = await supabase
+        .from('whatsapp_conversations' as any)
+        .select('id')
+        .eq('phone', normalizedPhone)
+        .maybeSingle();
+      if (existing) {
+        await supabase.from('whatsapp_conversations' as any).update({ is_private: newVal } as any).eq('id', (existing as any).id);
+      } else {
+        await supabase.from('whatsapp_conversations' as any).insert({ phone: normalizedPhone, is_private: newVal } as any);
+      }
+      setIsPrivate(newVal);
+      toast.success(newVal ? 'Conversa trancada!' : 'Conversa desbloqueada!');
+    } catch {
+      toast.error('Erro ao alterar privacidade');
+    } finally {
+      setTogglingPrivate(false);
+    }
+  };
+
+  const handleToggleMute = async (mode: string | null) => {
+    if (!phone) return;
+    setMuteLoading(true);
+    const normalizedPhone = phone.replace(/\D/g, '');
+    const newMuted = mode !== null;
+    try {
+      const { data: existing } = await supabase
+        .from('whatsapp_conversations' as any)
+        .select('id')
+        .eq('phone', normalizedPhone)
+        .maybeSingle();
+      if (existing) {
+        await supabase.from('whatsapp_conversations' as any).update({ is_muted: newMuted, mute_mode: mode } as any).eq('id', (existing as any).id);
+      } else {
+        await supabase.from('whatsapp_conversations' as any).insert({ phone: normalizedPhone, is_muted: newMuted, mute_mode: mode } as any);
+      }
+      setIsMuted(newMuted);
+      toast.success(newMuted ? 'Conversa silenciada!' : 'Conversa reativada!');
+    } catch {
+      toast.error('Erro ao silenciar');
+    } finally {
+      setMuteLoading(false);
+    }
+  };
+
+  const handleSelectAgent = async (agentId: string) => {
+    if (!phone) return;
+    const normalizedPhone = phone.replace(/\D/g, '');
+    const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
+    try {
+      const { data: existing } = await supabase
+        .from('whatsapp_conversation_agents')
+        .select('id')
+        .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
+        .maybeSingle();
+      if (existing) {
+        await supabase.from('whatsapp_conversation_agents').update({
+          agent_id: agentId, is_active: true, activated_by: 'manual',
+          human_paused_until: null,
+        } as any).eq('id', existing.id);
+      } else {
+        await supabase.from('whatsapp_conversation_agents').insert({
+          phone: normalizedPhone, agent_id: agentId, is_active: true,
+          activated_by: 'manual', instance_name: msgInstanceName,
+        } as any);
+      }
+      const agent = availableAgents.find(a => a.id === agentId);
+      setAgentInfo({ name: agent?.name || 'Agente', activated_by: 'Manual', is_active: true });
+      toast.success(`Agente "${agent?.name}" ativado!`);
+    } catch {
+      toast.error('Erro ao ativar agente');
+    }
+  };
+
+  const handleRemoveAgent = async () => {
+    if (!phone) return;
+    const normalizedPhone = phone.replace(/\D/g, '');
+    try {
+      await supabase.from('whatsapp_conversation_agents')
+        .delete()
+        .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
+      setAgentInfo(null);
+      toast.success('Agente removido!');
+    } catch {
+      toast.error('Erro ao remover agente');
+    }
+  };
+
+  const handleClearConversation = async () => {
+    if (!phone) return;
+    if (!confirm('Tem certeza que deseja limpar todos os dados desta conversa? Esta ação não pode ser desfeita.')) return;
+    const normalizedPhone = phone.replace(/\D/g, '');
+    try {
+      await supabase.from('whatsapp_messages').delete().eq('phone', normalizedPhone);
+      await supabase.from('whatsapp_conversation_agents').delete()
+        .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
+      setMessages([]);
+      setAgentInfo(null);
+      toast.success('Conversa limpa!');
+      onOpenChange(false);
+    } catch {
+      toast.error('Erro ao limpar conversa');
+    }
+  };
+
   // Merge messages and call records into unified timeline
   const timelineItems = useMemo(() => {
     const items: Array<{ type: 'message'; data: Message } | { type: 'call'; data: CallRecord }> = [];
