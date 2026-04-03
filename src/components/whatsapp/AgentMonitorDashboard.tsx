@@ -450,6 +450,7 @@ export function AgentMonitorDashboard() {
   // Classify case status
   const getCaseStatus = (c: ConversationDetail): CaseStatus => {
     if (c.is_blocked) return 'bloqueado';
+    if (!c.is_active && !c.is_blocked) return 'pausado';
     if (c.lead_status === 'closed') return 'fechado';
     if (c.lead_status === 'refused') return 'recusado';
     if (c.lead_status === 'unviable') return 'inviavel';
