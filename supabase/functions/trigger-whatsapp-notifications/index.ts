@@ -1,13 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
-// External DB for business data (leads, activities, messages, notification config)
-function resolveSupabaseUrl(): string {
-  const candidates = [Deno.env.get('EXTERNAL_SUPABASE_URL'), Deno.env.get('SUPABASE_URL')];
-  for (const c of candidates) { const v = (c || '').trim(); if (v.startsWith('https://') || v.startsWith('http://')) return v; }
-  return 'https://kmedldlepwiityjsdahz.supabase.co';
-}
 const EXTERNAL_URL = resolveSupabaseUrl();
-const EXTERNAL_KEY = (Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
+const EXTERNAL_KEY = resolveServiceRoleKey();
 const RESOLVED_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
 // Cloud DB for profiles & whatsapp_instances (user_ids from Cloud auth)
