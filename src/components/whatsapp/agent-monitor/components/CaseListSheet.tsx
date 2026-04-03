@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Search, AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, Inbox, Zap, Loader2, Phone, FileText, Send, X as XIcon } from 'lucide-react';
+import { Search, AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Inbox, Zap, Loader2, Phone, FileText, Send, X as XIcon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import type { ConversationDetail, CaseStatus } from '../types';
