@@ -2573,7 +2573,7 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseAnonKey}`,
+            'Authorization': `Bearer ${cloudAnonKey}`,
           },
           body: JSON.stringify({
             phone,
