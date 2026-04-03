@@ -107,28 +107,36 @@ export function CTWACampaignAutomation() {
   const [chatPreviewPhone, setChatPreviewPhone] = useState<string | null>(null);
   const [chatPreviewConv, setChatPreviewConv] = useState<ConversationInfo | null>(null);
 
-  const getMetaCredentials = () => {
+  const getMetaCredentials = async () => {
+    try {
+      const { data } = await supabase
+        .from('meta_ad_accounts')
+        .select('access_token, account_id')
+        .order('created_at', { ascending: true })
+        .limit(1);
+
+      if (data && data.length > 0) {
+        return { accessToken: data[0].access_token, adAccountId: data[0].account_id };
+      }
+    } catch (e) { console.error('CTWA: Error fetching meta credentials from DB:', e); }
+
+    // Fallback to localStorage for migration
     const savedAccounts = localStorage.getItem('meta_saved_accounts');
     if (savedAccounts) {
       try {
         const accounts = JSON.parse(savedAccounts);
-        const selectedIds = localStorage.getItem('meta_selected_account_ids');
-        const selectedId = selectedIds ? JSON.parse(selectedIds)?.[0] : localStorage.getItem('meta_selected_account');
-        const selected = accounts.find((a: any) => a.id === selectedId) || accounts[0];
+        const selected = accounts[0];
         if (selected) {
           const adAccountId = selected.accountId || selected.adAccountId || selected.ad_account_id;
           return { accessToken: selected.accessToken, adAccountId };
         }
       } catch (e) { console.error('CTWA: Error parsing saved accounts:', e); }
     }
-    return {
-      accessToken: localStorage.getItem('meta_access_token'),
-      adAccountId: localStorage.getItem('meta_ad_account_id'),
-    };
+    return { accessToken: null, adAccountId: null };
   };
 
   const fetchMetaCampaigns = async () => {
-    const { accessToken, adAccountId } = getMetaCredentials();
+    const { accessToken, adAccountId } = await getMetaCredentials();
     console.log('CTWA: credentials check', { hasToken: !!accessToken, hasAccount: !!adAccountId });
     if (!accessToken || !adAccountId) {
       console.warn('CTWA: No Meta credentials found in localStorage. Keys present:', 
