@@ -19,7 +19,7 @@ export function useMonitorData() {
 
       const [agentsRes, convAgentsRes, messagesRes, leadsRes, boardsRes, followupsRes, referralsRes] = await Promise.all([
         supabase.from('wjia_command_shortcuts').select('id, shortcut_name, description, is_active, followup_steps, followup_repeat_forever').order('shortcut_name'),
-        supabase.from('whatsapp_conversation_agents').select('*').eq('is_active', true),
+        supabase.from('whatsapp_conversation_agents').select('*').or('is_active.eq.true,is_blocked.eq.true'),
         supabase.from('whatsapp_messages')
           .select('phone, instance_name, direction, created_at, contact_name, lead_id, campaign_name')
           .gte('created_at', startDate).lte('created_at', endDate).order('created_at', { ascending: false }),
