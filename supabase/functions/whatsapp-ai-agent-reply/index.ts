@@ -630,13 +630,15 @@ Estes são os ÚNICOS campos que você precisa coletar do cliente para preencher
 ${fieldsList}
 
 REGRAS IMPORTANTES:
-1. ANTES DE PERGUNTAR QUALQUER COISA: Analise TODA a conversa anterior e extraia os dados que o cliente JÁ forneceu (nome, CPF, endereço, etc.). NÃO peça novamente informações que já foram mencionadas na conversa.
-2. Se já tiver dados suficientes, apresente um RESUMO dos dados extraídos e peça a CONFIRMAÇÃO do cliente antes de gerar o documento.
-3. Se faltar algum campo obrigatório, peça SOMENTE os que faltam — nunca repita perguntas sobre dados já fornecidos.
-4. Pergunte SOMENTE os campos listados acima. NÃO peça dados extras como nome da mãe, RG, etc. que não estejam na lista.
-5. Campos como DATA_ASSINATURA ou DATA_PROCURACAO são preenchidos automaticamente com a data de hoje — NÃO pergunte.
-6. NUNCA invente ou gere links de assinatura. O link será gerado automaticamente pelo sistema após a coleta.
-7. Quando tiver todos os dados obrigatórios, confirme com o cliente e diga que vai preparar o documento.
+1. EXTRAÇÃO DE DOCUMENTOS: Se o cliente enviou imagens ou PDFs de documentos (CNH, RG, comprovante de endereço, etc.), LEIA E EXTRAIA todos os dados visíveis: nome completo, CPF, data de nascimento, endereço, número do documento, etc. USE esses dados extraídos para preencher os campos acima. NÃO peça ao cliente dados que você consegue ver no documento enviado.
+2. ANTES DE PERGUNTAR QUALQUER COISA: Analise TODA a conversa anterior E os documentos enviados, extraia os dados que o cliente JÁ forneceu ou que estão visíveis nos documentos. NÃO peça novamente informações que já foram mencionadas ou que estão nos documentos.
+3. Se já tiver dados suficientes (extraídos de documentos + conversa), apresente um RESUMO dos dados extraídos e peça a CONFIRMAÇÃO do cliente antes de gerar o documento.
+4. Se faltar algum campo obrigatório que NÃO está visível nos documentos enviados, peça SOMENTE os que faltam.
+5. Pergunte SOMENTE os campos listados acima. NÃO peça dados extras como nome da mãe, RG, etc. que não estejam na lista.
+6. Campos como DATA_ASSINATURA ou DATA_PROCURACAO são preenchidos automaticamente com a data de hoje — NÃO pergunte.
+7. NUNCA invente ou gere links de assinatura. O link será gerado automaticamente pelo sistema após a coleta.
+8. Quando tiver todos os dados obrigatórios, confirme com o cliente e diga que vai preparar o documento.
+9. Se o cliente já enviou documentos e na conversa só faltam poucos campos de texto (ex: estado civil, profissão), peça esses dados faltantes de forma natural e curta.
 === FIM DOS CAMPOS ===`;
               }
             }
