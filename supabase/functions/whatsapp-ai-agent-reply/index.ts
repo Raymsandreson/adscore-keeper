@@ -697,10 +697,29 @@ REGRAS IMPORTANTES:
             ]
           });
         } else if (msgType === "document" && mediaUrl) {
-          // Note document was sent
+          // Send document as visual content so AI can extract data (CPF, name, etc.)
           const fileName = mediaUrl.split("/").pop() || "documento";
-          const docNote = msgText || `[Documento enviado: ${decodeURIComponent(fileName)}]`;
-          contextMessages.push({ role, content: docNote });
+          const isPdf = mediaUrl.toLowerCase().includes(".pdf") || fileName.toLowerCase().endsWith(".pdf");
+          if (isPdf) {
+            try {
+              const docBase64 = await urlToBase64DataUri(mediaUrl);
+              const textPart = msgText || `Documento enviado: ${decodeURIComponent(fileName)}. Extraia todos os dados visíveis (nome, CPF, endereço, etc.)`;
+              contextMessages.push({
+                role,
+                content: [
+                  { type: "text", text: textPart },
+                  { type: "image_url", image_url: { url: docBase64 } }
+                ]
+              });
+            } catch (e) {
+              console.error("Failed to convert document to base64:", e);
+              const docNote = msgText || `[Documento enviado: ${decodeURIComponent(fileName)}]`;
+              contextMessages.push({ role, content: docNote });
+            }
+          } else {
+            const docNote = msgText || `[Documento enviado: ${decodeURIComponent(fileName)}]`;
+            contextMessages.push({ role, content: docNote });
+          }
         } else if (msgType === "video" && mediaUrl) {
           contextMessages.push({ role, content: msgText || "[Vídeo enviado]" });
         } else if (msgType === "sticker") {
