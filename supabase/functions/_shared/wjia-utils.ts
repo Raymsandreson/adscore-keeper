@@ -41,8 +41,9 @@ export interface ZapSignSettings {
 }
 
 /**
- * Apply ZapSign advanced settings to createBody (for create-doc via template).
- * Also applies signer-level settings (lock, require_cpf, etc.).
+ * Apply ZapSign DOCUMENT-level settings to createBody (for create-doc via template).
+ * Signer-level settings (lock_name, require_cpf, etc.) must be applied
+ * via a separate call to updateSignerSettings() after document creation.
  * Mutates createBody in place and returns it.
  */
 export function applyZapSignSettings(
@@ -57,12 +58,11 @@ export function applyZapSignSettings(
 ): any {
   if (!settings) return createBody;
 
-  // Document-level settings
+  // Document-level settings (accepted by create-doc endpoint)
   if (settings.brand_logo) createBody.brand_logo = settings.brand_logo;
   if (settings.brand_primary_color) createBody.brand_primary_color = settings.brand_primary_color;
   if (settings.brand_name) createBody.brand_name = settings.brand_name;
   if (settings.folder_path) {
-    // Interpolate lead name into folder path if placeholder exists
     let fp = settings.folder_path;
     if (options?.leadName) fp = fp.replace("{{LEAD_NAME}}", options.leadName);
     createBody.folder_path = fp;
@@ -77,32 +77,76 @@ export function applyZapSignSettings(
   // External ID for CRM tracking
   if (options?.leadId) createBody.external_id = options.leadId;
 
-  // Signer-level settings (applied to the main signer in the template)
-  if (settings.lock_name) createBody.lock_name = true;
-  if (settings.lock_phone) createBody.lock_phone = true;
-  if (settings.lock_email) createBody.lock_email = true;
-  if (settings.require_cpf) createBody.require_cpf = true;
-  if (settings.validate_cpf) createBody.validate_cpf = true;
-  if (options?.cpfValue) createBody.cpf = options.cpfValue;
-  if (settings.require_selfie_photo) createBody.require_selfie_photo = true;
-  if (settings.require_document_photo) createBody.require_document_photo = true;
-  if (settings.selfie_validation_type) {
-    createBody.selfie_validation_type = settings.selfie_validation_type;
-  }
   if (settings.redirect_link) createBody.redirect_link = settings.redirect_link;
 
-  // Document photo for facial recognition
-  if (options?.documentPhotoUrl) {
-    createBody.document_photo_url = options.documentPhotoUrl;
-  }
-
-  // Auto-send via WhatsApp (ZapSign native)
+  // Auto-send via WhatsApp (ZapSign native) - document level
   if (settings.send_automatic_whatsapp) createBody.send_automatic_whatsapp = true;
   if (settings.send_automatic_whatsapp_signed_file) {
     createBody.send_automatic_whatsapp_signed_file = true;
   }
 
   return createBody;
+}
+
+/**
+ * Apply signer-level settings via ZapSign "Update Signer" API.
+ * Must be called AFTER document creation, using the signer token from the response.
+ * These settings are NOT accepted by the create-doc endpoint.
+ */
+export async function updateSignerSettings(
+  signerToken: string,
+  zapsignApiToken: string,
+  settings: ZapSignSettings | null | undefined,
+  options?: {
+    cpfValue?: string;
+    documentPhotoUrl?: string;
+  },
+): Promise<void> {
+  if (!settings || !signerToken) return;
+
+  const signerUpdate: Record<string, any> = {};
+
+  if (settings.lock_name) signerUpdate.lock_name = true;
+  if (settings.lock_phone) signerUpdate.lock_phone = true;
+  if (settings.lock_email) signerUpdate.lock_email = true;
+  if (settings.require_cpf) signerUpdate.require_cpf = true;
+  if (settings.validate_cpf) signerUpdate.validate_cpf = true;
+  if (options?.cpfValue) signerUpdate.cpf = options.cpfValue;
+  if (settings.require_selfie_photo) signerUpdate.require_selfie_photo = true;
+  if (settings.require_document_photo) signerUpdate.require_document_photo = true;
+  if (settings.selfie_validation_type) {
+    signerUpdate.selfie_validation_type = settings.selfie_validation_type;
+  }
+
+  // Document photo for facial recognition
+  if (options?.documentPhotoUrl) {
+    signerUpdate.document_photo_url = options.documentPhotoUrl;
+  }
+
+  // Only call API if there are signer-level settings to apply
+  if (Object.keys(signerUpdate).length === 0) return;
+
+  console.log(`Updating signer ${signerToken} with settings:`, JSON.stringify(signerUpdate));
+
+  try {
+    const res = await fetch(`${ZAPSIGN_API_URL}/signers/${signerToken}/`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${zapsignApiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(signerUpdate),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`Failed to update signer settings: ${errText}`);
+    } else {
+      console.log(`Signer ${signerToken} settings updated successfully`);
+    }
+  } catch (err) {
+    console.error("Error updating signer settings:", err);
+  }
 }
 
 export const DOC_TYPE_LABELS: Record<string, string> = {
@@ -922,6 +966,14 @@ export async function generateZapSignDocument(
   const signUrl = signer
     ? `https://app.zapsign.co/verificar/${signer.token}`
     : null;
+
+  // Apply signer-level settings via update-signer API
+  if (signer?.token) {
+    await updateSignerSettings(signer.token, zapsignToken, zSettingsUtil, {
+      cpfValue: cpfFieldUtil?.para || undefined,
+      documentPhotoUrl: rgDocUtil?.media_url || undefined,
+    });
+  }
 
   await supabase.from("wjia_collection_sessions")
     .update({
