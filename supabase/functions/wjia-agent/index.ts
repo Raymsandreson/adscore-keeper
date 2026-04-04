@@ -633,11 +633,20 @@ Se não encontrou nada, retorne: []`;
   // All data available → generate immediately
   const inst = instanceRes.data;
 
+  // Extract phone country code and number per ZapSign API spec
+  const cleanPhoneForDoc = (signerPhone || "").replace(/\D/g, "");
+  const docPhoneCountry = cleanPhoneForDoc.startsWith("55") ? "55" : cleanPhoneForDoc.substring(0, 2);
+  const docPhoneNumber = cleanPhoneForDoc.startsWith("55") ? cleanPhoneForDoc.substring(2) : cleanPhoneForDoc;
+
+  const hasEmptyFieldsDoc = fieldsData.some((f: any) => !f.para || f.para.trim() === "" || f.para === " ");
+
   const createBody: any = {
     template_id: parsed.template_token,
     signer_name: signerName,
-    signer_phone: signerPhone,
+    ...(docPhoneCountry && { signer_phone_country: docPhoneCountry }),
+    ...(docPhoneNumber && { signer_phone_number: docPhoneNumber }),
     data: fieldsData.length > 0 ? fieldsData : [{ de: "{{_}}", para: " " }],
+    ...(hasEmptyFieldsDoc && { signer_has_incomplete_fields: true }),
   };
 
   const createRes = await fetch(`${ZAPSIGN_API_URL}/models/create-doc/`, {

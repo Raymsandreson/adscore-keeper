@@ -401,11 +401,20 @@ export async function generateZapSignDocument(
 ) {
   applyDefaults(fields);
 
-  const createBody = {
+  // Extract phone country code and number per ZapSign API spec
+  const cleanPhone = (signerPhone || "").replace(/\D/g, "");
+  const phoneCountry = cleanPhone.startsWith("55") ? "55" : cleanPhone.substring(0, 2);
+  const phoneNumber = cleanPhone.startsWith("55") ? cleanPhone.substring(2) : cleanPhone;
+
+  const hasEmptyFields = fields.some((f: any) => !f.para || f.para.trim() === "" || f.para === " ");
+
+  const createBody: any = {
     template_id: session.template_token,
     signer_name: signerName,
-    signer_phone: signerPhone,
+    ...(phoneCountry && { signer_phone_country: phoneCountry }),
+    ...(phoneNumber && { signer_phone_number: phoneNumber }),
     data: fields.length > 0 ? fields : [{ de: "{{_}}", para: " " }],
+    ...(hasEmptyFields && { signer_has_incomplete_fields: true }),
   };
 
   console.log("Creating ZapSign doc:", JSON.stringify(createBody));

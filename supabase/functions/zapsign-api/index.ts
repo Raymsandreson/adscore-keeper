@@ -122,11 +122,17 @@ Deno.serve(async (req) => {
       }
 
       // Build the request body for ZapSign
+      // Extract phone country code and number per ZapSign API spec
+      const cleanPhoneApi = (signer_phone || "").replace(/\D/g, "");
+      const apiPhoneCountry = cleanPhoneApi.startsWith("55") ? "55" : cleanPhoneApi.substring(0, 2);
+      const apiPhoneNumber = cleanPhoneApi.startsWith("55") ? cleanPhoneApi.substring(2) : cleanPhoneApi;
+
       const createBody: any = {
         template_id,
         signer_name,
         ...(signer_email && { signer_email }),
-        ...(signer_phone && { signer_phone }),
+        ...(apiPhoneCountry && { signer_phone_country: apiPhoneCountry }),
+        ...(apiPhoneNumber && { signer_phone_number: apiPhoneNumber }),
       }
 
       // Add template data (de/para pairs) - ZapSign requires this field
