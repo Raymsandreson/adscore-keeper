@@ -400,7 +400,7 @@ async function handleNewCommand(opts: {
         )
         .eq("phone", normalizedPhone);
       if (instance_name) query = query.eq("instance_name", instance_name);
-      return query.order("created_at", { ascending: false }).limit(50);
+      return query.order("created_at", { ascending: false }).limit(200);
     })();
 
   const [
@@ -446,7 +446,7 @@ async function handleNewCommand(opts: {
     `${i + 1}. "${t.name}" (token: ${t.token})`
   ).join("\n");
 
-  const conversationText = messages
+  let conversationText = messages
     .filter((m: any) => m.message_text)
     .map((m: any) =>
       `[${
@@ -483,8 +483,25 @@ async function handleNewCommand(opts: {
   const shortcutBasePrompt = matchedShortcut?.base_prompt || "";
   let skipConfirmation = matchedShortcut?.skip_confirmation === true;
   const partialMinFields: string[] = matchedShortcut?.partial_min_fields || [];
+  const historyLimit: number = matchedShortcut?.history_limit ?? 50;
 
-  // For assistant-only mode, just respond with AI
+  // Apply history_limit — if 0, ignore all history
+  if (historyLimit === 0) {
+    messages.length = 0;
+  } else if (messages.length > historyLimit) {
+    // Keep only the last N messages (already reversed, so slice from end)
+    const sliced = messages.slice(messages.length - historyLimit);
+    messages.length = 0;
+    messages.push(...sliced);
+  }
+  // Rebuild conversationText after history limit
+  conversationText = messages
+    .filter((m: any) => m.message_text)
+    .map((m: any) =>
+      `[${m.direction === "outbound" ? "Atendente" : "Cliente"}]: ${m.message_text}`
+    )
+    .join("\n");
+
   if (assistantType === "assistant") {
     const basePromptSection = shortcutBasePrompt
       ? `\nPERSONA/REGRAS BASE DO ASSISTENTE:\n${shortcutBasePrompt}\n`

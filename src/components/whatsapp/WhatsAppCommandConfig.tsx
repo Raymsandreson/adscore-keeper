@@ -52,6 +52,7 @@ interface Shortcut {
   human_reply_pause_minutes: number;
   skip_confirmation: boolean;
   partial_min_fields: string[];
+  history_limit: number;
   command_scope: string;
   reply_with_audio: boolean;
   reply_voice_id: string | null;
@@ -121,6 +122,7 @@ export function WhatsAppCommandConfig() {
         human_reply_pause_minutes: s.human_reply_pause_minutes ?? 0,
         skip_confirmation: (s as any).skip_confirmation ?? false,
         partial_min_fields: (s as any).partial_min_fields || [],
+        history_limit: (s as any).history_limit ?? 50,
         command_scope: s.command_scope || 'client',
         reply_with_audio: s.reply_with_audio ?? false,
         reply_voice_id: s.reply_voice_id || null,
@@ -208,6 +210,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     response_delay_seconds: 2,
     skip_confirmation: false,
     partial_min_fields: [] as string[],
+    history_limit: 50,
     split_messages: false,
     split_delay_seconds: 3,
     reply_with_audio: false,
@@ -289,7 +292,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       request_documents: false, document_types: [], custom_document_names: [], document_type_modes: {},
       assistant_type: 'document', base_prompt: '',
       model: 'google/gemini-2.5-flash', temperature: 0.7,
-      max_tokens: 2048, response_delay_seconds: 2, skip_confirmation: false, partial_min_fields: [], split_messages: false, split_delay_seconds: 3,
+      max_tokens: 2048, response_delay_seconds: 2, skip_confirmation: false, partial_min_fields: [], history_limit: 50, split_messages: false, split_delay_seconds: 3,
       reply_with_audio: false, reply_voice_id: null, respond_in_groups: false, max_tts_chars: 1000,
       send_window_start_hour: 8, send_window_end_hour: 20, send_call_followup_audio: false,
       zapsign_settings: {},
@@ -339,6 +342,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       response_delay_seconds: s.response_delay_seconds ?? 2,
       skip_confirmation: (s as any).skip_confirmation ?? false,
       partial_min_fields: (s as any).partial_min_fields || [],
+      history_limit: (s as any).history_limit ?? 50,
       split_messages: s.split_messages ?? false,
       split_delay_seconds: s.split_delay_seconds ?? 3,
       reply_with_audio: (s as any).reply_with_audio ?? false,
@@ -418,6 +422,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_call_followup_audio: form.send_call_followup_audio ?? false,
       skip_confirmation: form.skip_confirmation ?? false,
       partial_min_fields: (form as any).partial_min_fields || [],
+      history_limit: (form as any).history_limit ?? 50,
       zapsign_settings: form.zapsign_settings || {},
     };
 
@@ -665,6 +670,18 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       </div>
                     );
                   })()}
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Mensagens do histórico para extração</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number" min={0} max={200}
+                      value={(form as any).history_limit ?? 50}
+                      onChange={e => setForm(f => ({ ...f, history_limit: parseInt(e.target.value) || 0 } as any))}
+                      className="h-9 text-xs w-24"
+                    />
+                    <p className="text-[10px] text-muted-foreground">0 = não usa histórico</p>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
