@@ -75,6 +75,18 @@ interface FollowupStep {
 
 interface Profile { user_id: string; full_name: string | null; }
 interface ZapSignTemplateOption { token: string; name: string; }
+type PredefinedFieldMode = 'today' | 'brazilian_nationality' | 'fixed_value';
+interface PredefinedFieldConfig {
+  field: string;
+  mode: PredefinedFieldMode;
+  value?: string;
+}
+
+const PREDEFINED_FIELD_MODE_OPTIONS: { value: PredefinedFieldMode; label: string; description: string }[] = [
+  { value: 'today', label: 'Data de hoje', description: 'Preenche com a data atual no formato DD/MM/AAAA' },
+  { value: 'brazilian_nationality', label: 'Nacionalidade brasileira', description: 'Preenche com Brasileiro(a)' },
+  { value: 'fixed_value', label: 'Valor fixo', description: 'Permite definir qualquer valor manualmente' },
+];
 
 const MODELS = [
   { value: 'google/gemini-3-flash-preview', label: 'Gemini 3 Flash (rápido)' },
@@ -232,6 +244,37 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [formSection, setFormSection] = useState<'general' | 'ai' | 'document' | 'followup'>('general');
   const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string }[]>([]);
   const [promptSheetOpen, setPromptSheetOpen] = useState(false);
+
+  const templateFieldOptions = templateFields.map((field) => ({
+    key: field.variable.replace(/\{\{|\}\}/g, ''),
+    label: field.label || field.variable.replace(/\{\{|\}\}/g, ''),
+    required: field.required,
+  }));
+
+  const predefinedFieldConfigs = Array.isArray((form.zapsign_settings as any)?.predefined_fields)
+    ? ((form.zapsign_settings as any).predefined_fields as PredefinedFieldConfig[])
+    : [];
+
+  const updatePredefinedFields = (updater: (current: PredefinedFieldConfig[]) => PredefinedFieldConfig[]) => {
+    setForm((currentForm) => {
+      const current = Array.isArray((currentForm.zapsign_settings as any)?.predefined_fields)
+        ? ([...(currentForm.zapsign_settings as any).predefined_fields] as PredefinedFieldConfig[])
+        : [];
+      const next = updater(current);
+      const nextSettings = { ...(currentForm.zapsign_settings || {}) } as Record<string, any>;
+
+      if (next.length > 0) {
+        nextSettings.predefined_fields = next;
+      } else {
+        delete nextSettings.predefined_fields;
+      }
+
+      return {
+        ...currentForm,
+        zapsign_settings: nextSettings,
+      };
+    });
+  };
 
   const BUILTIN_VOICES = [
     { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura (padrão)' },
@@ -997,6 +1040,141 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                         {/* ZAPSIGN ADVANCED SETTINGS */}
                         <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
                           <Label className="text-xs font-semibold">⚙️ Configurações Avançadas ZapSign</Label>
+
+                          <div className="space-y-2">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-[10px] font-medium text-muted-foreground uppercase">🧩 Campos pré-definidos</p>
+                                <p className="text-[10px] text-muted-foreground">
+                                  Preencha automaticamente campos do modelo com valores fixos, como data de hoje, nacionalidade ou qualquer texto manual.
+                                </p>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-[10px]"
+                                disabled={templateFieldOptions.length === 0}
+                                onClick={() => {
+                                  const availableField = templateFieldOptions.find((field) =>
+                                    !predefinedFieldConfigs.some((config) => config.field === field.key)
+                                  ) || templateFieldOptions[0];
+
+                                  if (!availableField) return;
+
+                                  updatePredefinedFields((current) => ([
+                                    ...current,
+                                    { field: availableField.key, mode: 'fixed_value', value: '' },
+                                  ]));
+                                }}
+                              >
+                                <Plus className="h-3 w-3 mr-1" /> Adicionar campo
+                              </Button>
+                            </div>
+
+                            {templateFieldOptions.length === 0 ? (
+                              <p className="text-[10px] text-muted-foreground italic">Selecione um modelo ZapSign para configurar os campos pré-definidos.</p>
+                            ) : predefinedFieldConfigs.length === 0 ? (
+                              <p className="text-[10px] text-muted-foreground italic">Nenhum campo pré-definido configurado.</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {predefinedFieldConfigs.map((config, idx) => {
+                                  const modeMeta = PREDEFINED_FIELD_MODE_OPTIONS.find((option) => option.value === config.mode);
+                                  const availableFields = templateFieldOptions.filter((field) =>
+                                    field.key === config.field || !predefinedFieldConfigs.some((item, itemIdx) => itemIdx !== idx && item.field === field.key)
+                                  );
+
+                                  return (
+                                    <div key={`${config.field}-${idx}`} className="rounded-md border border-border/60 p-2 space-y-2 bg-background/60">
+                                      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1.1fr_1fr_auto] md:items-end">
+                                        <div className="space-y-1">
+                                          <Label className="text-[10px]">Campo do modelo</Label>
+                                          <Select
+                                            value={config.field}
+                                            onValueChange={(value) => {
+                                              updatePredefinedFields((current) => current.map((item, itemIdx) =>
+                                                itemIdx === idx ? { ...item, field: value } : item
+                                              ));
+                                            }}
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue placeholder="Selecione o campo" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {availableFields.map((field) => (
+                                                <SelectItem key={field.key} value={field.key} className="text-xs">
+                                                  {field.label}{field.required ? ' *' : ''}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                          <Label className="text-[10px]">Valor automático</Label>
+                                          <Select
+                                            value={config.mode}
+                                            onValueChange={(value: PredefinedFieldMode) => {
+                                              updatePredefinedFields((current) => current.map((item, itemIdx) =>
+                                                itemIdx === idx
+                                                  ? {
+                                                      ...item,
+                                                      mode: value,
+                                                      value: value === 'fixed_value' ? item.value || '' : undefined,
+                                                    }
+                                                  : item
+                                              ));
+                                            }}
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue placeholder="Selecione o tipo" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {PREDEFINED_FIELD_MODE_OPTIONS.map((option) => (
+                                                <SelectItem key={option.value} value={option.value} className="text-xs">
+                                                  {option.label}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 shrink-0"
+                                          onClick={() => updatePredefinedFields((current) => current.filter((_, itemIdx) => itemIdx !== idx))}
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </div>
+
+                                      {config.mode === 'fixed_value' && (
+                                        <div className="space-y-1">
+                                          <Label className="text-[10px]">Valor fixo</Label>
+                                          <Input
+                                            value={config.value || ''}
+                                            onChange={(e) => {
+                                              updatePredefinedFields((current) => current.map((item, itemIdx) =>
+                                                itemIdx === idx ? { ...item, value: e.target.value } : item
+                                              ));
+                                            }}
+                                            placeholder="Ex: Solteiro(a), Fortaleza, Prudêncio Advocacia"
+                                            className="h-8 text-xs"
+                                          />
+                                        </div>
+                                      )}
+
+                                      <p className="text-[10px] text-muted-foreground">
+                                        {modeMeta?.description || 'Valor aplicado automaticamente antes de listar o que falta.'}
+                                      </p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
                           
                           {/* Security */}
                           <div className="space-y-2">

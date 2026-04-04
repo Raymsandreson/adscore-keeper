@@ -33,6 +33,11 @@ export interface ZapSignSettings {
   observers?: string[];
   send_automatic_whatsapp?: boolean;
   send_automatic_whatsapp_signed_file?: boolean;
+  predefined_fields?: Array<{
+    field: string;
+    mode?: "today" | "brazilian_nationality" | "fixed_value";
+    value?: string;
+  }>;
 }
 
 /**
@@ -270,6 +275,53 @@ export function applyDefaults(fields: any[]) {
     if (key.includes("EMAIL") && !f.para) f.para = "contato@prudencioadv.com";
     if (key.includes("WHATSAPP") && !f.para) f.para = "(86)99447-3226";
   }
+}
+
+function resolvePredefinedFieldValue(
+  entry: { mode?: string; value?: string },
+): string | null {
+  switch (entry?.mode) {
+    case "today":
+      return new Date().toLocaleDateString("pt-BR");
+    case "brazilian_nationality":
+      return "Brasileiro(a)";
+    case "fixed_value":
+    default:
+      return hasFieldValue(entry?.value) ? String(entry.value).trim() : null;
+  }
+}
+
+export function applyConfiguredPredefinedFields(
+  fields: any[],
+  catalog: TemplateFieldRef[],
+  settings: ZapSignSettings | null | undefined,
+): Set<string> {
+  const applied = new Set<string>();
+  const entries = Array.isArray(settings?.predefined_fields)
+    ? settings.predefined_fields
+    : [];
+
+  for (const entry of entries) {
+    const fieldKey = normalizeFieldKey(entry?.field || "");
+    if (!fieldKey) continue;
+
+    const targetField = catalog.find((field) => field.normalized === fieldKey);
+    if (!targetField) continue;
+
+    const value = resolvePredefinedFieldValue(entry);
+    if (!hasFieldValue(value)) continue;
+
+    const existing = fields.find((field: any) =>
+      normalizeFieldKey(field?.de || "") === targetField.normalized
+    );
+
+    if (existing && hasFieldValue(existing.para)) continue;
+
+    upsertCollectedField(fields, targetField.variable, value);
+    applied.add(targetField.normalized);
+  }
+
+  return applied;
 }
 
 export function autoFillDates(
@@ -766,6 +818,15 @@ export async function generateZapSignDocument(
 ) {
   applyDefaults(fields);
 
+  // Load ZapSign settings from shortcut if available
+  let zSettingsUtil: any = null;
+  if (session.shortcut_name) {
+    const { data: scUtil } = await supabase.from("wjia_command_shortcuts")
+      .select("zapsign_settings").eq("shortcut_name", session.shortcut_name)
+      .maybeSingle();
+    zSettingsUtil = scUtil?.zapsign_settings || null;
+  }
+
   // Extract phone country code and number per ZapSign API spec
   const cleanPhone = (signerPhone || "").replace(/\D/g, "");
   const phoneCountry = cleanPhone.startsWith("55")
@@ -776,6 +837,10 @@ export async function generateZapSignDocument(
     : cleanPhone;
 
   const sessionCatalog = buildTemplateFieldCatalog(session);
+  applyConfiguredPredefinedFields(fields, sessionCatalog, zSettingsUtil);
+  autoFillDates(fields, sessionCatalog);
+  autoSyncCityState(fields, sessionCatalog);
+
   const filledFields = fields.filter((f: any) =>
     f?.de && f?.para && f.para.trim() !== "" && f.para !== " "
   );
@@ -786,14 +851,6 @@ export async function generateZapSignDocument(
   const cpfFieldUtil = fields.find((f: any) => /CPF/i.test(f.de));
   const rcvDocs = Array.isArray(session.received_documents) ? session.received_documents : [];
   const rgDocUtil = rcvDocs.find((d: any) => d.doc_type === "rg_cnh" && d.media_url);
-
-  // Load ZapSign settings from shortcut if available
-  let zSettingsUtil: any = null;
-  if (session.shortcut_name) {
-    const { data: scUtil } = await supabase.from("wjia_command_shortcuts")
-      .select("zapsign_settings").eq("shortcut_name", session.shortcut_name).maybeSingle();
-    zSettingsUtil = scUtil?.zapsign_settings || null;
-  }
 
   const createBody: any = {
     template_id: session.template_token,
