@@ -483,6 +483,17 @@ async function handleNewCommand(opts: {
   const shortcutBasePrompt = matchedShortcut?.base_prompt || "";
   let skipConfirmation = matchedShortcut?.skip_confirmation === true;
   const partialMinFields: string[] = matchedShortcut?.partial_min_fields || [];
+  const historyLimit: number = matchedShortcut?.history_limit ?? 50;
+
+  // Apply history_limit — if 0, ignore all history
+  if (historyLimit === 0) {
+    messages.length = 0;
+  } else if (messages.length > historyLimit) {
+    // Keep only the last N messages (already reversed, so slice from end)
+    const sliced = messages.slice(messages.length - historyLimit);
+    messages.length = 0;
+    messages.push(...sliced);
+  }
 
   // For assistant-only mode, just respond with AI
   if (assistantType === "assistant") {
