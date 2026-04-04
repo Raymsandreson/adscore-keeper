@@ -501,6 +501,27 @@ serve(async (req) => {
             .update({ is_active: false, is_blocked: true } as any)
             .eq("phone", phone)
             .eq("instance_name", instance_name);
+
+          // Actually block the contact on WhatsApp via UazAPI
+          try {
+            const { data: inst } = await supabase
+              .from("whatsapp_instances")
+              .select("base_url, instance_token")
+              .eq("instance_name", instance_name)
+              .maybeSingle();
+            if (inst?.instance_token) {
+              const blockBaseUrl = (inst as any).base_url || "https://abraci.uazapi.com";
+              const blockRes = await fetch(`${blockBaseUrl}/contact/block`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", token: (inst as any).instance_token },
+                body: JSON.stringify({ number: phone }),
+              });
+              console.log(`UazAPI block contact ${phone}: status=${blockRes.status}`);
+            }
+          } catch (blockErr) {
+            console.error("Failed to block contact via UazAPI:", blockErr);
+          }
+
           // Release lock
           if (!is_followup) {
             await supabase.from("agent_reply_locks").delete().eq("phone", phone).eq("instance_name", instance_name);
