@@ -7335,8 +7335,10 @@ export type Database = {
           created_at: string
           id: string
           instance_id: string | null
+          inviavel_agent_id: string | null
           is_active: boolean
           lead_source_label: string | null
+          refused_agent_id: string | null
           stage_id: string | null
         }
         Insert: {
@@ -7350,8 +7352,10 @@ export type Database = {
           created_at?: string
           id?: string
           instance_id?: string | null
+          inviavel_agent_id?: string | null
           is_active?: boolean
           lead_source_label?: string | null
+          refused_agent_id?: string | null
           stage_id?: string | null
         }
         Update: {
@@ -7365,8 +7369,10 @@ export type Database = {
           created_at?: string
           id?: string
           instance_id?: string | null
+          inviavel_agent_id?: string | null
           is_active?: boolean
           lead_source_label?: string | null
+          refused_agent_id?: string | null
           stage_id?: string | null
         }
         Relationships: [

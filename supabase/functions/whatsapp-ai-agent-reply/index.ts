@@ -52,19 +52,25 @@ serve(async (req) => {
     if (!assignment && campaign_id) {
       const { data: campaignLink } = await supabase
         .from("whatsapp_agent_campaign_links")
-        .select("agent_id, closed_agent_id")
+        .select("agent_id, closed_agent_id, refused_agent_id, inviavel_agent_id")
         .eq("campaign_id", campaign_id)
         .eq("is_active", true)
         .maybeSingle();
 
       if (campaignLink) {
-        // Check if lead is closed to use closed_agent_id
+        // Check lead status to use the appropriate agent
         let resolvedAgentId = campaignLink.agent_id;
-        if (campaignLink.closed_agent_id && lead_id) {
+        if (lead_id) {
           const { data: leadCheck } = await supabase.from("leads").select("lead_status").eq("id", lead_id).maybeSingle();
-          if (leadCheck?.lead_status === 'closed') {
-            resolvedAgentId = campaignLink.closed_agent_id;
-            console.log(`Using closed_agent_id ${resolvedAgentId} for closed lead`);
+          const statusAgentMap: Record<string, string | null> = {
+            closed: campaignLink.closed_agent_id,
+            refused: campaignLink.refused_agent_id,
+            inviavel: campaignLink.inviavel_agent_id,
+          };
+          const statusAgent = leadCheck?.lead_status ? statusAgentMap[leadCheck.lead_status] : null;
+          if (statusAgent) {
+            resolvedAgentId = statusAgent;
+            console.log(`Using ${leadCheck.lead_status}_agent_id ${resolvedAgentId} for lead status`);
           }
         }
         await supabase.from("whatsapp_conversation_agents").upsert({
@@ -90,7 +96,7 @@ serve(async (req) => {
       if (lead?.campaign_id) {
         const { data: campaignLink } = await supabase
           .from("whatsapp_agent_campaign_links")
-          .select("agent_id, closed_agent_id")
+          .select("agent_id, closed_agent_id, refused_agent_id, inviavel_agent_id")
           .eq("campaign_id", lead.campaign_id)
           .eq("is_active", true)
           .maybeSingle();
@@ -98,12 +104,16 @@ serve(async (req) => {
         if (campaignLink) {
           // Check lead_status to decide which agent
           let resolvedAgentId = campaignLink.agent_id;
-          if (campaignLink.closed_agent_id) {
-            const { data: leadStatus } = await supabase.from("leads").select("lead_status").eq("id", lead_id).maybeSingle();
-            if (leadStatus?.lead_status === 'closed') {
-              resolvedAgentId = campaignLink.closed_agent_id;
-              console.log(`Using closed_agent_id ${resolvedAgentId} for closed lead (via lead campaign)`);
-            }
+          const { data: leadStatus } = await supabase.from("leads").select("lead_status").eq("id", lead_id).maybeSingle();
+          const statusAgentMap: Record<string, string | null> = {
+            closed: campaignLink.closed_agent_id,
+            refused: campaignLink.refused_agent_id,
+            inviavel: campaignLink.inviavel_agent_id,
+          };
+          const statusAgent = leadStatus?.lead_status ? statusAgentMap[leadStatus.lead_status] : null;
+          if (statusAgent) {
+            resolvedAgentId = statusAgent;
+            console.log(`Using ${leadStatus.lead_status}_agent_id ${resolvedAgentId} for lead (via lead campaign)`);
           }
           await supabase.from("whatsapp_conversation_agents").upsert({
             phone,
