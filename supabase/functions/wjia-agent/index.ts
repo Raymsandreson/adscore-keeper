@@ -187,6 +187,19 @@ Deno.serve(async (req) => {
       const phoneCountry = cleanPhone.startsWith("55") ? "55" : cleanPhone.substring(0, 2);
       const phoneNumber = cleanPhone.startsWith("55") ? cleanPhone.substring(2) : cleanPhone;
 
+      // Load ZapSign settings from shortcut
+      let zSettings: any = null;
+      if (session.shortcut_name) {
+        const { data: sc } = await supabase.from("wjia_command_shortcuts")
+          .select("zapsign_settings").eq("shortcut_name", session.shortcut_name).maybeSingle();
+        zSettings = sc?.zapsign_settings || null;
+      }
+
+      // Extract CPF from fields and document photo from received docs
+      const cpfField = fieldsData.find((f: any) => /CPF/i.test(f.de));
+      const receivedDocs = Array.isArray(session.received_documents) ? session.received_documents : [];
+      const rgDoc = receivedDocs.find((d: any) => d.doc_type === "rg_cnh" && d.media_url);
+
       const createBody: any = {
         template_id: session.template_token,
         signer_name: signerName,
@@ -195,6 +208,12 @@ Deno.serve(async (req) => {
         data: filledFields.length > 0 ? filledFields : [{ de: "{{_}}", para: " " }],
         ...(hasMissing && { signer_has_incomplete_fields: true }),
       };
+
+      applyZapSignSettings(createBody, zSettings, {
+        cpfValue: cpfField?.para || undefined,
+        leadId: session.lead_id || undefined,
+        documentPhotoUrl: rgDoc?.media_url || undefined,
+      });
 
       const zRes = await fetch(`${ZAPSIGN_API_URL}/models/create-doc/`, {
         method: "POST",
