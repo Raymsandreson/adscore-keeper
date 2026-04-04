@@ -276,6 +276,17 @@ REGRAS:
           } else {
             console.log(`[auto-enrich] Lead ${lead_id} status changed to ${cleaned.lead_status}: ${cleaned.lead_status_reason}`)
             
+            // Deactivate AI agent for terminal statuses
+            if (['unviable', 'refused'].includes(cleaned.lead_status)) {
+              const { error: deactErr } = await supabase
+                .from('whatsapp_conversation_agents')
+                .update({ is_active: false })
+                .eq('phone', phone)
+                .eq('instance_name', instance_name)
+              if (deactErr) console.error('[auto-enrich] Agent deactivation error:', deactErr)
+              else console.log(`[auto-enrich] Agent deactivated for ${phone}/${instance_name}`)
+            }
+            
             // Log status history
             await supabase.from('lead_status_history').insert({
               lead_id,
