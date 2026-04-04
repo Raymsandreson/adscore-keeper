@@ -420,6 +420,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_call_followup_audio: form.send_call_followup_audio ?? false,
       skip_confirmation: form.skip_confirmation ?? false,
       partial_min_fields: (form as any).partial_min_fields || [],
+      history_limit: (form as any).history_limit ?? 50,
       zapsign_settings: form.zapsign_settings || {},
     };
 
