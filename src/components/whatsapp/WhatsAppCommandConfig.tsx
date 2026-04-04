@@ -75,7 +75,7 @@ interface FollowupStep {
 
 interface Profile { user_id: string; full_name: string | null; }
 interface ZapSignTemplateOption { token: string; name: string; }
-type PredefinedFieldMode = 'today' | 'brazilian_nationality' | 'fixed_value';
+type PredefinedFieldMode = 'today' | 'brazilian_nationality' | 'client_phone' | 'fixed_value';
 interface PredefinedFieldConfig {
   field: string;
   mode: PredefinedFieldMode;
@@ -85,6 +85,7 @@ interface PredefinedFieldConfig {
 const PREDEFINED_FIELD_MODE_OPTIONS: { value: PredefinedFieldMode; label: string; description: string }[] = [
   { value: 'today', label: 'Data de hoje', description: 'Preenche com a data atual no formato DD/MM/AAAA' },
   { value: 'brazilian_nationality', label: 'Nacionalidade brasileira', description: 'Preenche com Brasileiro(a)' },
+  { value: 'client_phone', label: 'Telefone do cliente (WhatsApp)', description: 'Preenche com o número do cliente na conversa' },
   { value: 'fixed_value', label: 'Valor fixo', description: 'Permite definir qualquer valor manualmente' },
 ];
 
