@@ -1371,7 +1371,7 @@ Se não encontrou nada, retorne: []`;
   }
 
   if (inst?.instance_token && signUrl) {
-    const hasPartialData = hasMissing && skipConfirmation;
+    const hasPartialData = (hasMissing && skipConfirmation) || forceEditable;
     const clientMsg = hasPartialData
       ? `📝 *Documento para preenchimento e assinatura*\n\nOlá ${
         signerName.split(" ")[0]
