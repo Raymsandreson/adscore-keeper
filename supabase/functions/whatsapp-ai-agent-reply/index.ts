@@ -737,7 +737,7 @@ REGRAS IMPORTANTES:
           { role: "system", content: systemPrompt },
           ...contextMessages,
         ],
-        max_tokens: (agent as any).max_tokens || 2048,
+        max_tokens: Math.max((agent as any).max_tokens || 2048, 4096),
         temperature: (agent as any).temperature / 100,
       });
 
