@@ -206,7 +206,7 @@ Deno.serve(async (req) => {
         signer_phone_country: phoneCountry,
         signer_phone_number: phoneNumber,
         data: filledFields.length > 0 ? filledFields : [{ de: "{{_}}", para: " " }],
-        ...(hasMissing && { signer_has_incomplete_fields: true }),
+        signer_has_incomplete_fields: true,
       };
 
       applyZapSignSettings(createBody, zSettings, {
