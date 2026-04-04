@@ -327,6 +327,7 @@ REGRAS:
                 .eq('status', 'pending')
               if (followupCancelErr) console.error('[auto-enrich] Followup cancel error:', followupCancelErr)
               else console.log(`[auto-enrich] Cancelled pending followups for ${phone} (status: ${finalStatus})`)
+            }
             
             // Log status history
             await supabase.from('lead_status_history').insert({
