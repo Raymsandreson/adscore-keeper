@@ -407,6 +407,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_window_start_hour: form.send_window_start_hour ?? 8,
       send_window_end_hour: form.send_window_end_hour ?? 20,
       send_call_followup_audio: form.send_call_followup_audio ?? false,
+      zapsign_settings: form.zapsign_settings || {},
     };
 
     let error;
