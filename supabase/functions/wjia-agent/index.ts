@@ -256,7 +256,7 @@ Deno.serve(async (req) => {
 
       // Send link to client
       if (signUrl && inst?.instance_token) {
-        const msg = `📄 *${session.template_name}* (atualizado)\n\n🔗 Clique para preencher e assinar:\n${signUrl}`;
+        const msg = `📄 *${session.template_name}* (atualizado)\n\n🔗 Clique para preencher e assinar:\n${signUrl}\n\nSe faltar algum dado, pode preencher direto no formulário! 😉`;
         await sendWhatsApp(
           supabase,
           inst,
