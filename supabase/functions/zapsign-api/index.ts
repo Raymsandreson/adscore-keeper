@@ -112,7 +112,22 @@ Deno.serve(async (req) => {
     // CREATE DOCUMENT FROM TEMPLATE
     // ========================
     if (action === 'create_doc') {
-      const { template_id, signer_name, signer_email, signer_phone, signers: additionalSigners, data: templateData, document_name, lead_id, contact_id, legal_case_id, created_by, send_via_whatsapp, whatsapp_phone } = body
+      const {
+        template_id,
+        signer_name,
+        signer_email,
+        signer_phone,
+        signers: additionalSigners,
+        data: templateData,
+        document_name,
+        lead_id,
+        contact_id,
+        legal_case_id,
+        created_by,
+        send_via_whatsapp,
+        whatsapp_phone,
+        signer_has_incomplete_fields,
+      } = body
 
       if (!template_id || !signer_name) {
         return new Response(
@@ -122,10 +137,12 @@ Deno.serve(async (req) => {
       }
 
       // Build the request body for ZapSign
-      // Extract phone country code and number per ZapSign API spec
-      const cleanPhoneApi = (signer_phone || "").replace(/\D/g, "");
-      const apiPhoneCountry = cleanPhoneApi.startsWith("55") ? "55" : cleanPhoneApi.substring(0, 2);
-      const apiPhoneNumber = cleanPhoneApi.startsWith("55") ? cleanPhoneApi.substring(2) : cleanPhoneApi;
+      const cleanPhoneApi = (signer_phone || '').replace(/\D/g, '')
+      const apiPhoneCountry = cleanPhoneApi.startsWith('55') ? '55' : cleanPhoneApi.substring(0, 2)
+      const apiPhoneNumber = cleanPhoneApi.startsWith('55') ? cleanPhoneApi.substring(2) : cleanPhoneApi
+      const filledTemplateData = (templateData && Array.isArray(templateData))
+        ? templateData.filter((item: any) => item?.de && item?.para && String(item.para).trim() !== '')
+        : []
 
       const createBody: any = {
         template_id,
@@ -133,12 +150,9 @@ Deno.serve(async (req) => {
         ...(signer_email && { signer_email }),
         ...(apiPhoneCountry && { signer_phone_country: apiPhoneCountry }),
         ...(apiPhoneNumber && { signer_phone_number: apiPhoneNumber }),
+        data: filledTemplateData.length > 0 ? filledTemplateData : [{ de: '{{_}}', para: ' ' }],
+        ...(signer_has_incomplete_fields ? { signer_has_incomplete_fields: true } : {}),
       }
-
-      // Add template data (de/para pairs) - ZapSign requires this field
-      createBody.data = (templateData && Array.isArray(templateData) && templateData.length > 0) 
-        ? templateData 
-        : [{ de: '{{_}}', para: ' ' }]
 
       console.log('Creating ZapSign document:', JSON.stringify(createBody))
 
