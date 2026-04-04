@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { geminiChat, callGemini, parseGeminiResponse } from "../_shared/gemini.ts";
+import { urlToBase64DataUri } from "../_shared/wjia-utils.ts";
 
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
