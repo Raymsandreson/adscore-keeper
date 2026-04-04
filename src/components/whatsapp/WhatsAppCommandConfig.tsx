@@ -119,6 +119,7 @@ export function WhatsAppCommandConfig() {
         split_delay_seconds: s.split_delay_seconds ?? 3,
         human_reply_pause_minutes: s.human_reply_pause_minutes ?? 0,
         skip_confirmation: (s as any).skip_confirmation ?? false,
+        partial_min_fields: (s as any).partial_min_fields || [],
         command_scope: s.command_scope || 'client',
         reply_with_audio: s.reply_with_audio ?? false,
         reply_voice_id: s.reply_voice_id || null,
