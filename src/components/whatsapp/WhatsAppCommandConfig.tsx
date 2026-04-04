@@ -210,6 +210,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     response_delay_seconds: 2,
     skip_confirmation: false,
     partial_min_fields: [] as string[],
+    history_limit: 50,
     split_messages: false,
     split_delay_seconds: 3,
     reply_with_audio: false,
