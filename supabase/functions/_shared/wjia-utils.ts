@@ -782,6 +782,19 @@ export async function generateZapSignDocument(
   const finalMissingFields = computeMissingFields(sessionCatalog, filledFields);
   const hasIncompleteFields = finalMissingFields.length > 0;
 
+  // Extract CPF from fields and document photo from received docs
+  const cpfFieldUtil = fields.find((f: any) => /CPF/i.test(f.de));
+  const rcvDocs = Array.isArray(session.received_documents) ? session.received_documents : [];
+  const rgDocUtil = rcvDocs.find((d: any) => d.doc_type === "rg_cnh" && d.media_url);
+
+  // Load ZapSign settings from shortcut if available
+  let zSettingsUtil: any = null;
+  if (session.shortcut_name) {
+    const { data: scUtil } = await supabase.from("wjia_command_shortcuts")
+      .select("zapsign_settings").eq("shortcut_name", session.shortcut_name).maybeSingle();
+    zSettingsUtil = scUtil?.zapsign_settings || null;
+  }
+
   const createBody: any = {
     template_id: session.template_token,
     signer_name: signerName,
@@ -790,6 +803,12 @@ export async function generateZapSignDocument(
     data: filledFields.length > 0 ? filledFields : [{ de: "{{_}}", para: " " }],
     ...(hasIncompleteFields && { signer_has_incomplete_fields: true }),
   };
+
+  applyZapSignSettings(createBody, zSettingsUtil, {
+    cpfValue: cpfFieldUtil?.para || undefined,
+    leadId: session.lead_id || undefined,
+    documentPhotoUrl: rgDocUtil?.media_url || undefined,
+  });
 
   console.log("Creating ZapSign doc:", JSON.stringify(createBody));
 
