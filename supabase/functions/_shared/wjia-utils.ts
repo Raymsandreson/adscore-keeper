@@ -406,15 +406,16 @@ export async function generateZapSignDocument(
   const phoneCountry = cleanPhone.startsWith("55") ? "55" : cleanPhone.substring(0, 2);
   const phoneNumber = cleanPhone.startsWith("55") ? cleanPhone.substring(2) : cleanPhone;
 
-  const hasEmptyFields = fields.some((f: any) => !f.para || f.para.trim() === "" || f.para === " ");
+  const hasIncompleteFields = (session?.missing_fields?.length ?? 0) > 0 || fields.some((f: any) => !f.para || f.para.trim() === "" || f.para === " ");
+  const filledFields = fields.filter((f: any) => f?.de && f?.para && f.para.trim() !== "" && f.para !== " ");
 
   const createBody: any = {
     template_id: session.template_token,
     signer_name: signerName,
     ...(phoneCountry && { signer_phone_country: phoneCountry }),
     ...(phoneNumber && { signer_phone_number: phoneNumber }),
-    data: fields.length > 0 ? fields : [{ de: "{{_}}", para: " " }],
-    ...(hasEmptyFields && { signer_has_incomplete_fields: true }),
+    data: filledFields.length > 0 ? filledFields : [{ de: "{{_}}", para: " " }],
+    ...(hasIncompleteFields && { signer_has_incomplete_fields: true }),
   };
 
   console.log("Creating ZapSign doc:", JSON.stringify(createBody));

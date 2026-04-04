@@ -638,15 +638,16 @@ Se não encontrou nada, retorne: []`;
   const docPhoneCountry = cleanPhoneForDoc.startsWith("55") ? "55" : cleanPhoneForDoc.substring(0, 2);
   const docPhoneNumber = cleanPhoneForDoc.startsWith("55") ? cleanPhoneForDoc.substring(2) : cleanPhoneForDoc;
 
-  const hasEmptyFieldsDoc = fieldsData.some((f: any) => !f.para || f.para.trim() === "" || f.para === " ");
+  const hasIncompleteDocFields = hasMissing || fieldsData.some((f: any) => !f.para || f.para.trim() === "" || f.para === " ");
+  const filledTemplateData = fieldsData.filter((f: any) => f?.de && f?.para && f.para.trim() !== "" && f.para !== " ");
 
   const createBody: any = {
     template_id: parsed.template_token,
     signer_name: signerName,
     ...(docPhoneCountry && { signer_phone_country: docPhoneCountry }),
     ...(docPhoneNumber && { signer_phone_number: docPhoneNumber }),
-    data: fieldsData.length > 0 ? fieldsData : [{ de: "{{_}}", para: " " }],
-    ...(hasEmptyFieldsDoc && { signer_has_incomplete_fields: true }),
+    data: filledTemplateData.length > 0 ? filledTemplateData : [{ de: "{{_}}", para: " " }],
+    ...(hasIncompleteDocFields && { signer_has_incomplete_fields: true }),
   };
 
   const createRes = await fetch(`${ZAPSIGN_API_URL}/models/create-doc/`, {
