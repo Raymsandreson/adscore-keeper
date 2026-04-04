@@ -2210,11 +2210,14 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
     }
   }
 
-  if (result.action === "confirm_generate" && allCollected && zapsignToken) {
-    // GENERATE DOCUMENT
+  if (result.action === "confirm_generate" && zapsignToken) {
+    if (!allCollected) {
+      console.log(`WJIA confirm_generate with missing fields (proceeding anyway - ZapSign editable):`, JSON.stringify(finalMissing));
+    }
+    // GENERATE DOCUMENT — always proceed when client confirms, ZapSign forms are editable
     await supabase.from("wjia_collection_sessions").update({
       collected_data: updatedCollectedData,
-      missing_fields: [],
+      missing_fields: finalMissing,
       status: "ready",
       updated_at: new Date().toISOString(),
     }).eq("id", session.id);
