@@ -1807,7 +1807,9 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
     // Uses ## prefix and routes to command processor as ghost command
     if (direction === 'outbound' && instanceName && phone && messageText) {
       const trimmedCmd = (messageText || '').trim()
-      const doubleHashMatch = trimmedCmd.match(/^##([a-z0-9_]+)(?:\s+([\s\S]+))?$/i)
+      // Support ##command even with UazAPI signature prefix
+      const lastLineForDouble = trimmedCmd.split('\n').pop()?.trim() || trimmedCmd
+      const doubleHashMatch = lastLineForDouble.match(/^##([a-z0-9_]+)(?:\s+([\s\S]+))?$/i) || trimmedCmd.match(/^##([a-z0-9_]+)(?:\s+([\s\S]+))?$/i)
 
       if (doubleHashMatch) {
         const internalCmdName = doubleHashMatch[1].toLowerCase()
