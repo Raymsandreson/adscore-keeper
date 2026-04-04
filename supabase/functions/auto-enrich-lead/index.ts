@@ -237,19 +237,21 @@ REGRAS:
       // Auto-update lead status if AI detected a terminal state
       // IMPORTANT: Only proceed if reason is provided (prevents false positives)
       if (cleaned.lead_status && ['closed', 'refused', 'unviable'].includes(cleaned.lead_status) && cleaned.lead_status_reason) {
-        const { data: currentLead } = await supabase
+        const { data: currentLead, error: leadCheckErr } = await supabase
           .from('leads')
-          .select('lead_status, became_client_date, classification_date, inviavel_date')
+          .select('lead_status')
           .eq('id', lead_id)
           .single()
 
-        const currentStatus = currentLead?.became_client_date ? 'closed' 
-          : currentLead?.inviavel_date ? 'unviable' 
-          : currentLead?.classification_date ? 'refused' 
-          : 'active'
+        if (leadCheckErr) {
+          console.error('[auto-enrich] Lead status check error:', leadCheckErr)
+        }
 
-        // Only update if currently active AND lead_status field confirms active
-        if (currentStatus === 'active' && (!currentLead?.lead_status || currentLead.lead_status === 'active')) {
+        const currentStatus = currentLead?.lead_status || 'active'
+        console.log(`[auto-enrich] Lead ${lead_id} current status: ${currentStatus}, AI detected: ${cleaned.lead_status}`)
+
+        // Only update if currently active
+        if (currentStatus === 'active') {
           const statusMap: Record<string, string> = {
             'closed': 'became_client_date',
             'refused': 'classification_date',
@@ -273,6 +275,17 @@ REGRAS:
             console.error('[auto-enrich] Status update error:', statusError)
           } else {
             console.log(`[auto-enrich] Lead ${lead_id} status changed to ${cleaned.lead_status}: ${cleaned.lead_status_reason}`)
+            
+            // Deactivate AI agent for terminal statuses
+            if (['unviable', 'refused'].includes(cleaned.lead_status)) {
+              const { error: deactErr } = await supabase
+                .from('whatsapp_conversation_agents')
+                .update({ is_active: false })
+                .eq('phone', phone)
+                .eq('instance_name', instance_name)
+              if (deactErr) console.error('[auto-enrich] Agent deactivation error:', deactErr)
+              else console.log(`[auto-enrich] Agent deactivated for ${phone}/${instance_name}`)
+            }
             
             // Log status history
             await supabase.from('lead_status_history').insert({
