@@ -434,7 +434,7 @@ async function handleNewCommand(opts: {
       .order("display_order"),
   ]);
 
-  const messages = (messagesRes.data || []).reverse();
+  let messages = (messagesRes.data || []).reverse();
   const contactData = contactRes.data || {};
   const leadData = leadRes.data || {};
   const shortcuts = (shortcutsRes.data || []) as any[];
@@ -454,8 +454,6 @@ async function handleNewCommand(opts: {
       }]: ${m.message_text}`
     )
     .join("\n");
-
-  const crmContext = buildCrmContext(contactData, leadData, normalizedPhone);
 
   // Match shortcut
   const hashMatch = command.match(/#(\S+)/i);
@@ -500,6 +498,7 @@ async function handleNewCommand(opts: {
   const COMPLETION_MARKERS = ["🔗", "✅ Documento", "Conversa limpa"];
   const COMMAND_PATTERN = /^#\S+/;
   let hardResetIdx = -1;
+  let hasTrustedBoundary = false;
   for (let i = messages.length - 1; i >= 0; i--) {
     const txt = messages[i]?.message_text || "";
     // Skip the current command message itself (last outbound with #)
@@ -512,6 +511,7 @@ async function handleNewCommand(opts: {
       COMMAND_PATTERN.test(txt.trim());
     if (isCompletionMarker || isPreviousCommand) {
       hardResetIdx = i;
+      hasTrustedBoundary = true;
       break;
     }
   }
@@ -521,7 +521,15 @@ async function handleNewCommand(opts: {
     messages.length = 0;
     messages.push(...afterReset);
     console.log(`WJIA Hard Reset: cut at index ${hardResetIdx}, kept ${messages.length} messages after marker`);
+  } else if (messages.length > 0) {
+    messages = [];
+    console.log("WJIA Hard Reset: no trusted boundary found, ignoring pre-command history");
   }
+
+  const allowCrmPrefill = hasTrustedBoundary && messages.length > 0;
+  const crmContext = allowCrmPrefill
+    ? buildCrmContext(contactData, leadData, normalizedPhone)
+    : "CRM/CADASTRO: ignore nesta etapa inicial. Para este comando, use apenas dados enviados após o marco mais recente da conversa.";
 
   // Rebuild conversationText after history limit and hard reset
   conversationText = messages
@@ -579,7 +587,7 @@ ${
 ${basePromptSection}
 IMPORTANTE: NÃO gere o documento agora. Seu trabalho é:
 1. Identificar qual template ZapSign usar
-2. Analisar TODOS os dados disponíveis (conversa + CRM)
+  2. Analisar apenas os dados confiáveis disponíveis para ESTE comando
 3. Identificar quais campos obrigatórios estão FALTANDO
 4. Em caso de conflito entre CRM antigo e a conversa atual do cliente, a conversa atual tem prioridade
 
@@ -592,13 +600,13 @@ ${
 TEMPLATES ZAPSIGN DISPONÍVEIS:
 ${templateList || "(nenhum template)"}
 
-${crmContext}
+ ${crmContext}
 
 PRIORIDADE DAS FONTES:
-- 1º: dados informados pelo cliente na conversa atual
-- 2º: dados da conversa recente já existente
-- 3º: CRM/cadastro apenas como fallback
-- Se houver conflito, NUNCA use o CRM antigo para sobrescrever o que o cliente acabou de informar
+ - 1º: dados informados pelo cliente após o marco mais recente da conversa
+ - 2º: mensagens recentes do mesmo contexto já filtradas
+ - 3º: CRM/cadastro só pode ser usado se estiver explicitamente presente no contexto acima
+ - Se houver dúvida sobre a origem, considere como faltante e peça confirmação
 
 CONVERSA COM O CLIENTE:
 ${conversationText || "(sem mensagens)"}
@@ -807,74 +815,75 @@ REGRAS:
 
       // Build CRM data string for extraction context
       const crmDataForExtraction: string[] = [];
-      if (contactData.full_name) {
-        crmDataForExtraction.push(`Nome completo: ${contactData.full_name}`);
-      }
-      if (contactData.cpf) crmDataForExtraction.push(`CPF: ${contactData.cpf}`);
-      if (contactData.rg) crmDataForExtraction.push(`RG: ${contactData.rg}`);
-      if (contactData.email) {
-        crmDataForExtraction.push(`E-mail: ${contactData.email}`);
-      }
-      if (contactData.phone) {
-        crmDataForExtraction.push(`Telefone: ${contactData.phone}`);
-      }
-      if (contactData.nationality) {
-        crmDataForExtraction.push(`Nacionalidade: ${contactData.nationality}`);
-      }
-      if (contactData.marital_status) {
-        crmDataForExtraction.push(
-          `Estado civil: ${contactData.marital_status}`,
-        );
-      }
-      if (contactData.profession) {
-        crmDataForExtraction.push(`Profissão: ${contactData.profession}`);
-      }
-      if (contactData.address_street) {
-        crmDataForExtraction.push(`Rua: ${contactData.address_street}`);
-      }
-      if (contactData.address_number) {
-        crmDataForExtraction.push(`Número: ${contactData.address_number}`);
-      }
-      if (contactData.address_complement) {
-        crmDataForExtraction.push(
-          `Complemento: ${contactData.address_complement}`,
-        );
-      }
-      if (contactData.address_neighborhood || contactData.neighborhood) {
-        crmDataForExtraction.push(
-          `Bairro: ${
-            contactData.address_neighborhood || contactData.neighborhood
-          }`,
-        );
-      }
-      if (contactData.city) {
-        crmDataForExtraction.push(`Cidade: ${contactData.city}`);
-      }
-      if (contactData.state) {
-        crmDataForExtraction.push(`Estado: ${contactData.state}`);
-      }
-      if (contactData.zip_code || contactData.cep) {
-        crmDataForExtraction.push(
-          `CEP: ${contactData.zip_code || contactData.cep}`,
-        );
-      }
-      if (contactData.birth_date) {
-        crmDataForExtraction.push(
-          `Data de nascimento: ${contactData.birth_date}`,
-        );
-      }
-      if (contactData.mother_name) {
-        crmDataForExtraction.push(`Nome da mãe: ${contactData.mother_name}`);
-      }
-      // Lead data
-      if (leadData.victim_name && !contactData.full_name) {
-        crmDataForExtraction.push(`Nome: ${leadData.victim_name}`);
-      }
-      if (leadData.victim_cpf && !contactData.cpf) {
-        crmDataForExtraction.push(`CPF: ${leadData.victim_cpf}`);
-      }
-      if (leadData.lead_email && !contactData.email) {
-        crmDataForExtraction.push(`E-mail: ${leadData.lead_email}`);
+      if (allowCrmPrefill) {
+        if (contactData.full_name) {
+          crmDataForExtraction.push(`Nome completo: ${contactData.full_name}`);
+        }
+        if (contactData.cpf) crmDataForExtraction.push(`CPF: ${contactData.cpf}`);
+        if (contactData.rg) crmDataForExtraction.push(`RG: ${contactData.rg}`);
+        if (contactData.email) {
+          crmDataForExtraction.push(`E-mail: ${contactData.email}`);
+        }
+        if (contactData.phone) {
+          crmDataForExtraction.push(`Telefone: ${contactData.phone}`);
+        }
+        if (contactData.nationality) {
+          crmDataForExtraction.push(`Nacionalidade: ${contactData.nationality}`);
+        }
+        if (contactData.marital_status) {
+          crmDataForExtraction.push(
+            `Estado civil: ${contactData.marital_status}`,
+          );
+        }
+        if (contactData.profession) {
+          crmDataForExtraction.push(`Profissão: ${contactData.profession}`);
+        }
+        if (contactData.address_street) {
+          crmDataForExtraction.push(`Rua: ${contactData.address_street}`);
+        }
+        if (contactData.address_number) {
+          crmDataForExtraction.push(`Número: ${contactData.address_number}`);
+        }
+        if (contactData.address_complement) {
+          crmDataForExtraction.push(
+            `Complemento: ${contactData.address_complement}`,
+          );
+        }
+        if (contactData.address_neighborhood || contactData.neighborhood) {
+          crmDataForExtraction.push(
+            `Bairro: ${
+              contactData.address_neighborhood || contactData.neighborhood
+            }`,
+          );
+        }
+        if (contactData.city) {
+          crmDataForExtraction.push(`Cidade: ${contactData.city}`);
+        }
+        if (contactData.state) {
+          crmDataForExtraction.push(`Estado: ${contactData.state}`);
+        }
+        if (contactData.zip_code || contactData.cep) {
+          crmDataForExtraction.push(
+            `CEP: ${contactData.zip_code || contactData.cep}`,
+          );
+        }
+        if (contactData.birth_date) {
+          crmDataForExtraction.push(
+            `Data de nascimento: ${contactData.birth_date}`,
+          );
+        }
+        if (contactData.mother_name) {
+          crmDataForExtraction.push(`Nome da mãe: ${contactData.mother_name}`);
+        }
+        if (leadData.victim_name && !contactData.full_name) {
+          crmDataForExtraction.push(`Nome: ${leadData.victim_name}`);
+        }
+        if (leadData.victim_cpf && !contactData.cpf) {
+          crmDataForExtraction.push(`CPF: ${leadData.victim_cpf}`);
+        }
+        if (leadData.lead_email && !contactData.email) {
+          crmDataForExtraction.push(`E-mail: ${leadData.lead_email}`);
+        }
       }
 
       // Step 1: Extract data from TEXT/AUDIO messages + CRM data using AI
@@ -1904,10 +1913,14 @@ async function handleFollowUp(opts: {
   }
 
   // Conversation context
+  const sessionContextStart = session.created_at || session.updated_at;
   const { data: recentMsgs } = await supabase.from("whatsapp_messages")
     .select("direction, message_text, created_at")
-    .eq("phone", normalizedPhone).order("created_at", { ascending: false })
-    .limit(20);
+    .eq("phone", normalizedPhone)
+    .eq("instance_name", instance_name)
+    .gte("created_at", sessionContextStart)
+    .order("created_at", { ascending: false })
+    .limit(50);
 
   const conversationText = (recentMsgs || []).reverse().filter((m: any) =>
     m.message_text
