@@ -511,10 +511,10 @@ serve(async (req) => {
               .maybeSingle();
             if (inst?.instance_token) {
               const blockBaseUrl = (inst as any).base_url || "https://abraci.uazapi.com";
-              const blockRes = await fetch(`${blockBaseUrl}/contact/block`, {
+              const blockRes = await fetch(`${blockBaseUrl}/chat/block`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", token: (inst as any).instance_token },
-                body: JSON.stringify({ number: phone }),
+                body: JSON.stringify({ number: phone, block: true }),
               });
               console.log(`UazAPI block contact ${phone}: status=${blockRes.status}`);
             }
