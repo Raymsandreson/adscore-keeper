@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
     // ============================================================
     // MODE 0: REGENERATE SESSION (from panel edit)
     // ============================================================
-    if (action === "regenerate_session" && session_id) {
+    if ((action === "regenerate_session" || action === "force_generate") && session_id) {
       const supabaseUrl = RESOLVED_SUPABASE_URL;
       const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
       const zapsignToken = Deno.env.get("ZAPSIGN_API_TOKEN");
