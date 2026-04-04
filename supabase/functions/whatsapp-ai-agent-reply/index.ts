@@ -477,6 +477,44 @@ serve(async (req) => {
       console.log(`Manual followup: skipping batching delay for ${phone}`);
     }
 
+    // ========== CONTENT MODERATION: block sexual/disrespectful content ==========
+    if (message_text && !is_followup) {
+      try {
+        const moderationResult = await geminiChat({
+          model: "google/gemini-2.5-flash-lite",
+          temperature: 0,
+          max_tokens: 20,
+          messages: [
+            {
+              role: "system",
+              content: "Você é um classificador de conteúdo. Analise a mensagem e responda APENAS 'BLOCK' se contiver conteúdo sexual, assédio, xingamentos graves, ameaças ou linguagem extremamente desrespeitosa. Responda 'OK' para qualquer outro conteúdo, incluindo reclamações normais, negativas educadas ou linguagem informal. Seja rigoroso: só bloqueie conteúdo realmente ofensivo/sexual."
+            },
+            { role: "user", content: message_text }
+          ],
+        });
+        const verdict = moderationResult?.choices?.[0]?.message?.content?.trim()?.toUpperCase() || "OK";
+        if (verdict.includes("BLOCK")) {
+          console.log(`Content moderation BLOCKED message from ${phone}: "${message_text.substring(0, 100)}"`);
+          // Mark conversation as blocked and deactivate agent
+          await supabase
+            .from("whatsapp_conversation_agents")
+            .update({ is_active: false, is_blocked: true } as any)
+            .eq("phone", phone)
+            .eq("instance_name", instance_name);
+          // Release lock
+          if (!is_followup) {
+            await supabase.from("agent_reply_locks").delete().eq("phone", phone).eq("instance_name", instance_name);
+          }
+          return new Response(JSON.stringify({ blocked: true, reason: "Inappropriate content detected" }), {
+            status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      } catch (modErr) {
+        console.error("Content moderation error (proceeding anyway):", modErr);
+        // Don't block on moderation failure — let the message through
+      }
+    }
+
     // ========== GENERATE AI RESPONSE ==========
     if ((agent as any).provider === "lovable") {
       const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
