@@ -242,8 +242,8 @@ Deno.serve(async (req) => {
       }).eq("id", session.id);
 
       // Attach received documents as extra docs
-      const receivedDocs = Array.isArray(session.received_documents) ? session.received_documents : [];
-      for (const doc of receivedDocs) {
+      const attachDocs = Array.isArray(session.received_documents) ? session.received_documents : [];
+      for (const doc of attachDocs) {
         if (!doc.media_url) continue;
         try {
           const fileResp = await fetch(doc.media_url);
