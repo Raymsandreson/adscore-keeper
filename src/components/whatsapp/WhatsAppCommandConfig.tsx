@@ -674,8 +674,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <div>
-                        <Label className="text-xs">Pular confirmação</Label>
-                        <p className="text-[10px] text-muted-foreground">Gera o documento automaticamente sem esperar confirmação do cliente</p>
+                        <Label className="text-xs">Gerar com dados parciais</Label>
+                        <p className="text-[10px] text-muted-foreground">Gera o link do documento mesmo com campos faltantes — o cliente preenche direto no formulário ZapSign</p>
                       </div>
                       <Switch checked={form.skip_confirmation ?? false} onCheckedChange={v => setForm(f => ({ ...f, skip_confirmation: v }))} />
                     </div>
