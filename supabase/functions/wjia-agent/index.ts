@@ -494,7 +494,36 @@ async function handleNewCommand(opts: {
     messages.length = 0;
     messages.push(...sliced);
   }
-  // Rebuild conversationText after history limit
+
+  // HARD RESET: Cut history at the last completion marker or previous # command
+  // This prevents the AI from using data from previous conversations/documents
+  const COMPLETION_MARKERS = ["🔗", "✅ Documento", "Conversa limpa"];
+  const COMMAND_PATTERN = /^#\S+/;
+  let hardResetIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const txt = messages[i]?.message_text || "";
+    // Skip the current command message itself (last outbound with #)
+    if (i === messages.length - 1) continue;
+    // Check for completion markers (outbound messages with links/confirmations)
+    const isCompletionMarker = messages[i].direction === "outbound" &&
+      COMPLETION_MARKERS.some((marker) => txt.includes(marker));
+    // Check for a previous # command (outbound)
+    const isPreviousCommand = messages[i].direction === "outbound" &&
+      COMMAND_PATTERN.test(txt.trim());
+    if (isCompletionMarker || isPreviousCommand) {
+      hardResetIdx = i;
+      break;
+    }
+  }
+  if (hardResetIdx >= 0) {
+    // Keep only messages AFTER the marker
+    const afterReset = messages.slice(hardResetIdx + 1);
+    messages.length = 0;
+    messages.push(...afterReset);
+    console.log(`WJIA Hard Reset: cut at index ${hardResetIdx}, kept ${messages.length} messages after marker`);
+  }
+
+  // Rebuild conversationText after history limit and hard reset
   conversationText = messages
     .filter((m: any) => m.message_text)
     .map((m: any) =>
