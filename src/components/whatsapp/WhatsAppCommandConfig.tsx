@@ -211,6 +211,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     send_window_start_hour: 8,
     send_window_end_hour: 20,
     send_call_followup_audio: false,
+    zapsign_settings: {} as Record<string, any>,
   });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
   const [humanReplyPauseMinutes, setHumanReplyPauseMinutes] = useState(0);
@@ -285,6 +286,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       max_tokens: 2048, response_delay_seconds: 2, split_messages: false, split_delay_seconds: 3,
       reply_with_audio: false, reply_voice_id: null, respond_in_groups: false, max_tts_chars: 1000,
       send_window_start_hour: 8, send_window_end_hour: 20, send_call_followup_audio: false,
+      zapsign_settings: {},
     });
     setFollowupSteps([]);
     setHumanReplyPauseMinutes(0);
@@ -338,6 +340,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_window_start_hour: (s as any).send_window_start_hour ?? 8,
       send_window_end_hour: (s as any).send_window_end_hour ?? 20,
       send_call_followup_audio: (s as any).send_call_followup_audio ?? false,
+      zapsign_settings: (s as any).zapsign_settings || {},
     });
     setFollowupSteps(s.followup_steps || []);
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
@@ -405,6 +408,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_window_start_hour: form.send_window_start_hour ?? 8,
       send_window_end_hour: form.send_window_end_hour ?? 20,
       send_call_followup_audio: form.send_call_followup_audio ?? false,
+      zapsign_settings: form.zapsign_settings || {},
     };
 
     let error;
@@ -911,6 +915,79 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                               )}
                             </div>
                           )}
+                        </div>
+
+                        {/* ZAPSIGN ADVANCED SETTINGS */}
+                        <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
+                          <Label className="text-xs font-semibold">⚙️ Configurações Avançadas ZapSign</Label>
+                          
+                          {/* Security */}
+                          <div className="space-y-2">
+                            <p className="text-[10px] font-medium text-muted-foreground uppercase">🔒 Segurança</p>
+                            <div className="flex items-center gap-2">
+                              <Checkbox id="zs_lock_name" checked={form.zapsign_settings.lock_name || false} onCheckedChange={(c) => setForm(f => ({ ...f, zapsign_settings: { ...f.zapsign_settings, lock_name: !!c } }))} />
+                              <Label htmlFor="zs_lock_name" className="text-xs cursor-pointer">Bloquear alteração do nome</Label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Checkbox id="zs_lock_phone" checked={form.zapsign_settings.lock_phone || false} onCheckedChange={(c) => setForm(f => ({ ...f, zapsign_settings: { ...f.zapsign_settings, lock_phone: !!c } }))} />
+                              <Label htmlFor="zs_lock_phone" className="text-xs cursor-pointer">Bloquear alteração do telefone</Label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Checkbox id="zs_require_cpf" checked={form.zapsign_settings.require_cpf || false} onCheckedChange={(c) => setForm(f => ({ ...f, zapsign_settings: { ...f.zapsign_settings, require_cpf: !!c } }))} />
+                              <Label htmlFor="zs_require_cpf" className="text-xs cursor-pointer">Solicitar CPF do signatário</Label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Checkbox id="zs_validate_cpf" checked={form.zapsign_settings.validate_cpf || false} onCheckedChange={(c) => setForm(f => ({ ...f, zapsign_settings: { ...f.zapsign_settings, validate_cpf: !!c } }))} />
+                              <Label htmlFor="zs_validate_cpf" className="text-xs cursor-pointer">Validar CPF na Receita Federal</Label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Checkbox id="zs_require_selfie" checked={form.zapsign_settings.require_selfie_photo || false} onCheckedChange={(c) => setForm(f => ({ ...f, zapsign_settings: { ...f.zapsign_settings, require_selfie_photo: !!c } }))} />
+                              <Label htmlFor="zs_require_selfie" className="text-xs cursor-pointer">Exigir selfie na assinatura</Label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Checkbox id="zs_require_doc_photo" checked={form.zapsign_settings.require_document_photo || false} onCheckedChange={(c) => setForm(f => ({ ...f, zapsign_settings: { ...f.zapsign_settings, require_document_photo: !!c } }))} />
+                              <Label htmlFor="zs_require_doc_photo" className="text-xs cursor-pointer">Exigir foto de documento (RG/CNH)</Label>
+                            </div>
+                          </div>
+
+                          {/* Branding */}
+                          <div className="space-y-2">
+                            <p className="text-[10px] font-medium text-muted-foreground uppercase">🎨 Personalização</p>
+                            <div className="space-y-1">
+                              <Label className="text-[10px]">Nome da marca (e-mails)</Label>
+                              <Input value={form.zapsign_settings.brand_name || ''} onChange={e => setForm(f => ({ ...f, zapsign_settings: { ...f.zapsign_settings, brand_name: e.target.value || undefined } }))} placeholder="Ex: Prudêncio Advocacia" className="h-7 text-xs" />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px]">URL do logo</Label>
+                              <Input value={form.zapsign_settings.brand_logo || ''} onChange={e => setForm(f => ({ ...f, zapsign_settings: { ...f.zapsign_settings, brand_logo: e.target.value || undefined } }))} placeholder="https://seusite.com/logo.png" className="h-7 text-xs" />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px]">Cor primária (hex)</Label>
+                              <Input value={form.zapsign_settings.brand_primary_color || ''} onChange={e => setForm(f => ({ ...f, zapsign_settings: { ...f.zapsign_settings, brand_primary_color: e.target.value || undefined } }))} placeholder="#0011ee" className="h-7 text-xs" />
+                            </div>
+                          </div>
+
+                          {/* Organization */}
+                          <div className="space-y-2">
+                            <p className="text-[10px] font-medium text-muted-foreground uppercase">📁 Organização</p>
+                            <div className="space-y-1">
+                              <Label className="text-[10px]">Pasta no ZapSign</Label>
+                              <Input value={form.zapsign_settings.folder_path || ''} onChange={e => setForm(f => ({ ...f, zapsign_settings: { ...f.zapsign_settings, folder_path: e.target.value || undefined } }))} placeholder="/clientes/procuracoes/" className="h-7 text-xs" />
+                              <p className="text-[9px] text-muted-foreground">Use {'{{LEAD_NAME}}'} para nome do lead</p>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px]">Prazo para assinar (dias)</Label>
+                              <Input type="number" min={0} value={form.zapsign_settings.date_limit_days || ''} onChange={e => setForm(f => ({ ...f, zapsign_settings: { ...f.zapsign_settings, date_limit_days: parseInt(e.target.value) || undefined } }))} placeholder="7" className="h-7 text-xs w-24" />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px]">Link de redirecionamento pós-assinatura</Label>
+                              <Input value={form.zapsign_settings.redirect_link || ''} onChange={e => setForm(f => ({ ...f, zapsign_settings: { ...f.zapsign_settings, redirect_link: e.target.value || undefined } }))} placeholder="https://seusite.com/obrigado" className="h-7 text-xs" />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px]">Observadores (e-mails, separados por vírgula)</Label>
+                              <Input value={(form.zapsign_settings.observers || []).join(', ')} onChange={e => setForm(f => ({ ...f, zapsign_settings: { ...f.zapsign_settings, observers: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean) } }))} placeholder="advogado@email.com, assistente@email.com" className="h-7 text-xs" />
+                            </div>
+                          </div>
                         </div>
                       </>
                     )}
