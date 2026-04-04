@@ -773,8 +773,9 @@ Se não encontrou nada, retorne: []`;
         // All data extracted from history! Skip to generation
         session.status = "ready";
         // Don't return — let it fall through to generate
-      } else if (skipConfirmation) {
+      } else if (skipConfirmation && !(startWithDocs && stillMissing.length > 0)) {
         // skip_confirmation mode: generate document with partial data, client fills rest on ZapSign
+        // BUT if request_documents is on, collect docs first before generating
         console.log(
           `WJIA skip_confirmation: ${stillMissing.length} fields missing, generating with partial data`,
         );
