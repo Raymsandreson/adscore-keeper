@@ -993,19 +993,31 @@ Se não encontrou nada, retorne: []`;
         session.status = "ready";
         // Don't return — let it fall through to generate
       } else if (skipConfirmation && !(startWithDocs && stillMissing.length > 0)) {
-        // skip_confirmation mode: generate document with partial data, client fills rest on ZapSign
-        // BUT if request_documents is on, collect docs first before generating
-        console.log(
-          `WJIA skip_confirmation: ${stillMissing.length} fields missing, generating with partial data`,
-        );
+        // Check if partial_min_fields are all filled before generating
+        const minFieldsMissing = partialMinFields.filter((mf: string) => {
+          const filled = fieldsData.find((f: any) => {
+            const key = (f.de || "").replace(/[{}]/g, "");
+            return key === mf && f.para;
+          });
+          return !filled;
+        });
 
-        // Update session to generated state
-        await supabase.from("wjia_collection_sessions").update({
-          status: "ready",
-          updated_at: new Date().toISOString(),
-        }).eq("id", session.id);
-        session.status = "ready";
-        // Fall through to generate — ZapSign will show editable fields for missing data
+        if (minFieldsMissing.length > 0) {
+          // Min required fields not yet collected — continue collecting
+          console.log(`WJIA skip_confirmation: min fields still missing: ${minFieldsMissing.join(", ")}`);
+          // Don't generate yet, let it fall through to collect message
+        } else {
+          // Min fields satisfied (or none configured) — generate with partial data
+          console.log(
+            `WJIA skip_confirmation: min fields OK, ${stillMissing.length} fields missing, generating with partial data`,
+          );
+          await supabase.from("wjia_collection_sessions").update({
+            status: "ready",
+            updated_at: new Date().toISOString(),
+          }).eq("id", session.id);
+          session.status = "ready";
+          // Fall through to generate — ZapSign will show editable fields for missing data
+        }
       } else if (filledCount > 0) {
         // Found some data but still missing — tell client what we found and ask only for what's missing
         if (inst?.instance_token) {
