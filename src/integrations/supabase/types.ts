@@ -8386,6 +8386,7 @@ export type Database = {
           min_call_delay_minutes: number
           model: string | null
           notify_on_signature: boolean
+          partial_min_fields: string[] | null
           prompt_instructions: string | null
           reply_voice_id: string | null
           reply_with_audio: boolean
@@ -8432,6 +8433,7 @@ export type Database = {
           min_call_delay_minutes?: number
           model?: string | null
           notify_on_signature?: boolean
+          partial_min_fields?: string[] | null
           prompt_instructions?: string | null
           reply_voice_id?: string | null
           reply_with_audio?: boolean
@@ -8478,6 +8480,7 @@ export type Database = {
           min_call_delay_minutes?: number
           model?: string | null
           notify_on_signature?: boolean
+          partial_min_fields?: string[] | null
           prompt_instructions?: string | null
           reply_voice_id?: string | null
           reply_with_audio?: boolean

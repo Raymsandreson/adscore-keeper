@@ -51,6 +51,7 @@ interface Shortcut {
   split_delay_seconds: number;
   human_reply_pause_minutes: number;
   skip_confirmation: boolean;
+  partial_min_fields: string[];
   command_scope: string;
   reply_with_audio: boolean;
   reply_voice_id: string | null;
@@ -119,6 +120,7 @@ export function WhatsAppCommandConfig() {
         split_delay_seconds: s.split_delay_seconds ?? 3,
         human_reply_pause_minutes: s.human_reply_pause_minutes ?? 0,
         skip_confirmation: (s as any).skip_confirmation ?? false,
+        partial_min_fields: (s as any).partial_min_fields || [],
         command_scope: s.command_scope || 'client',
         reply_with_audio: s.reply_with_audio ?? false,
         reply_voice_id: s.reply_voice_id || null,
@@ -205,6 +207,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     max_tokens: 2048,
     response_delay_seconds: 2,
     skip_confirmation: false,
+    partial_min_fields: [] as string[],
     split_messages: false,
     split_delay_seconds: 3,
     reply_with_audio: false,
@@ -286,7 +289,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       request_documents: false, document_types: [], custom_document_names: [], document_type_modes: {},
       assistant_type: 'document', base_prompt: '',
       model: 'google/gemini-2.5-flash', temperature: 0.7,
-      max_tokens: 2048, response_delay_seconds: 2, skip_confirmation: false, split_messages: false, split_delay_seconds: 3,
+      max_tokens: 2048, response_delay_seconds: 2, skip_confirmation: false, partial_min_fields: [], split_messages: false, split_delay_seconds: 3,
       reply_with_audio: false, reply_voice_id: null, respond_in_groups: false, max_tts_chars: 1000,
       send_window_start_hour: 8, send_window_end_hour: 20, send_call_followup_audio: false,
       zapsign_settings: {},
@@ -335,6 +338,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       max_tokens: (s as any).max_tokens ?? 2048,
       response_delay_seconds: s.response_delay_seconds ?? 2,
       skip_confirmation: (s as any).skip_confirmation ?? false,
+      partial_min_fields: (s as any).partial_min_fields || [],
       split_messages: s.split_messages ?? false,
       split_delay_seconds: s.split_delay_seconds ?? 3,
       reply_with_audio: (s as any).reply_with_audio ?? false,
@@ -413,6 +417,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_window_end_hour: form.send_window_end_hour ?? 20,
       send_call_followup_audio: form.send_call_followup_audio ?? false,
       skip_confirmation: form.skip_confirmation ?? false,
+      partial_min_fields: (form as any).partial_min_fields || [],
       zapsign_settings: form.zapsign_settings || {},
     };
 
@@ -679,6 +684,49 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       </div>
                       <Switch checked={form.skip_confirmation ?? false} onCheckedChange={v => setForm(f => ({ ...f, skip_confirmation: v }))} />
                     </div>
+                    {form.skip_confirmation && (
+                      <div className="space-y-2 pl-2 border-l-2 border-primary/20">
+                        <Label className="text-[10px] font-semibold">Campos mínimos obrigatórios</Label>
+                        <p className="text-[10px] text-muted-foreground">Selecione os campos que devem ser coletados antes de gerar o link</p>
+                        <div className="grid grid-cols-2 gap-1">
+                          {[
+                            { key: 'NOME_COMPLETO', label: 'Nome completo' },
+                            { key: 'CPF', label: 'CPF' },
+                            { key: 'RG', label: 'RG' },
+                            { key: 'NACIONALIDADE', label: 'Nacionalidade' },
+                            { key: 'ESTADO_CIVIL', label: 'Estado civil' },
+                            { key: 'PROFISSAO', label: 'Profissão' },
+                            { key: 'ENDERECO_COMPLETO', label: 'Endereço' },
+                            { key: 'CIDADE', label: 'Cidade' },
+                            { key: 'UF', label: 'UF' },
+                            { key: 'CEP', label: 'CEP' },
+                            { key: 'DATA_NASCIMENTO', label: 'Data nascimento' },
+                            { key: 'NOME_MAE', label: 'Nome da mãe' },
+                            { key: 'EMAIL', label: 'E-mail' },
+                            { key: 'TELEFONE', label: 'Telefone' },
+                          ].map(field => {
+                            const selected = (form as any).partial_min_fields || [];
+                            const isChecked = selected.includes(field.key);
+                            return (
+                              <label key={field.key} className="flex items-center gap-1.5 text-[10px] cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    const newFields = isChecked
+                                      ? selected.filter((f: string) => f !== field.key)
+                                      : [...selected, field.key];
+                                    setForm(f => ({ ...f, partial_min_fields: newFields } as any));
+                                  }}
+                                  className="rounded border-muted-foreground/30 h-3 w-3"
+                                />
+                                {field.label}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">

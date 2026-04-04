@@ -481,7 +481,8 @@ async function handleNewCommand(opts: {
   const shortcutModel = matchedShortcut?.model || "google/gemini-2.5-flash";
   const shortcutTemperature = matchedShortcut?.temperature ?? 0.1;
   const shortcutBasePrompt = matchedShortcut?.base_prompt || "";
-  let skipConfirmation = matchedShortcut?.skip_confirmation === true; // default false — wait for client confirmation
+  let skipConfirmation = matchedShortcut?.skip_confirmation === true;
+  const partialMinFields: string[] = matchedShortcut?.partial_min_fields || [];
 
   // For assistant-only mode, just respond with AI
   if (assistantType === "assistant") {
@@ -992,19 +993,31 @@ Se não encontrou nada, retorne: []`;
         session.status = "ready";
         // Don't return — let it fall through to generate
       } else if (skipConfirmation && !(startWithDocs && stillMissing.length > 0)) {
-        // skip_confirmation mode: generate document with partial data, client fills rest on ZapSign
-        // BUT if request_documents is on, collect docs first before generating
-        console.log(
-          `WJIA skip_confirmation: ${stillMissing.length} fields missing, generating with partial data`,
-        );
+        // Check if partial_min_fields are all filled before generating
+        const minFieldsMissing = partialMinFields.filter((mf: string) => {
+          const filled = fieldsData.find((f: any) => {
+            const key = (f.de || "").replace(/[{}]/g, "");
+            return key === mf && f.para;
+          });
+          return !filled;
+        });
 
-        // Update session to generated state
-        await supabase.from("wjia_collection_sessions").update({
-          status: "ready",
-          updated_at: new Date().toISOString(),
-        }).eq("id", session.id);
-        session.status = "ready";
-        // Fall through to generate — ZapSign will show editable fields for missing data
+        if (minFieldsMissing.length > 0) {
+          // Min required fields not yet collected — continue collecting
+          console.log(`WJIA skip_confirmation: min fields still missing: ${minFieldsMissing.join(", ")}`);
+          // Don't generate yet, let it fall through to collect message
+        } else {
+          // Min fields satisfied (or none configured) — generate with partial data
+          console.log(
+            `WJIA skip_confirmation: min fields OK, ${stillMissing.length} fields missing, generating with partial data`,
+          );
+          await supabase.from("wjia_collection_sessions").update({
+            status: "ready",
+            updated_at: new Date().toISOString(),
+          }).eq("id", session.id);
+          session.status = "ready";
+          // Fall through to generate — ZapSign will show editable fields for missing data
+        }
       } else if (filledCount > 0) {
         // Found some data but still missing — tell client what we found and ask only for what's missing
         if (inst?.instance_token) {
@@ -1083,10 +1096,10 @@ Se não encontrou nada, retorne: []`;
 
       // No data extracted — ask for documents or data (only if NOT skip_confirmation)
       if (session.status !== "ready" && filledCount === 0) {
-        if (skipConfirmation && !startWithDocs) {
-          // Even with no data, generate and let client fill on ZapSign (unless docs are required)
+        if (skipConfirmation && !startWithDocs && partialMinFields.length === 0) {
+          // Only generate empty doc if NO min fields are configured
           console.log(
-            `WJIA skip_confirmation: no data extracted, generating empty doc for client to fill`,
+            `WJIA skip_confirmation: no data and no min fields required, generating empty doc for client to fill`,
           );
           await supabase.from("wjia_collection_sessions").update({
             status: "ready",
@@ -1504,10 +1517,11 @@ async function handleFollowUp(opts: {
   let splitOpts:
     | { splitMessages?: boolean; splitDelaySeconds?: number }
     | undefined;
-  let skipConfirmation = false; // default false — wait for confirmation
+  let skipConfirmation = false;
+  let partialMinFieldsReply: string[] = [];
   if (session.shortcut_name) {
     const { data: scSplit } = await supabase.from("wjia_command_shortcuts")
-      .select("split_messages, split_delay_seconds, skip_confirmation")
+      .select("split_messages, split_delay_seconds, skip_confirmation, partial_min_fields")
       .eq("shortcut_name", session.shortcut_name).maybeSingle();
     if (scSplit?.split_messages) {
       splitOpts = {
@@ -1519,6 +1533,7 @@ async function handleFollowUp(opts: {
     if (scSplit && typeof scSplit.skip_confirmation === "boolean") {
       skipConfirmation = scSplit.skip_confirmation;
     }
+    partialMinFieldsReply = (scSplit as any)?.partial_min_fields || [];
   }
 
   const { data: inst } = await supabase.from("whatsapp_instances").select(
