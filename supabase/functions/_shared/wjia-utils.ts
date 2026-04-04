@@ -967,6 +967,14 @@ export async function generateZapSignDocument(
     ? `https://app.zapsign.co/verificar/${signer.token}`
     : null;
 
+  // Apply signer-level settings via update-signer API
+  if (signer?.token) {
+    await updateSignerSettings(signer.token, zapsignToken, zSettingsUtil, {
+      cpfValue: cpfFieldUtil?.para || undefined,
+      documentPhotoUrl: rgDocUtil?.media_url || undefined,
+    });
+  }
+
   await supabase.from("wjia_collection_sessions")
     .update({
       status: "generated",

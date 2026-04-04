@@ -277,6 +277,14 @@ Deno.serve(async (req) => {
         ? `https://app.zapsign.co/verificar/${signer.token}`
         : null;
 
+      // Apply signer-level settings via update-signer API
+      if (signer?.token && zapsign_settings) {
+        const { updateSignerSettings } = await import("../_shared/wjia-utils.ts");
+        await updateSignerSettings(signer.token, zapsignToken, zapsign_settings, {
+          cpfValue: body.signer_cpf || undefined,
+        });
+      }
+
       // Build all sign URLs
       const allSignUrls = (docData.signers || []).map((
         s: any,

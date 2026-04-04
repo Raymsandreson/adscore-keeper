@@ -1415,6 +1415,13 @@ Se não encontrou nada, retorne: []`;
     ? `https://app.zapsign.co/verificar/${signer.token}`
     : null;
 
+  // Apply signer-level settings via update-signer API
+  if (signer?.token && zapsignToken) {
+    await updateSignerSettings(signer.token, zapsignToken, zSettingsMain, {
+      cpfValue: cpfFieldMain?.para || undefined,
+    });
+  }
+
   await supabase.from("zapsign_documents").insert({
     doc_token: docData.token,
     template_id: parsed.template_token,
