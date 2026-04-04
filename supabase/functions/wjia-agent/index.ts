@@ -865,8 +865,8 @@ Se não encontrou nada, retorne: []`;
 
       // No data extracted — ask for documents or data (only if NOT skip_confirmation)
       if (session.status !== "ready" && filledCount === 0) {
-        if (skipConfirmation) {
-          // Even with no data, generate and let client fill on ZapSign
+        if (skipConfirmation && !startWithDocs) {
+          // Even with no data, generate and let client fill on ZapSign (unless docs are required)
           console.log(
             `WJIA skip_confirmation: no data extracted, generating empty doc for client to fill`,
           );
