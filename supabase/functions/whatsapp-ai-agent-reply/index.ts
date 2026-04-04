@@ -990,6 +990,44 @@ REGRAS IMPORTANTES:
       }
 
       // Save outbound message (full reply)
+      // Resolve lead_id and contact_id for linking
+      let resolvedLeadId = lead_id || null;
+      let resolvedContactId: string | null = null;
+      if (!resolvedLeadId) {
+        // Try to find lead via contact phone
+        const normalizedP = phone.replace(/\D/g, '');
+        const suffix8 = normalizedP.slice(-8);
+        const { data: contactForLink } = await supabase
+          .from("contacts")
+          .select("id, lead_id")
+          .ilike("phone", `%${suffix8}`)
+          .limit(1)
+          .maybeSingle();
+        if (contactForLink) {
+          resolvedContactId = contactForLink.id;
+          resolvedLeadId = contactForLink.lead_id;
+        }
+        if (!resolvedLeadId) {
+          const { data: leadForLink } = await supabase
+            .from("leads")
+            .select("id")
+            .ilike("lead_name", `%${phone}%`)
+            .limit(1)
+            .maybeSingle();
+          if (leadForLink) resolvedLeadId = leadForLink.id;
+        }
+      } else if (!resolvedContactId) {
+        const normalizedP2 = phone.replace(/\D/g, '');
+        const suffix8b = normalizedP2.slice(-8);
+        const { data: contactForLink2 } = await supabase
+          .from("contacts")
+          .select("id")
+          .ilike("phone", `%${suffix8b}`)
+          .limit(1)
+          .maybeSingle();
+        if (contactForLink2) resolvedContactId = contactForLink2.id;
+      }
+
       const outboundMsg = {
         phone, instance_name, direction: "outbound",
         message_text: reply, metadata: { ai_agent: (agent as any).name, ai_agent_id: (agent as any).id, split_count: messageParts.length },
@@ -997,6 +1035,8 @@ REGRAS IMPORTANTES:
         campaign_name: null,
         action_source: 'agent',
         action_source_detail: `Agente: ${(agent as any).name}`,
+        lead_id: resolvedLeadId,
+        contact_id: resolvedContactId,
       };
       await supabase.from("whatsapp_messages").insert(outboundMsg);
 
