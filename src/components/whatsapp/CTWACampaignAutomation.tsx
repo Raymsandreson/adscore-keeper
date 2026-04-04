@@ -860,23 +860,57 @@ export function CTWACampaignAutomation() {
                     </div>
                   </div>
 
-                  {/* Agente pós-fechamento */}
-                  <div className="space-y-1">
+                  {/* Agentes pós-classificação */}
+                  <div className="space-y-2">
                     <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
-                      <Sparkles className="h-3 w-3 text-emerald-500" /> Agente IA pós-fechamento (lead fechado)
+                      <Sparkles className="h-3 w-3 text-emerald-500" /> Agentes IA pós-classificação do lead
                     </Label>
-                    <Select 
-                      value={linkAny.closed_agent_id || 'none'} 
-                      onValueChange={v => handleUpdate(link.id, { closed_agent_id: v === 'none' ? null : v } as any)}
-                    >
-                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Mesmo agente" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none" className="text-xs">Sem agente específico (mesmo agente)</SelectItem>
-                        {agents.map(a => <SelectItem key={a.id} value={a.id} className="text-xs">#{a.shortcut_name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {/* Fechado */}
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-medium text-green-600">✅ Fechado</span>
+                        <Select 
+                          value={linkAny.closed_agent_id || 'none'} 
+                          onValueChange={v => handleUpdate(link.id, { closed_agent_id: v === 'none' ? null : v } as any)}
+                        >
+                          <SelectTrigger className="h-7 text-[10px]"><SelectValue placeholder="Mesmo agente" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none" className="text-xs">Sem agente específico</SelectItem>
+                            {agents.map(a => <SelectItem key={a.id} value={a.id} className="text-xs">#{a.shortcut_name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {/* Recusado */}
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-medium text-red-500">❌ Recusado</span>
+                        <Select 
+                          value={linkAny.refused_agent_id || 'none'} 
+                          onValueChange={v => handleUpdate(link.id, { refused_agent_id: v === 'none' ? null : v } as any)}
+                        >
+                          <SelectTrigger className="h-7 text-[10px]"><SelectValue placeholder="Mesmo agente" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none" className="text-xs">Sem agente específico</SelectItem>
+                            {agents.map(a => <SelectItem key={a.id} value={a.id} className="text-xs">#{a.shortcut_name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {/* Inviável */}
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-medium text-orange-500">⚠️ Inviável</span>
+                        <Select 
+                          value={linkAny.inviavel_agent_id || 'none'} 
+                          onValueChange={v => handleUpdate(link.id, { inviavel_agent_id: v === 'none' ? null : v } as any)}
+                        >
+                          <SelectTrigger className="h-7 text-[10px]"><SelectValue placeholder="Mesmo agente" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none" className="text-xs">Sem agente específico</SelectItem>
+                            {agents.map(a => <SelectItem key={a.id} value={a.id} className="text-xs">#{a.shortcut_name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                     <p className="text-[10px] text-muted-foreground">
-                      Quando o lead for fechado, este agente assumirá a conversa automaticamente.
+                      Quando o lead mudar de status, o agente correspondente assumirá a conversa automaticamente.
                     </p>
                   </div>
 
