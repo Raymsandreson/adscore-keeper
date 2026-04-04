@@ -1224,6 +1224,9 @@ Se não encontrou nada, retorne: []`;
   const finalMissingForDoc = computeMissingFields(finalDocCatalog, filledTemplateData);
   const hasIncompleteDocFields = finalMissingForDoc.length > 0;
 
+  // Extract CPF value from collected fields
+  const cpfFieldMain = fieldsData.find((f: any) => /CPF/i.test(f.de));
+
   const createBody: any = {
     template_id: parsed.template_token,
     signer_name: signerName,
@@ -1234,6 +1237,14 @@ Se não encontrou nada, retorne: []`;
       : [{ de: "{{_}}", para: " " }],
     ...(hasIncompleteDocFields && { signer_has_incomplete_fields: true }),
   };
+
+  // Apply ZapSign advanced settings from shortcut
+  const zSettingsMain = matchedShortcut?.zapsign_settings || null;
+  applyZapSignSettings(createBody, zSettingsMain, {
+    cpfValue: cpfFieldMain?.para || undefined,
+    leadId: lead_id || undefined,
+    leadName: leadData.lead_name || undefined,
+  });
 
   const createRes = await fetch(`${ZAPSIGN_API_URL}/models/create-doc/`, {
     method: "POST",
