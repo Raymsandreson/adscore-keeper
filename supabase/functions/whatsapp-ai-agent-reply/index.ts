@@ -1059,6 +1059,14 @@ REGRAS IMPORTANTES:
                 await supabase.from("whatsapp_conversation_agents").update({ is_active: false }).eq("phone", phone).eq("instance_name", instance_name);
               }
 
+              // Cancel all pending followups
+              await supabase.from("whatsapp_agent_followups")
+                .update({ status: "cancelled" })
+                .eq("phone", phone)
+                .eq("instance_name", instance_name)
+                .eq("status", "pending");
+              console.log(`Cancelled pending followups for ${phone} due to inviavel classification`);
+
               // Send CAPI signal
               try {
                 fetch(`${cloudFunctionsUrl}/functions/v1/meta-conversions-api`, {
