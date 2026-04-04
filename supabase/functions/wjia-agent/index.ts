@@ -2170,8 +2170,12 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
 
   for (const field of (result.newly_extracted || [])) {
     const normalized = normalizeIncomingField(field, catalog);
-    if (!normalized) continue;
+    if (!normalized) {
+      console.log(`WJIA field rejected by normalizeIncomingField:`, JSON.stringify(field));
+      continue;
+    }
     if (shouldProtectName(currentFields, normalized)) continue;
+    console.log(`WJIA field upserted: ${normalized.variable} = "${normalized.value}"`);
     upsertCollectedField(currentFields, normalized.variable, normalized.value);
   }
 
@@ -2210,11 +2214,14 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
     }
   }
 
-  if (result.action === "confirm_generate" && allCollected && zapsignToken) {
-    // GENERATE DOCUMENT
+  if (result.action === "confirm_generate" && zapsignToken) {
+    if (!allCollected) {
+      console.log(`WJIA confirm_generate with missing fields (proceeding anyway - ZapSign editable):`, JSON.stringify(finalMissing));
+    }
+    // GENERATE DOCUMENT — always proceed when client confirms, ZapSign forms are editable
     await supabase.from("wjia_collection_sessions").update({
       collected_data: updatedCollectedData,
-      missing_fields: [],
+      missing_fields: finalMissing,
       status: "ready",
       updated_at: new Date().toISOString(),
     }).eq("id", session.id);
