@@ -50,6 +50,7 @@ interface Shortcut {
   split_messages: boolean;
   split_delay_seconds: number;
   human_reply_pause_minutes: number;
+  skip_confirmation: boolean;
   command_scope: string;
   reply_with_audio: boolean;
   reply_voice_id: string | null;
@@ -117,6 +118,7 @@ export function WhatsAppCommandConfig() {
         split_messages: s.split_messages ?? false,
         split_delay_seconds: s.split_delay_seconds ?? 3,
         human_reply_pause_minutes: s.human_reply_pause_minutes ?? 0,
+        skip_confirmation: (s as any).skip_confirmation ?? false,
         command_scope: s.command_scope || 'client',
         reply_with_audio: s.reply_with_audio ?? false,
         reply_voice_id: s.reply_voice_id || null,
@@ -202,6 +204,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     temperature: 0.7,
     max_tokens: 2048,
     response_delay_seconds: 2,
+    skip_confirmation: false,
     split_messages: false,
     split_delay_seconds: 3,
     reply_with_audio: false,
@@ -283,7 +286,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       request_documents: false, document_types: [], custom_document_names: [], document_type_modes: {},
       assistant_type: 'document', base_prompt: '',
       model: 'google/gemini-2.5-flash', temperature: 0.7,
-      max_tokens: 2048, response_delay_seconds: 2, split_messages: false, split_delay_seconds: 3,
+      max_tokens: 2048, response_delay_seconds: 2, skip_confirmation: false, split_messages: false, split_delay_seconds: 3,
       reply_with_audio: false, reply_voice_id: null, respond_in_groups: false, max_tts_chars: 1000,
       send_window_start_hour: 8, send_window_end_hour: 20, send_call_followup_audio: false,
       zapsign_settings: {},
@@ -331,6 +334,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       temperature: s.temperature ?? 0.7,
       max_tokens: (s as any).max_tokens ?? 2048,
       response_delay_seconds: s.response_delay_seconds ?? 2,
+      skip_confirmation: (s as any).skip_confirmation ?? false,
       split_messages: s.split_messages ?? false,
       split_delay_seconds: s.split_delay_seconds ?? 3,
       reply_with_audio: (s as any).reply_with_audio ?? false,
@@ -408,6 +412,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_window_start_hour: form.send_window_start_hour ?? 8,
       send_window_end_hour: form.send_window_end_hour ?? 20,
       send_call_followup_audio: form.send_call_followup_audio ?? false,
+      skip_confirmation: form.skip_confirmation ?? false,
       zapsign_settings: form.zapsign_settings || {},
     };
 
@@ -665,6 +670,15 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       onChange={e => setForm(f => ({ ...f, response_delay_seconds: parseInt(e.target.value) || 0 }))}
                       className="h-9 text-xs"
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-xs">Pular confirmação</Label>
+                        <p className="text-[10px] text-muted-foreground">Gera o documento automaticamente sem esperar confirmação do cliente</p>
+                      </div>
+                      <Switch checked={form.skip_confirmation ?? false} onCheckedChange={v => setForm(f => ({ ...f, skip_confirmation: v }))} />
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
