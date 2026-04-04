@@ -12,6 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { geminiChat } from "../_shared/gemini.ts";
 import {
   applyDefaults,
+  filterOnlyAutoFilledData,
   applyConfiguredPredefinedFields,
   applyZapSignSettings,
   autoFillDates,
