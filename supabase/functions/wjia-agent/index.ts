@@ -494,8 +494,14 @@ async function handleNewCommand(opts: {
     messages.length = 0;
     messages.push(...sliced);
   }
+  // Rebuild conversationText after history limit
+  conversationText = messages
+    .filter((m: any) => m.message_text)
+    .map((m: any) =>
+      `[${m.direction === "outbound" ? "Atendente" : "Cliente"}]: ${m.message_text}`
+    )
+    .join("\n");
 
-  // For assistant-only mode, just respond with AI
   if (assistantType === "assistant") {
     const basePromptSection = shortcutBasePrompt
       ? `\nPERSONA/REGRAS BASE DO ASSISTENTE:\n${shortcutBasePrompt}\n`
