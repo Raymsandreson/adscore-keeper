@@ -103,7 +103,70 @@ Deno.serve(async (req) => {
         return errorResponse("Token ZapSign ou template não configurado", 400);
       }
 
-      const collectedData = session.collected_data || {};
+      let collectedData = session.collected_data || {};
+      
+      // If phone is provided, re-extract data from conversation to capture new info sent after generation
+      if (phone && session.instance_name) {
+        try {
+          const supabaseForMessages = createClient(supabaseUrl, supabaseKey);
+          const normalizedPhone = (phone || session.phone || "").replace(/\D/g, "").replace(/^0+/, "");
+          const { data: recentMsgs } = await supabaseForMessages
+            .from("whatsapp_messages")
+            .select("direction, message_text, created_at")
+            .eq("phone", normalizedPhone.length > 8 ? normalizedPhone : session.phone)
+            .eq("instance_name", session.instance_name)
+            .order("created_at", { ascending: false })
+            .limit(30);
+          
+          if (recentMsgs && recentMsgs.length > 0) {
+            const conversationText = recentMsgs.reverse()
+              .map((m: any) => `${(m as any).direction === 'inbound' ? 'Cliente' : 'Agente'}: ${(m as any).message_text || ''}`)
+              .filter((t: string) => t.includes(': ') && !t.endsWith(': '))
+              .join("\n");
+            
+            // Use Gemini to re-extract fields from updated conversation
+            const templateFields = (collectedData.fields || []).map((f: any) => f.de).join(", ");
+            const { geminiChat: reExtract } = await import("../_shared/gemini.ts");
+            const extractResult = await reExtract({
+              model: "google/gemini-2.5-flash",
+              temperature: 0,
+              max_tokens: 4096,
+              messages: [
+                { role: "system", content: `Extraia os dados da conversa para preencher os campos de um documento. Campos: ${templateFields}\n\nRetorne JSON com array "fields" no formato [{"de": "{{CAMPO}}", "para": "valor"}]. Extraia TODOS os dados disponíveis na conversa (nome, CPF, endereço, etc.). Se um dado não foi mencionado, omita o campo.` },
+                { role: "user", content: conversationText }
+              ]
+            });
+            
+            const extractContent = extractResult.choices?.[0]?.message?.content || "";
+            const jsonMatch = extractContent.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              const extracted = JSON.parse(jsonMatch[0]);
+              if (extracted.fields && Array.isArray(extracted.fields)) {
+                // Merge: new values override old ones
+                const fieldMap = new Map<string, string>();
+                for (const f of (collectedData.fields || [])) {
+                  if (f.de && f.para) fieldMap.set(f.de, f.para);
+                }
+                for (const f of extracted.fields) {
+                  if (f.de && f.para && f.para.trim()) fieldMap.set(f.de, f.para);
+                }
+                collectedData.fields = Array.from(fieldMap.entries()).map(([de, para]) => ({ de, para }));
+                
+                // Update session with new data
+                await supabase.from("wjia_collection_sessions").update({
+                  collected_data: collectedData,
+                  updated_at: new Date().toISOString(),
+                }).eq("id", session.id);
+                
+                console.log(`Re-extracted ${extracted.fields.length} fields from conversation for regeneration`);
+              }
+            }
+          }
+        } catch (reExtractErr) {
+          console.error("Re-extraction error (continuing with existing data):", reExtractErr);
+        }
+      }
+      
       const fieldsData = collectedData.fields || [];
       const signerName = collectedData.signer_name || "Cliente";
       const signerPhone = collectedData.signer_phone || session.phone;
@@ -193,7 +256,7 @@ Deno.serve(async (req) => {
 
       // Send link to client
       if (signUrl && inst?.instance_token) {
-        const msg = `📄 *${session.template_name}* (atualizado)\n\n🔗 Clique para preencher e assinar:\n${signUrl}`;
+        const msg = `📄 *${session.template_name}* (atualizado)\n\n🔗 Clique para preencher e assinar:\n${signUrl}\n\nSe faltar algum dado, pode preencher direto no formulário! 😉`;
         await sendWhatsApp(
           supabase,
           inst,

@@ -772,8 +772,37 @@ REGRAS IMPORTANTES:
           .maybeSingle();
 
         if (existingSession?.status === "generated" && existingSession?.sign_url) {
-          // Session already generated — send real link instead of AI's reply
-          reply = `📝 Aqui está o link para assinatura do documento:\n\n👉 ${existingSession.sign_url}\n\nÉ só clicar e seguir as instruções! 🙏`;
+          // Session already generated — check if client sent new data that should trigger regeneration
+          const lastInbound = message_text?.trim();
+          const hasNewData = lastInbound && lastInbound.length > 3 && !/^(ok|sim|não|nao|obrigad|valeu|👍|beleza|blz|pronto|certo|tá|ta)\b/i.test(lastInbound);
+          
+          if (hasNewData) {
+            // Client sent additional data after generation — regenerate with updated data
+            const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
+            const shortcutName = (agent as any).name?.replace(/^#/, "") || "";
+            
+            console.log(`Post-generation data update: regenerating session ${existingSession.id} for ${normalizedPhone}`);
+            
+            // Trigger wjia-agent to regenerate with new data from conversation
+            fetch(`${cloudFunctionsUrl}/functions/v1/wjia-agent`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY") || ""}`,
+              },
+              body: JSON.stringify({
+                action: "regenerate_session",
+                session_id: existingSession.id,
+                phone: normalizedPhone,
+                instance_name,
+              }),
+            }).catch(err => console.error("Regeneration handoff error:", err));
+            
+            reply = "Anotei os novos dados! Vou atualizar o documento e te enviar um novo link em instantes. Se faltar alguma coisa, você pode preencher direto no formulário online. 📄";
+          } else {
+            // Simple acknowledgment or question — just resend the link
+            reply = `Esse é o link para assinatura do documento 👇\n\n${existingSession.sign_url}\n\nSe tiver algum dado faltando, pode preencher direto no formulário. É só clicar e seguir as instruções! 🙏`;
+          }
         } else if (!existingSession) {
           // No active session — check if AI reply indicates data is ready or client confirmed
           const replyLower = reply.toLowerCase();
