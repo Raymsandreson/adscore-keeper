@@ -15,6 +15,7 @@ import {
   filterOnlyAutoFilledData,
   applyConfiguredPredefinedFields,
   applyZapSignSettings,
+  updateSignerSettings,
   autoFillDates,
   autoFillFromCEP,
   autoSyncCityState,
