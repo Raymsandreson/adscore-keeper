@@ -1915,6 +1915,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           );
         }}
       />
+      <SessionFieldEditor
+        open={showSessionEditor}
+        onOpenChange={setShowSessionEditor}
+        phone={conversation.phone}
+        instanceName={conversation.instance_name || undefined}
+      />
     </div>
   );
 }
