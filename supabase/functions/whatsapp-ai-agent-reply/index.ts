@@ -33,6 +33,21 @@ serve(async (req) => {
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // ========== DEDUP LOCK: prevent duplicate replies ==========
+    if (!is_followup) {
+      const { error: lockErr } = await supabase
+        .from("agent_reply_locks")
+        .insert({ phone, instance_name, locked_at: new Date().toISOString(), expires_at: new Date(Date.now() + 120000).toISOString() });
+      
+      if (lockErr) {
+        // Lock already exists = another invocation is handling this
+        console.log(`Reply lock exists for ${phone}@${instance_name}, skipping duplicate`);
+        return new Response(JSON.stringify({ skipped: true, reason: "Duplicate reply prevented by lock" }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // 1) Check if there's an active agent for this conversation
     let assignment = null;
     const { data: existingAssignment } = await supabase
