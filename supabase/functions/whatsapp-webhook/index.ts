@@ -2006,7 +2006,9 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
                 command: trimmedCmd,
                 contact_id: contactId,
                 lead_id: leadId,
-                reset_memory: true,
+                // Hard reset de sessão/comando, mas preserva a conversa recente
+                // para o agente extrair os dados atuais do cliente.
+                reset_memory: false,
               }),
             }).catch(err => console.error('#name command trigger error:', err))
 
