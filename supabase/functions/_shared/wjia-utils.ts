@@ -11,6 +11,95 @@ import { geminiChat } from "./gemini.ts";
 
 export const ZAPSIGN_API_URL = "https://api.zapsign.com.br/api/v1";
 
+// ============================================================
+// ZAPSIGN SETTINGS HELPER
+// ============================================================
+
+export interface ZapSignSettings {
+  brand_logo?: string;
+  brand_primary_color?: string;
+  brand_name?: string;
+  require_cpf?: boolean;
+  validate_cpf?: boolean;
+  lock_name?: boolean;
+  lock_phone?: boolean;
+  lock_email?: boolean;
+  require_selfie_photo?: boolean;
+  require_document_photo?: boolean;
+  selfie_validation_type?: string;
+  folder_path?: string;
+  date_limit_days?: number;
+  redirect_link?: string;
+  observers?: string[];
+  send_automatic_whatsapp?: boolean;
+  send_automatic_whatsapp_signed_file?: boolean;
+}
+
+/**
+ * Apply ZapSign advanced settings to createBody (for create-doc via template).
+ * Also applies signer-level settings (lock, require_cpf, etc.).
+ * Mutates createBody in place and returns it.
+ */
+export function applyZapSignSettings(
+  createBody: any,
+  settings: ZapSignSettings | null | undefined,
+  options?: {
+    cpfValue?: string;
+    leadId?: string;
+    leadName?: string;
+    documentPhotoUrl?: string;
+  },
+): any {
+  if (!settings) return createBody;
+
+  // Document-level settings
+  if (settings.brand_logo) createBody.brand_logo = settings.brand_logo;
+  if (settings.brand_primary_color) createBody.brand_primary_color = settings.brand_primary_color;
+  if (settings.brand_name) createBody.brand_name = settings.brand_name;
+  if (settings.folder_path) {
+    // Interpolate lead name into folder path if placeholder exists
+    let fp = settings.folder_path;
+    if (options?.leadName) fp = fp.replace("{{LEAD_NAME}}", options.leadName);
+    createBody.folder_path = fp;
+  }
+  if (settings.date_limit_days && settings.date_limit_days > 0) {
+    const d = new Date();
+    d.setDate(d.getDate() + settings.date_limit_days);
+    createBody.date_limit_to_sign = d.toISOString().split("T")[0];
+  }
+  if (settings.observers?.length) createBody.observers = settings.observers;
+
+  // External ID for CRM tracking
+  if (options?.leadId) createBody.external_id = options.leadId;
+
+  // Signer-level settings (applied to the main signer in the template)
+  if (settings.lock_name) createBody.lock_name = true;
+  if (settings.lock_phone) createBody.lock_phone = true;
+  if (settings.lock_email) createBody.lock_email = true;
+  if (settings.require_cpf) createBody.require_cpf = true;
+  if (settings.validate_cpf) createBody.validate_cpf = true;
+  if (options?.cpfValue) createBody.cpf = options.cpfValue;
+  if (settings.require_selfie_photo) createBody.require_selfie_photo = true;
+  if (settings.require_document_photo) createBody.require_document_photo = true;
+  if (settings.selfie_validation_type) {
+    createBody.selfie_validation_type = settings.selfie_validation_type;
+  }
+  if (settings.redirect_link) createBody.redirect_link = settings.redirect_link;
+
+  // Document photo for facial recognition
+  if (options?.documentPhotoUrl) {
+    createBody.document_photo_url = options.documentPhotoUrl;
+  }
+
+  // Auto-send via WhatsApp (ZapSign native)
+  if (settings.send_automatic_whatsapp) createBody.send_automatic_whatsapp = true;
+  if (settings.send_automatic_whatsapp_signed_file) {
+    createBody.send_automatic_whatsapp_signed_file = true;
+  }
+
+  return createBody;
+}
+
 export const DOC_TYPE_LABELS: Record<string, string> = {
   rg_cnh: "RG / CNH (documento com foto)",
   comprovante_endereco: "Comprovante de endereço",
