@@ -1096,10 +1096,10 @@ Se não encontrou nada, retorne: []`;
 
       // No data extracted — ask for documents or data (only if NOT skip_confirmation)
       if (session.status !== "ready" && filledCount === 0) {
-        if (skipConfirmation && !startWithDocs) {
-          // Even with no data, generate and let client fill on ZapSign (unless docs are required)
+        if (skipConfirmation && !startWithDocs && partialMinFields.length === 0) {
+          // Only generate empty doc if NO min fields are configured
           console.log(
-            `WJIA skip_confirmation: no data extracted, generating empty doc for client to fill`,
+            `WJIA skip_confirmation: no data and no min fields required, generating empty doc for client to fill`,
           );
           await supabase.from("wjia_collection_sessions").update({
             status: "ready",
