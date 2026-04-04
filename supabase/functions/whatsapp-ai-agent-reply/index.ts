@@ -593,6 +593,11 @@ REGRAS DE ENDEREÇO E CEP:
 - DATA DE ASSINATURA de documentos é SEMPRE a data de hoje, nunca pergunte
 - LOCAL DE ASSINATURA é SEMPRE a mesma cidade/estado do endereço do cliente, nunca pergunte separadamente
 
+REGRAS DE EXTRAÇÃO DE DOCUMENTOS:
+- Se o cliente enviar uma FOTO ou PDF de documento (CNH, RG, comprovante, etc.), você DEVE LER e EXTRAIR automaticamente todos os dados visíveis: nome, CPF, endereço, data de nascimento, etc.
+- NUNCA peça ao cliente dados que estão visíveis em um documento que ele já enviou
+- Ao extrair dados de um documento, confirme com o cliente: "Encontrei os seguintes dados no seu documento: [dados]. Está tudo certo?"
+
 `;
       // Use followup_prompt when available and this is a followup request
       const effectivePrompt = is_followup && (agent as any).followup_prompt?.trim()
