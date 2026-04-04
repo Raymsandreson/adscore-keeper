@@ -527,6 +527,9 @@ async function handleNewCommand(opts: {
   }
 
   const allowCrmPrefill = hasTrustedBoundary && messages.length > 0;
+  console.log(
+    `WJIA command context: trusted_boundary=${hasTrustedBoundary}, kept_messages=${messages.length}, crm_prefill=${allowCrmPrefill}`,
+  );
   const crmContext = allowCrmPrefill
     ? buildCrmContext(contactData, leadData, normalizedPhone)
     : "CRM/CADASTRO: ignore nesta etapa inicial. Para este comando, use apenas dados enviados após o marco mais recente da conversa.";
@@ -756,9 +759,14 @@ REGRAS:
 
   const fieldsData = parsed.extracted_fields || [];
   const missingFields = parsed.missing_fields || [];
-  let signerName = parsed.signer_name || contactData.full_name ||
-    leadData.victim_name || "Cliente";
-  const signerPhone = parsed.signer_phone || contactData.phone ||
+  const trustedCrmSignerName = allowCrmPrefill
+    ? (contactData.full_name || leadData.victim_name || "")
+    : "";
+  const trustedCrmSignerPhone = allowCrmPrefill
+    ? (contactData.phone || "")
+    : "";
+  let signerName = parsed.signer_name || trustedCrmSignerName || "Cliente";
+  const signerPhone = parsed.signer_phone || trustedCrmSignerPhone ||
     normalizedPhone;
 
   applyDefaults(fieldsData);
