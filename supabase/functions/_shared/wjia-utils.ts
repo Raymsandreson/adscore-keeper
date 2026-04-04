@@ -337,6 +337,22 @@ export function applyConfiguredPredefinedFields(
   return applied;
 }
 
+/**
+ * Filter fields to only include those that were auto-filled (predefined, dates, city/state sync).
+ * This ensures ZapSign receives only pre-filled values, leaving all other fields
+ * blank for the client to fill in the form (signer_has_incomplete_fields: true).
+ */
+export function filterOnlyAutoFilledData(
+  allFields: any[],
+  autoFilledKeys: Set<string>,
+): any[] {
+  return allFields.filter((f: any) => {
+    if (!f?.de || !f?.para || !f.para.trim() || f.para === " ") return false;
+    const key = normalizeFieldKey(f.de);
+    return autoFilledKeys.has(key);
+  });
+}
+
 export function autoFillDates(
   fields: any[],
   catalog: TemplateFieldRef[],
