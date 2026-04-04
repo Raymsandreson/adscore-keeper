@@ -337,6 +337,22 @@ export function applyConfiguredPredefinedFields(
   return applied;
 }
 
+/**
+ * Filter fields to only include those that were auto-filled (predefined, dates, city/state sync).
+ * This ensures ZapSign receives only pre-filled values, leaving all other fields
+ * blank for the client to fill in the form (signer_has_incomplete_fields: true).
+ */
+export function filterOnlyAutoFilledData(
+  allFields: any[],
+  autoFilledKeys: Set<string>,
+): any[] {
+  return allFields.filter((f: any) => {
+    if (!f?.de || !f?.para || !f.para.trim() || f.para === " ") return false;
+    const key = normalizeFieldKey(f.de);
+    return autoFilledKeys.has(key);
+  });
+}
+
 export function autoFillDates(
   fields: any[],
   catalog: TemplateFieldRef[],
@@ -850,9 +866,13 @@ export async function generateZapSignDocument(
     : cleanPhone;
 
   const sessionCatalog = buildTemplateFieldCatalog(session);
-  applyConfiguredPredefinedFields(fields, sessionCatalog, zSettingsUtil, { phone: cleanPhone });
-  autoFillDates(fields, sessionCatalog);
-  autoSyncCityState(fields, sessionCatalog);
+  const predefinedKeysUtil = applyConfiguredPredefinedFields(fields, sessionCatalog, zSettingsUtil, { phone: cleanPhone });
+  const dateKeysUtil = autoFillDates(fields, sessionCatalog);
+  const syncKeysUtil = autoSyncCityState(fields, sessionCatalog);
+  const autoKeysUtil = new Set([...predefinedKeysUtil, ...dateKeysUtil, ...syncKeysUtil]);
+
+  // Only send auto-filled fields to ZapSign — client fills the rest in the form
+  const autoFilledDataUtil = filterOnlyAutoFilledData(fields, autoKeysUtil);
 
   const filledFields = fields.filter((f: any) =>
     f?.de && f?.para && f.para.trim() !== "" && f.para !== " "
@@ -870,8 +890,8 @@ export async function generateZapSignDocument(
     signer_name: signerName,
     ...(phoneCountry && { signer_phone_country: phoneCountry }),
     ...(phoneNumber && { signer_phone_number: phoneNumber }),
-    data: filledFields.length > 0 ? filledFields : [{ de: "{{_}}", para: " " }],
-    ...(hasIncompleteFields && { signer_has_incomplete_fields: true }),
+    data: autoFilledDataUtil.length > 0 ? autoFilledDataUtil : [{ de: "{{_}}", para: " " }],
+    signer_has_incomplete_fields: true,
   };
 
   applyZapSignSettings(createBody, zSettingsUtil, {
