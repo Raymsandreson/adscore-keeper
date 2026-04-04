@@ -211,6 +211,7 @@ IMPORTANTE: NÃO gere o documento agora. Seu trabalho é:
 1. Identificar qual template ZapSign usar
 2. Analisar TODOS os dados disponíveis (conversa + CRM)
 3. Identificar quais campos obrigatórios estão FALTANDO
+4. Em caso de conflito entre CRM antigo e a conversa atual do cliente, a conversa atual tem prioridade
 
 ${forceTemplate ? `⚠️ TEMPLATE OBRIGATÓRIO: Use EXATAMENTE "${forceTemplateName}" (token: ${forceTemplate}).` : ''}
 
@@ -218,6 +219,12 @@ TEMPLATES ZAPSIGN DISPONÍVEIS:
 ${templateList || "(nenhum template)"}
 
 ${crmContext}
+
+PRIORIDADE DAS FONTES:
+- 1º: dados informados pelo cliente na conversa atual
+- 2º: dados da conversa recente já existente
+- 3º: CRM/cadastro apenas como fallback
+- Se houver conflito, NUNCA use o CRM antigo para sobrescrever o que o cliente acabou de informar
 
 CONVERSA COM O CLIENTE:
 ${conversationText || "(sem mensagens)"}
@@ -412,8 +419,10 @@ ${crmSection}
 ${historyText ? `\nCONVERSA:\n${historyText}\n` : ''}
 REGRAS DE EXTRAÇÃO:
 1. Mapeie cada dado encontrado para o campo correto usando EXATAMENTE o nome da variável (com {{}}).
-2. PRIORIZE dados do CRM/cadastro — eles são mais confiáveis.
-3. Exemplos de mapeamento:
+2. PRIORIZE os dados que o cliente informou na conversa atual e no histórico recente desta conversa.
+3. Use CRM/cadastro apenas como fallback quando o dado não aparecer na conversa ou quando não houver conflito.
+4. Se houver conflito entre CRM antigo e conversa atual, use SEMPRE a conversa atual.
+5. Exemplos de mapeamento:
    - "Estado civil: Solteira" → {{ESTADO_CIVIL}} = "Solteira"
    - "CPF: 060.766.902-08" → {{CPF}} = "060.766.902-08"  
    - "Profissão: Jovem aprendiz" → {{PROFISSAO}} = "Jovem aprendiz"
@@ -421,10 +430,10 @@ REGRAS DE EXTRAÇÃO:
    - "Estado: Pará" → {{UF}} = "PA" (converta para sigla)
    - "RG: 8657920" → {{RG}} = "8657920"
    - Nome mencionado → {{NOME_COMPLETO}} = nome encontrado
-4. Se tem CPF brasileiro, deduza {{NACIONALIDADE}} = "brasileiro(a)".
-5. Extraia TUDO que encontrar, mesmo dados parciais.
-6. Use a sigla do estado para {{UF}} (ex: PA, SP, RJ).
-7. Tente mapear variantes do nome do campo (NOME, NOME_COMPLETO, NOME_CLIENTE são o mesmo).
+6. Se tem CPF brasileiro, deduza {{NACIONALIDADE}} = "brasileiro(a)".
+7. Extraia TUDO que encontrar, mesmo dados parciais.
+8. Use a sigla do estado para {{UF}} (ex: PA, SP, RJ).
+9. Tente mapear variantes do nome do campo (NOME, NOME_COMPLETO, NOME_CLIENTE são o mesmo).
 
 Responda APENAS com JSON array válido:
 [{"variable":"{{CAMPO}}","value":"valor"}]
