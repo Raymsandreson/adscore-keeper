@@ -1917,7 +1917,10 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
     // Works for both outbound (fromMe) messages. Uses the shortcuts table as single source of truth.
     if (direction === 'outbound' && instanceName && phone && messageText) {
       const trimmedCmd = (messageText || '').trim()
-      const hashNameMatch = trimmedCmd.match(/^#([a-z0-9_ ]+)$/i)
+      // Support #command even when UazAPI signature prefix is present (e.g. "*Dr. Name:*\n#procuracaogeral")
+      // Extract the last line and check if it's a #command
+      const lastLine = trimmedCmd.split('\n').pop()?.trim() || trimmedCmd
+      const hashNameMatch = lastLine.match(/^#([a-z0-9_ ]+)$/i) || trimmedCmd.match(/^#([a-z0-9_ ]+)$/i)
       // Skip control commands handled below (#parar, #ativar, #status)
       const controlCommands = ['parar', 'ativar', 'status', 'limpar']
       
