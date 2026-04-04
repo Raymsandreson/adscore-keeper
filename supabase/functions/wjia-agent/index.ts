@@ -198,7 +198,7 @@ Deno.serve(async (req) => {
 
       const regenerationCatalog = buildTemplateFieldCatalog(session);
       applyDefaults(fieldsData);
-      applyConfiguredPredefinedFields(fieldsData, regenerationCatalog, zSettings);
+      applyConfiguredPredefinedFields(fieldsData, regenerationCatalog, zSettings, { phone: normalizedPhone });
       autoFillDates(fieldsData, regenerationCatalog);
       autoSyncCityState(fieldsData, regenerationCatalog);
 
@@ -1036,7 +1036,7 @@ Se não encontrou nada, retorne: []`;
       // Step 3: Sync and compute what's still missing after all extractions
       syncNameFields(fieldsData);
       applyDefaults(fieldsData);
-      applyConfiguredPredefinedFields(fieldsData, catalog, zapsignSettings);
+      applyConfiguredPredefinedFields(fieldsData, catalog, zapsignSettings, { phone: normalizedPhone });
       autoFillDates(fieldsData, catalog);
       autoSyncCityState(fieldsData, catalog);
 
@@ -1338,7 +1338,7 @@ Se não encontrou nada, retorne: []`;
   const finalDocCatalog = buildTemplateFieldCatalog({ required_fields: templateFields });
   const zSettingsMain = zapsignSettings;
   applyDefaults(fieldsData);
-  applyConfiguredPredefinedFields(fieldsData, finalDocCatalog, zSettingsMain);
+  applyConfiguredPredefinedFields(fieldsData, finalDocCatalog, zSettingsMain, { phone: normalizedPhone });
   autoFillDates(fieldsData, finalDocCatalog);
   autoSyncCityState(fieldsData, finalDocCatalog);
   const filledTemplateData = fieldsData.filter((f: any) =>
@@ -1722,7 +1722,7 @@ async function handleFollowUp(opts: {
       if (signerName) collectedData.signer_name = signerName;
       syncNameFields(currentFields);
       applyDefaults(currentFields);
-      applyConfiguredPredefinedFields(currentFields, catalog, zapsignSettingsReply);
+      applyConfiguredPredefinedFields(currentFields, catalog, zapsignSettingsReply, { phone: normalizedPhone });
       autoFillDates(currentFields, catalog);
       autoSyncCityState(currentFields, catalog);
 
@@ -1888,7 +1888,7 @@ async function handleFollowUp(opts: {
   // Pre-process auto-fills
   const autoFilledKeys = autoFillDates(currentFields, catalog);
   const syncedKeys = autoSyncCityState(currentFields, catalog);
-  const predefinedKeys = applyConfiguredPredefinedFields(currentFields, catalog, zapsignSettingsReply);
+  const predefinedKeys = applyConfiguredPredefinedFields(currentFields, catalog, zapsignSettingsReply, { phone: normalizedPhone });
   const allAutoKeys = new Set([...autoFilledKeys, ...syncedKeys, ...predefinedKeys]);
 
   collectedData.fields = currentFields;
@@ -2142,7 +2142,7 @@ REGRAS:
 
   syncNameFields(currentFields);
   applyDefaults(currentFields);
-  applyConfiguredPredefinedFields(currentFields, catalog, zapsignSettingsReply);
+  applyConfiguredPredefinedFields(currentFields, catalog, zapsignSettingsReply, { phone: normalizedPhone });
   autoFillDates(currentFields, catalog);
   autoSyncCityState(currentFields, catalog);
   await autoFillFromCEP(currentFields, catalog);
