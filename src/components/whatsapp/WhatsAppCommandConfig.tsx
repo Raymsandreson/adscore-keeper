@@ -672,6 +672,15 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-xs">Pular confirmação</Label>
+                        <p className="text-[10px] text-muted-foreground">Gera o documento automaticamente sem esperar confirmação do cliente</p>
+                      </div>
+                      <Switch checked={form.skip_confirmation ?? false} onCheckedChange={v => setForm(f => ({ ...f, skip_confirmation: v }))} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
                       <Label className="text-xs">Dividir mensagens longas</Label>
                       <Switch checked={form.split_messages} onCheckedChange={v => setForm(f => ({ ...f, split_messages: v }))} />
                     </div>
