@@ -1000,17 +1000,6 @@ REGRAS IMPORTANTES:
       };
       await supabase.from("whatsapp_messages").insert(outboundMsg);
 
-      // Mirror to Cloud DB for frontend visibility
-      try {
-        const cloudClient = createClient(
-          Deno.env.get('SUPABASE_URL')!,
-          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-        );
-        await cloudClient.from("whatsapp_messages").insert(outboundMsg);
-      } catch (mirrorErr) {
-        console.error("Cloud mirror error:", mirrorErr);
-      }
-
       // ========== CHECK MAX UNANSWERED MESSAGES → AUTO INVIÁVEL ==========
       try {
         // Resolve campaign_id from lead if not provided
