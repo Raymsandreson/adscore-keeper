@@ -791,11 +791,10 @@ REGRAS IMPORTANTES:
                 "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY") || ""}`,
               },
               body: JSON.stringify({
+                action: "regenerate_session",
+                session_id: existingSession.id,
                 phone: normalizedPhone,
                 instance_name,
-                command: `#${shortcutName}`,
-                reset_memory: false,
-                regenerate_session_id: existingSession.id,
               }),
             }).catch(err => console.error("Regeneration handoff error:", err));
             
