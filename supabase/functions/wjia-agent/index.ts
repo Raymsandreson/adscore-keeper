@@ -75,7 +75,109 @@ Deno.serve(async (req) => {
       media_url,
       media_type,
       message_type,
+      // Regenerate action
+      action,
+      session_id,
     } = payload;
+
+    // ============================================================
+    // MODE 0: REGENERATE SESSION (from panel edit)
+    // ============================================================
+    if (action === "regenerate_session" && session_id) {
+      const supabaseUrl = RESOLVED_SUPABASE_URL;
+      const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
+      const zapsignToken = Deno.env.get("ZAPSIGN_API_TOKEN");
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      const { data: session, error: sessErr } = await supabase
+        .from("wjia_collection_sessions")
+        .select("*")
+        .eq("id", session_id)
+        .single();
+
+      if (sessErr || !session) {
+        return errorResponse("Sessão não encontrada", 404);
+      }
+
+      if (!zapsignToken || !session.template_token) {
+        return errorResponse("Token ZapSign ou template não configurado", 400);
+      }
+
+      const collectedData = session.collected_data || {};
+      const fieldsData = collectedData.fields || [];
+      const signerName = collectedData.signer_name || "Cliente";
+      const signerPhone = collectedData.signer_phone || session.phone;
+
+      // Get instance token
+      const { data: inst } = await supabase
+        .from("whatsapp_instances")
+        .select("instance_token, owner_name")
+        .eq("instance_name", session.instance_name)
+        .maybeSingle();
+
+      // Generate document
+      const filledFields = fieldsData.filter((f: any) => f?.para && f.para.trim() !== "");
+      const hasMissing = fieldsData.some((f: any) => !f?.para || !f.para.trim());
+
+      const cleanPhone = (signerPhone || "").replace(/\D/g, "");
+      const phoneCountry = cleanPhone.startsWith("55") ? "55" : cleanPhone.substring(0, 2);
+      const phoneNumber = cleanPhone.startsWith("55") ? cleanPhone.substring(2) : cleanPhone;
+
+      const createBody: any = {
+        template_id: session.template_token,
+        signer_name: signerName,
+        signer_phone_country: phoneCountry,
+        signer_phone_number: phoneNumber,
+        data: filledFields.length > 0 ? filledFields : [{ de: "{{_}}", para: " " }],
+        ...(hasMissing && { signer_has_incomplete_fields: true }),
+      };
+
+      const zRes = await fetch(`${ZAPSIGN_API_URL}/models/create-doc/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${zapsignToken}`,
+        },
+        body: JSON.stringify(createBody),
+      });
+      const zData = await zRes.json();
+
+      if (!zRes.ok) {
+        console.error("ZapSign regenerate error:", JSON.stringify(zData));
+        return errorResponse("Erro ao gerar documento na ZapSign: " + JSON.stringify(zData), 500);
+      }
+
+      const signUrl = zData.signers?.[0]?.sign_url || zData.sign_url || null;
+      const docToken = zData.token || null;
+
+      // Update session
+      await supabase.from("wjia_collection_sessions").update({
+        status: "generated",
+        sign_url: signUrl,
+        doc_token: docToken,
+        updated_at: new Date().toISOString(),
+      }).eq("id", session.id);
+
+      // Send link to client
+      if (signUrl && inst?.instance_token) {
+        const msg = `📄 *${session.template_name}* (atualizado)\n\n🔗 Clique para preencher e assinar:\n${signUrl}`;
+        await sendWhatsApp(
+          supabase,
+          inst,
+          session.phone,
+          session.instance_name,
+          msg,
+          session.contact_id,
+          session.lead_id,
+          "wjia_regenerate",
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, sign_url: signUrl, doc_token: docToken }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     if (!phone) {
       return errorResponse("phone is required", 400);
