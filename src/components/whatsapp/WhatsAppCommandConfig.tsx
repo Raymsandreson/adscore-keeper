@@ -286,6 +286,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       max_tokens: 2048, response_delay_seconds: 2, split_messages: false, split_delay_seconds: 3,
       reply_with_audio: false, reply_voice_id: null, respond_in_groups: false, max_tts_chars: 1000,
       send_window_start_hour: 8, send_window_end_hour: 20, send_call_followup_audio: false,
+      zapsign_settings: {},
     });
     setFollowupSteps([]);
     setHumanReplyPauseMinutes(0);
