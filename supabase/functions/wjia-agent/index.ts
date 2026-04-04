@@ -2170,8 +2170,12 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
 
   for (const field of (result.newly_extracted || [])) {
     const normalized = normalizeIncomingField(field, catalog);
-    if (!normalized) continue;
+    if (!normalized) {
+      console.log(`WJIA field rejected by normalizeIncomingField:`, JSON.stringify(field));
+      continue;
+    }
     if (shouldProtectName(currentFields, normalized)) continue;
+    console.log(`WJIA field upserted: ${normalized.variable} = "${normalized.value}"`);
     upsertCollectedField(currentFields, normalized.variable, normalized.value);
   }
 
