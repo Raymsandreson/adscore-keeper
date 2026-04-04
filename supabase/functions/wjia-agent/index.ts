@@ -199,9 +199,13 @@ Deno.serve(async (req) => {
 
       const regenerationCatalog = buildTemplateFieldCatalog(session);
       applyDefaults(fieldsData);
-      applyConfiguredPredefinedFields(fieldsData, regenerationCatalog, zSettings, { phone: normalizedPhone });
-      autoFillDates(fieldsData, regenerationCatalog);
-      autoSyncCityState(fieldsData, regenerationCatalog);
+      const predefinedKeysRegen = applyConfiguredPredefinedFields(fieldsData, regenerationCatalog, zSettings, { phone: normalizedPhone });
+      const dateKeysRegen = autoFillDates(fieldsData, regenerationCatalog);
+      const syncKeysRegen = autoSyncCityState(fieldsData, regenerationCatalog);
+      const autoKeysRegen = new Set([...predefinedKeysRegen, ...dateKeysRegen, ...syncKeysRegen]);
+
+      // Only send auto-filled fields to ZapSign — client fills the rest in the form
+      const autoFilledData = filterOnlyAutoFilledData(fieldsData, autoKeysRegen);
 
       // Extract CPF from fields and document photo from received docs
       const cpfField = fieldsData.find((f: any) => /CPF/i.test(f.de));
@@ -213,7 +217,7 @@ Deno.serve(async (req) => {
         signer_name: signerName,
         signer_phone_country: phoneCountry,
         signer_phone_number: phoneNumber,
-        data: filledFields.length > 0 ? filledFields : [{ de: "{{_}}", para: " " }],
+        data: autoFilledData.length > 0 ? autoFilledData : [{ de: "{{_}}", para: " " }],
         signer_has_incomplete_fields: true,
       };
 
