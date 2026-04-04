@@ -866,9 +866,13 @@ export async function generateZapSignDocument(
     : cleanPhone;
 
   const sessionCatalog = buildTemplateFieldCatalog(session);
-  applyConfiguredPredefinedFields(fields, sessionCatalog, zSettingsUtil, { phone: cleanPhone });
-  autoFillDates(fields, sessionCatalog);
-  autoSyncCityState(fields, sessionCatalog);
+  const predefinedKeysUtil = applyConfiguredPredefinedFields(fields, sessionCatalog, zSettingsUtil, { phone: cleanPhone });
+  const dateKeysUtil = autoFillDates(fields, sessionCatalog);
+  const syncKeysUtil = autoSyncCityState(fields, sessionCatalog);
+  const autoKeysUtil = new Set([...predefinedKeysUtil, ...dateKeysUtil, ...syncKeysUtil]);
+
+  // Only send auto-filled fields to ZapSign — client fills the rest in the form
+  const autoFilledDataUtil = filterOnlyAutoFilledData(fields, autoKeysUtil);
 
   const filledFields = fields.filter((f: any) =>
     f?.de && f?.para && f.para.trim() !== "" && f.para !== " "
@@ -886,8 +890,8 @@ export async function generateZapSignDocument(
     signer_name: signerName,
     ...(phoneCountry && { signer_phone_country: phoneCountry }),
     ...(phoneNumber && { signer_phone_number: phoneNumber }),
-    data: filledFields.length > 0 ? filledFields : [{ de: "{{_}}", para: " " }],
-    ...(hasIncompleteFields && { signer_has_incomplete_fields: true }),
+    data: autoFilledDataUtil.length > 0 ? autoFilledDataUtil : [{ de: "{{_}}", para: " " }],
+    signer_has_incomplete_fields: true,
   };
 
   applyZapSignSettings(createBody, zSettingsUtil, {
