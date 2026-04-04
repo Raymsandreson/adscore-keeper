@@ -158,6 +158,39 @@ Deno.serve(async (req) => {
         updated_at: new Date().toISOString(),
       }).eq("id", session.id);
 
+      // Attach received documents as extra docs
+      const receivedDocs = Array.isArray(session.received_documents) ? session.received_documents : [];
+      for (const doc of receivedDocs) {
+        if (!doc.media_url) continue;
+        try {
+          const fileResp = await fetch(doc.media_url);
+          if (!fileResp.ok) continue;
+          const fileBuffer = await fileResp.arrayBuffer();
+          const ct = fileResp.headers.get("content-type") || "";
+          let base64: string | null = null;
+          if (ct.startsWith("image/")) {
+            const { convertImageToPdf: imgToPdf } = await import("../_shared/wjia-utils.ts");
+            base64 = await imgToPdf(fileBuffer, ct);
+          } else {
+            const bytes = new Uint8Array(fileBuffer);
+            let bin = "";
+            for (let i = 0; i < bytes.length; i += 8192) {
+              bin += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)));
+            }
+            base64 = btoa(bin);
+          }
+          if (!base64) continue;
+          const typeLabels: Record<string, string> = { rg_cnh: "RG_CNH", comprovante_endereco: "Comprovante_Endereco", comprovante_renda: "Comprovante_Renda" };
+          await fetch(`${ZAPSIGN_API_URL}/docs/${docToken}/upload-extra-doc/`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${zapsignToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ name: typeLabels[doc.type] || doc.type || "Anexo", base64_pdf: base64 }),
+          });
+        } catch (e) {
+          console.error("Regenerate attach error:", e);
+        }
+      }
+
       // Send link to client
       if (signUrl && inst?.instance_token) {
         const msg = `📄 *${session.template_name}* (atualizado)\n\n🔗 Clique para preencher e assinar:\n${signUrl}`;
