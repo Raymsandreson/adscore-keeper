@@ -75,7 +75,7 @@ interface FollowupStep {
 
 interface Profile { user_id: string; full_name: string | null; }
 interface ZapSignTemplateOption { token: string; name: string; }
-type PredefinedFieldMode = 'today' | 'brazilian_nationality' | 'fixed_value';
+type PredefinedFieldMode = 'today' | 'brazilian_nationality' | 'client_phone' | 'fixed_value';
 interface PredefinedFieldConfig {
   field: string;
   mode: PredefinedFieldMode;
