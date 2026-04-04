@@ -1095,6 +1095,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               <DropdownMenuItem onClick={() => setShowZapSign(true)} className="gap-2">
                 <FileSignature className="h-4 w-4" /> Gerar Documento para Assinatura
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowSessionEditor(true)} className="gap-2">
+                <Pencil className="h-4 w-4" /> Editar Campos da Sessão
+              </DropdownMenuItem>
               {!isGroup && linkedGroupId && (
                 <DropdownMenuItem onClick={() => onOpenChat?.(linkedGroupId)} className="gap-2">
                   <Users className="h-4 w-4" /> Acessar Grupo
