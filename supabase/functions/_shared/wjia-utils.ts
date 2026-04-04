@@ -319,7 +319,7 @@ export function applyConfiguredPredefinedFields(
     const targetField = catalog.find((field) => field.normalized === fieldKey);
     if (!targetField) continue;
 
-    const value = resolvePredefinedFieldValue(entry);
+    const value = resolvePredefinedFieldValue(entry, context);
     if (!hasFieldValue(value)) continue;
     const safeValue = String(value).trim();
     if (!safeValue) continue;
