@@ -644,6 +644,7 @@ REGRAS IMPORTANTES:
 7. NUNCA invente ou gere links de assinatura. O link será gerado automaticamente pelo sistema após a coleta.
 8. Quando tiver todos os dados obrigatórios, confirme com o cliente e diga que vai preparar o documento.
 9. Se o cliente já enviou documentos e na conversa só faltam poucos campos de texto (ex: estado civil, profissão), peça esses dados faltantes de forma natural e curta.
+10. NÃO é necessário ter TODOS os campos preenchidos para gerar o documento. Se conseguir a maioria dos dados importantes (nome, CPF, etc.), pode gerar o documento — os campos faltantes serão preenchidos pelo próprio cliente no link de assinatura. Informe ao cliente que ele poderá completar os dados restantes diretamente no formulário online.
 === FIM DOS CAMPOS ===`;
               }
             }
