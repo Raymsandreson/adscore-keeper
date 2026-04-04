@@ -400,7 +400,7 @@ async function handleNewCommand(opts: {
         )
         .eq("phone", normalizedPhone);
       if (instance_name) query = query.eq("instance_name", instance_name);
-      return query.order("created_at", { ascending: false }).limit(50);
+      return query.order("created_at", { ascending: false }).limit(200);
     })();
 
   const [
