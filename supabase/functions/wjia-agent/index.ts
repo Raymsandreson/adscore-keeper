@@ -1862,7 +1862,8 @@ REGRAS:
 10. Aceite bairros/locais sem questionar
 11. ENDERECO_COMPLETO: rua + número + bairro
 12. NUNCA INVENTE LINKS OU URLs. Não inclua nenhum link na sua resposta. O sistema envia o link real automaticamente após gerar o documento. Se o cliente confirmar, diga apenas que vai preparar/gerar o documento.
-13. Quando o cliente confirmar (SIM/ok/certo), NÃO mencione link. Diga apenas algo como "Perfeito! Vou gerar o documento agora. Em instantes você recebe o link para assinar."`;
+13. Quando o cliente confirmar (SIM/ok/certo), NÃO mencione link. Diga apenas algo como "Perfeito! Vou gerar o documento agora. Em instantes você recebe o link para assinar."
+14. NUNCA diga que é assistente virtual, IA ou robô. NUNCA diga que não consegue visualizar, ler ou processar documentos, imagens ou PDFs. Se o cliente mencionar um documento já enviado, assuma que o sistema recebeu o anexo e peça apenas os dados que realmente ainda faltarem.`;
 
   const tools = [{
     type: "function",
@@ -1924,6 +1925,7 @@ REGRAS:
   console.log("Agent result:", JSON.stringify(result));
 
   // Sanitize AI reply: strip any hallucinated URLs (real links are sent by the system)
+  let invalidVisionReply = false;
   if (result.reply_to_client) {
     result.reply_to_client = result.reply_to_client
       // Remove full URLs (http/https) — aggressively match anything after protocol
@@ -1942,6 +1944,13 @@ REGRAS:
       .replace(/:\s*\n/g, ".\n") // "Aqui está o link:\n" → "Aqui está o link.\n"
       .replace(/\n{3,}/g, "\n\n")
       .trim();
+
+    invalidVisionReply = /assistente virtual|\bia\b|\brob[oô]\b|n[aã]o consigo visualizar|n[aã]o consigo ver|n[aã]o consigo ler|n[aã]o consigo processar.*(document|imagem|pdf)|documentos? ou imagens?/i
+      .test(result.reply_to_client);
+
+    if (invalidVisionReply) {
+      result.reply_to_client = "";
+    }
 
     // If sanitization left the reply mostly empty or broken, replace with safe fallback
     const cleanText = result.reply_to_client.replace(/[^\w]/g, "");
@@ -1971,6 +1980,30 @@ REGRAS:
   const finalMissing = computeMissingFields(catalog, currentFields);
   const allCollected = finalMissing.length === 0;
   const updatedCollectedData = { ...collectedData, fields: currentFields };
+
+  if (invalidVisionReply) {
+    const missingLabelList = finalMissing
+      .map((f) => (f.friendly_name || f.field_name || "").toString().replace(/[{}]/g, "").trim())
+      .filter(Boolean)
+      .slice(0, 6);
+
+    if (allCollected) {
+      result.action = "show_summary";
+      result.reply_to_client =
+        "Consegui organizar os dados do documento e vou te mostrar um resumo para confirmar antes de gerar.";
+    } else {
+      const joinedMissing = missingLabelList.length === 0
+        ? "alguns dados finais"
+        : missingLabelList.length === 1
+        ? missingLabelList[0]
+        : `${missingLabelList.slice(0, -1).join(", ")} e ${missingLabelList[missingLabelList.length - 1]}`;
+
+      result.action = "collect_data";
+      result.reply_to_client = receivedDocs.length > 0
+        ? `Recebi seu documento e já aproveitei os dados que estavam visíveis. Agora só preciso de ${joinedMissing} para concluir.`
+        : `Agora só preciso de ${joinedMissing} para concluir.`;
+    }
+  }
 
   if (result.action === "confirm_generate" && allCollected && zapsignToken) {
     // GENERATE DOCUMENT
