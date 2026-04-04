@@ -12,10 +12,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff } from 'lucide-react';
+import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Pencil } from 'lucide-react';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { ZapSignDocumentDialog } from './ZapSignDocumentDialog';
+import { SessionFieldEditor } from './SessionFieldEditor';
 import { GroupMembersDialog } from './GroupMembersDialog';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
 import { CopyableText } from '@/components/ui/copyable-text';
@@ -108,6 +109,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [togglingPrivate, setTogglingPrivate] = useState(false);
   const [showGroupMembers, setShowGroupMembers] = useState(false);
   const [showZapSign, setShowZapSign] = useState(false);
+  const [showSessionEditor, setShowSessionEditor] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [linkedGroupId, setLinkedGroupId] = useState<string | null>(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
@@ -1093,6 +1095,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               <DropdownMenuItem onClick={() => setShowZapSign(true)} className="gap-2">
                 <FileSignature className="h-4 w-4" /> Gerar Documento para Assinatura
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowSessionEditor(true)} className="gap-2">
+                <Pencil className="h-4 w-4" /> Editar Campos da Sessão
+              </DropdownMenuItem>
               {!isGroup && linkedGroupId && (
                 <DropdownMenuItem onClick={() => onOpenChat?.(linkedGroupId)} className="gap-2">
                   <Users className="h-4 w-4" /> Acessar Grupo
@@ -1909,6 +1914,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             conversation.instance_name
           );
         }}
+      />
+      <SessionFieldEditor
+        open={showSessionEditor}
+        onOpenChange={setShowSessionEditor}
+        phone={conversation.phone}
+        instanceName={conversation.instance_name || undefined}
       />
     </div>
   );
