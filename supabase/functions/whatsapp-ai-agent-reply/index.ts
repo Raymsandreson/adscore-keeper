@@ -1099,6 +1099,24 @@ REGRAS IMPORTANTES:
       };
       await supabase.from("whatsapp_messages").insert(outboundMsg);
 
+      // ========== AUTO-ADD CONTACT TO PHONE AGENDA via UazAPI ==========
+      try {
+        if (instance && (instance as any).instance_token) {
+          const addName = contact_name || resolvedContactId ? null : phone;
+          // Only add if we have a name to use
+          const contactDisplayName = contact_name || phone;
+          const addBaseUrl = (instance as any).base_url || "https://abraci.uazapi.com";
+          const addRes = await fetch(`${addBaseUrl}/contact/add`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", token: (instance as any).instance_token },
+            body: JSON.stringify({ phone: phone, name: contactDisplayName }),
+          });
+          console.log(`UazAPI contact/add ${phone} "${contactDisplayName}": status=${addRes.status}`);
+        }
+      } catch (addErr) {
+        console.error("Auto-add contact to agenda error:", addErr);
+      }
+
       // ========== CHECK MAX UNANSWERED MESSAGES → AUTO INVIÁVEL ==========
       try {
         // Resolve campaign_id from lead if not provided
