@@ -1504,7 +1504,7 @@ async function handleFollowUp(opts: {
   let splitOpts:
     | { splitMessages?: boolean; splitDelaySeconds?: number }
     | undefined;
-  let skipConfirmation = true; // default true
+  let skipConfirmation = false; // default false — wait for confirmation
   if (session.shortcut_name) {
     const { data: scSplit } = await supabase.from("wjia_command_shortcuts")
       .select("split_messages, split_delay_seconds, skip_confirmation")
