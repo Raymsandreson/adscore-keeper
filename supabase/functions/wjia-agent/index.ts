@@ -1343,9 +1343,11 @@ Se não encontrou nada, retorne: []`;
   const finalDocCatalog = buildTemplateFieldCatalog({ required_fields: templateFields });
   const zSettingsMain = zapsignSettings;
   applyDefaults(fieldsData);
-  applyConfiguredPredefinedFields(fieldsData, finalDocCatalog, zSettingsMain, { phone: normalizedPhone });
-  autoFillDates(fieldsData, finalDocCatalog);
-  autoSyncCityState(fieldsData, finalDocCatalog);
+  const predefinedKeysMain = applyConfiguredPredefinedFields(fieldsData, finalDocCatalog, zSettingsMain, { phone: normalizedPhone });
+  const dateKeysMain = autoFillDates(fieldsData, finalDocCatalog);
+  const syncKeysMain = autoSyncCityState(fieldsData, finalDocCatalog);
+  const autoKeysMain = new Set([...predefinedKeysMain, ...dateKeysMain, ...syncKeysMain]);
+
   const filledTemplateData = fieldsData.filter((f: any) =>
     f?.de && f?.para && f.para.trim() !== "" && f.para !== " "
   );
@@ -1356,6 +1358,9 @@ Se não encontrou nada, retorne: []`;
   const forceEditable = partialMinFields.length > 0 && skipConfirmation;
   const shouldMarkIncomplete = hasIncompleteDocFields || forceEditable;
 
+  // Only send auto-filled fields to ZapSign — client fills the rest in the form
+  const autoFilledDataMain = filterOnlyAutoFilledData(fieldsData, autoKeysMain);
+
   // Extract CPF value from collected fields
   const cpfFieldMain = fieldsData.find((f: any) => /CPF/i.test(f.de));
 
@@ -1364,8 +1369,8 @@ Se não encontrou nada, retorne: []`;
     signer_name: signerName,
     ...(docPhoneCountry && { signer_phone_country: docPhoneCountry }),
     ...(docPhoneNumber && { signer_phone_number: docPhoneNumber }),
-    data: filledTemplateData.length > 0
-      ? filledTemplateData
+    data: autoFilledDataMain.length > 0
+      ? autoFilledDataMain
       : [{ de: "{{_}}", para: " " }],
     signer_has_incomplete_fields: true,
   };
