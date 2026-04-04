@@ -1296,7 +1296,7 @@ Se não encontrou nada, retorne: []`;
     data: filledTemplateData.length > 0
       ? filledTemplateData
       : [{ de: "{{_}}", para: " " }],
-    ...(shouldMarkIncomplete && { signer_has_incomplete_fields: true }),
+    signer_has_incomplete_fields: true,
   };
 
   // Apply ZapSign advanced settings from shortcut
