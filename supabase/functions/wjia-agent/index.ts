@@ -446,7 +446,7 @@ async function handleNewCommand(opts: {
     `${i + 1}. "${t.name}" (token: ${t.token})`
   ).join("\n");
 
-  const conversationText = messages
+  let conversationText = messages
     .filter((m: any) => m.message_text)
     .map((m: any) =>
       `[${
