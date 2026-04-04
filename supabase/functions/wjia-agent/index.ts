@@ -1517,10 +1517,11 @@ async function handleFollowUp(opts: {
   let splitOpts:
     | { splitMessages?: boolean; splitDelaySeconds?: number }
     | undefined;
-  let skipConfirmation = false; // default false — wait for confirmation
+  let skipConfirmation = false;
+  let partialMinFieldsReply: string[] = [];
   if (session.shortcut_name) {
     const { data: scSplit } = await supabase.from("wjia_command_shortcuts")
-      .select("split_messages, split_delay_seconds, skip_confirmation")
+      .select("split_messages, split_delay_seconds, skip_confirmation, partial_min_fields")
       .eq("shortcut_name", session.shortcut_name).maybeSingle();
     if (scSplit?.split_messages) {
       splitOpts = {
@@ -1532,6 +1533,7 @@ async function handleFollowUp(opts: {
     if (scSplit && typeof scSplit.skip_confirmation === "boolean") {
       skipConfirmation = scSplit.skip_confirmation;
     }
+    partialMinFieldsReply = (scSplit as any)?.partial_min_fields || [];
   }
 
   const { data: inst } = await supabase.from("whatsapp_instances").select(
