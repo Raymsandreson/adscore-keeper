@@ -666,6 +666,18 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     );
                   })()}
                 </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Mensagens do histórico para extração</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number" min={0} max={200}
+                      value={(form as any).history_limit ?? 50}
+                      onChange={e => setForm(f => ({ ...f, history_limit: parseInt(e.target.value) || 0 } as any))}
+                      className="h-9 text-xs w-24"
+                    />
+                    <p className="text-[10px] text-muted-foreground">0 = não usa histórico</p>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Delay agrupamento (seg)</Label>
