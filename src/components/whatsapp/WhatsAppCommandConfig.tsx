@@ -52,6 +52,7 @@ interface Shortcut {
   human_reply_pause_minutes: number;
   skip_confirmation: boolean;
   partial_min_fields: string[];
+  history_limit: number;
   command_scope: string;
   reply_with_audio: boolean;
   reply_voice_id: string | null;
