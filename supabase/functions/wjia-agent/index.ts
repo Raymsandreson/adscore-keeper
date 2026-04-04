@@ -998,13 +998,12 @@ Se não encontrou nada, retorne: []`;
     ? cleanPhoneForDoc.substring(2)
     : cleanPhoneForDoc;
 
-  const hasIncompleteDocFields = hasMissing ||
-    fieldsData.some((f: any) =>
-      !f.para || f.para.trim() === "" || f.para === " "
-    );
+  const finalDocCatalog = buildTemplateFieldCatalog({ required_fields: templateFields });
   const filledTemplateData = fieldsData.filter((f: any) =>
     f?.de && f?.para && f.para.trim() !== "" && f.para !== " "
   );
+  const finalMissingForDoc = computeMissingFields(finalDocCatalog, filledTemplateData);
+  const hasIncompleteDocFields = finalMissingForDoc.length > 0;
 
   const createBody: any = {
     template_id: parsed.template_token,

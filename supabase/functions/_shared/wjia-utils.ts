@@ -686,11 +686,12 @@ export async function generateZapSignDocument(
     ? cleanPhone.substring(2)
     : cleanPhone;
 
-  const hasIncompleteFields = (session?.missing_fields?.length ?? 0) > 0 ||
-    fields.some((f: any) => !f.para || f.para.trim() === "" || f.para === " ");
+  const sessionCatalog = buildTemplateFieldCatalog(session);
   const filledFields = fields.filter((f: any) =>
     f?.de && f?.para && f.para.trim() !== "" && f.para !== " "
   );
+  const finalMissingFields = computeMissingFields(sessionCatalog, filledFields);
+  const hasIncompleteFields = finalMissingFields.length > 0;
 
   const createBody: any = {
     template_id: session.template_token,
