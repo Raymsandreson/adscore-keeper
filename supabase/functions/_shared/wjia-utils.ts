@@ -305,6 +305,7 @@ export function applyConfiguredPredefinedFields(
   fields: any[],
   catalog: TemplateFieldRef[],
   settings: ZapSignSettings | null | undefined,
+  context?: { phone?: string },
 ): Set<string> {
   const applied = new Set<string>();
   const entries = Array.isArray(settings?.predefined_fields)
