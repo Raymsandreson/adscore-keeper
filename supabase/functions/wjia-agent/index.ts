@@ -12,6 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { geminiChat } from "../_shared/gemini.ts";
 import {
   applyDefaults,
+  applyConfiguredPredefinedFields,
   applyZapSignSettings,
   autoFillDates,
   autoFillFromCEP,
@@ -194,6 +195,12 @@ Deno.serve(async (req) => {
           .select("zapsign_settings").eq("shortcut_name", session.shortcut_name).maybeSingle();
         zSettings = sc?.zapsign_settings || null;
       }
+
+      const regenerationCatalog = buildTemplateFieldCatalog(session);
+      applyDefaults(fieldsData);
+      applyConfiguredPredefinedFields(fieldsData, regenerationCatalog, zSettings);
+      autoFillDates(fieldsData, regenerationCatalog);
+      autoSyncCityState(fieldsData, regenerationCatalog);
 
       // Extract CPF from fields and document photo from received docs
       const cpfField = fieldsData.find((f: any) => /CPF/i.test(f.de));
@@ -479,9 +486,16 @@ async function handleNewCommand(opts: {
   const shortcutModel = matchedShortcut?.model || "google/gemini-2.5-flash";
   const shortcutTemperature = matchedShortcut?.temperature ?? 0.1;
   const shortcutBasePrompt = matchedShortcut?.base_prompt || "";
+  const zapsignSettings = matchedShortcut?.zapsign_settings || null;
   let skipConfirmation = matchedShortcut?.skip_confirmation === true;
   const partialMinFields: string[] = matchedShortcut?.partial_min_fields || [];
   const historyLimit: number = matchedShortcut?.history_limit ?? 50;
+  const initialSplitOpts = matchedShortcut?.split_messages
+    ? {
+        splitMessages: true,
+        splitDelaySeconds: matchedShortcut?.split_delay_seconds || 3,
+      }
+    : undefined;
 
   // Apply history_limit — if 0, ignore all history
   if (historyLimit === 0) {
@@ -1022,6 +1036,7 @@ Se não encontrou nada, retorne: []`;
       // Step 3: Sync and compute what's still missing after all extractions
       syncNameFields(fieldsData);
       applyDefaults(fieldsData);
+      applyConfiguredPredefinedFields(fieldsData, catalog, zapsignSettings);
       autoFillDates(fieldsData, catalog);
       autoSyncCityState(fieldsData, catalog);
 
@@ -1205,7 +1220,7 @@ Se não encontrou nada, retorne: []`;
           // and go straight to data collection, just mentioning optional docs
           if (requiredDocs.length === 0 && optionalDocs.length > 0) {
             // Mark all optional doc types as skipped
-            const skipDocs = requestedTypes.map((t: string) => ({
+            const skipDocs = documentTypes.map((t: string) => ({
               type: t,
               media_url: null,
               via: "skipped_optional",
@@ -1227,7 +1242,7 @@ Se não encontrou nada, retorne: []`;
             if (inst?.instance_token) {
               await sendWhatsApp(
                 supabase, inst, normalizedPhone, instance_name,
-                optMsg, contact_id, lead_id, "wjia_collect", splitOpts,
+                optMsg, contact_id, lead_id, "wjia_collect", initialSplitOpts,
               );
             }
             // Fall through to agent phase for data collection
@@ -1321,6 +1336,11 @@ Se não encontrou nada, retorne: []`;
     : cleanPhoneForDoc;
 
   const finalDocCatalog = buildTemplateFieldCatalog({ required_fields: templateFields });
+  const zSettingsMain = zapsignSettings;
+  applyDefaults(fieldsData);
+  applyConfiguredPredefinedFields(fieldsData, finalDocCatalog, zSettingsMain);
+  autoFillDates(fieldsData, finalDocCatalog);
+  autoSyncCityState(fieldsData, finalDocCatalog);
   const filledTemplateData = fieldsData.filter((f: any) =>
     f?.de && f?.para && f.para.trim() !== "" && f.para !== " "
   );
@@ -1346,7 +1366,6 @@ Se não encontrou nada, retorne: []`;
   };
 
   // Apply ZapSign advanced settings from shortcut
-  const zSettingsMain = matchedShortcut?.zapsign_settings || null;
   applyZapSignSettings(createBody, zSettingsMain, {
     cpfValue: cpfFieldMain?.para || undefined,
     leadId: lead_id || undefined,
@@ -1586,9 +1605,10 @@ async function handleFollowUp(opts: {
     | undefined;
   let skipConfirmation = false;
   let partialMinFieldsReply: string[] = [];
+  let zapsignSettingsReply: any = null;
   if (session.shortcut_name) {
     const { data: scSplit } = await supabase.from("wjia_command_shortcuts")
-      .select("split_messages, split_delay_seconds, skip_confirmation, partial_min_fields")
+      .select("split_messages, split_delay_seconds, skip_confirmation, partial_min_fields, zapsign_settings")
       .eq("shortcut_name", session.shortcut_name).maybeSingle();
     if (scSplit?.split_messages) {
       splitOpts = {
@@ -1601,6 +1621,7 @@ async function handleFollowUp(opts: {
       skipConfirmation = scSplit.skip_confirmation;
     }
     partialMinFieldsReply = (scSplit as any)?.partial_min_fields || [];
+    zapsignSettingsReply = (scSplit as any)?.zapsign_settings || null;
   }
 
   const { data: inst } = await supabase.from("whatsapp_instances").select(
@@ -1701,6 +1722,7 @@ async function handleFollowUp(opts: {
       if (signerName) collectedData.signer_name = signerName;
       syncNameFields(currentFields);
       applyDefaults(currentFields);
+      applyConfiguredPredefinedFields(currentFields, catalog, zapsignSettingsReply);
       autoFillDates(currentFields, catalog);
       autoSyncCityState(currentFields, catalog);
 
@@ -1732,6 +1754,8 @@ async function handleFollowUp(opts: {
         currentFields,
         collectedData,
         catalog,
+        splitOpts,
+        zapsignSettings: zapsignSettingsReply,
       });
     } else if (session.status !== "collecting" && session.status !== "ready") {
       // Text during doc collection — remind
@@ -1864,7 +1888,8 @@ async function handleFollowUp(opts: {
   // Pre-process auto-fills
   const autoFilledKeys = autoFillDates(currentFields, catalog);
   const syncedKeys = autoSyncCityState(currentFields, catalog);
-  const allAutoKeys = new Set([...autoFilledKeys, ...syncedKeys]);
+  const predefinedKeys = applyConfiguredPredefinedFields(currentFields, catalog, zapsignSettingsReply);
+  const allAutoKeys = new Set([...autoFilledKeys, ...syncedKeys, ...predefinedKeys]);
 
   collectedData.fields = currentFields;
   let missingFields = computeMissingFields(catalog, currentFields)
@@ -2117,6 +2142,7 @@ REGRAS:
 
   syncNameFields(currentFields);
   applyDefaults(currentFields);
+  applyConfiguredPredefinedFields(currentFields, catalog, zapsignSettingsReply);
   autoFillDates(currentFields, catalog);
   autoSyncCityState(currentFields, catalog);
   await autoFillFromCEP(currentFields, catalog);
@@ -2341,6 +2367,8 @@ async function handleDocumentUpload(opts: {
   currentFields: any[];
   collectedData: any;
   catalog: TemplateFieldRef[];
+  splitOpts?: { splitMessages?: boolean; splitDelaySeconds?: number };
+  zapsignSettings?: any;
 }) {
   const {
     supabase,
@@ -2354,6 +2382,8 @@ async function handleDocumentUpload(opts: {
     currentFields,
     collectedData,
     catalog,
+    splitOpts,
+    zapsignSettings,
   } = opts;
 
   const pendingTypes = requestedTypes.filter((t) =>
@@ -2372,6 +2402,8 @@ async function handleDocumentUpload(opts: {
       currentFields,
       collectedData,
       catalog,
+      splitOpts,
+      zapsignSettings,
     });
   }
 
@@ -2513,6 +2545,8 @@ async function handleDocumentUpload(opts: {
     currentFields,
     collectedData,
     catalog,
+    splitOpts,
+    zapsignSettings,
   });
 }
 
@@ -2526,6 +2560,8 @@ async function runDocExtraction(opts: {
   currentFields: any[];
   collectedData: any;
   catalog: TemplateFieldRef[];
+  splitOpts?: { splitMessages?: boolean; splitDelaySeconds?: number };
+  zapsignSettings?: any;
 }) {
   const {
     supabase,
@@ -2537,6 +2573,8 @@ async function runDocExtraction(opts: {
     currentFields,
     collectedData,
     catalog,
+    splitOpts,
+    zapsignSettings,
   } = opts;
 
   let customPrompt: string | null = null;
@@ -2562,6 +2600,7 @@ async function runDocExtraction(opts: {
   if (signerName) collectedData.signer_name = signerName;
   syncNameFields(currentFields);
   applyDefaults(currentFields);
+  applyConfiguredPredefinedFields(currentFields, catalog, zapsignSettings);
   autoFillDates(currentFields, catalog);
   autoSyncCityState(currentFields, catalog);
 
