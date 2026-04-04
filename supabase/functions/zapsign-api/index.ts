@@ -193,6 +193,17 @@ Deno.serve(async (req) => {
           : {}),
       };
 
+      // Apply advanced ZapSign settings if provided
+      const zapsign_settings = body.zapsign_settings || null;
+      if (zapsign_settings) {
+        const { applyZapSignSettings } = await import("../_shared/wjia-utils.ts");
+        applyZapSignSettings(createBody, zapsign_settings, {
+          cpfValue: body.signer_cpf || undefined,
+          leadId: lead_id || undefined,
+          leadName: body.lead_name || undefined,
+        });
+      }
+
       console.log("Creating ZapSign document:", JSON.stringify(createBody));
 
       const response = await fetch(`${ZAPSIGN_API_URL}/models/create-doc/`, {
