@@ -243,8 +243,19 @@ Deno.serve(async (req) => {
         return errorResponse("Erro ao gerar documento na ZapSign: " + JSON.stringify(zData), 500);
       }
 
-      const signUrl = zData.signers?.[0]?.sign_url || zData.sign_url || null;
+      const signerTokenRegen = zData.signers?.[0]?.token;
+      const signUrl = signerTokenRegen
+        ? `https://app.zapsign.co/verificar/${signerTokenRegen}`
+        : zData.signers?.[0]?.sign_url || zData.sign_url || null;
       const docToken = zData.token || null;
+
+      // Apply signer-level settings (lock_name, require_cpf, etc.) via update-signer API
+      if (signerTokenRegen && zapsignToken) {
+        await updateSignerSettings(signerTokenRegen, zapsignToken, zSettings, {
+          cpfValue: cpfField?.para || undefined,
+          documentPhotoUrl: rgDoc?.media_url || undefined,
+        });
+      }
 
       // Update session
       await supabase.from("wjia_collection_sessions").update({
