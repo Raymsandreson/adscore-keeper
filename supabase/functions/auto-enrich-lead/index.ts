@@ -276,15 +276,47 @@ REGRAS:
           } else {
             console.log(`[auto-enrich] Lead ${lead_id} status changed to ${cleaned.lead_status}: ${cleaned.lead_status_reason}`)
             
-            // Deactivate AI agent for terminal statuses
-            if (['unviable', 'refused'].includes(cleaned.lead_status)) {
-              const { error: deactErr } = await supabase
-                .from('whatsapp_conversation_agents')
-                .update({ is_active: false })
-                .eq('phone', phone)
-                .eq('instance_name', instance_name)
-              if (deactErr) console.error('[auto-enrich] Agent deactivation error:', deactErr)
-              else console.log(`[auto-enrich] Agent deactivated for ${phone}/${instance_name}`)
+            // Swap or deactivate AI agent for terminal statuses
+            if (['unviable', 'refused', 'closed'].includes(cleaned.lead_status)) {
+              const finalStatus = cleaned.lead_status === 'unviable' ? 'inviavel' : cleaned.lead_status
+              // Check if campaign has a specific agent for this status
+              const { data: leadCampaign } = await supabase.from('leads').select('campaign_id').eq('id', lead_id).maybeSingle()
+              let swapAgentId: string | null = null
+              if (leadCampaign?.campaign_id) {
+                const { data: campLink } = await supabase
+                  .from('whatsapp_agent_campaign_links')
+                  .select('closed_agent_id, refused_agent_id, inviavel_agent_id')
+                  .eq('campaign_id', leadCampaign.campaign_id)
+                  .eq('is_active', true)
+                  .maybeSingle()
+                if (campLink) {
+                  const agentMap: Record<string, string | null> = {
+                    closed: campLink.closed_agent_id,
+                    refused: campLink.refused_agent_id,
+                    inviavel: campLink.inviavel_agent_id,
+                  }
+                  swapAgentId = agentMap[finalStatus] || null
+                }
+              }
+              
+              if (swapAgentId) {
+                const { error: swapErr } = await supabase
+                  .from('whatsapp_conversation_agents')
+                  .update({ agent_id: swapAgentId, is_active: true, activated_by: 'status_auto' })
+                  .eq('phone', phone)
+                  .eq('instance_name', instance_name)
+                if (swapErr) console.error('[auto-enrich] Agent swap error:', swapErr)
+                else console.log(`[auto-enrich] Agent swapped to ${swapAgentId} for status ${finalStatus}`)
+              } else {
+                // No specific agent configured, deactivate
+                const { error: deactErr } = await supabase
+                  .from('whatsapp_conversation_agents')
+                  .update({ is_active: false })
+                  .eq('phone', phone)
+                  .eq('instance_name', instance_name)
+                if (deactErr) console.error('[auto-enrich] Agent deactivation error:', deactErr)
+                else console.log(`[auto-enrich] Agent deactivated for ${phone}/${instance_name} (no ${finalStatus} agent configured)`)
+              }
             }
             
             // Log status history
