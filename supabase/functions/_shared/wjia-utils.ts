@@ -850,7 +850,7 @@ export async function generateZapSignDocument(
     : cleanPhone;
 
   const sessionCatalog = buildTemplateFieldCatalog(session);
-  applyConfiguredPredefinedFields(fields, sessionCatalog, zSettingsUtil);
+  applyConfiguredPredefinedFields(fields, sessionCatalog, zSettingsUtil, { phone: cleanPhone });
   autoFillDates(fields, sessionCatalog);
   autoSyncCityState(fields, sessionCatalog);
 

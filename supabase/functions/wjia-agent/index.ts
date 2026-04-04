@@ -2600,7 +2600,7 @@ async function runDocExtraction(opts: {
   if (signerName) collectedData.signer_name = signerName;
   syncNameFields(currentFields);
   applyDefaults(currentFields);
-  applyConfiguredPredefinedFields(currentFields, catalog, zapsignSettings);
+  applyConfiguredPredefinedFields(currentFields, catalog, zapsignSettings, { phone: normalizedPhone });
   autoFillDates(currentFields, catalog);
   autoSyncCityState(currentFields, catalog);
 
