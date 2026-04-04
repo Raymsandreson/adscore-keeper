@@ -803,6 +803,43 @@ REGRAS IMPORTANTES:
             // Simple acknowledgment or question — just resend the link
             reply = `Esse é o link para assinatura do documento 👇\n\n${existingSession.sign_url}\n\nSe tiver algum dado faltando, pode preencher direto no formulário. É só clicar e seguir as instruções! 🙏`;
           }
+        } else if (existingSession && ["collecting", "collecting_docs", "processing_docs", "ready"].includes(existingSession.status)) {
+          // Session exists but not yet generated — check if client wants to generate with incomplete data
+          const replyLower = reply.toLowerCase();
+          const clientWantsGenerate = replyLower.includes("gerar") || replyLower.includes("link") || replyLower.includes("formulário") || replyLower.includes("formulario") || replyLower.includes("preparar") || replyLower.includes("finaliz");
+          const clientMessage = message_text?.toLowerCase() || "";
+          const clientAskedGenerate = clientMessage.includes("gerar") || clientMessage.includes("pode gerar") || clientMessage.includes("formulário") || clientMessage.includes("formulario") || clientMessage.includes("completo no") || clientMessage.includes("gera assim");
+          
+          if (clientWantsGenerate || clientAskedGenerate) {
+            const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
+            const shortcutName = (agent as any).name?.replace(/^#/, "") || "";
+            
+            console.log(`Force-generate: client asked to generate session ${existingSession.id} with status ${existingSession.status}`);
+            
+            // Trigger wjia-agent to force generate with whatever data we have
+            fetch(`${cloudFunctionsUrl}/functions/v1/wjia-agent`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY") || ""}`,
+              },
+              body: JSON.stringify({
+                action: "force_generate",
+                session_id: existingSession.id,
+                phone: normalizedPhone,
+                instance_name,
+              }),
+            }).catch(err => console.error("Force-generate handoff error:", err));
+            
+            // Clean up the AI reply
+            reply = reply
+              .replace(/https?:\/\/\S+/gi, "")
+              .replace(/\n{3,}/g, "\n\n")
+              .trim();
+            if (!reply) {
+              reply = "Perfeito! Vou gerar o documento agora com os dados que tenho. O que faltar, você pode preencher direto no formulário. Em instantes você recebe o link! 📄";
+            }
+          }
         } else if (!existingSession) {
           // No active session — check if AI reply indicates data is ready or client confirmed
           const replyLower = reply.toLowerCase();
