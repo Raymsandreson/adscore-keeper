@@ -1280,6 +1280,10 @@ Se não encontrou nada, retorne: []`;
   );
   const finalMissingForDoc = computeMissingFields(finalDocCatalog, filledTemplateData);
   const hasIncompleteDocFields = finalMissingForDoc.length > 0;
+  // If partial generation is configured (partial_min_fields), always mark as incomplete
+  // so ZapSign shows an editable form for the client to review/complete
+  const forceEditable = partialMinFields.length > 0 && skipConfirmation;
+  const shouldMarkIncomplete = hasIncompleteDocFields || forceEditable;
 
   // Extract CPF value from collected fields
   const cpfFieldMain = fieldsData.find((f: any) => /CPF/i.test(f.de));
@@ -1292,7 +1296,7 @@ Se não encontrou nada, retorne: []`;
     data: filledTemplateData.length > 0
       ? filledTemplateData
       : [{ de: "{{_}}", para: " " }],
-    ...(hasIncompleteDocFields && { signer_has_incomplete_fields: true }),
+    ...(shouldMarkIncomplete && { signer_has_incomplete_fields: true }),
   };
 
   // Apply ZapSign advanced settings from shortcut
@@ -1367,7 +1371,7 @@ Se não encontrou nada, retorne: []`;
   }
 
   if (inst?.instance_token && signUrl) {
-    const hasPartialData = hasMissing && skipConfirmation;
+    const hasPartialData = (hasMissing && skipConfirmation) || forceEditable;
     const clientMsg = hasPartialData
       ? `📝 *Documento para preenchimento e assinatura*\n\nOlá ${
         signerName.split(" ")[0]
