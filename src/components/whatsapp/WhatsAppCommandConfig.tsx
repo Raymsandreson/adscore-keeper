@@ -336,6 +336,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       max_tokens: (s as any).max_tokens ?? 2048,
       response_delay_seconds: s.response_delay_seconds ?? 2,
       skip_confirmation: (s as any).skip_confirmation ?? false,
+      partial_min_fields: (s as any).partial_min_fields || [],
       split_messages: s.split_messages ?? false,
       split_delay_seconds: s.split_delay_seconds ?? 3,
       reply_with_audio: (s as any).reply_with_audio ?? false,
