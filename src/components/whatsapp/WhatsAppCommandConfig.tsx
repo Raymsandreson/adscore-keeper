@@ -319,16 +319,55 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     }
   }, [zapsignTemplates.length]);
 
+  const loadTemplateFields = useCallback(async (templateToken: string) => {
+    if (!templateToken) {
+      setTemplateFields([]);
+      return;
+    }
+
+    setLoadingFields(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke('zapsign-api', {
+        body: { action: 'get_template', template_token: templateToken }
+      });
+
+      if (!error && data?.success && Array.isArray(data.fields)) {
+        setTemplateFields(data.fields);
+      } else {
+        setTemplateFields([]);
+      }
+    } catch (e) {
+      console.error('Error fetching template fields:', e);
+      setTemplateFields([]);
+    } finally {
+      setLoadingFields(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (showForm && (form.assistant_type === 'document' || form.assistant_type === 'hybrid')) {
       loadZapSignTemplates();
     }
   }, [showForm, form.assistant_type, loadZapSignTemplates]);
 
+  useEffect(() => {
+    if (!showForm || !(form.assistant_type === 'document' || form.assistant_type === 'hybrid')) {
+      return;
+    }
+
+    if (!form.template_token) {
+      setTemplateFields([]);
+      return;
+    }
+
+    void loadTemplateFields(form.template_token);
+  }, [showForm, form.assistant_type, form.template_token, loadTemplateFields]);
+
   const showDocumentFields = form.assistant_type === 'document' || form.assistant_type === 'hybrid';
   const showAssistantFields = form.assistant_type === 'assistant' || form.assistant_type === 'hybrid';
 
   const resetForm = () => {
+    setTemplateFields([]);
     setForm({
       shortcut_name: '', description: '', template_token: '', template_name: '',
       prompt_instructions: '', media_extraction_prompt: '',
@@ -826,18 +865,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                           onValueChange={async (v) => {
                             const tmpl = zapsignTemplates.find(t => t.token === v);
                             setForm(f => ({ ...f, template_token: v, template_name: tmpl?.name || '' }));
-                            // Fetch template fields
-                            setTemplateFields([]);
-                            setLoadingFields(true);
-                            try {
-                              const { data, error } = await cloudFunctions.invoke('zapsign-api', {
-                                body: { action: 'get_template', template_token: v }
-                              });
-                              if (!error && data?.success && data.fields) {
-                                setTemplateFields(data.fields);
-                              }
-                            } catch (e) { console.error('Error fetching template fields:', e); }
-                            setLoadingFields(false);
+                            await loadTemplateFields(v);
                           }}
                         >
                           <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Selecione um modelo..." /></SelectTrigger>
