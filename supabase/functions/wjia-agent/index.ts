@@ -1125,48 +1125,75 @@ Se não encontrou nada, retorne: []`;
             } else optionalDocs.push("Outros documentos");
           }
 
-          let docsFirstMsg = `📝 Para preparar o documento *${
-            parsed.template_name || "Documento"
-          }*, preciso de algumas informações:\n\n`;
-          if (requiredDocs.length > 0) {
-            docsFirstMsg += `📎 *Envie obrigatoriamente:*\n• ${
-              requiredDocs.join("\n• ")
-            }\n\n`;
-          }
-          if (optionalDocs.length > 0) {
-            docsFirstMsg +=
-              `💬 *Opcional (envie o documento OU informe os dados por mensagem):*\n• ${
-                optionalDocs.join("\n• ")
-              }\n\n`;
-          }
-          docsFirstMsg +=
-            `📸 Envie a *foto ou arquivo* de cada documento. Vou extrair as informações automaticamente!\n\nSe não tiver algum agora, digite *pular*.`;
+          // If ALL docs are optional (no required docs), skip doc collection phase
+          // and go straight to data collection, just mentioning optional docs
+          if (requiredDocs.length === 0 && optionalDocs.length > 0) {
+            // Mark all optional doc types as skipped
+            const skipDocs = requestedTypes.map((t: string) => ({
+              type: t,
+              media_url: null,
+              via: "skipped_optional",
+            }));
+            await supabase.from("wjia_collection_sessions").update({
+              received_documents: skipDocs,
+              status: "collecting",
+              updated_at: new Date().toISOString(),
+            }).eq("id", session.id);
+            session.status = "collecting";
+            session.received_documents = skipDocs;
 
-          if (inst?.instance_token) {
-            await sendWhatsApp(
-              supabase,
-              inst,
-              normalizedPhone,
-              instance_name,
-              docsFirstMsg,
-              contact_id,
-              lead_id,
-              "wjia_docsfirst",
+            // Send a friendly message mentioning optional docs
+            const optMsg = `📝 Para preparar o documento *${
+              parsed.template_name || "Documento"
+            }*, vou precisar de alguns dados.\n\n💡 *Se tiver, pode enviar também:*\n• ${
+              optionalDocs.join("\n• ")
+            }\n\nMas não se preocupe, pode informar os dados por mensagem também! Vamos lá 🚀`;
+            if (inst?.instance_token) {
+              await sendWhatsApp(
+                supabase, inst, normalizedPhone, instance_name,
+                optMsg, contact_id, lead_id, "wjia_collect", splitOpts,
+              );
+            }
+            // Fall through to agent phase for data collection
+          } else {
+            // Has required docs — use normal docs-first flow
+            let docsFirstMsg = `📝 Para preparar o documento *${
+              parsed.template_name || "Documento"
+            }*, preciso de algumas informações:\n\n`;
+            if (requiredDocs.length > 0) {
+              docsFirstMsg += `📎 *Envie obrigatoriamente:*\n• ${
+                requiredDocs.join("\n• ")
+              }\n\n`;
+            }
+            if (optionalDocs.length > 0) {
+              docsFirstMsg +=
+                `💬 *Opcional (envie o documento OU informe os dados por mensagem):*\n• ${
+                  optionalDocs.join("\n• ")
+                }\n\n`;
+            }
+            docsFirstMsg +=
+              `📸 Envie a *foto ou arquivo* de cada documento. Vou extrair as informações automaticamente!\n\nSe não tiver algum agora, digite *pular*.`;
+
+            if (inst?.instance_token) {
+              await sendWhatsApp(
+                supabase, inst, normalizedPhone, instance_name,
+                docsFirstMsg, contact_id, lead_id, "wjia_docsfirst",
+              );
+            }
+
+            return new Response(
+              JSON.stringify({
+                success: true,
+                action: "collection_started",
+                message:
+                  `🔄 *Coleta de documentos iniciada*\nDocumento: *${parsed.template_name}*\n📎 Pedindo documentos ao cliente.\n⚠️ Faltantes: ${missingFields.length}`,
+                session_id: session.id,
+                missing_count: missingFields.length,
+                docs_first: true,
+              }),
+              { headers: { ...corsHeaders, "Content-Type": "application/json" } },
             );
           }
-
-          return new Response(
-            JSON.stringify({
-              success: true,
-              action: "collection_started",
-              message:
-                `🔄 *Coleta de documentos iniciada*\nDocumento: *${parsed.template_name}*\n📎 Pedindo documentos ao cliente.\n⚠️ Faltantes: ${missingFields.length}`,
-              session_id: session.id,
-              missing_count: missingFields.length,
-              docs_first: true,
-            }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-          );
         }
       }
     }
