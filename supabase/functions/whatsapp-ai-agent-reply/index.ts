@@ -1046,28 +1046,12 @@ REGRAS IMPORTANTES:
 
             console.log(`Unanswered check: ${consecutiveOutbound}/${maxUnanswered} consecutive outbound for ${phone}`);
             if (consecutiveOutbound >= maxUnanswered) {
-              console.log(`Max unanswered reached (${consecutiveOutbound}/${maxUnanswered}). Marking lead ${lead_id} as inviavel.`);
+              console.log(`Max unanswered reached (${consecutiveOutbound}/${maxUnanswered}). Marking lead ${lead_id} as inviavel (keeping followup active).`);
               await supabase.from("leads").update({ lead_status: "inviavel" }).eq("id", lead_id);
               
-              // Deactivate agent or swap to inviavel agent
-              const inviavelAgent = (campLink as any)?.inviavel_agent_id;
-              if (inviavelAgent) {
-                await supabase.from("whatsapp_conversation_agents").upsert({
-                  phone, instance_name, agent_id: inviavelAgent, is_active: true, activated_by: "max_unanswered_auto",
-                }, { onConflict: "phone,instance_name" });
-              } else {
-                await supabase.from("whatsapp_conversation_agents").update({ is_active: false }).eq("phone", phone).eq("instance_name", instance_name);
-              }
+              // Do NOT deactivate agent or cancel followups — let followup continue until blocked
 
-              // Cancel all pending followups
-              await supabase.from("whatsapp_agent_followups")
-                .update({ status: "cancelled" })
-                .eq("phone", phone)
-                .eq("instance_name", instance_name)
-                .eq("status", "pending");
-              console.log(`Cancelled pending followups for ${phone} due to inviavel classification`);
-
-              // Send CAPI signal
+              // Send CAPI signal to Meta
               try {
                 fetch(`${cloudFunctionsUrl}/functions/v1/meta-conversions-api`, {
                   method: 'POST',
