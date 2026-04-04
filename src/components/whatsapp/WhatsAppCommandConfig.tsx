@@ -679,6 +679,49 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       </div>
                       <Switch checked={form.skip_confirmation ?? false} onCheckedChange={v => setForm(f => ({ ...f, skip_confirmation: v }))} />
                     </div>
+                    {form.skip_confirmation && (
+                      <div className="space-y-2 pl-2 border-l-2 border-primary/20">
+                        <Label className="text-[10px] font-semibold">Campos mínimos obrigatórios</Label>
+                        <p className="text-[10px] text-muted-foreground">Selecione os campos que devem ser coletados antes de gerar o link</p>
+                        <div className="grid grid-cols-2 gap-1">
+                          {[
+                            { key: 'NOME_COMPLETO', label: 'Nome completo' },
+                            { key: 'CPF', label: 'CPF' },
+                            { key: 'RG', label: 'RG' },
+                            { key: 'NACIONALIDADE', label: 'Nacionalidade' },
+                            { key: 'ESTADO_CIVIL', label: 'Estado civil' },
+                            { key: 'PROFISSAO', label: 'Profissão' },
+                            { key: 'ENDERECO_COMPLETO', label: 'Endereço' },
+                            { key: 'CIDADE', label: 'Cidade' },
+                            { key: 'UF', label: 'UF' },
+                            { key: 'CEP', label: 'CEP' },
+                            { key: 'DATA_NASCIMENTO', label: 'Data nascimento' },
+                            { key: 'NOME_MAE', label: 'Nome da mãe' },
+                            { key: 'EMAIL', label: 'E-mail' },
+                            { key: 'TELEFONE', label: 'Telefone' },
+                          ].map(field => {
+                            const selected = (form as any).partial_min_fields || [];
+                            const isChecked = selected.includes(field.key);
+                            return (
+                              <label key={field.key} className="flex items-center gap-1.5 text-[10px] cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    const newFields = isChecked
+                                      ? selected.filter((f: string) => f !== field.key)
+                                      : [...selected, field.key];
+                                    setForm(f => ({ ...f, partial_min_fields: newFields } as any));
+                                  }}
+                                  className="rounded border-muted-foreground/30 h-3 w-3"
+                                />
+                                {field.label}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
