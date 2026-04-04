@@ -914,6 +914,29 @@ export function CTWACampaignAutomation() {
                     </p>
                   </div>
 
+                  {/* Max unanswered messages → auto inviável */}
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                      <MessageSquare className="h-3 w-3 text-orange-500" /> Limite de mensagens sem resposta
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={50}
+                        value={(link as any).max_unanswered_messages || 0}
+                        onChange={e => handleUpdate(link.id, { max_unanswered_messages: parseInt(e.target.value) || 0 } as any)}
+                        className="h-7 w-20 text-xs"
+                      />
+                      <span className="text-[10px] text-muted-foreground">
+                        msgs sem resposta → classifica como <strong className="text-orange-500">Inviável</strong> (0 = desativado)
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Se o agente enviar esse número de mensagens consecutivas sem resposta do lead, ele será automaticamente classificado como inviável e sinalizado para a Meta.
+                    </p>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label className="text-[10px] text-muted-foreground flex items-center gap-1">

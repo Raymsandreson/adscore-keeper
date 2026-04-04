@@ -455,6 +455,27 @@ export type Database = {
           },
         ]
       }
+      agent_reply_locks: {
+        Row: {
+          expires_at: string
+          instance_name: string
+          locked_at: string
+          phone: string
+        }
+        Insert: {
+          expires_at?: string
+          instance_name: string
+          locked_at?: string
+          phone: string
+        }
+        Update: {
+          expires_at?: string
+          instance_name?: string
+          locked_at?: string
+          phone?: string
+        }
+        Relationships: []
+      }
       agent_stage_assignments: {
         Row: {
           agent_id: string
@@ -7338,6 +7359,7 @@ export type Database = {
           inviavel_agent_id: string | null
           is_active: boolean
           lead_source_label: string | null
+          max_unanswered_messages: number | null
           refused_agent_id: string | null
           stage_id: string | null
         }
@@ -7355,6 +7377,7 @@ export type Database = {
           inviavel_agent_id?: string | null
           is_active?: boolean
           lead_source_label?: string | null
+          max_unanswered_messages?: number | null
           refused_agent_id?: string | null
           stage_id?: string | null
         }
@@ -7372,6 +7395,7 @@ export type Database = {
           inviavel_agent_id?: string | null
           is_active?: boolean
           lead_source_label?: string | null
+          max_unanswered_messages?: number | null
           refused_agent_id?: string | null
           stage_id?: string | null
         }
