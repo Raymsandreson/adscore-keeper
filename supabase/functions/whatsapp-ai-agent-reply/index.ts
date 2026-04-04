@@ -1011,6 +1011,72 @@ REGRAS IMPORTANTES:
         console.error("Cloud mirror error:", mirrorErr);
       }
 
+      // ========== CHECK MAX UNANSWERED MESSAGES → AUTO INVIÁVEL ==========
+      try {
+        // Resolve campaign_id from lead if not provided
+        let resolvedCampaignId = campaign_id;
+        if (!resolvedCampaignId && lead_id) {
+          const { data: ld } = await supabase.from("leads").select("campaign_id").eq("id", lead_id).maybeSingle();
+          resolvedCampaignId = ld?.campaign_id;
+        }
+        if (resolvedCampaignId) {
+          const { data: campLink } = await supabase
+            .from("whatsapp_agent_campaign_links")
+            .select("max_unanswered_messages, inviavel_agent_id")
+            .eq("campaign_id", resolvedCampaignId)
+            .eq("is_active", true)
+            .maybeSingle();
+
+          const maxUnanswered = (campLink as any)?.max_unanswered_messages || 0;
+          if (maxUnanswered > 0 && lead_id) {
+            // Count consecutive outbound messages (no inbound in between)
+            const { data: recentMsgs } = await supabase
+              .from("whatsapp_messages")
+              .select("direction")
+              .eq("phone", phone)
+              .eq("instance_name", instance_name)
+              .order("created_at", { ascending: false })
+              .limit(maxUnanswered + 5);
+
+            let consecutiveOutbound = 0;
+            for (const m of (recentMsgs || [])) {
+              if ((m as any).direction === "outbound") consecutiveOutbound++;
+              else break;
+            }
+
+            console.log(`Unanswered check: ${consecutiveOutbound}/${maxUnanswered} consecutive outbound for ${phone}`);
+            if (consecutiveOutbound >= maxUnanswered) {
+              console.log(`Max unanswered reached (${consecutiveOutbound}/${maxUnanswered}). Marking lead ${lead_id} as inviavel.`);
+              await supabase.from("leads").update({ lead_status: "inviavel" }).eq("id", lead_id);
+              
+              // Deactivate agent or swap to inviavel agent
+              const inviavelAgent = (campLink as any)?.inviavel_agent_id;
+              if (inviavelAgent) {
+                await supabase.from("whatsapp_conversation_agents").upsert({
+                  phone, instance_name, agent_id: inviavelAgent, is_active: true, activated_by: "max_unanswered_auto",
+                }, { onConflict: "phone,instance_name" });
+              } else {
+                await supabase.from("whatsapp_conversation_agents").update({ is_active: false }).eq("phone", phone).eq("instance_name", instance_name);
+              }
+
+              // Send CAPI signal
+              try {
+                fetch(`${cloudFunctionsUrl}/functions/v1/meta-conversions-api`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cloudAnonKey}` },
+                  body: JSON.stringify({ lead_id, event_name: 'Lead', custom_data: { lead_event_source: 'lead_unqualified' } }),
+                }).catch(() => {});
+              } catch {}
+            }
+          }
+        }
+      } catch (unansweredErr) {
+        console.error("Unanswered check error:", unansweredErr);
+      }
+
+      // Release dedup lock
+      await supabase.from("agent_reply_locks").delete().eq("phone", phone).eq("instance_name", instance_name);
+
       // ========== SCHEDULE FOLLOW-UP ==========
       if ((agent as any).followup_enabled) {
         const scheduledAt = new Date(Date.now() + (agent as any).followup_interval_minutes * 60 * 1000).toISOString();
