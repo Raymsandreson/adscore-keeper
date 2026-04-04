@@ -1102,9 +1102,47 @@ REGRAS IMPORTANTES:
       // ========== AUTO-ADD CONTACT TO PHONE AGENDA via UazAPI ==========
       try {
         if (instance && (instance as any).instance_token) {
-          const addName = contact_name || resolvedContactId ? null : phone;
-          // Only add if we have a name to use
-          const contactDisplayName = contact_name || phone;
+          // Build rich contact name with city/state/lead info from DB
+          let contactDisplayName = contact_name || phone;
+          const normalizedP = phone.replace(/\D/g, '');
+          const suffix8 = normalizedP.slice(-8);
+          
+          // Fetch contact details from DB
+          const { data: contactInfo } = await supabase
+            .from("contacts")
+            .select("full_name, city, state, profession, classifications, lead_id")
+            .ilike("phone", `%${suffix8}`)
+            .limit(1)
+            .maybeSingle();
+
+          if (contactInfo) {
+            const nameParts: string[] = [contactInfo.full_name || contact_name || phone];
+            
+            // Add city/state
+            const locationParts: string[] = [];
+            if (contactInfo.city) locationParts.push(contactInfo.city);
+            if (contactInfo.state) locationParts.push(contactInfo.state);
+            if (locationParts.length > 0) nameParts.push(locationParts.join("/"));
+            
+            // Add profession if available
+            if (contactInfo.profession) nameParts.push(contactInfo.profession);
+
+            // Add lead board/product info if available
+            const leadIdForInfo = resolvedLeadId || contactInfo.lead_id;
+            if (leadIdForInfo) {
+              const { data: leadInfo } = await supabase
+                .from("leads")
+                .select("lead_name, kanban_boards(name)")
+                .eq("id", leadIdForInfo)
+                .maybeSingle();
+              if (leadInfo && (leadInfo as any).kanban_boards?.name) {
+                nameParts.push((leadInfo as any).kanban_boards.name);
+              }
+            }
+
+            contactDisplayName = nameParts.join(" | ");
+          }
+
           const addBaseUrl = (instance as any).base_url || "https://abraci.uazapi.com";
           const addRes = await fetch(`${addBaseUrl}/contact/add`, {
             method: "POST",
