@@ -415,6 +415,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_window_end_hour: form.send_window_end_hour ?? 20,
       send_call_followup_audio: form.send_call_followup_audio ?? false,
       skip_confirmation: form.skip_confirmation ?? false,
+      partial_min_fields: (form as any).partial_min_fields || [],
       zapsign_settings: form.zapsign_settings || {},
     };
 
