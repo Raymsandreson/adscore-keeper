@@ -490,6 +490,12 @@ async function handleNewCommand(opts: {
   let skipConfirmation = matchedShortcut?.skip_confirmation === true;
   const partialMinFields: string[] = matchedShortcut?.partial_min_fields || [];
   const historyLimit: number = matchedShortcut?.history_limit ?? 50;
+  const initialSplitOpts = matchedShortcut?.split_messages
+    ? {
+        splitMessages: true,
+        splitDelaySeconds: matchedShortcut?.split_delay_seconds || 3,
+      }
+    : undefined;
 
   // Apply history_limit — if 0, ignore all history
   if (historyLimit === 0) {
@@ -1214,7 +1220,7 @@ Se não encontrou nada, retorne: []`;
           // and go straight to data collection, just mentioning optional docs
           if (requiredDocs.length === 0 && optionalDocs.length > 0) {
             // Mark all optional doc types as skipped
-            const skipDocs = requestedTypes.map((t: string) => ({
+            const skipDocs = documentTypes.map((t: string) => ({
               type: t,
               media_url: null,
               via: "skipped_optional",
@@ -1236,7 +1242,7 @@ Se não encontrou nada, retorne: []`;
             if (inst?.instance_token) {
               await sendWhatsApp(
                 supabase, inst, normalizedPhone, instance_name,
-                optMsg, contact_id, lead_id, "wjia_collect", splitOpts,
+                optMsg, contact_id, lead_id, "wjia_collect", initialSplitOpts,
               );
             }
             // Fall through to agent phase for data collection
@@ -1748,6 +1754,8 @@ async function handleFollowUp(opts: {
         currentFields,
         collectedData,
         catalog,
+        splitOpts,
+        zapsignSettings: zapsignSettingsReply,
       });
     } else if (session.status !== "collecting" && session.status !== "ready") {
       // Text during doc collection — remind
@@ -2359,6 +2367,8 @@ async function handleDocumentUpload(opts: {
   currentFields: any[];
   collectedData: any;
   catalog: TemplateFieldRef[];
+  splitOpts?: { splitMessages?: boolean; splitDelaySeconds?: number };
+  zapsignSettings?: any;
 }) {
   const {
     supabase,
@@ -2372,6 +2382,8 @@ async function handleDocumentUpload(opts: {
     currentFields,
     collectedData,
     catalog,
+    splitOpts,
+    zapsignSettings,
   } = opts;
 
   const pendingTypes = requestedTypes.filter((t) =>
@@ -2390,6 +2402,8 @@ async function handleDocumentUpload(opts: {
       currentFields,
       collectedData,
       catalog,
+      splitOpts,
+      zapsignSettings,
     });
   }
 
@@ -2531,6 +2545,8 @@ async function handleDocumentUpload(opts: {
     currentFields,
     collectedData,
     catalog,
+    splitOpts,
+    zapsignSettings,
   });
 }
 
@@ -2544,6 +2560,8 @@ async function runDocExtraction(opts: {
   currentFields: any[];
   collectedData: any;
   catalog: TemplateFieldRef[];
+  splitOpts?: { splitMessages?: boolean; splitDelaySeconds?: number };
+  zapsignSettings?: any;
 }) {
   const {
     supabase,
@@ -2555,6 +2573,8 @@ async function runDocExtraction(opts: {
     currentFields,
     collectedData,
     catalog,
+    splitOpts,
+    zapsignSettings,
   } = opts;
 
   let customPrompt: string | null = null;
@@ -2580,7 +2600,7 @@ async function runDocExtraction(opts: {
   if (signerName) collectedData.signer_name = signerName;
   syncNameFields(currentFields);
   applyDefaults(currentFields);
-  applyConfiguredPredefinedFields(currentFields, catalog, zapsignSettingsReply);
+  applyConfiguredPredefinedFields(currentFields, catalog, zapsignSettings);
   autoFillDates(currentFields, catalog);
   autoSyncCityState(currentFields, catalog);
 

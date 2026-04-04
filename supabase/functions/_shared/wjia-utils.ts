@@ -310,6 +310,8 @@ export function applyConfiguredPredefinedFields(
 
     const value = resolvePredefinedFieldValue(entry);
     if (!hasFieldValue(value)) continue;
+    const safeValue = String(value).trim();
+    if (!safeValue) continue;
 
     const existing = fields.find((field: any) =>
       normalizeFieldKey(field?.de || "") === targetField.normalized
@@ -317,7 +319,7 @@ export function applyConfiguredPredefinedFields(
 
     if (existing && hasFieldValue(existing.para)) continue;
 
-    upsertCollectedField(fields, targetField.variable, value);
+    upsertCollectedField(fields, targetField.variable, safeValue);
     applied.add(targetField.normalized);
   }
 
