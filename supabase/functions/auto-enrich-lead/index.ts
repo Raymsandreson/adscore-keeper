@@ -237,19 +237,21 @@ REGRAS:
       // Auto-update lead status if AI detected a terminal state
       // IMPORTANT: Only proceed if reason is provided (prevents false positives)
       if (cleaned.lead_status && ['closed', 'refused', 'unviable'].includes(cleaned.lead_status) && cleaned.lead_status_reason) {
-        const { data: currentLead } = await supabase
+        const { data: currentLead, error: leadCheckErr } = await supabase
           .from('leads')
-          .select('lead_status, became_client_date, classification_date, inviavel_date')
+          .select('lead_status')
           .eq('id', lead_id)
           .single()
 
-        const currentStatus = currentLead?.became_client_date ? 'closed' 
-          : currentLead?.inviavel_date ? 'unviable' 
-          : currentLead?.classification_date ? 'refused' 
-          : 'active'
+        if (leadCheckErr) {
+          console.error('[auto-enrich] Lead status check error:', leadCheckErr)
+        }
 
-        // Only update if currently active AND lead_status field confirms active
-        if (currentStatus === 'active' && (!currentLead?.lead_status || currentLead.lead_status === 'active')) {
+        const currentStatus = currentLead?.lead_status || 'active'
+        console.log(`[auto-enrich] Lead ${lead_id} current status: ${currentStatus}, AI detected: ${cleaned.lead_status}`)
+
+        // Only update if currently active
+        if (currentStatus === 'active') {
           const statusMap: Record<string, string> = {
             'closed': 'became_client_date',
             'refused': 'classification_date',
