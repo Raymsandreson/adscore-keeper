@@ -279,12 +279,22 @@ export function applyDefaults(fields: any[]) {
 
 function resolvePredefinedFieldValue(
   entry: { mode?: string; value?: string },
+  context?: { phone?: string },
 ): string | null {
   switch (entry?.mode) {
     case "today":
       return new Date().toLocaleDateString("pt-BR");
     case "brazilian_nationality":
       return "Brasileiro(a)";
+    case "client_phone": {
+      const p = context?.phone || entry?.value || "";
+      if (!p) return null;
+      // Format as (XX) XXXXX-XXXX if 12-13 digits
+      const digits = p.replace(/\D/g, "");
+      if (digits.length === 13) return `(${digits.slice(2,4)}) ${digits.slice(4,9)}-${digits.slice(9)}`;
+      if (digits.length === 12) return `(${digits.slice(2,4)}) ${digits.slice(4,8)}-${digits.slice(8)}`;
+      return p;
+    }
     case "fixed_value":
     default:
       return hasFieldValue(entry?.value) ? String(entry.value).trim() : null;
