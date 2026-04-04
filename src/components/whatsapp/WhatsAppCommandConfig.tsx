@@ -50,6 +50,7 @@ interface Shortcut {
   split_messages: boolean;
   split_delay_seconds: number;
   human_reply_pause_minutes: number;
+  skip_confirmation: boolean;
   command_scope: string;
   reply_with_audio: boolean;
   reply_voice_id: string | null;
