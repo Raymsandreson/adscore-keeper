@@ -804,7 +804,7 @@ export async function generateZapSignDocument(
         comprovante_endereco: "Comprovante_Endereco",
         comprovante_renda: "Comprovante_Renda",
       };
-      await fetch(`${ZAPSIGN_API_URL}/docs/${docData.token}/add-extra-doc/`, {
+      await fetch(`${ZAPSIGN_API_URL}/docs/${docData.token}/upload-extra-doc/`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${zapsignToken}`,
