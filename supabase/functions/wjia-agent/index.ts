@@ -481,7 +481,8 @@ async function handleNewCommand(opts: {
   const shortcutModel = matchedShortcut?.model || "google/gemini-2.5-flash";
   const shortcutTemperature = matchedShortcut?.temperature ?? 0.1;
   const shortcutBasePrompt = matchedShortcut?.base_prompt || "";
-  let skipConfirmation = matchedShortcut?.skip_confirmation === true; // default false — wait for client confirmation
+  let skipConfirmation = matchedShortcut?.skip_confirmation === true;
+  const partialMinFields: string[] = matchedShortcut?.partial_min_fields || [];
 
   // For assistant-only mode, just respond with AI
   if (assistantType === "assistant") {
