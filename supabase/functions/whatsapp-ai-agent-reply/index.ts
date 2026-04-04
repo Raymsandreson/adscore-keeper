@@ -204,7 +204,7 @@ serve(async (req) => {
             const cls = (contact as any).contact_leads || [];
             for (const cl of cls) {
               const lead = cl.leads;
-              if (lead?.lead_status && ['closed', 'refused', 'unviable'].includes(lead.lead_status)) {
+              if (lead?.lead_status && ['closed', 'refused', 'inviavel'].includes(lead.lead_status)) {
                 leadStatusToCheck = lead.lead_status;
                 foundLeadId = lead.id;
                 foundLeadBoardId = lead.board_id || null;
