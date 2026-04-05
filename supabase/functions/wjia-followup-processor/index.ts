@@ -167,6 +167,25 @@ serve(async (req) => {
               actionResult = "error";
             }
           } else if (inst?.instance_token) {
+            // Check if document was already signed before sending reminder
+            if (session.doc_token) {
+              const { data: docRecord } = await supabase
+                .from("zapsign_documents")
+                .select("status, signer_status")
+                .eq("doc_token", session.doc_token)
+                .maybeSingle();
+
+              const docStatus = docRecord?.status?.toLowerCase() || "";
+              const signerStatus = docRecord?.signer_status?.toLowerCase() || "";
+              const alreadySigned = docStatus === "signed" || signerStatus === "signed";
+
+              if (alreadySigned) {
+                console.log(`[DOC] Skipping followup for session ${session.id} - document already signed`);
+                await supabase.from("wjia_collection_sessions").update({ status: "signed" }).eq("id", session.id);
+                continue;
+              }
+            }
+
             const baseUrl = inst.base_url || "https://abraci.uazapi.com";
             const collectedData = session.collected_data || {};
             const signerName = collectedData.signer_name || "Cliente";
