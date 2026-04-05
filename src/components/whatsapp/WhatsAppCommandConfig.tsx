@@ -1615,7 +1615,7 @@ ${form.prompt_instructions ? `INSTRUÇÕES ESPECÍFICAS:\n${form.prompt_instruct
       case 'today': return `data de hoje (${today})`;
       case 'brazilian_nationality': return '"Brasileira" / "Brasileiro"';
       case 'client_phone': return 'telefone do cliente (WhatsApp)';
-      case 'fixed': return pf.value ? `"${pf.value}"` : '(valor fixo não definido ⚠️)';
+      case 'fixed_value': return pf.value ? `"${pf.value}"` : '(valor fixo não definido ⚠️)';
       default: return `[${pf.mode}]`;
     }
   };
