@@ -691,7 +691,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     onClick={() => setSuperPromptPreviewOpen(true)}
                   >
                     <Eye className="h-3.5 w-3.5" />
-                    👁 Ver Super Prompt Completo
+                    🔍 Diagnóstico do Agente
                   </Button>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
