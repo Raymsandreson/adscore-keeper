@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
 import { Loader2, Calendar, Clock, Video, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, addDays, startOfDay, isSameDay, isAfter, setHours, setMinutes, addMinutes, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
