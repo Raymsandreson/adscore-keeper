@@ -1596,8 +1596,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   );
 }
 
-
-  form: ShortcutFormState,
   templateFields: { key: string; label: string; required: boolean }[],
   predefinedFields: PredefinedFieldConfig[]
 ): string {
