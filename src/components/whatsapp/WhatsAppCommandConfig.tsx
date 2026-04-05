@@ -951,8 +951,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     </div>
                     {form.template_token && (
                       <>
-                        {/* Gerar com dados parciais - usa campos do template */}
-                        <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
+                        {/* Gerar com dados parciais - só aparece no modo prefilled_form */}
+                        {(form as any).zapsign_mode === 'prefilled_form' && <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
                           <div className="flex items-center justify-between">
                             <div>
                               <Label className="text-xs font-semibold">⚡ Gerar com dados parciais</Label>
