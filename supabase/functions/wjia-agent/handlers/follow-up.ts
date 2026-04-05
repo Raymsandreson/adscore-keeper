@@ -681,8 +681,16 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
   }).eq("id", session.id);
 
   if (result.reply_to_client) {
-    await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
-      result.reply_to_client, session.contact_id, session.lead_id, "wjia_collect", splitOpts);
+    // Send as audio if shortcut has reply_with_audio AND contact sent audio
+    const shouldReplyAudio = replyWithAudio && message_type === "audio" && replyVoiceId;
+    if (shouldReplyAudio) {
+      const resolvedVoice = await resolveVoiceId(supabase, replyVoiceId, instance_name);
+      await sendWhatsAppAudio(supabase, inst, normalizedPhone, instance_name,
+        result.reply_to_client, resolvedVoice, session.contact_id, session.lead_id, "wjia_collect");
+    } else {
+      await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
+        result.reply_to_client, session.contact_id, session.lead_id, "wjia_collect", splitOpts);
+    }
   }
 
   return jsonResponse({
