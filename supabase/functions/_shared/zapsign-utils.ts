@@ -173,8 +173,7 @@ export function filterOnlyAutoFilledData(
 
 /**
  * Returns all fields that have a non-empty value.
- * Since ZapSign forms are editable (signer_has_incomplete_fields: true),
- * the client can review and correct any pre-filled data.
+ * All data is sent as final — ZapSign generates the document directly for signature.
  */
 export function filterAllFilledData(allFields: any[]): any[] {
   return allFields.filter((f: any) => {
@@ -278,7 +277,6 @@ export async function generateZapSignDocument(
     ...(phoneCountry && { signer_phone_country: phoneCountry }),
     ...(phoneNumber && { signer_phone_number: phoneNumber }),
     data: autoFilledDataUtil.length > 0 ? autoFilledDataUtil : [{ de: "{{_}}", para: " " }],
-    signer_has_incomplete_fields: true,
   };
 
   applyZapSignSettings(createBody, zSettingsUtil, {
