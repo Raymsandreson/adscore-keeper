@@ -144,7 +144,7 @@ serve(async (req) => {
 
         if (timeSince < delayMs) continue;
 
-        console.log(`[DOC] Executing step ${effectiveStepIndex} for session ${session.id}: ${step.action_type}`);
+        console.log(`[DOC] Executing step ${effectiveStepIndex} (${session.status}) for session ${session.id}: ${step.action_type}`);
         let actionResult = "executed";
 
         const { data: inst } = await supabase
