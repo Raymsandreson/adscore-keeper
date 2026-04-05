@@ -110,6 +110,7 @@ export async function handleNewCommand(opts: {
   const shortcutTemperature = matchedShortcut?.temperature ?? 0.1;
   const shortcutBasePrompt = matchedShortcut?.base_prompt || "";
   const zapsignSettings = matchedShortcut?.zapsign_settings || null;
+  const zapsignMode: string = matchedShortcut?.zapsign_mode || "final_document";
   let skipConfirmation = matchedShortcut?.skip_confirmation === true;
   const partialMinFields: string[] = matchedShortcut?.partial_min_fields || [];
   const historyLimit: number = matchedShortcut?.history_limit ?? 50;
