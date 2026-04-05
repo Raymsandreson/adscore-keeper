@@ -70,7 +70,7 @@ export async function handleNewCommand(opts: {
         }).then((r) => r.ok ? r.json() : []).catch(() => [])
         : Promise.resolve([]),
       instance_name
-        ? supabase.from("whatsapp_instances").select("instance_token, base_url")
+        ? supabase.from("whatsapp_instances").select("instance_token, base_url, owner_name")
           .eq("instance_name", instance_name).maybeSingle()
         : Promise.resolve({ data: null }),
       supabase.from("wjia_command_shortcuts").select("*").eq("is_active", true)
