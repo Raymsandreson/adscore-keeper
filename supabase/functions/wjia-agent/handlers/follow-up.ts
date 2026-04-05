@@ -723,8 +723,10 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
   if (result.reply_to_client) {
     // Send as audio if shortcut has reply_with_audio AND contact sent audio
     const shouldReplyAudio = replyWithAudio && isInboundAudio;
+    console.log(`WJIA audio decision: replyWithAudio=${replyWithAudio}, isInboundAudio=${isInboundAudio}, message_type=${message_type}, shouldReplyAudio=${shouldReplyAudio}, voiceId=${resolvedReplyVoiceId}`);
     if (shouldReplyAudio) {
       const resolvedVoice = await resolveVoiceId(supabase, resolvedReplyVoiceId, instance_name);
+      console.log(`WJIA sending audio reply with voice: ${resolvedVoice}`);
       await sendWhatsAppAudio(supabase, inst, normalizedPhone, instance_name,
         result.reply_to_client, resolvedVoice, session.contact_id, session.lead_id, "wjia_collect");
     } else {
