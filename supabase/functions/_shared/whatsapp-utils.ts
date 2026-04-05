@@ -133,10 +133,16 @@ export async function sendWhatsAppAudio(
   const chunks = splitTextForTTS(cleanText, maxChars);
   console.log(`WJIA TTS: ${cleanText.length} chars → ${chunks.length} chunk(s), voice=${voiceId}`);
 
-  try {
+    // Check credits before calling TTS
+    const credits = await checkElevenLabsCredits(ELEVENLABS_API_KEY);
+    if (!credits.has_credits) {
+      console.warn(`sendWhatsAppAudio: ElevenLabs sem créditos (${credits.character_count}/${credits.character_limit}), fallback texto`);
+      return sendWhatsApp(supabase, inst, phone, instanceName, text, contactId, leadId, msgIdPrefix);
+    }
+
     for (let ci = 0; ci < chunks.length; ci++) {
       const chunk = chunks[ci];
-      const ttsResp = await fetch(
+      const ttsResp = await fetchWithRetry(
         `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
         {
           method: "POST",
@@ -152,11 +158,14 @@ export async function sendWhatsAppAudio(
             ...(ci < chunks.length - 1 ? { next_text: chunks[ci + 1].slice(0, 200) } : {}),
           }),
         },
+        2, // maxRetries
+        1500,
       );
 
       if (!ttsResp.ok) {
-        console.error(`WJIA TTS error chunk ${ci + 1}:`, ttsResp.status, await ttsResp.text());
-        throw new Error("TTS failed");
+        const errBody = await ttsResp.text();
+        console.error(`WJIA TTS error chunk ${ci + 1}:`, ttsResp.status, errBody);
+        throw new Error(`TTS failed: ${ttsResp.status}`);
       }
 
       const audioBuffer = await ttsResp.arrayBuffer();
