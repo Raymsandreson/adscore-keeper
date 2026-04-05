@@ -593,42 +593,8 @@ Se não encontrou nada, retorne: []`;
         session.status = "ready";
       }
     } else if (filledCount > 0) {
-      // Found some data but still missing
-      if (inst?.instance_token) {
-        const FRIENDLY_LABELS: Record<string, string> = {
-          "NOME_COMPLETO": "Nome completo", "NACIONALIDADE": "Nacionalidade",
-          "ESTADO_CIVIL": "Estado civil", "PROFISSAO": "Profissão",
-          "CPF": "CPF", "RG": "RG", "ENDERECO_COMPLETO": "Endereço completo",
-          "CIDADE": "Cidade", "UF": "Estado (UF)", "CEP": "CEP",
-          "DATA_NASCIMENTO": "Data de nascimento", "NOME_MAE": "Nome da mãe",
-          "EMAIL": "E-mail", "TELEFONE": "Telefone", "BAIRRO": "Bairro",
-          "NUMERO": "Número", "COMPLEMENTO": "Complemento",
-          "NOME": "Nome completo", "NOME_CLIENTE": "Nome completo",
-          "CPF_CLIENTE": "CPF", "RG_CLIENTE": "RG",
-          "NACIONALIDADE_CLIENTE": "Nacionalidade",
-          "ESTADO_CIVIL_CLIENTE": "Estado civil",
-          "PROFISSAO_CLIENTE": "Profissão", "EMAIL_CLIENTE": "E-mail",
-          "ENDERECO_RUA": "Rua", "ENDERECO_NUMERO": "Número",
-          "ENDERECO_BAIRRO": "Bairro", "ENDERECO_CIDADE": "Cidade",
-          "ENDERECO_ESTADO": "Estado", "ENDERECO_CEP": "CEP",
-          "ENDERECO_CLIENTE_RUA": "Rua", "ENDERECO_CLIENTE_NUMERO": "Número",
-          "ENDERECO_CLIENTE_BAIRRO": "Bairro",
-          "ENDERECO_CLIENTE_CIDADE": "Cidade",
-          "ENDERECO_CLIENTE_ESTADO": "Estado", "ENDERECO_CLIENTE_CEP": "CEP",
-        };
-        const missingList = stillMissing.map((f: any) => {
-          const key = (f.friendly_name || f.field_name || "").replace(/[{}]/g, "");
-          return `• ${FRIENDLY_LABELS[key] || f.friendly_name || key}`;
-        }).join("\n");
-        const collectMsg = `📋 Encontrei ${filledCount} dados na nossa conversa!\n\nAinda preciso de:\n${missingList}\n\nPor favor, me informe esses dados ou envie fotos dos documentos. 🙏`;
-        await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
-          collectMsg, contact_id, lead_id, "wjia_collect");
-      }
-      return jsonResponse({
-        success: true, action: "collection_started",
-        message: `🔄 *Dados extraídos do histórico*\nDocumento: *${parsed.template_name}*\n📊 Dados encontrados: ${filledCount}\n⚠️ Faltantes: ${stillMissing.length}`,
-        session_id: session.id, missing_count: stillMissing.length, auto_extracted: true,
-      });
+      // Found some data but still missing — DON'T announce count to client
+      // The initial message will be sent below via the prompt-based flow (line ~696)
     }
 
     // No data extracted
