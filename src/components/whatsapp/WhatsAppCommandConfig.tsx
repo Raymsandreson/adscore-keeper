@@ -1097,6 +1097,39 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                           )}
                         </div>
 
+                        {/* ZAPSIGN GENERATION MODE */}
+                        <div className="border rounded-lg p-3 space-y-2 bg-muted/20">
+                          <Label className="text-xs font-semibold">📄 Modo de Geração do Documento</Label>
+                          <p className="text-[10px] text-muted-foreground">
+                            Define como o documento será entregue ao cliente para assinatura.
+                          </p>
+                          <Select
+                            value={(form as any).zapsign_mode || 'final_document'}
+                            onValueChange={(v) => setForm(f => ({ ...f, zapsign_mode: v as any }))}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="final_document">
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-medium">📝 Documento final (só assinar)</span>
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="prefilled_form">
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-medium">📋 Formulário pré-preenchido</span>
+                                </div>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-[10px] text-muted-foreground italic">
+                            {(form as any).zapsign_mode === 'prefilled_form'
+                              ? '⚡ Campos automáticos (data, nacionalidade, telefone) serão preenchidos. Os demais ficam para o cliente preencher no formulário do ZapSign.'
+                              : '✅ Todos os dados são coletados e confirmados via WhatsApp. O cliente recebe o documento pronto, apenas assina.'}
+                          </p>
+                        </div>
+
                         {/* ZAPSIGN ADVANCED SETTINGS */}
                         <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
                           <Label className="text-xs font-semibold">⚙️ Configurações Avançadas ZapSign</Label>
