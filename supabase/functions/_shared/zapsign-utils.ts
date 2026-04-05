@@ -161,14 +161,26 @@ export async function updateSignerSettings(
 // AUTO-FILL DATA FILTERING
 // ============================================================
 
+/**
+ * @deprecated Use filterAllFilledData instead — now we send ALL collected fields to ZapSign
+ */
 export function filterOnlyAutoFilledData(
   allFields: any[],
   autoFilledKeys: Set<string>,
 ): any[] {
+  return filterAllFilledData(allFields);
+}
+
+/**
+ * Returns all fields that have a non-empty value.
+ * Since ZapSign forms are editable (signer_has_incomplete_fields: true),
+ * the client can review and correct any pre-filled data.
+ */
+export function filterAllFilledData(allFields: any[]): any[] {
   return allFields.filter((f: any) => {
-    if (!f?.de || !f?.para || !f.para.trim() || f.para === " ") return false;
-    const key = normalizeFieldKey(f.de);
-    return autoFilledKeys.has(key);
+    if (!f?.de || !f?.para) return false;
+    const val = String(f.para).trim();
+    return val.length > 0 && val !== " ";
   });
 }
 
@@ -247,8 +259,8 @@ export async function generateZapSignDocument(
   const syncKeysUtil = autoSyncCityState(fields, sessionCatalog);
   const autoKeysUtil = new Set([...predefinedKeysUtil, ...dateKeysUtil, ...syncKeysUtil]);
 
-  // Only send auto-filled fields to ZapSign — client fills the rest in the form
-  const autoFilledDataUtil = filterOnlyAutoFilledData(fields, autoKeysUtil);
+  // Send ALL collected fields to ZapSign — client reviews in the editable form
+  const autoFilledDataUtil = filterAllFilledData(fields);
 
   const filledFields = fields.filter((f: any) =>
     f?.de && f?.para && f.para.trim() !== "" && f.para !== " "

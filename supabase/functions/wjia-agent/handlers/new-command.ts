@@ -785,7 +785,10 @@ async function generateImmediate(opts: {
   const forceEditable = partialMinFields.length > 0 && skipConfirmation;
   const shouldMarkIncomplete = hasIncompleteDocFields || forceEditable;
 
-  const autoFilledDataMain = filterOnlyAutoFilledData(fieldsData, autoKeysMain);
+  // Send ALL collected fields (AI + auto) to ZapSign — client reviews in editable form
+  const autoFilledDataMain = fieldsData.filter((f: any) =>
+    f?.de && f?.para && String(f.para).trim().length > 0 && f.para !== " "
+  );
   const cpfFieldMain = fieldsData.find((f: any) => /CPF/i.test(f.de));
 
   const createBody: any = {
