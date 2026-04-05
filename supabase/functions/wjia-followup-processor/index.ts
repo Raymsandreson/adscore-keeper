@@ -34,12 +34,12 @@ serve(async (req) => {
     let actionsExecuted = 0;
 
     // ============================================================
-    // PART 1: Document signing sessions (original logic)
+    // PART 1: Document signing sessions + collecting sessions
     // ============================================================
     let sessionsQuery = supabase
       .from("wjia_collection_sessions")
       .select("*")
-      .eq("status", "generated");
+      .in("status", ["generated", "collecting"]);
 
     if (targetSessionId) {
       sessionsQuery = sessionsQuery.eq("id", targetSessionId);
@@ -86,6 +86,37 @@ serve(async (req) => {
           }
         }
 
+        // For collecting sessions, check if the client responded after agent's last message
+        // If client responded, skip followup (agent should handle it)
+        if (session.status === "collecting") {
+          const { data: lastInbound } = await supabase
+            .from("whatsapp_messages")
+            .select("created_at")
+            .eq("phone", session.phone)
+            .eq("instance_name", session.instance_name)
+            .eq("direction", "inbound")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const { data: lastOutbound } = await supabase
+            .from("whatsapp_messages")
+            .select("created_at")
+            .eq("phone", session.phone)
+            .eq("instance_name", session.instance_name)
+            .eq("direction", "outbound")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          // If client's last message is newer than our last message, skip (agent will respond)
+          if (lastInbound && lastOutbound && new Date(lastInbound.created_at) > new Date(lastOutbound.created_at)) {
+            continue;
+          }
+          // If no outbound at all, skip
+          if (!lastOutbound) continue;
+        }
+
         const { data: lastLog } = await supabase
           .from("wjia_followup_log")
           .select("*")
@@ -104,8 +135,8 @@ serve(async (req) => {
         const effectiveStepIndex = nextStepIndex % steps.length;
         const step = steps[effectiveStepIndex];
         const delayMinutes = step.delay_minutes || 60;
-        // For call steps, enforce minimum 30 minutes delay
-        const effectiveDelayMinutes = step.action_type === "call" ? Math.max(delayMinutes, 30) : delayMinutes;
+        // For call steps, enforce minimum delay only if not explicitly set to lower
+        const effectiveDelayMinutes = step.action_type === "call" ? Math.max(delayMinutes, 1) : delayMinutes;
 
         const referenceTime = lastLog?.executed_at || session.updated_at;
         const timeSince = Date.now() - new Date(referenceTime).getTime();
@@ -113,7 +144,7 @@ serve(async (req) => {
 
         if (timeSince < delayMs) continue;
 
-        console.log(`[DOC] Executing step ${effectiveStepIndex} for session ${session.id}: ${step.action_type}`);
+        console.log(`[DOC] Executing step ${effectiveStepIndex} (${session.status}) for session ${session.id}: ${step.action_type}`);
         let actionResult = "executed";
 
         const { data: inst } = await supabase
@@ -123,7 +154,19 @@ serve(async (req) => {
           .maybeSingle();
 
         if (step.action_type === "whatsapp_message") {
-          if (inst?.instance_token) {
+          if (session.status === "collecting") {
+            // For collecting sessions, trigger AI agent reply to continue conversation
+            try {
+              const aiResult = await callAgentReply(supabase, session.phone, session.instance_name);
+              if (!aiResult.success) {
+                console.error(`[DOC] AI followup failed for collecting session ${session.id}`);
+                actionResult = "error";
+              }
+            } catch (e) {
+              console.error(`[DOC] AI followup error for collecting session ${session.id}:`, e);
+              actionResult = "error";
+            }
+          } else if (inst?.instance_token) {
             const baseUrl = inst.base_url || "https://abraci.uazapi.com";
             const collectedData = session.collected_data || {};
             const signerName = collectedData.signer_name || "Cliente";
