@@ -220,14 +220,14 @@ export async function resolveVoiceId(
 ): Promise<string> {
   const FALLBACK_VOICE = "FGY2WhTYpPnrIDTdsKH5"; // Laura
 
-  if (voiceId === "instance_owner") {
+  if (!voiceId || voiceId === "instance_owner") {
     const { data: inst } = await supabase
       .from("whatsapp_instances")
       .select("voice_id")
       .eq("instance_name", instanceName)
       .maybeSingle();
     const resolved = inst?.voice_id || FALLBACK_VOICE;
-    console.log(`Resolved instance_owner voice to: ${resolved}`);
+    console.log(`Resolved instance voice to: ${resolved}`);
     return resolved;
   }
 

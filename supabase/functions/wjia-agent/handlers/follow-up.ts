@@ -340,6 +340,8 @@ async function runAgentPhase(opts: {
     agentPersona, shortcutPromptInstructions, splitOpts,
     skipConfirmation, zapsignSettingsReply, zapsignToken,
     replyWithAudio, replyVoiceId, message_type } = opts;
+  const isInboundAudio = message_type === "audio" || message_type === "ptt";
+  const resolvedReplyVoiceId = replyVoiceId || "instance_owner";
 
   // Pre-process auto-fills
   const autoFilledKeys = autoFillDates(currentFields, catalog);
@@ -611,9 +613,9 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
 
     // Send confirmation reply as audio if configured
     if (result.reply_to_client) {
-      const shouldConfirmAudio = replyWithAudio && message_type === "audio" && replyVoiceId;
+      const shouldConfirmAudio = replyWithAudio && isInboundAudio;
       if (shouldConfirmAudio) {
-        const resolvedVoice = await resolveVoiceId(supabase, replyVoiceId, instance_name);
+        const resolvedVoice = await resolveVoiceId(supabase, resolvedReplyVoiceId, instance_name);
         await sendWhatsAppAudio(supabase, inst, normalizedPhone, instance_name,
           result.reply_to_client, resolvedVoice, session.contact_id, session.lead_id, "wjia_confirm");
       } else {
@@ -654,9 +656,9 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
       const summaryMsg = `✅ *Dados completos!*\n\n${summaryLines}${docsSection}\n\nConferindo os dados e gerando o documento *${session.template_name}*... Aguarde! 📄`;
       
       // Send summary as audio if configured
-      const shouldSendSummaryAudio = replyWithAudio && message_type === "audio" && replyVoiceId;
+      const shouldSendSummaryAudio = replyWithAudio && isInboundAudio;
       if (shouldSendSummaryAudio) {
-        const resolvedVoice = await resolveVoiceId(supabase, replyVoiceId, instance_name);
+        const resolvedVoice = await resolveVoiceId(supabase, resolvedReplyVoiceId, instance_name);
         await sendWhatsAppAudio(supabase, inst, normalizedPhone, instance_name,
           summaryMsg, resolvedVoice, session.contact_id, session.lead_id, "wjia_autoconfirm");
       } else {
@@ -697,9 +699,9 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
     }).eq("id", session.id);
 
     // Send summary as audio if configured
-    const shouldSummaryAudio = replyWithAudio && message_type === "audio" && replyVoiceId;
+    const shouldSummaryAudio = replyWithAudio && isInboundAudio;
     if (shouldSummaryAudio) {
-      const resolvedVoice = await resolveVoiceId(supabase, replyVoiceId, instance_name);
+      const resolvedVoice = await resolveVoiceId(supabase, resolvedReplyVoiceId, instance_name);
       await sendWhatsAppAudio(supabase, inst, normalizedPhone, instance_name,
         replyMsg, resolvedVoice, session.contact_id, session.lead_id, "wjia_summary");
     } else {
@@ -720,9 +722,9 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
 
   if (result.reply_to_client) {
     // Send as audio if shortcut has reply_with_audio AND contact sent audio
-    const shouldReplyAudio = replyWithAudio && message_type === "audio" && replyVoiceId;
+    const shouldReplyAudio = replyWithAudio && isInboundAudio;
     if (shouldReplyAudio) {
-      const resolvedVoice = await resolveVoiceId(supabase, replyVoiceId, instance_name);
+      const resolvedVoice = await resolveVoiceId(supabase, resolvedReplyVoiceId, instance_name);
       await sendWhatsAppAudio(supabase, inst, normalizedPhone, instance_name,
         result.reply_to_client, resolvedVoice, session.contact_id, session.lead_id, "wjia_collect");
     } else {
