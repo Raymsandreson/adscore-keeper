@@ -608,7 +608,8 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
     }).eq("id", session.id);
 
     session.received_documents = receivedDocs;
-    const signerName = collectedData.signer_name || "Cliente";
+    const nomeFieldConfirm = currentFields.find((f: any) => /NOME.?COMPLETO/i.test(f.de));
+    const signerName = nomeFieldConfirm?.para?.trim() || collectedData.signer_name || "Cliente";
     const signerPhone = collectedData.signer_phone || normalizedPhone;
     const docData = await generateZapSignDocument(
       supabase, session, currentFields, signerName, signerPhone,
@@ -637,7 +638,8 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
         confirmMsg, session.contact_id, session.lead_id, "wjia_autoconfirm", splitOpts);
 
       session.received_documents = receivedDocs;
-      const signerName = collectedData.signer_name || "Cliente";
+      const nomeFieldAuto = currentFields.find((f: any) => /NOME.?COMPLETO/i.test(f.de));
+      const signerName = nomeFieldAuto?.para?.trim() || collectedData.signer_name || "Cliente";
       const signerPhone = collectedData.signer_phone || normalizedPhone;
       const docData = await generateZapSignDocument(
         supabase, session, currentFields, signerName, signerPhone,

@@ -278,7 +278,6 @@ export async function generateZapSignDocument(
     ...(phoneCountry && { signer_phone_country: phoneCountry }),
     ...(phoneNumber && { signer_phone_number: phoneNumber }),
     data: autoFilledDataUtil.length > 0 ? autoFilledDataUtil : [{ de: "{{_}}", para: " " }],
-    signer_has_incomplete_fields: true,
   };
 
   applyZapSignSettings(createBody, zSettingsUtil, {

@@ -141,7 +141,7 @@ export async function handleRegenerate(payload: {
   const syncKeysRegen = autoSyncCityState(fieldsData, regenerationCatalog);
   const autoKeysRegen = new Set([...predefinedKeysRegen, ...dateKeysRegen, ...syncKeysRegen]);
 
-  // Send ALL collected fields (AI + auto) to ZapSign — client reviews in editable form
+  // Send ALL collected fields to ZapSign as final document (no editable form)
   const autoFilledData = fieldsData.filter((f: any) =>
     f?.de && f?.para && String(f.para).trim().length > 0 && f.para !== " "
   );
@@ -156,7 +156,6 @@ export async function handleRegenerate(payload: {
     signer_phone_country: phoneCountry,
     signer_phone_number: phoneNumber,
     data: autoFilledData.length > 0 ? autoFilledData : [{ de: "{{_}}", para: " " }],
-    signer_has_incomplete_fields: true,
   };
 
   applyZapSignSettings(createBody, zSettings, {

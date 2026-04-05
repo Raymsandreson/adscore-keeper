@@ -788,7 +788,7 @@ async function generateImmediate(opts: {
   const forceEditable = partialMinFields.length > 0 && skipConfirmation;
   const shouldMarkIncomplete = hasIncompleteDocFields || forceEditable;
 
-  // Send ALL collected fields (AI + auto) to ZapSign — client reviews in editable form
+  // Send ALL collected fields to ZapSign as final document (no editable form)
   const autoFilledDataMain = fieldsData.filter((f: any) =>
     f?.de && f?.para && String(f.para).trim().length > 0 && f.para !== " "
   );
@@ -800,7 +800,6 @@ async function generateImmediate(opts: {
     ...(docPhoneCountry && { signer_phone_country: docPhoneCountry }),
     ...(docPhoneNumber && { signer_phone_number: docPhoneNumber }),
     data: autoFilledDataMain.length > 0 ? autoFilledDataMain : [{ de: "{{_}}", para: " " }],
-    signer_has_incomplete_fields: true,
   };
 
   applyZapSignSettings(createBody, zapsignSettings, {
