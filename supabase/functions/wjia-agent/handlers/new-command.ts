@@ -338,7 +338,9 @@ REGRAS:
   const missingFields = parsed.missing_fields || [];
   const trustedCrmSignerName = allowCrmPrefill ? (contactData.full_name || leadData.victim_name || "") : "";
   const trustedCrmSignerPhone = allowCrmPrefill ? (contactData.phone || "") : "";
-  let signerName = parsed.signer_name || trustedCrmSignerName || "Cliente";
+  // Extract signer name from NOME COMPLETO field if AI didn't return it explicitly
+  const nomeCompletoField = fieldsData.find((f: any) => /NOME.?COMPLETO/i.test(f.de));
+  let signerName = parsed.signer_name || nomeCompletoField?.para?.trim() || trustedCrmSignerName || "Cliente";
   const signerPhone = parsed.signer_phone || trustedCrmSignerPhone || normalizedPhone;
 
   applyDefaults(fieldsData);
