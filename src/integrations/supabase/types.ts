@@ -8406,6 +8406,7 @@ export type Database = {
           template_name: string | null
           template_token: string | null
           updated_at: string | null
+          zapsign_mode: string
           zapsign_settings: Json | null
         }
         Insert: {
@@ -8454,6 +8455,7 @@ export type Database = {
           template_name?: string | null
           template_token?: string | null
           updated_at?: string | null
+          zapsign_mode?: string
           zapsign_settings?: Json | null
         }
         Update: {
@@ -8502,6 +8504,7 @@ export type Database = {
           template_name?: string | null
           template_token?: string | null
           updated_at?: string | null
+          zapsign_mode?: string
           zapsign_settings?: Json | null
         }
         Relationships: []

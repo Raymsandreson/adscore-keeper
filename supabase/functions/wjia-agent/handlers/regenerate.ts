@@ -15,6 +15,7 @@ import {
   buildTemplateFieldCatalog,
   convertImageToPdf,
   filterOnlyAutoFilledData,
+  normalizeFieldKey,
   sendWhatsApp,
   updateSignerSettings,
   ZAPSIGN_API_URL,
@@ -128,10 +129,12 @@ export async function handleRegenerate(payload: {
 
   // Load ZapSign settings from shortcut
   let zSettings: any = null;
+  let zapsignModeRegen: string = "final_document";
   if (session.shortcut_name) {
     const { data: sc } = await supabase.from("wjia_command_shortcuts")
-      .select("zapsign_settings").eq("shortcut_name", session.shortcut_name).maybeSingle();
+      .select("zapsign_settings, zapsign_mode").eq("shortcut_name", session.shortcut_name).maybeSingle();
     zSettings = sc?.zapsign_settings || null;
+    zapsignModeRegen = (sc as any)?.zapsign_mode || "final_document";
   }
 
   const regenerationCatalog = buildTemplateFieldCatalog(session);
@@ -141,10 +144,11 @@ export async function handleRegenerate(payload: {
   const syncKeysRegen = autoSyncCityState(fieldsData, regenerationCatalog);
   const autoKeysRegen = new Set([...predefinedKeysRegen, ...dateKeysRegen, ...syncKeysRegen]);
 
-  // Send ALL collected fields to ZapSign as final document (no editable form)
-  const autoFilledData = fieldsData.filter((f: any) =>
-    f?.de && f?.para && String(f.para).trim().length > 0 && f.para !== " "
-  );
+  // Apply zapsign_mode: 'prefilled_form' sends only auto fields; 'final_document' sends all
+  const isPrefilledFormRegen = zapsignModeRegen === "prefilled_form";
+  const dataToSend = isPrefilledFormRegen
+    ? fieldsData.filter((f: any) => f?.de && f?.para && String(f.para).trim().length > 0 && f.para !== " " && autoKeysRegen.has(normalizeFieldKey(f.de)))
+    : fieldsData.filter((f: any) => f?.de && f?.para && String(f.para).trim().length > 0 && f.para !== " ");
 
   const cpfField = fieldsData.find((f: any) => /CPF/i.test(f.de));
   const receivedDocs = Array.isArray(session.received_documents) ? session.received_documents : [];
@@ -155,7 +159,8 @@ export async function handleRegenerate(payload: {
     signer_name: signerName,
     signer_phone_country: phoneCountry,
     signer_phone_number: phoneNumber,
-    data: autoFilledData.length > 0 ? autoFilledData : [{ de: "{{_}}", para: " " }],
+    data: dataToSend.length > 0 ? dataToSend : [{ de: "{{_}}", para: " " }],
+    ...(isPrefilledFormRegen && { signer_has_incomplete_fields: true }),
   };
 
   applyZapSignSettings(createBody, zSettings, {

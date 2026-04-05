@@ -238,13 +238,15 @@ export async function generateZapSignDocument(
 ) {
   applyDefaults(fields);
 
-  // Load ZapSign settings from shortcut if available
+  // Load ZapSign settings and mode from shortcut if available
   let zSettingsUtil: any = null;
+  let zapsignModeUtil: string = "final_document";
   if (session.shortcut_name) {
     const { data: scUtil } = await supabase.from("wjia_command_shortcuts")
-      .select("zapsign_settings").eq("shortcut_name", session.shortcut_name)
+      .select("zapsign_settings, zapsign_mode").eq("shortcut_name", session.shortcut_name)
       .maybeSingle();
     zSettingsUtil = scUtil?.zapsign_settings || null;
+    zapsignModeUtil = (scUtil as any)?.zapsign_mode || "final_document";
   }
 
   // Extract phone country code and number per ZapSign API spec
@@ -258,8 +260,11 @@ export async function generateZapSignDocument(
   const syncKeysUtil = autoSyncCityState(fields, sessionCatalog);
   const autoKeysUtil = new Set([...predefinedKeysUtil, ...dateKeysUtil, ...syncKeysUtil]);
 
-  // Send ALL collected fields to ZapSign — client reviews in the editable form
-  const autoFilledDataUtil = filterAllFilledData(fields);
+  // Apply zapsign_mode: 'prefilled_form' sends only auto fields; 'final_document' sends all
+  const isPrefilledFormUtil = zapsignModeUtil === "prefilled_form";
+  const dataToSendUtil = isPrefilledFormUtil
+    ? fields.filter((f: any) => f?.de && f?.para && String(f.para).trim().length > 0 && f.para !== " " && autoKeysUtil.has(normalizeFieldKey(f.de)))
+    : filterAllFilledData(fields);
 
   const filledFields = fields.filter((f: any) =>
     f?.de && f?.para && f.para.trim() !== "" && f.para !== " "
@@ -276,7 +281,8 @@ export async function generateZapSignDocument(
     signer_name: signerName,
     ...(phoneCountry && { signer_phone_country: phoneCountry }),
     ...(phoneNumber && { signer_phone_number: phoneNumber }),
-    data: autoFilledDataUtil.length > 0 ? autoFilledDataUtil : [{ de: "{{_}}", para: " " }],
+    data: dataToSendUtil.length > 0 ? dataToSendUtil : [{ de: "{{_}}", para: " " }],
+    ...(isPrefilledFormUtil && { signer_has_incomplete_fields: true }),
   };
 
   applyZapSignSettings(createBody, zSettingsUtil, {
