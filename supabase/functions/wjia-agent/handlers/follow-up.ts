@@ -194,12 +194,24 @@ export async function handleFollowUp(opts: {
     }
   }
 
+  // Load shortcut audio config
+  let replyWithAudio = false;
+  let replyVoiceId = "";
+  if (session.shortcut_name) {
+    const { data: scAudio } = await supabase.from("wjia_command_shortcuts")
+      .select("reply_with_audio, reply_voice_id")
+      .eq("shortcut_name", session.shortcut_name).maybeSingle();
+    replyWithAudio = scAudio?.reply_with_audio === true;
+    replyVoiceId = scAudio?.reply_voice_id || "";
+  }
+
   // ── UNIFIED AGENT PHASE ──
   return await runAgentPhase({
     supabase, session, inst, normalizedPhone, instance_name,
     message_text, currentFields, collectedData, catalog,
-    agentPersona, splitOpts, skipConfirmation,
-    zapsignSettingsReply, zapsignToken,
+    agentPersona, shortcutPromptInstructions, splitOpts, skipConfirmation,
+    zapsignSettingsReply, zapsignToken, replyWithAudio, replyVoiceId,
+    message_type,
   });
 }
 
