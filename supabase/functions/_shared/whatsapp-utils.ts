@@ -2,6 +2,8 @@
  * WhatsApp messaging utilities: send text, media, audio (TTS), split messages.
  */
 
+import { checkElevenLabsCredits, fetchWithRetry } from "./elevenlabs-utils.ts";
+
 import {
   resolveServiceRoleKey,
   resolveSupabaseUrl,

@@ -5,6 +5,7 @@
  */
 
 import { geminiChat } from "./gemini.ts";
+import { checkElevenLabsCredits, fetchWithRetry } from "./elevenlabs-utils.ts";
 
 const DEFAULT_STT_PROMPT =
   "Transcreva fielmente esta mensagem de voz em português brasileiro. " +
