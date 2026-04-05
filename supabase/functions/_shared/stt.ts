@@ -39,34 +39,45 @@ export async function transcribeAudio(
   // ── 1. Try ElevenLabs Scribe v2 ──
   const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
   if (ELEVENLABS_API_KEY) {
-    try {
-      const ext = audioMime.split("/")[1]?.split(";")[0] || "ogg";
-      const blob = new Blob([bytes], { type: audioMime });
-      const formData = new FormData();
-      formData.append("file", blob, `audio.${ext}`);
-      formData.append("model_id", "scribe_v2");
-      formData.append("language_code", "por");
-      formData.append("tag_audio_events", "false");
-      formData.append("diarize", "false");
+    // Check credits before calling STT
+    const credits = await checkElevenLabsCredits(ELEVENLABS_API_KEY);
+    if (!credits.has_credits) {
+      console.warn(`ElevenLabs STT: sem créditos (${credits.character_count}/${credits.character_limit}), fallback Gemini`);
+    } else {
+      try {
+        const ext = audioMime.split("/")[1]?.split(";")[0] || "ogg";
+        const blob = new Blob([bytes], { type: audioMime });
+        const formData = new FormData();
+        formData.append("file", blob, `audio.${ext}`);
+        formData.append("model_id", "scribe_v2");
+        formData.append("language_code", "por");
+        formData.append("tag_audio_events", "false");
+        formData.append("diarize", "false");
 
-      const res = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
-        method: "POST",
-        headers: { "xi-api-key": ELEVENLABS_API_KEY },
-        body: formData,
-      });
+        const res = await fetchWithRetry(
+          "https://api.elevenlabs.io/v1/speech-to-text",
+          {
+            method: "POST",
+            headers: { "xi-api-key": ELEVENLABS_API_KEY },
+            body: formData,
+          },
+          2,
+          1500,
+        );
 
-      if (res.ok) {
-        const data = await res.json();
-        const text = data.text?.trim();
-        if (text) {
-          console.log(`ElevenLabs STT OK (${text.length} chars): ${text.substring(0, 100)}`);
-          return text;
+        if (res.ok) {
+          const data = await res.json();
+          const text = data.text?.trim();
+          if (text) {
+            console.log(`ElevenLabs STT OK (${text.length} chars): ${text.substring(0, 100)}`);
+            return text;
+          }
+        } else {
+          console.error(`ElevenLabs STT error: ${res.status} ${await res.text()}`);
         }
-      } else {
-        console.error(`ElevenLabs STT error: ${res.status} ${await res.text()}`);
+      } catch (e) {
+        console.error("ElevenLabs STT exception, falling back to Gemini:", e);
       }
-    } catch (e) {
-      console.error("ElevenLabs STT exception, falling back to Gemini:", e);
     }
   }
 
