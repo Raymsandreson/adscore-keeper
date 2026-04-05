@@ -696,8 +696,16 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
       status: "ready", updated_at: new Date().toISOString(),
     }).eq("id", session.id);
 
-    await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
-      replyMsg, session.contact_id, session.lead_id, "wjia_summary", splitOpts);
+    // Send summary as audio if configured
+    const shouldSummaryAudio = replyWithAudio && message_type === "audio" && replyVoiceId;
+    if (shouldSummaryAudio) {
+      const resolvedVoice = await resolveVoiceId(supabase, replyVoiceId, instance_name);
+      await sendWhatsAppAudio(supabase, inst, normalizedPhone, instance_name,
+        replyMsg, resolvedVoice, session.contact_id, session.lead_id, "wjia_summary");
+    } else {
+      await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
+        replyMsg, session.contact_id, session.lead_id, "wjia_summary", splitOpts);
+    }
 
     return jsonResponse({
       active_session: true, processed: true, all_collected: true, session_id: session.id,
