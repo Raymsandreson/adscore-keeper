@@ -124,7 +124,7 @@ const DEFAULT_FORM: ShortcutFormState = {
   send_call_followup_audio: false, zapsign_settings: {},
 };
 
-
+interface Profile { user_id: string; full_name: string | null; }
 interface ZapSignTemplateOption { token: string; name: string; }
 type PredefinedFieldMode = 'today' | 'brazilian_nationality' | 'client_phone' | 'fixed_value';
 interface PredefinedFieldConfig {
