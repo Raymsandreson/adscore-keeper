@@ -1580,6 +1580,9 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
 }
 
 // ── Build a preview of the super prompt the AI receives ──
+// IMPORTANTE: Esta função DEVE espelhar EXATAMENTE os prompts dos handlers:
+// - supabase/functions/wjia-agent/handlers/new-command.ts (linhas ~200-231)
+// - supabase/functions/wjia-agent/handlers/follow-up.ts (linhas ~393-442)
 function buildSuperPromptPreview(
   form: any,
   templateFields: { key: string; label: string; required: boolean }[],
@@ -1588,10 +1591,11 @@ function buildSuperPromptPreview(
   const today = new Date().toLocaleDateString("pt-BR");
   const isAssistant = form.assistant_type === "assistant";
 
+  // ── ASSISTANT MODE (espelha new-command.ts linhas 170-180) ──
   if (isAssistant) {
-    const baseSection = form.base_prompt ? `\nPERSONA/REGRAS BASE DO ASSISTENTE:\n${form.base_prompt}\n` : "";
+    const basePromptSection = form.base_prompt ? `\nPERSONA/REGRAS BASE DO ASSISTENTE:\n${form.base_prompt}\n` : "";
     return `Você é o assistente WJIA, integrado ao WhatsApp de um escritório de advocacia.
-${baseSection}
+${basePromptSection}
 MODO: Assistente conversacional. Responda ao comando do atendente usando o contexto disponível.
 
 CRM/CADASTRO: [dados do contato e lead carregados automaticamente]
@@ -1602,69 +1606,23 @@ CONVERSA COM O CLIENTE (últimas mensagens):
 ${form.prompt_instructions ? `INSTRUÇÕES ESPECÍFICAS:\n${form.prompt_instructions}` : "(sem instruções específicas)"}`;
   }
 
-  // Document mode — determine field categories
-  const baseSection = form.base_prompt ? `\nPERSONA/REGRAS BASE:\n${form.base_prompt}\n` : "";
-  
-  const predefinedKeys = new Set(predefinedFields.map(pf => pf.field.toUpperCase()));
-  const minFieldKeys = new Set((form.partial_min_fields || []).map((f: string) => f.toUpperCase()));
-  const isPartialEnabled = !!form.allow_partial_generation;
+  // ── DOCUMENT MODE ──
+  const basePromptSection = form.base_prompt ? `\nPERSONA/REGRAS BASE:\n${form.base_prompt}\n` : "";
 
-  // Resolve predefined display values
-  const resolvePredefinedDisplay = (pf: PredefinedFieldConfig): string => {
-    switch (pf.mode) {
-      case 'today': return `data de hoje (${today})`;
-      case 'brazilian_nationality': return '"Brasileira" / "Brasileiro"';
-      case 'client_phone': return 'telefone do cliente (WhatsApp)';
-      case 'fixed_value': return pf.value ? `"${pf.value}"` : '(valor fixo não definido ⚠️)';
-      default: return `[${pf.mode}]`;
-    }
-  };
-
-  // Categorize fields
-  const fieldsToCollect: string[] = [];
-  const fieldsPreDefined: string[] = [];
-  const warnings: string[] = [];
-
-  templateFields.forEach(f => {
-    const upperKey = f.key.toUpperCase();
-    const pf = predefinedFields.find(p => p.field.toUpperCase() === upperKey);
-    
-    if (pf) {
-      // Check for misconfigurations
-      if (pf.mode === 'today' && !upperKey.includes('DATA') && !upperKey.includes('DATE')) {
-        warnings.push(`⚠️ "${f.label}" configurado como "data de hoje" mas não parece ser um campo de data`);
-      }
-      fieldsPreDefined.push(`- ${f.label}: ${resolvePredefinedDisplay(pf)} ✅ auto`);
-    } else if (isPartialEnabled && minFieldKeys.has(upperKey)) {
-      fieldsToCollect.push(`- ${f.label} (variável: ${f.key}) ⭐ mínimo obrigatório`);
-    } else if (isPartialEnabled) {
-      fieldsToCollect.push(`- ${f.label} (variável: ${f.key}) — opcional (cliente preenche no formulário)`);
-    } else {
-      fieldsToCollect.push(`- ${f.label} (variável: ${f.key}) *obrigatório`);
-    }
-  });
-
+  // Lista de campos EXATAMENTE como follow-up.ts monta (linha 383-384)
+  // O prompt REAL lista TODOS os campos igualmente — a distinção obrigatório/opcional
+  // é feita pelo CÓDIGO (computeMissingFields), NÃO pelo prompt.
   const allFieldsList = templateFields.length > 0
-    ? `CAMPOS PARA COLETAR DO CLIENTE:\n${fieldsToCollect.length > 0 ? fieldsToCollect.join("\n") : "(todos pré-definidos)"}`
+    ? templateFields.map(f => `- ${f.label} (variável: ${f.key})`).join("\n")
     : "(nenhum template selecionado — campos carregados dinamicamente)";
 
-  const predefinedInfo = fieldsPreDefined.length > 0
-    ? `\nCAMPOS PRÉ-DEFINIDOS (preenchidos automaticamente, NÃO perguntar):\n${fieldsPreDefined.join("\n")}`
-    : "";
-
-  const warningsInfo = warnings.length > 0
-    ? `\n\n🔴 ALERTAS DE CONFIGURAÇÃO:\n${warnings.join("\n")}`
-    : "";
-
-  const minFieldsInfo = isPartialEnabled && form.partial_min_fields?.length > 0
-    ? `\nCAMPOS MÍNIMOS OBRIGATÓRIOS (bloqueia geração se faltarem):\n${form.partial_min_fields.map((f: string) => `- ${f}`).join("\n")}`
-    : "";
-
-  // The prompt that new-command.ts sends
+  // ════════════════════════════════════════════════════════
+  // PROMPT 1: NEW-COMMAND (espelha new-command.ts linhas 200-231)
+  // ════════════════════════════════════════════════════════
   const newCommandPrompt = `═══ PROMPT INICIAL (new-command.ts) ═══
 
 Você é o assistente WJIA. O atendente digitou um comando.
-${baseSection}
+${basePromptSection}
 IMPORTANTE: NÃO gere o documento agora. Seu trabalho é:
 1. Identificar qual template ZapSign usar
 2. Analisar apenas os dados confiáveis disponíveis para ESTE comando
@@ -1673,7 +1631,16 @@ IMPORTANTE: NÃO gere o documento agora. Seu trabalho é:
 
 ${form.template_token ? `⚠️ TEMPLATE OBRIGATÓRIO: Use EXATAMENTE "${form.template_name || 'template selecionado'}" (token: ${form.template_token}).` : "[template será identificado pelo comando]"}
 
-CRM/CADASTRO: [dados do contato e lead carregados automaticamente]
+TEMPLATES ZAPSIGN DISPONÍVEIS:
+[lista carregada da API ZapSign em tempo real]
+
+CRM/CADASTRO: [dados do contato e lead — usados SOMENTE se houver marco confiável na conversa]
+
+PRIORIDADE DAS FONTES:
+- 1º: dados informados pelo cliente após o marco mais recente da conversa
+- 2º: mensagens recentes do mesmo contexto já filtradas
+- 3º: CRM/cadastro só pode ser usado se estiver explicitamente presente no contexto acima
+- Se houver dúvida sobre a origem, considere como faltante e peça confirmação
 
 CONVERSA COM O CLIENTE:
 [histórico filtrado pelo limite de ${form.history_limit ?? 50} mensagens]
@@ -1686,47 +1653,125 @@ ${form.prompt_instructions ? `INSTRUÇÕES ESPECÍFICAS:\n${form.prompt_instruct
 - Campos DATA_ASSINATURA/DATA_PROCURACAO: preencha com hoje (${today})
 - Use SOMENTE campos que existem no template ZapSign`;
 
-  // The prompt that follow-up.ts sends during collection
+  // ════════════════════════════════════════════════════════
+  // PROMPT 2: FOLLOW-UP / COLETA (espelha follow-up.ts linhas 393-442)
+  // ════════════════════════════════════════════════════════
   const hasPersona = !!form.base_prompt && form.base_prompt.trim().length > 10;
   const followUpPrompt = `
+
 
 ═══ PROMPT DE COLETA (follow-up.ts) ═══
 
 ${hasPersona
-    ? `IDENTIDADE E COMPORTAMENTO (PRIORIDADE ABSOLUTA):
+    ? `IDENTIDADE E COMPORTAMENTO (PRIORIDADE ABSOLUTA — você DEVE agir EXATAMENTE como descrito abaixo em TODAS as mensagens):
+PERSONA: ${form.agent_name || '[nome do agente]'}
 ${form.base_prompt}
 
-Você está coletando dados para gerar o documento "${form.template_name || '[template]'}". Mantenha SEMPRE o tom, estilo e personalidade acima.`
-    : `Você é um assistente jurídico conversando pelo WhatsApp. Seu OBJETIVO é coletar os dados necessários para gerar o documento "${form.template_name || '[template]'}".`
+Você está coletando dados para gerar o documento "${form.template_name || '[template]'}". Mantenha SEMPRE o tom, estilo e personalidade acima durante TODA a conversa de coleta.`
+    : `Você é um assistente jurídico conversando pelo WhatsApp. Seu OBJETIVO é coletar os dados necessários para gerar o documento "${form.template_name || '[template]'}" e obter a confirmação do cliente.`
   }
 
 ESTILO DE CONVERSA:
 - Use o tom da IDENTIDADE acima. Se não houver identidade definida, seja natural e direto.
 - ✅/❌ para resumos. Conversa normal em frases corridas.
 - Aceite o que o cliente diz. Se corrigir, atualize sem questionar.
-- IMPORTANTE: Não seja robótico. Converse como a persona definiria.
+- IMPORTANTE: Não seja robótico. Converse como a persona definiria. Integre os pedidos de dados naturalmente na conversa.
 
 CAMPOS DO TEMPLATE:
 ${allFieldsList}
-${predefinedInfo}
-${minFieldsInfo}
 
 DADOS COLETADOS:
 [preenchidos dinamicamente durante a conversa]
 
 DADOS FALTANTES:
-[calculados automaticamente a partir dos campos do template]
+[calculados automaticamente pelo código — NÃO pelo prompt]
 
-REGRAS:
-1. SIGA A IDENTIDADE/PERSONA ACIMA em tom e estilo
-2. Cliente CONFIRMANDO (sim, ok): gerar documento
-3. Cliente CORRIGINDO: extraia correção
-4. Faltam dados: peça naturalmente seguindo o tom da persona
+FASE: [COLETA ou CONFIRMAÇÃO — determinada pelo código]
+
+CONVERSA:
+[histórico da sessão em tempo real]
+
+MENSAGEM: "[última mensagem do cliente]"
+
+REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
+1. SIGA A IDENTIDADE/PERSONA ACIMA em tom e estilo. Se o prompt disser para pedir DOCUMENTO (foto/arquivo), peça o documento em vez de pedir os dados campo a campo.
+2. Cliente CONFIRMANDO (sim, ok): ação "confirm_generate"
+3. Cliente CORRIGINDO: extraia correção + se dados completos use "show_summary"
+4. Faltam dados e a persona NÃO instruiu pedir documento: extraia o que puder, peça o restante naturalmente seguindo o tom da persona
 5. CEP é OPCIONAL. NUNCA insista.
 6. DATA_ASSINATURA/DATA_PROCURACAO: preenchidos automaticamente — NÃO pergunte
 7. CIDADE/ESTADO de assinatura: sincronizados automaticamente
-8. NUNCA INVENTE LINKS OU URLs
-9. NUNCA diga que é assistente virtual, IA ou robô${warningsInfo}`;
+8. Nome parcial = confirmação se já existe nome completo
+9. Use nomes EXATOS dos campos do template
+10. Aceite bairros/locais sem questionar
+11. ENDERECO_COMPLETO: rua + número + bairro
+12. NUNCA INVENTE LINKS OU URLs. O sistema envia o link real automaticamente após gerar o documento.
+13. Quando o cliente confirmar (SIM/ok/certo), NÃO mencione link. Diga apenas algo como que vai preparar/gerar o documento, no estilo da persona.
+14. NUNCA diga que é assistente virtual, IA ou robô. NUNCA diga que não consegue visualizar, ler ou processar documentos, imagens ou PDFs.`;
 
-  return newCommandPrompt + followUpPrompt;
+  // ════════════════════════════════════════════════════════
+  // NOTAS SOBRE LÓGICA DE CÓDIGO (não enviadas à IA)
+  // ════════════════════════════════════════════════════════
+  const predefinedKeys = new Set(predefinedFields.map(pf => pf.field.toUpperCase()));
+  const minFieldKeys = new Set((form.partial_min_fields || []).map((f: string) => f.toUpperCase()));
+  const isPartialEnabled = !!form.allow_partial_generation;
+
+  const resolvePredefinedDisplay = (pf: PredefinedFieldConfig): string => {
+    switch (pf.mode) {
+      case 'today': return `data de hoje (${today})`;
+      case 'brazilian_nationality': return '"Brasileira" / "Brasileiro"';
+      case 'client_phone': return 'telefone do cliente (WhatsApp)';
+      case 'fixed_value': return pf.value ? `"${pf.value}"` : '(valor fixo não definido ⚠️)';
+      default: return `[${pf.mode}]`;
+    }
+  };
+
+  const warnings: string[] = [];
+  predefinedFields.forEach(pf => {
+    const upperKey = pf.field.toUpperCase();
+    if (pf.mode === 'today' && !upperKey.includes('DATA') && !upperKey.includes('DATE')) {
+      const label = templateFields.find(f => f.key.toUpperCase() === upperKey)?.label || pf.field;
+      warnings.push(`⚠️ "${label}" configurado como "data de hoje" mas não parece ser um campo de data`);
+    }
+  });
+
+  let codeNotes = `
+
+
+═══ LÓGICA DO CÓDIGO (não vai no prompt — executada pelos handlers) ═══
+
+📋 COMO O CÓDIGO CATEGORIZA OS CAMPOS:`;
+
+  templateFields.forEach(f => {
+    const upperKey = f.key.toUpperCase();
+    const pf = predefinedFields.find(p => p.field.toUpperCase() === upperKey);
+
+    if (pf) {
+      codeNotes += `\n  ✅ ${f.label}: preenchido automaticamente → ${resolvePredefinedDisplay(pf)} (excluído da coleta)`;
+    } else if (isPartialEnabled && minFieldKeys.has(upperKey)) {
+      codeNotes += `\n  ⭐ ${f.label}: campo MÍNIMO obrigatório (bloqueia geração se faltar)`;
+    } else if (isPartialEnabled) {
+      codeNotes += `\n  📝 ${f.label}: opcional (cliente preenche no formulário ZapSign se não informar)`;
+    } else {
+      codeNotes += `\n  🔴 ${f.label}: obrigatório (geração parcial desativada)`;
+    }
+  });
+
+  if (isPartialEnabled) {
+    codeNotes += `\n\n⚙️ Geração parcial: ATIVADA — documento gerado quando campos mínimos estiverem preenchidos`;
+  } else {
+    codeNotes += `\n\n⚙️ Geração parcial: DESATIVADA — todos os campos devem ser coletados`;
+  }
+
+  if (form.skip_confirmation) {
+    codeNotes += `\n⚙️ Confirmação: DESATIVADA — gera automaticamente quando dados suficientes`;
+  } else {
+    codeNotes += `\n⚙️ Confirmação: ATIVADA — aguarda "Sim" do cliente antes de gerar`;
+  }
+
+  if (warnings.length > 0) {
+    codeNotes += `\n\n🔴 ALERTAS DE CONFIGURAÇÃO:\n${warnings.join("\n")}`;
+  }
+
+  return newCommandPrompt + followUpPrompt + codeNotes;
 }
