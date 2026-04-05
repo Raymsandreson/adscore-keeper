@@ -420,6 +420,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
 
   const startEdit = (s: Shortcut) => {
     setForm({
+      ...DEFAULT_FORM,
       shortcut_name: s.shortcut_name,
       description: s.description || '',
       template_token: s.template_token || '',
@@ -434,6 +435,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       document_type_modes: (s as any).document_type_modes || {},
       assistant_type: s.assistant_type || 'document',
       base_prompt: s.base_prompt || '',
+      agent_name: (s as any).agent_name || s.shortcut_name || '',
       model: s.model || 'google/gemini-2.5-flash',
       temperature: s.temperature ?? 0.7,
       max_tokens: (s as any).max_tokens ?? 2048,
