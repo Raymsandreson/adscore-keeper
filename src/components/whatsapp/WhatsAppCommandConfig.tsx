@@ -71,6 +71,7 @@ interface FollowupStep {
   assigned_to?: string;
   activity_type?: string;
   priority?: string;
+}
 
 /** Typed form state — every key used in setForm/form.X must exist here */
 interface ShortcutFormState {
