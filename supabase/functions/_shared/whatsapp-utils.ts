@@ -133,6 +133,7 @@ export async function sendWhatsAppAudio(
   const chunks = splitTextForTTS(cleanText, maxChars);
   console.log(`WJIA TTS: ${cleanText.length} chars → ${chunks.length} chunk(s), voice=${voiceId}`);
 
+  try {
     // Check credits before calling TTS
     const credits = await checkElevenLabsCredits(ELEVENLABS_API_KEY);
     if (!credits.has_credits) {
