@@ -154,7 +154,19 @@ serve(async (req) => {
           .maybeSingle();
 
         if (step.action_type === "whatsapp_message") {
-          if (inst?.instance_token) {
+          if (session.status === "collecting") {
+            // For collecting sessions, trigger AI agent reply to continue conversation
+            try {
+              const aiResult = await callAgentReply(supabase, session.phone, session.instance_name);
+              if (!aiResult.success) {
+                console.error(`[DOC] AI followup failed for collecting session ${session.id}`);
+                actionResult = "error";
+              }
+            } catch (e) {
+              console.error(`[DOC] AI followup error for collecting session ${session.id}:`, e);
+              actionResult = "error";
+            }
+          } else if (inst?.instance_token) {
             const baseUrl = inst.base_url || "https://abraci.uazapi.com";
             const collectedData = session.collected_data || {};
             const signerName = collectedData.signer_name || "Cliente";
