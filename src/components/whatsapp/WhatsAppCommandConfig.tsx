@@ -1714,7 +1714,7 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
   // ════════════════════════════════════════════════════════
   const predefinedKeys = new Set(predefinedFields.map(pf => pf.field.toUpperCase()));
   const minFieldKeys = new Set((form.partial_min_fields || []).map((f: string) => f.toUpperCase()));
-  const isPartialEnabled = !!form.allow_partial_generation;
+  const isPartialEnabled = !!form.skip_confirmation;
 
   const resolvePredefinedDisplay = (pf: PredefinedFieldConfig): string => {
     switch (pf.mode) {
