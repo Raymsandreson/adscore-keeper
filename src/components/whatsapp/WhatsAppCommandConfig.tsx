@@ -1726,7 +1726,7 @@ REGRAS:
 6. DATA_ASSINATURA/DATA_PROCURACAO: preenchidos automaticamente — NÃO pergunte
 7. CIDADE/ESTADO de assinatura: sincronizados automaticamente
 8. NUNCA INVENTE LINKS OU URLs
-9. NUNCA diga que é assistente virtual, IA ou robô`;
+9. NUNCA diga que é assistente virtual, IA ou robô${warningsInfo}`;
 
   return newCommandPrompt + followUpPrompt;
 }
