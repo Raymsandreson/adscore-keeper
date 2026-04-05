@@ -789,10 +789,11 @@ async function generateImmediate(opts: {
   const forceEditable = partialMinFields.length > 0 && skipConfirmation;
   const shouldMarkIncomplete = hasIncompleteDocFields || forceEditable;
 
-  // Send ALL collected fields to ZapSign as final document (no editable form)
-  const autoFilledDataMain = fieldsData.filter((f: any) =>
-    f?.de && f?.para && String(f.para).trim().length > 0 && f.para !== " "
-  );
+  // Apply zapsign_mode: 'prefilled_form' sends only auto fields + editable form; 'final_document' sends all
+  const isPrefilledForm = zapsignMode === "prefilled_form";
+  const dataToSend = isPrefilledForm
+    ? fieldsData.filter((f: any) => f?.de && f?.para && String(f.para).trim().length > 0 && f.para !== " " && autoKeysMain.has(normalizeFieldKey(f.de)))
+    : fieldsData.filter((f: any) => f?.de && f?.para && String(f.para).trim().length > 0 && f.para !== " ");
   const cpfFieldMain = fieldsData.find((f: any) => /CPF/i.test(f.de));
 
   const createBody: any = {
@@ -800,7 +801,8 @@ async function generateImmediate(opts: {
     signer_name: signerName,
     ...(docPhoneCountry && { signer_phone_country: docPhoneCountry }),
     ...(docPhoneNumber && { signer_phone_number: docPhoneNumber }),
-    data: autoFilledDataMain.length > 0 ? autoFilledDataMain : [{ de: "{{_}}", para: " " }],
+    data: dataToSend.length > 0 ? dataToSend : [{ de: "{{_}}", para: " " }],
+    ...(isPrefilledForm && { signer_has_incomplete_fields: true }),
   };
 
   applyZapSignSettings(createBody, zapsignSettings, {
