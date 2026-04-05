@@ -1597,9 +1597,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
 }
 
 
-// - supabase/functions/wjia-agent/handlers/new-command.ts (linhas ~200-231)
-// - supabase/functions/wjia-agent/handlers/follow-up.ts (linhas ~393-442)
-function buildSuperPromptPreview(
   form: ShortcutFormState,
   templateFields: { key: string; label: string; required: boolean }[],
   predefinedFields: PredefinedFieldConfig[]
