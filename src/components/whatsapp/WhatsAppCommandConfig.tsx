@@ -107,6 +107,7 @@ interface ShortcutFormState {
   send_window_start_hour: number;
   send_window_end_hour: number;
   send_call_followup_audio: boolean;
+  zapsign_mode: 'final_document' | 'prefilled_form';
   zapsign_settings: Record<string, any>;
 }
 
@@ -122,7 +123,7 @@ const DEFAULT_FORM: ShortcutFormState = {
   history_limit: 50, split_messages: false, split_delay_seconds: 3,
   reply_with_audio: false, reply_voice_id: null, respond_in_groups: false,
   max_tts_chars: 1000, send_window_start_hour: 8, send_window_end_hour: 20,
-  send_call_followup_audio: false, zapsign_settings: {},
+  send_call_followup_audio: false, zapsign_mode: 'final_document', zapsign_settings: {},
 };
 
 interface Profile { user_id: string; full_name: string | null; }
@@ -453,6 +454,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_window_start_hour: (s as any).send_window_start_hour ?? 8,
       send_window_end_hour: (s as any).send_window_end_hour ?? 20,
       send_call_followup_audio: (s as any).send_call_followup_audio ?? false,
+      zapsign_mode: (s as any).zapsign_mode || 'final_document',
       zapsign_settings: (s as any).zapsign_settings || {},
     });
     setFollowupSteps(s.followup_steps || []);
@@ -524,6 +526,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       skip_confirmation: form.skip_confirmation ?? false,
       partial_min_fields: (form as any).partial_min_fields || [],
       history_limit: (form as any).history_limit ?? 50,
+      zapsign_mode: (form as any).zapsign_mode || 'final_document',
       zapsign_settings: form.zapsign_settings || {},
     };
 
