@@ -34,12 +34,12 @@ serve(async (req) => {
     let actionsExecuted = 0;
 
     // ============================================================
-    // PART 1: Document signing sessions (original logic)
+    // PART 1: Document signing sessions + collecting sessions
     // ============================================================
     let sessionsQuery = supabase
       .from("wjia_collection_sessions")
       .select("*")
-      .eq("status", "generated");
+      .in("status", ["generated", "collecting"]);
 
     if (targetSessionId) {
       sessionsQuery = sessionsQuery.eq("id", targetSessionId);
