@@ -71,10 +71,59 @@ interface FollowupStep {
   assigned_to?: string;
   activity_type?: string;
   priority?: string;
+
+/** Typed form state — every key used in setForm/form.X must exist here */
+interface ShortcutFormState {
+  shortcut_name: string;
+  description: string;
+  template_token: string;
+  template_name: string;
+  prompt_instructions: string;
+  media_extraction_prompt: string;
+  notify_on_signature: boolean;
+  send_signed_pdf: boolean;
+  request_documents: boolean;
+  document_types: string[];
+  custom_document_names: string[];
+  document_type_modes: Record<string, 'required' | 'optional'>;
+  assistant_type: string;
+  base_prompt: string;
+  agent_name: string;
+  model: string;
+  temperature: number;
+  max_tokens: number;
+  response_delay_seconds: number;
+  skip_confirmation: boolean;
+  partial_min_fields: string[];
+  history_limit: number;
+  split_messages: boolean;
+  split_delay_seconds: number;
+  reply_with_audio: boolean;
+  reply_voice_id: string | null;
+  respond_in_groups: boolean;
+  max_tts_chars: number;
+  send_window_start_hour: number;
+  send_window_end_hour: number;
+  send_call_followup_audio: boolean;
+  zapsign_settings: Record<string, any>;
 }
 
+const DEFAULT_FORM: ShortcutFormState = {
+  shortcut_name: '', description: '', template_token: '', template_name: '',
+  prompt_instructions: '', media_extraction_prompt: '',
+  notify_on_signature: true, send_signed_pdf: true,
+  request_documents: false, document_types: [], custom_document_names: [],
+  document_type_modes: {},
+  assistant_type: 'document', base_prompt: '', agent_name: '',
+  model: 'google/gemini-2.5-flash', temperature: 0.7, max_tokens: 2048,
+  response_delay_seconds: 2, skip_confirmation: false, partial_min_fields: [],
+  history_limit: 50, split_messages: false, split_delay_seconds: 3,
+  reply_with_audio: false, reply_voice_id: null, respond_in_groups: false,
+  max_tts_chars: 1000, send_window_start_hour: 8, send_window_end_hour: 20,
+  send_call_followup_audio: false, zapsign_settings: {},
+};
 
-interface Profile { user_id: string; full_name: string | null; }
+
 interface ZapSignTemplateOption { token: string; name: string; }
 type PredefinedFieldMode = 'today' | 'brazilian_nationality' | 'client_phone' | 'fixed_value';
 interface PredefinedFieldConfig {
