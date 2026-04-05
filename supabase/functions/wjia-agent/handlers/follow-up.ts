@@ -326,13 +326,18 @@ async function runAgentPhase(opts: {
   normalizedPhone: string; instance_name: string;
   message_text: string; currentFields: any[];
   collectedData: any; catalog: any;
-  agentPersona: string; splitOpts: any;
+  agentPersona: string; shortcutPromptInstructions: string;
+  splitOpts: any;
   skipConfirmation: boolean; zapsignSettingsReply: any;
   zapsignToken: string | undefined;
+  replyWithAudio: boolean; replyVoiceId: string;
+  message_type: string;
 }) {
   const { supabase, session, inst, normalizedPhone, instance_name,
     message_text, currentFields, collectedData, catalog,
-    agentPersona, splitOpts, skipConfirmation, zapsignSettingsReply, zapsignToken } = opts;
+    agentPersona, shortcutPromptInstructions, splitOpts,
+    skipConfirmation, zapsignSettingsReply, zapsignToken,
+    replyWithAudio, replyVoiceId, message_type } = opts;
 
   // Pre-process auto-fills
   const autoFilledKeys = autoFillDates(currentFields, catalog);
