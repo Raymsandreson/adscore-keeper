@@ -282,6 +282,7 @@ export async function speechToSpeech(
     return null;
   }
 
+  try {
     // Check credits before STS
     const credits = await checkElevenLabsCredits(ELEVENLABS_API_KEY);
     if (!credits.has_credits) {
