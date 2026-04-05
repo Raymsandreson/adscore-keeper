@@ -409,14 +409,29 @@ async function runAgentPhase(opts: {
 
   const isReadyPhase = session.status === "ready" || missingFields.length === 0;
   const hasAgentPersona = !!agentPersona && agentPersona.trim().length > 10;
+  const hasShortcutPrompt = !!shortcutPromptInstructions && shortcutPromptInstructions.trim().length > 10;
+  const ownerName = inst?.owner_name || "";
+  const ownerContext = ownerName ? `\nNOME DO DONO DA INSTÂNCIA (use como seu nome se as instruções disserem): ${ownerName}` : "";
 
-  const systemPrompt = `${hasAgentPersona
+  // Build identity block: shortcut prompt_instructions takes priority, then agent persona
+  const identityBlock = hasShortcutPrompt
     ? `IDENTIDADE E COMPORTAMENTO (PRIORIDADE ABSOLUTA — você DEVE agir EXATAMENTE como descrito abaixo em TODAS as mensagens):
+${ownerContext}
+
+INSTRUÇÕES DO AGENTE:
+${shortcutPromptInstructions}
+${agentPersona ? `\nCONFIGURAÇÃO ADICIONAL:\n${agentPersona}` : ""}
+
+Você está coletando dados para gerar o documento "${session.template_name}". Mantenha SEMPRE o tom, estilo e personalidade acima durante TODA a conversa de coleta.`
+    : hasAgentPersona
+    ? `IDENTIDADE E COMPORTAMENTO (PRIORIDADE ABSOLUTA — você DEVE agir EXATAMENTE como descrito abaixo em TODAS as mensagens):
+${ownerContext}
 ${agentPersona}
 
 Você está coletando dados para gerar o documento "${session.template_name}". Mantenha SEMPRE o tom, estilo e personalidade acima durante TODA a conversa de coleta.`
-    : `Você é um assistente jurídico conversando pelo WhatsApp. Seu OBJETIVO é coletar os dados necessários para gerar o documento "${session.template_name}" e obter a confirmação do cliente.`
-  }
+    : `Você é um assistente jurídico conversando pelo WhatsApp. Seu OBJETIVO é coletar os dados necessários para gerar o documento "${session.template_name}" e obter a confirmação do cliente.`;
+
+  const systemPrompt = `${identityBlock}
 
 ESTILO DE CONVERSA:
 - Use o tom da IDENTIDADE acima. Se não houver identidade definida, seja natural e direto.
