@@ -713,6 +713,8 @@ export function BoardGroupInstancesConfig() {
             )}
           </div>
 
+          {/* Onboarding Meeting */}
+          {selectedBoard && <OnboardingMeetingConfig boardId={selectedBoard} />}
 
           {/* Auto-Create Process */}
           <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
