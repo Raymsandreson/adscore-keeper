@@ -76,6 +76,7 @@ export async function handleFollowUp(opts: {
   // Load agent config for persona and delay
   let agentPersona = "";
   let batchDelaySeconds = 0;
+  let shortcutPromptInstructions = "";
 
   const { data: convAgent } = await supabase
     .from("whatsapp_conversation_agents")
