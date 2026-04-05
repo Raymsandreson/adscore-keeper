@@ -245,6 +245,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [formSection, setFormSection] = useState<'general' | 'ai' | 'document' | 'followup'>('general');
   const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string }[]>([]);
   const [promptSheetOpen, setPromptSheetOpen] = useState(false);
+  const [superPromptPreviewOpen, setSuperPromptPreviewOpen] = useState(false);
 
   const templateFieldOptions = templateFields.map((field) => ({
     key: field.variable.replace(/\{\{|\}\}/g, ''),
