@@ -5,6 +5,7 @@
  */
 
 import { geminiChat } from "../../_shared/gemini.ts";
+import { resolveVoiceId, sendWhatsAppAudio } from "../../_shared/whatsapp-utils.ts";
 import {
   applyConfiguredPredefinedFields,
   applyDefaults,
