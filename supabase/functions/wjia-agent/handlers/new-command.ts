@@ -684,8 +684,11 @@ Se não encontrou nada, retorne: []`;
           return FRIENDLY_LABELS[key] || f.friendly_name || key;
         });
 
-        const firstMsgPrompt = `Você é um atendente de WhatsApp. Siga RIGOROSAMENTE as instruções abaixo para gerar a PRIMEIRA mensagem ao cliente.
+        const ownerName = inst?.owner_name || "";
+        const ownerContext = ownerName ? `\nNOME DO DONO DA INSTÂNCIA (use como seu nome se o prompt disser): ${ownerName}\n` : "";
 
+        const firstMsgPrompt = `Você é um atendente de WhatsApp. Siga RIGOROSAMENTE as instruções abaixo para gerar a PRIMEIRA mensagem ao cliente.
+${ownerContext}
 INSTRUÇÕES DO AGENTE (PRIORIDADE MÁXIMA — siga o tom, personalidade e fluxo definidos aqui):
 ${matchedShortcut.prompt_instructions}
 
