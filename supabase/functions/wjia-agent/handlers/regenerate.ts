@@ -111,7 +111,8 @@ export async function handleRegenerate(payload: {
   }
 
   const fieldsData = collectedData.fields || [];
-  const signerName = collectedData.signer_name || "Cliente";
+  const nomeCompletoField = fieldsData.find((f: any) => /NOME.?COMPLETO/i.test(f.de));
+  const signerName = collectedData.signer_name !== "Cliente" && collectedData.signer_name ? collectedData.signer_name : (nomeCompletoField?.para?.trim() || collectedData.signer_name || "Cliente");
   const signerPhone = collectedData.signer_phone || session.phone;
 
   // Get instance token
