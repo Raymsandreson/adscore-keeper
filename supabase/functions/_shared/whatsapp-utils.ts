@@ -244,3 +244,81 @@ export async function resolveVoiceId(
 
   return voiceId || FALLBACK_VOICE;
 }
+
+// ============================================================
+// SPEECH-TO-SPEECH (ElevenLabs STS)
+// ============================================================
+
+/**
+ * Convert TTS-generated audio to target voice using Speech-to-Speech.
+ * This creates more natural-sounding responses by preserving the
+ * prosody/emotion from TTS and mapping to the target voice.
+ * Falls back to the original TTS audio URL if STS fails.
+ */
+export async function speechToSpeech(
+  supabase: any,
+  audioUrl: string,
+  voiceId: string,
+  options?: {
+    modelId?: string;
+    removeBackgroundNoise?: boolean;
+  },
+): Promise<string | null> {
+  const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
+  if (!ELEVENLABS_API_KEY) {
+    console.warn("speechToSpeech: ELEVENLABS_API_KEY missing");
+    return null;
+  }
+
+  try {
+    // Download input audio
+    const audioResp = await fetch(audioUrl);
+    if (!audioResp.ok) throw new Error(`Download failed: ${audioResp.status}`);
+    const audioBlob = await audioResp.blob();
+
+    const formData = new FormData();
+    formData.append("audio", audioBlob, "input.mp3");
+    formData.append("model_id", options?.modelId || "eleven_multilingual_sts_v2");
+    if (options?.removeBackgroundNoise) {
+      formData.append("remove_background_noise", "true");
+    }
+    formData.append("voice_settings", JSON.stringify({
+      stability: 0.5,
+      similarity_boost: 0.75,
+      style: 0.3,
+    }));
+
+    const stsResp = await fetch(
+      `https://api.elevenlabs.io/v1/speech-to-speech/${voiceId}?output_format=mp3_22050_32`,
+      {
+        method: "POST",
+        headers: { "xi-api-key": ELEVENLABS_API_KEY },
+        body: formData,
+      },
+    );
+
+    if (!stsResp.ok) {
+      console.error("STS error:", stsResp.status, await stsResp.text());
+      return null;
+    }
+
+    const resultBuffer = await stsResp.arrayBuffer();
+    const fileName = `sts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+    const filePath = `sts/${fileName}`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from("whatsapp-media")
+      .upload(filePath, new Uint8Array(resultBuffer), {
+        contentType: "audio/mpeg",
+        upsert: false,
+      });
+    if (uploadErr) throw uploadErr;
+
+    const { data: urlData } = supabase.storage.from("whatsapp-media").getPublicUrl(filePath);
+    console.log(`STS: converted audio uploaded to ${urlData?.publicUrl}`);
+    return urlData?.publicUrl || null;
+  } catch (e) {
+    console.error("STS failed:", e);
+    return null;
+  }
+}
