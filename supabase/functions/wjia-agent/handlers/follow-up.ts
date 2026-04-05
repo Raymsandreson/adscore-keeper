@@ -609,6 +609,19 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
       status: "ready", updated_at: new Date().toISOString(),
     }).eq("id", session.id);
 
+    // Send confirmation reply as audio if configured
+    if (result.reply_to_client) {
+      const shouldConfirmAudio = replyWithAudio && message_type === "audio" && replyVoiceId;
+      if (shouldConfirmAudio) {
+        const resolvedVoice = await resolveVoiceId(supabase, replyVoiceId, instance_name);
+        await sendWhatsAppAudio(supabase, inst, normalizedPhone, instance_name,
+          result.reply_to_client, resolvedVoice, session.contact_id, session.lead_id, "wjia_confirm");
+      } else {
+        await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
+          result.reply_to_client, session.contact_id, session.lead_id, "wjia_confirm", splitOpts);
+      }
+    }
+
     session.received_documents = receivedDocs;
     const nomeFieldConfirm = currentFields.find((f: any) => /NOME.?COMPLETO/i.test(f.de));
     const signerName = nomeFieldConfirm?.para?.trim() || collectedData.signer_name || "Cliente";
@@ -627,18 +640,31 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
   // ── ALL COLLECTED ──
   if (allCollected) {
     if (skipConfirmation && zapsignToken) {
-      console.log(`WJIA skip_confirmation: all fields collected, auto-generating document`);
+      console.log(`WJIA skip_confirmation: all fields collected, showing summary then auto-generating`);
       await supabase.from("wjia_collection_sessions").update({
         collected_data: updatedCollectedData, missing_fields: [],
         status: "ready", updated_at: new Date().toISOString(),
       }).eq("id", session.id);
 
+      // Step 1: Show summary for client to see the data
       const summaryLines = currentFields.filter((f) => f.para).map((f) =>
         `• *${getFieldLabel(f, catalog)}*: ${f.para}`).join("\n");
-      const confirmMsg = `✅ *Dados completos!*\n\n${summaryLines}\n\n📄 Gerando o documento *${session.template_name}*... Aguarde!`;
-      await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
-        confirmMsg, session.contact_id, session.lead_id, "wjia_autoconfirm", splitOpts);
+      const docsSection = receivedDocs.length > 0
+        ? `\n\n📎 *Documentos anexados:*\n${receivedDocs.map((d: any) => `• ✅ ${DOC_TYPE_LABELS[d.type] || d.type}`).join("\n")}` : "";
+      const summaryMsg = `✅ *Dados completos!*\n\n${summaryLines}${docsSection}\n\nConferindo os dados e gerando o documento *${session.template_name}*... Aguarde! 📄`;
+      
+      // Send summary as audio if configured
+      const shouldSendSummaryAudio = replyWithAudio && message_type === "audio" && replyVoiceId;
+      if (shouldSendSummaryAudio) {
+        const resolvedVoice = await resolveVoiceId(supabase, replyVoiceId, instance_name);
+        await sendWhatsAppAudio(supabase, inst, normalizedPhone, instance_name,
+          summaryMsg, resolvedVoice, session.contact_id, session.lead_id, "wjia_autoconfirm");
+      } else {
+        await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
+          summaryMsg, session.contact_id, session.lead_id, "wjia_autoconfirm", splitOpts);
+      }
 
+      // Step 2: Generate document
       session.received_documents = receivedDocs;
       const nomeFieldAuto = currentFields.find((f: any) => /NOME.?COMPLETO/i.test(f.de));
       const signerName = nomeFieldAuto?.para?.trim() || collectedData.signer_name || "Cliente";
