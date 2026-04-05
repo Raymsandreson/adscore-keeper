@@ -998,7 +998,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                               )}
                             </div>
                           )}
-                        </div>
+                        </div>}
 
                         <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
                           <Label className="text-xs font-semibold">📋 Após assinatura do documento</Label>
