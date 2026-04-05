@@ -1105,7 +1105,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                           </p>
                           <Select
                             value={(form as any).zapsign_mode || 'final_document'}
-                            onValueChange={(v) => setForm(f => ({ ...f, zapsign_mode: v as any }))}
+                            onValueChange={(v) => setForm(f => ({ ...f, zapsign_mode: v as any, ...(v === 'final_document' ? { skip_confirmation: false, partial_min_fields: [] } : {}) }))}
                           >
                             <SelectTrigger className="h-8 text-xs">
                               <SelectValue />
