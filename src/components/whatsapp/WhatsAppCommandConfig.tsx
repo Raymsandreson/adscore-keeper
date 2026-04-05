@@ -394,18 +394,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
 
   const resetForm = () => {
     setTemplateFields([]);
-    setForm({
-      shortcut_name: '', description: '', template_token: '', template_name: '',
-      prompt_instructions: '', media_extraction_prompt: '',
-      notify_on_signature: true, send_signed_pdf: true,
-      request_documents: false, document_types: [], custom_document_names: [], document_type_modes: {},
-      assistant_type: 'document', base_prompt: '',
-      model: 'google/gemini-2.5-flash', temperature: 0.7,
-      max_tokens: 2048, response_delay_seconds: 2, skip_confirmation: false, partial_min_fields: [], history_limit: 50, split_messages: false, split_delay_seconds: 3,
-      reply_with_audio: false, reply_voice_id: null, respond_in_groups: false, max_tts_chars: 1000,
-      send_window_start_hour: 8, send_window_end_hour: 20, send_call_followup_audio: false,
-      zapsign_settings: {},
-    });
+    setForm({ ...DEFAULT_FORM });
     setFollowupSteps([]);
     setHumanReplyPauseMinutes(0);
     
