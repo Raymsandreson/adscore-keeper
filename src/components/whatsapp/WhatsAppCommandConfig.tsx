@@ -1602,18 +1602,61 @@ CONVERSA COM O CLIENTE (últimas mensagens):
 ${form.prompt_instructions ? `INSTRUÇÕES ESPECÍFICAS:\n${form.prompt_instructions}` : "(sem instruções específicas)"}`;
   }
 
-  // Document mode — Initial command prompt
+  // Document mode — determine field categories
   const baseSection = form.base_prompt ? `\nPERSONA/REGRAS BASE:\n${form.base_prompt}\n` : "";
   
+  const predefinedKeys = new Set(predefinedFields.map(pf => pf.field.toUpperCase()));
+  const minFieldKeys = new Set((form.partial_min_fields || []).map((f: string) => f.toUpperCase()));
+  const isPartialEnabled = !!form.allow_partial_generation;
+
+  // Resolve predefined display values
+  const resolvePredefinedDisplay = (pf: PredefinedFieldConfig): string => {
+    switch (pf.mode) {
+      case 'today': return `data de hoje (${today})`;
+      case 'brazilian_nationality': return '"Brasileira" / "Brasileiro"';
+      case 'client_phone': return 'telefone do cliente (WhatsApp)';
+      case 'fixed_value': return pf.value ? `"${pf.value}"` : '(valor fixo não definido ⚠️)';
+      default: return `[${pf.mode}]`;
+    }
+  };
+
+  // Categorize fields
+  const fieldsToCollect: string[] = [];
+  const fieldsPreDefined: string[] = [];
+  const warnings: string[] = [];
+
+  templateFields.forEach(f => {
+    const upperKey = f.key.toUpperCase();
+    const pf = predefinedFields.find(p => p.field.toUpperCase() === upperKey);
+    
+    if (pf) {
+      // Check for misconfigurations
+      if (pf.mode === 'today' && !upperKey.includes('DATA') && !upperKey.includes('DATE')) {
+        warnings.push(`⚠️ "${f.label}" configurado como "data de hoje" mas não parece ser um campo de data`);
+      }
+      fieldsPreDefined.push(`- ${f.label}: ${resolvePredefinedDisplay(pf)} ✅ auto`);
+    } else if (isPartialEnabled && minFieldKeys.has(upperKey)) {
+      fieldsToCollect.push(`- ${f.label} (variável: ${f.key}) ⭐ mínimo obrigatório`);
+    } else if (isPartialEnabled) {
+      fieldsToCollect.push(`- ${f.label} (variável: ${f.key}) — opcional (cliente preenche no formulário)`);
+    } else {
+      fieldsToCollect.push(`- ${f.label} (variável: ${f.key}) *obrigatório`);
+    }
+  });
+
   const allFieldsList = templateFields.length > 0
-    ? templateFields.map(f => `- ${f.label} (variável: ${f.key})${f.required ? ' *obrigatório' : ''}`).join("\n")
+    ? `CAMPOS PARA COLETAR DO CLIENTE:\n${fieldsToCollect.length > 0 ? fieldsToCollect.join("\n") : "(todos pré-definidos)"}`
     : "(nenhum template selecionado — campos carregados dinamicamente)";
 
-  const predefinedInfo = predefinedFields.length > 0
-    ? `\nCAMPOS PRÉ-DEFINIDOS (preenchidos automaticamente, NÃO perguntar):\n${predefinedFields.map(pf => `- ${pf.field}: [${pf.mode}]${pf.value ? ` = "${pf.value}"` : ''}`).join("\n")}`
+  const predefinedInfo = fieldsPreDefined.length > 0
+    ? `\nCAMPOS PRÉ-DEFINIDOS (preenchidos automaticamente, NÃO perguntar):\n${fieldsPreDefined.join("\n")}`
     : "";
 
-  const minFieldsInfo = form.partial_min_fields?.length > 0
+  const warningsInfo = warnings.length > 0
+    ? `\n\n🔴 ALERTAS DE CONFIGURAÇÃO:\n${warnings.join("\n")}`
+    : "";
+
+  const minFieldsInfo = isPartialEnabled && form.partial_min_fields?.length > 0
     ? `\nCAMPOS MÍNIMOS OBRIGATÓRIOS (bloqueia geração se faltarem):\n${form.partial_min_fields.map((f: string) => `- ${f}`).join("\n")}`
     : "";
 
@@ -1683,7 +1726,7 @@ REGRAS:
 6. DATA_ASSINATURA/DATA_PROCURACAO: preenchidos automaticamente — NÃO pergunte
 7. CIDADE/ESTADO de assinatura: sincronizados automaticamente
 8. NUNCA INVENTE LINKS OU URLs
-9. NUNCA diga que é assistente virtual, IA ou robô`;
+9. NUNCA diga que é assistente virtual, IA ou robô${warningsInfo}`;
 
   return newCommandPrompt + followUpPrompt;
 }
