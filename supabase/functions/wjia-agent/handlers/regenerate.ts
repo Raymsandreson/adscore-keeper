@@ -15,6 +15,7 @@ import {
   buildTemplateFieldCatalog,
   convertImageToPdf,
   filterOnlyAutoFilledData,
+  normalizeFieldKey,
   sendWhatsApp,
   updateSignerSettings,
   ZAPSIGN_API_URL,

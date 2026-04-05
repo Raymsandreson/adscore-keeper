@@ -19,6 +19,7 @@ import {
   filterFieldsAgainstTemplate,
   filterOnlyAutoFilledData,
   generateZapSignDocument,
+  normalizeFieldKey,
   sendWhatsApp,
   syncNameFields,
   updateSignerSettings,
