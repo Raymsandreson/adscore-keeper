@@ -141,8 +141,10 @@ export async function handleRegenerate(payload: {
   const syncKeysRegen = autoSyncCityState(fieldsData, regenerationCatalog);
   const autoKeysRegen = new Set([...predefinedKeysRegen, ...dateKeysRegen, ...syncKeysRegen]);
 
-  // Only send auto-filled fields to ZapSign
-  const autoFilledData = filterOnlyAutoFilledData(fieldsData, autoKeysRegen);
+  // Send ALL collected fields (AI + auto) to ZapSign — client reviews in editable form
+  const autoFilledData = fieldsData.filter((f: any) =>
+    f?.de && f?.para && String(f.para).trim().length > 0 && f.para !== " "
+  );
 
   const cpfField = fieldsData.find((f: any) => /CPF/i.test(f.de));
   const receivedDocs = Array.isArray(session.received_documents) ? session.received_documents : [];
