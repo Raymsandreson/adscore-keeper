@@ -1567,26 +1567,27 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
         </SheetContent>
       </Sheet>
 
-      {/* Super Prompt Preview Dialog */}
+      {/* Super Prompt Diagnostic Panel */}
       <Dialog open={superPromptPreviewOpen} onOpenChange={setSuperPromptPreviewOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-sm">
               <Eye className="h-4 w-4" />
-              👁 Super Prompt Completo (somente leitura)
+              🔍 Diagnóstico de Configuração do Agente
             </DialogTitle>
             <p className="text-xs text-muted-foreground">
-              Este é o prompt completo que a IA recebe. Ele é montado automaticamente a partir das suas configurações + prompt do agente.
-              <strong> Você não edita isso diretamente</strong> — altere as configurações e o prompt do agente para modificá-lo.
+              Painel em tempo real mostrando como suas configurações afetam o comportamento da IA.
+              <strong> Altere as configurações e veja o reflexo aqui.</strong>
             </p>
           </DialogHeader>
           <div className="flex-1 overflow-auto">
-            <pre className="text-xs font-mono whitespace-pre-wrap bg-muted/50 p-4 rounded-lg border leading-relaxed text-foreground">
-              {buildSuperPromptPreview(form, templateFieldOptions, predefinedFieldConfigs)}
-            </pre>
+            <SuperPromptDiagnostic 
+              form={form} 
+              templateFields={templateFieldOptions} 
+              predefinedFields={predefinedFieldConfigs} 
+            />
           </div>
-          <div className="flex justify-between items-center pt-2 border-t text-xs text-muted-foreground">
-            <span>{buildSuperPromptPreview(form, templateFieldOptions, predefinedFieldConfigs).length} caracteres</span>
+          <div className="flex justify-end pt-2 border-t">
             <Button size="sm" variant="outline" onClick={() => setSuperPromptPreviewOpen(false)}>Fechar</Button>
           </div>
         </DialogContent>
