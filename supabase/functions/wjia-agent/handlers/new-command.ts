@@ -657,16 +657,79 @@ Se não encontrou nada, retorne: []`;
     }
   }
 
-  // Normal flow: send collection message
+  // Normal flow: generate initial message respecting the agent's prompt
   if (session.status !== "ready") {
-    if (inst?.instance_token && parsed.collection_message) {
-      await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
-        parsed.collection_message, contact_id, lead_id, "wjia_collect");
+    if (inst?.instance_token) {
+      const filledCount = fieldsData.filter((f: any) => f.para).length;
+      const stillMissing = computeMissingFields(
+        buildTemplateFieldCatalog({ required_fields: templateFields, missing_fields: missingFields }),
+        fieldsData,
+      );
+
+      // If the shortcut has prompt_instructions, use AI to generate a natural first message
+      // that follows the agent's personality and flow instead of a robotic field list
+      if (matchedShortcut?.prompt_instructions) {
+        const FRIENDLY_LABELS: Record<string, string> = {
+          "NOME_COMPLETO": "Nome completo", "NACIONALIDADE": "Nacionalidade",
+          "ESTADO_CIVIL": "Estado civil", "PROFISSAO": "Profissão",
+          "CPF": "CPF", "RG": "RG", "ENDERECO_COMPLETO": "Endereço completo",
+          "CIDADE": "Cidade", "UF": "Estado (UF)", "CEP": "CEP",
+          "DATA_NASCIMENTO": "Data de nascimento", "NOME_MAE": "Nome da mãe",
+          "EMAIL": "E-mail", "TELEFONE": "Telefone", "WHATSAPP": "WhatsApp",
+        };
+        const missingLabels = stillMissing.map((f: any) => {
+          const key = (f.friendly_name || f.field_name || "").replace(/[{}]/g, "");
+          return FRIENDLY_LABELS[key] || f.friendly_name || key;
+        });
+
+        const firstMsgPrompt = `Você é um atendente de WhatsApp. Siga RIGOROSAMENTE as instruções abaixo para gerar a PRIMEIRA mensagem ao cliente.
+
+INSTRUÇÕES DO AGENTE (PRIORIDADE MÁXIMA — siga o tom, personalidade e fluxo definidos aqui):
+${matchedShortcut.prompt_instructions}
+
+CONTEXTO INTERNO (NÃO mencione isso ao cliente):
+- Campos já preenchidos automaticamente: ${filledCount} (o cliente NÃO sabe disso, NÃO mencione)
+- Campos que ainda faltam coletar: ${missingLabels.join(", ")}
+
+REGRAS:
+1. Siga o fluxo e tom do prompt do agente acima. Se ele diz para se apresentar, qualificar, tirar dúvidas primeiro — faça isso.
+2. NUNCA diga "encontrei X dados" ou mencione dados pré-preenchidos. O cliente não enviou nada ainda.
+3. NUNCA use listas com bullets/tópicos para pedir dados. Seja conversacional e natural.
+4. NUNCA se identifique como IA/robô.
+5. A mensagem deve ser em português brasileiro informal e empático.
+6. Se o prompt do agente diz para pedir os dados de uma vez, peça de forma conversacional (não em lista).
+
+Gere APENAS a mensagem para o cliente. Nada mais.`;
+
+        try {
+          const firstMsgResult = await geminiChat({
+            model: matchedShortcut.model || "google/gemini-2.5-flash",
+            messages: [{ role: "user", content: firstMsgPrompt }],
+            temperature: matchedShortcut.temperature ?? 0.4,
+          });
+          const firstMsg = firstMsgResult?.choices?.[0]?.message?.content;
+          if (firstMsg?.trim()) {
+            await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
+              firstMsg.trim(), contact_id, lead_id, "wjia_collect", initialSplitOpts);
+          }
+        } catch (e) {
+          console.error("Error generating prompt-based first message:", e);
+          // Fallback to collection_message if AI fails
+          if (parsed.collection_message) {
+            await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
+              parsed.collection_message, contact_id, lead_id, "wjia_collect");
+          }
+        }
+      } else if (parsed.collection_message) {
+        // No custom prompt — use the AI-generated collection message
+        await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
+          parsed.collection_message, contact_id, lead_id, "wjia_collect");
+      }
     }
 
     return jsonResponse({
       success: true, action: "collection_started",
-      message: `🔄 *Coleta de dados iniciada*\nDocumento: *${parsed.template_name}*\n📊 Dados encontrados: ${fieldsData.filter((f: any) => f.para).length}\n⚠️ Faltantes: ${missingFields.length}\n\nO robô vai coletar:\n${missingFields.map((f: any) => `• ${f.friendly_name}`).join("\n")}`,
+      message: `🔄 *Coleta de dados iniciada*\nDocumento: *${parsed.template_name}*\n📊 Dados encontrados: ${fieldsData.filter((f: any) => f.para).length}\n⚠️ Faltantes: ${missingFields.length}`,
       session_id: session.id, missing_count: missingFields.length,
     });
   }
