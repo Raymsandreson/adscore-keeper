@@ -1597,7 +1597,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
 }
 
 
-// IMPORTANTE: Esta função DEVE espelhar EXATAMENTE os prompts dos handlers:
 // - supabase/functions/wjia-agent/handlers/new-command.ts (linhas ~200-231)
 // - supabase/functions/wjia-agent/handlers/follow-up.ts (linhas ~393-442)
 function buildSuperPromptPreview(
