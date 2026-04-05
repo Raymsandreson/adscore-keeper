@@ -1600,7 +1600,7 @@ ${form.prompt_instructions ? `INSTRUÇÕES ESPECÍFICAS:\n${form.prompt_instruct
     : "(nenhum template selecionado — campos carregados dinamicamente)";
 
   const predefinedInfo = predefinedFields.length > 0
-    ? `\nCAMPOS PRÉ-DEFINIDOS (preenchidos automaticamente, NÃO perguntar):\n${predefinedFields.map(pf => `- ${pf.field}: [${pf.mode}]${pf.fixed_value ? ` = "${pf.fixed_value}"` : ''}`).join("\n")}`
+    ? `\nCAMPOS PRÉ-DEFINIDOS (preenchidos automaticamente, NÃO perguntar):\n${predefinedFields.map(pf => `- ${pf.field}: [${pf.mode}]${pf.value ? ` = "${pf.value}"` : ''}`).join("\n")}`
     : "";
 
   const minFieldsInfo = form.partial_min_fields?.length > 0
