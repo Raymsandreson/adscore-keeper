@@ -20,6 +20,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
+import { SuperPromptDiagnostic } from './SuperPromptDiagnostic';
 import { MemberAssistantSettings } from './MemberAssistantSettings';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
