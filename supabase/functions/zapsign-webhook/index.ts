@@ -428,78 +428,100 @@ Deno.serve(async (req) => {
         }
 
         // ====================================================
-        // SEND MEETING SCHEDULING SLOTS via WhatsApp
+        // SEND ONBOARDING MEETING BOOKING LINK
         // ====================================================
         try {
-          const slotsRes = await fetch(`${cloudFunctionsUrl}/functions/v1/get-available-slots`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-            },
-            body: JSON.stringify({
-              user_id: localDoc.created_by,
-              days_ahead: 5,
-              slot_duration_minutes: 30,
-            }),
-          })
+          // Find meeting config for the board this document belongs to
+          let meetingBoardId: string | null = null
+          if (localDoc.lead_id) {
+            const { data: leadData } = await supabase
+              .from('leads')
+              .select('board_id')
+              .eq('id', localDoc.lead_id)
+              .maybeSingle()
+            meetingBoardId = leadData?.board_id || null
+          }
 
-          const slotsData = await slotsRes.json()
-
-          if (slotsData?.slots?.length > 0) {
-            const docName = localDoc.document_name || 'Procuração'
-            const signerName = localDoc.signer_name || 'Cliente'
-
-            const slotsByDate: Record<string, string[]> = {}
-            for (const slot of slotsData.slots) {
-              if (!slotsByDate[slot.date]) slotsByDate[slot.date] = []
-              slotsByDate[slot.date].push(slot.time)
-            }
-
-            let slotsText = ''
-            for (const [date, times] of Object.entries(slotsByDate)) {
-              slotsText += `\n📅 *${date}*: ${(times as string[]).join(' | ')}`
-            }
-
-            const meetingMessage = `🤝 *Reunião de Boas-Vindas*\n\nOlá! Agora que a *${docName}* foi assinada, gostaríamos de agendar sua reunião de boas-vindas.\n\n⏰ *Horários disponíveis:*${slotsText}\n\n✅ Responda com o *dia e horário* de sua preferência e confirmaremos o agendamento!\n\n_Prudência Advocacia_`
-
-            const { data: instForMeeting } = await supabase
-              .from('whatsapp_instances')
+          if (meetingBoardId) {
+            const { data: meetingConfig } = await supabase
+              .from('onboarding_meeting_configs')
               .select('*')
+              .eq('board_id', meetingBoardId)
               .eq('is_active', true)
-              .limit(1)
-              .single()
+              .eq('auto_send_after_signature', true)
+              .maybeSingle()
 
-            if (instForMeeting) {
-              const meetBaseUrl = instForMeeting.base_url || 'https://abraci.uazapi.com'
-              await fetch(`${meetBaseUrl}/send/text`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'token': instForMeeting.instance_token },
-                body: JSON.stringify({
-                  number: localDoc.whatsapp_phone,
-                  text: meetingMessage,
-                }),
-              })
+            if (meetingConfig) {
+              // Create a booking record with token for the client
+              const { data: bookingRecord } = await supabase
+                .from('onboarding_meeting_bookings')
+                .insert({
+                  config_id: meetingConfig.id,
+                  lead_id: localDoc.lead_id,
+                  contact_phone: localDoc.whatsapp_phone,
+                  contact_name: localDoc.signer_name || 'Cliente',
+                  status: 'pending',
+                })
+                .select('booking_token')
+                .single()
 
-              await supabase.from('whatsapp_messages').insert({
-                phone: localDoc.whatsapp_phone,
-                message_text: meetingMessage,
-                message_type: 'text',
-                direction: 'outbound',
-                status: 'sent',
-                contact_id: localDoc.contact_id || null,
-                lead_id: localDoc.lead_id || null,
-                instance_name: instForMeeting.instance_name,
-                instance_token: instForMeeting.instance_token,
-              })
+              if (bookingRecord?.booking_token) {
+                const appUrl = Deno.env.get('SUPABASE_URL')?.replace('.supabase.co', '') || ''
+                // Use the published app URL
+                const bookingLink = `https://adscore-keeper.lovable.app/booking/${meetingConfig.id}/${bookingRecord.booking_token}`
 
-              console.log('Meeting scheduling message sent to:', localDoc.whatsapp_phone)
+                const docName = localDoc.document_name || 'documento'
+                const contactName = localDoc.signer_name || 'Cliente'
+                let meetingMessage = (meetingConfig.message_template || '')
+                  .replace(/\{\{booking_link\}\}/g, bookingLink)
+                  .replace(/\{\{duration\}\}/g, String(meetingConfig.meeting_duration_minutes))
+                  .replace(/\{\{contact_name\}\}/g, contactName)
+
+                // Use the same instance that sent the document
+                const instanceName = localDoc.instance_name
+                const { data: instForMeeting } = await supabase
+                  .from('whatsapp_instances')
+                  .select('*')
+                  .eq('instance_name', instanceName)
+                  .eq('is_active', true)
+                  .maybeSingle()
+
+                if (instForMeeting) {
+                  const meetBaseUrl = instForMeeting.base_url || 'https://abraci.uazapi.com'
+                  await fetch(`${meetBaseUrl}/send/text`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'token': instForMeeting.instance_token },
+                    body: JSON.stringify({
+                      number: localDoc.whatsapp_phone,
+                      text: meetingMessage,
+                    }),
+                  })
+
+                  await supabase.from('whatsapp_messages').insert({
+                    phone: localDoc.whatsapp_phone,
+                    message_text: meetingMessage,
+                    message_type: 'text',
+                    direction: 'outbound',
+                    status: 'sent',
+                    contact_id: localDoc.contact_id || null,
+                    lead_id: localDoc.lead_id || null,
+                    instance_name: instForMeeting.instance_name,
+                    instance_token: instForMeeting.instance_token,
+                  })
+
+                  console.log('Onboarding booking link sent to:', localDoc.whatsapp_phone, 'link:', bookingLink)
+                } else {
+                  console.log('No matching WhatsApp instance found for meeting message, instance:', instanceName)
+                }
+              }
+            } else {
+              console.log('No active meeting config for board:', meetingBoardId)
             }
           } else {
-            console.log('No available slots found or Google not connected, skipping meeting message')
+            console.log('No board_id found for lead, skipping meeting scheduling')
           }
         } catch (meetingErr) {
-          console.error('Error sending meeting scheduling message:', meetingErr)
+          console.error('Error sending onboarding booking link:', meetingErr)
         }
       } else {
         console.log(`PDF sending skipped - phone: ${localDoc.whatsapp_phone || 'NONE'}, send_signed_pdf: ${localDoc.send_signed_pdf}`)
