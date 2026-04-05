@@ -281,7 +281,13 @@ export async function speechToSpeech(
     return null;
   }
 
-  try {
+    // Check credits before STS
+    const credits = await checkElevenLabsCredits(ELEVENLABS_API_KEY);
+    if (!credits.has_credits) {
+      console.warn(`speechToSpeech: sem créditos ElevenLabs (${credits.character_count}/${credits.character_limit})`);
+      return null;
+    }
+
     // Download input audio
     const audioResp = await fetch(audioUrl);
     if (!audioResp.ok) throw new Error(`Download failed: ${audioResp.status}`);
@@ -299,13 +305,15 @@ export async function speechToSpeech(
       style: 0.3,
     }));
 
-    const stsResp = await fetch(
+    const stsResp = await fetchWithRetry(
       `https://api.elevenlabs.io/v1/speech-to-speech/${voiceId}?output_format=mp3_22050_32`,
       {
         method: "POST",
         headers: { "xi-api-key": ELEVENLABS_API_KEY },
         body: formData,
       },
+      2,
+      1500,
     );
 
     if (!stsResp.ok) {
