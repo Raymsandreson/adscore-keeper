@@ -5946,6 +5946,160 @@ export type Database = {
           },
         ]
       }
+      onboarding_meeting_bookings: {
+        Row: {
+          booking_token: string
+          config_id: string
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string
+          id: string
+          lead_id: string | null
+          notes: string | null
+          slot_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          booking_token?: string
+          config_id: string
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          slot_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          booking_token?: string
+          config_id?: string
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          slot_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_meeting_bookings_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_meeting_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_meeting_bookings_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_meeting_slots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_meeting_configs: {
+        Row: {
+          activity_type: string
+          auto_send_after_signature: boolean
+          available_days: number[]
+          board_id: string
+          buffer_minutes: number
+          created_at: string
+          end_hour: number
+          host_user_id: string | null
+          id: string
+          is_active: boolean
+          meeting_duration_minutes: number
+          meeting_type: string
+          message_template: string | null
+          start_hour: number
+          updated_at: string
+        }
+        Insert: {
+          activity_type?: string
+          auto_send_after_signature?: boolean
+          available_days?: number[]
+          board_id: string
+          buffer_minutes?: number
+          created_at?: string
+          end_hour?: number
+          host_user_id?: string | null
+          id?: string
+          is_active?: boolean
+          meeting_duration_minutes?: number
+          meeting_type?: string
+          message_template?: string | null
+          start_hour?: number
+          updated_at?: string
+        }
+        Update: {
+          activity_type?: string
+          auto_send_after_signature?: boolean
+          available_days?: number[]
+          board_id?: string
+          buffer_minutes?: number
+          created_at?: string
+          end_hour?: number
+          host_user_id?: string | null
+          id?: string
+          is_active?: boolean
+          meeting_duration_minutes?: number
+          meeting_type?: string
+          message_template?: string | null
+          start_hour?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_meeting_configs_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: true
+            referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_meeting_slots: {
+        Row: {
+          config_id: string
+          created_at: string
+          end_time: string
+          id: string
+          is_available: boolean
+          start_time: string
+        }
+        Insert: {
+          config_id: string
+          created_at?: string
+          end_time: string
+          id?: string
+          is_available?: boolean
+          start_time: string
+        }
+        Update: {
+          config_id?: string
+          created_at?: string
+          end_time?: string
+          id?: string
+          is_available?: boolean
+          start_time?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_meeting_slots_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_meeting_configs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       outbound_goal_history: {
         Row: {
           achieved_at: string
