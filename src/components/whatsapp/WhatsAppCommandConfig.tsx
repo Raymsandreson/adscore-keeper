@@ -951,54 +951,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     </div>
                     {form.template_token && (
                       <>
-                        {/* Gerar com dados parciais - só aparece no modo prefilled_form */}
-                        {(form as any).zapsign_mode === 'prefilled_form' && <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <Label className="text-xs font-semibold">⚡ Gerar com dados parciais</Label>
-                              <p className="text-[10px] text-muted-foreground">Gera o link do documento mesmo com campos faltantes — o cliente preenche direto no formulário ZapSign</p>
-                            </div>
-                            <Switch checked={form.skip_confirmation ?? false} onCheckedChange={v => setForm(f => ({ ...f, skip_confirmation: v }))} />
-                          </div>
-                          {form.skip_confirmation && (
-                            <div className="space-y-2 pl-2 border-l-2 border-primary/20">
-                              <Label className="text-[10px] font-semibold">Campos mínimos obrigatórios</Label>
-                              <p className="text-[10px] text-muted-foreground">
-                                {templateFields.length > 0
-                                  ? 'Selecione os campos do modelo que devem ser coletados antes de gerar o link'
-                                  : 'Selecione um modelo ZapSign acima para ver os campos disponíveis'}
-                              </p>
-                              {templateFields.length > 0 ? (
-                                <div className="grid grid-cols-2 gap-1">
-                                  {templateFields.map(field => {
-                                    const fieldKey = field.variable.replace(/\{\{|\}\}/g, '');
-                                    const selected = (form as any).partial_min_fields || [];
-                                    const isChecked = selected.includes(fieldKey);
-                                    return (
-                                      <label key={fieldKey} className="flex items-center gap-1.5 text-[10px] cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5">
-                                        <input
-                                          type="checkbox"
-                                          checked={isChecked}
-                                          onChange={() => {
-                                            const newFields = isChecked
-                                              ? selected.filter((f: string) => f !== fieldKey)
-                                              : [...selected, fieldKey];
-                                            setForm(f => ({ ...f, partial_min_fields: newFields } as any));
-                                          }}
-                                          className="rounded border-muted-foreground/30 h-3 w-3"
-                                        />
-                                        {field.label || fieldKey}
-                                        {field.required && <span className="text-destructive text-[8px]">*</span>}
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <p className="text-[10px] text-muted-foreground italic">Nenhum campo encontrado. Selecione um modelo acima.</p>
-                              )}
-                            </div>
-                          )}
-                        </div>}
 
                         <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
                           <Label className="text-xs font-semibold">📋 Após assinatura do documento</Label>
