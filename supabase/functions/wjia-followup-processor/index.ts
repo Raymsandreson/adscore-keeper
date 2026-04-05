@@ -86,6 +86,37 @@ serve(async (req) => {
           }
         }
 
+        // For collecting sessions, check if the client responded after agent's last message
+        // If client responded, skip followup (agent should handle it)
+        if (session.status === "collecting") {
+          const { data: lastInbound } = await supabase
+            .from("whatsapp_messages")
+            .select("created_at")
+            .eq("phone", session.phone)
+            .eq("instance_name", session.instance_name)
+            .eq("direction", "inbound")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const { data: lastOutbound } = await supabase
+            .from("whatsapp_messages")
+            .select("created_at")
+            .eq("phone", session.phone)
+            .eq("instance_name", session.instance_name)
+            .eq("direction", "outbound")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          // If client's last message is newer than our last message, skip (agent will respond)
+          if (lastInbound && lastOutbound && new Date(lastInbound.created_at) > new Date(lastOutbound.created_at)) {
+            continue;
+          }
+          // If no outbound at all, skip
+          if (!lastOutbound) continue;
+        }
+
         const { data: lastLog } = await supabase
           .from("wjia_followup_log")
           .select("*")
@@ -104,8 +135,8 @@ serve(async (req) => {
         const effectiveStepIndex = nextStepIndex % steps.length;
         const step = steps[effectiveStepIndex];
         const delayMinutes = step.delay_minutes || 60;
-        // For call steps, enforce minimum 30 minutes delay
-        const effectiveDelayMinutes = step.action_type === "call" ? Math.max(delayMinutes, 30) : delayMinutes;
+        // For call steps, enforce minimum delay only if not explicitly set to lower
+        const effectiveDelayMinutes = step.action_type === "call" ? Math.max(delayMinutes, 1) : delayMinutes;
 
         const referenceTime = lastLog?.executed_at || session.updated_at;
         const timeSince = Date.now() - new Date(referenceTime).getTime();
