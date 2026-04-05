@@ -123,6 +123,7 @@ const SettingsPage = lazyRetry(() => import("./pages/SettingsPage"), "SettingsPa
 const ReferralSearchPage = lazyRetry(() => import("./pages/ReferralSearchPage"), "ReferralSearchPage");
 const AgentMonitorPage = lazyRetry(() => import("./pages/AgentMonitorPage"), "AgentMonitorPage");
 const LandingPage = lazyRetry(() => import("./pages/LandingPage"), "LandingPage");
+const BookingPage = lazyRetry(() => import("./pages/BookingPage"), "BookingPage");
 
 const queryClient = new QueryClient();
 
@@ -164,6 +165,8 @@ function AppRoutes() {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/install" element={<InstallPage />} />
         <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
+        <Route path="/booking/:configId" element={<BookingPage />} />
+        <Route path="/booking/:configId/:token" element={<BookingPage />} />
 
         {/* All other routes with sidebar layout */}
         <Route path="*" element={<SidebarLayout />} />
