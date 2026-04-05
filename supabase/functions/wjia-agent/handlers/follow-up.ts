@@ -5,6 +5,7 @@
  */
 
 import { geminiChat } from "../../_shared/gemini.ts";
+import { resolveVoiceId, sendWhatsAppAudio } from "../../_shared/whatsapp-utils.ts";
 import {
   applyConfiguredPredefinedFields,
   applyDefaults,
@@ -75,6 +76,7 @@ export async function handleFollowUp(opts: {
   // Load agent config for persona and delay
   let agentPersona = "";
   let batchDelaySeconds = 0;
+  let shortcutPromptInstructions = "";
 
   const { data: convAgent } = await supabase
     .from("whatsapp_conversation_agents")
@@ -130,7 +132,7 @@ export async function handleFollowUp(opts: {
   let zapsignSettingsReply: any = null;
   if (session.shortcut_name) {
     const { data: scSplit } = await supabase.from("wjia_command_shortcuts")
-      .select("split_messages, split_delay_seconds, skip_confirmation, partial_min_fields, zapsign_settings")
+      .select("split_messages, split_delay_seconds, skip_confirmation, partial_min_fields, zapsign_settings, prompt_instructions, reply_with_audio, reply_voice_id")
       .eq("shortcut_name", session.shortcut_name).maybeSingle();
     if (scSplit?.split_messages) {
       splitOpts = { splitMessages: true, splitDelaySeconds: scSplit.split_delay_seconds || 3 };
@@ -140,10 +142,11 @@ export async function handleFollowUp(opts: {
     }
     partialMinFieldsReply = (scSplit as any)?.partial_min_fields || [];
     zapsignSettingsReply = (scSplit as any)?.zapsign_settings || null;
+    shortcutPromptInstructions = scSplit?.prompt_instructions || "";
   }
 
   const { data: inst } = await supabase.from("whatsapp_instances")
-    .select("instance_token, base_url").eq("instance_name", instance_name).maybeSingle();
+    .select("instance_token, base_url, owner_name").eq("instance_name", instance_name).maybeSingle();
   const catalog = buildTemplateFieldCatalog(session);
   const collectedData = session.collected_data || { fields: [] };
   const currentFields = [...(collectedData.fields || [])];
@@ -191,12 +194,24 @@ export async function handleFollowUp(opts: {
     }
   }
 
+  // Load shortcut audio config
+  let replyWithAudio = false;
+  let replyVoiceId = "";
+  if (session.shortcut_name) {
+    const { data: scAudio } = await supabase.from("wjia_command_shortcuts")
+      .select("reply_with_audio, reply_voice_id")
+      .eq("shortcut_name", session.shortcut_name).maybeSingle();
+    replyWithAudio = scAudio?.reply_with_audio === true;
+    replyVoiceId = scAudio?.reply_voice_id || "";
+  }
+
   // ── UNIFIED AGENT PHASE ──
   return await runAgentPhase({
     supabase, session, inst, normalizedPhone, instance_name,
     message_text, currentFields, collectedData, catalog,
-    agentPersona, splitOpts, skipConfirmation,
-    zapsignSettingsReply, zapsignToken,
+    agentPersona, shortcutPromptInstructions, splitOpts, skipConfirmation,
+    zapsignSettingsReply, zapsignToken, replyWithAudio, replyVoiceId,
+    message_type,
   });
 }
 
@@ -311,13 +326,18 @@ async function runAgentPhase(opts: {
   normalizedPhone: string; instance_name: string;
   message_text: string; currentFields: any[];
   collectedData: any; catalog: any;
-  agentPersona: string; splitOpts: any;
+  agentPersona: string; shortcutPromptInstructions: string;
+  splitOpts: any;
   skipConfirmation: boolean; zapsignSettingsReply: any;
   zapsignToken: string | undefined;
+  replyWithAudio: boolean; replyVoiceId: string;
+  message_type: string;
 }) {
   const { supabase, session, inst, normalizedPhone, instance_name,
     message_text, currentFields, collectedData, catalog,
-    agentPersona, splitOpts, skipConfirmation, zapsignSettingsReply, zapsignToken } = opts;
+    agentPersona, shortcutPromptInstructions, splitOpts,
+    skipConfirmation, zapsignSettingsReply, zapsignToken,
+    replyWithAudio, replyVoiceId, message_type } = opts;
 
   // Pre-process auto-fills
   const autoFilledKeys = autoFillDates(currentFields, catalog);
@@ -389,14 +409,29 @@ async function runAgentPhase(opts: {
 
   const isReadyPhase = session.status === "ready" || missingFields.length === 0;
   const hasAgentPersona = !!agentPersona && agentPersona.trim().length > 10;
+  const hasShortcutPrompt = !!shortcutPromptInstructions && shortcutPromptInstructions.trim().length > 10;
+  const ownerName = inst?.owner_name || "";
+  const ownerContext = ownerName ? `\nNOME DO DONO DA INSTÂNCIA (use como seu nome se as instruções disserem): ${ownerName}` : "";
 
-  const systemPrompt = `${hasAgentPersona
+  // Build identity block: shortcut prompt_instructions takes priority, then agent persona
+  const identityBlock = hasShortcutPrompt
     ? `IDENTIDADE E COMPORTAMENTO (PRIORIDADE ABSOLUTA — você DEVE agir EXATAMENTE como descrito abaixo em TODAS as mensagens):
+${ownerContext}
+
+INSTRUÇÕES DO AGENTE:
+${shortcutPromptInstructions}
+${agentPersona ? `\nCONFIGURAÇÃO ADICIONAL:\n${agentPersona}` : ""}
+
+Você está coletando dados para gerar o documento "${session.template_name}". Mantenha SEMPRE o tom, estilo e personalidade acima durante TODA a conversa de coleta.`
+    : hasAgentPersona
+    ? `IDENTIDADE E COMPORTAMENTO (PRIORIDADE ABSOLUTA — você DEVE agir EXATAMENTE como descrito abaixo em TODAS as mensagens):
+${ownerContext}
 ${agentPersona}
 
 Você está coletando dados para gerar o documento "${session.template_name}". Mantenha SEMPRE o tom, estilo e personalidade acima durante TODA a conversa de coleta.`
-    : `Você é um assistente jurídico conversando pelo WhatsApp. Seu OBJETIVO é coletar os dados necessários para gerar o documento "${session.template_name}" e obter a confirmação do cliente.`
-  }
+    : `Você é um assistente jurídico conversando pelo WhatsApp. Seu OBJETIVO é coletar os dados necessários para gerar o documento "${session.template_name}" e obter a confirmação do cliente.`;
+
+  const systemPrompt = `${identityBlock}
 
 ESTILO DE CONVERSA:
 - Use o tom da IDENTIDADE acima. Se não houver identidade definida, seja natural e direto.
@@ -646,8 +681,16 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
   }).eq("id", session.id);
 
   if (result.reply_to_client) {
-    await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
-      result.reply_to_client, session.contact_id, session.lead_id, "wjia_collect", splitOpts);
+    // Send as audio if shortcut has reply_with_audio AND contact sent audio
+    const shouldReplyAudio = replyWithAudio && message_type === "audio" && replyVoiceId;
+    if (shouldReplyAudio) {
+      const resolvedVoice = await resolveVoiceId(supabase, replyVoiceId, instance_name);
+      await sendWhatsAppAudio(supabase, inst, normalizedPhone, instance_name,
+        result.reply_to_client, resolvedVoice, session.contact_id, session.lead_id, "wjia_collect");
+    } else {
+      await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
+        result.reply_to_client, session.contact_id, session.lead_id, "wjia_collect", splitOpts);
+    }
   }
 
   return jsonResponse({

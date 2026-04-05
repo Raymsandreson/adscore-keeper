@@ -54,7 +54,7 @@ export {
 } from "./zapsign-utils.ts";
 
 // WhatsApp messaging
-export { sendWhatsApp } from "./whatsapp-utils.ts";
+export { sendWhatsApp, sendWhatsAppAudio, resolveVoiceId } from "./whatsapp-utils.ts";
 
 // Document processing (OCR, classification)
 export {

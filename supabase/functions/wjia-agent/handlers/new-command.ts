@@ -70,7 +70,7 @@ export async function handleNewCommand(opts: {
         }).then((r) => r.ok ? r.json() : []).catch(() => [])
         : Promise.resolve([]),
       instance_name
-        ? supabase.from("whatsapp_instances").select("instance_token, base_url")
+        ? supabase.from("whatsapp_instances").select("instance_token, base_url, owner_name")
           .eq("instance_name", instance_name).maybeSingle()
         : Promise.resolve({ data: null }),
       supabase.from("wjia_command_shortcuts").select("*").eq("is_active", true)
@@ -684,8 +684,11 @@ Se não encontrou nada, retorne: []`;
           return FRIENDLY_LABELS[key] || f.friendly_name || key;
         });
 
-        const firstMsgPrompt = `Você é um atendente de WhatsApp. Siga RIGOROSAMENTE as instruções abaixo para gerar a PRIMEIRA mensagem ao cliente.
+        const ownerName = inst?.owner_name || "";
+        const ownerContext = ownerName ? `\nNOME DO DONO DA INSTÂNCIA (use como seu nome se o prompt disser): ${ownerName}\n` : "";
 
+        const firstMsgPrompt = `Você é um atendente de WhatsApp. Siga RIGOROSAMENTE as instruções abaixo para gerar a PRIMEIRA mensagem ao cliente.
+${ownerContext}
 INSTRUÇÕES DO AGENTE (PRIORIDADE MÁXIMA — siga o tom, personalidade e fluxo definidos aqui):
 ${matchedShortcut.prompt_instructions}
 
