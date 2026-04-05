@@ -147,7 +147,7 @@ export function SuperPromptDiagnostic({ form, templateFields, predefinedFields }
     }
   });
 
-  if (!form.base_prompt?.trim()) {
+  if (!form.base_prompt?.trim() && !form.prompt_instructions?.trim()) {
     warnings.push('Nenhuma persona/prompt base definido — agente usará tom genérico');
   }
   if (templateFields.length === 0 && !isAssistant) {
@@ -176,19 +176,23 @@ export function SuperPromptDiagnostic({ form, templateFields, predefinedFields }
       {/* PERSONA */}
       <Section icon={MessageSquare} title="Persona / Identidade">
         {form.base_prompt?.trim() ? (
-          <div className="bg-muted/50 rounded p-2 max-h-[120px] overflow-y-auto">
-            <p className="text-[11px] text-muted-foreground whitespace-pre-wrap">{form.base_prompt}</p>
+          <div>
+            <span className="text-[10px] font-medium text-muted-foreground">Prompt base:</span>
+            <div className="bg-muted/50 rounded p-2 mt-1 max-h-[120px] overflow-y-auto">
+              <p className="text-[11px] text-muted-foreground whitespace-pre-wrap">{form.base_prompt}</p>
+            </div>
           </div>
-        ) : (
-          <p className="text-muted-foreground italic">Sem persona definida — tom genérico de assistente jurídico</p>
-        )}
-        {form.prompt_instructions?.trim() && (
-          <div className="mt-1">
+        ) : null}
+        {form.prompt_instructions?.trim() ? (
+          <div className={form.base_prompt?.trim() ? "mt-2" : ""}>
             <span className="text-[10px] font-medium text-muted-foreground">Instruções específicas:</span>
-            <div className="bg-muted/50 rounded p-2 mt-1 max-h-[80px] overflow-y-auto">
+            <div className="bg-muted/50 rounded p-2 mt-1 max-h-[120px] overflow-y-auto">
               <p className="text-[11px] text-muted-foreground whitespace-pre-wrap">{form.prompt_instructions}</p>
             </div>
           </div>
+        ) : null}
+        {!form.base_prompt?.trim() && !form.prompt_instructions?.trim() && (
+          <p className="text-muted-foreground italic">Sem persona definida — tom genérico de assistente jurídico</p>
         )}
       </Section>
 
