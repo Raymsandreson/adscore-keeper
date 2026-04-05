@@ -146,7 +146,7 @@ export async function handleFollowUp(opts: {
   }
 
   const { data: inst } = await supabase.from("whatsapp_instances")
-    .select("instance_token, base_url").eq("instance_name", instance_name).maybeSingle();
+    .select("instance_token, base_url, owner_name").eq("instance_name", instance_name).maybeSingle();
   const catalog = buildTemplateFieldCatalog(session);
   const collectedData = session.collected_data || { fields: [] };
   const currentFields = [...(collectedData.fields || [])];
