@@ -259,33 +259,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; media_extraction_prompt?: string; followup_steps: FollowupStep[] } | null>(null);
   
-  const [form, setForm] = useState({
-    shortcut_name: '', description: '', template_token: '', template_name: '',
-    prompt_instructions: '', media_extraction_prompt: '',
-    notify_on_signature: true, send_signed_pdf: true,
-    request_documents: false, document_types: [] as string[], custom_document_names: [] as string[],
-    document_type_modes: {} as Record<string, 'required' | 'optional'>,
-    // Agent fields
-    assistant_type: 'document',
-    base_prompt: '',
-    model: 'google/gemini-2.5-flash',
-    temperature: 0.7,
-    max_tokens: 2048,
-    response_delay_seconds: 2,
-    skip_confirmation: false,
-    partial_min_fields: [] as string[],
-    history_limit: 50,
-    split_messages: false,
-    split_delay_seconds: 3,
-    reply_with_audio: false,
-    reply_voice_id: null as string | null,
-    respond_in_groups: false,
-    max_tts_chars: 1000,
-    send_window_start_hour: 8,
-    send_window_end_hour: 20,
-    send_call_followup_audio: false,
-    zapsign_settings: {} as Record<string, any>,
-  });
+  const [form, setForm] = useState<ShortcutFormState>({ ...DEFAULT_FORM });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
   const [humanReplyPauseMinutes, setHumanReplyPauseMinutes] = useState(0);
   const [followupRepeatForever, setFollowupRepeatForever] = useState(false);
