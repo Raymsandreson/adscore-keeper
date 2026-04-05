@@ -667,6 +667,16 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       <Maximize2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-xs gap-1.5"
+                    onClick={() => setSuperPromptPreviewOpen(true)}
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    👁 Ver Super Prompt Completo
+                  </Button>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
