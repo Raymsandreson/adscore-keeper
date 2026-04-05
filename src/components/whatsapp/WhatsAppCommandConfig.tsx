@@ -15,8 +15,9 @@ import { toast } from 'sonner';
 import { 
   Bot, Plus, Trash2, MessageSquare, Sparkles, 
   Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2, Volume2, Maximize2, RefreshCw,
-  ChevronUp, ChevronDown
+  ChevronUp, ChevronDown, Eye
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { MemberAssistantSettings } from './MemberAssistantSettings';
@@ -245,6 +246,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [formSection, setFormSection] = useState<'general' | 'ai' | 'document' | 'followup'>('general');
   const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string }[]>([]);
   const [promptSheetOpen, setPromptSheetOpen] = useState(false);
+  const [superPromptPreviewOpen, setSuperPromptPreviewOpen] = useState(false);
 
   const templateFieldOptions = templateFields.map((field) => ({
     key: field.variable.replace(/\{\{|\}\}/g, ''),
@@ -665,6 +667,16 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       <Maximize2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-xs gap-1.5"
+                    onClick={() => setSuperPromptPreviewOpen(true)}
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    👁 Ver Super Prompt Completo
+                  </Button>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
@@ -1538,6 +1550,140 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Super Prompt Preview Dialog */}
+      <Dialog open={superPromptPreviewOpen} onOpenChange={setSuperPromptPreviewOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm">
+              <Eye className="h-4 w-4" />
+              👁 Super Prompt Completo (somente leitura)
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              Este é o prompt completo que a IA recebe. Ele é montado automaticamente a partir das suas configurações + prompt do agente.
+              <strong> Você não edita isso diretamente</strong> — altere as configurações e o prompt do agente para modificá-lo.
+            </p>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            <pre className="text-xs font-mono whitespace-pre-wrap bg-muted/50 p-4 rounded-lg border leading-relaxed text-foreground">
+              {buildSuperPromptPreview(form, templateFieldOptions, predefinedFieldConfigs)}
+            </pre>
+          </div>
+          <div className="flex justify-between items-center pt-2 border-t text-xs text-muted-foreground">
+            <span>{buildSuperPromptPreview(form, templateFieldOptions, predefinedFieldConfigs).length} caracteres</span>
+            <Button size="sm" variant="outline" onClick={() => setSuperPromptPreviewOpen(false)}>Fechar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+// ── Build a preview of the super prompt the AI receives ──
+function buildSuperPromptPreview(
+  form: any,
+  templateFields: { key: string; label: string; required: boolean }[],
+  predefinedFields: PredefinedFieldConfig[]
+): string {
+  const today = new Date().toLocaleDateString("pt-BR");
+  const isAssistant = form.assistant_type === "assistant";
+
+  if (isAssistant) {
+    const baseSection = form.base_prompt ? `\nPERSONA/REGRAS BASE DO ASSISTENTE:\n${form.base_prompt}\n` : "";
+    return `Você é o assistente WJIA, integrado ao WhatsApp de um escritório de advocacia.
+${baseSection}
+MODO: Assistente conversacional. Responda ao comando do atendente usando o contexto disponível.
+
+CRM/CADASTRO: [dados do contato e lead carregados automaticamente]
+
+CONVERSA COM O CLIENTE (últimas mensagens):
+[histórico filtrado pelo limite de ${form.history_limit ?? 50} mensagens]
+
+${form.prompt_instructions ? `INSTRUÇÕES ESPECÍFICAS:\n${form.prompt_instructions}` : "(sem instruções específicas)"}`;
+  }
+
+  // Document mode — Initial command prompt
+  const baseSection = form.base_prompt ? `\nPERSONA/REGRAS BASE:\n${form.base_prompt}\n` : "";
+  
+  const allFieldsList = templateFields.length > 0
+    ? templateFields.map(f => `- ${f.label} (variável: ${f.key})${f.required ? ' *obrigatório' : ''}`).join("\n")
+    : "(nenhum template selecionado — campos carregados dinamicamente)";
+
+  const predefinedInfo = predefinedFields.length > 0
+    ? `\nCAMPOS PRÉ-DEFINIDOS (preenchidos automaticamente, NÃO perguntar):\n${predefinedFields.map(pf => `- ${pf.field}: [${pf.mode}]${pf.value ? ` = "${pf.value}"` : ''}`).join("\n")}`
+    : "";
+
+  const minFieldsInfo = form.partial_min_fields?.length > 0
+    ? `\nCAMPOS MÍNIMOS OBRIGATÓRIOS (bloqueia geração se faltarem):\n${form.partial_min_fields.map((f: string) => `- ${f}`).join("\n")}`
+    : "";
+
+  // The prompt that new-command.ts sends
+  const newCommandPrompt = `═══ PROMPT INICIAL (new-command.ts) ═══
+
+Você é o assistente WJIA. O atendente digitou um comando.
+${baseSection}
+IMPORTANTE: NÃO gere o documento agora. Seu trabalho é:
+1. Identificar qual template ZapSign usar
+2. Analisar apenas os dados confiáveis disponíveis para ESTE comando
+3. Identificar quais campos obrigatórios estão FALTANDO
+4. Em caso de conflito entre CRM antigo e a conversa atual do cliente, a conversa atual tem prioridade
+
+${form.template_token ? `⚠️ TEMPLATE OBRIGATÓRIO: Use EXATAMENTE "${form.template_name || 'template selecionado'}" (token: ${form.template_token}).` : "[template será identificado pelo comando]"}
+
+CRM/CADASTRO: [dados do contato e lead carregados automaticamente]
+
+CONVERSA COM O CLIENTE:
+[histórico filtrado pelo limite de ${form.history_limit ?? 50} mensagens]
+
+${form.prompt_instructions ? `INSTRUÇÕES ESPECÍFICAS:\n${form.prompt_instructions}\n` : ""}REGRAS:
+- NACIONALIDADE: se tem CPF brasileiro, use "brasileiro(a)"
+- WHATSAPP escritório: "(86)99447-3226"
+- EMAIL escritório: "contato@prudencioadv.com"
+- Datas: DD/MM/AAAA
+- Campos DATA_ASSINATURA/DATA_PROCURACAO: preencha com hoje (${today})
+- Use SOMENTE campos que existem no template ZapSign`;
+
+  // The prompt that follow-up.ts sends during collection
+  const hasPersona = !!form.base_prompt && form.base_prompt.trim().length > 10;
+  const followUpPrompt = `
+
+═══ PROMPT DE COLETA (follow-up.ts) ═══
+
+${hasPersona
+    ? `IDENTIDADE E COMPORTAMENTO (PRIORIDADE ABSOLUTA):
+${form.base_prompt}
+
+Você está coletando dados para gerar o documento "${form.template_name || '[template]'}". Mantenha SEMPRE o tom, estilo e personalidade acima.`
+    : `Você é um assistente jurídico conversando pelo WhatsApp. Seu OBJETIVO é coletar os dados necessários para gerar o documento "${form.template_name || '[template]'}".`
+  }
+
+ESTILO DE CONVERSA:
+- Use o tom da IDENTIDADE acima. Se não houver identidade definida, seja natural e direto.
+- ✅/❌ para resumos. Conversa normal em frases corridas.
+- Aceite o que o cliente diz. Se corrigir, atualize sem questionar.
+- IMPORTANTE: Não seja robótico. Converse como a persona definiria.
+
+CAMPOS DO TEMPLATE:
+${allFieldsList}
+${predefinedInfo}
+${minFieldsInfo}
+
+DADOS COLETADOS:
+[preenchidos dinamicamente durante a conversa]
+
+DADOS FALTANTES:
+[calculados automaticamente a partir dos campos do template]
+
+REGRAS:
+1. SIGA A IDENTIDADE/PERSONA ACIMA em tom e estilo
+2. Cliente CONFIRMANDO (sim, ok): gerar documento
+3. Cliente CORRIGINDO: extraia correção
+4. Faltam dados: peça naturalmente seguindo o tom da persona
+5. CEP é OPCIONAL. NUNCA insista.
+6. DATA_ASSINATURA/DATA_PROCURACAO: preenchidos automaticamente — NÃO pergunte
+7. CIDADE/ESTADO de assinatura: sincronizados automaticamente
+8. NUNCA INVENTE LINKS OU URLs
+9. NUNCA diga que é assistente virtual, IA ou robô`;
+
+  return newCommandPrompt + followUpPrompt;
 }
