@@ -132,7 +132,7 @@ export async function handleFollowUp(opts: {
   let zapsignSettingsReply: any = null;
   if (session.shortcut_name) {
     const { data: scSplit } = await supabase.from("wjia_command_shortcuts")
-      .select("split_messages, split_delay_seconds, skip_confirmation, partial_min_fields, zapsign_settings")
+      .select("split_messages, split_delay_seconds, skip_confirmation, partial_min_fields, zapsign_settings, prompt_instructions, reply_with_audio, reply_voice_id")
       .eq("shortcut_name", session.shortcut_name).maybeSingle();
     if (scSplit?.split_messages) {
       splitOpts = { splitMessages: true, splitDelaySeconds: scSplit.split_delay_seconds || 3 };
@@ -142,6 +142,7 @@ export async function handleFollowUp(opts: {
     }
     partialMinFieldsReply = (scSplit as any)?.partial_min_fields || [];
     zapsignSettingsReply = (scSplit as any)?.zapsign_settings || null;
+    shortcutPromptInstructions = scSplit?.prompt_instructions || "";
   }
 
   const { data: inst } = await supabase.from("whatsapp_instances")
