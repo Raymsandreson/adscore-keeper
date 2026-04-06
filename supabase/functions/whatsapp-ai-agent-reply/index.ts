@@ -366,7 +366,7 @@ serve(async (req) => {
       // Check if this agent also exists as a shortcut with template_token
       const { data: matchingShortcut } = await supabase
         .from("wjia_command_shortcuts")
-        .select("template_token, template_name, shortcut_name, request_documents, document_types, custom_document_names, document_type_modes, followup_steps, notify_on_signature, send_signed_pdf")
+        .select("template_token, template_name, shortcut_name, request_documents, document_types, custom_document_names, document_type_modes, followup_steps, notify_on_signature, send_signed_pdf, history_limit")
         .eq("id", assignment.agent_id)
         .eq("is_active", true)
         .maybeSingle();
@@ -375,6 +375,7 @@ serve(async (req) => {
         agent.template_token = (matchingShortcut as any).template_token;
         agent.template_name = (matchingShortcut as any).template_name;
         agent.shortcut_name = (matchingShortcut as any).shortcut_name;
+        agent.history_limit = (matchingShortcut as any).history_limit;
         console.log(`Enriched agent "${agent.name}" with shortcut template_token: ${agent.template_token}`);
       }
     } else {
@@ -409,6 +410,7 @@ serve(async (req) => {
           template_token: (shortcut as any).template_token || null,
           send_window_start_hour: (shortcut as any).send_window_start_hour ?? 8,
           send_window_end_hour: (shortcut as any).send_window_end_hour ?? 20,
+          history_limit: (shortcut as any).history_limit || null,
         };
         console.log(`Using command shortcut "${agent.name}" as agent for instance default`);
       }
@@ -674,7 +676,7 @@ REGRAS IMPORTANTES:
         .eq("phone", phone)
         .eq("instance_name", instance_name)
         .order("created_at", { ascending: false })
-        .limit(is_followup ? 40 : 20);
+        .limit(agent?.history_limit || (is_followup ? 40 : 20));
 
       // Process messages handling different types (audio, image, document, etc.)
       const contextMessages: any[] = [];
