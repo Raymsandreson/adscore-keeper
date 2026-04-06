@@ -128,6 +128,10 @@ Analise a conversa e extraia TODAS as informações pessoais e profissionais do 
   "sector": "setor de atuação",
   "case_type": "tipo do caso",
   "liability_type": "tipo de responsabilidade",
+  "visit_city": "cidade da visita/residência da família",
+  "visit_state": "estado da visita/residência (sigla UF)",
+  "visit_region": "região da visita (ex: norte, sul, centro-oeste, sudeste, nordeste)",
+  "visit_address": "endereço completo para visita",
   "lead_status": "status do lead baseado na conversa: use null na maioria dos casos. Só preencha com 'closed' se houve assinatura/contrato EXPLÍCITO, 'refused' APENAS se o cliente disse CLARAMENTE que NÃO quer prosseguir (ex: 'não quero', 'desisto', 'não tenho interesse'), 'unviable' se: (1) o atendente determinou que o caso é inviável, OU (2) o cliente claramente NÃO é o público-alvo (ex: confundiu com outra pessoa, ligação engano, homem em campanha de maternidade, pessoa sem nenhuma relação com o serviço oferecido), OU (3) o cliente demonstra total desinteresse/irrelevância com o assunto. Em caso de QUALQUER dúvida, use null. Conversas em andamento, triagem, identificação = null (NÃO é refused).",
   "lead_status_reason": "motivo resumido em 1-2 frases para o status identificado. OBRIGATÓRIO se lead_status não for null. Use null se status for null.",
   "referrals": [
@@ -198,6 +202,10 @@ REGRAS:
         case_type: 'case_type',
         sector: 'sector',
         liability_type: 'liability_type',
+        visit_city: 'visit_city',
+        visit_state: 'visit_state',
+        visit_region: 'visit_region',
+        visit_address: 'visit_address',
         notes: 'notes',
       }
 

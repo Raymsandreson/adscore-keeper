@@ -88,6 +88,7 @@ IMPORTANTE sobre "processes": Identifique TODOS os processos mencionados na conv
   "sector": "setor/área de atuação",
   "visit_city": "cidade para visita",
   "visit_state": "estado para visita",
+  "visit_region": "região da visita (norte, sul, centro-oeste, sudeste, nordeste)",
   "visit_address": "endereço para visita",
   "liability_type": "tipo de responsabilidade",
   "news_link": "link de notícia mencionado"
