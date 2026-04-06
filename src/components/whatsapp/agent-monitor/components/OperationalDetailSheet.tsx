@@ -27,7 +27,7 @@ interface Props {
   dateRange: { from: Date; to: Date };
   filters?: OperationalFilters;
   filteredLeadIds?: Set<string>;
-  onOpenChat?: (phone: string, instanceName?: string) => void;
+  onOpenChat?: (phone: string, instanceName?: string, contactName?: string) => void;
 }
 
 const config: Record<OperationalMetricType, { title: string; icon: typeof FileSignature; color: string }> = {
