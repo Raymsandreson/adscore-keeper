@@ -13,7 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, Volume2, VolumeX, BellOff, Trash2 } from 'lucide-react';
+import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, Volume2, VolumeX, BellOff, Trash2, FastForward } from 'lucide-react';
 import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -764,6 +764,29 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
   };
 
+  const handleAnticipateFollowup = async () => {
+    if (!phone || !instanceName) return;
+    try {
+      toast.info('Antecipando follow-up...');
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/wjia-followup-processor`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({ target_phone: phone, target_instance: instanceName, force_immediate: true }),
+        }
+      );
+      if (!response.ok) throw new Error('Falha ao antecipar');
+      toast.success('⚡ Follow-up antecipado!');
+    } catch (e: any) {
+      toast.error('Erro: ' + (e.message || 'Falha ao antecipar follow-up'));
+    }
+  };
+
   const handleTogglePrivate = async () => {
     if (!phone) return;
     setTogglingPrivate(true);
@@ -1048,6 +1071,9 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
                   )}
+                  <DropdownMenuItem onClick={handleAnticipateFollowup}>
+                    <FastForward className="h-4 w-4 mr-2" /> Antecipar Follow-up
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {isMuted ? (
                     <DropdownMenuItem onClick={() => handleToggleMute(null)} disabled={muteLoading}>
