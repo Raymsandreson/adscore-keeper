@@ -82,7 +82,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [creatingLead, setCreatingLead] = useState(false);
-  const [agentInfo, setAgentInfo] = useState<{ name: string; activated_by: string | null; is_active: boolean; agent_id?: string } | null>(null);
+  const [agentInfo, setAgentInfo] = useState<{ name: string; activated_by: string | null; is_active: boolean; agent_id?: string; human_paused_until?: string | null } | null>(null);
   const [callRecords, setCallRecords] = useState<CallRecord[]>([]);
   const [availableAgents, setAvailableAgents] = useState<{ id: string; name: string }[]>([]);
   const [suggestingAgent, setSuggestingAgent] = useState(false);
@@ -157,7 +157,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     const fetchAgent = async () => {
       const { data } = await supabase
         .from('whatsapp_conversation_agents')
-        .select('agent_id, is_active, activated_by')
+        .select('agent_id, is_active, activated_by, human_paused_until')
         .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
         .limit(1)
         .maybeSingle();
@@ -178,6 +178,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           activated_by: activatedByLabel,
           is_active: data.is_active,
           agent_id: data.agent_id,
+          human_paused_until: (data as any).human_paused_until || null,
         });
       }
     };
@@ -1052,6 +1053,38 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                   </Badge>
                   {agentInfo.activated_by && (
                     <span className="text-[9px] text-muted-foreground">via {agentInfo.activated_by}</span>
+                  )}
+                  {agentInfo.is_active && agentInfo.human_paused_until && new Date(agentInfo.human_paused_until) > new Date() && (
+                    <div className="flex items-center gap-1">
+                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 gap-1 border-orange-400 text-orange-600 bg-orange-50">
+                        ⏸️ Pausa humana ({Math.max(1, Math.ceil((new Date(agentInfo.human_paused_until).getTime() - Date.now()) / 60000))}min)
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-4 w-4 p-0"
+                        title="Interromper pausa e reativar agente"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!phone || !instanceName) return;
+                          const normalizedPhone = phone.replace(/\D/g, '');
+                          try {
+                            await supabase
+                              .from('whatsapp_conversation_agents')
+                              .update({ human_paused_until: null } as any)
+                              .eq('instance_name', instanceName)
+                              .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
+                            setAgentInfo({ ...agentInfo, human_paused_until: null });
+                            await triggerAgentReplyFromLastInbound(normalizedPhone, instanceName);
+                            toast.success('Pausa interrompida! Agente retomando...');
+                          } catch (err) {
+                            toast.error('Erro ao interromper pausa');
+                          }
+                        }}
+                      >
+                        <FastForward className="h-3 w-3 text-orange-600" />
+                      </Button>
+                    </div>
                   )}
                 </div>
               )}
