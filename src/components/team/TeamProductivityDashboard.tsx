@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { CorridaMalucaDialog } from '@/components/instagram/CorridaMalucaDialog';
 import { MemberProductivitySheet } from './MemberProductivitySheet';
+import { RealTimeActivityFeed } from './RealTimeActivityFeed';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
