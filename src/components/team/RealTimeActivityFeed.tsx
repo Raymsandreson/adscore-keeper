@@ -81,16 +81,26 @@ export function RealTimeActivityFeed() {
   const [filterAction, setFilterAction] = useState('all');
   const feedRef = useRef<FeedItem[]>([]);
 
+  const SYSTEM_ID = '00000000-0000-0000-0000-000000000000';
+
   // Load profiles
   useEffect(() => {
     supabase.from('profiles').select('user_id, full_name').then(({ data }) => {
       const map: Record<string, string> = {};
-      (data || []).forEach(p => { map[p.user_id] = p.full_name || 'Usuário'; });
+      (data || []).forEach(p => { 
+        if (p.full_name) map[p.user_id] = p.full_name; 
+      });
+      map[SYSTEM_ID] = '🤖 Sistema';
+      map['system'] = '🤖 Agente IA';
       setProfileMap(map);
     });
   }, []);
 
-  const getUserName = useCallback((userId: string) => profileMap[userId] || 'Usuário', [profileMap]);
+  const getUserName = useCallback((userId: string) => {
+    if (!userId || userId === SYSTEM_ID) return '🤖 Sistema';
+    if (userId === 'system') return '🤖 Agente IA';
+    return profileMap[userId] || 'Membro';
+  }, [profileMap]);
 
   const addItem = useCallback((item: FeedItem) => {
     feedRef.current = [item, ...feedRef.current].slice(0, 150);
