@@ -15,6 +15,19 @@ export interface DashboardMetrics {
   groupsCreated: number;
   casesCreated: number;
   processesCreated: number;
+  signedDocsDetails: OperationalDetail[];
+  groupsDetails: OperationalDetail[];
+  casesDetails: OperationalDetail[];
+  processesDetails: OperationalDetail[];
+}
+
+export interface OperationalDetail {
+  id: string;
+  name: string;
+  acolhedor: string | null;
+  instance_name: string | null;
+  lead_id: string | null;
+  created_at: string;
 }
 
 export interface NewConvDetail {
@@ -34,6 +47,7 @@ export function useDashboardMetrics() {
     respondedCount: 0, totalInbound: 0,
     closedByAgent: [], closedByCampaign: [], newConvDetails: [],
     signedDocuments: 0, groupsCreated: 0, casesCreated: 0, processesCreated: 0,
+    signedDocsDetails: [], groupsDetails: [], casesDetails: [], processesDetails: [],
   });
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsProgress, setMetricsProgress] = useState(0);
@@ -172,11 +186,39 @@ export function useDashboardMetrics() {
 
       // Operational metrics: signed docs, groups, cases, processes
       const [docsRes, groupsRes, casesRes, processesRes] = await Promise.all([
-        supabase.from('zapsign_documents').select('id', { count: 'exact', head: true }).gte('created_at', todayStart).lte('created_at', todayEnd),
-        supabase.from('leads').select('id', { count: 'exact', head: true }).not('whatsapp_group_id', 'is', null).gte('created_at', todayStart).lte('created_at', todayEnd),
-        supabase.from('legal_cases').select('id', { count: 'exact', head: true }).gte('created_at', todayStart).lte('created_at', todayEnd),
-        supabase.from('case_process_tracking').select('id', { count: 'exact', head: true }).gte('created_at', todayStart).lte('created_at', todayEnd),
+        supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
+        supabase.from('leads').select('id, lead_name, acolhedor, board_id, campaign_name, created_at').not('whatsapp_group_id', 'is', null).gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
+        supabase.from('legal_cases').select('id, case_number, title, acolhedor, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
+        supabase.from('case_process_tracking').select('id, cliente, acolhedor, lead_id, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
       ]);
+
+      // Build lead_id -> instance_name map from conversations for cross-referencing
+      const leadInstanceMap = new Map<string, string>();
+      for (const msg of inboundData) {
+        if (msg.instance_name && msg.phone) {
+          // We'll map by phone later
+        }
+      }
+
+      const signedDocsDetails: OperationalDetail[] = (docsRes.data || []).map((d: any) => ({
+        id: d.id, name: d.document_name || 'Documento', acolhedor: null,
+        instance_name: d.instance_name || null, lead_id: d.lead_id || null, created_at: d.created_at,
+      }));
+
+      const groupsDetails: OperationalDetail[] = (groupsRes.data || []).map((d: any) => ({
+        id: d.id, name: d.lead_name || 'Lead', acolhedor: d.acolhedor || null,
+        instance_name: null, lead_id: d.id, created_at: d.created_at,
+      }));
+
+      const casesDetails: OperationalDetail[] = (casesRes.data || []).map((d: any) => ({
+        id: d.id, name: d.title || d.case_number || 'Caso', acolhedor: d.acolhedor || null,
+        instance_name: null, lead_id: null, created_at: d.created_at,
+      }));
+
+      const processesDetails: OperationalDetail[] = (processesRes.data || []).map((d: any) => ({
+        id: d.id, name: d.cliente || 'Processo', acolhedor: d.acolhedor || null,
+        instance_name: null, lead_id: d.lead_id || null, created_at: d.created_at,
+      }));
 
       setMetrics({
         newConversations: trulyNewPhones.length,
@@ -187,10 +229,14 @@ export function useDashboardMetrics() {
         closedByAgent: Array.from(agentMap.entries()).map(([agent, count]) => ({ agent, count })).sort((a, b) => b.count - a.count),
         closedByCampaign: Array.from(campaignMap.entries()).map(([campaign, count]) => ({ campaign, count })).sort((a, b) => b.count - a.count),
         newConvDetails,
-        signedDocuments: docsRes.count ?? 0,
-        groupsCreated: groupsRes.count ?? 0,
-        casesCreated: casesRes.count ?? 0,
-        processesCreated: processesRes.count ?? 0,
+        signedDocuments: signedDocsDetails.length,
+        groupsCreated: groupsDetails.length,
+        casesCreated: casesDetails.length,
+        processesCreated: processesDetails.length,
+        signedDocsDetails,
+        groupsDetails,
+        casesDetails,
+        processesDetails,
       });
     } catch (err) {
       console.error('Error fetching dashboard metrics:', err);
