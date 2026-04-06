@@ -519,6 +519,10 @@ export function TeamProductivityDashboard() {
             <TrendingUp className="h-4 w-4" />
             Evolução
           </TabsTrigger>
+          <TabsTrigger value="realtime" className="gap-2">
+            <Activity className="h-4 w-4" />
+            Ao Vivo
+          </TabsTrigger>
         </TabsList>
 
         {/* Ranking Tab */}
