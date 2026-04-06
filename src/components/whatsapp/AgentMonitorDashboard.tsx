@@ -71,7 +71,32 @@ export function AgentMonitorDashboard() {
     uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores, applyBaseFilters,
   } = useMonitorFilters(conversations, boards);
 
-  const batch = useBatchActions(conversations, fetchData);
+  // Filter metrics newConvDetails based on active filters
+  const filteredNewConvDetails = useMemo(() => {
+    return metrics.newConvDetails.filter(c => {
+      if (filters.instanceFilter !== 'all' && c.instance_name !== filters.instanceFilter) return false;
+      return true;
+    });
+  }, [metrics.newConvDetails, filters.instanceFilter]);
+
+  // Filter dashboard metrics counts based on active filters
+  const filteredMetrics = useMemo(() => {
+    if (filters.instanceFilter === 'all') return metrics;
+    const filtered = filteredNewConvDetails;
+    const respondedCount = filtered.filter(c => c.was_responded).length;
+    const responseTimes = filtered.filter(c => c.response_time_minutes !== null).map(c => c.response_time_minutes!);
+    const avgResponseTimeMin = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : 0;
+    return {
+      ...metrics,
+      newConversations: filtered.length,
+      responseRate: filtered.length > 0 ? Math.round((respondedCount / filtered.length) * 100) : 0,
+      avgResponseTimeMin,
+      respondedCount,
+      totalInbound: filtered.length,
+      newConvDetails: filtered,
+    };
+  }, [metrics, filteredNewConvDetails, filters.instanceFilter]);
+
 
   const handleOpenChat = (c: ConversationDetail) => setChatPreview(c);
 
