@@ -44,6 +44,7 @@ export function CaseCard({ c, selectable = false, isSelected = false, onToggleSe
               <span className="flex items-center gap-0.5"><Bot className="h-3 w-3" /> {c.agent_name}</span>
               <span className="flex items-center gap-0.5"><Phone className="h-3 w-3" /> {c.phone}</span>
               {c.lead_city && <span className="flex items-center gap-0.5"><MapPin className="h-3 w-3" /> {c.lead_city}{c.lead_state ? `/${c.lead_state}` : ''}</span>}
+              {c.lead_acolhedor && <span className="flex items-center gap-0.5">👑 {c.lead_acolhedor}</span>}
             </div>
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               {c.campaign_name && <Badge variant="secondary" className="text-[9px] h-4"><Megaphone className="h-2.5 w-2.5 mr-0.5" /> {c.campaign_name}</Badge>}
