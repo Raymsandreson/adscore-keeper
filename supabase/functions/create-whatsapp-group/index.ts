@@ -1194,13 +1194,32 @@ async function forwardDocuments(
     const docTypes = settings.forward_document_types || []
     const leadName = leadData.lead_name || leadData.victim_name || 'Lead'
 
-    // Get collected documents from whatsapp collection sessions
-    const { data: sessions } = await supabase
+    // Get collected documents from whatsapp collection sessions (by lead_id OR phone)
+    let sessions: any[] = []
+    const { data: sessionsByLead } = await supabase
       .from('whatsapp_collection_sessions')
-      .select('id, collected_data')
+      .select('id, collected_data, received_documents, phone')
       .eq('lead_id', leadData.id)
       .order('created_at', { ascending: false })
       .limit(5)
+    if (sessionsByLead) sessions.push(...sessionsByLead)
+
+    // Also search by lead_phone if available (sessions may not have lead_id linked)
+    if (leadData.lead_phone) {
+      const leadPh = leadData.lead_phone.replace(/\D/g, '')
+      if (leadPh) {
+        const { data: sessionsByPhone } = await supabase
+          .from('wjia_collection_sessions')
+          .select('id, collected_data, received_documents, phone')
+          .eq('phone', leadPh)
+          .order('created_at', { ascending: false })
+          .limit(5)
+        if (sessionsByPhone) {
+          const existingIds = new Set(sessions.map((s: any) => s.id))
+          sessions.push(...sessionsByPhone.filter((s: any) => !existingIds.has(s.id)))
+        }
+      }
+    }
 
     // Get ZapSign signed documents - always check for these regardless of type filter
     let signedDocs: any[] = []
