@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ClipboardList, Heart, LayoutDashboard } from 'lucide-react';
-import { subDays } from 'date-fns';
+import { Progress } from '@/components/ui/progress';
+import { ClipboardList, Heart, LayoutDashboard, Loader2 } from 'lucide-react';
 
 import { useMonitorData } from './agent-monitor/hooks/useMonitorData';
 import { useMonitorFilters } from './agent-monitor/hooks/useMonitorFilters';
