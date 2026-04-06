@@ -7,6 +7,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
   const [instanceFilter, setInstanceFilter] = useState('all');
   const [boardFilter, setBoardFilter] = useState('all');
   const [campaignFilter, setCampaignFilter] = useState('all');
+  const [acolhedorFilter, setAcolhedorFilter] = useState('all');
   const [caseStatusFilter, setCaseStatusFilter] = useState<CaseStatus | 'all'>('all');
   const [agentActiveFilter, setAgentActiveFilter] = useState<'all' | 'ativo'>('all');
   const [followupConfigFilter, setFollowupConfigFilter] = useState<'all' | 'com_followup' | 'sem_followup'>('all');
@@ -18,6 +19,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
     return boards.filter(b => boardIds.has(b.id));
   }, [conversations, boards]);
   const uniqueCampaigns = useMemo(() => [...new Set(conversations.map(c => c.campaign_name).filter(Boolean))].sort() as string[], [conversations]);
+  const uniqueAcolhedores = useMemo(() => [...new Set(conversations.map(c => c.lead_acolhedor).filter(Boolean))].sort() as string[], [conversations]);
 
   const applyBaseFilters = (c: ConversationDetail) => {
     if (agentFilter !== 'all') {
@@ -29,6 +31,10 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
     if (campaignFilter !== 'all') {
       if (campaignFilter === '__none__' && c.campaign_name) return false;
       if (campaignFilter !== '__none__' && c.campaign_name !== campaignFilter) return false;
+    }
+    if (acolhedorFilter !== 'all') {
+      if (acolhedorFilter === '__none__' && c.lead_acolhedor) return false;
+      if (acolhedorFilter !== '__none__' && c.lead_acolhedor !== acolhedorFilter) return false;
     }
     return true;
   };
@@ -46,7 +52,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       }
       return true;
     });
-  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter, caseStatusFilter, agentActiveFilter, followupConfigFilter, searchQuery]);
+  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter, acolhedorFilter, caseStatusFilter, agentActiveFilter, followupConfigFilter, searchQuery]);
 
   const pipelineCounts = useMemo(() => {
     const base = conversations.filter(applyBaseFilters);
@@ -65,7 +71,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       inviavel: base.filter(c => getCaseStatus(c) === 'inviavel').length,
       bloqueado: base.filter(c => getCaseStatus(c) === 'bloqueado').length,
     };
-  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter]);
+  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter, acolhedorFilter]);
 
   const referralStats = (referrals: { status: string }[]) => ({
     total: referrals.length,
@@ -81,6 +87,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       instanceFilter, setInstanceFilter,
       boardFilter, setBoardFilter,
       campaignFilter, setCampaignFilter,
+      acolhedorFilter, setAcolhedorFilter,
       caseStatusFilter, setCaseStatusFilter,
       agentActiveFilter, setAgentActiveFilter,
       followupConfigFilter, setFollowupConfigFilter,
@@ -91,6 +98,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
     uniqueInstances,
     uniqueBoards,
     uniqueCampaigns,
+    uniqueAcolhedores,
     referralStats,
     applyBaseFilters,
   };

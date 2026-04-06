@@ -6,6 +6,7 @@ interface MonitorFilterBarProps {
   uniqueInstances: string[];
   uniqueBoards: BoardData[];
   uniqueCampaigns: string[];
+  uniqueAcolhedores: string[];
   agentFilter: string;
   setAgentFilter: (v: string) => void;
   instanceFilter: string;
@@ -14,6 +15,8 @@ interface MonitorFilterBarProps {
   setBoardFilter: (v: string) => void;
   campaignFilter: string;
   setCampaignFilter: (v: string) => void;
+  acolhedorFilter: string;
+  setAcolhedorFilter: (v: string) => void;
   agentActiveFilter: 'all' | 'ativo';
   setAgentActiveFilter: (v: 'all' | 'ativo') => void;
   followupConfigFilter: 'all' | 'com_followup' | 'sem_followup';
@@ -21,9 +24,10 @@ interface MonitorFilterBarProps {
 }
 
 export function MonitorFilterBar({
-  agents, uniqueInstances, uniqueBoards, uniqueCampaigns,
+  agents, uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores,
   agentFilter, setAgentFilter, instanceFilter, setInstanceFilter,
   boardFilter, setBoardFilter, campaignFilter, setCampaignFilter,
+  acolhedorFilter, setAcolhedorFilter,
   agentActiveFilter, setAgentActiveFilter, followupConfigFilter, setFollowupConfigFilter,
 }: MonitorFilterBarProps) {
   return (
@@ -68,6 +72,16 @@ export function MonitorFilterBar({
         </Select>
       )}
 
+      {uniqueAcolhedores.length > 0 && (
+        <Select value={acolhedorFilter} onValueChange={setAcolhedorFilter}>
+          <SelectTrigger className="w-[160px] h-8 text-xs"><SelectValue placeholder="Acolhedor" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos Acolhedores</SelectItem>
+            <SelectItem value="__none__">Sem Acolhedor</SelectItem>
+            {uniqueAcolhedores.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      )}
 
       <Select value={followupConfigFilter} onValueChange={(v) => setFollowupConfigFilter(v as any)}>
         <SelectTrigger className="w-[140px] h-8 text-xs"><SelectValue placeholder="Follow-up" /></SelectTrigger>
