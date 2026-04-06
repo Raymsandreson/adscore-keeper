@@ -20,9 +20,11 @@ import {
   generateZapSignDocument,
   getFieldLabel,
   hasFieldValue,
+  loadFieldAliases,
   lookupCEP,
   normalizeFieldKey,
   normalizeIncomingField,
+  resolveIncomingFieldWithAliases,
   reverseLookupCEP,
   sendWhatsApp,
   shouldProtectName,
@@ -153,7 +155,10 @@ export async function handleFollowUp(opts: {
   const collectedData = session.collected_data || { fields: [] };
   const currentFields = [...(collectedData.fields || [])];
 
-  console.log("Session:", session.id, "status:", session.status);
+  // Load deterministic field aliases
+  const fieldAliases = await loadFieldAliases(supabase, agentId);
+
+  console.log("Session:", session.id, "status:", session.status, "aliases loaded:", fieldAliases.length);
 
   // ── GENERATED SESSION ──
   if (session.status === "generated") {
@@ -227,36 +232,30 @@ REGRAS IMPORTANTES:
         corrReply = parsed.reply_to_client || "";
       } catch {}
 
-      // Apply corrections with intelligent field matching
+      // Apply corrections with DETERMINISTIC alias resolution
       for (const corr of corrections) {
-        let fieldKey = corr.de;
         const value = corr.para;
 
-        // First try normalizeIncomingField
-        const normalized = normalizeIncomingField(corr, catalog);
-        if (normalized) {
-          fieldKey = normalized.variable;
+        // Use alias resolver as PRIMARY resolution
+        const resolved = resolveIncomingFieldWithAliases(corr, fieldAliases, catalog);
+        if (resolved) {
+          if (resolved.validation_error) {
+            console.log(`WJIA correction validation warning: ${resolved.variable} = "${value}" — ${resolved.validation_error}`);
+          }
+          console.log(`WJIA correction (alias resolved): ${resolved.variable} = "${resolved.value}"`);
+          upsertCollectedField(currentFields, resolved.variable, resolved.value);
         } else {
-          // Fallback: check if the AI returned a value instead of a variable name
-          // Try to find which field currently has this value
-          const matchByValue = currentFields.find((f: any) => 
-            f.para && f.para.toLowerCase() === fieldKey.toLowerCase()
+          // Last resort: try matching by current value in fields
+          const matchByValue = currentFields.find((f: any) =>
+            f.para && f.para.toLowerCase() === corr.de.toLowerCase()
           );
           if (matchByValue) {
-            console.log(`WJIA correction fallback: matched value "${fieldKey}" to field "${matchByValue.de}"`);
-            fieldKey = matchByValue.de;
-          }
-          
-          // Also try matching by common keywords
-          const keyLower = fieldKey.toLowerCase().replace(/[{}]/g, "");
-          if (keyLower.includes("nome") && !keyLower.includes("completo")) {
-            const nomeField = currentFields.find((f: any) => f.de?.includes("NOME COMPLETO") || f.de?.includes("NOME_COMPLETO"));
-            if (nomeField) fieldKey = nomeField.de;
+            console.log(`WJIA correction fallback (value match): "${corr.de}" → "${matchByValue.de}" = "${value}"`);
+            upsertCollectedField(currentFields, matchByValue.de, value);
+          } else {
+            console.log(`WJIA correction REJECTED: no alias or catalog match for "${corr.de}"`);
           }
         }
-
-        console.log(`WJIA correction applied: ${fieldKey} = "${value}"`);
-        upsertCollectedField(currentFields, fieldKey, value);
       }
 
       syncNameFields(currentFields);
@@ -342,7 +341,7 @@ REGRAS IMPORTANTES:
     message_text, currentFields, collectedData, catalog,
     agentPersona, shortcutPromptInstructions, splitOpts, skipConfirmation,
     zapsignSettingsReply, zapsignToken, replyWithAudio, replyVoiceId,
-    message_type,
+    message_type, fieldAliases,
   });
 }
 
@@ -463,12 +462,13 @@ async function runAgentPhase(opts: {
   zapsignToken: string | undefined;
   replyWithAudio: boolean; replyVoiceId: string;
   message_type: string;
+  fieldAliases: any[];
 }) {
   const { supabase, session, inst, normalizedPhone, instance_name,
     message_text, currentFields, collectedData, catalog,
     agentPersona, shortcutPromptInstructions, splitOpts,
     skipConfirmation, zapsignSettingsReply, zapsignToken,
-    replyWithAudio, replyVoiceId, message_type } = opts;
+    replyWithAudio, replyVoiceId, message_type, fieldAliases } = opts;
   const isInboundAudio = message_type === "audio" || message_type === "ptt";
   const resolvedReplyVoiceId = replyVoiceId || "instance_owner";
 
@@ -688,14 +688,26 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
   }
 
   for (const field of (result.newly_extracted || [])) {
-    const normalized = normalizeIncomingField(field, catalog);
-    if (!normalized) {
-      console.log(`WJIA field rejected by normalizeIncomingField:`, JSON.stringify(field));
+    // Use DETERMINISTIC alias resolver as primary resolution
+    const resolved = resolveIncomingFieldWithAliases(field, fieldAliases, catalog);
+    if (!resolved) {
+      // Fallback to legacy normalizeIncomingField
+      const normalized = normalizeIncomingField(field, catalog);
+      if (!normalized) {
+        console.log(`WJIA field rejected (no alias or catalog match):`, JSON.stringify(field));
+        continue;
+      }
+      if (shouldProtectName(currentFields, normalized)) continue;
+      console.log(`WJIA field upserted (catalog fallback): ${normalized.variable} = "${normalized.value}"`);
+      upsertCollectedField(currentFields, normalized.variable, normalized.value);
       continue;
     }
-    if (shouldProtectName(currentFields, normalized)) continue;
-    console.log(`WJIA field upserted: ${normalized.variable} = "${normalized.value}"`);
-    upsertCollectedField(currentFields, normalized.variable, normalized.value);
+    if (resolved.validation_error) {
+      console.log(`WJIA field validation warning: ${resolved.variable} — ${resolved.validation_error}`);
+    }
+    if (shouldProtectName(currentFields, { variable: resolved.variable, value: resolved.value })) continue;
+    console.log(`WJIA field upserted (alias resolved): ${resolved.variable} = "${resolved.value}"`);
+    upsertCollectedField(currentFields, resolved.variable, resolved.value);
   }
 
   syncNameFields(currentFields);

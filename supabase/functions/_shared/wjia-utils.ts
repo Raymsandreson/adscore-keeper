@@ -62,3 +62,15 @@ export {
   classifyDocument,
   extractFromDocuments,
 } from "./document-processing.ts";
+
+// Alias resolver (deterministic field mapping)
+export {
+  type FieldAlias,
+  type ResolvedField,
+  loadFieldAliases,
+  resolveFieldByKeyword,
+  extractValueByPattern,
+  validateFieldValue,
+  resolveIncomingFieldWithAliases,
+  autoSeedAliasesFromCatalog,
+} from "./alias-resolver.ts";
