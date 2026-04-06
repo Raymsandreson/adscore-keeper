@@ -24,6 +24,7 @@ interface UnifiedMonitorTabProps {
   onEventClick: (event: any) => void;
   dashboardMetrics?: DashboardMetrics;
   onNewConvsClick?: () => void;
+  onOperationalClick?: (type: OperationalMetricType) => void;
   filterBarProps: {
     agents: AgentData[];
     uniqueInstances: string[];
