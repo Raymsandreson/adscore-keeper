@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ClipboardList, Heart, LayoutDashboard } from 'lucide-react';
-import { subDays } from 'date-fns';
+import { Progress } from '@/components/ui/progress';
+import { ClipboardList, Heart, LayoutDashboard, Loader2 } from 'lucide-react';
 
 import { useMonitorData } from './agent-monitor/hooks/useMonitorData';
 import { useMonitorFilters } from './agent-monitor/hooks/useMonitorFilters';
@@ -32,8 +32,30 @@ export function AgentMonitorDashboard() {
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [promptDialogLead, setPromptDialogLead] = useState<{ id: string; name: string } | null>(null);
 
-  const { agents, conversations, agentStats, referrals, boards, loading, fetchData: fetchDataRaw } = useMonitorData();
+  const { agents, conversations, agentStats, referrals, boards, loading: monitorLoading, fetchData: fetchDataRaw } = useMonitorData();
   const { metrics, metricsLoading, fetchMetrics } = useDashboardMetrics();
+
+  const isLoading = monitorLoading || metricsLoading;
+  const [animatedProgress, setAnimatedProgress] = useState(0);
+  const progressRef = useRef<ReturnType<typeof setInterval>>();
+
+  useEffect(() => {
+    if (isLoading) {
+      setAnimatedProgress(5);
+      progressRef.current = setInterval(() => {
+        setAnimatedProgress(prev => {
+          const target = !monitorLoading && metricsLoading ? 70 : !metricsLoading && monitorLoading ? 60 : 45;
+          if (prev >= target) return prev;
+          return prev + Math.max(1, Math.floor((target - prev) * 0.1));
+        });
+      }, 300);
+    } else {
+      setAnimatedProgress(100);
+      setTimeout(() => setAnimatedProgress(0), 600);
+      if (progressRef.current) clearInterval(progressRef.current);
+    }
+    return () => { if (progressRef.current) clearInterval(progressRef.current); };
+  }, [isLoading, monitorLoading, metricsLoading]);
 
   const fetchData = useCallback(() => {
     fetchDataRaw(dateRange);
@@ -128,7 +150,15 @@ export function AgentMonitorDashboard() {
 
   return (
     <div className="min-h-screen p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
-      <MonitorHeader dateRange={dateRange} setDateRange={setDateRange} loading={loading} onRefresh={fetchData} />
+      <MonitorHeader dateRange={dateRange} setDateRange={setDateRange} loading={isLoading} onRefresh={fetchData} />
+
+      {isLoading && (
+        <div className="flex items-center gap-3 px-1">
+          <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+          <Progress value={animatedProgress} className="h-2 flex-1" />
+          <span className="text-xs text-muted-foreground font-medium shrink-0">{animatedProgress}%</span>
+        </div>
+      )}
 
       <Tabs defaultValue="monitor" className="space-y-4">
         <TabsList className="grid w-full grid-cols-3 max-w-md">
@@ -139,7 +169,7 @@ export function AgentMonitorDashboard() {
 
         <TabsContent value="monitor" className="space-y-4">
           <UnifiedMonitorTab
-            conversations={conversations} agentStats={agentStats} loading={loading}
+            conversations={conversations} agentStats={agentStats} loading={isLoading}
             pipelineCounts={pipelineCounts}
             onPipelineClick={(s) => setSheetStatusFilter(prev => prev === s ? null : s)}
             activeStatus={sheetStatusFilter}
@@ -151,7 +181,7 @@ export function AgentMonitorDashboard() {
         </TabsContent>
 
         <TabsContent value="ai-activities" className="space-y-4"><AIActivitiesPanel /></TabsContent>
-        <TabsContent value="referrals" className="space-y-4"><ReferralsTab referrals={referrals} loading={loading} /></TabsContent>
+        <TabsContent value="referrals" className="space-y-4"><ReferralsTab referrals={referrals} loading={isLoading} /></TabsContent>
       </Tabs>
 
       <CaseListSheet

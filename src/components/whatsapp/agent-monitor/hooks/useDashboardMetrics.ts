@@ -31,9 +31,11 @@ export function useDashboardMetrics() {
     closedByAgent: [], closedByCampaign: [], newConvDetails: [],
   });
   const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsProgress, setMetricsProgress] = useState(0);
 
   const fetchMetrics = useCallback(async (dateRange: { from: Date; to: Date }) => {
     setMetricsLoading(true);
+    setMetricsProgress(10);
     try {
       const todayStart = startOfDay(dateRange.from).toISOString();
       const todayEnd = endOfDay(dateRange.to).toISOString();
@@ -177,8 +179,9 @@ export function useDashboardMetrics() {
       console.error('Error fetching dashboard metrics:', err);
     } finally {
       setMetricsLoading(false);
+      setMetricsProgress(100);
     }
   }, []);
 
-  return { metrics, metricsLoading, fetchMetrics };
+  return { metrics, metricsLoading, metricsProgress, fetchMetrics };
 }
