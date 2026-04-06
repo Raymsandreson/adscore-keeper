@@ -75,6 +75,7 @@ import {
   XCircle,
   AlertTriangle,
   DollarSign,
+  ExternalLink,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
