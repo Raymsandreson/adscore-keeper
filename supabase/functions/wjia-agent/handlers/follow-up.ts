@@ -155,7 +155,10 @@ export async function handleFollowUp(opts: {
   const collectedData = session.collected_data || { fields: [] };
   const currentFields = [...(collectedData.fields || [])];
 
-  console.log("Session:", session.id, "status:", session.status);
+  // Load deterministic field aliases
+  const fieldAliases = await loadFieldAliases(supabase, agentId);
+
+  console.log("Session:", session.id, "status:", session.status, "aliases loaded:", fieldAliases.length);
 
   // ── GENERATED SESSION ──
   if (session.status === "generated") {
