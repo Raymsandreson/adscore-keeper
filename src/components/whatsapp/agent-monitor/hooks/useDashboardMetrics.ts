@@ -97,16 +97,16 @@ export function useDashboardMetrics() {
       const uniquePhones = Array.from(phoneMap.keys());
       const totalInbound = uniquePhones.length;
 
-      // Check which had messages before (not truly new)
+      // Check which had ANY messages before today (not truly new)
       const oldPhones = new Set<string>();
-      for (let i = 0; i < uniquePhones.length; i += 200) {
-        const batch = uniquePhones.slice(i, i + 200);
+      for (let i = 0; i < uniquePhones.length; i += 50) {
+        const batch = uniquePhones.slice(i, i + 50);
         const { data: oldMsgs } = await supabase
           .from('whatsapp_messages')
           .select('phone')
-          .eq('direction', 'inbound')
           .lt('created_at', todayStart)
-          .in('phone', batch);
+          .in('phone', batch)
+          .limit(batch.length);
         (oldMsgs || []).forEach(m => oldPhones.add(m.phone));
       }
       const trulyNewPhones = uniquePhones.filter(p => !oldPhones.has(p));
