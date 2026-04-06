@@ -178,6 +178,27 @@ Deno.serve(async (req) => {
       })
     }
 
+    // DEDUP GUARD: If lead_id is provided, check if it already has a group
+    if (lead_id) {
+      const { data: existingLead } = await supabase
+        .from('leads')
+        .select('whatsapp_group_id')
+        .eq('id', lead_id)
+        .maybeSingle()
+      
+      if (existingLead?.whatsapp_group_id) {
+        console.log(`[create-group] DEDUP: Lead ${lead_id} already has group ${existingLead.whatsapp_group_id}. Skipping creation.`)
+        return new Response(JSON.stringify({ 
+          success: true, 
+          group_id: existingLead.whatsapp_group_id, 
+          skipped: true, 
+          reason: 'already_has_group' 
+        }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
     // Get the creator instance
     let creatorInstance: any = null
     if (creator_instance_id) {
