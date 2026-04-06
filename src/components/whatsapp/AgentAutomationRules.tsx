@@ -74,7 +74,7 @@ export function AgentAutomationRules({ agentId }: Props) {
   const fetchAll = async () => {
     setLoading(true);
     const rulesRes = await (supabase as any).from('agent_automation_rules').select('*').eq('agent_id', agentId);
-    const boardsRes = await (supabase as any).from('kanban_boards').select('id, name').order('display_order');
+    const boardsRes = await (supabase as any).from('kanban_boards').select('id, name, stages').order('display_order');
     const nucleiRes = await (supabase as any).from('specialized_nuclei').select('id, name, prefix').eq('is_active', true).order('name');
 
     const rulesMap: Record<string, any> = {};
@@ -85,24 +85,17 @@ export function AgentAutomationRules({ agentId }: Props) {
         : { actions: [], is_active: false };
     }
     setRules(rulesMap);
-    setBoards((boardsRes.data as any[]) || []);
+    const boardsList = (boardsRes.data as any[]) || [];
+    setBoards(boardsList);
     setNuclei((nucleiRes.data as any[]) || []);
 
-    // Fetch stages for all boards
-    const boardIds = (boardsRes.data as any[])?.map((b: any) => b.id) || [];
-    if (boardIds.length > 0) {
-      const { data: stagesData } = await (supabase as any)
-        .from('kanban_stages')
-        .select('id, name, board_id')
-        .in('board_id', boardIds)
-        .order('display_order');
-      const grouped: Record<string, Stage[]> = {};
-      ((stagesData as any[]) || []).forEach((s: any) => {
-        if (!grouped[s.board_id]) grouped[s.board_id] = [];
-        grouped[s.board_id].push(s);
-      });
-      setStagesByBoard(grouped);
-    }
+    // Extract stages from boards' stages JSON column
+    const grouped: Record<string, Stage[]> = {};
+    boardsList.forEach((b: any) => {
+      const stages = Array.isArray(b.stages) ? b.stages : [];
+      grouped[b.id] = stages.map((s: any) => ({ id: s.id, name: s.name, board_id: b.id }));
+    });
+    setStagesByBoard(grouped);
     setLoading(false);
   };
 
