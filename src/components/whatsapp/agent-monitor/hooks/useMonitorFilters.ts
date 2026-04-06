@@ -20,7 +20,10 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
   const uniqueCampaigns = useMemo(() => [...new Set(conversations.map(c => c.campaign_name).filter(Boolean))].sort() as string[], [conversations]);
 
   const applyBaseFilters = (c: ConversationDetail) => {
-    if (agentFilter !== 'all' && c.agent_id !== agentFilter) return false;
+    if (agentFilter !== 'all') {
+      if (agentFilter === '__none__' && c.agent_id) return false;
+      if (agentFilter !== '__none__' && c.agent_id !== agentFilter) return false;
+    }
     if (instanceFilter !== 'all' && c.instance_name !== instanceFilter) return false;
     if (boardFilter !== 'all' && c.board_id !== boardFilter) return false;
     if (campaignFilter !== 'all') {
@@ -47,7 +50,14 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
 
   const pipelineCounts = useMemo(() => {
     const base = conversations.filter(applyBaseFilters);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     return {
+      novas: base.filter(c => {
+        if (!c.created_at) return false;
+        const created = new Date(c.created_at);
+        return created >= today;
+      }).length,
       sem_resposta: base.filter(c => getCaseStatus(c) === 'sem_resposta').length,
       em_andamento: base.filter(c => getCaseStatus(c) === 'em_andamento').length,
       fechado: base.filter(c => getCaseStatus(c) === 'fechado').length,
