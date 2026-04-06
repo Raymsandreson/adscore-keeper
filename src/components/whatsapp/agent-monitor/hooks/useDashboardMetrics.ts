@@ -86,70 +86,58 @@ export function useDashboardMetrics() {
 
       const inboundData = await fetchAllInbound();
 
-      const normalizePhone = (value: string | null | undefined) => (value || '').replace(/\D/g, '');
-
-      // Unique normalized phones from inbound
+      // Unique phones from inbound (use raw phone as stored in DB for exact matching)
       const phoneMap = new Map<string, { phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null }>();
       for (const msg of inboundData) {
-        const normalizedPhone = normalizePhone(msg.phone);
-        if (!normalizedPhone || normalizedPhone.length < 8 || (msg.phone || '').includes('@g.us')) continue;
-        if (!phoneMap.has(normalizedPhone)) {
-          phoneMap.set(normalizedPhone, {
-            phone: msg.phone,
-            contact_name: msg.contact_name,
-            first_message_at: msg.created_at,
-            instance_name: msg.instance_name,
-          });
+        if (!msg.phone || msg.phone.includes('@g.us')) continue;
+        if (!phoneMap.has(msg.phone)) {
+          phoneMap.set(msg.phone, { phone: msg.phone, contact_name: msg.contact_name, first_message_at: msg.created_at, instance_name: msg.instance_name });
         }
       }
       const uniquePhones = Array.from(phoneMap.keys());
       const totalInbound = uniquePhones.length;
 
-      // Check which had ANY messages before the selected period using normalized phone suffix
+      // Check which phones had ANY message before the period start
+      // Use exact .in() match (phones are stored consistently in DB)
+      // Batch of 50 with high limit to avoid missing phones due to row cap
       const oldPhones = new Set<string>();
       for (let i = 0; i < uniquePhones.length; i += 50) {
         const batch = uniquePhones.slice(i, i + 50);
-        const suffixes = Array.from(new Set(batch.map(phone => phone.slice(-8)).filter(Boolean)));
-        if (suffixes.length === 0) continue;
-
-        const { data: oldMsgs } = await supabase
-          .from('whatsapp_messages')
-          .select('phone, created_at')
-          .lt('created_at', todayStart)
-          .or(suffixes.map(suffix => `phone.like.%${suffix}%`).join(','))
-          .limit(1000);
-
-        (oldMsgs || []).forEach(msg => {
-          const normalizedOldPhone = normalizePhone(msg.phone);
-          const matchedPhone = batch.find(phone => normalizedOldPhone.endsWith(phone.slice(-8)));
-          if (matchedPhone) oldPhones.add(matchedPhone);
-        });
+        // Paginate to ensure we check all - we only need distinct phones
+        let from = 0;
+        const checked = new Set<string>(batch);
+        while (checked.size > oldPhones.size) {
+          const remaining = batch.filter(p => !oldPhones.has(p));
+          if (remaining.length === 0) break;
+          const { data: oldMsgs } = await supabase
+            .from('whatsapp_messages')
+            .select('phone')
+            .lt('created_at', todayStart)
+            .in('phone', remaining)
+            .range(from, from + 999);
+          if (!oldMsgs || oldMsgs.length === 0) break;
+          oldMsgs.forEach(m => oldPhones.add(m.phone));
+          if (oldMsgs.length < 1000) break;
+          from += 1000;
+        }
       }
-      const trulyNewPhones = uniquePhones.filter(phone => !oldPhones.has(phone));
+      const trulyNewPhones = uniquePhones.filter(p => !oldPhones.has(p));
 
       // Fetch outbound for response rate & time
       const outboundMap = new Map<string, { count: number; first_at: string | null }>();
-      for (let i = 0; i < uniquePhones.length; i += 50) {
-        const batch = uniquePhones.slice(i, i + 50);
-        const suffixes = Array.from(new Set(batch.map(phone => phone.slice(-8)).filter(Boolean)));
-        if (suffixes.length === 0) continue;
-
+      for (let i = 0; i < uniquePhones.length; i += 200) {
+        const batch = uniquePhones.slice(i, i + 200);
         const { data: outMsgs } = await supabase
           .from('whatsapp_messages')
           .select('phone, created_at')
           .eq('direction', 'outbound')
           .gte('created_at', todayStart)
           .lte('created_at', todayEnd)
-          .or(suffixes.map(suffix => `phone.like.%${suffix}%`).join(','))
-          .order('created_at', { ascending: true })
-          .limit(1000);
-
+          .in('phone', batch)
+          .order('created_at', { ascending: true });
         for (const m of (outMsgs || [])) {
-          const normalizedPhone = normalizePhone(m.phone);
-          const matchedPhone = batch.find(phone => normalizedPhone.endsWith(phone.slice(-8)));
-          if (!matchedPhone) continue;
-          const ex = outboundMap.get(matchedPhone);
-          if (!ex) outboundMap.set(matchedPhone, { count: 1, first_at: m.created_at });
+          const ex = outboundMap.get(m.phone);
+          if (!ex) outboundMap.set(m.phone, { count: 1, first_at: m.created_at });
           else ex.count++;
         }
       }
