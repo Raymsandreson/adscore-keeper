@@ -9210,6 +9210,8 @@ export type Database = {
         Args: { p_delay_minutes: number; p_session_id: string }
         Returns: undefined
       }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
       app_role: "admin" | "member"

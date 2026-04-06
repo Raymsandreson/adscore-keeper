@@ -174,54 +174,63 @@ export async function normalizeProfessionToCBO(
 ): Promise<{ title: string; cbo_code: string } | null> {
   if (!rawProfession || rawProfession.trim().length < 2) return null;
 
-  const normalized = rawProfession.trim().toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const query = rawProfession.trim();
 
-  // Load all CBO professions (200 rows — small enough to load in memory)
-  const { data: professions, error } = await supabase
+  // 1. Exact match (case-insensitive via ilike)
+  const { data: exact } = await supabase
     .from("cbo_professions")
-    .select("cbo_code, title, family_title");
+    .select("cbo_code, title")
+    .ilike("title", query)
+    .limit(1);
 
-  if (error || !professions?.length) return null;
+  if (exact?.length) {
+    console.log(`CBO exact: "${rawProfession}" → "${exact[0].title}" (${exact[0].cbo_code})`);
+    return { title: exact[0].title, cbo_code: exact[0].cbo_code };
+  }
 
-  // Score each profession
-  let bestMatch: { title: string; cbo_code: string; score: number } | null = null;
+  // 2. Title contains input (ilike %query%)
+  const { data: partial } = await supabase
+    .from("cbo_professions")
+    .select("cbo_code, title")
+    .ilike("title", `%${query}%`)
+    .order("title", { ascending: true })
+    .limit(1);
 
-  for (const p of professions) {
-    const titleNorm = (p.title || "").toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const familyNorm = (p.family_title || "").toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (partial?.length) {
+    console.log(`CBO partial: "${rawProfession}" → "${partial[0].title}" (${partial[0].cbo_code})`);
+    return { title: partial[0].title, cbo_code: partial[0].cbo_code };
+  }
 
-    let score = 0;
+  // 3. Family title contains input
+  const { data: family } = await supabase
+    .from("cbo_professions")
+    .select("cbo_code, title")
+    .ilike("family_title", `%${query}%`)
+    .order("title", { ascending: true })
+    .limit(1);
 
-    // Exact match
-    if (titleNorm === normalized) { score = 100; }
-    // Title contains input
-    else if (titleNorm.includes(normalized)) { score = 80; }
-    // Input contains title
-    else if (normalized.includes(titleNorm)) { score = 70; }
-    // Family match
-    else if (familyNorm.includes(normalized) || normalized.includes(familyNorm)) { score = 50; }
-    // Word overlap
-    else {
-      const inputWords = normalized.split(/\s+/);
-      const titleWords = titleNorm.split(/\s+/);
-      const overlap = inputWords.filter(w => titleWords.some(tw => tw.includes(w) || w.includes(tw))).length;
-      if (overlap > 0) score = overlap * 20;
-    }
+  if (family?.length) {
+    console.log(`CBO family: "${rawProfession}" → "${family[0].title}" (${family[0].cbo_code})`);
+    return { title: family[0].title, cbo_code: family[0].cbo_code };
+  }
 
-    if (score > 0 && (!bestMatch || score > bestMatch.score)) {
-      bestMatch = { title: p.title, cbo_code: p.cbo_code, score };
+  // 4. Try first word only (e.g. "pedreiro de obras" → "pedreiro")
+  const firstWord = query.split(/\s+/)[0];
+  if (firstWord.length >= 3 && firstWord !== query) {
+    const { data: wordMatch } = await supabase
+      .from("cbo_professions")
+      .select("cbo_code, title")
+      .ilike("title", `%${firstWord}%`)
+      .order("title", { ascending: true })
+      .limit(1);
+
+    if (wordMatch?.length) {
+      console.log(`CBO word: "${rawProfession}" → "${wordMatch[0].title}" (${wordMatch[0].cbo_code})`);
+      return { title: wordMatch[0].title, cbo_code: wordMatch[0].cbo_code };
     }
   }
 
-  if (bestMatch && bestMatch.score >= 50) {
-    console.log(`CBO match: "${rawProfession}" → "${bestMatch.title}" (${bestMatch.cbo_code}) score=${bestMatch.score}`);
-    return { title: bestMatch.title, cbo_code: bestMatch.cbo_code };
-  }
-
-  console.log(`CBO no match: "${rawProfession}" (best score: ${bestMatch?.score || 0})`);
+  console.log(`CBO no match: "${rawProfession}"`);
   return null;
 }
 
