@@ -633,12 +633,76 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Get invite link for the group
+    let groupInviteLink: string | null = null
+    if (groupId) {
+      try {
+        const groupJidForInvite = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
+        const inviteRes = await fetch(`${baseUrl}/group/inviteCode`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+          body: JSON.stringify({ groupjid: groupJidForInvite }),
+        })
+        if (inviteRes.ok) {
+          const inviteData = await inviteRes.json()
+          const inviteCode = inviteData?.inviteCode || inviteData?.code || inviteData?.data?.inviteCode || inviteData?.data?.code || null
+          if (inviteCode) {
+            groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`
+            console.log(`[create-group] Invite link obtained: ${groupInviteLink}`)
+          } else {
+            console.warn('[create-group] inviteCode response had no code:', JSON.stringify(inviteData).substring(0, 300))
+          }
+        } else {
+          console.warn('[create-group] Failed to get invite code:', inviteRes.status, await inviteRes.text())
+        }
+      } catch (inviteErr) {
+        console.error('[create-group] Error getting invite code:', inviteErr)
+      }
+    }
+
     if (groupId && leadData?.id) {
+      const updatePayload: any = { whatsapp_group_id: groupId }
+      if (groupInviteLink) {
+        updatePayload.group_link = groupInviteLink
+      }
       await supabase
         .from('leads')
-        .update({ whatsapp_group_id: groupId } as any)
+        .update(updatePayload)
         .eq('id', leadData.id)
         .is('whatsapp_group_id', null)
+    }
+
+    // Send private message to client with group link
+    if (groupId && groupInviteLink) {
+      const clientPhone = normalizePhone(contact_phone || phone)
+      if (clientPhone) {
+        try {
+          const linkMessage = `✅ Seu grupo foi criado com sucesso!\n\nAcesse pelo link abaixo:\n${groupInviteLink}`
+          const sendLinkRes = await fetch(`${baseUrl}/send/text`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+            body: JSON.stringify({ number: clientPhone, text: linkMessage }),
+          })
+          if (sendLinkRes.ok) {
+            console.log(`[create-group] Group link sent to client ${clientPhone}`)
+            // Save outbound message to DB
+            await supabase.from('whatsapp_messages').insert({
+              instance_name: creatorInstance.instance_name,
+              phone: clientPhone,
+              message_text: linkMessage,
+              message_type: 'text',
+              direction: 'outbound',
+              sender_name: 'Sistema',
+              lead_id: leadData?.id || null,
+              contact_id: leadData?.contact_id || null,
+            } as any)
+          } else {
+            console.warn('[create-group] Failed to send group link to client:', sendLinkRes.status)
+          }
+        } catch (sendErr) {
+          console.error('[create-group] Error sending group link:', sendErr)
+        }
+      }
     }
 
     // Promote ALL board instances as admins (except lead contact)
