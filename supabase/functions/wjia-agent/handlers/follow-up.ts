@@ -232,36 +232,30 @@ REGRAS IMPORTANTES:
         corrReply = parsed.reply_to_client || "";
       } catch {}
 
-      // Apply corrections with intelligent field matching
+      // Apply corrections with DETERMINISTIC alias resolution
       for (const corr of corrections) {
-        let fieldKey = corr.de;
         const value = corr.para;
 
-        // First try normalizeIncomingField
-        const normalized = normalizeIncomingField(corr, catalog);
-        if (normalized) {
-          fieldKey = normalized.variable;
+        // Use alias resolver as PRIMARY resolution
+        const resolved = resolveIncomingFieldWithAliases(corr, fieldAliases, catalog);
+        if (resolved) {
+          if (resolved.validation_error) {
+            console.log(`WJIA correction validation warning: ${resolved.variable} = "${value}" — ${resolved.validation_error}`);
+          }
+          console.log(`WJIA correction (alias resolved): ${resolved.variable} = "${resolved.value}"`);
+          upsertCollectedField(currentFields, resolved.variable, resolved.value);
         } else {
-          // Fallback: check if the AI returned a value instead of a variable name
-          // Try to find which field currently has this value
-          const matchByValue = currentFields.find((f: any) => 
-            f.para && f.para.toLowerCase() === fieldKey.toLowerCase()
+          // Last resort: try matching by current value in fields
+          const matchByValue = currentFields.find((f: any) =>
+            f.para && f.para.toLowerCase() === corr.de.toLowerCase()
           );
           if (matchByValue) {
-            console.log(`WJIA correction fallback: matched value "${fieldKey}" to field "${matchByValue.de}"`);
-            fieldKey = matchByValue.de;
-          }
-          
-          // Also try matching by common keywords
-          const keyLower = fieldKey.toLowerCase().replace(/[{}]/g, "");
-          if (keyLower.includes("nome") && !keyLower.includes("completo")) {
-            const nomeField = currentFields.find((f: any) => f.de?.includes("NOME COMPLETO") || f.de?.includes("NOME_COMPLETO"));
-            if (nomeField) fieldKey = nomeField.de;
+            console.log(`WJIA correction fallback (value match): "${corr.de}" → "${matchByValue.de}" = "${value}"`);
+            upsertCollectedField(currentFields, matchByValue.de, value);
+          } else {
+            console.log(`WJIA correction REJECTED: no alias or catalog match for "${corr.de}"`);
           }
         }
-
-        console.log(`WJIA correction applied: ${fieldKey} = "${value}"`);
-        upsertCollectedField(currentFields, fieldKey, value);
       }
 
       syncNameFields(currentFields);
