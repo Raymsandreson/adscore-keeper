@@ -177,6 +177,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           name: (agent as any)?.name || 'Agente',
           activated_by: activatedByLabel,
           is_active: data.is_active,
+          agent_id: data.agent_id,
         });
       }
     };
