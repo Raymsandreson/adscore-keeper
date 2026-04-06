@@ -75,6 +75,7 @@ import {
   XCircle,
   AlertTriangle,
   DollarSign,
+  ExternalLink,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
@@ -1127,13 +1128,32 @@ ${scrapeData.content || ''}
                 </div>
 
                 <div className="col-span-2">
-                  <Label>Grupo WhatsApp (link ou ID)</Label>
-                  <Input
-                    value={whatsappGroupId}
-                    onChange={(e) => setWhatsappGroupId(e.target.value)}
-                    placeholder="https://chat.whatsapp.com/... ou 120363xxx@g.us"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">Cole o link do grupo. O ID será extraído automaticamente ao salvar.</p>
+                  <Label>Grupo WhatsApp</Label>
+                  {(groupLink || whatsappGroupId) ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={groupLink || whatsappGroupId}
+                        readOnly
+                        className="bg-muted"
+                      />
+                      {groupLink && (
+                        <a href={groupLink} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                          <Button type="button" variant="outline" size="sm" className="gap-1 text-green-600 border-green-200">
+                            <ExternalLink className="h-3 w-3" /> Abrir
+                          </Button>
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <Input
+                      value={whatsappGroupId}
+                      onChange={(e) => setWhatsappGroupId(e.target.value)}
+                      placeholder="https://chat.whatsapp.com/... ou 120363xxx@g.us"
+                    />
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {groupLink ? 'Link do grupo criado automaticamente' : 'Cole o link do grupo. O ID será extraído automaticamente ao salvar.'}
+                  </p>
                 </div>
 
                 <div>
