@@ -1778,6 +1778,7 @@ Deno.serve(async (req) => {
           console.error('Human pause error:', e);
         }
       }
+      }
     }
 
     // ========== WHATSAPP COMMAND PROCESSOR (Chat IA via WhatsApp) ==========
