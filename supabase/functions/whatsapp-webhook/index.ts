@@ -1488,6 +1488,32 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ========== OUTBOUND ECHO DEDUP: Skip saving if AI agent already saved this message ==========
+    if (direction === 'outbound' && messageText && instanceName && phone) {
+      try {
+        const echoWindow = new Date(Date.now() - 120000).toISOString(); // last 2 min
+        const { data: aiEcho } = await supabase
+          .from('whatsapp_messages')
+          .select('id')
+          .eq('phone', phone)
+          .eq('instance_name', instanceName)
+          .eq('direction', 'outbound')
+          .eq('message_text', messageText)
+          .gte('created_at', echoWindow)
+          .limit(1)
+          .maybeSingle();
+        if (aiEcho) {
+          console.log(`Outbound echo detected (AI already saved), skipping insert for ${phone}`);
+          return new Response(
+            JSON.stringify({ success: true, skipped: true, reason: 'ai_echo_dedup', existing_id: aiEcho.id }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      } catch (e) {
+        console.error('Outbound echo dedup error:', e);
+      }
+    }
+
     const { data: message, error } = await supabase
       .from('whatsapp_messages')
       .insert({
