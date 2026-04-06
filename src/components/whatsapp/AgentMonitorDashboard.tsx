@@ -322,6 +322,8 @@ export function AgentMonitorDashboard() {
         onClose={() => setOperationalSheet(null)}
         metricType={operationalSheet || 'signed_docs'}
         dateRange={dateRange}
+        filters={operationalFiltersObj}
+        filteredLeadIds={operationalFilteredLeadIds}
       />
 
       <NewConversationsSheet
