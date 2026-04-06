@@ -1506,7 +1506,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
               </div>
             )}
 
-
+            <div className="flex gap-2 justify-end border-t pt-3">
               <Button size="sm" variant="ghost" onClick={resetForm}>Cancelar</Button>
               <Button size="sm" onClick={handleSave}>{editingId ? 'Atualizar' : 'Salvar'}</Button>
             </div>
