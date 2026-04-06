@@ -82,8 +82,10 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [creatingLead, setCreatingLead] = useState(false);
-  const [agentInfo, setAgentInfo] = useState<{ name: string; activated_by: string | null; is_active: boolean } | null>(null);
+  const [agentInfo, setAgentInfo] = useState<{ name: string; activated_by: string | null; is_active: boolean; agent_id?: string } | null>(null);
   const [callRecords, setCallRecords] = useState<CallRecord[]>([]);
+  const [availableAgents, setAvailableAgents] = useState<{ id: string; name: string }[]>([]);
+  const [suggestingAgent, setSuggestingAgent] = useState(false);
   const [identifySender, setIdentifySender] = useState(true);
   const [treatmentTitle, setTreatmentTitle] = useState<string>('');
   const [nameFormat, setNameFormat] = useState<string>('first_last');
@@ -175,6 +177,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           name: (agent as any)?.name || 'Agente',
           activated_by: activatedByLabel,
           is_active: data.is_active,
+          agent_id: data.agent_id,
         });
       }
     };
@@ -187,9 +190,18 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         .order('created_at', { ascending: true });
       setCallRecords((data || []) as CallRecord[]);
     };
+    const fetchAvailableAgents = async () => {
+      const { data } = await supabase
+        .from('whatsapp_ai_agents')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+      setAvailableAgents((data as any[]) || []);
+    };
     fetchMessages();
     fetchAgent();
     fetchCallRecords();
+    fetchAvailableAgents();
 
     // Fetch linked lead & contact
     const fetchLinkedData = async () => {
@@ -707,6 +719,51 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
   };
 
+  const handleSelectAgent = async (agentId: string, agentName: string) => {
+    if (!phone || !instanceName) return;
+    const normalizedPhone = phone.replace(/\D/g, '');
+    try {
+      await supabase
+        .from('whatsapp_conversation_agents')
+        .upsert({
+          phone: normalizedPhone,
+          instance_name: instanceName,
+          agent_id: agentId,
+          is_active: true,
+          activated_by: 'manual',
+          human_paused_until: null,
+        } as any, { onConflict: 'phone,instance_name' });
+      setAgentInfo({ name: agentName, activated_by: 'Manual', is_active: true, agent_id: agentId });
+      onConversationUpdated?.();
+      toast.success(`🤖 Agente "${agentName}" ativado!`);
+    } catch (e) {
+      toast.error('Erro ao selecionar agente');
+    }
+  };
+
+  const handleSuggestBestAgent = async () => {
+    if (!phone) return;
+    setSuggestingAgent(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke('suggest-best-agent', {
+        body: { phone, instance_name: instanceName },
+      });
+      if (error) throw error;
+      if (data?.agent_id && data?.agent_name) {
+        const confirmed = window.confirm(`🤖 IA sugere: "${data.agent_name}"\n\nMotivo: ${data.reason}\n\nDeseja ativar este agente?`);
+        if (confirmed) {
+          await handleSelectAgent(data.agent_id, data.agent_name);
+        }
+      } else {
+        toast.error('Não foi possível sugerir um agente');
+      }
+    } catch (e: any) {
+      toast.error('Erro ao sugerir agente: ' + (e.message || ''));
+    } finally {
+      setSuggestingAgent(false);
+    }
+  };
+
   const handleTogglePrivate = async () => {
     if (!phone) return;
     setTogglingPrivate(true);
@@ -937,19 +994,59 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                     {creatingGroup ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Users className="h-4 w-4 mr-2" />}
                     Criar Grupo WhatsApp
                   </DropdownMenuItem>
-                  {agentInfo && (
-                    <>
-                      <DropdownMenuSeparator />
-                      {agentInfo && agentInfo.is_active ? (
-                        <DropdownMenuItem onClick={handleToggleAgent}>
-                          <BotOff className="h-4 w-4 mr-2" /> Desativar Agente ({agentInfo.name})
+                  <DropdownMenuSeparator />
+                  {agentInfo && agentInfo.is_active && (
+                    <DropdownMenuItem onClick={handleToggleAgent}>
+                      <BotOff className="h-4 w-4 mr-2" /> Desativar Agente ({agentInfo.name})
+                    </DropdownMenuItem>
+                  )}
+                  {agentInfo && !agentInfo.is_active && (
+                    <DropdownMenuItem onClick={handleToggleAgent}>
+                      <Bot className="h-4 w-4 mr-2" /> Reativar Agente ({agentInfo.name})
+                    </DropdownMenuItem>
+                  )}
+                  {availableAgents.length > 0 && (
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <Bot className="h-4 w-4 mr-2" /> Trocar Agente
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-56">
+                        <DropdownMenuItem onClick={handleSuggestBestAgent} disabled={suggestingAgent} className="gap-2 text-amber-600 dark:text-amber-400">
+                          {suggestingAgent ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                          Sugerir com IA
                         </DropdownMenuItem>
-                      ) : agentInfo && !agentInfo.is_active ? (
-                        <DropdownMenuItem onClick={handleToggleAgent}>
-                          <Bot className="h-4 w-4 mr-2" /> Reativar Agente ({agentInfo.name})
-                        </DropdownMenuItem>
-                      ) : null}
-                    </>
+                        <DropdownMenuSeparator />
+                        {availableAgents.map(agent => (
+                          <DropdownMenuItem
+                            key={agent.id}
+                            onClick={() => handleSelectAgent(agent.id, agent.name)}
+                            className="gap-2"
+                          >
+                            <Bot className="h-3.5 w-3.5" />
+                            <span className="flex-1">{agent.name}</span>
+                            {agentInfo?.agent_id === agent.id && (
+                              <Badge variant="default" className="text-[9px] h-4 px-1">atual</Badge>
+                            )}
+                          </DropdownMenuItem>
+                        ))}
+                        {agentInfo && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={async () => {
+                              if (!phone) return;
+                              const normalizedPhone = phone.replace(/\D/g, '');
+                              await supabase.from('whatsapp_conversation_agents').delete().or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
+                              setAgentInfo(null);
+                              onConversationUpdated?.();
+                              toast.success('Agente removido');
+                            }} className="gap-2 text-destructive">
+                              <BotOff className="h-3.5 w-3.5" />
+                              Remover agente
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
                   )}
                   <DropdownMenuSeparator />
                   {isMuted ? (
