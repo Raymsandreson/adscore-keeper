@@ -193,6 +193,23 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
           });
         });
 
+        (callRecordsRes.data || []).forEach((cr: any) => {
+          const resultLabel = cr.call_result === 'atendeu' ? '✅ Atendeu' 
+            : cr.call_result === 'nao_atendeu' ? '❌ Não atendeu'
+            : cr.call_result === 'caixa_postal' ? '📭 Caixa postal'
+            : cr.call_result || 'Registrada';
+          const durationStr = cr.duration_seconds ? ` | ${Math.floor(cr.duration_seconds / 60)}min${cr.duration_seconds % 60}s` : '';
+          feedEvents.push({
+            id: `callrec-${cr.id}`,
+            type: 'call_made',
+            title: `Ligação → ${cr.contact_name || cr.contact_phone || 'Desconhecido'}`,
+            detail: `${resultLabel}${durationStr}${cr.phone_used ? ` | Via: ${cr.phone_used}` : ''}`,
+            timestamp: cr.created_at,
+            phone: cr.contact_phone,
+            contact_name: cr.contact_name,
+          });
+        });
+
         feedEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
         if (mounted) setEvents(feedEvents.slice(0, 100));
       } catch (e) {
