@@ -193,6 +193,13 @@ export function AgentMonitorDashboard() {
         onOpenChat={handleOpenChat} generatingLeadId={generatingLeadId} onGenerateActivity={handleGenerateActivity}
       />
 
+      <OperationalDetailSheet
+        open={!!operationalSheet}
+        onClose={() => setOperationalSheet(null)}
+        metricType={operationalSheet || 'signed_docs'}
+        dateRange={dateRange}
+      />
+
       <NewConversationsSheet
         open={newConvsSheetOpen}
         onClose={() => setNewConvsSheetOpen(false)}
