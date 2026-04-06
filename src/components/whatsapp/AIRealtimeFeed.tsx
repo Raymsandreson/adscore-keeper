@@ -298,6 +298,24 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
           });
         }
       })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'call_records' }, (payload: any) => {
+        const cr = payload.new;
+        if (!cr) return;
+        const resultLabel = cr.call_result === 'atendeu' ? '✅ Atendeu' 
+          : cr.call_result === 'nao_atendeu' ? '❌ Não atendeu'
+          : cr.call_result === 'caixa_postal' ? '📭 Caixa postal'
+          : cr.call_result || 'Registrada';
+        const durationStr = cr.duration_seconds ? ` | ${Math.floor(cr.duration_seconds / 60)}min${cr.duration_seconds % 60}s` : '';
+        addEvent({
+          id: `callrec-${cr.id}`,
+          type: 'call_made',
+          title: `Ligação → ${cr.contact_name || cr.contact_phone || 'Desconhecido'}`,
+          detail: `${resultLabel}${durationStr}`,
+          timestamp: cr.created_at || new Date().toISOString(),
+          phone: cr.contact_phone,
+          contact_name: cr.contact_name,
+        });
+      })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'lead_followups' }, (payload: any) => {
         const f = payload.new;
         if (!f) return;
