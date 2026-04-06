@@ -681,15 +681,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Send initial message if configured
-    if (groupId && settings) {
-      console.log('Sending initial message... use_ai_message:', settings.use_ai_message, 'template:', !!settings.initial_message_template)
-      await sendInitialMessage(supabase, settings, leadData, lead_name, groupName, groupId, baseUrl, creatorInstance, board_id, boardInstances)
-    } else {
-      console.log('Skipping initial message. groupId:', groupId, 'settings:', !!settings)
-    }
-
-    // Forward documents if configured + conversation media
+    // Forward documents FIRST (before initial message to avoid timeout issues)
     // Use shared sentUrls set to avoid duplicate sends
     const sentUrls = new Set<string>()
 
@@ -700,9 +692,26 @@ Deno.serve(async (req) => {
       console.log('Skipping document forwarding. groupId:', groupId, 'docTypes:', settings?.forward_document_types, 'hasLead:', !!leadData)
     }
 
-    // Always forward conversation media (inbound images/documents) + signed ZapSign docs to the group
+    // Forward conversation media (inbound images/documents) + signed ZapSign docs to the group
+    // Also search by lead_phone in case documents were sent from a different number
     if (groupId && leadData) {
-      await forwardConversationMedia(supabase, leadData, normalizedPhone || (contact_phone || phone || '').replace(/\D/g, ''), groupId, baseUrl, creatorInstance, sentUrls)
+      const phonesToSearch = new Set<string>()
+      const mainPhone = normalizedPhone || (contact_phone || phone || '').replace(/\D/g, '')
+      if (mainPhone) phonesToSearch.add(mainPhone)
+      // Also include lead_phone if different
+      if (leadData.lead_phone) {
+        const leadPh = leadData.lead_phone.replace(/\D/g, '')
+        if (leadPh) phonesToSearch.add(leadPh)
+      }
+      await forwardConversationMedia(supabase, leadData, mainPhone, groupId, baseUrl, creatorInstance, sentUrls, Array.from(phonesToSearch))
+    }
+
+    // Send initial message AFTER documents (so documents appear first in the group)
+    if (groupId && settings) {
+      console.log('Sending initial message... use_ai_message:', settings.use_ai_message, 'template:', !!settings.initial_message_template)
+      await sendInitialMessage(supabase, settings, leadData, lead_name, groupName, groupId, baseUrl, creatorInstance, board_id, boardInstances)
+    } else {
+      console.log('Skipping initial message. groupId:', groupId, 'settings:', !!settings)
     }
 
     // Auto-create legal processes if configured
@@ -1185,13 +1194,32 @@ async function forwardDocuments(
     const docTypes = settings.forward_document_types || []
     const leadName = leadData.lead_name || leadData.victim_name || 'Lead'
 
-    // Get collected documents from whatsapp collection sessions
-    const { data: sessions } = await supabase
+    // Get collected documents from whatsapp collection sessions (by lead_id OR phone)
+    let sessions: any[] = []
+    const { data: sessionsByLead } = await supabase
       .from('whatsapp_collection_sessions')
-      .select('id, collected_data')
+      .select('id, collected_data, received_documents, phone')
       .eq('lead_id', leadData.id)
       .order('created_at', { ascending: false })
       .limit(5)
+    if (sessionsByLead) sessions.push(...sessionsByLead)
+
+    // Also search by lead_phone if available (sessions may not have lead_id linked)
+    if (leadData.lead_phone) {
+      const leadPh = leadData.lead_phone.replace(/\D/g, '')
+      if (leadPh) {
+        const { data: sessionsByPhone } = await supabase
+          .from('wjia_collection_sessions')
+          .select('id, collected_data, received_documents, phone')
+          .eq('phone', leadPh)
+          .order('created_at', { ascending: false })
+          .limit(5)
+        if (sessionsByPhone) {
+          const existingIds = new Set(sessions.map((s: any) => s.id))
+          sessions.push(...sessionsByPhone.filter((s: any) => !existingIds.has(s.id)))
+        }
+      }
+    }
 
     // Get ZapSign signed documents - always check for these regardless of type filter
     let signedDocs: any[] = []
@@ -1244,8 +1272,8 @@ async function forwardDocuments(
       }
     }
 
-    // Send collected documents from sessions
-    if (sessions) {
+    // Send collected documents from sessions (collected_data fields)
+    if (sessions && sessions.length > 0) {
       console.log(`[forward-docs] Found ${sessions.length} collection sessions`)
       for (const session of sessions) {
         const collected = session.collected_data || {}
@@ -1272,6 +1300,30 @@ async function forwardDocuments(
             } catch (e) {
               console.error(`[forward-docs] Error sending doc ${docType}:`, e)
             }
+          }
+        }
+
+        // Also forward received_documents (media_url from WJIA doc collection)
+        const receivedDocs = session.received_documents || []
+        for (const rd of receivedDocs) {
+          if (!rd.media_url || sentUrls.has(rd.media_url)) continue
+          sentUrls.add(rd.media_url)
+          const label = docLabels[rd.type] || rd.type || 'Documento'
+          const fileName = `${label} - ${leadName}.pdf`
+          try {
+            const sendRes = await fetch(`${baseUrl}/send/media`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+              body: JSON.stringify({ number: groupId, media: rd.media_url, type: 'document', fileName, caption: `📄 ${label} - ${leadName}` }),
+            })
+            if (!sendRes.ok) {
+              console.error(`[forward-docs] Failed to send received doc ${label}:`, sendRes.status)
+            } else {
+              console.log(`[forward-docs] Sent received doc: ${label}`)
+            }
+            await sleep(800)
+          } catch (e) {
+            console.error(`[forward-docs] Error sending received doc:`, e)
           }
         }
       }
@@ -1324,7 +1376,7 @@ async function forwardDocuments(
 
 async function forwardConversationMedia(
   supabase: any, leadData: any, phone: string, groupId: string,
-  baseUrl: string, creatorInstance: any, sentUrls: Set<string>
+  baseUrl: string, creatorInstance: any, sentUrls: Set<string>, allPhones?: string[]
 ) {
   try {
     const leadName = leadData.lead_name || leadData.victim_name || 'Lead'
@@ -1357,16 +1409,22 @@ async function forwardConversationMedia(
     }
 
     // 2. Forward inbound media from WhatsApp conversation (images, documents, PDFs)
-    if (!phone) {
+    // Search using ALL known phones for this lead (main phone + lead_phone)
+    const phonesToSearch = allPhones && allPhones.length > 0 ? allPhones : (phone ? [phone] : [])
+    if (phonesToSearch.length === 0) {
       console.log('[conv-media] No phone to search conversation media')
       return
     }
 
-    const phoneSuffix = phone.slice(-8)
+    // Build OR filter for all phones
+    const phoneFilters = phonesToSearch.flatMap(p => {
+      const suffix = p.slice(-8)
+      return [`phone.eq.${p}`, `phone.ilike.%${suffix}%`]
+    })
     const { data: mediaMessages } = await supabase
       .from('whatsapp_messages')
       .select('media_url, message_type, message_text, contact_name')
-      .or(`phone.eq.${phone},phone.ilike.%${phoneSuffix}%`)
+      .or(phoneFilters.join(','))
       .eq('direction', 'inbound')
       .in('message_type', ['image', 'document', 'video', 'sticker'])
       .not('media_url', 'is', null)
@@ -1374,6 +1432,7 @@ async function forwardConversationMedia(
       .limit(50)
 
     if (!mediaMessages || mediaMessages.length === 0) {
+      console.log(`[conv-media] No inbound media found for phones: ${phonesToSearch.join(', ')}`)
       console.log('[conv-media] No inbound media found in conversation')
       return
     }
