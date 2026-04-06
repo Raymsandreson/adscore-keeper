@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, FileSignature, Users, Briefcase, Scale } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Loader2, FileSignature, Users, Briefcase, Scale, ExternalLink, MessageSquare, UsersRound } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfDay, endOfDay, format, parseISO } from 'date-fns';
 
@@ -25,6 +27,7 @@ const config: Record<OperationalMetricType, { title: string; icon: typeof FileSi
 export function OperationalDetailSheet({ open, onClose, metricType, dateRange }: Props) {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<any[]>([]);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!open) return;
@@ -37,10 +40,24 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange }:
         if (metricType === 'signed_docs') {
           const { data } = await supabase
             .from('zapsign_documents')
-            .select('id, document_name, status, signer_name, signer_status, created_at')
+            .select('id, document_name, status, signer_name, signer_status, lead_id, whatsapp_phone, instance_name, created_at')
             .gte('created_at', start).lte('created_at', end)
             .order('created_at', { ascending: false });
-          setItems(data || []);
+          
+          // Fetch lead info for group links
+          const leadIds = (data || []).map(d => d.lead_id).filter(Boolean);
+          let leadMap: Record<string, { lead_name: string; whatsapp_group_id: string | null }> = {};
+          if (leadIds.length > 0) {
+            const { data: leads } = await supabase
+              .from('leads')
+              .select('id, lead_name, whatsapp_group_id')
+              .in('id', leadIds);
+            if (leads) {
+              leadMap = Object.fromEntries(leads.map(l => [l.id, { lead_name: l.lead_name, whatsapp_group_id: l.whatsapp_group_id }]));
+            }
+          }
+          
+          setItems((data || []).map(d => ({ ...d, _lead: d.lead_id ? leadMap[d.lead_id] : null })));
         } else if (metricType === 'groups') {
           const { data } = await supabase
             .from('leads')
@@ -86,6 +103,19 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange }:
     return <Badge className={`text-[9px] ${map[status] || 'bg-muted text-muted-foreground'}`}>{status}</Badge>;
   };
 
+  const handleOpenLead = (leadId: string) => {
+    onClose();
+    navigate(`/leads?leadId=${leadId}`);
+  };
+
+  const handleOpenChat = (phone: string, instanceName?: string) => {
+    if (!phone) return;
+    onClose();
+    const params = new URLSearchParams({ phone });
+    if (instanceName) params.set('instance', instanceName);
+    navigate(`/whatsapp?${params.toString()}`);
+  };
+
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <SheetContent className="w-full sm:max-w-lg">
@@ -107,7 +137,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange }:
           <ScrollArea className="h-[calc(100vh-120px)] mt-4">
             <div className="space-y-2 pr-2">
               {metricType === 'signed_docs' && items.map(item => (
-                <div key={item.id} className="border rounded-lg p-3 space-y-1">
+                <div key={item.id} className="border rounded-lg p-3 space-y-1.5">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium truncate flex-1">{item.document_name || 'Documento'}</p>
                     {statusBadge(item.status)}
@@ -119,6 +149,41 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange }:
                   {item.signer_status && item.signer_status !== item.status && (
                     <div className="text-[10px] text-muted-foreground">Assinante: {item.signer_status}</div>
                   )}
+                  <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                    {item.lead_id && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[10px] px-2 gap-1"
+                        onClick={() => handleOpenLead(item.lead_id)}
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        Abrir Lead
+                      </Button>
+                    )}
+                    {item.whatsapp_phone && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[10px] px-2 gap-1"
+                        onClick={() => handleOpenChat(item.whatsapp_phone, item.instance_name)}
+                      >
+                        <MessageSquare className="h-3 w-3" />
+                        Chat Conversa
+                      </Button>
+                    )}
+                    {item._lead?.whatsapp_group_id && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[10px] px-2 gap-1 border-cyan-200 text-cyan-700"
+                        onClick={() => handleOpenChat(item._lead.whatsapp_group_id, item.instance_name)}
+                      >
+                        <UsersRound className="h-3 w-3" />
+                        Chat Grupo
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
 
@@ -128,6 +193,17 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange }:
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="truncate">{item.whatsapp_group_id}</span>
                     <span>{format(parseISO(item.created_at), 'HH:mm')}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[10px] px-2 gap-1"
+                      onClick={() => handleOpenLead(item.id)}
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      Abrir Lead
+                    </Button>
                   </div>
                 </div>
               ))}
