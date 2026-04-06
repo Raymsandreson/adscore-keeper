@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { CorridaMalucaDialog } from '@/components/instagram/CorridaMalucaDialog';
 import { MemberProductivitySheet } from './MemberProductivitySheet';
+import { RealTimeActivityFeed } from './RealTimeActivityFeed';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -43,6 +44,7 @@ import {
   ListChecks,
   Settings2,
   UsersRound,
+  Activity,
 } from 'lucide-react';
 import { useTeamProductivity } from '@/hooks/useTeamProductivity';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -519,6 +521,10 @@ export function TeamProductivityDashboard() {
             <TrendingUp className="h-4 w-4" />
             Evolução
           </TabsTrigger>
+          <TabsTrigger value="realtime" className="gap-2">
+            <Activity className="h-4 w-4" />
+            Ao Vivo
+          </TabsTrigger>
         </TabsList>
 
         {/* Ranking Tab */}
@@ -919,6 +925,11 @@ export function TeamProductivityDashboard() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Realtime Tab */}
+        <TabsContent value="realtime">
+          <RealTimeActivityFeed />
         </TabsContent>
       </Tabs>
 
