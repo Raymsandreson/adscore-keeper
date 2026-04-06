@@ -153,9 +153,13 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
     return <Badge className={`text-[9px] ${map[status] || 'bg-muted text-muted-foreground'}`}>{status}</Badge>;
   };
 
-  const handleOpenLead = (leadId: string) => {
-    onClose();
-    navigate(`/leads?leadId=${leadId}`);
+  const handleOpenLead = async (leadId: string) => {
+    if (!leadId) return;
+    const { data } = await supabase.from('leads').select('*').eq('id', leadId).maybeSingle();
+    if (data) {
+      setEditingLead(data as Lead);
+      setShowLeadEdit(true);
+    }
   };
 
   const handleOpenChat = (phone: string, instanceName?: string) => {
