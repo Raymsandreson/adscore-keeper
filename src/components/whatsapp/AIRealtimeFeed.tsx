@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Bot, MessageCircle, UserPlus, Zap, Phone, FileText, Activity, ClipboardList } from 'lucide-react';
+import { Bot, MessageCircle, UserPlus, Zap, Phone, PhoneCall, FileText, Activity, ClipboardList } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-export type FeedEventType = 'message_sent' | 'message_received' | 'lead_created' | 'followup_sent' | 'agent_activated' | 'agent_paused' | 'session_generated' | 'call_queued' | 'activity_created';
+export type FeedEventType = 'message_sent' | 'message_received' | 'lead_created' | 'followup_sent' | 'agent_activated' | 'agent_paused' | 'session_generated' | 'call_queued' | 'call_made' | 'activity_created';
 
 export interface FeedEvent {
   id: string;
@@ -30,6 +30,7 @@ function eventIcon(type: FeedEvent['type']) {
     case 'agent_paused': return <Phone className="h-3.5 w-3.5 text-orange-500" />;
     case 'session_generated': return <FileText className="h-3.5 w-3.5 text-purple-500" />;
     case 'call_queued': return <Phone className="h-3.5 w-3.5 text-blue-400" />;
+    case 'call_made': return <PhoneCall className="h-3.5 w-3.5 text-green-600" />;
     case 'activity_created': return <ClipboardList className="h-3.5 w-3.5 text-teal-500" />;
     default: return <Activity className="h-3.5 w-3.5 text-muted-foreground" />;
   }
@@ -45,6 +46,7 @@ function eventColor(type: FeedEvent['type']) {
     case 'agent_paused': return 'border-l-orange-500';
     case 'session_generated': return 'border-l-purple-500';
     case 'call_queued': return 'border-l-blue-400';
+    case 'call_made': return 'border-l-green-600';
     case 'activity_created': return 'border-l-teal-500';
     default: return 'border-l-muted';
   }
@@ -58,7 +60,8 @@ const EVENT_TYPE_LABELS: Record<FeedEventType, string> = {
   agent_activated: 'Ativações',
   agent_paused: 'Pausas',
   session_generated: 'Sessões',
-  call_queued: 'Ligações',
+  call_queued: 'Ligações IA',
+  call_made: 'Ligações CallFace',
   activity_created: 'Atividades',
 };
 
@@ -127,7 +130,7 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
 
         // Fetch messages, activities, and call queue in parallel
         const instFilter = allowedInstanceNames.length > 0 ? allowedInstanceNames : ['__none__'];
-        const [msgsRes, activitiesRes, callsRes] = await Promise.all([
+        const [msgsRes, activitiesRes, callsRes, callRecordsRes] = await Promise.all([
           supabase.from('whatsapp_messages')
             .select('id, phone, direction, message_text, contact_name, instance_name, created_at, lead_id')
             .gte('created_at', since).in('instance_name', instFilter)
@@ -139,6 +142,10 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
           supabase.from('whatsapp_call_queue')
             .select('id, phone, instance_name, status, contact_name, created_at')
             .gte('created_at', since).in('instance_name', instFilter)
+            .order('created_at', { ascending: false }).limit(50),
+          supabase.from('call_records')
+            .select('id, contact_name, contact_phone, call_type, call_result, duration_seconds, created_at, lead_name, phone_used')
+            .gte('created_at', since)
             .order('created_at', { ascending: false }).limit(50),
         ]);
 
@@ -183,6 +190,23 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
             phone: c.phone,
             instance_name: c.instance_name,
             contact_name: c.contact_name,
+          });
+        });
+
+        (callRecordsRes.data || []).forEach((cr: any) => {
+          const resultLabel = cr.call_result === 'atendeu' ? '✅ Atendeu' 
+            : cr.call_result === 'nao_atendeu' ? '❌ Não atendeu'
+            : cr.call_result === 'caixa_postal' ? '📭 Caixa postal'
+            : cr.call_result || 'Registrada';
+          const durationStr = cr.duration_seconds ? ` | ${Math.floor(cr.duration_seconds / 60)}min${cr.duration_seconds % 60}s` : '';
+          feedEvents.push({
+            id: `callrec-${cr.id}`,
+            type: 'call_made',
+            title: `Ligação → ${cr.contact_name || cr.contact_phone || 'Desconhecido'}`,
+            detail: `${resultLabel}${durationStr}${cr.phone_used ? ` | Via: ${cr.phone_used}` : ''}`,
+            timestamp: cr.created_at,
+            phone: cr.contact_phone,
+            contact_name: cr.contact_name,
           });
         });
 
@@ -273,6 +297,24 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
             instance_name: ca.instance_name,
           });
         }
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'call_records' }, (payload: any) => {
+        const cr = payload.new;
+        if (!cr) return;
+        const resultLabel = cr.call_result === 'atendeu' ? '✅ Atendeu' 
+          : cr.call_result === 'nao_atendeu' ? '❌ Não atendeu'
+          : cr.call_result === 'caixa_postal' ? '📭 Caixa postal'
+          : cr.call_result || 'Registrada';
+        const durationStr = cr.duration_seconds ? ` | ${Math.floor(cr.duration_seconds / 60)}min${cr.duration_seconds % 60}s` : '';
+        addEvent({
+          id: `callrec-${cr.id}`,
+          type: 'call_made',
+          title: `Ligação → ${cr.contact_name || cr.contact_phone || 'Desconhecido'}`,
+          detail: `${resultLabel}${durationStr}`,
+          timestamp: cr.created_at || new Date().toISOString(),
+          phone: cr.contact_phone,
+          contact_name: cr.contact_name,
+        });
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'lead_followups' }, (payload: any) => {
         const f = payload.new;
