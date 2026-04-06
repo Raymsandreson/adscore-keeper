@@ -62,6 +62,7 @@ export function UnifiedMonitorTab({
         onToggle={onPipelineClick}
         dashboardMetrics={dashboardMetrics}
         onNewConvsClick={onNewConvsClick}
+        onOperationalClick={onOperationalClick}
       />
 
       {/* Sub-tabs */}
