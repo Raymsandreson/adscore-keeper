@@ -25,12 +25,13 @@ export interface NewConvDetail {
 }
 
 export function useDashboardMetrics() {
-  const [metricsLoading, setMetricsLoading] = useState(false);
-  const [metricsProgress, setMetricsProgress] = useState(0);
+  const [metrics, setMetrics] = useState<DashboardMetrics>({
+    newConversations: 0, responseRate: 0, avgResponseTimeMin: 0,
     respondedCount: 0, totalInbound: 0,
     closedByAgent: [], closedByCampaign: [], newConvDetails: [],
   });
   const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsProgress, setMetricsProgress] = useState(0);
 
   const fetchMetrics = useCallback(async (dateRange: { from: Date; to: Date }) => {
     setMetricsLoading(true);
