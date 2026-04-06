@@ -1051,7 +1051,18 @@ Deno.serve(async (req) => {
     }
 
     const phone = rawPhone.replace(/\D/g, '').replace(/^0+/, '')
-    
+
+    // Sanitize contact_name: remove patterns like "WhatsApp 551234567890 | Instance"
+    // or names that are just phone numbers
+    if (contactName) {
+      const cleaned = contactName.replace(/^WhatsApp\s+/i, '').replace(/\s*\|.*$/, '').trim()
+      // If the cleaned name is purely numeric (phone number), discard it
+      if (/^\+?\d[\d\s\-()]{6,}$/.test(cleaned)) {
+        contactName = null
+      } else if (/^WhatsApp\s+\d/i.test(contactName)) {
+        contactName = null
+      }
+    }
     if (!phone) {
       return new Response(
         JSON.stringify({ success: false, error: 'No phone number provided' }),
