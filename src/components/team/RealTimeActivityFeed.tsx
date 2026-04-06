@@ -196,11 +196,12 @@ export function RealTimeActivityFeed() {
     const channel = supabase.channel('team-realtime-feed')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'leads' }, (payload) => {
         const l = payload.new as any;
-        if (!l.created_by) return;
+        const userId = l.created_by || 'system';
+        const userName = l.created_by ? getUserName(l.created_by) : '🤖 Agente IA';
         addItem({
           id: `lead-rt-${l.id}-${Date.now()}`,
-          userId: l.created_by,
-          userName: getUserName(l.created_by),
+          userId,
+          userName,
           actionType: 'lead_created',
           actionLabel: ACTION_CONFIG.lead_created.label,
           entityName: l.lead_name || 'Lead',
