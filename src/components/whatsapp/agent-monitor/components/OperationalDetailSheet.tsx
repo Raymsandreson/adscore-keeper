@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Loader2, FileSignature, Users, Briefcase, Scale, ExternalLink, MessageSquare, UsersRound, Radio } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfDay, endOfDay, format, parseISO } from 'date-fns';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import type { Lead } from '@/hooks/useLeads';
 
 export type OperationalMetricType = 'signed_docs' | 'groups' | 'cases' | 'processes';
 
