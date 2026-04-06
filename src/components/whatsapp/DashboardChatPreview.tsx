@@ -764,6 +764,29 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
   };
 
+  const handleAnticipateFollowup = async () => {
+    if (!phone || !instanceName) return;
+    try {
+      toast.info('Antecipando follow-up...');
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/wjia-followup-processor`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({ target_phone: phone, target_instance: instanceName, force_immediate: true }),
+        }
+      );
+      if (!response.ok) throw new Error('Falha ao antecipar');
+      toast.success('⚡ Follow-up antecipado!');
+    } catch (e: any) {
+      toast.error('Erro: ' + (e.message || 'Falha ao antecipar follow-up'));
+    }
+  };
+
   const handleTogglePrivate = async () => {
     if (!phone) return;
     setTogglingPrivate(true);
