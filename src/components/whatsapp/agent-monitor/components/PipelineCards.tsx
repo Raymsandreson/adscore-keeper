@@ -4,12 +4,15 @@ import type { CaseStatus } from '../types';
 import { statusLabel } from '../utils';
 import type { DashboardMetrics } from '../hooks/useDashboardMetrics';
 
+import type { OperationalMetricType } from './OperationalDetailSheet';
+
 interface PipelineCardsProps {
   counts: Record<CaseStatus, number> & { novas?: number };
   activeStatus: CaseStatus | null;
   onToggle: (status: CaseStatus) => void;
   dashboardMetrics?: DashboardMetrics;
   onNewConvsClick?: () => void;
+  onOperationalClick?: (type: OperationalMetricType) => void;
 }
 
 const statusConfig: { key: CaseStatus; icon: typeof AlertCircle; color: string }[] = [
