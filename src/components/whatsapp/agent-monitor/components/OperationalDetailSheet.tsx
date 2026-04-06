@@ -27,6 +27,7 @@ interface Props {
   dateRange: { from: Date; to: Date };
   filters?: OperationalFilters;
   filteredLeadIds?: Set<string>;
+  onOpenChat?: (phone: string, instanceName?: string) => void;
 }
 
 const config: Record<OperationalMetricType, { title: string; icon: typeof FileSignature; color: string }> = {
@@ -36,7 +37,7 @@ const config: Record<OperationalMetricType, { title: string; icon: typeof FileSi
   processes: { title: 'Processos Criados', icon: Scale, color: 'text-indigo-500' },
 };
 
-export function OperationalDetailSheet({ open, onClose, metricType, dateRange, filters, filteredLeadIds }: Props) {
+export function OperationalDetailSheet({ open, onClose, metricType, dateRange, filters, filteredLeadIds, onOpenChat }: Props) {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<any[]>([]);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
@@ -165,9 +166,13 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
   const handleOpenChat = (phone: string, instanceName?: string) => {
     if (!phone) return;
     onClose();
-    const params = new URLSearchParams({ phone });
-    if (instanceName) params.set('instance', instanceName);
-    navigate(`/whatsapp?${params.toString()}`);
+    if (onOpenChat) {
+      onOpenChat(phone, instanceName);
+    } else {
+      const params = new URLSearchParams({ phone });
+      if (instanceName) params.set('instance', instanceName);
+      navigate(`/whatsapp?${params.toString()}`);
+    }
   };
 
   return (
