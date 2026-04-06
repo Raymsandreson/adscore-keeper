@@ -241,11 +241,26 @@ REGRAS IMPORTANTES:
         // Use alias resolver as PRIMARY resolution
         const resolved = resolveIncomingFieldWithAliases(corr, fieldAliases, catalog);
         if (resolved) {
+          // Fixed-choice validation — reject invalid values
+          const fixedCheck = validateFixedChoiceField(resolved.variable, resolved.value);
+          if (!fixedCheck.valid) {
+            console.log(`WJIA correction REJECTED (fixed-choice): ${resolved.variable} = "${resolved.value}" — ${fixedCheck.error}`);
+            continue;
+          }
           if (resolved.validation_error) {
             console.log(`WJIA correction validation warning: ${resolved.variable} = "${value}" — ${resolved.validation_error}`);
           }
-          console.log(`WJIA correction (alias resolved): ${resolved.variable} = "${resolved.value}"`);
-          upsertCollectedField(currentFields, resolved.variable, resolved.value);
+          // CBO normalization for profession fields
+          let finalValue = fixedCheck.corrected || resolved.value;
+          if (normalizeFieldKey(resolved.variable).includes("PROFISS")) {
+            const cboMatch = await normalizeProfessionToCBO(supabase, resolved.value);
+            if (cboMatch) {
+              finalValue = cboMatch.title;
+              console.log(`WJIA correction CBO: "${resolved.value}" → "${cboMatch.title}"`);
+            }
+          }
+          console.log(`WJIA correction (alias resolved): ${resolved.variable} = "${finalValue}"`);
+          upsertCollectedField(currentFields, resolved.variable, finalValue);
         } else {
           // Last resort: try matching by current value in fields
           const matchByValue = currentFields.find((f: any) =>
