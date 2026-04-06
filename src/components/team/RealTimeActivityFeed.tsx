@@ -340,8 +340,8 @@ export function RealTimeActivityFeed() {
                     )}
                   >
                     <Avatar className="h-8 w-8 shrink-0 mt-0.5">
-                      <AvatarFallback className="text-[10px] font-semibold bg-primary/10 text-primary">
-                        {getInitials(item.userName)}
+                      <AvatarFallback className={cn("text-[10px] font-semibold", item.userId === 'system' ? 'bg-emerald-100 text-emerald-700' : 'bg-primary/10 text-primary')}>
+                        {item.userId === 'system' ? <Bot className="h-4 w-4" /> : getInitials(item.userName)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
