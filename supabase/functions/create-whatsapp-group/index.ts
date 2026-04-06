@@ -681,15 +681,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Send initial message if configured
-    if (groupId && settings) {
-      console.log('Sending initial message... use_ai_message:', settings.use_ai_message, 'template:', !!settings.initial_message_template)
-      await sendInitialMessage(supabase, settings, leadData, lead_name, groupName, groupId, baseUrl, creatorInstance, board_id, boardInstances)
-    } else {
-      console.log('Skipping initial message. groupId:', groupId, 'settings:', !!settings)
-    }
-
-    // Forward documents if configured + conversation media
+    // Forward documents FIRST (before initial message to avoid timeout issues)
     // Use shared sentUrls set to avoid duplicate sends
     const sentUrls = new Set<string>()
 
@@ -700,9 +692,26 @@ Deno.serve(async (req) => {
       console.log('Skipping document forwarding. groupId:', groupId, 'docTypes:', settings?.forward_document_types, 'hasLead:', !!leadData)
     }
 
-    // Always forward conversation media (inbound images/documents) + signed ZapSign docs to the group
+    // Forward conversation media (inbound images/documents) + signed ZapSign docs to the group
+    // Also search by lead_phone in case documents were sent from a different number
     if (groupId && leadData) {
-      await forwardConversationMedia(supabase, leadData, normalizedPhone || (contact_phone || phone || '').replace(/\D/g, ''), groupId, baseUrl, creatorInstance, sentUrls)
+      const phonesToSearch = new Set<string>()
+      const mainPhone = normalizedPhone || (contact_phone || phone || '').replace(/\D/g, '')
+      if (mainPhone) phonesToSearch.add(mainPhone)
+      // Also include lead_phone if different
+      if (leadData.lead_phone) {
+        const leadPh = leadData.lead_phone.replace(/\D/g, '')
+        if (leadPh) phonesToSearch.add(leadPh)
+      }
+      await forwardConversationMedia(supabase, leadData, mainPhone, groupId, baseUrl, creatorInstance, sentUrls, Array.from(phonesToSearch))
+    }
+
+    // Send initial message AFTER documents (so documents appear first in the group)
+    if (groupId && settings) {
+      console.log('Sending initial message... use_ai_message:', settings.use_ai_message, 'template:', !!settings.initial_message_template)
+      await sendInitialMessage(supabase, settings, leadData, lead_name, groupName, groupId, baseUrl, creatorInstance, board_id, boardInstances)
+    } else {
+      console.log('Skipping initial message. groupId:', groupId, 'settings:', !!settings)
     }
 
     // Auto-create legal processes if configured
