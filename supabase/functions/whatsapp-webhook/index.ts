@@ -1539,7 +1539,7 @@ Deno.serve(async (req) => {
     }
 
     // ========== AUTO-ENRICH LEAD/CONTACT (after X inbound messages) ==========
-    if (direction === 'inbound' && instanceName && phone && (leadId || contactId)) {
+    if (!isGroup && direction === 'inbound' && instanceName && phone && (leadId || contactId)) {
       try {
         const supabaseUrl = RESOLVED_SUPABASE_URL
         const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
@@ -2545,7 +2545,7 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
     }
 
     // ========== AI AGENT AUTO-REPLY ==========
-    if (direction === 'inbound' && instanceName && phone) {
+    if (!isGroup && direction === 'inbound' && instanceName && phone) {
       try {
         const supabaseUrl = RESOLVED_SUPABASE_URL
         const supabaseAnonKey = RESOLVED_ANON_KEY
