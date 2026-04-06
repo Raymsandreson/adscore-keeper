@@ -94,21 +94,21 @@ export function RealTimeActivityFeed() {
         supabase.from('case_process_tracking').select('id, acolhedor, cliente, status_processo, created_at, updated_at').gte('created_at', since).order('created_at', { ascending: false }).limit(30),
       ]);
 
-      // Leads
+      // Leads (include agent-created leads too)
       (leadsRes.data || []).forEach(l => {
-        if (l.created_by) {
-          allItems.push({
-            id: `lead-c-${l.id}`,
-            userId: l.created_by,
-            userName: getUserName(l.created_by),
-            actionType: 'lead_created',
-            actionLabel: ACTION_CONFIG.lead_created.label,
-            entityName: l.lead_name || 'Lead',
-            icon: ACTION_CONFIG.lead_created.icon,
-            color: ACTION_CONFIG.lead_created.color,
-            timestamp: l.created_at,
-          });
-        }
+        const userId = l.created_by || 'system';
+        const userName = l.created_by ? getUserName(l.created_by) : '🤖 Agente IA';
+        allItems.push({
+          id: `lead-c-${l.id}`,
+          userId,
+          userName,
+          actionType: 'lead_created',
+          actionLabel: ACTION_CONFIG.lead_created.label,
+          entityName: l.lead_name || 'Lead',
+          icon: ACTION_CONFIG.lead_created.icon,
+          color: ACTION_CONFIG.lead_created.color,
+          timestamp: l.created_at,
+        });
       });
 
       // Contacts
