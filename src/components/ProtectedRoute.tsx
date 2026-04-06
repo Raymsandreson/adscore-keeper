@@ -32,6 +32,14 @@ export function ProtectedRoute({ children, requiredModule }: ProtectedRouteProps
   const moduleKey = requiredModule || MODULE_DEFINITIONS.find(m => m.route === location.pathname)?.key;
   
   if (moduleKey && !permLoading && !canView(moduleKey)) {
+    // If user is on the home route (/), redirect to the first permitted module instead of blocking
+    if (location.pathname === '/') {
+      const firstPermitted = MODULE_DEFINITIONS.find(m => m.key !== 'activities' && canView(m.key));
+      if (firstPermitted) {
+        return <Navigate to={firstPermitted.route} replace />;
+      }
+    }
+
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
