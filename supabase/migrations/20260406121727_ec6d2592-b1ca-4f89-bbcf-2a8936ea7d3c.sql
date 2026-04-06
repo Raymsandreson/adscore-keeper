@@ -1,0 +1,1 @@
+UPDATE wjia_collection_sessions SET status = 'signed', updated_at = now() WHERE id = '31469ff6-1520-4d01-acb0-9480fc42bfd9' AND status = 'generated';

@@ -64,6 +64,23 @@ export async function handleFollowUp(opts: {
 
   let session = sessionRaw;
 
+  // Check if document was already signed — stop processing if so
+  if (session.status === "generated" && session.doc_token) {
+    const { data: signedDoc } = await supabase
+      .from("zapsign_documents")
+      .select("status")
+      .eq("doc_token", session.doc_token)
+      .maybeSingle();
+    if (signedDoc?.status === "signed") {
+      await supabase.from("wjia_collection_sessions").update({
+        status: "signed",
+        updated_at: new Date().toISOString(),
+      }).eq("id", session.id);
+      console.log(`[FOLLOW-UP] Session ${session.id} already signed, closing.`);
+      return jsonResponse({ active_session: false, already_signed: true });
+    }
+  }
+
   // Recovery: unstick processing_docs > 3 min
   if (session.status === "processing_docs") {
     const stuckMin = (Date.now() - new Date(session.updated_at || session.created_at).getTime()) / 60000;
