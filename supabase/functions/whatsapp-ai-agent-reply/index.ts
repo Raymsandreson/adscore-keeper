@@ -1429,6 +1429,15 @@ REGRAS IMPORTANTES:
         }
       }
 
+      // Clear human pause after successful reply — agent is active and responding
+      try {
+        await supabase
+          .from("whatsapp_conversation_agents")
+          .update({ human_paused_until: null } as any)
+          .eq("phone", phone)
+          .eq("instance_name", instance_name);
+      } catch (_) { /* ignore */ }
+
       return new Response(JSON.stringify({ success: true, reply: reply.substring(0, 100) }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
