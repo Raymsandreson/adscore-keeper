@@ -36,12 +36,26 @@ export function AgentMonitorDashboard() {
   const { metrics, metricsLoading, fetchMetrics } = useDashboardMetrics();
 
   const isLoading = monitorLoading || metricsLoading;
-  const loadingProgress = useMemo(() => {
-    if (!monitorLoading && !metricsLoading) return 100;
-    if (!monitorLoading && metricsLoading) return 60;
-    if (monitorLoading && !metricsLoading) return 70;
-    return 30;
-  }, [monitorLoading, metricsLoading]);
+  const [animatedProgress, setAnimatedProgress] = useState(0);
+  const progressRef = useRef<ReturnType<typeof setInterval>>();
+
+  useEffect(() => {
+    if (isLoading) {
+      setAnimatedProgress(5);
+      progressRef.current = setInterval(() => {
+        setAnimatedProgress(prev => {
+          const target = !monitorLoading && metricsLoading ? 70 : !metricsLoading && monitorLoading ? 60 : 45;
+          if (prev >= target) return prev;
+          return prev + Math.max(1, Math.floor((target - prev) * 0.1));
+        });
+      }, 300);
+    } else {
+      setAnimatedProgress(100);
+      setTimeout(() => setAnimatedProgress(0), 600);
+      if (progressRef.current) clearInterval(progressRef.current);
+    }
+    return () => { if (progressRef.current) clearInterval(progressRef.current); };
+  }, [isLoading, monitorLoading, metricsLoading]);
 
   const fetchData = useCallback(() => {
     fetchDataRaw(dateRange);
