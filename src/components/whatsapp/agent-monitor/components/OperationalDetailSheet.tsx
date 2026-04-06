@@ -27,7 +27,7 @@ interface Props {
   dateRange: { from: Date; to: Date };
   filters?: OperationalFilters;
   filteredLeadIds?: Set<string>;
-  onOpenChat?: (phone: string, instanceName?: string) => void;
+  onOpenChat?: (phone: string, instanceName?: string, contactName?: string) => void;
 }
 
 const config: Record<OperationalMetricType, { title: string; icon: typeof FileSignature; color: string }> = {
@@ -163,11 +163,11 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
     }
   };
 
-  const handleOpenChat = (phone: string, instanceName?: string) => {
+  const handleOpenChat = (phone: string, instanceName?: string, contactName?: string) => {
     if (!phone) return;
     onClose();
     if (onOpenChat) {
-      onOpenChat(phone, instanceName);
+      onOpenChat(phone, instanceName, contactName);
     } else {
       const params = new URLSearchParams({ phone });
       if (instanceName) params.set('instance', instanceName);
@@ -224,7 +224,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
                       </Button>
                     )}
                     {item._lead?.whatsapp_group_id && (
-                      <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1 border-cyan-200 text-cyan-700" onClick={() => handleOpenChat(item._lead.whatsapp_group_id, item.instance_name)}>
+                      <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1 border-cyan-200 text-cyan-700" onClick={() => handleOpenChat(item._lead.whatsapp_group_id, item.instance_name, item._lead?.lead_name || item.signer_name)}>
                         <UsersRound className="h-3 w-3" /> Chat Grupo
                       </Button>
                     )}

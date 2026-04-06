@@ -324,7 +324,28 @@ export function AgentMonitorDashboard() {
         dateRange={dateRange}
         filters={operationalFiltersObj}
         filteredLeadIds={operationalFilteredLeadIds}
-        onOpenChat={(phone, instanceName) => handleNewConvChatOpen(phone, instanceName || null)}
+        onOpenChat={(phone, instanceName, contactName) => {
+          setOperationalSheet(null);
+          const match = conversations.find(c => c.phone === phone && (!instanceName || c.instance_name === instanceName));
+          if (match) {
+            setChatPreview(match);
+          } else {
+            setChatPreview({
+              phone, instance_name: instanceName || '',
+              agent_name: '', agent_id: '',
+              is_active: false, is_blocked: false,
+              contact_name: contactName || null, lead_name: contactName || null,
+              lead_id: null, lead_status: null,
+              lead_city: null, lead_state: null, lead_acolhedor: null,
+              board_id: null, board_name: null, stage_name: null,
+              last_inbound_at: null, last_outbound_at: null,
+              total_messages: 0, inbound_count: 0, outbound_count: 0,
+              followup_count: 0, has_followup_config: false,
+              time_without_response: null, campaign_name: null,
+              activated_by: null, activated_at: null, whatsapp_group_id: null, created_at: null,
+            });
+          }
+        }}
       />
 
       <NewConversationsSheet
