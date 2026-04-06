@@ -284,10 +284,12 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
           if (!open) setEditingLead(null);
         }}
         lead={editingLead}
-        onLeadUpdated={() => {
+        onSave={async (leadId, updates) => {
+          await supabase.from('leads').update(updates).eq('id', leadId);
           setShowLeadEdit(false);
           setEditingLead(null);
         }}
+        mode="sheet"
       />
     )}
     </>
