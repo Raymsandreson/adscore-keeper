@@ -170,6 +170,14 @@ export function useDashboardMetrics() {
         if (l.campaign_name) campaignMap.set(l.campaign_name, (campaignMap.get(l.campaign_name) || 0) + 1);
       }
 
+      // Operational metrics: signed docs, groups, cases, processes
+      const [docsRes, groupsRes, casesRes, processesRes] = await Promise.all([
+        supabase.from('zapsign_documents').select('id', { count: 'exact', head: true }).gte('created_at', todayStart).lte('created_at', todayEnd),
+        supabase.from('leads').select('id', { count: 'exact', head: true }).not('whatsapp_group_id', 'is', null).gte('created_at', todayStart).lte('created_at', todayEnd),
+        supabase.from('legal_cases').select('id', { count: 'exact', head: true }).gte('created_at', todayStart).lte('created_at', todayEnd),
+        supabase.from('case_process_tracking').select('id', { count: 'exact', head: true }).gte('created_at', todayStart).lte('created_at', todayEnd),
+      ]);
+
       setMetrics({
         newConversations: trulyNewPhones.length,
         responseRate,
@@ -179,6 +187,10 @@ export function useDashboardMetrics() {
         closedByAgent: Array.from(agentMap.entries()).map(([agent, count]) => ({ agent, count })).sort((a, b) => b.count - a.count),
         closedByCampaign: Array.from(campaignMap.entries()).map(([campaign, count]) => ({ campaign, count })).sort((a, b) => b.count - a.count),
         newConvDetails,
+        signedDocuments: docsRes.count ?? 0,
+        groupsCreated: groupsRes.count ?? 0,
+        casesCreated: casesRes.count ?? 0,
+        processesCreated: processesRes.count ?? 0,
       });
     } catch (err) {
       console.error('Error fetching dashboard metrics:', err);
