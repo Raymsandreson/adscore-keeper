@@ -1095,7 +1095,7 @@ Deno.serve(async (req) => {
     let storedMediaUrl = mediaUrl;
     let mediaTranscription: string | null = null;
     const isMediaMessage = messageType === 'image' || messageType === 'audio' || messageType === 'video' || messageType === 'document';
-    if ((mediaUrl || isMediaMessage) && messageType !== 'text' && externalMessageId) {
+    if (!isGroup && (mediaUrl || isMediaMessage) && messageType !== 'text' && externalMessageId) {
       // Look up instance token from DB if not in payload
       let resolvedToken = instanceToken;
       let resolvedBaseUrl = baseUrl;
