@@ -719,6 +719,51 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
   };
 
+  const handleSelectAgent = async (agentId: string, agentName: string) => {
+    if (!phone || !instanceName) return;
+    const normalizedPhone = phone.replace(/\D/g, '');
+    try {
+      await supabase
+        .from('whatsapp_conversation_agents')
+        .upsert({
+          phone: normalizedPhone,
+          instance_name: instanceName,
+          agent_id: agentId,
+          is_active: true,
+          activated_by: 'manual',
+          human_paused_until: null,
+        } as any, { onConflict: 'phone,instance_name' });
+      setAgentInfo({ name: agentName, activated_by: 'Manual', is_active: true, agent_id: agentId });
+      onConversationUpdated?.();
+      toast.success(`🤖 Agente "${agentName}" ativado!`);
+    } catch (e) {
+      toast.error('Erro ao selecionar agente');
+    }
+  };
+
+  const handleSuggestBestAgent = async () => {
+    if (!phone) return;
+    setSuggestingAgent(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke('suggest-best-agent', {
+        body: { phone, instance_name: instanceName },
+      });
+      if (error) throw error;
+      if (data?.agent_id && data?.agent_name) {
+        const confirmed = window.confirm(`🤖 IA sugere: "${data.agent_name}"\n\nMotivo: ${data.reason}\n\nDeseja ativar este agente?`);
+        if (confirmed) {
+          await handleSelectAgent(data.agent_id, data.agent_name);
+        }
+      } else {
+        toast.error('Não foi possível sugerir um agente');
+      }
+    } catch (e: any) {
+      toast.error('Erro ao sugerir agente: ' + (e.message || ''));
+    } finally {
+      setSuggestingAgent(false);
+    }
+  };
+
   const handleTogglePrivate = async () => {
     if (!phone) return;
     setTogglingPrivate(true);
