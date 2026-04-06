@@ -70,6 +70,26 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
+    // ====================================================
+    // DEDUP GUARD: Prevent duplicate processing of the same webhook event
+    // ZapSign may fire the same event multiple times
+    // ====================================================
+    if (eventType === 'doc_signed' || eventType === 'signer_signed') {
+      const { data: existingDoc } = await supabase
+        .from('zapsign_documents')
+        .select('id, status, signed_at')
+        .eq('doc_token', docToken)
+        .single()
+
+      if (existingDoc) {
+        const alreadyProcessed = existingDoc.status === 'signed' && existingDoc.signed_at
+        if (alreadyProcessed) {
+          console.log(`[zapsign-webhook] DEDUP: doc ${docToken} already processed as signed (signed_at: ${existingDoc.signed_at}), skipping`)
+          return new Response(JSON.stringify({ ok: true, dedup: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+      }
+    }
+
     // Fetch latest document info from ZapSign API (with retry for signed_file)
     const docData = await fetchDocWithRetry(docToken, zapsignToken)
 
