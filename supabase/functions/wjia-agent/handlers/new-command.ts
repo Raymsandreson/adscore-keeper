@@ -431,7 +431,7 @@ async function handleCollectionSession(opts: {
   {
     const catalog = buildTemplateFieldCatalog({ required_fields: templateFields, missing_fields: missingFields });
     // Auto-seed aliases for any new template fields
-    await autoSeedAliasesFromCatalog(supabase, catalog, agentId);
+    await autoSeedAliasesFromCatalog(supabase, catalog);
     let customPrompt: string | null = matchedShortcut?.media_extraction_prompt || null;
 
     // Build CRM data string
