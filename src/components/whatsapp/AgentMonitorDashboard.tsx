@@ -16,6 +16,7 @@ import { convKey } from './agent-monitor/utils';
 import { MonitorHeader } from './agent-monitor/components/MonitorHeader';
 import { UnifiedMonitorTab } from './agent-monitor/components/UnifiedMonitorTab';
 import { CaseListSheet } from './agent-monitor/components/CaseListSheet';
+import { OperationalDetailSheet, type OperationalMetricType } from './agent-monitor/components/OperationalDetailSheet';
 import { NewConversationsSheet } from './agent-monitor/components/NewConversationsSheet';
 import { ReferralsTab } from './agent-monitor/components/ReferralsTab';
 import { AIActivitiesPanel } from './AIActivitiesPanel';
