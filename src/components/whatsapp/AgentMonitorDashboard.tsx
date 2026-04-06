@@ -97,6 +97,7 @@ export function AgentMonitorDashboard() {
     };
   }, [metrics, filteredNewConvDetails, filters.instanceFilter]);
 
+  const batch = useBatchActions(conversations, fetchData);
 
   const handleOpenChat = (c: ConversationDetail) => setChatPreview(c);
 
