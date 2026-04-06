@@ -185,7 +185,33 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         .eq('phone', conversation.phone).eq('instance_name', conversation.instance_name);
       setAgentEnabled(newState);
       if (newState) setHumanPausedUntil(null);
-      toast.success(newState ? `🤖 Agente "${activeAgentName}" ativado` : 'Agente desativado');
+      if (newState) {
+        // Trigger AI reply from last inbound message
+        try {
+          const { data: lastInbound } = await supabase
+            .from('whatsapp_messages')
+            .select('message_text, message_type')
+            .eq('phone', conversation.phone)
+            .eq('instance_name', conversation.instance_name)
+            .eq('direction', 'inbound')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (lastInbound) {
+            await cloudFunctions.invoke('whatsapp-ai-agent-reply', {
+              body: {
+                phone: conversation.phone,
+                instance_name: conversation.instance_name,
+                message_text: lastInbound.message_text || '',
+                message_type: lastInbound.message_type || 'text',
+              },
+            });
+          }
+        } catch (replyErr) {
+          console.error('Error triggering agent reply on reactivation:', replyErr);
+        }
+      }
+      toast.success(newState ? `🤖 Agente "${activeAgentName}" ativado e retomando...` : 'Agente desativado');
     } catch (e: any) { toast.error('Erro: ' + e.message); }
     finally { setAgentLoading(false); }
   };
