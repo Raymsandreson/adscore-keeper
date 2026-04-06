@@ -72,6 +72,7 @@ export {
   resolveFieldByKeyword,
   extractValueByPattern,
   validateFieldValue,
+  validateFixedChoiceField,
   resolveIncomingFieldWithAliases,
   autoSeedAliasesFromCatalog,
   normalizeProfessionToCBO,
