@@ -160,6 +160,7 @@ export function AgentAutomationRules({ agentId }: Props) {
     setSaving(true);
     try {
       for (const [trigger, rule] of Object.entries(rules)) {
+        console.log(`[Automation Save] trigger=${trigger}, id=${rule.id}, actions=${rule.actions.length}, is_active=${rule.is_active}`);
         const payload = {
           agent_id: agentId,
           trigger_type: trigger,
