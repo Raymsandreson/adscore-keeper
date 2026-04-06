@@ -24,6 +24,7 @@ import {
   lookupCEP,
   normalizeFieldKey,
   normalizeIncomingField,
+  normalizeProfessionToCBO,
   resolveIncomingFieldWithAliases,
   reverseLookupCEP,
   sendWhatsApp,
