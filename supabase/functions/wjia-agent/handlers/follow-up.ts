@@ -31,6 +31,7 @@ import {
   shouldProtectName,
   syncNameFields,
   upsertCollectedField,
+  validateFixedChoiceField,
 } from "../../_shared/wjia-utils.ts";
 import { jsonResponse } from "./shared.ts";
 import { handleDocumentUpload } from "./document-upload.ts";
