@@ -709,7 +709,6 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
     console.log(`WJIA field upserted (alias resolved): ${resolved.variable} = "${resolved.value}"`);
     upsertCollectedField(currentFields, resolved.variable, resolved.value);
   }
-  }
 
   syncNameFields(currentFields);
   applyDefaults(currentFields);
