@@ -190,9 +190,18 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         .order('created_at', { ascending: true });
       setCallRecords((data || []) as CallRecord[]);
     };
+    const fetchAvailableAgents = async () => {
+      const { data } = await supabase
+        .from('whatsapp_ai_agents')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+      setAvailableAgents((data as any[]) || []);
+    };
     fetchMessages();
     fetchAgent();
     fetchCallRecords();
+    fetchAvailableAgents();
 
     // Fetch linked lead & contact
     const fetchLinkedData = async () => {
