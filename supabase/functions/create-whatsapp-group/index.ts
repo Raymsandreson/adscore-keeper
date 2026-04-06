@@ -1272,8 +1272,8 @@ async function forwardDocuments(
       }
     }
 
-    // Send collected documents from sessions
-    if (sessions) {
+    // Send collected documents from sessions (collected_data fields)
+    if (sessions && sessions.length > 0) {
       console.log(`[forward-docs] Found ${sessions.length} collection sessions`)
       for (const session of sessions) {
         const collected = session.collected_data || {}
@@ -1300,6 +1300,30 @@ async function forwardDocuments(
             } catch (e) {
               console.error(`[forward-docs] Error sending doc ${docType}:`, e)
             }
+          }
+        }
+
+        // Also forward received_documents (media_url from WJIA doc collection)
+        const receivedDocs = session.received_documents || []
+        for (const rd of receivedDocs) {
+          if (!rd.media_url || sentUrls.has(rd.media_url)) continue
+          sentUrls.add(rd.media_url)
+          const label = docLabels[rd.type] || rd.type || 'Documento'
+          const fileName = `${label} - ${leadName}.pdf`
+          try {
+            const sendRes = await fetch(`${baseUrl}/send/media`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+              body: JSON.stringify({ number: groupId, media: rd.media_url, type: 'document', fileName, caption: `📄 ${label} - ${leadName}` }),
+            })
+            if (!sendRes.ok) {
+              console.error(`[forward-docs] Failed to send received doc ${label}:`, sendRes.status)
+            } else {
+              console.log(`[forward-docs] Sent received doc: ${label}`)
+            }
+            await sleep(800)
+          } catch (e) {
+            console.error(`[forward-docs] Error sending received doc:`, e)
           }
         }
       }
