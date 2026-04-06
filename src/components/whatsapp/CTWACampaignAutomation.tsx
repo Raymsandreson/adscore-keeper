@@ -781,6 +781,17 @@ export function CTWACampaignAutomation() {
                     {!isActive && (
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">Pausado</Badge>
                     )}
+                    {(() => {
+                      const camp = metaCampaigns.find(c => c.campaign_id === link.campaign_id);
+                      if (camp && camp.status && camp.status !== 'ACTIVE') {
+                        return (
+                          <Badge variant="destructive" className="text-[9px] px-1.5 py-0 shrink-0">
+                            ⚠ Campanha desativada na Meta
+                          </Badge>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                   {(() => {
                     const camp = metaCampaigns.find(c => c.campaign_id === link.campaign_id);
