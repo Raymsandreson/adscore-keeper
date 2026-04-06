@@ -157,6 +157,103 @@ export async function handleFollowUp(opts: {
 
   // ── GENERATED SESSION ──
   if (session.status === "generated") {
+    // Check if client is requesting a correction
+    const msgLower = (message_text || "").toLowerCase().trim();
+    const isCorrectionRequest = /incorreto|errado|trocar|corrig|alterar|mudar|nome.*(é|eh)|meu nome|dados? errado|diferente/i.test(message_text || "");
+
+    if (isCorrectionRequest) {
+      console.log(`WJIA correction request on generated session ${session.id}: "${message_text}"`);
+      
+      // Use AI to extract the corrections
+      const correctionPrompt = `O cliente enviou uma CORREÇÃO sobre os dados do documento já gerado.
+Dados atuais coletados:
+${currentFields.filter((f: any) => f.para).map((f: any) => `- ${f.de}: ${f.para}`).join("\n")}
+
+Mensagem do cliente: "${message_text}"
+
+Extraia APENAS os campos que o cliente quer CORRIGIR. Use os nomes EXATOS dos campos acima.
+Responda de forma natural confirmando a correção e mostrando TODOS os dados atualizados para o cliente confirmar novamente.`;
+
+      const correctionTools = [{
+        type: "function",
+        function: {
+          name: "process_correction",
+          description: "Processa a correção do cliente",
+          parameters: {
+            type: "object",
+            properties: {
+              corrections: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: { de: { type: "string" }, para: { type: "string" } },
+                  required: ["de", "para"],
+                },
+              },
+              reply_to_client: { type: "string" },
+            },
+            required: ["corrections", "reply_to_client"],
+          },
+        },
+      }];
+
+      const correctionResult = await geminiChat({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: correctionPrompt },
+          { role: "user", content: message_text || "" },
+        ],
+        tools: correctionTools,
+        tool_choice: { type: "function", function: { name: "process_correction" } },
+        temperature: 0.1,
+      });
+
+      const corrToolCall = correctionResult.choices?.[0]?.message?.tool_calls?.[0];
+      let corrections: any[] = [];
+      let corrReply = "";
+      
+      try {
+        const parsed = JSON.parse(corrToolCall?.function?.arguments || "{}");
+        corrections = parsed.corrections || [];
+        corrReply = parsed.reply_to_client || "";
+      } catch {}
+
+      // Apply corrections
+      for (const corr of corrections) {
+        const normalized = normalizeIncomingField(corr, catalog);
+        if (normalized) {
+          console.log(`WJIA correction applied: ${normalized.variable} = "${normalized.value}"`);
+          upsertCollectedField(currentFields, normalized.variable, normalized.value);
+        }
+      }
+
+      syncNameFields(currentFields);
+      const updatedCollectedData = { ...collectedData, fields: currentFields };
+
+      // Build summary with corrected data
+      const summaryLines = currentFields.filter((f: any) => f.para).map((f: any) =>
+        `• *${getFieldLabel(f, catalog)}*: ${f.para}`).join("\n");
+
+      const replyMsg = corrections.length > 0
+        ? `✏️ Entendido! Atualizei os dados. Confira:\n\n${summaryLines}\n\n📋 Está tudo correto agora? Responda *SIM* para gerar novamente ou me diga o que mais corrigir.`
+        : `Confira os dados do documento *${session.template_name}*:\n\n${summaryLines}\n\n📋 Está tudo correto? Responda *SIM* para gerar novamente ou me diga o que corrigir.`;
+
+      // Set back to "ready" so confirmation flow works
+      await supabase.from("wjia_collection_sessions").update({
+        collected_data: updatedCollectedData,
+        status: "ready",
+        sign_url: null,
+        doc_token: null,
+        updated_at: new Date().toISOString(),
+      }).eq("id", session.id);
+
+      await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
+        replyMsg, session.contact_id, session.lead_id, "wjia_correction", splitOpts);
+
+      return jsonResponse({ active_session: true, processed: true, correction: true, session_id: session.id });
+    }
+
+    // No correction — just resend the link
     if (session.sign_url) {
       const resendMsg = `📝 Aqui está o link para assinatura do documento *${session.template_name}*:\n\n👉 ${session.sign_url}\n\nÉ só clicar e seguir as instruções! 🙏`;
       await sendWhatsApp(supabase, inst, normalizedPhone, instance_name,
