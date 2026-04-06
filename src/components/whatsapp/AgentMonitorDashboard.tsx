@@ -68,7 +68,7 @@ export function AgentMonitorDashboard() {
 
   const {
     filters, filteredConversations, pipelineCounts,
-    uniqueInstances, uniqueBoards, uniqueCampaigns, applyBaseFilters,
+    uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores, applyBaseFilters,
   } = useMonitorFilters(conversations, boards);
 
   const batch = useBatchActions(conversations, fetchData);
@@ -130,11 +130,12 @@ export function AgentMonitorDashboard() {
   };
 
   const filterBarProps = {
-    agents, uniqueInstances, uniqueBoards, uniqueCampaigns,
+    agents, uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores,
     agentFilter: filters.agentFilter, setAgentFilter: filters.setAgentFilter,
     instanceFilter: filters.instanceFilter, setInstanceFilter: filters.setInstanceFilter,
     boardFilter: filters.boardFilter, setBoardFilter: filters.setBoardFilter,
     campaignFilter: filters.campaignFilter, setCampaignFilter: filters.setCampaignFilter,
+    acolhedorFilter: filters.acolhedorFilter, setAcolhedorFilter: filters.setAcolhedorFilter,
     agentActiveFilter: filters.agentActiveFilter, setAgentActiveFilter: filters.setAgentActiveFilter,
     followupConfigFilter: filters.followupConfigFilter, setFollowupConfigFilter: filters.setFollowupConfigFilter,
   };
