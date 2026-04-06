@@ -1492,6 +1492,7 @@ Deno.serve(async (req) => {
     if (direction === 'outbound' && messageText && instanceName && phone) {
       try {
         const echoWindow = new Date(Date.now() - 120000).toISOString(); // last 2 min
+        // First try exact match
         const { data: aiEcho } = await supabase
           .from('whatsapp_messages')
           .select('id')
@@ -1503,11 +1504,35 @@ Deno.serve(async (req) => {
           .limit(1)
           .maybeSingle();
         if (aiEcho) {
-          console.log(`Outbound echo detected (AI already saved), skipping insert for ${phone}`);
+          console.log(`Outbound echo detected (exact match), skipping insert for ${phone}`);
           return new Response(
             JSON.stringify({ success: true, skipped: true, reason: 'ai_echo_dedup', existing_id: aiEcho.id }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
+        }
+        // Also check if this text is a PART of a split message (agent saves full text with \n\n, but sends parts separately)
+        const trimmedEcho = (messageText || '').trim();
+        if (trimmedEcho.length >= 10) {
+          const { data: parentMsg } = await supabase
+            .from('whatsapp_messages')
+            .select('id, message_text')
+            .eq('phone', phone)
+            .eq('instance_name', instanceName)
+            .eq('direction', 'outbound')
+            .eq('action_source', 'agent')
+            .gte('created_at', echoWindow)
+            .order('created_at', { ascending: false })
+            .limit(5);
+          const isPartOfAgent = (parentMsg || []).some((m: any) => 
+            m.message_text && m.message_text.includes(trimmedEcho)
+          );
+          if (isPartOfAgent) {
+            console.log(`Outbound echo detected (split part of agent message), skipping insert for ${phone}`);
+            return new Response(
+              JSON.stringify({ success: true, skipped: true, reason: 'ai_echo_split_dedup' }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
         }
       } catch (e) {
         console.error('Outbound echo dedup error:', e);
