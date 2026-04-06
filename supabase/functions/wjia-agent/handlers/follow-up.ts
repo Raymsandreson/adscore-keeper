@@ -706,9 +706,18 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
     if (resolved.validation_error) {
       console.log(`WJIA field validation warning: ${resolved.variable} — ${resolved.validation_error}`);
     }
-    if (shouldProtectName(currentFields, { variable: resolved.variable, value: resolved.value })) continue;
-    console.log(`WJIA field upserted (alias resolved): ${resolved.variable} = "${resolved.value}"`);
-    upsertCollectedField(currentFields, resolved.variable, resolved.value);
+    // CBO normalization for profession fields
+    let finalValue = resolved.value;
+    if (resolved.field_type === "text" && normalizeFieldKey(resolved.variable).includes("PROFISS")) {
+      const cboMatch = await normalizeProfessionToCBO(supabase, resolved.value);
+      if (cboMatch) {
+        finalValue = cboMatch.title;
+        console.log(`WJIA CBO normalized: "${resolved.value}" → "${cboMatch.title}" (${cboMatch.cbo_code})`);
+      }
+    }
+    if (shouldProtectName(currentFields, { variable: resolved.variable, value: finalValue })) continue;
+    console.log(`WJIA field upserted (alias resolved): ${resolved.variable} = "${finalValue}"`);
+    upsertCollectedField(currentFields, resolved.variable, finalValue);
   }
 
   syncNameFields(currentFields);
