@@ -3336,6 +3336,48 @@ export type Database = {
           },
         ]
       }
+      field_variable_aliases: {
+        Row: {
+          agent_id: string | null
+          aliases: string[]
+          created_at: string
+          extraction_pattern: string | null
+          field_type: string
+          id: string
+          is_auto_generated: boolean
+          updated_at: string
+          validation_message: string | null
+          validation_pattern: string | null
+          variable_name: string
+        }
+        Insert: {
+          agent_id?: string | null
+          aliases?: string[]
+          created_at?: string
+          extraction_pattern?: string | null
+          field_type?: string
+          id?: string
+          is_auto_generated?: boolean
+          updated_at?: string
+          validation_message?: string | null
+          validation_pattern?: string | null
+          variable_name: string
+        }
+        Update: {
+          agent_id?: string | null
+          aliases?: string[]
+          created_at?: string
+          extraction_pattern?: string | null
+          field_type?: string
+          id?: string
+          is_auto_generated?: boolean
+          updated_at?: string
+          validation_message?: string | null
+          validation_pattern?: string | null
+          variable_name?: string
+        }
+        Relationships: []
+      }
       financial_entries: {
         Row: {
           accrual_amount: number | null
