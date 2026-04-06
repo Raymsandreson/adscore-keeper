@@ -366,7 +366,7 @@ serve(async (req) => {
       // Check if this agent also exists as a shortcut with template_token
       const { data: matchingShortcut } = await supabase
         .from("wjia_command_shortcuts")
-        .select("template_token, template_name, shortcut_name, request_documents, document_types, custom_document_names, document_type_modes, followup_steps, notify_on_signature, send_signed_pdf")
+        .select("template_token, template_name, shortcut_name, request_documents, document_types, custom_document_names, document_type_modes, followup_steps, notify_on_signature, send_signed_pdf, history_limit")
         .eq("id", assignment.agent_id)
         .eq("is_active", true)
         .maybeSingle();
