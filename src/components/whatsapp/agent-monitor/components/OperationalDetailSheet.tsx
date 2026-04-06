@@ -37,7 +37,7 @@ const config: Record<OperationalMetricType, { title: string; icon: typeof FileSi
   processes: { title: 'Processos Criados', icon: Scale, color: 'text-indigo-500' },
 };
 
-export function OperationalDetailSheet({ open, onClose, metricType, dateRange, filters, filteredLeadIds }: Props) {
+export function OperationalDetailSheet({ open, onClose, metricType, dateRange, filters, filteredLeadIds, onOpenChat }: Props) {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<any[]>([]);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
