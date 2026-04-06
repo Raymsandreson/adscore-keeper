@@ -130,7 +130,7 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
 
         // Fetch messages, activities, and call queue in parallel
         const instFilter = allowedInstanceNames.length > 0 ? allowedInstanceNames : ['__none__'];
-        const [msgsRes, activitiesRes, callsRes] = await Promise.all([
+        const [msgsRes, activitiesRes, callsRes, callRecordsRes] = await Promise.all([
           supabase.from('whatsapp_messages')
             .select('id, phone, direction, message_text, contact_name, instance_name, created_at, lead_id')
             .gte('created_at', since).in('instance_name', instFilter)
@@ -142,6 +142,10 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
           supabase.from('whatsapp_call_queue')
             .select('id, phone, instance_name, status, contact_name, created_at')
             .gte('created_at', since).in('instance_name', instFilter)
+            .order('created_at', { ascending: false }).limit(50),
+          supabase.from('call_records')
+            .select('id, contact_name, contact_phone, call_type, call_result, duration_seconds, created_at, lead_name, phone_used')
+            .gte('created_at', since)
             .order('created_at', { ascending: false }).limit(50),
         ]);
 
