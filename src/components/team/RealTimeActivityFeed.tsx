@@ -18,6 +18,7 @@ import {
   XCircle,
   ListChecks,
   Loader2,
+  Bot,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -94,38 +95,38 @@ export function RealTimeActivityFeed() {
         supabase.from('case_process_tracking').select('id, acolhedor, cliente, status_processo, created_at, updated_at').gte('created_at', since).order('created_at', { ascending: false }).limit(30),
       ]);
 
-      // Leads
+      // Leads (include agent-created leads too)
       (leadsRes.data || []).forEach(l => {
-        if (l.created_by) {
-          allItems.push({
-            id: `lead-c-${l.id}`,
-            userId: l.created_by,
-            userName: getUserName(l.created_by),
-            actionType: 'lead_created',
-            actionLabel: ACTION_CONFIG.lead_created.label,
-            entityName: l.lead_name || 'Lead',
-            icon: ACTION_CONFIG.lead_created.icon,
-            color: ACTION_CONFIG.lead_created.color,
-            timestamp: l.created_at,
-          });
-        }
+        const userId = l.created_by || 'system';
+        const userName = l.created_by ? getUserName(l.created_by) : '🤖 Agente IA';
+        allItems.push({
+          id: `lead-c-${l.id}`,
+          userId,
+          userName,
+          actionType: 'lead_created',
+          actionLabel: ACTION_CONFIG.lead_created.label,
+          entityName: l.lead_name || 'Lead',
+          icon: ACTION_CONFIG.lead_created.icon,
+          color: ACTION_CONFIG.lead_created.color,
+          timestamp: l.created_at,
+        });
       });
 
-      // Contacts
+      // Contacts (include agent-created too)
       (contactsRes.data || []).forEach(c => {
-        if (c.created_by) {
-          allItems.push({
-            id: `contact-${c.id}`,
-            userId: c.created_by,
-            userName: getUserName(c.created_by),
-            actionType: 'contact_created',
-            actionLabel: ACTION_CONFIG.contact_created.label,
-entityName: c.full_name || 'Contato',
-            icon: ACTION_CONFIG.contact_created.icon,
-            color: ACTION_CONFIG.contact_created.color,
-            timestamp: c.created_at,
-          });
-        }
+        const userId = c.created_by || 'system';
+        const userName = c.created_by ? getUserName(c.created_by) : '🤖 Agente IA';
+        allItems.push({
+          id: `contact-${c.id}`,
+          userId,
+          userName,
+          actionType: 'contact_created',
+          actionLabel: ACTION_CONFIG.contact_created.label,
+          entityName: c.full_name || 'Contato',
+          icon: ACTION_CONFIG.contact_created.icon,
+          color: ACTION_CONFIG.contact_created.color,
+          timestamp: c.created_at,
+        });
       });
 
       // Calls
@@ -196,11 +197,12 @@ entityName: c.full_name || 'Contato',
     const channel = supabase.channel('team-realtime-feed')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'leads' }, (payload) => {
         const l = payload.new as any;
-        if (!l.created_by) return;
+        const userId = l.created_by || 'system';
+        const userName = l.created_by ? getUserName(l.created_by) : '🤖 Agente IA';
         addItem({
           id: `lead-rt-${l.id}-${Date.now()}`,
-          userId: l.created_by,
-          userName: getUserName(l.created_by),
+          userId,
+          userName,
           actionType: 'lead_created',
           actionLabel: ACTION_CONFIG.lead_created.label,
           entityName: l.lead_name || 'Lead',
@@ -232,14 +234,15 @@ entityName: c.full_name || 'Contato',
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'contacts' }, (payload) => {
         const c = payload.new as any;
-        if (!c.created_by) return;
+        const userId = c.created_by || 'system';
+        const userName = c.created_by ? getUserName(c.created_by) : '🤖 Agente IA';
         addItem({
           id: `contact-rt-${c.id}-${Date.now()}`,
-          userId: c.created_by,
-          userName: getUserName(c.created_by),
+          userId,
+          userName,
           actionType: 'contact_created',
           actionLabel: ACTION_CONFIG.contact_created.label,
-          entityName: c.name || 'Contato',
+          entityName: c.full_name || c.name || 'Contato',
           icon: ACTION_CONFIG.contact_created.icon,
           color: ACTION_CONFIG.contact_created.color,
           timestamp: c.created_at || new Date().toISOString(),
@@ -337,8 +340,8 @@ entityName: c.full_name || 'Contato',
                     )}
                   >
                     <Avatar className="h-8 w-8 shrink-0 mt-0.5">
-                      <AvatarFallback className="text-[10px] font-semibold bg-primary/10 text-primary">
-                        {getInitials(item.userName)}
+                      <AvatarFallback className={cn("text-[10px] font-semibold", item.userId === 'system' ? 'bg-emerald-100 text-emerald-700' : 'bg-primary/10 text-primary')}>
+                        {item.userId === 'system' ? <Bot className="h-4 w-4" /> : getInitials(item.userName)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
