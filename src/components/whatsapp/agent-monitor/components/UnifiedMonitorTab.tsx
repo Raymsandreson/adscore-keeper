@@ -6,6 +6,7 @@ import { Bot, Zap, PhoneCall, Sparkles, Radio } from 'lucide-react';
 import type { AgentStats, AgentData, BoardData, ConversationDetail, CaseStatus } from '../types';
 import type { DashboardMetrics } from '../hooks/useDashboardMetrics';
 import { PipelineCards } from './PipelineCards';
+import type { OperationalMetricType } from './OperationalDetailSheet';
 import { MonitorFilterBar } from './MonitorFilterBar';
 import { CallQueuePanel } from '../../CallQueuePanel';
 import { FollowupActivityPanel } from '../../FollowupActivityPanel';
