@@ -35,7 +35,7 @@ export function useDashboardMetrics() {
 
   const fetchMetrics = useCallback(async (dateRange: { from: Date; to: Date }) => {
     setMetricsLoading(true);
-    try {
+    setMetricsProgress(10);
       const todayStart = startOfDay(dateRange.from).toISOString();
       const todayEnd = endOfDay(dateRange.to).toISOString();
 
