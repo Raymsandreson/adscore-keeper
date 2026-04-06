@@ -410,6 +410,7 @@ serve(async (req) => {
           template_token: (shortcut as any).template_token || null,
           send_window_start_hour: (shortcut as any).send_window_start_hour ?? 8,
           send_window_end_hour: (shortcut as any).send_window_end_hour ?? 20,
+          history_limit: (shortcut as any).history_limit || null,
         };
         console.log(`Using command shortcut "${agent.name}" as agent for instance default`);
       }
