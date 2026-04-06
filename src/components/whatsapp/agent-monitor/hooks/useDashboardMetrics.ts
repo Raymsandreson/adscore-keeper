@@ -11,6 +11,10 @@ export interface DashboardMetrics {
   closedByAgent: { agent: string; count: number }[];
   closedByCampaign: { campaign: string; count: number }[];
   newConvDetails: NewConvDetail[];
+  signedDocuments: number;
+  groupsCreated: number;
+  casesCreated: number;
+  processesCreated: number;
 }
 
 export interface NewConvDetail {
