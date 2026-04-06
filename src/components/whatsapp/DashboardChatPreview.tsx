@@ -386,6 +386,53 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       setNewMessage('');
       toast.success('Mensagem enviada!');
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+
+      // Detect #shortcut_name commands and activate agent
+      const hashMatch = finalMessage.match(/^#([a-zA-Z0-9_]+)\s*$/);
+      if (hashMatch && msgInstanceName) {
+        const shortcutName = hashMatch[1].toLowerCase();
+        const { data: shortcut } = await supabase
+          .from('wjia_command_shortcuts')
+          .select('id, shortcut_name, is_active')
+          .eq('shortcut_name', shortcutName)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (shortcut) {
+          // Activate agent for this conversation
+          await supabase.from('whatsapp_conversation_agents').upsert({
+            phone,
+            instance_name: msgInstanceName,
+            agent_id: shortcut.id,
+            is_active: true,
+            activated_by: 'manual_command',
+          }, { onConflict: 'phone,instance_name' });
+          toast.success(`Agente #${shortcutName} ativado!`);
+          // Trigger agent reply with the last inbound message
+          try {
+            const { data: lastInbound } = await supabase
+              .from('whatsapp_messages')
+              .select('message_text, message_type')
+              .eq('phone', phone)
+              .eq('instance_name', msgInstanceName)
+              .eq('direction', 'inbound')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (lastInbound) {
+              await cloudFunctions.invoke('whatsapp-ai-agent-reply', {
+                body: {
+                  phone,
+                  instance_name: msgInstanceName,
+                  message_text: lastInbound.message_text || '',
+                  message_type: lastInbound.message_type || 'text',
+                },
+              });
+            }
+          } catch (err) {
+            console.error('Error triggering agent reply:', err);
+          }
+        }
+      }
     } catch (e: any) {
       console.error('Error sending:', e);
       toast.error('Erro ao enviar mensagem');

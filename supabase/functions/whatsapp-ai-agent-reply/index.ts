@@ -1044,7 +1044,7 @@ REGRAS IMPORTANTES:
               const { data: inst } = await supabase
                 .from("whatsapp_instances")
                 .select("voice_id")
-                .eq("instance_name", instanceName)
+                .eq("instance_name", instance_name)
                 .maybeSingle();
               voiceId = inst?.voice_id || "FGY2WhTYpPnrIDTdsKH5";
               console.log(`Resolved instance_owner voice to: ${voiceId}`);
