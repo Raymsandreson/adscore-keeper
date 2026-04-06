@@ -470,6 +470,22 @@ export const useLeads = (adAccountId?: string) => {
 
   useEffect(() => {
     fetchLeads();
+
+    // Realtime subscription to auto-refresh when leads are added/updated/deleted externally
+    const channel = supabase
+      .channel('leads-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'leads' },
+        () => {
+          fetchLeads();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [fetchLeads]);
 
   return {
