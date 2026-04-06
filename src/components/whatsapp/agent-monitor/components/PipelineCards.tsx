@@ -1,10 +1,10 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle } from 'lucide-react';
+import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles } from 'lucide-react';
 import type { CaseStatus } from '../types';
 import { statusLabel } from '../utils';
 
 interface PipelineCardsProps {
-  counts: Record<CaseStatus, number>;
+  counts: Record<CaseStatus, number> & { novas?: number };
   activeStatus: CaseStatus | null;
   onToggle: (status: CaseStatus) => void;
 }
@@ -20,7 +20,16 @@ const statusConfig: { key: CaseStatus; icon: typeof AlertCircle; color: string }
 
 export function PipelineCards({ counts, activeStatus, onToggle }: PipelineCardsProps) {
   return (
-    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+    <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+      {/* Conversas Novas card */}
+      <Card className="border-dashed border-primary/30 bg-primary/5">
+        <CardContent className="p-3 text-center">
+          <Sparkles className="h-4 w-4 mx-auto mb-1 text-primary" />
+          <p className="text-xl font-bold">{counts.novas ?? 0}</p>
+          <p className="text-[10px] text-muted-foreground">Novas Hoje</p>
+        </CardContent>
+      </Card>
+
       {statusConfig.map(({ key, icon: Icon, color }) => (
         <Card
           key={key}
