@@ -1333,7 +1333,7 @@ async function forwardDocuments(
 
 async function forwardConversationMedia(
   supabase: any, leadData: any, phone: string, groupId: string,
-  baseUrl: string, creatorInstance: any, sentUrls: Set<string>
+  baseUrl: string, creatorInstance: any, sentUrls: Set<string>, allPhones?: string[]
 ) {
   try {
     const leadName = leadData.lead_name || leadData.victim_name || 'Lead'
@@ -1366,16 +1366,22 @@ async function forwardConversationMedia(
     }
 
     // 2. Forward inbound media from WhatsApp conversation (images, documents, PDFs)
-    if (!phone) {
+    // Search using ALL known phones for this lead (main phone + lead_phone)
+    const phonesToSearch = allPhones && allPhones.length > 0 ? allPhones : (phone ? [phone] : [])
+    if (phonesToSearch.length === 0) {
       console.log('[conv-media] No phone to search conversation media')
       return
     }
 
-    const phoneSuffix = phone.slice(-8)
+    // Build OR filter for all phones
+    const phoneFilters = phonesToSearch.flatMap(p => {
+      const suffix = p.slice(-8)
+      return [`phone.eq.${p}`, `phone.ilike.%${suffix}%`]
+    })
     const { data: mediaMessages } = await supabase
       .from('whatsapp_messages')
       .select('media_url, message_type, message_text, contact_name')
-      .or(`phone.eq.${phone},phone.ilike.%${phoneSuffix}%`)
+      .or(phoneFilters.join(','))
       .eq('direction', 'inbound')
       .in('message_type', ['image', 'document', 'video', 'sticker'])
       .not('media_url', 'is', null)
@@ -1383,6 +1389,7 @@ async function forwardConversationMedia(
       .limit(50)
 
     if (!mediaMessages || mediaMessages.length === 0) {
+      console.log(`[conv-media] No inbound media found for phones: ${phonesToSearch.join(', ')}`)
       console.log('[conv-media] No inbound media found in conversation')
       return
     }
