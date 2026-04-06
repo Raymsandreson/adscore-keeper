@@ -233,14 +233,15 @@ export function RealTimeActivityFeed() {
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'contacts' }, (payload) => {
         const c = payload.new as any;
-        if (!c.created_by) return;
+        const userId = c.created_by || 'system';
+        const userName = c.created_by ? getUserName(c.created_by) : '🤖 Agente IA';
         addItem({
           id: `contact-rt-${c.id}-${Date.now()}`,
-          userId: c.created_by,
-          userName: getUserName(c.created_by),
+          userId,
+          userName,
           actionType: 'contact_created',
           actionLabel: ACTION_CONFIG.contact_created.label,
-          entityName: c.name || 'Contato',
+          entityName: c.full_name || c.name || 'Contato',
           icon: ACTION_CONFIG.contact_created.icon,
           color: ACTION_CONFIG.contact_created.color,
           timestamp: c.created_at || new Date().toISOString(),
