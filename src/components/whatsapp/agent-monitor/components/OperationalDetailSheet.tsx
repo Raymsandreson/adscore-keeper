@@ -1,20 +1,30 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Loader2, FileSignature, Users, Briefcase, Scale, ExternalLink, MessageSquare, UsersRound } from 'lucide-react';
+import { Loader2, FileSignature, Users, Briefcase, Scale, ExternalLink, MessageSquare, UsersRound, Radio } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfDay, endOfDay, format, parseISO } from 'date-fns';
 
 export type OperationalMetricType = 'signed_docs' | 'groups' | 'cases' | 'processes';
+
+export interface OperationalFilters {
+  instanceFilter: string;
+  acolhedorFilter: string;
+  agentFilter: string;
+  boardFilter: string;
+  campaignFilter: string;
+}
 
 interface Props {
   open: boolean;
   onClose: () => void;
   metricType: OperationalMetricType;
   dateRange: { from: Date; to: Date };
+  filters?: OperationalFilters;
+  filteredLeadIds?: Set<string>;
 }
 
 const config: Record<OperationalMetricType, { title: string; icon: typeof FileSignature; color: string }> = {
@@ -24,7 +34,7 @@ const config: Record<OperationalMetricType, { title: string; icon: typeof FileSi
   processes: { title: 'Processos Criados', icon: Scale, color: 'text-indigo-500' },
 };
 
-export function OperationalDetailSheet({ open, onClose, metricType, dateRange }: Props) {
+export function OperationalDetailSheet({ open, onClose, metricType, dateRange, filters, filteredLeadIds }: Props) {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<any[]>([]);
   const navigate = useNavigate();
@@ -44,16 +54,15 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange }:
             .gte('created_at', start).lte('created_at', end)
             .order('created_at', { ascending: false });
           
-          // Fetch lead info for group links
           const leadIds = (data || []).map(d => d.lead_id).filter(Boolean);
-          let leadMap: Record<string, { lead_name: string; whatsapp_group_id: string | null }> = {};
+          let leadMap: Record<string, { lead_name: string; whatsapp_group_id: string | null; acolhedor: string | null }> = {};
           if (leadIds.length > 0) {
             const { data: leads } = await supabase
               .from('leads')
-              .select('id, lead_name, whatsapp_group_id')
+              .select('id, lead_name, whatsapp_group_id, acolhedor')
               .in('id', leadIds);
             if (leads) {
-              leadMap = Object.fromEntries(leads.map(l => [l.id, { lead_name: l.lead_name, whatsapp_group_id: l.whatsapp_group_id }]));
+              leadMap = Object.fromEntries(leads.map(l => [l.id, { lead_name: l.lead_name, whatsapp_group_id: l.whatsapp_group_id, acolhedor: l.acolhedor }]));
             }
           }
           
@@ -61,7 +70,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange }:
         } else if (metricType === 'groups') {
           const { data } = await supabase
             .from('leads')
-            .select('id, lead_name, whatsapp_group_id, created_at')
+            .select('id, lead_name, whatsapp_group_id, acolhedor, created_at')
             .not('whatsapp_group_id', 'is', null)
             .gte('created_at', start).lte('created_at', end)
             .order('created_at', { ascending: false });
@@ -89,6 +98,43 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange }:
     };
     fetchDetails();
   }, [open, metricType, dateRange]);
+
+  const hasActiveFilter = filters && (
+    filters.instanceFilter !== 'all' || filters.acolhedorFilter !== 'all' ||
+    filters.agentFilter !== 'all' || filters.boardFilter !== 'all' || filters.campaignFilter !== 'all'
+  );
+
+  const filteredItems = useMemo(() => {
+    if (!hasActiveFilter) return items;
+    
+    return items.filter(item => {
+      if (metricType === 'signed_docs') {
+        if (filters!.instanceFilter !== 'all' && item.instance_name && item.instance_name !== filters!.instanceFilter) return false;
+        if (filters!.acolhedorFilter !== 'all' && item._lead?.acolhedor) {
+          if (filters!.acolhedorFilter === '__none__' && item._lead.acolhedor) return false;
+          if (filters!.acolhedorFilter !== '__none__' && item._lead.acolhedor !== filters!.acolhedorFilter) return false;
+        }
+        if (filteredLeadIds && filteredLeadIds.size > 0 && item.lead_id && !filteredLeadIds.has(item.lead_id)) return false;
+        return true;
+      }
+      
+      if (metricType === 'groups') {
+        if (filters!.acolhedorFilter !== 'all' && item.acolhedor) {
+          if (filters!.acolhedorFilter === '__none__' && item.acolhedor) return false;
+          if (filters!.acolhedorFilter !== '__none__' && item.acolhedor !== filters!.acolhedorFilter) return false;
+        }
+        if (filteredLeadIds && filteredLeadIds.size > 0 && !filteredLeadIds.has(item.id)) return false;
+        return true;
+      }
+      
+      if (filters!.acolhedorFilter !== 'all' && item.acolhedor) {
+        if (filters!.acolhedorFilter === '__none__' && item.acolhedor) return false;
+        if (filters!.acolhedorFilter !== '__none__' && item.acolhedor !== filters!.acolhedorFilter) return false;
+      }
+      
+      return true;
+    });
+  }, [items, filters, filteredLeadIds, hasActiveFilter, metricType]);
 
   const { title, icon: Icon, color } = config[metricType];
 
@@ -123,7 +169,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange }:
           <SheetTitle className="flex items-center gap-2">
             <Icon className={`h-5 w-5 ${color}`} />
             {title}
-            <Badge variant="secondary" className="ml-auto">{items.length}</Badge>
+            <Badge variant="secondary" className="ml-auto">{filteredItems.length}</Badge>
           </SheetTitle>
         </SheetHeader>
 
@@ -131,12 +177,12 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange }:
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : items.length === 0 ? (
+        ) : filteredItems.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground text-sm">Nenhum registro no período</div>
         ) : (
           <ScrollArea className="h-[calc(100vh-120px)] mt-4">
             <div className="space-y-2 pr-2">
-              {metricType === 'signed_docs' && items.map(item => (
+              {metricType === 'signed_docs' && filteredItems.map(item => (
                 <div key={item.id} className="border rounded-lg p-3 space-y-1.5">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium truncate flex-1">{item.document_name || 'Documento'}</p>
@@ -146,48 +192,33 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange }:
                     <span>{item.signer_name || '—'}</span>
                     <span>{format(parseISO(item.created_at), 'HH:mm')}</span>
                   </div>
-                  {item.signer_status && item.signer_status !== item.status && (
-                    <div className="text-[10px] text-muted-foreground">Assinante: {item.signer_status}</div>
+                  {item.instance_name && (
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <Radio className="h-2.5 w-2.5" />
+                      <span>{item.instance_name}</span>
+                    </div>
                   )}
                   <div className="flex items-center gap-1.5 pt-1 flex-wrap">
                     {item.lead_id && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-6 text-[10px] px-2 gap-1"
-                        onClick={() => handleOpenLead(item.lead_id)}
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        Abrir Lead
+                      <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1" onClick={() => handleOpenLead(item.lead_id)}>
+                        <ExternalLink className="h-3 w-3" /> Abrir Lead
                       </Button>
                     )}
                     {item.whatsapp_phone && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-6 text-[10px] px-2 gap-1"
-                        onClick={() => handleOpenChat(item.whatsapp_phone, item.instance_name)}
-                      >
-                        <MessageSquare className="h-3 w-3" />
-                        Chat Conversa
+                      <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1" onClick={() => handleOpenChat(item.whatsapp_phone, item.instance_name)}>
+                        <MessageSquare className="h-3 w-3" /> Chat Conversa
                       </Button>
                     )}
                     {item._lead?.whatsapp_group_id && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-6 text-[10px] px-2 gap-1 border-cyan-200 text-cyan-700"
-                        onClick={() => handleOpenChat(item._lead.whatsapp_group_id, item.instance_name)}
-                      >
-                        <UsersRound className="h-3 w-3" />
-                        Chat Grupo
+                      <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1 border-cyan-200 text-cyan-700" onClick={() => handleOpenChat(item._lead.whatsapp_group_id, item.instance_name)}>
+                        <UsersRound className="h-3 w-3" /> Chat Grupo
                       </Button>
                     )}
                   </div>
                 </div>
               ))}
 
-              {metricType === 'groups' && items.map(item => (
+              {metricType === 'groups' && filteredItems.map(item => (
                 <div key={item.id} className="border rounded-lg p-3 space-y-1">
                   <p className="text-sm font-medium truncate">{item.lead_name || 'Lead'}</p>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -195,20 +226,14 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange }:
                     <span>{format(parseISO(item.created_at), 'HH:mm')}</span>
                   </div>
                   <div className="flex items-center gap-1.5 pt-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-[10px] px-2 gap-1"
-                      onClick={() => handleOpenLead(item.id)}
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      Abrir Lead
+                    <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1" onClick={() => handleOpenLead(item.id)}>
+                      <ExternalLink className="h-3 w-3" /> Abrir Lead
                     </Button>
                   </div>
                 </div>
               ))}
 
-              {metricType === 'cases' && items.map(item => (
+              {metricType === 'cases' && filteredItems.map(item => (
                 <div key={item.id} className="border rounded-lg p-3 space-y-1">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium truncate flex-1">{item.case_number} — {item.title || ''}</p>
@@ -221,7 +246,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange }:
                 </div>
               ))}
 
-              {metricType === 'processes' && items.map(item => (
+              {metricType === 'processes' && filteredItems.map(item => (
                 <div key={item.id} className="border rounded-lg p-3 space-y-1">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium truncate flex-1">{item.caso || item.cliente || 'Processo'}</p>
