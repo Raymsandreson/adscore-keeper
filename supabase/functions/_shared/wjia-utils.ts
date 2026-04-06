@@ -27,6 +27,7 @@ export {
   shouldProtectName,
   filterFieldsAgainstTemplate,
   buildCrmContext,
+  toTitleCase,
 } from "./field-utils.ts";
 
 // Auto-fill utilities
@@ -71,6 +72,7 @@ export {
   resolveFieldByKeyword,
   extractValueByPattern,
   validateFieldValue,
+  validateFixedChoiceField,
   resolveIncomingFieldWithAliases,
   autoSeedAliasesFromCatalog,
   normalizeProfessionToCBO,

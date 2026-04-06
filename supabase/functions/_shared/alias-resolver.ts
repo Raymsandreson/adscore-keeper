@@ -137,6 +137,43 @@ export function extractValueByPattern(
 }
 
 // ============================================================
+// FIXED-CHOICE FIELD VALIDATION
+// ============================================================
+
+const FIXED_CHOICE_FIELDS: Record<string, string[]> = {
+  ESTADOCIVIL: ["solteiro", "solteira", "casado", "casada", "divorciado", "divorciada", "viúvo", "viúva", "viuvo", "viuva", "separado", "separada", "união estável", "uniao estavel", "união estavel", "uniao estável"],
+  SEXO: ["masculino", "feminino", "m", "f"],
+  NACIONALIDADE: ["brasileiro", "brasileira", "estrangeiro", "estrangeira"],
+};
+
+/**
+ * Check if a value is valid for a fixed-choice field.
+ * Prevents wrong data types (e.g., "PI" for ESTADO_CIVIL).
+ */
+export function validateFixedChoiceField(
+  variable: string,
+  value: string,
+): { valid: boolean; corrected?: string; error?: string } {
+  const normVar = normalizeFieldKey(variable);
+  for (const [fieldKey, validValues] of Object.entries(FIXED_CHOICE_FIELDS)) {
+    if (normVar.includes(fieldKey)) {
+      const lower = value.toLowerCase().trim();
+      const match = validValues.find(v => v === lower);
+      if (match) {
+        // Title case the matched value
+        return { valid: true, corrected: match.charAt(0).toUpperCase() + match.slice(1) };
+      }
+      // No match — this value doesn't belong here
+      return {
+        valid: false,
+        error: `"${value}" não é um valor válido para ${variable}. Valores aceitos: ${validValues.slice(0, 6).join(", ")}`,
+      };
+    }
+  }
+  return { valid: true };
+}
+
+// ============================================================
 // VALIDATE VALUE
 // ============================================================
 
@@ -148,6 +185,10 @@ export function validateFieldValue(
   value: string,
   alias: FieldAlias,
 ): string | null {
+  // First check fixed-choice validation
+  const fixedCheck = validateFixedChoiceField(alias.variable_name, value);
+  if (!fixedCheck.valid) return fixedCheck.error || `Valor inválido para ${alias.variable_name}`;
+
   if (!alias.validation_pattern) return null;
   try {
     const regex = new RegExp(alias.validation_pattern, "i");

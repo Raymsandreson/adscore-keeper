@@ -31,6 +31,7 @@ import {
   shouldProtectName,
   syncNameFields,
   upsertCollectedField,
+  validateFixedChoiceField,
 } from "../../_shared/wjia-utils.ts";
 import { jsonResponse } from "./shared.ts";
 import { handleDocumentUpload } from "./document-upload.ts";
@@ -240,11 +241,26 @@ REGRAS IMPORTANTES:
         // Use alias resolver as PRIMARY resolution
         const resolved = resolveIncomingFieldWithAliases(corr, fieldAliases, catalog);
         if (resolved) {
+          // Fixed-choice validation — reject invalid values
+          const fixedCheck = validateFixedChoiceField(resolved.variable, resolved.value);
+          if (!fixedCheck.valid) {
+            console.log(`WJIA correction REJECTED (fixed-choice): ${resolved.variable} = "${resolved.value}" — ${fixedCheck.error}`);
+            continue;
+          }
           if (resolved.validation_error) {
             console.log(`WJIA correction validation warning: ${resolved.variable} = "${value}" — ${resolved.validation_error}`);
           }
-          console.log(`WJIA correction (alias resolved): ${resolved.variable} = "${resolved.value}"`);
-          upsertCollectedField(currentFields, resolved.variable, resolved.value);
+          // CBO normalization for profession fields
+          let finalValue = fixedCheck.corrected || resolved.value;
+          if (normalizeFieldKey(resolved.variable).includes("PROFISS")) {
+            const cboMatch = await normalizeProfessionToCBO(supabase, resolved.value);
+            if (cboMatch) {
+              finalValue = cboMatch.title;
+              console.log(`WJIA correction CBO: "${resolved.value}" → "${cboMatch.title}"`);
+            }
+          }
+          console.log(`WJIA correction (alias resolved): ${resolved.variable} = "${finalValue}"`);
+          upsertCollectedField(currentFields, resolved.variable, finalValue);
         } else {
           // Last resort: try matching by current value in fields
           const matchByValue = currentFields.find((f: any) =>
@@ -698,16 +714,28 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
         console.log(`WJIA field rejected (no alias or catalog match):`, JSON.stringify(field));
         continue;
       }
+      // Fixed-choice validation on fallback too
+      const fixedCheck = validateFixedChoiceField(normalized.variable, normalized.value);
+      if (!fixedCheck.valid) {
+        console.log(`WJIA field REJECTED (fixed-choice fallback): ${normalized.variable} = "${normalized.value}"`);
+        continue;
+      }
       if (shouldProtectName(currentFields, normalized)) continue;
       console.log(`WJIA field upserted (catalog fallback): ${normalized.variable} = "${normalized.value}"`);
-      upsertCollectedField(currentFields, normalized.variable, normalized.value);
+      upsertCollectedField(currentFields, normalized.variable, fixedCheck.corrected || normalized.value);
+      continue;
+    }
+    // Fixed-choice validation
+    const fixedCheck = validateFixedChoiceField(resolved.variable, resolved.value);
+    if (!fixedCheck.valid) {
+      console.log(`WJIA field REJECTED (fixed-choice): ${resolved.variable} = "${resolved.value}" — ${fixedCheck.error}`);
       continue;
     }
     if (resolved.validation_error) {
       console.log(`WJIA field validation warning: ${resolved.variable} — ${resolved.validation_error}`);
     }
     // CBO normalization for profession fields
-    let finalValue = resolved.value;
+    let finalValue = fixedCheck.corrected || resolved.value;
     if (resolved.field_type === "text" && normalizeFieldKey(resolved.variable).includes("PROFISS")) {
       const cboMatch = await normalizeProfessionToCBO(supabase, resolved.value);
       if (cboMatch) {
