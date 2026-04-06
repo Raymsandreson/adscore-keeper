@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles, Clock, TrendingUp, FileSignature, Users, Briefcase, Scale } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { CaseStatus } from '../types';
 import { statusLabel } from '../utils';
-import type { DashboardMetrics } from '../hooks/useDashboardMetrics';
-
+import type { DashboardMetrics, OperationalDetail } from '../hooks/useDashboardMetrics';
 import type { OperationalMetricType } from './OperationalDetailSheet';
 
 interface PipelineCardsProps {
@@ -30,6 +31,42 @@ function formatTime(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return m > 0 ? `${h}h${m}m` : `${h}h`;
+}
+
+function groupByMember(details: OperationalDetail[]): { name: string; count: number }[] {
+  const map = new Map<string, number>();
+  details.forEach(d => {
+    const key = d.acolhedor || d.instance_name || 'Sem atribuição';
+    map.set(key, (map.get(key) || 0) + 1);
+  });
+  return Array.from(map.entries())
+    .map(([name, count]) => ({ name, count }))
+    .filter(x => x.count > 0)
+    .sort((a, b) => b.count - a.count);
+}
+
+function MemberBreakdownPopover({ details, children }: { details: OperationalDetail[]; children: React.ReactNode }) {
+  const members = groupByMember(details);
+  if (members.length === 0) return <>{children}</>;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        {children}
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-2" align="center">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase mb-2">Por Membro</p>
+        <div className="space-y-1 max-h-40 overflow-y-auto">
+          {members.map(m => (
+            <div key={m.name} className="flex items-center justify-between text-xs">
+              <span className="truncate flex-1 mr-2">{m.name}</span>
+              <span className="font-bold">{m.count}</span>
+            </div>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics, onNewConvsClick, onOperationalClick }: PipelineCardsProps) {
@@ -76,34 +113,47 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
       {/* Operational metrics row */}
       {dashboardMetrics && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('signed_docs')}>
-            <CardContent className="p-3 text-center">
-              <FileSignature className="h-4 w-4 mx-auto mb-1 text-violet-500" />
-              <p className="text-xl font-bold">{dashboardMetrics.signedDocuments}</p>
-              <p className="text-[10px] text-muted-foreground">Docs Assinados</p>
-            </CardContent>
-          </Card>
-          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('groups')}>
-            <CardContent className="p-3 text-center">
-              <Users className="h-4 w-4 mx-auto mb-1 text-cyan-500" />
-              <p className="text-xl font-bold">{dashboardMetrics.groupsCreated}</p>
-              <p className="text-[10px] text-muted-foreground">Grupos Criados</p>
-            </CardContent>
-          </Card>
-          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('cases')}>
-            <CardContent className="p-3 text-center">
-              <Briefcase className="h-4 w-4 mx-auto mb-1 text-amber-600" />
-              <p className="text-xl font-bold">{dashboardMetrics.casesCreated}</p>
-              <p className="text-[10px] text-muted-foreground">Casos Criados</p>
-            </CardContent>
-          </Card>
-          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('processes')}>
-            <CardContent className="p-3 text-center">
-              <Scale className="h-4 w-4 mx-auto mb-1 text-indigo-500" />
-              <p className="text-xl font-bold">{dashboardMetrics.processesCreated}</p>
-              <p className="text-[10px] text-muted-foreground">Processos Criados</p>
-            </CardContent>
-          </Card>
+          <MemberBreakdownPopover details={[...dashboardMetrics.signedDocsDetails, ...dashboardMetrics.pendingDocsDetails]}>
+            <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('signed_docs')}>
+              <CardContent className="p-3 text-center">
+                <FileSignature className="h-4 w-4 mx-auto mb-1 text-violet-500" />
+                <div className="flex items-center justify-center gap-1">
+                  <span className="text-xl font-bold text-green-600">{dashboardMetrics.signedDocuments}</span>
+                  {dashboardMetrics.pendingDocuments > 0 && (
+                    <span className="text-sm text-amber-500">/ {dashboardMetrics.pendingDocuments}</span>
+                  )}
+                </div>
+                <p className="text-[10px] text-muted-foreground">Assinados{dashboardMetrics.pendingDocuments > 0 ? ' / Pendentes' : ''}</p>
+              </CardContent>
+            </Card>
+          </MemberBreakdownPopover>
+          <MemberBreakdownPopover details={dashboardMetrics.groupsDetails}>
+            <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('groups')}>
+              <CardContent className="p-3 text-center">
+                <Users className="h-4 w-4 mx-auto mb-1 text-cyan-500" />
+                <p className="text-xl font-bold">{dashboardMetrics.groupsCreated}</p>
+                <p className="text-[10px] text-muted-foreground">Grupos Criados</p>
+              </CardContent>
+            </Card>
+          </MemberBreakdownPopover>
+          <MemberBreakdownPopover details={dashboardMetrics.casesDetails}>
+            <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('cases')}>
+              <CardContent className="p-3 text-center">
+                <Briefcase className="h-4 w-4 mx-auto mb-1 text-amber-600" />
+                <p className="text-xl font-bold">{dashboardMetrics.casesCreated}</p>
+                <p className="text-[10px] text-muted-foreground">Casos Criados</p>
+              </CardContent>
+            </Card>
+          </MemberBreakdownPopover>
+          <MemberBreakdownPopover details={dashboardMetrics.processesDetails}>
+            <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('processes')}>
+              <CardContent className="p-3 text-center">
+                <Scale className="h-4 w-4 mx-auto mb-1 text-indigo-500" />
+                <p className="text-xl font-bold">{dashboardMetrics.processesCreated}</p>
+                <p className="text-[10px] text-muted-foreground">Processos Criados</p>
+              </CardContent>
+            </Card>
+          </MemberBreakdownPopover>
         </div>
       )}
 
