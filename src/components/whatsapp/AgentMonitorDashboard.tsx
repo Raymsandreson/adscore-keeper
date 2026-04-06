@@ -115,6 +115,55 @@ export function AgentMonitorDashboard() {
     const respondedCount = filtered.filter(c => c.was_responded).length;
     const responseTimes = filtered.filter(c => c.response_time_minutes !== null).map(c => c.response_time_minutes!);
     const avgResponseTimeMin = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : 0;
+
+    // Build a set of lead_ids from filtered conversations for cross-referencing operational metrics
+    const filteredLeadIds = new Set(
+      conversations.filter(c => {
+        if (filters.agentFilter !== 'all') {
+          if (filters.agentFilter === '__none__' && c.agent_id) return false;
+          if (filters.agentFilter !== '__none__' && c.agent_id !== filters.agentFilter) return false;
+        }
+        if (filters.instanceFilter !== 'all' && c.instance_name !== filters.instanceFilter) return false;
+        if (filters.boardFilter !== 'all' && c.board_id !== filters.boardFilter) return false;
+        if (filters.campaignFilter !== 'all') {
+          if (filters.campaignFilter === '__none__' && c.campaign_name) return false;
+          if (filters.campaignFilter !== '__none__' && c.campaign_name !== filters.campaignFilter) return false;
+        }
+        if (filters.acolhedorFilter !== 'all') {
+          if (filters.acolhedorFilter === '__none__' && c.lead_acolhedor) return false;
+          if (filters.acolhedorFilter !== '__none__' && c.lead_acolhedor !== filters.acolhedorFilter) return false;
+        }
+        return true;
+      }).map(c => c.lead_id).filter(Boolean) as string[]
+    );
+
+    const hasActiveFilter = filters.agentFilter !== 'all' || filters.instanceFilter !== 'all' || 
+      filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all';
+
+    // Filter operational details by instance_name, acolhedor, or lead_id cross-reference
+    const filterOp = (detail: { acolhedor: string | null; instance_name: string | null; lead_id: string | null }) => {
+      if (!hasActiveFilter) return true;
+      // Filter by instance if the detail has instance info
+      if (filters.instanceFilter !== 'all' && detail.instance_name && detail.instance_name !== filters.instanceFilter) return false;
+      // Filter by acolhedor if available on the detail
+      if (filters.acolhedorFilter !== 'all' && detail.acolhedor) {
+        if (filters.acolhedorFilter === '__none__' && detail.acolhedor) return false;
+        if (filters.acolhedorFilter !== '__none__' && detail.acolhedor !== filters.acolhedorFilter) return false;
+      }
+      // If no direct field match is possible, cross-reference via lead_id
+      if (detail.lead_id && filteredLeadIds.size > 0) {
+        return filteredLeadIds.has(detail.lead_id);
+      }
+      // If we have active filters but no way to match, include only if no restrictive filter applies
+      if (hasActiveFilter && !detail.acolhedor && !detail.instance_name && !detail.lead_id) return true;
+      return true;
+    };
+
+    const filteredSignedDocs = metrics.signedDocsDetails.filter(filterOp);
+    const filteredGroups = metrics.groupsDetails.filter(filterOp);
+    const filteredCases = metrics.casesDetails.filter(filterOp);
+    const filteredProcesses = metrics.processesDetails.filter(filterOp);
+
     return {
       ...metrics,
       newConversations: filtered.length,
@@ -124,8 +173,16 @@ export function AgentMonitorDashboard() {
       totalInbound: filtered.length,
       newConvDetails: filtered,
       closedByAgent: filteredClosedByAgent,
+      signedDocuments: filteredSignedDocs.length,
+      groupsCreated: filteredGroups.length,
+      casesCreated: filteredCases.length,
+      processesCreated: filteredProcesses.length,
+      signedDocsDetails: filteredSignedDocs,
+      groupsDetails: filteredGroups,
+      casesDetails: filteredCases,
+      processesDetails: filteredProcesses,
     };
-  }, [metrics, filteredNewConvDetails, filteredClosedByAgent]);
+  }, [metrics, filteredNewConvDetails, filteredClosedByAgent, conversations, filters.agentFilter, filters.instanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
 
   const batch = useBatchActions(conversations, fetchData);
 
