@@ -4,6 +4,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Bot, Zap, PhoneCall, Sparkles, Radio } from 'lucide-react';
 import type { AgentStats, AgentData, BoardData, ConversationDetail, CaseStatus } from '../types';
+import type { DashboardMetrics } from '../hooks/useDashboardMetrics';
 import { PipelineCards } from './PipelineCards';
 import { MonitorFilterBar } from './MonitorFilterBar';
 import { CallQueuePanel } from '../../CallQueuePanel';
@@ -20,6 +21,8 @@ interface UnifiedMonitorTabProps {
   activeStatus: CaseStatus | null;
   onOpenChat: (c: ConversationDetail) => void;
   onEventClick: (event: any) => void;
+  dashboardMetrics?: DashboardMetrics;
+  onNewConvsClick?: () => void;
   filterBarProps: {
     agents: AgentData[];
     uniqueInstances: string[];
@@ -43,7 +46,7 @@ interface UnifiedMonitorTabProps {
 export function UnifiedMonitorTab({
   conversations, agentStats, loading,
   pipelineCounts, onPipelineClick, activeStatus,
-  onOpenChat, onEventClick, filterBarProps,
+  onOpenChat, onEventClick, dashboardMetrics, onNewConvsClick, filterBarProps,
 }: UnifiedMonitorTabProps) {
   return (
     <div className="space-y-4">
@@ -51,7 +54,13 @@ export function UnifiedMonitorTab({
       <MonitorFilterBar {...filterBarProps} />
 
       {/* Pipeline Cards */}
-      <PipelineCards counts={pipelineCounts} activeStatus={activeStatus} onToggle={onPipelineClick} />
+      <PipelineCards
+        counts={pipelineCounts}
+        activeStatus={activeStatus}
+        onToggle={onPipelineClick}
+        dashboardMetrics={dashboardMetrics}
+        onNewConvsClick={onNewConvsClick}
+      />
 
       {/* Sub-tabs */}
       <Tabs defaultValue="feed" className="space-y-3">
@@ -124,7 +133,6 @@ export function UnifiedMonitorTab({
             )}
           </div>
         </TabsContent>
-
 
         <TabsContent value="followups"><FollowupActivityPanel /></TabsContent>
         <TabsContent value="call-queue">

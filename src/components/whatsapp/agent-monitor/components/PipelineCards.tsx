@@ -1,12 +1,15 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles } from 'lucide-react';
+import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles, Clock, TrendingUp, Zap } from 'lucide-react';
 import type { CaseStatus } from '../types';
 import { statusLabel } from '../utils';
+import type { DashboardMetrics } from '../hooks/useDashboardMetrics';
 
 interface PipelineCardsProps {
   counts: Record<CaseStatus, number> & { novas?: number };
   activeStatus: CaseStatus | null;
   onToggle: (status: CaseStatus) => void;
+  dashboardMetrics?: DashboardMetrics;
+  onNewConvsClick?: () => void;
 }
 
 const statusConfig: { key: CaseStatus; icon: typeof AlertCircle; color: string }[] = [
@@ -18,31 +21,120 @@ const statusConfig: { key: CaseStatus; icon: typeof AlertCircle; color: string }
   { key: 'bloqueado', icon: StopCircle, color: 'text-orange-500' },
 ];
 
-export function PipelineCards({ counts, activeStatus, onToggle }: PipelineCardsProps) {
-  return (
-    <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
-      {/* Conversas Novas card */}
-      <Card className="border-dashed border-primary/30 bg-primary/5">
-        <CardContent className="p-3 text-center">
-          <Sparkles className="h-4 w-4 mx-auto mb-1 text-primary" />
-          <p className="text-xl font-bold">{counts.novas ?? 0}</p>
-          <p className="text-[10px] text-muted-foreground">Novas Hoje</p>
-        </CardContent>
-      </Card>
+function formatTime(minutes: number): string {
+  if (minutes < 60) return `${minutes}min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h${m}m` : `${h}h`;
+}
 
-      {statusConfig.map(({ key, icon: Icon, color }) => (
+export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics, onNewConvsClick }: PipelineCardsProps) {
+  const newConvs = dashboardMetrics?.newConversations ?? counts.novas ?? 0;
+  const responseRate = dashboardMetrics?.responseRate ?? 0;
+  const avgTime = dashboardMetrics?.avgResponseTimeMin ?? 0;
+  const totalClosed = dashboardMetrics?.closedByAgent?.reduce((a, b) => a + b.count, 0) ?? 0;
+
+  return (
+    <div className="space-y-2">
+      {/* Dashboard metrics row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <Card
-          key={key}
-          className={`cursor-pointer hover:shadow-md transition-all ${activeStatus === key ? 'ring-2 ring-primary' : ''}`}
-          onClick={() => onToggle(key)}
+          className="border-dashed border-primary/30 bg-primary/5 cursor-pointer hover:shadow-md transition-all"
+          onClick={onNewConvsClick}
         >
           <CardContent className="p-3 text-center">
-            <Icon className={`h-4 w-4 mx-auto mb-1 ${color}`} />
-            <p className="text-xl font-bold">{counts[key]}</p>
-            <p className="text-[10px] text-muted-foreground">{statusLabel(key)}</p>
+            <Sparkles className="h-4 w-4 mx-auto mb-1 text-primary" />
+            <p className="text-xl font-bold">{newConvs}</p>
+            <p className="text-[10px] text-muted-foreground">Conversas Novas</p>
           </CardContent>
         </Card>
-      ))}
+
+        <Card>
+          <CardContent className="p-3 text-center">
+            <TrendingUp className="h-4 w-4 mx-auto mb-1 text-green-500" />
+            <p className="text-xl font-bold">{responseRate}%</p>
+            <p className="text-[10px] text-muted-foreground">Taxa Resposta</p>
+            {dashboardMetrics && (
+              <p className="text-[9px] text-muted-foreground">{dashboardMetrics.respondedCount}/{dashboardMetrics.totalInbound}</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3 text-center">
+            <Clock className="h-4 w-4 mx-auto mb-1 text-blue-500" />
+            <p className="text-xl font-bold">{formatTime(avgTime)}</p>
+            <p className="text-[10px] text-muted-foreground">Tempo Médio</p>
+            <p className="text-[9px] text-muted-foreground">1ª resposta</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3 text-center">
+            <Zap className="h-4 w-4 mx-auto mb-1 text-emerald-500" />
+            <p className="text-xl font-bold">{totalClosed}</p>
+            <p className="text-[10px] text-muted-foreground">Fechados Hoje</p>
+            {dashboardMetrics && dashboardMetrics.closedByAgent.length > 0 && (
+              <p className="text-[9px] text-muted-foreground truncate">
+                {dashboardMetrics.closedByAgent[0].agent}: {dashboardMetrics.closedByAgent[0].count}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Pipeline status row */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        {statusConfig.map(({ key, icon: Icon, color }) => (
+          <Card
+            key={key}
+            className={`cursor-pointer hover:shadow-md transition-all ${activeStatus === key ? 'ring-2 ring-primary' : ''}`}
+            onClick={() => onToggle(key)}
+          >
+            <CardContent className="p-3 text-center">
+              <Icon className={`h-4 w-4 mx-auto mb-1 ${color}`} />
+              <p className="text-xl font-bold">{counts[key]}</p>
+              <p className="text-[10px] text-muted-foreground">{statusLabel(key)}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Closing analysis */}
+      {dashboardMetrics && (dashboardMetrics.closedByAgent.length > 0 || dashboardMetrics.closedByCampaign.length > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {dashboardMetrics.closedByAgent.length > 0 && (
+            <Card>
+              <CardContent className="p-3">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase mb-2">Fechamentos por Acolhedor</p>
+                <div className="space-y-1">
+                  {dashboardMetrics.closedByAgent.slice(0, 5).map(({ agent, count }) => (
+                    <div key={agent} className="flex items-center justify-between text-xs">
+                      <span className="truncate flex-1 mr-2">{agent}</span>
+                      <span className="font-bold text-green-600">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {dashboardMetrics.closedByCampaign.length > 0 && (
+            <Card>
+              <CardContent className="p-3">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase mb-2">Fechamentos por Campanha</p>
+                <div className="space-y-1">
+                  {dashboardMetrics.closedByCampaign.slice(0, 5).map(({ campaign, count }) => (
+                    <div key={campaign} className="flex items-center justify-between text-xs">
+                      <span className="truncate flex-1 mr-2">{campaign}</span>
+                      <span className="font-bold text-green-600">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
     </div>
   );
 }
