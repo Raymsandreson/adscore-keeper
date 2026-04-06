@@ -171,6 +171,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
   };
 
   return (
+    <>
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <SheetContent className="w-full sm:max-w-lg">
         <SheetHeader>
