@@ -30,6 +30,7 @@ interface UnifiedMonitorTabProps {
     uniqueInstances: string[];
     uniqueBoards: BoardData[];
     uniqueCampaigns: string[];
+    uniqueAcolhedores: string[];
     agentFilter: string;
     setAgentFilter: (v: string) => void;
     instanceFilter: string;
@@ -38,6 +39,8 @@ interface UnifiedMonitorTabProps {
     setBoardFilter: (v: string) => void;
     campaignFilter: string;
     setCampaignFilter: (v: string) => void;
+    acolhedorFilter: string;
+    setAcolhedorFilter: (v: string) => void;
     agentActiveFilter: 'all' | 'ativo';
     setAgentActiveFilter: (v: 'all' | 'ativo') => void;
     followupConfigFilter: 'all' | 'com_followup' | 'sem_followup';
