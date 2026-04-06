@@ -202,6 +202,10 @@ REGRAS:
         case_type: 'case_type',
         sector: 'sector',
         liability_type: 'liability_type',
+        visit_city: 'visit_city',
+        visit_state: 'visit_state',
+        visit_region: 'visit_region',
+        visit_address: 'visit_address',
         notes: 'notes',
       }
 
