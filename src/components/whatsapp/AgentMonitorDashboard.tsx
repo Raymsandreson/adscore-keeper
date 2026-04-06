@@ -203,7 +203,7 @@ export function AgentMonitorDashboard() {
             onPipelineClick={(s) => setSheetStatusFilter(prev => prev === s ? null : s)}
             activeStatus={sheetStatusFilter}
             onOpenChat={handleOpenChat} onEventClick={handleEventClick}
-            dashboardMetrics={metrics}
+            dashboardMetrics={filteredMetrics}
             onNewConvsClick={() => setNewConvsSheetOpen(true)}
             onOperationalClick={(type) => setOperationalSheet(type)}
             filterBarProps={filterBarProps}
@@ -230,7 +230,7 @@ export function AgentMonitorDashboard() {
       <NewConversationsSheet
         open={newConvsSheetOpen}
         onClose={() => setNewConvsSheetOpen(false)}
-        conversations={metrics.newConvDetails}
+        conversations={filteredNewConvDetails}
         onOpenChat={handleNewConvChatOpen}
       />
 
