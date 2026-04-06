@@ -100,13 +100,20 @@ serve(async (req) => {
       body: JSON.stringify({ number: phone }),
     });
 
+    const respText = await callResp.text();
+    let respJson: any = {};
+    try { respJson = JSON.parse(respText); } catch { /* not json */ }
+
+    console.log(`UazAPI call response for ${phone}: status=${callResp.status} body=${respText.substring(0, 500)}`);
+
     let callResult = "unknown";
-    if (callResp.ok) {
+    // Check if UazAPI actually initiated the call (not just returned 200)
+    const hasError = respJson?.error || respJson?.message?.toLowerCase?.()?.includes?.("erro") || respJson?.message?.toLowerCase?.()?.includes?.("desconectado");
+    if (callResp.ok && !hasError) {
       callResult = "initiated";
       console.log(`Call initiated to ${phone}`);
     } else {
-      const errText = await callResp.text();
-      callResult = `error: ${callResp.status} - ${errText.substring(0, 200)}`;
+      callResult = `error: ${callResp.status} - ${respText.substring(0, 200)}`;
       console.error(`Call failed: ${callResult}`);
     }
 
