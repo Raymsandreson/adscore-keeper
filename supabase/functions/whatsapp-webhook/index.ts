@@ -1521,6 +1521,116 @@ Deno.serve(async (req) => {
 
     console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName, 'StoredMedia:', storedMediaUrl ? 'yes' : 'no')
 
+    // ========== #SHORTCUT AGENT ACTIVATION (single # outbound) ==========
+    // MUST run BEFORE human-pause and command-processor blocks which can return early
+    if (direction === 'outbound' && instanceName && phone && messageText) {
+      const trimmedSingle = (messageText || '').trim()
+      const lastLineSingle = trimmedSingle.split('\n').pop()?.trim() || trimmedSingle
+      const singleHashMatch = lastLineSingle.match(/^#([a-zA-Z0-9_]+)\s*$/)
+      if (singleHashMatch && !lastLineSingle.startsWith('##')) {
+        const shortcutName = singleHashMatch[1].toLowerCase()
+        console.log('#shortcut agent activation detected:', shortcutName, 'phone:', phone, 'instance:', instanceName)
+
+        try {
+          const { data: shortcut } = await supabase
+            .from('wjia_command_shortcuts')
+            .select('id, shortcut_name, is_active')
+            .eq('shortcut_name', shortcutName)
+            .eq('is_active', true)
+            .maybeSingle()
+
+          if (shortcut) {
+            // Activate agent for this conversation
+            await supabase.from('whatsapp_conversation_agents').upsert({
+              phone,
+              instance_name: instanceName,
+              agent_id: shortcut.id,
+              is_active: true,
+              activated_by: 'whatsapp_command',
+              human_paused_until: null,
+            }, { onConflict: 'phone,instance_name' })
+            console.log('Agent activated via #shortcut:', shortcutName, 'agent_id:', shortcut.id)
+
+            // Delete the #command message from WhatsApp so client doesn't see it
+            if (externalMessageId) {
+              let resolvedToken = instanceToken
+              let resolvedBaseUrl = baseUrl
+              if (!resolvedToken || !resolvedBaseUrl) {
+                const { data: inst } = await supabase
+                  .from('whatsapp_instances')
+                  .select('instance_token, base_url')
+                  .eq('instance_name', instanceName)
+                  .limit(1)
+                  .maybeSingle()
+                if (inst) {
+                  resolvedToken = resolvedToken || inst.instance_token
+                  resolvedBaseUrl = resolvedBaseUrl || inst.base_url
+                }
+              }
+              if (resolvedToken && resolvedBaseUrl) {
+                fetch(`${resolvedBaseUrl}/message/delete`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'token': resolvedToken },
+                  body: JSON.stringify({ id: externalMessageId }),
+                }).catch(e => console.error('Error deleting #shortcut message:', e))
+              }
+            }
+
+            // Also delete from DB
+            if (message?.id) {
+              await supabase.from('whatsapp_messages').delete().eq('id', message.id)
+            }
+
+            // Trigger agent reply with the last inbound message
+            const { data: lastInbound } = await supabase
+              .from('whatsapp_messages')
+              .select('message_text, message_type')
+              .eq('phone', phone)
+              .eq('instance_name', instanceName)
+              .eq('direction', 'inbound')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+
+            if (lastInbound) {
+              const cloudFnUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
+              const cloudAnonKeyVal = Deno.env.get('SUPABASE_ANON_KEY') || ''
+              fetch(`${cloudFnUrl}/functions/v1/whatsapp-ai-agent-reply`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${cloudAnonKeyVal}`,
+                },
+                body: JSON.stringify({
+                  phone,
+                  instance_name: instanceName,
+                  message_text: lastInbound.message_text || '',
+                  message_type: lastInbound.message_type || 'text',
+                }),
+              }).catch(err => console.error('#shortcut agent reply trigger error:', err))
+            }
+
+            const respData = {
+              success: true,
+              message_id: message?.id,
+              shortcut_activated: true,
+              agent_id: shortcut.id,
+              instance_name: instanceName,
+            }
+            await logWebhook('shortcut_agent_activated', respData)
+            return new Response(
+              JSON.stringify(respData),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          } else {
+            console.log('No active shortcut found for #' + shortcutName)
+          }
+        } catch (e) {
+          console.error('#shortcut activation error:', e)
+        }
+      }
+    }
+
     // Mirror message to Cloud DB so frontend inbox can read it
     try {
       const cloudClient = createClient(
