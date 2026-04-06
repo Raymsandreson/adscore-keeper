@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Loader2, FileSignature, Users, Briefcase, Scale, ExternalLink, MessageSquare, UsersRound, Radio } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfDay, endOfDay, format, parseISO } from 'date-fns';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import type { Lead } from '@/hooks/useLeads';
 
 export type OperationalMetricType = 'signed_docs' | 'groups' | 'cases' | 'processes';
 
@@ -37,6 +39,8 @@ const config: Record<OperationalMetricType, { title: string; icon: typeof FileSi
 export function OperationalDetailSheet({ open, onClose, metricType, dateRange, filters, filteredLeadIds }: Props) {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<any[]>([]);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [showLeadEdit, setShowLeadEdit] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -149,9 +153,13 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
     return <Badge className={`text-[9px] ${map[status] || 'bg-muted text-muted-foreground'}`}>{status}</Badge>;
   };
 
-  const handleOpenLead = (leadId: string) => {
-    onClose();
-    navigate(`/leads?leadId=${leadId}`);
+  const handleOpenLead = async (leadId: string) => {
+    if (!leadId) return;
+    const { data } = await supabase.from('leads').select('*').eq('id', leadId).maybeSingle();
+    if (data) {
+      setEditingLead(data as Lead);
+      setShowLeadEdit(true);
+    }
   };
 
   const handleOpenChat = (phone: string, instanceName?: string) => {
@@ -163,6 +171,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
   };
 
   return (
+    <>
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <SheetContent className="w-full sm:max-w-lg">
         <SheetHeader>
@@ -266,5 +275,23 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
         )}
       </SheetContent>
     </Sheet>
+
+    {editingLead && (
+      <LeadEditDialog
+        open={showLeadEdit}
+        onOpenChange={(open) => {
+          setShowLeadEdit(open);
+          if (!open) setEditingLead(null);
+        }}
+        lead={editingLead}
+        onSave={async (leadId, updates) => {
+          await supabase.from('leads').update(updates).eq('id', leadId);
+          setShowLeadEdit(false);
+          setEditingLead(null);
+        }}
+        mode="sheet"
+      />
+    )}
+    </>
   );
 }
