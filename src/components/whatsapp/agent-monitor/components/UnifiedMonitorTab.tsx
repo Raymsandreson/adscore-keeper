@@ -48,7 +48,7 @@ interface UnifiedMonitorTabProps {
 export function UnifiedMonitorTab({
   conversations, agentStats, loading,
   pipelineCounts, onPipelineClick, activeStatus,
-  onOpenChat, onEventClick, dashboardMetrics, onNewConvsClick, filterBarProps,
+  onOpenChat, onEventClick, dashboardMetrics, onNewConvsClick, onOperationalClick, filterBarProps,
 }: UnifiedMonitorTabProps) {
   return (
     <div className="space-y-4">
