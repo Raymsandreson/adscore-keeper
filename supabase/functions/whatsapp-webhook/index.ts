@@ -811,14 +811,8 @@ Deno.serve(async (req) => {
     const isFromMe = body.message?.fromMe === true || body.chat?.fromMe === true
     const isGroupAgentCommand = isFromMe && groupMsgStr.match(/^#[a-z0-9_]+$/i)
     const isGroupWjiaCommand = isFromMe && groupMsgStr.toLowerCase().startsWith('@wjia')
-    // ========== EARLY SKIP: Group messages (except special commands) ==========
-    if (isGroup && !isGroupAgentCommand && !isGroupWjiaCommand) {
-      console.log(`Group message filtered: chatId=${chatId}, instance=${webhookInstanceName}. Skipping to save resources.`)
-      return new Response(
-        JSON.stringify({ success: true, skipped: true, reason: 'group_message_filtered' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+    // Group messages: save metadata to DB but skip media download and AI processing
+    // (isGroup flag is used later to skip expensive operations)
 
     // 3) Skip reaction messages (emoji reactions on existing messages)
     const msgType = (body.message?.messageType || body.chat?.wa_lastMessageType || '').toLowerCase()
@@ -1101,7 +1095,7 @@ Deno.serve(async (req) => {
     let storedMediaUrl = mediaUrl;
     let mediaTranscription: string | null = null;
     const isMediaMessage = messageType === 'image' || messageType === 'audio' || messageType === 'video' || messageType === 'document';
-    if ((mediaUrl || isMediaMessage) && messageType !== 'text' && externalMessageId) {
+    if (!isGroup && (mediaUrl || isMediaMessage) && messageType !== 'text' && externalMessageId) {
       // Look up instance token from DB if not in payload
       let resolvedToken = instanceToken;
       let resolvedBaseUrl = baseUrl;
@@ -1545,7 +1539,7 @@ Deno.serve(async (req) => {
     }
 
     // ========== AUTO-ENRICH LEAD/CONTACT (after X inbound messages) ==========
-    if (direction === 'inbound' && instanceName && phone && (leadId || contactId)) {
+    if (!isGroup && direction === 'inbound' && instanceName && phone && (leadId || contactId)) {
       try {
         const supabaseUrl = RESOLVED_SUPABASE_URL
         const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
@@ -2551,7 +2545,7 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
     }
 
     // ========== AI AGENT AUTO-REPLY ==========
-    if (direction === 'inbound' && instanceName && phone) {
+    if (!isGroup && direction === 'inbound' && instanceName && phone) {
       try {
         const supabaseUrl = RESOLVED_SUPABASE_URL
         const supabaseAnonKey = RESOLVED_ANON_KEY
