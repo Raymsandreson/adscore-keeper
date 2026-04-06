@@ -110,6 +110,7 @@ export function ContactInteractionHistory({ instagramUsername }: ContactInteract
     if (!newCommentText.trim() || !instagramUsername) return;
     setSaving(true);
     try {
+      const normalizedUsername = instagramUsername.replace('@', '').toLowerCase();
       const nowIso = new Date().toISOString();
       const isSentComment = newCommentType === 'sent';
       const { error } = await supabase.from('instagram_comments').insert({
