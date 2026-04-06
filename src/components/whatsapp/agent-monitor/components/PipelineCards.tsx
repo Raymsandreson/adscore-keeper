@@ -1,5 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles, Clock, TrendingUp, Zap } from 'lucide-react';
+import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles, Clock, TrendingUp, Zap, FileSignature, Users, Briefcase, Scale } from 'lucide-react';
 import type { CaseStatus } from '../types';
 import { statusLabel } from '../utils';
 import type { DashboardMetrics } from '../hooks/useDashboardMetrics';
