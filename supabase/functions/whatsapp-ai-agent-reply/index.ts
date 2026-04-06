@@ -737,6 +737,30 @@ REGRAS IMPORTANTES:
         }
       }
 
+      // ========== MID-CONVERSATION ACTIVATION DETECTION ==========
+      const agentActivatedAt = assignment?.updated_at ? new Date((assignment as any).updated_at) : null;
+      if (agentActivatedAt && !is_followup && recentMessages && recentMessages.length > 3) {
+        const messagesBeforeActivation = (recentMessages || []).filter(
+          (m: any) => new Date(m.created_at) < agentActivatedAt
+        );
+        const messagesAfterActivation = (recentMessages || []).filter(
+          (m: any) => new Date(m.created_at) >= agentActivatedAt
+        );
+        const outboundAfter = messagesAfterActivation.filter((m: any) => m.direction === 'outbound');
+        if (messagesBeforeActivation.length >= 3 && outboundAfter.length <= 1) {
+          systemPrompt += `\n\nCONTEXTO DE ATIVAÇÃO NO MEIO DA CONVERSA:
+- Você foi ativado AGORA para continuar uma conversa que já estava em andamento.
+- Existe um histórico de ${messagesBeforeActivation.length} mensagens ANTERIORES à sua ativação.
+- LEIA TODO o histórico da conversa com atenção, incluindo documentos, áudios e imagens já enviados.
+- Na sua PRIMEIRA resposta, faça um BREVE RESUMO do que entendeu da conversa até agora (dados coletados, documentos recebidos, situação do cliente).
+- Pergunte ao cliente se pode prosseguir a partir desse ponto.
+- NÃO peça novamente dados ou documentos que o cliente já enviou na conversa anterior.
+- Se documentos/fotos já foram enviados, EXTRAIA os dados visíveis e use-os diretamente.
+- Continue o fluxo naturalmente como se fosse uma continuação da mesma conversa.`;
+          console.log(`Mid-conversation activation detected: ${messagesBeforeActivation.length} msgs before, ${outboundAfter.length} agent msgs after`);
+        }
+      }
+
       const aiResult = await geminiChat({
         model: (agent as any).model || "google/gemini-2.5-flash",
         messages: [
