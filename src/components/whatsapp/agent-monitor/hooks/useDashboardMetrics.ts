@@ -25,8 +25,8 @@ export interface NewConvDetail {
 }
 
 export function useDashboardMetrics() {
-  const [metrics, setMetrics] = useState<DashboardMetrics>({
-    newConversations: 0, responseRate: 0, avgResponseTimeMin: 0,
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsProgress, setMetricsProgress] = useState(0);
     respondedCount: 0, totalInbound: 0,
     closedByAgent: [], closedByCampaign: [], newConvDetails: [],
   });
