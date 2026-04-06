@@ -213,14 +213,16 @@ All colors MUST be HSL.
 [class*="callface"]:not(.callface-dial),
 [id*="callface"],
 div[style*="callface"],
-img[src*="callface"] {
-  max-height: 18px !important;
-  max-width: 18px !important;
-  font-size: 10px !important;
-  line-height: 1 !important;
+img[src*="callface"],
+a[class*="callface"],
+span[class*="callface"] {
+  max-height: 16px !important;
+  max-width: 16px !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
   padding: 0 !important;
   margin: 0 !important;
-  opacity: 0.6 !important;
+  opacity: 0.4 !important;
   position: relative !important;
   z-index: 1 !important;
   pointer-events: auto !important;
@@ -228,6 +230,13 @@ img[src*="callface"] {
   align-items: center !important;
   vertical-align: middle !important;
   overflow: hidden !important;
+}
+
+/* CallFace phone number links - hide text, keep tiny icon */
+a[class*="callface"] img,
+[class*="callface"] img[src*="callface"] {
+  max-height: 14px !important;
+  max-width: 14px !important;
 }
 
 /* Hide CallFace on elements explicitly marked to ignore */
@@ -244,10 +253,11 @@ div[class*="callface"][style*="position: fixed"],
 div[class*="callface"][style*="position: absolute"],
 div[id*="callface"][style*="position: fixed"],
 div[id*="callface"][style*="position: absolute"] {
-  max-width: 24px !important;
-  max-height: 24px !important;
-  opacity: 0.5 !important;
+  max-width: 20px !important;
+  max-height: 20px !important;
+  opacity: 0.3 !important;
   z-index: 1 !important;
   overflow: hidden !important;
   border-radius: 50% !important;
+  font-size: 0 !important;
 }
