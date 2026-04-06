@@ -324,6 +324,7 @@ export function AgentMonitorDashboard() {
         dateRange={dateRange}
         filters={operationalFiltersObj}
         filteredLeadIds={operationalFilteredLeadIds}
+        onOpenChat={(phone, instanceName) => handleNewConvChatOpen(phone, instanceName || null)}
       />
 
       <NewConversationsSheet
