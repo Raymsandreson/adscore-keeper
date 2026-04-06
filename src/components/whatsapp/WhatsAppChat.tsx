@@ -132,6 +132,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [agentEnabled, setAgentEnabled] = useState(false);
   const [activeAgentName, setActiveAgentName] = useState<string | null>(null);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+  const [humanPausedUntil, setHumanPausedUntil] = useState<string | null>(null);
   const [availableAgents, setAvailableAgents] = useState<Array<{ id: string; name: string }>>([]);
   const [agentLoading, setAgentLoading] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -153,19 +154,21 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     const fetchAgentState = async () => {
       const [{ data: agentsData }, { data: assignment }] = await Promise.all([
         supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
-        supabase.from('whatsapp_conversation_agents').select('agent_id, is_active')
+        supabase.from('whatsapp_conversation_agents').select('agent_id, is_active, human_paused_until')
           .eq('phone', conversation.phone).eq('instance_name', conversation.instance_name).maybeSingle()
       ]);
       setAvailableAgents((agentsData as any[]) || []);
       if (assignment) {
         setActiveAgentId((assignment as any).agent_id);
         setAgentEnabled((assignment as any).is_active);
+        setHumanPausedUntil((assignment as any).human_paused_until || null);
         const agent = (agentsData as any[])?.find((a: any) => a.id === (assignment as any).agent_id);
         setActiveAgentName(agent?.name || null);
       } else {
         setActiveAgentId(null);
         setAgentEnabled(false);
         setActiveAgentName(null);
+        setHumanPausedUntil(null);
       }
     };
     fetchAgentState();
@@ -177,9 +180,10 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     try {
       const newState = !agentEnabled;
       await supabase.from('whatsapp_conversation_agents')
-        .update({ is_active: newState } as any)
+        .update({ is_active: newState, human_paused_until: newState ? null : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() } as any)
         .eq('phone', conversation.phone).eq('instance_name', conversation.instance_name);
       setAgentEnabled(newState);
+      if (newState) setHumanPausedUntil(null);
       toast.success(newState ? `🤖 Agente "${activeAgentName}" ativado` : 'Agente desativado');
     } catch (e: any) { toast.error('Erro: ' + e.message); }
     finally { setAgentLoading(false); }
@@ -1051,6 +1055,27 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           {agentEnabled && activeAgentName && (
             <Badge variant="default" className="text-[9px] gap-1 bg-emerald-600 hover:bg-emerald-700 px-1.5 py-0 cursor-pointer" onClick={handleAgentToggle}>
               <Bot className="h-3 w-3" /> {activeAgentName}
+            </Badge>
+          )}
+          {agentEnabled && humanPausedUntil && new Date(humanPausedUntil) > new Date() && (
+            <Badge
+              variant="outline"
+              className="text-[9px] gap-1 border-orange-400 text-orange-600 bg-orange-50 px-1.5 py-0 cursor-pointer"
+              title="Clique para interromper a pausa e reativar o agente"
+              onClick={async () => {
+                try {
+                  await supabase.from('whatsapp_conversation_agents')
+                    .update({ human_paused_until: null } as any)
+                    .eq('phone', conversation.phone).eq('instance_name', conversation.instance_name);
+                  setHumanPausedUntil(null);
+                  toast.success('Pausa interrompida! Agente retomando...');
+                } catch (e) {
+                  toast.error('Erro ao interromper pausa');
+                }
+              }}
+            >
+              ⏸️ Pausa ({Math.max(1, Math.ceil((new Date(humanPausedUntil).getTime() - Date.now()) / 60000))}min)
+              <FastForward className="h-3 w-3" />
             </Badge>
           )}
           <DropdownMenu>
