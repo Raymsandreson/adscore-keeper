@@ -89,28 +89,28 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
       {/* Operational metrics row */}
       {dashboardMetrics && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <Card>
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('signed_docs')}>
             <CardContent className="p-3 text-center">
               <FileSignature className="h-4 w-4 mx-auto mb-1 text-violet-500" />
               <p className="text-xl font-bold">{dashboardMetrics.signedDocuments}</p>
               <p className="text-[10px] text-muted-foreground">Docs Assinados</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('groups')}>
             <CardContent className="p-3 text-center">
               <Users className="h-4 w-4 mx-auto mb-1 text-cyan-500" />
               <p className="text-xl font-bold">{dashboardMetrics.groupsCreated}</p>
               <p className="text-[10px] text-muted-foreground">Grupos Criados</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('cases')}>
             <CardContent className="p-3 text-center">
               <Briefcase className="h-4 w-4 mx-auto mb-1 text-amber-600" />
               <p className="text-xl font-bold">{dashboardMetrics.casesCreated}</p>
               <p className="text-[10px] text-muted-foreground">Casos Criados</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('processes')}>
             <CardContent className="p-3 text-center">
               <Scale className="h-4 w-4 mx-auto mb-1 text-indigo-500" />
               <p className="text-xl font-bold">{dashboardMetrics.processesCreated}</p>
