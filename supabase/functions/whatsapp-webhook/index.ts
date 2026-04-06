@@ -811,14 +811,8 @@ Deno.serve(async (req) => {
     const isFromMe = body.message?.fromMe === true || body.chat?.fromMe === true
     const isGroupAgentCommand = isFromMe && groupMsgStr.match(/^#[a-z0-9_]+$/i)
     const isGroupWjiaCommand = isFromMe && groupMsgStr.toLowerCase().startsWith('@wjia')
-    // ========== EARLY SKIP: Group messages (except special commands) ==========
-    if (isGroup && !isGroupAgentCommand && !isGroupWjiaCommand) {
-      console.log(`Group message filtered: chatId=${chatId}, instance=${webhookInstanceName}. Skipping to save resources.`)
-      return new Response(
-        JSON.stringify({ success: true, skipped: true, reason: 'group_message_filtered' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+    // Group messages: save metadata to DB but skip media download and AI processing
+    // (isGroup flag is used later to skip expensive operations)
 
     // 3) Skip reaction messages (emoji reactions on existing messages)
     const msgType = (body.message?.messageType || body.chat?.wa_lastMessageType || '').toLowerCase()
