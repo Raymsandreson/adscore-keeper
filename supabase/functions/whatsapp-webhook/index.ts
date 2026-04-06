@@ -1706,6 +1706,45 @@ Deno.serve(async (req) => {
       // Check if this outbound message is from a human (not AI-generated)
       const isAiMessage = body?.metadata?.ai_agent || body?.metadata?.ai_agent_id;
       if (!isAiMessage) {
+        // Double-check: see if there's a recent AI-generated outbound message matching this text
+        // (AI agent inserts outbound messages into DB before the webhook echoes them back)
+        let isActuallyAi = false;
+        try {
+          const recentCutoff = new Date(Date.now() - 120000).toISOString(); // last 2 minutes
+          const { data: recentAiMsg } = await supabase
+            .from('whatsapp_messages')
+            .select('id')
+            .eq('phone', phone)
+            .eq('instance_name', instanceName)
+            .eq('direction', 'outbound')
+            .gte('created_at', recentCutoff)
+            .limit(1)
+            .maybeSingle();
+          
+          // If there's a recent outbound message already in DB for this phone,
+          // it was likely sent by the AI agent (which inserts before webhook echo)
+          if (recentAiMsg && messageText) {
+            // Check if this exact message text exists in recent outbound messages
+            const { data: exactMatch } = await supabase
+              .from('whatsapp_messages')
+              .select('id')
+              .eq('phone', phone)
+              .eq('instance_name', instanceName)
+              .eq('direction', 'outbound')
+              .eq('message_text', messageText)
+              .gte('created_at', recentCutoff)
+              .limit(1)
+              .maybeSingle();
+            if (exactMatch) {
+              isActuallyAi = true;
+              console.log(`Outbound message matches recent AI message, skipping human pause for ${phone}`);
+            }
+          }
+        } catch (e) {
+          console.error('AI message check error:', e);
+        }
+
+        if (!isActuallyAi) {
         // Human sent a message - pause the AI agent
         try {
           const { data: assignment } = await supabase
@@ -1738,6 +1777,7 @@ Deno.serve(async (req) => {
         } catch (e) {
           console.error('Human pause error:', e);
         }
+      }
       }
     }
 
