@@ -39,6 +39,8 @@ const config: Record<OperationalMetricType, { title: string; icon: typeof FileSi
 export function OperationalDetailSheet({ open, onClose, metricType, dateRange, filters, filteredLeadIds }: Props) {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<any[]>([]);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [showLeadEdit, setShowLeadEdit] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
