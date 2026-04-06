@@ -165,20 +165,29 @@ export async function handleFollowUp(opts: {
       console.log(`WJIA correction request on generated session ${session.id}: "${message_text}"`);
       
       // Use AI to extract the corrections
+      // Build field list with clear variable names for the AI
+      const fieldListForAI = currentFields.filter((f: any) => f.para).map((f: any) => {
+        const label = getFieldLabel(f, catalog);
+        return `- Campo: "${f.de}" (${label}) = "${f.para}"`;
+      }).join("\n");
+
       const correctionPrompt = `O cliente enviou uma CORREÇÃO sobre os dados do documento já gerado.
-Dados atuais coletados:
-${currentFields.filter((f: any) => f.para).map((f: any) => `- ${f.de}: ${f.para}`).join("\n")}
+Campos atuais coletados (use o valor exato do "Campo" como chave "de"):
+${fieldListForAI}
 
 Mensagem do cliente: "${message_text}"
 
-Extraia APENAS os campos que o cliente quer CORRIGIR. Use os nomes EXATOS dos campos acima.
-Responda de forma natural confirmando a correção e mostrando TODOS os dados atualizados para o cliente confirmar novamente.`;
+REGRAS IMPORTANTES:
+1. O campo "de" na resposta DEVE ser EXATAMENTE igual ao valor entre aspas após "Campo:" (ex: "{{NOME COMPLETO}}", "{{CPF}}", etc.)
+2. NUNCA use o valor atual do campo como chave — use sempre a variável entre {{ }}
+3. Se o cliente corrige o nome, use o campo "{{NOME COMPLETO}}" ou o campo de nome do signatário correspondente
+4. Responda de forma natural confirmando a correção e mostrando TODOS os dados atualizados.`;
 
       const correctionTools = [{
         type: "function",
         function: {
           name: "process_correction",
-          description: "Processa a correção do cliente",
+          description: "Processa a correção do cliente. O campo 'de' deve ser a variável do template (ex: {{NOME COMPLETO}}), nunca o valor atual.",
           parameters: {
             type: "object",
             properties: {
@@ -186,7 +195,7 @@ Responda de forma natural confirmando a correção e mostrando TODOS os dados at
                 type: "array",
                 items: {
                   type: "object",
-                  properties: { de: { type: "string" }, para: { type: "string" } },
+                  properties: { de: { type: "string", description: "Variável do template (ex: {{NOME COMPLETO}}, {{CPF}})" }, para: { type: "string", description: "Novo valor corrigido" } },
                   required: ["de", "para"],
                 },
               },
@@ -218,13 +227,36 @@ Responda de forma natural confirmando a correção e mostrando TODOS os dados at
         corrReply = parsed.reply_to_client || "";
       } catch {}
 
-      // Apply corrections
+      // Apply corrections with intelligent field matching
       for (const corr of corrections) {
+        let fieldKey = corr.de;
+        const value = corr.para;
+
+        // First try normalizeIncomingField
         const normalized = normalizeIncomingField(corr, catalog);
         if (normalized) {
-          console.log(`WJIA correction applied: ${normalized.variable} = "${normalized.value}"`);
-          upsertCollectedField(currentFields, normalized.variable, normalized.value);
+          fieldKey = normalized.variable;
+        } else {
+          // Fallback: check if the AI returned a value instead of a variable name
+          // Try to find which field currently has this value
+          const matchByValue = currentFields.find((f: any) => 
+            f.para && f.para.toLowerCase() === fieldKey.toLowerCase()
+          );
+          if (matchByValue) {
+            console.log(`WJIA correction fallback: matched value "${fieldKey}" to field "${matchByValue.de}"`);
+            fieldKey = matchByValue.de;
+          }
+          
+          // Also try matching by common keywords
+          const keyLower = fieldKey.toLowerCase().replace(/[{}]/g, "");
+          if (keyLower.includes("nome") && !keyLower.includes("completo")) {
+            const nomeField = currentFields.find((f: any) => f.de?.includes("NOME COMPLETO") || f.de?.includes("NOME_COMPLETO"));
+            if (nomeField) fieldKey = nomeField.de;
+          }
         }
+
+        console.log(`WJIA correction applied: ${fieldKey} = "${value}"`);
+        upsertCollectedField(currentFields, fieldKey, value);
       }
 
       syncNameFields(currentFields);
