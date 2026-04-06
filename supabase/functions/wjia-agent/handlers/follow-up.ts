@@ -341,7 +341,7 @@ REGRAS IMPORTANTES:
     message_text, currentFields, collectedData, catalog,
     agentPersona, shortcutPromptInstructions, splitOpts, skipConfirmation,
     zapsignSettingsReply, zapsignToken, replyWithAudio, replyVoiceId,
-    message_type,
+    message_type, fieldAliases,
   });
 }
 
