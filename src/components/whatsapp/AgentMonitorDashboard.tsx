@@ -79,9 +79,38 @@ export function AgentMonitorDashboard() {
     });
   }, [metrics.newConvDetails, filters.instanceFilter]);
 
+  // Derive closedByAgent from filtered conversations (consistent with pipeline counts)
+  const filteredClosedByAgent = useMemo(() => {
+    const base = conversations.filter(c => {
+      // Apply base filters
+      if (filters.agentFilter !== 'all') {
+        if (filters.agentFilter === '__none__' && c.agent_id) return false;
+        if (filters.agentFilter !== '__none__' && c.agent_id !== filters.agentFilter) return false;
+      }
+      if (filters.instanceFilter !== 'all' && c.instance_name !== filters.instanceFilter) return false;
+      if (filters.boardFilter !== 'all' && c.board_id !== filters.boardFilter) return false;
+      if (filters.campaignFilter !== 'all') {
+        if (filters.campaignFilter === '__none__' && c.campaign_name) return false;
+        if (filters.campaignFilter !== '__none__' && c.campaign_name !== filters.campaignFilter) return false;
+      }
+      if (filters.acolhedorFilter !== 'all') {
+        if (filters.acolhedorFilter === '__none__' && c.lead_acolhedor) return false;
+        if (filters.acolhedorFilter !== '__none__' && c.lead_acolhedor !== filters.acolhedorFilter) return false;
+      }
+      return c.lead_status === 'closed';
+    });
+    const map = new Map<string, number>();
+    for (const c of base) {
+      const name = c.lead_acolhedor || 'Sem acolhedor';
+      map.set(name, (map.get(name) || 0) + 1);
+    }
+    return Array.from(map.entries())
+      .map(([agent, count]) => ({ agent, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [conversations, filters.agentFilter, filters.instanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
+
   // Filter dashboard metrics counts based on active filters
   const filteredMetrics = useMemo(() => {
-    if (filters.instanceFilter === 'all') return metrics;
     const filtered = filteredNewConvDetails;
     const respondedCount = filtered.filter(c => c.was_responded).length;
     const responseTimes = filtered.filter(c => c.response_time_minutes !== null).map(c => c.response_time_minutes!);
@@ -94,8 +123,9 @@ export function AgentMonitorDashboard() {
       respondedCount,
       totalInbound: filtered.length,
       newConvDetails: filtered,
+      closedByAgent: filteredClosedByAgent,
     };
-  }, [metrics, filteredNewConvDetails, filters.instanceFilter]);
+  }, [metrics, filteredNewConvDetails, filteredClosedByAgent]);
 
   const batch = useBatchActions(conversations, fetchData);
 
