@@ -178,6 +178,7 @@ export function AgentMonitorDashboard() {
             onOpenChat={handleOpenChat} onEventClick={handleEventClick}
             dashboardMetrics={metrics}
             onNewConvsClick={() => setNewConvsSheetOpen(true)}
+            onOperationalClick={(type) => setOperationalSheet(type)}
             filterBarProps={filterBarProps}
           />
         </TabsContent>
