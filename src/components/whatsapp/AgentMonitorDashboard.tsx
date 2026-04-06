@@ -138,6 +138,14 @@ export function AgentMonitorDashboard() {
     <div className="min-h-screen p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
       <MonitorHeader dateRange={dateRange} setDateRange={setDateRange} loading={isLoading} onRefresh={fetchData} />
 
+      {isLoading && (
+        <div className="flex items-center gap-3 px-1">
+          <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+          <Progress value={loadingProgress} className="h-2 flex-1" />
+          <span className="text-xs text-muted-foreground font-medium shrink-0">{loadingProgress}%</span>
+        </div>
+      )}
+
       <Tabs defaultValue="monitor" className="space-y-4">
         <TabsList className="grid w-full grid-cols-3 max-w-md">
           <TabsTrigger value="monitor" className="text-xs flex items-center gap-1.5"><LayoutDashboard className="h-3.5 w-3.5" /> Monitor</TabsTrigger>
