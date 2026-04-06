@@ -53,7 +53,7 @@ serve(async (req) => {
     let assignment = null;
     const { data: existingAssignment } = await supabase
       .from("whatsapp_conversation_agents")
-      .select("agent_id, is_active")
+      .select("agent_id, is_active, updated_at")
       .eq("phone", phone)
       .eq("instance_name", instance_name)
       .eq("is_active", true)
