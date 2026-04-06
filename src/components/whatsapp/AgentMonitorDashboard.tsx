@@ -170,6 +170,7 @@ export function AgentMonitorDashboard() {
     };
 
     const filteredSignedDocs = metrics.signedDocsDetails.filter(filterOp);
+    const filteredPendingDocs = metrics.pendingDocsDetails.filter(filterOp);
     const filteredGroups = metrics.groupsDetails.filter(filterOp);
     const filteredCases = metrics.casesDetails.filter(filterOp);
     const filteredProcesses = metrics.processesDetails.filter(filterOp);
@@ -184,10 +185,12 @@ export function AgentMonitorDashboard() {
       newConvDetails: filtered,
       closedByAgent: filteredClosedByAgent,
       signedDocuments: filteredSignedDocs.length,
+      pendingDocuments: filteredPendingDocs.length,
       groupsCreated: filteredGroups.length,
       casesCreated: filteredCases.length,
       processesCreated: filteredProcesses.length,
       signedDocsDetails: filteredSignedDocs,
+      pendingDocsDetails: filteredPendingDocs,
       groupsDetails: filteredGroups,
       casesDetails: filteredCases,
       processesDetails: filteredProcesses,
