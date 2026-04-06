@@ -749,15 +749,49 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
   };
 
+  const triggerAgentReplyFromLastInbound = async (targetPhone: string, targetInstanceName: string) => {
+    const { data: lastInbound, error: lastInboundError } = await supabase
+      .from('whatsapp_messages')
+      .select('message_text, message_type')
+      .eq('phone', targetPhone)
+      .eq('instance_name', targetInstanceName)
+      .eq('direction', 'inbound')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (lastInboundError) throw lastInboundError;
+    if (!lastInbound) return;
+
+    const { error: replyError } = await cloudFunctions.invoke('whatsapp-ai-agent-reply', {
+      body: {
+        phone: targetPhone,
+        instance_name: targetInstanceName,
+        message_text: lastInbound.message_text || '',
+        message_type: lastInbound.message_type || 'text',
+      },
+    });
+
+    if (replyError) throw replyError;
+  };
+
   const handleToggleAgent = async () => {
-    if (!phone || !agentInfo) return;
+    if (!phone || !agentInfo || !instanceName) return;
     const normalizedPhone = phone.replace(/\D/g, '');
     const newActive = !agentInfo.is_active;
     try {
-      await supabase
+      const { error } = await supabase
         .from('whatsapp_conversation_agents')
         .update({ is_active: newActive, human_paused_until: newActive ? null : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() } as any)
+        .eq('instance_name', instanceName)
         .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
+
+      if (error) throw error;
+
+      if (newActive) {
+        await triggerAgentReplyFromLastInbound(normalizedPhone, instanceName);
+      }
+
       setAgentInfo({ ...agentInfo, is_active: newActive });
       onConversationUpdated?.();
       toast.success(newActive ? 'Agente ativado!' : 'Agente desativado!');
