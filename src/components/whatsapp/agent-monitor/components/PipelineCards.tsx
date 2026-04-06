@@ -31,7 +31,7 @@ function formatTime(minutes: number): string {
   return m > 0 ? `${h}h${m}m` : `${h}h`;
 }
 
-export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics, onNewConvsClick }: PipelineCardsProps) {
+export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics, onNewConvsClick, onOperationalClick }: PipelineCardsProps) {
   const newConvs = dashboardMetrics?.newConversations ?? counts.novas ?? 0;
   const responseRate = dashboardMetrics?.responseRate ?? 0;
   const avgTime = dashboardMetrics?.avgResponseTimeMin ?? 0;
