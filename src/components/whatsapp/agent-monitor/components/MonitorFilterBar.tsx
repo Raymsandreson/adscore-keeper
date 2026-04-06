@@ -32,6 +32,7 @@ export function MonitorFilterBar({
         <SelectTrigger className="w-[150px] h-8 text-xs"><SelectValue placeholder="Agente IA" /></SelectTrigger>
         <SelectContent>
           <SelectItem value="all">Todos Agentes</SelectItem>
+          <SelectItem value="__none__">Sem Agente</SelectItem>
           {agents.map(a => <SelectItem key={a.id} value={a.id}>{a.shortcut_name}</SelectItem>)}
         </SelectContent>
       </Select>
