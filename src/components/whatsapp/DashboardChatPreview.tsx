@@ -994,19 +994,59 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                     {creatingGroup ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Users className="h-4 w-4 mr-2" />}
                     Criar Grupo WhatsApp
                   </DropdownMenuItem>
-                  {agentInfo && (
-                    <>
-                      <DropdownMenuSeparator />
-                      {agentInfo && agentInfo.is_active ? (
-                        <DropdownMenuItem onClick={handleToggleAgent}>
-                          <BotOff className="h-4 w-4 mr-2" /> Desativar Agente ({agentInfo.name})
+                  <DropdownMenuSeparator />
+                  {agentInfo && agentInfo.is_active && (
+                    <DropdownMenuItem onClick={handleToggleAgent}>
+                      <BotOff className="h-4 w-4 mr-2" /> Desativar Agente ({agentInfo.name})
+                    </DropdownMenuItem>
+                  )}
+                  {agentInfo && !agentInfo.is_active && (
+                    <DropdownMenuItem onClick={handleToggleAgent}>
+                      <Bot className="h-4 w-4 mr-2" /> Reativar Agente ({agentInfo.name})
+                    </DropdownMenuItem>
+                  )}
+                  {availableAgents.length > 0 && (
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <Bot className="h-4 w-4 mr-2" /> Trocar Agente
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-56">
+                        <DropdownMenuItem onClick={handleSuggestBestAgent} disabled={suggestingAgent} className="gap-2 text-amber-600 dark:text-amber-400">
+                          {suggestingAgent ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                          Sugerir com IA
                         </DropdownMenuItem>
-                      ) : agentInfo && !agentInfo.is_active ? (
-                        <DropdownMenuItem onClick={handleToggleAgent}>
-                          <Bot className="h-4 w-4 mr-2" /> Reativar Agente ({agentInfo.name})
-                        </DropdownMenuItem>
-                      ) : null}
-                    </>
+                        <DropdownMenuSeparator />
+                        {availableAgents.map(agent => (
+                          <DropdownMenuItem
+                            key={agent.id}
+                            onClick={() => handleSelectAgent(agent.id, agent.name)}
+                            className="gap-2"
+                          >
+                            <Bot className="h-3.5 w-3.5" />
+                            <span className="flex-1">{agent.name}</span>
+                            {agentInfo?.agent_id === agent.id && (
+                              <Badge variant="default" className="text-[9px] h-4 px-1">atual</Badge>
+                            )}
+                          </DropdownMenuItem>
+                        ))}
+                        {agentInfo && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={async () => {
+                              if (!phone) return;
+                              const normalizedPhone = phone.replace(/\D/g, '');
+                              await supabase.from('whatsapp_conversation_agents').delete().or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
+                              setAgentInfo(null);
+                              onConversationUpdated?.();
+                              toast.success('Agente removido');
+                            }} className="gap-2 text-destructive">
+                              <BotOff className="h-3.5 w-3.5" />
+                              Remover agente
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
                   )}
                   <DropdownMenuSeparator />
                   {isMuted ? (
