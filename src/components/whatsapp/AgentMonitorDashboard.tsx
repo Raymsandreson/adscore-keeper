@@ -32,8 +32,16 @@ export function AgentMonitorDashboard() {
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [promptDialogLead, setPromptDialogLead] = useState<{ id: string; name: string } | null>(null);
 
-  const { agents, conversations, agentStats, referrals, boards, loading, fetchData: fetchDataRaw } = useMonitorData();
+  const { agents, conversations, agentStats, referrals, boards, loading: monitorLoading, fetchData: fetchDataRaw } = useMonitorData();
   const { metrics, metricsLoading, fetchMetrics } = useDashboardMetrics();
+
+  const isLoading = monitorLoading || metricsLoading;
+  const loadingProgress = useMemo(() => {
+    if (!monitorLoading && !metricsLoading) return 100;
+    if (!monitorLoading && metricsLoading) return 60;
+    if (monitorLoading && !metricsLoading) return 70;
+    return 30;
+  }, [monitorLoading, metricsLoading]);
 
   const fetchData = useCallback(() => {
     fetchDataRaw(dateRange);
