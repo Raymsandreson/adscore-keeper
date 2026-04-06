@@ -27,6 +27,7 @@ export {
   shouldProtectName,
   filterFieldsAgainstTemplate,
   buildCrmContext,
+  toTitleCase,
 } from "./field-utils.ts";
 
 // Auto-fill utilities

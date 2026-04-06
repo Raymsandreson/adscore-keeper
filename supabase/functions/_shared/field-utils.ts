@@ -97,6 +97,20 @@ export function resolveTemplateVariable(
 }
 
 // ============================================================
+// TITLE CASE UTILITY
+// ============================================================
+
+const PREPOSITIONS = new Set(["de", "da", "do", "das", "dos", "e", "em", "na", "no", "nas", "nos"]);
+
+export function toTitleCase(str: string): string {
+  return str.trim().split(/\s+/).map((word, i) => {
+    const lower = word.toLowerCase();
+    if (i > 0 && PREPOSITIONS.has(lower)) return lower;
+    return lower.charAt(0).toUpperCase() + lower.slice(1);
+  }).join(" ");
+}
+
+// ============================================================
 // FIELD CRUD
 // ============================================================
 
@@ -106,13 +120,18 @@ export function upsertCollectedField(
   value: string,
 ) {
   const normVar = normalizeFieldKey(variable);
+  // Auto Title Case for name fields
+  let finalValue = value;
+  if (normVar.includes("NOME") || normVar.includes("OUTORGANTE") || normVar.includes("SIGNATARIO")) {
+    finalValue = toTitleCase(value);
+  }
   const idx = fields.findIndex((f: any) =>
     normalizeFieldKey(f.de || "") === normVar
   );
   if (idx >= 0) {
-    fields[idx].para = value;
+    fields[idx].para = finalValue;
   } else {
-    fields.push({ de: variable, para: value });
+    fields.push({ de: variable, para: finalValue });
   }
 }
 
