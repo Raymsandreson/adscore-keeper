@@ -375,6 +375,7 @@ serve(async (req) => {
         agent.template_token = (matchingShortcut as any).template_token;
         agent.template_name = (matchingShortcut as any).template_name;
         agent.shortcut_name = (matchingShortcut as any).shortcut_name;
+        agent.history_limit = (matchingShortcut as any).history_limit;
         console.log(`Enriched agent "${agent.name}" with shortcut template_token: ${agent.template_token}`);
       }
     } else {
