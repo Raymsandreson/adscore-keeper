@@ -674,7 +674,7 @@ REGRAS IMPORTANTES:
         .eq("phone", phone)
         .eq("instance_name", instance_name)
         .order("created_at", { ascending: false })
-        .limit(is_followup ? 40 : 20);
+        .limit(agent?.history_limit || (is_followup ? 40 : 20));
 
       // Process messages handling different types (audio, image, document, etc.)
       const contextMessages: any[] = [];
