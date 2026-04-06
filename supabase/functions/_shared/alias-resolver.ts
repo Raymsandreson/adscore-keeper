@@ -161,6 +161,71 @@ export function validateFieldValue(
 }
 
 // ============================================================
+// CBO PROFESSION NORMALIZATION
+// ============================================================
+
+/**
+ * Match a free-text profession to the closest CBO entry.
+ * Uses normalized substring matching for robustness.
+ */
+export async function normalizeProfessionToCBO(
+  supabase: any,
+  rawProfession: string,
+): Promise<{ title: string; cbo_code: string } | null> {
+  if (!rawProfession || rawProfession.trim().length < 2) return null;
+
+  const normalized = rawProfession.trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  // Load all CBO professions (200 rows — small enough to load in memory)
+  const { data: professions, error } = await supabase
+    .from("cbo_professions")
+    .select("cbo_code, title, family_title");
+
+  if (error || !professions?.length) return null;
+
+  // Score each profession
+  let bestMatch: { title: string; cbo_code: string; score: number } | null = null;
+
+  for (const p of professions) {
+    const titleNorm = (p.title || "").toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const familyNorm = (p.family_title || "").toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    let score = 0;
+
+    // Exact match
+    if (titleNorm === normalized) { score = 100; }
+    // Title contains input
+    else if (titleNorm.includes(normalized)) { score = 80; }
+    // Input contains title
+    else if (normalized.includes(titleNorm)) { score = 70; }
+    // Family match
+    else if (familyNorm.includes(normalized) || normalized.includes(familyNorm)) { score = 50; }
+    // Word overlap
+    else {
+      const inputWords = normalized.split(/\s+/);
+      const titleWords = titleNorm.split(/\s+/);
+      const overlap = inputWords.filter(w => titleWords.some(tw => tw.includes(w) || w.includes(tw))).length;
+      if (overlap > 0) score = overlap * 20;
+    }
+
+    if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+      bestMatch = { title: p.title, cbo_code: p.cbo_code, score };
+    }
+  }
+
+  if (bestMatch && bestMatch.score >= 50) {
+    console.log(`CBO match: "${rawProfession}" → "${bestMatch.title}" (${bestMatch.cbo_code}) score=${bestMatch.score}`);
+    return { title: bestMatch.title, cbo_code: bestMatch.cbo_code };
+  }
+
+  console.log(`CBO no match: "${rawProfession}" (best score: ${bestMatch?.score || 0})`);
+  return null;
+}
+
+// ============================================================
 // RESOLVE INCOMING FIELD (deterministic replacement for normalizeIncomingField)
 // ============================================================
 

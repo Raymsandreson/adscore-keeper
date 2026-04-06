@@ -73,4 +73,5 @@ export {
   validateFieldValue,
   resolveIncomingFieldWithAliases,
   autoSeedAliasesFromCatalog,
+  normalizeProfessionToCBO,
 } from "./alias-resolver.ts";
