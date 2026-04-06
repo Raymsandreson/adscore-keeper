@@ -11,6 +11,7 @@ import {
   applyZapSignSettings,
   autoFillDates,
   autoSyncCityState,
+  autoSeedAliasesFromCatalog,
   buildCrmContext,
   buildTemplateFieldCatalog,
   computeMissingFields,
@@ -429,6 +430,8 @@ async function handleCollectionSession(opts: {
   // Auto-extraction from history (text + media + CRM)
   {
     const catalog = buildTemplateFieldCatalog({ required_fields: templateFields, missing_fields: missingFields });
+    // Auto-seed aliases for any new template fields
+    await autoSeedAliasesFromCatalog(supabase, catalog, agentId);
     let customPrompt: string | null = matchedShortcut?.media_extraction_prompt || null;
 
     // Build CRM data string
