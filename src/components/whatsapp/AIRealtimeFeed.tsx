@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Bot, MessageCircle, UserPlus, Zap, Phone, FileText, Activity, ClipboardList } from 'lucide-react';
+import { Bot, MessageCircle, UserPlus, Zap, Phone, PhoneCall, FileText, Activity, ClipboardList } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-export type FeedEventType = 'message_sent' | 'message_received' | 'lead_created' | 'followup_sent' | 'agent_activated' | 'agent_paused' | 'session_generated' | 'call_queued' | 'activity_created';
+export type FeedEventType = 'message_sent' | 'message_received' | 'lead_created' | 'followup_sent' | 'agent_activated' | 'agent_paused' | 'session_generated' | 'call_queued' | 'call_made' | 'activity_created';
 
 export interface FeedEvent {
   id: string;
@@ -30,6 +30,7 @@ function eventIcon(type: FeedEvent['type']) {
     case 'agent_paused': return <Phone className="h-3.5 w-3.5 text-orange-500" />;
     case 'session_generated': return <FileText className="h-3.5 w-3.5 text-purple-500" />;
     case 'call_queued': return <Phone className="h-3.5 w-3.5 text-blue-400" />;
+    case 'call_made': return <PhoneCall className="h-3.5 w-3.5 text-green-600" />;
     case 'activity_created': return <ClipboardList className="h-3.5 w-3.5 text-teal-500" />;
     default: return <Activity className="h-3.5 w-3.5 text-muted-foreground" />;
   }
@@ -45,6 +46,7 @@ function eventColor(type: FeedEvent['type']) {
     case 'agent_paused': return 'border-l-orange-500';
     case 'session_generated': return 'border-l-purple-500';
     case 'call_queued': return 'border-l-blue-400';
+    case 'call_made': return 'border-l-green-600';
     case 'activity_created': return 'border-l-teal-500';
     default: return 'border-l-muted';
   }
@@ -58,7 +60,8 @@ const EVENT_TYPE_LABELS: Record<FeedEventType, string> = {
   agent_activated: 'Ativações',
   agent_paused: 'Pausas',
   session_generated: 'Sessões',
-  call_queued: 'Ligações',
+  call_queued: 'Ligações IA',
+  call_made: 'Ligações CallFace',
   activity_created: 'Atividades',
 };
 
