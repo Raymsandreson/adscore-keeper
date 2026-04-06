@@ -1551,6 +1551,24 @@ Deno.serve(async (req) => {
             }, { onConflict: 'phone,instance_name' })
             console.log('Agent activated via #shortcut:', shortcutName, 'agent_id:', shortcut.id)
 
+            // Execute agent automation rules (on_activation trigger)
+            const cloudFnUrlAuto = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
+            const cloudAnonKeyAuto = Deno.env.get('SUPABASE_ANON_KEY') || ''
+            fetch(`${cloudFnUrlAuto}/functions/v1/execute-agent-automations`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${cloudAnonKeyAuto}`,
+              },
+              body: JSON.stringify({
+                agent_id: shortcut.id,
+                trigger_type: 'on_activation',
+                phone,
+                instance_name: instanceName,
+                contact_name: contactName || '',
+              }),
+            }).catch(err => console.error('#shortcut automation trigger error:', err))
+
             // Delete the #command message from WhatsApp so client doesn't see it
             if (externalMessageId) {
               let resolvedToken = instanceToken
