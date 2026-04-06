@@ -117,13 +117,11 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
             <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('signed_docs')}>
               <CardContent className="p-3 text-center">
                 <FileSignature className="h-4 w-4 mx-auto mb-1 text-violet-500" />
-                <div className="flex items-center justify-center gap-1">
-                  <span className="text-xl font-bold text-green-600">{dashboardMetrics.signedDocuments}</span>
-                  {dashboardMetrics.pendingDocuments > 0 && (
-                    <span className="text-sm text-amber-500">/ {dashboardMetrics.pendingDocuments}</span>
-                  )}
-                </div>
-                <p className="text-[10px] text-muted-foreground">Assinados{dashboardMetrics.pendingDocuments > 0 ? ' / Pendentes' : ''}</p>
+                <p className="text-xl font-bold">{dashboardMetrics.signedDocuments}</p>
+                <p className="text-[10px] text-muted-foreground">Docs Assinados</p>
+                {dashboardMetrics.pendingDocuments > 0 && (
+                  <p className="text-[9px] text-amber-500 font-medium mt-0.5">{dashboardMetrics.pendingDocuments} pendente{dashboardMetrics.pendingDocuments > 1 ? 's' : ''}</p>
+                )}
               </CardContent>
             </Card>
           </MemberBreakdownPopover>
