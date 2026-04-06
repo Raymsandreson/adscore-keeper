@@ -33,6 +33,7 @@ export function useDashboardMetrics() {
     newConversations: 0, responseRate: 0, avgResponseTimeMin: 0,
     respondedCount: 0, totalInbound: 0,
     closedByAgent: [], closedByCampaign: [], newConvDetails: [],
+    signedDocuments: 0, groupsCreated: 0, casesCreated: 0, processesCreated: 0,
   });
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsProgress, setMetricsProgress] = useState(0);
