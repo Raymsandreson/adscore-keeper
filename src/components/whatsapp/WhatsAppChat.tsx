@@ -173,6 +173,37 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       }
     };
     fetchAgentState();
+
+    // Subscribe to realtime changes on conversation_agents for this phone
+    const agentChannel = supabase
+      .channel(`agent-pause-${conversation.phone}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'whatsapp_conversation_agents',
+          filter: `phone=eq.${conversation.phone}`,
+        },
+        (payload: any) => {
+          const row = payload.new;
+          if (row.instance_name === conversation.instance_name) {
+            setAgentEnabled(row.is_active);
+            setHumanPausedUntil(row.human_paused_until || null);
+            if (row.agent_id !== activeAgentId) {
+              setActiveAgentId(row.agent_id);
+              // Re-fetch agent name
+              supabase.from('whatsapp_ai_agents').select('name').eq('id', row.agent_id).single()
+                .then(({ data }) => { if (data) setActiveAgentName((data as any).name); });
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(agentChannel);
+    };
   }, [conversation.phone, conversation.instance_name]);
 
   const handleAgentToggle = async () => {
