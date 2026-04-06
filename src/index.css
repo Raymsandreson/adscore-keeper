@@ -209,10 +209,45 @@ All colors MUST be HSL.
   }
 }
 
-/* Hide CallFace extension phone detection on non-phone elements */
+/* CallFace extension: make injected elements discrete and non-blocking */
+[class*="callface"]:not(.callface-dial),
+[id*="callface"],
+div[style*="callface"],
+img[src*="callface"] {
+  max-height: 18px !important;
+  max-width: 18px !important;
+  font-size: 10px !important;
+  line-height: 1 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  opacity: 0.6 !important;
+  position: relative !important;
+  z-index: 1 !important;
+  pointer-events: auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  vertical-align: middle !important;
+  overflow: hidden !important;
+}
+
+/* Hide CallFace on elements explicitly marked to ignore */
 .callface-ignore [class*="callface"],
 .callface-ignore [id*="callface"],
-.callface-ignore a[href^="tel:"] {
+[data-callface-ignore="true"] ~ [class*="callface"],
+[data-callface-ignore="true"] ~ [id*="callface"] {
   display: none !important;
   pointer-events: none !important;
+}
+
+/* Prevent CallFace floating overlays from blocking UI */
+div[class*="callface"][style*="position: fixed"],
+div[class*="callface"][style*="position: absolute"],
+div[id*="callface"][style*="position: fixed"],
+div[id*="callface"][style*="position: absolute"] {
+  max-width: 24px !important;
+  max-height: 24px !important;
+  opacity: 0.5 !important;
+  z-index: 1 !important;
+  overflow: hidden !important;
+  border-radius: 50% !important;
 }
