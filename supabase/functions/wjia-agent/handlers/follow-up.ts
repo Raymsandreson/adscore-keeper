@@ -687,14 +687,27 @@ REGRAS (respeite a persona/identidade acima ao aplicar estas regras):
   }
 
   for (const field of (result.newly_extracted || [])) {
-    const normalized = normalizeIncomingField(field, catalog);
-    if (!normalized) {
-      console.log(`WJIA field rejected by normalizeIncomingField:`, JSON.stringify(field));
+    // Use DETERMINISTIC alias resolver as primary resolution
+    const resolved = resolveIncomingFieldWithAliases(field, fieldAliases, catalog);
+    if (!resolved) {
+      // Fallback to legacy normalizeIncomingField
+      const normalized = normalizeIncomingField(field, catalog);
+      if (!normalized) {
+        console.log(`WJIA field rejected (no alias or catalog match):`, JSON.stringify(field));
+        continue;
+      }
+      if (shouldProtectName(currentFields, normalized)) continue;
+      console.log(`WJIA field upserted (catalog fallback): ${normalized.variable} = "${normalized.value}"`);
+      upsertCollectedField(currentFields, normalized.variable, normalized.value);
       continue;
     }
-    if (shouldProtectName(currentFields, normalized)) continue;
-    console.log(`WJIA field upserted: ${normalized.variable} = "${normalized.value}"`);
-    upsertCollectedField(currentFields, normalized.variable, normalized.value);
+    if (resolved.validation_error) {
+      console.log(`WJIA field validation warning: ${resolved.variable} — ${resolved.validation_error}`);
+    }
+    if (shouldProtectName(currentFields, { variable: resolved.variable, value: resolved.value })) continue;
+    console.log(`WJIA field upserted (alias resolved): ${resolved.variable} = "${resolved.value}"`);
+    upsertCollectedField(currentFields, resolved.variable, resolved.value);
+  }
   }
 
   syncNameFields(currentFields);
