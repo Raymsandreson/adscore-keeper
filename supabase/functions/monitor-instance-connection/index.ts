@@ -235,41 +235,51 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Phase 2: Consolidate notifications per user (ONE call + ONE message per user) ──
+    // ── Phase 2: Notify owner_phone of each instance + system users ──
     if (senderInstance) {
-      // Collect all instances that need alerting
       const instancesToAlert = [...justDisconnected, ...stillDisconnectedNeedCall];
 
       if (instancesToAlert.length > 0) {
-        // Find unique users across all instances that need alerting
-        const userAlerted = new Set<string>();
-        const allInstanceIds = new Set(instancesToAlert.map(s => s.id));
+        const phonesAlerted = new Set<string>();
 
         for (const inst of instancesToAlert) {
+          const isNewDisconnect = justDisconnected.some(d => d.id === inst.id);
+
+          // 1. Notify the instance's owner_phone FIRST (the person who owns the WhatsApp)
+          if (inst.owner_phone) {
+            const cleanOwner = inst.owner_phone.replace(/\D/g, '');
+            if (cleanOwner.length >= 10 && !phonesAlerted.has(cleanOwner)) {
+              phonesAlerted.add(cleanOwner);
+              const msg = isNewDisconnect
+                ? `🔴 *ALERTA: Instância Desconectada*\n\nA instância *${inst.instance_name}* acabou de desconectar.\n\nPor favor, reconecte o quanto antes para não perder mensagens.\n📱 _Você receberá uma ligação a cada 10 minutos enquanto estiver desconectado._`
+                : `⚠️ *Lembrete: Instância ainda desconectada*\n\nA instância *${inst.instance_name}* continua desconectada.\n\nPor favor, reconecte o quanto antes.`;
+              await sendWhatsAppMessage(cleanOwner, msg, senderInstance.id);
+              await makeCall(cleanOwner, senderInstance.id);
+              console.log(`Notified owner_phone ${cleanOwner} for ${inst.instance_name}`);
+            }
+          }
+
+          // 2. Notify system users who have access to this instance
           const usersWithAccess = (instanceUsers || [])
             .filter((iu: any) => iu.instance_id === inst.id)
             .map((iu: any) => iu.user_id as string);
 
           for (const userId of usersWithAccess) {
-            if (userAlerted.has(userId)) continue;
-            userAlerted.add(userId);
-
             const profile = (profiles || []).find((p: any) => p.user_id === userId);
             if (!profile?.phone) continue;
+            const cleanPhone = profile.phone.replace(/\D/g, '');
+            if (phonesAlerted.has(cleanPhone)) continue;
+            phonesAlerted.add(cleanPhone);
 
-            // Get ALL disconnected instances this user has access to
             const userInstanceIds = (instanceUsers || [])
               .filter((iu: any) => iu.user_id === userId)
               .map((iu: any) => iu.instance_id);
             const userDisconnected = statuses.filter(s =>
               !s.connected && s.notify_on_disconnect && userInstanceIds.includes(s.id)
             );
-
             if (userDisconnected.length === 0) continue;
 
             const instanceList = userDisconnected.map(s => `  • ${s.instance_name}`).join('\n');
-            const isNewDisconnect = justDisconnected.length > 0;
-
             const msg = isNewDisconnect
               ? `🔴 *ALERTA: Instância${userDisconnected.length > 1 ? 's' : ''} Desconectada${userDisconnected.length > 1 ? 's' : ''}*\n\n` +
                 `Olá ${profile.full_name || ''}!\n\n` +
@@ -285,26 +295,39 @@ Deno.serve(async (req) => {
                   : `As seguintes instâncias continuam desconectadas:\n${instanceList}\n\n`) +
                 `Por favor, reconecte o quanto antes.`;
 
-            await sendWhatsAppMessage(profile.phone, msg, senderInstance.id);
-            await makeCall(profile.phone, senderInstance.id);
+            await sendWhatsAppMessage(cleanPhone, msg, senderInstance.id);
+            await makeCall(cleanPhone, senderInstance.id);
           }
         }
       }
 
-      // Send reconnection messages (consolidated per user too)
+      // Send reconnection messages
       if (justReconnected.length > 0) {
-        const userNotified = new Set<string>();
+        const phonesNotified = new Set<string>();
+
         for (const { status, duration } of justReconnected) {
+          // 1. Notify owner_phone
+          if (status.owner_phone) {
+            const cleanOwner = status.owner_phone.replace(/\D/g, '');
+            if (cleanOwner.length >= 10 && !phonesNotified.has(cleanOwner)) {
+              phonesNotified.add(cleanOwner);
+              const msg = `🟢 *Instância Reconectada!*\n\nA instância *${status.instance_name}* foi reconectada com sucesso! ✅\n${duration > 0 ? `⏱️ Ficou desconectada por ${duration} minuto${duration !== 1 ? 's' : ''}.\n` : ''}\nTudo voltou ao normal. 👍`;
+              await sendWhatsAppMessage(cleanOwner, msg, senderInstance.id);
+              console.log(`Notified reconnection to owner_phone ${cleanOwner} for ${status.instance_name}`);
+            }
+          }
+
+          // 2. Notify system users
           const usersWithAccess = (instanceUsers || [])
             .filter((iu: any) => iu.instance_id === status.id)
             .map((iu: any) => iu.user_id as string);
 
           for (const userId of usersWithAccess) {
-            if (userNotified.has(userId)) continue;
-            userNotified.add(userId);
-
             const profile = (profiles || []).find((p: any) => p.user_id === userId);
             if (!profile?.phone) continue;
+            const cleanPhone = profile.phone.replace(/\D/g, '');
+            if (phonesNotified.has(cleanPhone)) continue;
+            phonesNotified.add(cleanPhone);
 
             const reconnectedNames = justReconnected
               .filter(r => (instanceUsers || []).some((iu: any) => iu.instance_id === r.status.id && iu.user_id === userId))
@@ -314,7 +337,7 @@ Deno.serve(async (req) => {
               ? `🟢 *Instância Reconectada!*\n\nOlá ${profile.full_name || ''}!\n\nA instância *${reconnectedNames[0]}* foi reconectada com sucesso! ✅\n${duration > 0 ? `⏱️ Ficou desconectada por ${duration} minuto${duration !== 1 ? 's' : ''}.\n` : ''}\nTudo voltou ao normal. 👍`
               : `🟢 *Instâncias Reconectadas!*\n\nOlá ${profile.full_name || ''}!\n\nAs seguintes instâncias foram reconectadas:\n${reconnectedNames.map(n => `  ✅ ${n}`).join('\n')}\n\nTudo voltou ao normal. 👍`;
 
-            await sendWhatsAppMessage(profile.phone, msg, senderInstance.id);
+            await sendWhatsAppMessage(cleanPhone, msg, senderInstance.id);
           }
         }
       }
