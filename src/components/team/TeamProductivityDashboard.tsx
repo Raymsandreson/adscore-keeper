@@ -43,6 +43,7 @@ import {
   ListChecks,
   Settings2,
   UsersRound,
+  Activity,
 } from 'lucide-react';
 import { useTeamProductivity } from '@/hooks/useTeamProductivity';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -923,6 +924,11 @@ export function TeamProductivityDashboard() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Realtime Tab */}
+        <TabsContent value="realtime">
+          <RealTimeActivityFeed />
         </TabsContent>
       </Tabs>
 
