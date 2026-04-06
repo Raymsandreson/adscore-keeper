@@ -274,5 +274,21 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
         )}
       </SheetContent>
     </Sheet>
+
+    {editingLead && (
+      <LeadEditDialog
+        open={showLeadEdit}
+        onOpenChange={(open) => {
+          setShowLeadEdit(open);
+          if (!open) setEditingLead(null);
+        }}
+        lead={editingLead}
+        onLeadUpdated={() => {
+          setShowLeadEdit(false);
+          setEditingLead(null);
+        }}
+      />
+    )}
+    </>
   );
 }
