@@ -57,7 +57,7 @@ export function ContactInteractionHistory({ instagramUsername }: ContactInteract
   const [showAddComment, setShowAddComment] = useState(false);
   const [showAddDm, setShowAddDm] = useState(false);
   const [newCommentText, setNewCommentText] = useState('');
-  const [newCommentType, setNewCommentType] = useState('received');
+  const [newCommentType, setNewCommentType] = useState('sent');
   const [newCommentPostUrl, setNewCommentPostUrl] = useState('');
   const [newDmMessage, setNewDmMessage] = useState('');
   const [saving, setSaving] = useState(false);

@@ -65,10 +65,10 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
 
     try {
       const [
-        contactsRes, dmsRes, repliesRes, stageHistoryRes,
+        contactsRes, dmsRes, commentsRes, stageHistoryRes,
         leadsRes, sessionsRes, activitiesRes, catContactsRes,
         completedActivitiesRes, overdueActivitiesRes, goalsRes, defaultGoalsRes,
-        outboundCommentsRes, sentCommentsRes, userDefaultGoalsRes, callRecordsRes,
+        userDefaultGoalsRes, callRecordsRes,
       ] = await Promise.all([
         supabase.from('contacts').select('id').eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
