@@ -124,7 +124,14 @@ export function useMonitorData() {
           agent_id: ca.agent_id,
           is_active: ca.is_active,
           is_blocked: ca.is_blocked ?? false,
-          contact_name: msgs[0]?.contact_name || null,
+          contact_name: (() => {
+            const raw = msgs[0]?.contact_name || null;
+            if (!raw) return null;
+            // Filter out phone-number-like names and "WhatsApp XXXXX" patterns
+            if (/^WhatsApp\s+\d/i.test(raw)) return null;
+            if (/^\+?\d[\d\s\-()]{6,}$/.test(raw.trim())) return null;
+            return raw;
+          })(),
           lead_name: lead?.lead_name || null,
           lead_id: lead?.id || null,
           lead_status: lead?.lead_status || null,
