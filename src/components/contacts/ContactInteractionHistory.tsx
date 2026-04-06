@@ -110,13 +110,16 @@ export function ContactInteractionHistory({ instagramUsername }: ContactInteract
     if (!newCommentText.trim() || !instagramUsername) return;
     setSaving(true);
     try {
-      const normalizedUsername = instagramUsername.replace('@', '').toLowerCase();
+      const nowIso = new Date().toISOString();
+      const isSentComment = newCommentType === 'sent';
       const { error } = await supabase.from('instagram_comments').insert({
         author_username: normalizedUsername,
         comment_text: newCommentText.trim(),
         comment_type: newCommentType,
         post_url: newCommentPostUrl.trim() || null,
-        created_at: new Date().toISOString(),
+        created_at: nowIso,
+        replied_by: isSentComment ? user?.id ?? null : null,
+        replied_at: isSentComment ? nowIso : null,
       } as any);
       if (error) throw error;
       toast.success('Comentário registrado!');

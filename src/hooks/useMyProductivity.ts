@@ -74,8 +74,10 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
           .gte('created_at', startDate).lte('created_at', endDate),
         supabase.from('dm_history').select('id, action_type').eq('user_id', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
-        supabase.from('instagram_comments').select('id').eq('replied_by', userId)
-          .gte('replied_at', startDate).lte('replied_at', endDate),
+        supabase.from('instagram_comments')
+          .select('id, comment_type, replied_by, replied_at, created_at')
+          .or(`replied_by.eq.${userId},and(comment_type.eq.sent,created_at.gte.${startDate},created_at.lte.${endDate})`)
+          .order('created_at', { ascending: false }),
         supabase.from('lead_stage_history').select('id, lead_id, to_stage')
           .eq('changed_by', userId)
           .gte('changed_at', startDate).lte('changed_at', endDate),
@@ -99,22 +101,14 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
         supabase.from('workflow_daily_goals').select('*').eq('user_id', userId)
           .eq('goal_date', format(now, 'yyyy-MM-dd')).maybeSingle(),
         supabase.from('workflow_default_goals').select('*').limit(1).maybeSingle(),
-        supabase.from('instagram_comments').select('id')
-          .eq('comment_type', 'outbound_manual')
-          .eq('replied_by', userId)
-          .gte('created_at', startDate).lte('created_at', endDate),
-        supabase.from('instagram_comments').select('id')
-          .eq('comment_type', 'sent')
-          .gte('created_at', startDate).lte('created_at', endDate),
         supabase.from('user_daily_goal_defaults').select('*').eq('user_id', userId).maybeSingle(),
-        // Call records from call_records table
         supabase.from('call_records').select('id, call_result').eq('user_id', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
       ]);
 
       const contacts = contactsRes.data || [];
       const dms = dmsRes.data || [];
-      const replies = repliesRes.data || [];
+      const comments = commentsRes.data || [];
       const stageHistory = stageHistoryRes.data || [];
       const leads = leadsRes.data || [];
       const sessions = sessionsRes.data || [];
@@ -122,13 +116,12 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
       const catContacts = catContactsRes.data || [];
       const completedActivities = completedActivitiesRes.data || [];
       const overdueActivities = overdueActivitiesRes.data || [];
-      const outboundComments = outboundCommentsRes.data || [];
-      const sentComments = sentCommentsRes.data || [];
       const userDefaults = userDefaultGoalsRes.data as any;
       const userTargetDays: number[] = userDefaults?.target_days ?? [1, 2, 3, 4, 5];
 
-      // Count all outbound DM actions (copied, copied_and_opened, sent) — any DM registered by the user counts
       const dmsSent = dms.filter(d => d.action_type !== 'received').length;
+      const uniqueCommentIds = new Set(comments.map(comment => comment.id));
+      const totalCommentReplies = uniqueCommentIds.size;
       const catCalls = catContacts.filter(c => c.contact_channel === 'phone' || c.contact_channel === 'ligacao').length;
       const callRecords = callRecordsRes.data || [];
       const callsMade = catCalls + callRecords.length;
@@ -188,11 +181,11 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
         const toStage = ((s as any).to_stage || '').toLowerCase();
         return ['closed', 'fechado', 'fechados', 'done'].some(p => toStage === p || toStage.startsWith(p + '_'));
       }).length;
-      // Total comment replies = replied on own posts + outbound_manual + sent (outbound on third-party posts)
-      const totalCommentReplies = replies.length + outboundComments.length + sentComments.length;
+      // Count comments the user explicitly respondeu/enviou, including manual history entries marked as sent
+      const totalCommentRepliesCount = totalCommentReplies;
 
       const prod: MyProductivity = {
-        commentReplies: totalCommentReplies,
+        commentReplies: totalCommentRepliesCount,
         dmsSent,
         contactsCreated: contacts.length,
         leadsCreated: leads.length,
@@ -206,7 +199,7 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
         activitiesCompleted: completedActivities.length,
         activitiesOverdue: overdueActivities.length,
         sessionMinutes,
-        totalActions: Math.max(0, contacts.length + dmsSent + totalCommentReplies + leads.length +
+        totalActions: Math.max(0, contacts.length + dmsSent + totalCommentRepliesCount + leads.length +
           callsMade + checklistItemsChecked + completedActivities.length),
         metaLeadsGenerated: 0,
         metaROAS: 0,
