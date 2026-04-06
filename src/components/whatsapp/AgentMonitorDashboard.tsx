@@ -16,6 +16,7 @@ import { convKey } from './agent-monitor/utils';
 import { MonitorHeader } from './agent-monitor/components/MonitorHeader';
 import { UnifiedMonitorTab } from './agent-monitor/components/UnifiedMonitorTab';
 import { CaseListSheet } from './agent-monitor/components/CaseListSheet';
+import { OperationalDetailSheet, type OperationalMetricType } from './agent-monitor/components/OperationalDetailSheet';
 import { NewConversationsSheet } from './agent-monitor/components/NewConversationsSheet';
 import { ReferralsTab } from './agent-monitor/components/ReferralsTab';
 import { AIActivitiesPanel } from './AIActivitiesPanel';
@@ -31,6 +32,7 @@ export function AgentMonitorDashboard() {
   const [generatingLeadId, setGeneratingLeadId] = useState<string | null>(null);
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [promptDialogLead, setPromptDialogLead] = useState<{ id: string; name: string } | null>(null);
+  const [operationalSheet, setOperationalSheet] = useState<OperationalMetricType | null>(null);
 
   const { agents, conversations, agentStats, referrals, boards, loading: monitorLoading, fetchData: fetchDataRaw } = useMonitorData();
   const { metrics, metricsLoading, fetchMetrics } = useDashboardMetrics();
@@ -176,6 +178,7 @@ export function AgentMonitorDashboard() {
             onOpenChat={handleOpenChat} onEventClick={handleEventClick}
             dashboardMetrics={metrics}
             onNewConvsClick={() => setNewConvsSheetOpen(true)}
+            onOperationalClick={(type) => setOperationalSheet(type)}
             filterBarProps={filterBarProps}
           />
         </TabsContent>
@@ -188,6 +191,13 @@ export function AgentMonitorDashboard() {
         statusFilter={sheetStatusFilter} conversations={conversations}
         applyBaseFilters={applyBaseFilters} onClose={() => setSheetStatusFilter(null)}
         onOpenChat={handleOpenChat} generatingLeadId={generatingLeadId} onGenerateActivity={handleGenerateActivity}
+      />
+
+      <OperationalDetailSheet
+        open={!!operationalSheet}
+        onClose={() => setOperationalSheet(null)}
+        metricType={operationalSheet || 'signed_docs'}
+        dateRange={dateRange}
       />
 
       <NewConversationsSheet

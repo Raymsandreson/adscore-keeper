@@ -4,12 +4,15 @@ import type { CaseStatus } from '../types';
 import { statusLabel } from '../utils';
 import type { DashboardMetrics } from '../hooks/useDashboardMetrics';
 
+import type { OperationalMetricType } from './OperationalDetailSheet';
+
 interface PipelineCardsProps {
   counts: Record<CaseStatus, number> & { novas?: number };
   activeStatus: CaseStatus | null;
   onToggle: (status: CaseStatus) => void;
   dashboardMetrics?: DashboardMetrics;
   onNewConvsClick?: () => void;
+  onOperationalClick?: (type: OperationalMetricType) => void;
 }
 
 const statusConfig: { key: CaseStatus; icon: typeof AlertCircle; color: string }[] = [
@@ -28,7 +31,7 @@ function formatTime(minutes: number): string {
   return m > 0 ? `${h}h${m}m` : `${h}h`;
 }
 
-export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics, onNewConvsClick }: PipelineCardsProps) {
+export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics, onNewConvsClick, onOperationalClick }: PipelineCardsProps) {
   const newConvs = dashboardMetrics?.newConversations ?? counts.novas ?? 0;
   const responseRate = dashboardMetrics?.responseRate ?? 0;
   const avgTime = dashboardMetrics?.avgResponseTimeMin ?? 0;
@@ -86,28 +89,28 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
       {/* Operational metrics row */}
       {dashboardMetrics && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <Card>
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('signed_docs')}>
             <CardContent className="p-3 text-center">
               <FileSignature className="h-4 w-4 mx-auto mb-1 text-violet-500" />
               <p className="text-xl font-bold">{dashboardMetrics.signedDocuments}</p>
               <p className="text-[10px] text-muted-foreground">Docs Assinados</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('groups')}>
             <CardContent className="p-3 text-center">
               <Users className="h-4 w-4 mx-auto mb-1 text-cyan-500" />
               <p className="text-xl font-bold">{dashboardMetrics.groupsCreated}</p>
               <p className="text-[10px] text-muted-foreground">Grupos Criados</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('cases')}>
             <CardContent className="p-3 text-center">
               <Briefcase className="h-4 w-4 mx-auto mb-1 text-amber-600" />
               <p className="text-xl font-bold">{dashboardMetrics.casesCreated}</p>
               <p className="text-[10px] text-muted-foreground">Casos Criados</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('processes')}>
             <CardContent className="p-3 text-center">
               <Scale className="h-4 w-4 mx-auto mb-1 text-indigo-500" />
               <p className="text-xl font-bold">{dashboardMetrics.processesCreated}</p>
