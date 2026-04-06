@@ -1071,6 +1071,9 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
                   )}
+                  <DropdownMenuItem onClick={handleAnticipateFollowup}>
+                    <FastForward className="h-4 w-4 mr-2" /> Antecipar Follow-up
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {isMuted ? (
                     <DropdownMenuItem onClick={() => handleToggleMute(null)} disabled={muteLoading}>
