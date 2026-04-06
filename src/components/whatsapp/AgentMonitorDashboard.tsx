@@ -9,12 +9,14 @@ import { subDays } from 'date-fns';
 import { useMonitorData } from './agent-monitor/hooks/useMonitorData';
 import { useMonitorFilters } from './agent-monitor/hooks/useMonitorFilters';
 import { useBatchActions } from './agent-monitor/hooks/useBatchActions';
+import { useDashboardMetrics } from './agent-monitor/hooks/useDashboardMetrics';
 import type { ConversationDetail, CaseStatus } from './agent-monitor/types';
 import { convKey } from './agent-monitor/utils';
 
 import { MonitorHeader } from './agent-monitor/components/MonitorHeader';
 import { UnifiedMonitorTab } from './agent-monitor/components/UnifiedMonitorTab';
 import { CaseListSheet } from './agent-monitor/components/CaseListSheet';
+import { NewConversationsSheet } from './agent-monitor/components/NewConversationsSheet';
 import { ReferralsTab } from './agent-monitor/components/ReferralsTab';
 import { AIActivitiesPanel } from './AIActivitiesPanel';
 import { AIActivityPromptDialog } from './AIActivityPromptDialog';
@@ -24,14 +26,20 @@ export function AgentMonitorDashboard() {
   const { toast } = useToast();
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({ from: subDays(new Date(), 7), to: new Date() });
   const [sheetStatusFilter, setSheetStatusFilter] = useState<CaseStatus | null>(null);
+  const [newConvsSheetOpen, setNewConvsSheetOpen] = useState(false);
   const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
   const [generatingLeadId, setGeneratingLeadId] = useState<string | null>(null);
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [promptDialogLead, setPromptDialogLead] = useState<{ id: string; name: string } | null>(null);
 
   const { agents, conversations, agentStats, referrals, boards, loading, fetchData: fetchDataRaw } = useMonitorData();
+  const { metrics, metricsLoading, fetchMetrics } = useDashboardMetrics();
 
-  const fetchData = useCallback(() => fetchDataRaw(dateRange), [fetchDataRaw, dateRange]);
+  const fetchData = useCallback(() => {
+    fetchDataRaw(dateRange);
+    fetchMetrics(dateRange);
+  }, [fetchDataRaw, fetchMetrics, dateRange]);
+
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const {
@@ -74,6 +82,29 @@ export function AgentMonitorDashboard() {
     }
   };
 
+  const handleNewConvChatOpen = (phone: string, instanceName: string | null) => {
+    setNewConvsSheetOpen(false);
+    const match = conversations.find(c => c.phone === phone && (!instanceName || c.instance_name === instanceName));
+    if (match) {
+      setChatPreview(match);
+    } else {
+      setChatPreview({
+        phone, instance_name: instanceName || '',
+        agent_name: '', agent_id: '',
+        is_active: false, is_blocked: false,
+        contact_name: null, lead_name: null,
+        lead_id: null, lead_status: null,
+        lead_city: null, lead_state: null, lead_acolhedor: null,
+        board_id: null, board_name: null, stage_name: null,
+        last_inbound_at: null, last_outbound_at: null,
+        total_messages: 0, inbound_count: 0, outbound_count: 0,
+        followup_count: 0, has_followup_config: false,
+        time_without_response: null, campaign_name: null,
+        activated_by: null, activated_at: null, whatsapp_group_id: null, created_at: null,
+      });
+    }
+  };
+
   const filterBarProps = {
     agents, uniqueInstances, uniqueBoards, uniqueCampaigns,
     agentFilter: filters.agentFilter, setAgentFilter: filters.setAgentFilter,
@@ -113,6 +144,8 @@ export function AgentMonitorDashboard() {
             onPipelineClick={(s) => setSheetStatusFilter(prev => prev === s ? null : s)}
             activeStatus={sheetStatusFilter}
             onOpenChat={handleOpenChat} onEventClick={handleEventClick}
+            dashboardMetrics={metrics}
+            onNewConvsClick={() => setNewConvsSheetOpen(true)}
             filterBarProps={filterBarProps}
           />
         </TabsContent>
@@ -125,6 +158,13 @@ export function AgentMonitorDashboard() {
         statusFilter={sheetStatusFilter} conversations={conversations}
         applyBaseFilters={applyBaseFilters} onClose={() => setSheetStatusFilter(null)}
         onOpenChat={handleOpenChat} generatingLeadId={generatingLeadId} onGenerateActivity={handleGenerateActivity}
+      />
+
+      <NewConversationsSheet
+        open={newConvsSheetOpen}
+        onClose={() => setNewConvsSheetOpen(false)}
+        conversations={metrics.newConvDetails}
+        onOpenChat={handleNewConvChatOpen}
       />
 
       <DashboardChatPreview
