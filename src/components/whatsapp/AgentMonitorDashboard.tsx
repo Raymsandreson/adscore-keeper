@@ -136,7 +136,7 @@ export function AgentMonitorDashboard() {
 
   return (
     <div className="min-h-screen p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
-      <MonitorHeader dateRange={dateRange} setDateRange={setDateRange} loading={loading} onRefresh={fetchData} />
+      <MonitorHeader dateRange={dateRange} setDateRange={setDateRange} loading={isLoading} onRefresh={fetchData} />
 
       <Tabs defaultValue="monitor" className="space-y-4">
         <TabsList className="grid w-full grid-cols-3 max-w-md">
@@ -147,7 +147,7 @@ export function AgentMonitorDashboard() {
 
         <TabsContent value="monitor" className="space-y-4">
           <UnifiedMonitorTab
-            conversations={conversations} agentStats={agentStats} loading={loading}
+            conversations={conversations} agentStats={agentStats} loading={isLoading}
             pipelineCounts={pipelineCounts}
             onPipelineClick={(s) => setSheetStatusFilter(prev => prev === s ? null : s)}
             activeStatus={sheetStatusFilter}
@@ -159,7 +159,7 @@ export function AgentMonitorDashboard() {
         </TabsContent>
 
         <TabsContent value="ai-activities" className="space-y-4"><AIActivitiesPanel /></TabsContent>
-        <TabsContent value="referrals" className="space-y-4"><ReferralsTab referrals={referrals} loading={loading} /></TabsContent>
+        <TabsContent value="referrals" className="space-y-4"><ReferralsTab referrals={referrals} loading={isLoading} /></TabsContent>
       </Tabs>
 
       <CaseListSheet
