@@ -873,6 +873,7 @@ Deno.serve(async (req) => {
       success: true,
       group_id: groupId,
       group_name: groupName,
+      group_link: groupInviteLink || undefined,
       participants_count: participantsCount,
       warning: verificationWarning || undefined,
     }), {
