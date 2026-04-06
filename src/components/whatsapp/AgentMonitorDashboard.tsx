@@ -24,7 +24,7 @@ import { DashboardChatPreview } from './DashboardChatPreview';
 
 export function AgentMonitorDashboard() {
   const { toast } = useToast();
-  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({ from: subDays(new Date(), 7), to: new Date() });
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({ from: new Date(), to: new Date() });
   const [sheetStatusFilter, setSheetStatusFilter] = useState<CaseStatus | null>(null);
   const [newConvsSheetOpen, setNewConvsSheetOpen] = useState(false);
   const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
