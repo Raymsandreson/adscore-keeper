@@ -166,9 +166,13 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
   const handleOpenChat = (phone: string, instanceName?: string) => {
     if (!phone) return;
     onClose();
-    const params = new URLSearchParams({ phone });
-    if (instanceName) params.set('instance', instanceName);
-    navigate(`/whatsapp?${params.toString()}`);
+    if (onOpenChat) {
+      onOpenChat(phone, instanceName);
+    } else {
+      const params = new URLSearchParams({ phone });
+      if (instanceName) params.set('instance', instanceName);
+      navigate(`/whatsapp?${params.toString()}`);
+    }
   };
 
   return (
