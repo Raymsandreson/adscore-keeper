@@ -462,12 +462,13 @@ async function runAgentPhase(opts: {
   zapsignToken: string | undefined;
   replyWithAudio: boolean; replyVoiceId: string;
   message_type: string;
+  fieldAliases: any[];
 }) {
   const { supabase, session, inst, normalizedPhone, instance_name,
     message_text, currentFields, collectedData, catalog,
     agentPersona, shortcutPromptInstructions, splitOpts,
     skipConfirmation, zapsignSettingsReply, zapsignToken,
-    replyWithAudio, replyVoiceId, message_type } = opts;
+    replyWithAudio, replyVoiceId, message_type, fieldAliases } = opts;
   const isInboundAudio = message_type === "audio" || message_type === "ptt";
   const resolvedReplyVoiceId = replyVoiceId || "instance_owner";
 
