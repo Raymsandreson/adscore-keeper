@@ -82,8 +82,10 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [creatingLead, setCreatingLead] = useState(false);
-  const [agentInfo, setAgentInfo] = useState<{ name: string; activated_by: string | null; is_active: boolean } | null>(null);
+  const [agentInfo, setAgentInfo] = useState<{ name: string; activated_by: string | null; is_active: boolean; agent_id?: string } | null>(null);
   const [callRecords, setCallRecords] = useState<CallRecord[]>([]);
+  const [availableAgents, setAvailableAgents] = useState<{ id: string; name: string }[]>([]);
+  const [suggestingAgent, setSuggestingAgent] = useState(false);
   const [identifySender, setIdentifySender] = useState(true);
   const [treatmentTitle, setTreatmentTitle] = useState<string>('');
   const [nameFormat, setNameFormat] = useState<string>('first_last');
