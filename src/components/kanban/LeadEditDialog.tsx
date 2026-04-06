@@ -673,6 +673,15 @@ ${scrapeData.content || ''}
           changed_by: user?.id || null,
           changed_by_type: 'manual',
         });
+        // Also record in lead_stage_history so metrics/ranking can track who closed
+        await supabase.from('lead_stage_history').insert({
+          lead_id: lead.id,
+          from_stage: (lead as any).status || previousOutcome,
+          to_stage: leadOutcome,
+          changed_by: user?.id || null,
+          to_board_id: (lead as any).board_id || null,
+          from_board_id: (lead as any).board_id || null,
+        });
       }
 
       // Auto-create legal case when lead is marked as closed (or was already closed but has no case yet)
