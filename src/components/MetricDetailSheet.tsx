@@ -217,7 +217,7 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
         case 'leadsClosed': {
           // Query leads that are currently closed, filtered by became_client_date (actual closing date)
           let closedQuery = supabase.from('leads')
-            .select('id, lead_name, board_id, updated_at, lead_status, source, became_client_date')
+            .select('id, lead_name, board_id, updated_at, lead_status, source, became_client_date, acolhedor')
             .eq('lead_status', 'closed')
             .not('became_client_date', 'is', null)
             .gte('became_client_date', startDate.slice(0, 10))
@@ -236,53 +236,26 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
           
           let filteredLeads = closedLeads || [];
           
-          // If filtering by user, check who closed the lead via stage history
+          const teamMemberNameById = Object.fromEntries(
+            teamMembers.map(member => [member.user_id, member.full_name])
+          );
+
+          // If filtering by user, filter by the acolhedor saved on the lead
           if (filterUserId !== 'all' || targetUserId) {
             const effectiveUserId = filterUserId !== 'all' ? filterUserId : userId;
-            const leadIds = filteredLeads.map(l => l.id);
-            if (leadIds.length > 0) {
-              const { data: historyData } = await supabase.from('lead_stage_history')
-                .select('lead_id, changed_by')
-                .in('lead_id', leadIds)
-                .eq('to_stage', 'closed');
-              const closedByUser = new Set(
-                (historyData || []).filter(h => h.changed_by === effectiveUserId).map(h => h.lead_id)
-              );
-              filteredLeads = filteredLeads.filter(l => closedByUser.has(l.id));
+            const effectiveAcolhedor = teamMemberNameById[effectiveUserId];
+
+            if (effectiveAcolhedor) {
+              filteredLeads = filteredLeads.filter(l => l.acolhedor === effectiveAcolhedor);
             }
           }
 
-          // Get user names for who closed each lead (for "all" view)
-          let userNamesMap: Record<string, string> = {};
-          if (filterUserId === 'all' && filteredLeads.length > 0) {
-            const leadIds = filteredLeads.map(l => l.id);
-            const { data: historyData } = await supabase.from('lead_stage_history')
-              .select('lead_id, changed_by')
-              .in('lead_id', leadIds)
-              .eq('to_stage', 'closed');
-            
-            const leadCloserMap: Record<string, string> = {};
-            (historyData || []).forEach(h => {
-              if (h.changed_by) leadCloserMap[h.lead_id] = h.changed_by;
-            });
-            
-            const closerIds = [...new Set(Object.values(leadCloserMap))];
-            if (closerIds.length > 0) {
-              const { data: profiles } = await supabase.from('profiles')
-                .select('user_id, full_name').in('user_id', closerIds);
-              (profiles || []).forEach(p => { userNamesMap[p.user_id] = p.full_name || 'Usuário'; });
-            }
-            
-            // Attach closer name to each lead
-            filteredLeads = filteredLeads.map(l => ({ ...l, _closerName: userNamesMap[leadCloserMap[l.id]] })) as any;
-          }
-          
           const AD_SOURCES_SET = new Set(['facebook', 'facebook_leads', 'instagram']);
           result = filteredLeads.map((l: any) => {
             const isAd = AD_SOURCES_SET.has(l.source);
             const sourceLabel = isAd ? '📢 Anúncio' : '🤝 Acolhedor';
             const subtitleParts = [];
-            if (filterUserId === 'all' && l._closerName) subtitleParts.push(`👤 ${l._closerName}`);
+            if (l.acolhedor) subtitleParts.push(`👤 ${l.acolhedor}`);
             if (filterSource === 'all') subtitleParts.push(sourceLabel);
             return {
               id: l.id, 
