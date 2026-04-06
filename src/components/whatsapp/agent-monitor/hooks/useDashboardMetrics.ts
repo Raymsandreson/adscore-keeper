@@ -186,7 +186,7 @@ export function useDashboardMetrics() {
 
       // Operational metrics: signed docs, groups, cases, processes
       const [docsRes, groupsRes, casesRes, processesRes] = await Promise.all([
-        supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
+        supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at, signed_at').eq('signer_status', 'signed').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
         supabase.from('leads').select('id, lead_name, acolhedor, board_id, campaign_name, created_at').not('whatsapp_group_id', 'is', null).gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
         supabase.from('legal_cases').select('id, case_number, title, acolhedor, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
         supabase.from('case_process_tracking').select('id, cliente, acolhedor, lead_id, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
