@@ -1175,7 +1175,7 @@ async function sendAudioMessage(
       headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
       body: JSON.stringify({
         phone: groupId,
-        media: audioUrl,
+        file: audioUrl,
         type: 'audio',
         ptt: true,
       }),
@@ -1259,7 +1259,7 @@ async function forwardDocuments(
         const sendRes = await fetch(`${baseUrl}/send/media`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-          body: JSON.stringify({ number: groupId, media: doc.signed_file_url, type: 'document', fileName, caption: `📄 ${docLabel} - ${leadName}` }),
+          body: JSON.stringify({ number: groupId, file: doc.signed_file_url, type: 'document', fileName, caption: `📄 ${docLabel} - ${leadName}` }),
         })
         if (!sendRes.ok) {
           console.error(`[forward-docs] Failed to send signed doc ${fileName}:`, sendRes.status, await sendRes.text())
@@ -1289,7 +1289,7 @@ async function forwardDocuments(
               const sendRes = await fetch(`${baseUrl}/send/media`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-                body: JSON.stringify({ number: groupId, media: docUrl, type: 'document', fileName, caption: `📄 ${label} - ${leadName}` }),
+                body: JSON.stringify({ number: groupId, file: docUrl, type: 'document', fileName, caption: `📄 ${label} - ${leadName}` }),
               })
               if (!sendRes.ok) {
                 console.error(`[forward-docs] Failed to send doc ${fileName}:`, sendRes.status)
@@ -1314,7 +1314,7 @@ async function forwardDocuments(
             const sendRes = await fetch(`${baseUrl}/send/media`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-              body: JSON.stringify({ number: groupId, media: rd.media_url, type: 'document', fileName, caption: `📄 ${label} - ${leadName}` }),
+              body: JSON.stringify({ number: groupId, file: rd.media_url, type: 'document', fileName, caption: `📄 ${label} - ${leadName}` }),
             })
             if (!sendRes.ok) {
               console.error(`[forward-docs] Failed to send received doc ${label}:`, sendRes.status)
@@ -1350,7 +1350,7 @@ async function forwardDocuments(
               const sendRes = await fetch(`${baseUrl}/send/media`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-                body: JSON.stringify({ number: groupId, media: doc.file_url, type: 'document', fileName, caption: `📄 ${label} - ${leadName}` }),
+                body: JSON.stringify({ number: groupId, file: doc.file_url, type: 'document', fileName, caption: `📄 ${label} - ${leadName}` }),
               })
               if (!sendRes.ok) {
                 console.error(`[forward-docs] Failed to send lead doc ${fileName}:`, sendRes.status)
@@ -1398,7 +1398,7 @@ async function forwardConversationMedia(
           await fetch(`${baseUrl}/send/media`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-            body: JSON.stringify({ number: groupId, media: doc.signed_file_url, type: 'document', fileName, caption: `📄 ${docLabel} - ${leadName}` }),
+            body: JSON.stringify({ number: groupId, file: doc.signed_file_url, type: 'document', fileName, caption: `📄 ${docLabel} - ${leadName}` }),
           })
           console.log(`[conv-media] Sent signed doc: ${fileName}`)
           await sleep(800)
@@ -1453,7 +1453,7 @@ async function forwardConversationMedia(
       const fileName = isDoc ? `Documento_${mediaCount + 1}_${leadName}.${ext}` : undefined
 
       try {
-        const payload: any = { number: groupId, media: msg.media_url, type: mediaType }
+        const payload: any = { number: groupId, file: msg.media_url, type: mediaType }
         if (isDoc && fileName) {
           payload.fileName = fileName
         }
