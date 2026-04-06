@@ -163,32 +163,41 @@ export function AgentAutomationRules({ agentId }: Props) {
         const payload = {
           agent_id: agentId,
           trigger_type: trigger,
-          actions: rule.actions,
+          actions: JSON.parse(JSON.stringify(rule.actions)),
           is_active: rule.is_active,
         };
 
         if (rule.id) {
           const { error } = await (supabase as any)
             .from('agent_automation_rules')
-            .update({ actions: rule.actions, is_active: rule.is_active } as any)
+            .update({ actions: payload.actions, is_active: rule.is_active } as any)
             .eq('id', rule.id);
-          if (error) throw error;
+          if (error) {
+            console.error('Update automation error:', error);
+            throw error;
+          }
         } else if (rule.actions.length > 0 || rule.is_active) {
           const { data, error } = await (supabase as any)
             .from('agent_automation_rules')
             .insert(payload as any)
             .select()
             .single();
-          if (error) throw error;
-          setRules(prev => ({
-            ...prev,
-            [trigger]: { ...prev[trigger], id: (data as any).id },
-          }));
+          if (error) {
+            console.error('Insert automation error:', error);
+            throw error;
+          }
+          if (data) {
+            setRules(prev => ({
+              ...prev,
+              [trigger]: { ...prev[trigger], id: (data as any).id },
+            }));
+          }
         }
       }
       toast.success('Automações salvas!');
     } catch (e: any) {
-      toast.error('Erro: ' + (e.message || ''));
+      console.error('Save automation failed:', e);
+      toast.error('Erro ao salvar: ' + (e.message || JSON.stringify(e)));
     } finally {
       setSaving(false);
     }
