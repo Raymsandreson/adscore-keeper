@@ -26,6 +26,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   const [showMentionList, setShowMentionList] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
   const [selectedMentions, setSelectedMentions] = useState<string[]>([]);
+  const [mentionStartIndex, setMentionStartIndex] = useState(-1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
@@ -51,27 +52,40 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   const handleInputChange = (value: string) => {
     setInputText(value);
     sessionStorage.setItem(draftKey, value);
-    // Detect @ trigger
-    const lastAt = value.lastIndexOf('@');
-    if (lastAt >= 0) {
-      const afterAt = value.slice(lastAt + 1);
-      if (!afterAt.includes(' ') && afterAt.length < 30) {
+
+    // Find the last @ that could be a mention trigger
+    const cursorPos = inputRef.current?.selectionStart || value.length;
+    let atIdx = -1;
+    for (let i = cursorPos - 1; i >= 0; i--) {
+      if (value[i] === '@') {
+        atIdx = i;
+        break;
+      }
+    }
+
+    if (atIdx >= 0) {
+      const afterAt = value.slice(atIdx + 1, cursorPos);
+      // Allow spaces in the filter (for multi-word names), max 40 chars
+      if (afterAt.length < 40) {
         setShowMentionList(true);
         setMentionFilter(afterAt);
+        setMentionStartIndex(atIdx);
         return;
       }
     }
     setShowMentionList(false);
     setMentionFilter('');
+    setMentionStartIndex(-1);
   };
 
   const insertMention = (member: TeamMember) => {
-    const lastAt = inputText.lastIndexOf('@');
-    const before = inputText.slice(0, lastAt);
     const name = member.full_name || member.email || 'usuário';
-    setInputText(`${before}@${name} `);
+    const before = inputText.slice(0, mentionStartIndex);
+    const after = inputText.slice(inputRef.current?.selectionStart || inputText.length);
+    setInputText(`${before}@${name} ${after}`);
     setShowMentionList(false);
     setMentionFilter('');
+    setMentionStartIndex(-1);
     if (!selectedMentions.includes(member.user_id)) {
       setSelectedMentions(prev => [...prev, member.user_id]);
     }
