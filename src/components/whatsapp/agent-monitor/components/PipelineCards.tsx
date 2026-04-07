@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles, Clock, TrendingUp, FileSignature, Users, Briefcase, Scale } from 'lucide-react';
+import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles, Clock, TrendingUp, FileSignature, Users, Briefcase, Scale, AlertTriangle, FileText } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { CaseStatus } from '../types';
 import { statusLabel } from '../utils';
 import type { DashboardMetrics, OperationalDetail } from '../hooks/useDashboardMetrics';
 import type { OperationalMetricType } from './OperationalDetailSheet';
+import type { OperationalGaps, GapType } from '../hooks/useOperationalGaps';
 
 interface PipelineCardsProps {
   counts: Record<CaseStatus, number> & { novas?: number };
@@ -14,6 +15,8 @@ interface PipelineCardsProps {
   dashboardMetrics?: DashboardMetrics;
   onNewConvsClick?: () => void;
   onOperationalClick?: (type: OperationalMetricType) => void;
+  gaps?: OperationalGaps;
+  onGapClick?: (type: GapType) => void;
 }
 
 const statusConfig: { key: CaseStatus; icon: typeof AlertCircle; color: string }[] = [
@@ -69,7 +72,7 @@ function MemberBreakdownPopover({ details, children }: { details: OperationalDet
   );
 }
 
-export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics, onNewConvsClick, onOperationalClick }: PipelineCardsProps) {
+export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics, onNewConvsClick, onOperationalClick, gaps, onGapClick }: PipelineCardsProps) {
   const newConvs = dashboardMetrics?.newConversations ?? counts.novas ?? 0;
   const responseRate = dashboardMetrics?.responseRate ?? 0;
   const avgTime = dashboardMetrics?.avgResponseTimeMin ?? 0;
