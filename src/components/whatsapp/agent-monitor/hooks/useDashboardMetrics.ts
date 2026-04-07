@@ -9,6 +9,7 @@ export interface DashboardMetrics {
   respondedCount: number;
   totalInbound: number;
   closedByAgent: { agent: string; count: number }[];
+  closedByAgentDetailed: { agent: string; ai: number; human: number; total: number }[];
   closedByCampaign: { campaign: string; count: number }[];
   closedByAI: number;
   closedWithHuman: number;
