@@ -64,6 +64,9 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
   const [closingDate, setClosingDate] = useState<Date>(new Date());
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
 
+  // Auto-extract on open when messages are available
+  const hasAutoExtracted = useRef(false);
+
   useEffect(() => {
     if (open) {
       setTitle(leadName || contactName || '');
@@ -77,8 +80,17 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       setShowDuplicateWarning(false);
       const defaultBoard = boards.find(b => b.is_default) || boards[0];
       setSelectedBoardId(defaultBoard?.id || '');
+      hasAutoExtracted.current = false;
     }
   }, [open, leadName, contactName, boards]);
+
+  // Auto-trigger AI extraction when dialog opens with messages
+  useEffect(() => {
+    if (open && messages?.length && !hasAutoExtracted.current && !extracting) {
+      hasAutoExtracted.current = true;
+      handleExtractWithAI();
+    }
+  }, [open, messages]);
 
   const handleExtractWithAI = async () => {
     if (!messages?.length) {
