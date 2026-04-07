@@ -188,27 +188,19 @@ async function updateTargeting(
     };
   }
 ) {
-  // First get existing targeting to merge
-  const getUrl = `https://graph.facebook.com/v21.0/${adSetId}?access_token=${accessToken}&fields=targeting`;
-  const getResp = await fetch(getUrl);
-  const getData = await getResp.json();
-
-  if (getData.error) {
-    throw new Error(getData.error.message || 'Failed to get current targeting');
-  }
-
-  const currentTargeting = getData.targeting || {};
-  
-  // Merge: replace only geo_locations, keep everything else
-  const updatedTargeting = {
-    ...currentTargeting,
+  // Only send geo_locations in the targeting update - do NOT merge full targeting
+  // as it includes read-only fields (targeting_automation, publisher_platforms, etc.)
+  // that cause "Application does not have permission" errors
+  const updateTargetingPayload = {
     geo_locations: targeting.geo_locations,
   };
+
+  console.log(`[update_targeting] Updating adset ${adSetId} with:`, JSON.stringify(updateTargetingPayload));
 
   // Use form-encoded POST as per Meta API docs
   const params = new URLSearchParams();
   params.append('access_token', accessToken);
-  params.append('targeting', JSON.stringify(updatedTargeting));
+  params.append('targeting', JSON.stringify(updateTargetingPayload));
 
   const updateUrl = `https://graph.facebook.com/v21.0/${adSetId}`;
   const updateResp = await fetch(updateUrl, {
