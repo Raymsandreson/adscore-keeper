@@ -11,7 +11,7 @@ import { useAdSetGeoRules, AdSetGeoRule } from '@/hooks/useAdSetGeoRules';
 import { useKanbanBoards, KanbanBoard } from '@/hooks/useKanbanBoards';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { getMetaCredentials } from '@/utils/metaCredentials';
-import { supabase } from '@/integrations/supabase/client';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { MapPin, Plus, Trash2, Loader2, Target, FolderKanban, User, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 
