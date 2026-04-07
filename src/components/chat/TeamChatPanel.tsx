@@ -97,19 +97,15 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     if (!text || sending) return;
     setSending(true);
 
-    // Extract mentions from text
+    // Collect mentioned user IDs from selectedMentions + pattern matching
     const mentionedIds = [...selectedMentions];
-    // Also detect @name patterns and match to members
-    const mentionRegex = /@([^\s@]+(?:\s[^\s@]+)?)/g;
-    let match;
-    while ((match = mentionRegex.exec(text)) !== null) {
-      const mentionName = match[1].toLowerCase();
-      const found = members.find(m =>
-        m.full_name?.toLowerCase() === mentionName ||
-        m.email?.toLowerCase() === mentionName
-      );
-      if (found && !mentionedIds.includes(found.user_id)) {
-        mentionedIds.push(found.user_id);
+    
+    // Match @mentions against known member names (supports multi-word names)
+    for (const member of members) {
+      if (mentionedIds.includes(member.user_id)) continue;
+      const name = member.full_name || member.email;
+      if (name && text.toLowerCase().includes(`@${name.toLowerCase()}`)) {
+        mentionedIds.push(member.user_id);
       }
     }
 
