@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
-import { useTeamDirectChat } from '@/hooks/useTeamDirectChat';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useTeamDirectChat, TeamMessage } from '@/hooks/useTeamDirectChat';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -9,13 +10,19 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import {
   Send, Users, MessageCircle, ArrowLeft, Loader2, Plus, Hash,
+  Mic, Square, Paperclip, Image, FileText, Briefcase, ClipboardList,
+  Play, Pause,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
+import { TeamChatEntityMention, renderMessageWithMentions, EntityMention, EntityMentionType } from './TeamChatEntityMention';
 
 export function TeamDirectChatPanel() {
   const { user } = useAuthContext();
+  const navigate = useNavigate();
   const {
     conversations, messages, activeConversationId, setActiveConversationId,
     loading, sendingMessage, sendMessage, startDirectChat, ensureGeneralChat,
@@ -23,7 +30,17 @@ export function TeamDirectChatPanel() {
   const profiles = useProfilesList();
   const [messageText, setMessageText] = useState('');
   const [showNewChat, setShowNewChat] = useState(false);
+  const [showEntityMention, setShowEntityMention] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -46,6 +63,223 @@ export function TeamDirectChatPanel() {
 
   const getInitials = (name: string) =>
     name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+
+  // Audio recording
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const duration = recordingDuration;
+        setIsRecording(false);
+        setRecordingDuration(0);
+        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+
+        // Upload
+        setUploading(true);
+        const fileName = `audio_${Date.now()}.webm`;
+        const path = `${user?.id}/${fileName}`;
+        const { error: uploadError } = await supabase.storage
+          .from('team-chat-media')
+          .upload(path, blob);
+
+        if (uploadError) {
+          toast.error('Erro ao enviar áudio');
+          setUploading(false);
+          return;
+        }
+
+        const { data: urlData } = supabase.storage.from('team-chat-media').getPublicUrl(path);
+
+        await sendMessage('🎤 Áudio', {
+          message_type: 'audio',
+          file_url: urlData.publicUrl,
+          file_name: fileName,
+          file_size: blob.size,
+          file_type: 'audio/webm',
+          audio_duration: duration,
+        });
+        setUploading(false);
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+    } catch {
+      toast.error('Permissão de microfone negada');
+    }
+  }, [user?.id, sendMessage, recordingDuration]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+  }, []);
+
+  // File upload
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user?.id) return;
+
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error('Arquivo muito grande (máx. 20MB)');
+      return;
+    }
+
+    setUploading(true);
+    const path = `${user.id}/${Date.now()}_${file.name}`;
+    const { error: uploadError } = await supabase.storage
+      .from('team-chat-media')
+      .upload(path, file);
+
+    if (uploadError) {
+      toast.error('Erro ao enviar arquivo');
+      setUploading(false);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage.from('team-chat-media').getPublicUrl(path);
+
+    const isImage = file.type.startsWith('image/');
+    await sendMessage(isImage ? '📷 Imagem' : `📎 ${file.name}`, {
+      message_type: isImage ? 'image' : 'file',
+      file_url: urlData.publicUrl,
+      file_name: file.name,
+      file_size: file.size,
+      file_type: file.type,
+    });
+
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [user?.id, sendMessage]);
+
+  // Entity mention
+  const handleEntitySelect = useCallback((entity: EntityMention) => {
+    const mention = `[${entity.type}:${entity.id}:${entity.name}]`;
+    setMessageText(prev => prev + mention + ' ');
+  }, []);
+
+  // Navigate on mention click
+  const handleMentionNavigate = useCallback((type: EntityMentionType, id: string) => {
+    switch (type) {
+      case 'lead':
+        navigate(`/leads?openLead=${id}`);
+        break;
+      case 'activity':
+        navigate(`/?openActivity=${id}`);
+        break;
+      case 'contact':
+        navigate(`/leads?openContact=${id}`);
+        break;
+    }
+  }, [navigate]);
+
+  // Audio playback
+  const toggleAudio = useCallback((msgId: string, url: string) => {
+    const existing = audioElementsRef.current.get(msgId);
+    if (existing) {
+      if (playingAudioId === msgId) {
+        existing.pause();
+        setPlayingAudioId(null);
+      } else {
+        existing.play();
+        setPlayingAudioId(msgId);
+      }
+      return;
+    }
+
+    const audio = new Audio(url);
+    audio.onended = () => setPlayingAudioId(null);
+    audioElementsRef.current.set(msgId, audio);
+    audio.play();
+    setPlayingAudioId(msgId);
+  }, [playingAudioId]);
+
+  const formatDuration = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  // Render message bubble content
+  const renderMsgContent = (msg: TeamMessage, isMe: boolean) => {
+    if (msg.message_type === 'audio' && msg.file_url) {
+      return (
+        <button
+          onClick={() => toggleAudio(msg.id, msg.file_url!)}
+          className="flex items-center gap-2 py-1"
+        >
+          {playingAudioId === msg.id ? (
+            <Pause className="h-4 w-4 shrink-0" />
+          ) : (
+            <Play className="h-4 w-4 shrink-0" />
+          )}
+          <div className="flex-1 h-1.5 rounded-full bg-current/20 min-w-[80px]">
+            <div className={cn('h-full rounded-full', isMe ? 'bg-primary-foreground/60' : 'bg-foreground/40')} style={{ width: playingAudioId === msg.id ? '100%' : '0%', transition: 'width linear' }} />
+          </div>
+          <span className="text-[10px] opacity-70">
+            {msg.audio_duration ? formatDuration(msg.audio_duration) : '0:00'}
+          </span>
+        </button>
+      );
+    }
+
+    if (msg.message_type === 'image' && msg.file_url) {
+      return (
+        <div>
+          <a href={msg.file_url} target="_blank" rel="noopener noreferrer">
+            <img src={msg.file_url} alt={msg.file_name || 'Imagem'} className="rounded-lg max-w-full max-h-48 object-cover" />
+          </a>
+          {msg.content && msg.content !== '📷 Imagem' && (
+            <p className="text-sm mt-1 whitespace-pre-wrap break-words">
+              {renderMessageWithMentions(msg.content, handleMentionNavigate)}
+            </p>
+          )}
+        </div>
+      );
+    }
+
+    if (msg.message_type === 'file' && msg.file_url) {
+      return (
+        <a
+          href={msg.file_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 py-1 hover:opacity-80"
+        >
+          <FileText className="h-4 w-4 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-medium truncate">{msg.file_name || 'Arquivo'}</div>
+            {msg.file_size && (
+              <div className="text-[10px] opacity-60">
+                {(msg.file_size / 1024).toFixed(0)} KB
+              </div>
+            )}
+          </div>
+        </a>
+      );
+    }
+
+    // Text with entity mentions
+    return (
+      <p className="text-sm whitespace-pre-wrap break-words">
+        {renderMessageWithMentions(msg.content || '', handleMentionNavigate)}
+      </p>
+    );
+  };
 
   // Active conversation
   if (activeConversationId) {
@@ -79,7 +313,7 @@ export function TeamDirectChatPanel() {
               return (
                 <div key={msg.id} className={cn('flex', isMe ? 'justify-end' : 'justify-start')}>
                   <div className={cn(
-                    'max-w-[80%] rounded-xl px-3 py-1.5',
+                    'max-w-[85%] rounded-xl px-3 py-1.5',
                     isMe
                       ? 'bg-primary text-primary-foreground rounded-br-sm'
                       : 'bg-muted rounded-bl-sm'
@@ -89,7 +323,7 @@ export function TeamDirectChatPanel() {
                         {msg.sender_name}
                       </div>
                     )}
-                    <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                    {renderMsgContent(msg, isMe)}
                     <div className={cn('text-[9px] mt-0.5', isMe ? 'text-primary-foreground/60' : 'text-muted-foreground')}>
                       {format(new Date(msg.created_at), 'HH:mm', { locale: ptBR })}
                     </div>
@@ -100,17 +334,86 @@ export function TeamDirectChatPanel() {
           )}
         </div>
 
-        <div className="shrink-0 px-3 py-2 border-t flex gap-2">
-          <Input
-            value={messageText}
-            onChange={(e) => setMessageText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Digite sua mensagem..."
-            className="text-sm h-9"
+        {/* Input area */}
+        <div className="shrink-0 border-t relative">
+          <TeamChatEntityMention
+            open={showEntityMention}
+            onClose={() => setShowEntityMention(false)}
+            onSelect={handleEntitySelect}
           />
-          <Button size="icon" className="h-9 w-9 shrink-0" onClick={handleSend} disabled={sendingMessage || !messageText.trim()}>
-            {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </Button>
+
+          {isRecording ? (
+            <div className="px-3 py-2 flex items-center gap-3">
+              <span className="w-2.5 h-2.5 rounded-full bg-destructive animate-pulse" />
+              <span className="text-sm font-medium flex-1">
+                Gravando... {formatDuration(recordingDuration)}
+              </span>
+              <Button size="icon" variant="destructive" className="h-8 w-8" onClick={stopRecording}>
+                <Square className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ) : (
+            <div className="px-2 py-2 flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => setShowEntityMention(!showEntityMention)}
+                title="Mencionar lead/contato/atividade"
+              >
+                <Briefcase className="h-4 w-4" />
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                title="Enviar arquivo"
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+
+              <Input
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Digite sua mensagem..."
+                className="text-sm h-8 flex-1 min-w-0"
+              />
+
+              {messageText.trim() ? (
+                <Button
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={handleSend}
+                  disabled={sendingMessage || uploading}
+                >
+                  {(sendingMessage || uploading) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={startRecording}
+                  disabled={uploading}
+                  title="Gravar áudio"
+                >
+                  <Mic className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );

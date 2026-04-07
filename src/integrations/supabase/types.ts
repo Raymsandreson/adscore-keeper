@@ -7115,27 +7115,42 @@ export type Database = {
       }
       team_messages: {
         Row: {
+          audio_duration: number | null
           content: string | null
           conversation_id: string
           created_at: string
+          file_name: string | null
+          file_size: number | null
+          file_type: string | null
+          file_url: string | null
           id: string
           message_type: string
           sender_id: string
           sender_name: string | null
         }
         Insert: {
+          audio_duration?: number | null
           content?: string | null
           conversation_id: string
           created_at?: string
+          file_name?: string | null
+          file_size?: number | null
+          file_type?: string | null
+          file_url?: string | null
           id?: string
           message_type?: string
           sender_id: string
           sender_name?: string | null
         }
         Update: {
+          audio_duration?: number | null
           content?: string | null
           conversation_id?: string
           created_at?: string
+          file_name?: string | null
+          file_size?: number | null
+          file_type?: string | null
+          file_url?: string | null
           id?: string
           message_type?: string
           sender_id?: string
