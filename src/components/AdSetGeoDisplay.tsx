@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AdSetGeoDisplayProps {
   adSetId: string;
@@ -10,23 +11,25 @@ export const AdSetGeoDisplay = ({ adSetId }: AdSetGeoDisplayProps) => {
   const [locations, setLocations] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [fetched, setFetched] = useState(false);
+  const accessTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (fetched) return;
 
-    const getAccessToken = (): string | null => {
-      const savedAccounts = localStorage.getItem('meta_saved_accounts');
-      if (savedAccounts) {
-        const accounts = JSON.parse(savedAccounts);
-        const selectedId = localStorage.getItem('meta_selected_account');
-        const selected = accounts.find((a: any) => a.id === selectedId) || accounts[0];
-        return selected?.accessToken || null;
-      }
-      return localStorage.getItem('meta_access_token');
-    };
-
     const fetchGeo = async () => {
-      const accessToken = getAccessToken();
+      // Get token from DB
+      if (!accessTokenRef.current) {
+        const { data } = await supabase
+          .from('meta_ad_accounts')
+          .select('access_token')
+          .order('created_at', { ascending: true })
+          .limit(1);
+        if (data && data.length > 0) {
+          accessTokenRef.current = data[0].access_token;
+        }
+      }
+
+      const accessToken = accessTokenRef.current;
       if (!accessToken) return;
 
       setIsLoading(true);
@@ -54,7 +57,6 @@ export const AdSetGeoDisplay = ({ adSetId }: AdSetGeoDisplayProps) => {
             const radius = cl.radius ? ` (+${cl.radius}km)` : '';
             locs.push(`${name}${radius}`);
           });
-          geo.location_types?.forEach((lt: string) => {/* skip, not a location */});
           geo.geo_markets?.forEach((gm: any) => locs.push(gm.name || gm.key));
           setLocations(locs);
         }
