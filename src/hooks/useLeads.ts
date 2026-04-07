@@ -532,7 +532,7 @@ export const useLeads = (adAccountId?: string) => {
   };
 
   // Debounced realtime - prevents cascade re-fetches when multiple leads update rapidly
-  const realtimeTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const realtimeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetchLeads();
