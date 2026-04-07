@@ -144,11 +144,19 @@ export const GeoTargetingDialog = ({
         }),
       });
       const data = await response.json();
+      console.log('[GeoDialog] Search results:', JSON.stringify(data).substring(0, 1000));
       if (data.success) {
         setSearchResults(data.data.results || []);
+        if ((data.data.results || []).length === 0) {
+          toast.info('Nenhuma localização encontrada para essa busca');
+        }
+      } else {
+        console.error('[GeoDialog] Search error:', data.error);
+        toast.error(data.error || 'Erro na busca');
       }
     } catch (error) {
       console.error('Error searching locations:', error);
+      toast.error('Erro ao buscar localizações');
     } finally {
       setIsSearching(false);
     }
