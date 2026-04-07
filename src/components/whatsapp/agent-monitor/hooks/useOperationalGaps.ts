@@ -8,6 +8,8 @@ export interface GapItem {
   acolhedor: string | null;
   created_at: string;
   lead_id?: string | null;
+  whatsapp_phone?: string | null;
+  whatsapp_group_id?: string | null;
 }
 
 export interface OperationalGaps {
@@ -37,7 +39,7 @@ export function useOperationalGaps() {
       // 1. Closed leads in period
       const { data: closedLeads } = await supabase
         .from('leads')
-        .select('id, lead_name, acolhedor, whatsapp_group_id, updated_at')
+        .select('id, lead_name, acolhedor, whatsapp_group_id, lead_phone, updated_at')
         .eq('lead_status', 'closed')
         .gte('updated_at', start)
         .lte('updated_at', end);
@@ -47,7 +49,7 @@ export function useOperationalGaps() {
       // Closed without group
       const closedWithoutGroup: GapItem[] = closed
         .filter(l => !l.whatsapp_group_id)
-        .map(l => ({ id: l.id, name: l.lead_name || 'Lead', acolhedor: l.acolhedor, created_at: l.updated_at, lead_id: l.id }));
+        .map(l => ({ id: l.id, name: l.lead_name || 'Lead', acolhedor: l.acolhedor, created_at: l.updated_at, lead_id: l.id, whatsapp_phone: l.lead_phone }));
 
       // Leads with group (closed in period)
       const withGroup = closed.filter(l => !!l.whatsapp_group_id);
@@ -68,12 +70,12 @@ export function useOperationalGaps() {
 
       const withGroupWithoutCase: GapItem[] = withGroup
         .filter(l => !leadsWithCases.has(l.id))
-        .map(l => ({ id: l.id, name: l.lead_name || 'Lead', acolhedor: l.acolhedor, created_at: l.updated_at, lead_id: l.id }));
+        .map(l => ({ id: l.id, name: l.lead_name || 'Lead', acolhedor: l.acolhedor, created_at: l.updated_at, lead_id: l.id, whatsapp_phone: l.lead_phone, whatsapp_group_id: l.whatsapp_group_id }));
 
       // 3. Cases created in period without processes
       const { data: casesData } = await supabase
         .from('legal_cases')
-        .select('id, case_number, title, acolhedor, created_at')
+        .select('id, case_number, title, acolhedor, lead_id, created_at')
         .gte('created_at', start)
         .lte('created_at', end);
 
@@ -90,9 +92,25 @@ export function useOperationalGaps() {
         }
       }
 
+      // Fetch lead info for cases
+      const caseLeadIds = (casesData || []).map(c => c.lead_id).filter(Boolean) as string[];
+      let caseLeadMap: Record<string, { lead_phone: string | null; whatsapp_group_id: string | null }> = {};
+      if (caseLeadIds.length > 0) {
+        const { data: leads } = await supabase
+          .from('leads')
+          .select('id, lead_phone, whatsapp_group_id')
+          .in('id', caseLeadIds);
+        if (leads) {
+          caseLeadMap = Object.fromEntries(leads.map(l => [l.id, { lead_phone: l.lead_phone, whatsapp_group_id: l.whatsapp_group_id }]));
+        }
+      }
+
       const casesWithoutProcess: GapItem[] = (casesData || [])
         .filter(c => !casesWithProcesses.has(c.id))
-        .map(c => ({ id: c.id, name: c.title || c.case_number || 'Caso', acolhedor: c.acolhedor, created_at: c.created_at }));
+        .map(c => {
+          const leadInfo = c.lead_id ? caseLeadMap[c.lead_id] : null;
+          return { id: c.id, name: c.title || c.case_number || 'Caso', acolhedor: c.acolhedor, created_at: c.created_at, lead_id: c.lead_id, whatsapp_phone: leadInfo?.lead_phone, whatsapp_group_id: leadInfo?.whatsapp_group_id };
+        });
 
       // 4. Processes created in period without activities
       const { data: processesData } = await supabase
@@ -114,9 +132,25 @@ export function useOperationalGaps() {
         }
       }
 
+      // Fetch lead info for processes
+      const procLeadIds = (processesData || []).map(p => p.lead_id).filter(Boolean) as string[];
+      let procLeadMap: Record<string, { lead_phone: string | null; whatsapp_group_id: string | null }> = {};
+      if (procLeadIds.length > 0) {
+        const { data: leads } = await supabase
+          .from('leads')
+          .select('id, lead_phone, whatsapp_group_id')
+          .in('id', procLeadIds);
+        if (leads) {
+          procLeadMap = Object.fromEntries(leads.map(l => [l.id, { lead_phone: l.lead_phone, whatsapp_group_id: l.whatsapp_group_id }]));
+        }
+      }
+
       const processesWithoutActivity: GapItem[] = (processesData || [])
         .filter(p => !processesWithActivities.has(p.id))
-        .map(p => ({ id: p.id, name: p.title || 'Processo', acolhedor: null, created_at: p.created_at, lead_id: p.lead_id }));
+        .map(p => {
+          const leadInfo = p.lead_id ? procLeadMap[p.lead_id] : null;
+          return { id: p.id, name: p.title || 'Processo', acolhedor: null, created_at: p.created_at, lead_id: p.lead_id, whatsapp_phone: leadInfo?.lead_phone, whatsapp_group_id: leadInfo?.whatsapp_group_id };
+        });
 
       setGaps({ closedWithoutGroup, withGroupWithoutCase, casesWithoutProcess, processesWithoutActivity });
     } catch (err) {

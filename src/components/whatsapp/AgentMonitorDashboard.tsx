@@ -379,6 +379,13 @@ export function AgentMonitorDashboard() {
           onClose={() => setGapSheet(null)}
           gapType={gapSheet}
           items={filteredGaps[gapSheet]}
+          onOpenChat={(phone, instanceName, contactName) => {
+            setGapSheet(null);
+            const match = conversations.find(c => c.phone === phone && (!instanceName || c.instance_name === instanceName));
+            if (match) {
+              setChatPreview(match);
+            }
+          }}
         />
       )}
 
