@@ -4,12 +4,13 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
   Webhook, BarChart3, Megaphone, ArrowLeft, 
-  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network, Brain
+  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network, Brain, MapPin
 } from 'lucide-react';
 
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
 import { WhatsAppAdLinkSettings } from './WhatsAppAdLinkSettings';
+import { AdSetGeoRulesConfig } from '@/components/ads/AdSetGeoRulesConfig';
 
 import { WebhookLogsViewer } from './WebhookLogsViewer';
 import { WhatsAppCommandConfig } from './WhatsAppCommandConfig';
@@ -81,6 +82,15 @@ const tabs: Tab[] = [
     icon: <Megaphone className="h-5 w-5" />,
     description: 'Vincule instâncias a contas de anúncios',
     accentColor: 'text-orange-500',
+  },
+  {
+    id: 'geo',
+    label: 'Geo-Segmentação',
+    icon: <MapPin className="h-5 w-5" />,
+    description: 'Regras automáticas de localização em anúncios',
+    badge: '📍 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-teal-500',
   },
   {
     id: 'groups',
@@ -260,6 +270,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'voice' && <VoiceSettings />}
             {activeTab === 'reports' && <WhatsAppReportSettings />}
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
+            {activeTab === 'geo' && <AdSetGeoRulesConfig />}
             {activeTab === 'groups' && <BoardGroupInstancesConfig />}
             {activeTab === 'automations' && <AgentAutomationsTab />}
             {activeTab === 'nuclei' && <NucleiSettings />}
