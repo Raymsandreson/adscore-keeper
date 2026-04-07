@@ -20,6 +20,7 @@ interface MetaAdSet {
   name: string;
   campaign_id: string;
   campaign_name?: string;
+  effective_status?: string;
 }
 
 export function AdSetGeoRulesConfig() {
