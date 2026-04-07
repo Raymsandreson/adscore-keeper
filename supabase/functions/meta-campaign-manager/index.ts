@@ -112,25 +112,28 @@ serve(async (req) => {
 
 async function getTargeting(accessToken: string, adSetId: string) {
   const url = `https://graph.facebook.com/v21.0/${adSetId}?access_token=${accessToken}&fields=targeting,name`;
+  console.log(`[get_targeting] Fetching: ${url.replace(accessToken, 'TOKEN_HIDDEN')}`);
   const response = await fetch(url);
   const data = await response.json();
+
+  console.log(`[get_targeting] Full API response keys:`, Object.keys(data));
+  console.log(`[get_targeting] Full response JSON:`, JSON.stringify(data).substring(0, 3000));
 
   if (data.error) {
     throw new Error(data.error.message || 'Failed to get targeting');
   }
 
   const targeting = data.targeting || {};
-  console.log(`[get_targeting] Raw targeting for ${adSetId}:`, JSON.stringify(targeting).substring(0, 2000));
+  const geoLocations = targeting.geo_locations || {};
+  
+  console.log(`[get_targeting] targeting keys:`, Object.keys(targeting));
+  console.log(`[get_targeting] geo_locations keys:`, Object.keys(geoLocations));
+  console.log(`[get_targeting] geo_locations full:`, JSON.stringify(geoLocations));
   
   return {
     adSetId,
     name: data.name,
-    targeting: {
-      geo_locations: targeting.geo_locations || {},
-      age_min: targeting.age_min,
-      age_max: targeting.age_max,
-      genders: targeting.genders,
-    },
+    targeting,
   };
 }
 
