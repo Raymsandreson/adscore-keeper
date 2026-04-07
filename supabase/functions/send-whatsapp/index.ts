@@ -343,7 +343,10 @@ Deno.serve(async (req) => {
       })
 
       if (!uazResponse.ok) {
-        const errorText = await uazResponse.text()
+        const errorText = await readResponseTextSafe(uazResponse)
+        if (isWhatsAppDisconnected(uazResponse.status, errorText)) {
+          return buildJsonResponse(buildDisconnectedPayload(instance.instance_name, errorText))
+        }
         throw new Error(`UazAPI error: ${uazResponse.status} - ${errorText}`)
       }
 
