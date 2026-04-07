@@ -222,26 +222,76 @@ async function updateTargeting(
 // Docs: https://developers.facebook.com/docs/marketing-api/audiences/reference/basic-targeting/
 // type=adgeolocation searches across all location types (cities, regions, countries, zips)
 // type=adcountry, adregion, adcity, adzip for specific types
-async function searchLocations(accessToken: string, query: string, locationType: string) {
-  // Use adgeolocation for broad search, which returns cities, regions, countries, zips
-  const url = `https://graph.facebook.com/v21.0/search?type=${locationType}&q=${encodeURIComponent(query)}&access_token=${accessToken}&locale=pt_BR&limit=25`;
-  
-  console.log(`[search_locations] Searching for "${query}" with type=${locationType}`);
-  
+function isBrazilianZipQuery(query: string) {
+  return /^\d{5}-?\d{3}$/.test(query.trim());
+}
+
+function formatBrazilianZip(query: string) {
+  const digits = query.replace(/\D/g, '');
+  return digits.length === 8 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : query.trim();
+}
+
+async function fetchLocationSearch(
+  accessToken: string,
+  type: string,
+  query: string,
+) {
+  const url = `https://graph.facebook.com/v21.0/search?type=${type}&q=${encodeURIComponent(query)}&access_token=${accessToken}&locale=pt_BR&limit=25`;
+  console.log(`[search_locations] Searching for "${query}" with type=${type}`);
+
   const response = await fetch(url);
   const data = await response.json();
 
   if (data.error) {
-    console.error(`[search_locations] Error:`, JSON.stringify(data.error));
+    console.error(`[search_locations] Error for type=${type} q="${query}":`, JSON.stringify(data.error));
     throw new Error(data.error.message || 'Failed to search locations');
   }
 
-  console.log(`[search_locations] Found ${data.data?.length || 0} results for "${query}"`);
-  if (data.data?.length > 0) {
-    console.log(`[search_locations] First result:`, JSON.stringify(data.data[0]));
+  return data.data || [];
+}
+
+async function searchLocations(accessToken: string, query: string, locationType: string) {
+  const trimmedQuery = query.trim();
+  const searchPlan: Array<{ type: string; query: string }> = [];
+
+  if (isBrazilianZipQuery(trimmedQuery)) {
+    const formattedZip = formatBrazilianZip(trimmedQuery);
+    const rawZip = trimmedQuery.replace(/\D/g, '');
+
+    searchPlan.push(
+      { type: 'adzip', query: formattedZip },
+      { type: 'adzip', query: rawZip },
+      { type: 'adgeolocation', query: formattedZip },
+      { type: 'adgeolocation', query: rawZip },
+    );
+  } else {
+    searchPlan.push({ type: locationType, query: trimmedQuery });
   }
 
-  return { results: data.data || [] };
+  const seen = new Set<string>();
+  const results: any[] = [];
+
+  for (const step of searchPlan) {
+    const stepResults = await fetchLocationSearch(accessToken, step.type, step.query);
+
+    for (const item of stepResults) {
+      const dedupeKey = `${item.key || item.id || item.name}-${item.type || step.type}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      results.push(item);
+    }
+
+    if (results.length > 0 && isBrazilianZipQuery(trimmedQuery)) {
+      break;
+    }
+  }
+
+  console.log(`[search_locations] Found ${results.length} results for "${trimmedQuery}"`);
+  if (results.length > 0) {
+    console.log(`[search_locations] First result:`, JSON.stringify(results[0]));
+  }
+
+  return { results };
 }
 
 async function updateStatus(accessToken: string, entityId: string, status: 'ACTIVE' | 'PAUSED') {
