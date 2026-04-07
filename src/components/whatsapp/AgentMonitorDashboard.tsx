@@ -373,6 +373,15 @@ export function AgentMonitorDashboard() {
         }}
       />
 
+      {gapSheet && (
+        <GapDetailSheet
+          open={!!gapSheet}
+          onClose={() => setGapSheet(null)}
+          gapType={gapSheet}
+          items={filteredGaps[gapSheet]}
+        />
+      )}
+
       <NewConversationsSheet
         open={newConvsSheetOpen}
         onClose={() => setNewConvsSheetOpen(false)}
