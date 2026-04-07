@@ -190,6 +190,19 @@ export const GeoTargetingDialog = ({
         countries.push(location.country_code);
         newGeo.countries = countries;
       }
+    } else if (type === 'custom_location') {
+      const customs = [...(newGeo.custom_locations || [])];
+      const newPin = {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        radius: location.radius || 10,
+        distance_unit: location.distance_unit || 'kilometer',
+        name: location.name,
+      };
+      if (!customs.some(c => c.latitude === newPin.latitude && c.longitude === newPin.longitude)) {
+        customs.push(newPin);
+        newGeo.custom_locations = customs;
+      }
     }
 
     setGeoLocations(newGeo);
