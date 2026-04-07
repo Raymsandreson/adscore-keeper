@@ -63,6 +63,7 @@ export function AdSetGeoRulesConfig() {
           name: a.name,
           campaign_id: a.campaign_id,
           campaign_name: a.campaign?.name || '',
+          effective_status: a.effective_status || 'UNKNOWN',
         }))
       );
     } catch (e: any) {
