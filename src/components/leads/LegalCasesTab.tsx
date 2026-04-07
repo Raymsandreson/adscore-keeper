@@ -26,6 +26,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { useLegalCases, LegalCase } from '@/hooks/useLegalCases';
+import { useProfilesList } from '@/hooks/useProfilesList';
 import { useLeadProcesses, LeadProcess } from '@/hooks/useLeadProcesses';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { useProcessParties, partyRoleLabels, PartyRole } from '@/hooks/useProcessParties';
@@ -51,6 +52,7 @@ interface LegalCasesTabProps {
 export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabProps) {
   const { cases, loading: casesLoading, fetchCases, createCase, updateCase, deleteCase } = useLegalCases(leadId);
   const { nuclei } = useSpecializedNuclei();
+  const profiles = useProfilesList();
 
   const [showCaseDialog, setShowCaseDialog] = useState(false);
   const [editingCase, setEditingCase] = useState<LegalCase | null>(null);
@@ -59,6 +61,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   const [caseDescription, setCaseDescription] = useState('');
   const [caseNucleusId, setCaseNucleusId] = useState('');
   const [caseNotes, setCaseNotes] = useState('');
+  const [caseAcolhedor, setCaseAcolhedor] = useState('');
   const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null);
   const [processRefreshKey, setProcessRefreshKey] = useState(0);
   const [selectedProcesses, setSelectedProcesses] = useState<Set<string>>(new Set());
@@ -84,6 +87,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     setCaseDescription('');
     setCaseNucleusId('');
     setCaseNotes('');
+    setCaseAcolhedor('');
     setEditingCase(null);
     setSelectedProcesses(new Set());
   };
