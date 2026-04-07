@@ -290,7 +290,7 @@ async function searchLocations(accessToken: string, query: string, locationType:
   const searchPlan: Array<{ type: string; query: string; locationTypes?: string[] }> = [];
 
   if (isBrazilianZipQuery(trimmedQuery)) {
-    // Convert CEP to city name via ViaCEP, then search Meta by city
+    // Convert CEP to coordinates via ViaCEP + Nominatim, return as custom_location
     try {
       const cleanCep = trimmedQuery.replace(/\D/g, '');
       const viaCepRes = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
@@ -298,16 +298,57 @@ async function searchLocations(accessToken: string, query: string, locationType:
       if (viaCepData.erro) {
         throw new Error('CEP não encontrado');
       }
-      const cityQuery = `${viaCepData.localidade}, ${viaCepData.uf}`;
-      console.log(`CEP ${cleanCep} resolved to city: ${cityQuery}`);
+
+      // Geocode via Nominatim
+      const address = [viaCepData.logradouro, viaCepData.bairro, viaCepData.localidade, viaCepData.uf, 'Brazil']
+        .filter(Boolean).join(', ');
+      let lat: number | null = null;
+      let lng: number | null = null;
+
+      const nominatimRes = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+        { headers: { 'User-Agent': 'LovableApp/1.0' } }
+      );
+      const nominatimData = await nominatimRes.json();
       
-      const cityResults = await fetchLocationSearch(accessToken, 'adgeolocation', cityQuery, {
-        locationTypes: ['city'],
-      });
-      return cityResults;
+      if (nominatimData.length > 0) {
+        lat = parseFloat(nominatimData[0].lat);
+        lng = parseFloat(nominatimData[0].lon);
+      } else {
+        // Fallback: search by city only
+        const fallbackRes = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(`${viaCepData.localidade}, ${viaCepData.uf}, Brazil`)}&limit=1`,
+          { headers: { 'User-Agent': 'LovableApp/1.0' } }
+        );
+        const fallbackData = await fallbackRes.json();
+        if (fallbackData.length > 0) {
+          lat = parseFloat(fallbackData[0].lat);
+          lng = parseFloat(fallbackData[0].lon);
+        }
+      }
+
+      if (lat === null || lng === null) {
+        throw new Error('Coordenadas não encontradas');
+      }
+
+      const locationName = [viaCepData.bairro, viaCepData.localidade, viaCepData.uf].filter(Boolean).join(', ');
+      console.log(`CEP ${cleanCep} resolved to coordinates: ${lat}, ${lng} (${locationName})`);
+
+      // Return as a custom_location result that the frontend can use directly
+      return [{
+        key: `custom_${lat}_${lng}`,
+        name: `📍 ${locationName} (CEP ${cleanCep})`,
+        type: 'custom_location',
+        country_code: 'BR',
+        country_name: 'Brazil',
+        latitude: lat,
+        longitude: lng,
+        radius: 10,
+        distance_unit: 'kilometer',
+      }];
     } catch (e) {
-      console.error('ViaCEP lookup failed:', e);
-      throw new Error(`Não foi possível converter o CEP "${trimmedQuery}" em localização. Tente buscar pelo nome da cidade.`);
+      console.error('CEP geocoding failed:', e);
+      throw new Error(`Não foi possível converter o CEP "${trimmedQuery}" em coordenadas. Tente buscar pelo nome da cidade.`);
     }
   }
 
