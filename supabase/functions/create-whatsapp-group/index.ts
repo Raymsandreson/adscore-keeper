@@ -1232,6 +1232,36 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
       } else if (!audioVoiceId) {
         console.log('Skipping audio: no voice ID configured')
       }
+      // Set group description with the initial message text
+      if (groupId) {
+        try {
+          const groupJidForDesc = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
+          // Truncate description to WhatsApp's 2048 char limit
+          const descriptionText = messageText.length > 2048 ? messageText.substring(0, 2045) + '...' : messageText
+          const descRes = await fetch(`${baseUrl}/group/updateDescription`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+            body: JSON.stringify({ groupjid: groupJidForDesc, description: descriptionText }),
+          })
+          if (!descRes.ok) {
+            // Try alternative endpoint
+            const descRes2 = await fetch(`${baseUrl}/group/description`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+              body: JSON.stringify({ groupjid: groupJidForDesc, description: descriptionText }),
+            })
+            if (!descRes2.ok) {
+              console.warn('Failed to set group description:', descRes2.status, await descRes2.text())
+            } else {
+              console.log('Group description set successfully (alt endpoint)')
+            }
+          } else {
+            console.log('Group description set successfully')
+          }
+        } catch (descErr) {
+          console.error('Error setting group description:', descErr)
+        }
+      }
     }
   } catch (err) {
     console.error('Error sending initial message:', err)
