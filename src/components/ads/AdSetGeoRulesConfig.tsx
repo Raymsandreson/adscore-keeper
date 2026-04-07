@@ -231,25 +231,54 @@ export function AdSetGeoRulesConfig() {
             </div>
 
             <div>
-              <Label>Conjunto de Anúncios (Ad Set) *</Label>
+              <div className="flex items-center justify-between mb-1">
+                <Label>Conjunto de Anúncios (Ad Set) *</Label>
+                <div className="flex gap-1">
+                  <Button variant={adSetSort === 'status' ? 'secondary' : 'ghost'} size="sm" className="h-6 text-[10px] px-2" onClick={() => setAdSetSort('status')}>Status</Button>
+                  <Button variant={adSetSort === 'name' ? 'secondary' : 'ghost'} size="sm" className="h-6 text-[10px] px-2" onClick={() => setAdSetSort('name')}>Nome</Button>
+                </div>
+              </div>
               {loadingAdSets ? (
                 <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" /> Carregando ad sets...
                 </div>
               ) : (
-                <Select value={formAdSetId} onValueChange={setFormAdSetId}>
-                  <SelectTrigger><SelectValue placeholder="Selecione o ad set" /></SelectTrigger>
-                  <SelectContent>
-                    {adSets.map(a => {
-                      const statusLabel = a.effective_status === 'ACTIVE' ? '🟢' : a.effective_status === 'PAUSED' || a.effective_status === 'CAMPAIGN_PAUSED' || a.effective_status === 'ADSET_PAUSED' ? '⏸️' : '⚪';
-                      return (
-                        <SelectItem key={a.id} value={a.id}>
-                          {statusLabel} {a.name} {a.campaign_name ? `(${a.campaign_name})` : ''}
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
+                <Popover open={adSetOpen} onOpenChange={setAdSetOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" aria-expanded={adSetOpen} className="w-full justify-between font-normal">
+                      {formAdSetId ? (() => {
+                        const sel = adSets.find(a => a.id === formAdSetId);
+                        if (!sel) return 'Selecione o ad set';
+                        const icon = sel.effective_status === 'ACTIVE' ? '🟢' : (sel.effective_status === 'PAUSED' || sel.effective_status === 'CAMPAIGN_PAUSED' || sel.effective_status === 'ADSET_PAUSED') ? '⏸️' : '⚪';
+                        return `${icon} ${sel.name}`;
+                      })() : 'Selecione o ad set'}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[460px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar ad set..." />
+                      <CommandList className="max-h-[300px]">
+                        <CommandEmpty>Nenhum ad set encontrado.</CommandEmpty>
+                        <CommandGroup>
+                          {sortedAdSets.map(a => {
+                            const icon = a.effective_status === 'ACTIVE' ? '🟢' : (a.effective_status === 'PAUSED' || a.effective_status === 'CAMPAIGN_PAUSED' || a.effective_status === 'ADSET_PAUSED') ? '⏸️' : '⚪';
+                            return (
+                              <CommandItem
+                                key={a.id}
+                                value={`${a.name} ${a.campaign_name || ''}`}
+                                onSelect={() => { setFormAdSetId(a.id); setAdSetOpen(false); }}
+                              >
+                                <Check className={cn("mr-2 h-4 w-4", formAdSetId === a.id ? "opacity-100" : "opacity-0")} />
+                                <span className="truncate">{icon} {a.name} {a.campaign_name ? `(${a.campaign_name})` : ''}</span>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               )}
             </div>
 
