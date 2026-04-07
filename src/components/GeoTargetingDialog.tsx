@@ -98,10 +98,16 @@ export const GeoTargetingDialog = ({
         }),
       });
       const data = await response.json();
-      console.log('[GeoDialog] Targeting response:', JSON.stringify(data).substring(0, 1000));
+      console.log('[GeoDialog] FULL API response:', JSON.stringify(data));
       if (data.success) {
-        const geo = data.data.targeting?.geo_locations || {};
-        console.log('[GeoDialog] Parsed geo_locations:', JSON.stringify(geo));
+        const targeting = data.data?.targeting || {};
+        console.log('[GeoDialog] targeting object:', JSON.stringify(targeting));
+        const geo = targeting.geo_locations || {};
+        console.log('[GeoDialog] geo_locations:', JSON.stringify(geo));
+        console.log('[GeoDialog] custom_locations:', JSON.stringify(geo.custom_locations));
+        console.log('[GeoDialog] cities:', JSON.stringify(geo.cities));
+        console.log('[GeoDialog] countries:', JSON.stringify(geo.countries));
+        console.log('[GeoDialog] regions:', JSON.stringify(geo.regions));
         setGeoLocations(geo);
         setOriginalGeo(geo);
       } else {
