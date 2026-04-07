@@ -127,14 +127,24 @@ const LeadsCenter = () => {
 
   useEffect(() => {
     const fetchStats = async () => {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('id, status')
-        .limit(5000);
-      if (error || !data) return;
-      const total = data.length;
-      const converted = data.filter(l => l.status === 'converted').length;
-      const notQualified = data.filter(l => ['not_qualified', 'lost'].includes(l.status || '')).length;
+      // Paginated count to avoid timeout on large datasets
+      let allData: any[] = [];
+      let page = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const from = page * 1000;
+        const { data, error } = await supabase
+          .from('leads')
+          .select('id, status')
+          .range(from, from + 999);
+        if (error || !data || data.length === 0) { hasMore = false; break; }
+        allData = allData.concat(data);
+        hasMore = data.length === 1000;
+        page++;
+      }
+      const total = allData.length;
+      const converted = allData.filter(l => l.status === 'converted').length;
+      const notQualified = allData.filter(l => ['not_qualified', 'lost'].includes(l.status || '')).length;
       const inProgress = total - converted - notQualified;
       
       setRealStats({
