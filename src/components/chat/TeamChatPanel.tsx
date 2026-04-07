@@ -171,16 +171,8 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
                     </div>
                   )}
                   <p className="whitespace-pre-wrap break-words text-[13px]">
-                    {msg.content.split(/(@\S+(?:\s\S+)?)/).map((part, i) =>
-                      part.startsWith('@') ? (
-                        <span key={i} className={cn(
-                          "font-semibold",
-                          isMe ? "text-primary-foreground/90 underline" : "text-primary"
-                        )}>{part}</span>
-                      ) : (
-                        <span key={i}>{part}</span>
-                      )
-                    )}
+                    {renderMessageWithMentions(msg.content, isMe)}
+                  </p>
                   </p>
                   <div className={cn(
                     "text-[9px] mt-0.5",
