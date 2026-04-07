@@ -93,7 +93,7 @@ export const GeoTargetingDialog = ({
     } finally {
       setIsLoading(false);
     }
-  }, [entityId]);
+  }, [entityId, entityType]);
 
   useEffect(() => {
     if (open) {
