@@ -559,27 +559,57 @@ Deno.serve(async (req) => {
     }
 
     // Wait for WhatsApp to fully process the group creation
-    await new Promise(resolve => setTimeout(resolve, 3000))
+    await new Promise(resolve => setTimeout(resolve, 5000))
 
-    // If group was created empty, add participants one by one
+    // If group was created empty, add participants - try all at once first, then one by one
     if (groupId && createdWithoutParticipants && participantsToCreate.length > 0) {
       const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
-      for (const p of participantsToCreate) {
-        try {
-          const addRes = await postUazApiWithRetry(
-            baseUrl,
-            creatorInstance.instance_token,
-            '/group/updateParticipants',
-            { groupjid: groupJid, action: 'add', participants: [p] },
-          )
-
-          if (!addRes.ok) {
-            console.warn(`Failed to add ${p} to group:`, await addRes.text())
-          }
-        } catch (e) {
-          console.warn(`Error adding ${p} to group:`, e)
+      
+      // Try adding all participants at once first
+      let bulkSuccess = false
+      try {
+        console.log(`[create-group] Trying to add all ${participantsToCreate.length} participants at once`)
+        const bulkRes = await postUazApiWithRetry(
+          baseUrl,
+          creatorInstance.instance_token,
+          '/group/updateParticipants',
+          { groupjid: groupJid, action: 'add', participants: participantsToCreate },
+          5, // more retries for this critical step
+        )
+        if (bulkRes.ok) {
+          bulkSuccess = true
+          console.log('[create-group] Bulk add succeeded')
+        } else {
+          console.warn('[create-group] Bulk add failed:', bulkRes.status, await bulkRes.text())
         }
-        await sleep(600)
+      } catch (e) {
+        console.warn('[create-group] Bulk add error:', e)
+      }
+
+      // If bulk failed, try one by one with longer delays
+      if (!bulkSuccess) {
+        console.log('[create-group] Falling back to adding participants one by one')
+        await sleep(3000) // wait before retrying
+        for (const p of participantsToCreate) {
+          try {
+            const addRes = await postUazApiWithRetry(
+              baseUrl,
+              creatorInstance.instance_token,
+              '/group/updateParticipants',
+              { groupjid: groupJid, action: 'add', participants: [p] },
+              5,
+            )
+
+            if (!addRes.ok) {
+              console.warn(`Failed to add ${p} to group:`, await addRes.text())
+            } else {
+              console.log(`[create-group] Added ${p} to group successfully`)
+            }
+          } catch (e) {
+            console.warn(`Error adding ${p} to group:`, e)
+          }
+          await sleep(2000) // longer delay between individual adds
+        }
       }
     }
 
@@ -596,27 +626,56 @@ Deno.serve(async (req) => {
         console.warn('Could not verify group participants (API issue). Proceeding with post-creation steps anyway.')
         verificationWarning = 'Não foi possível verificar participantes do grupo (problema na API), mas o grupo foi criado.'
       } else {
-        if (normalizedContact && !mainContactAdded) {
-          const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
+        const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
+        
+        // Find ALL missing participants (not just main contact)
+        const actualPhones = extractParticipantPhones(groupInfo?.participants || [])
+        const missingParticipants = participantsToCreate.filter(
+          (p) => !actualPhones.some((ap) => phoneMatches(ap, p))
+        )
+        
+        if (missingParticipants.length > 0) {
+          console.log(`[create-group] ${missingParticipants.length} participants missing from group, adding them:`, JSON.stringify(missingParticipants))
+          
+          // Try adding all missing at once first
           try {
-            const addMainContactRes = await postUazApiWithRetry(
+            const addAllRes = await postUazApiWithRetry(
               baseUrl,
               creatorInstance.instance_token,
               '/group/updateParticipants',
-              { groupjid: groupJid, action: 'add', participants: [normalizedContact] },
+              { groupjid: groupJid, action: 'add', participants: missingParticipants },
+              5,
             )
-
-            if (!addMainContactRes.ok) {
-              console.warn('Failed to re-add main contact to group:', await addMainContactRes.text())
-            } else {
-              await sleep(1200)
-              groupInfo = await fetchGroupInfo(baseUrl, creatorInstance.instance_token, groupId)
-              matchedParticipants = countMatchedParticipants(groupInfo?.participants || [], participantsToCreate)
-              mainContactAdded = countMatchedParticipants(groupInfo?.participants || [], [normalizedContact]) > 0
+            if (!addAllRes.ok) {
+              console.warn('[create-group] Bulk re-add failed:', await addAllRes.text(), '- trying one by one')
+              // Try one by one
+              for (const p of missingParticipants) {
+                try {
+                  await sleep(2000)
+                  const addRes = await postUazApiWithRetry(
+                    baseUrl,
+                    creatorInstance.instance_token,
+                    '/group/updateParticipants',
+                    { groupjid: groupJid, action: 'add', participants: [p] },
+                    5,
+                  )
+                  if (!addRes.ok) {
+                    console.warn(`[create-group] Failed to re-add ${p}:`, await addRes.text())
+                  }
+                } catch (e) {
+                  console.warn(`[create-group] Error re-adding ${p}:`, e)
+                }
+              }
             }
-          } catch (error) {
-            console.warn('Error re-adding main contact to group:', error)
+          } catch (e) {
+            console.warn('[create-group] Error in bulk re-add:', e)
           }
+
+          // Re-verify after adding
+          await sleep(2000)
+          groupInfo = await fetchGroupInfo(baseUrl, creatorInstance.instance_token, groupId)
+          matchedParticipants = countMatchedParticipants(groupInfo?.participants || [], participantsToCreate)
+          mainContactAdded = normalizedContact ? countMatchedParticipants(groupInfo?.participants || [], [normalizedContact]) > 0 : true
         }
 
         participantsCount = matchedParticipants || participantsToCreate.length
