@@ -501,16 +501,25 @@ Deno.serve(async (req) => {
 })
 
 async function getInstance(supabase: any, instance_id?: string) {
-  if (!instance_id) {
-    return null
+  if (instance_id) {
+    const { data } = await supabase
+      .from('whatsapp_instances')
+      .select('*')
+      .eq('id', instance_id)
+      .eq('is_active', true)
+      .single()
+
+    if (data) return data
   }
 
-  const { data } = await supabase
+  // Fallback: pick the first active instance
+  const { data: fallback } = await supabase
     .from('whatsapp_instances')
     .select('*')
-    .eq('id', instance_id)
     .eq('is_active', true)
+    .order('created_at', { ascending: true })
+    .limit(1)
     .single()
 
-  return data || null
+  return fallback || null
 }
