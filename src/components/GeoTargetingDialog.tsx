@@ -15,6 +15,7 @@ import {
 import { MapPin, Search, X, Loader2, Plus, Globe, Crosshair } from "lucide-react";
 import { toast } from "sonner";
 import { getMetaCredentials } from "@/utils/metaCredentials";
+import { GeoTargetingPinMap } from "./GeoTargetingPinMap";
 
 interface GeoLocation {
   key: string;
