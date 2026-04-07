@@ -329,6 +329,54 @@ export type Database = {
           },
         ]
       }
+      adset_geo_rules: {
+        Row: {
+          acolhedor: string | null
+          ad_account_id: string
+          adset_id: string
+          adset_name: string | null
+          board_id: string
+          campaign_id: string | null
+          campaign_name: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          radius_km: number
+          stage_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          acolhedor?: string | null
+          ad_account_id: string
+          adset_id: string
+          adset_name?: string | null
+          board_id: string
+          campaign_id?: string | null
+          campaign_name?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          radius_km?: number
+          stage_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          acolhedor?: string | null
+          ad_account_id?: string
+          adset_id?: string
+          adset_name?: string | null
+          board_id?: string
+          campaign_id?: string | null
+          campaign_name?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          radius_km?: number
+          stage_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       agent_automation_rules: {
         Row: {
           actions: Json
