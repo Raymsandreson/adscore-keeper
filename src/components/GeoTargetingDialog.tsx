@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { MapPin, Search, X, Loader2, Plus, Globe } from "lucide-react";
+import { MapPin, Search, X, Loader2, Plus, Globe, Crosshair } from "lucide-react";
 import { toast } from "sonner";
 import { getMetaCredentials } from "@/utils/metaCredentials";
 
