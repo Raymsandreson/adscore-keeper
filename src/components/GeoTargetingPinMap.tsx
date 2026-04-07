@@ -3,8 +3,10 @@ import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from "r
 import L from "leaflet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus } from "lucide-react";
+import { Plus, Search, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import "leaflet/dist/leaflet.css";
 
 // Fix default marker icon
@@ -40,6 +42,8 @@ function FlyToPin({ lat, lng }: { lat: number; lng: number }) {
 export const GeoTargetingPinMap = ({ onAddPin, existingPins = [] }: PinMapProps) => {
   const [tempPin, setTempPin] = useState<{ lat: number; lng: number } | null>(null);
   const [radius, setRadius] = useState("17");
+  const [cepInput, setCepInput] = useState("");
+  const [isSearchingCep, setIsSearchingCep] = useState(false);
 
   const handleMapClick = (lat: number, lng: number) => {
     setTempPin({ lat, lng });
@@ -51,19 +55,104 @@ export const GeoTargetingPinMap = ({ onAddPin, existingPins = [] }: PinMapProps)
     setTempPin(null);
   };
 
+  const searchByCep = async () => {
+    const clean = cepInput.replace(/\D/g, "");
+    if (clean.length !== 8) {
+      toast.error("CEP inválido. Digite 8 dígitos.");
+      return;
+    }
+
+    setIsSearchingCep(true);
+    try {
+      // Step 1: ViaCEP to get address
+      const viaCepRes = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
+      const viaCepData = await viaCepRes.json();
+      if (viaCepData.erro) {
+        toast.error("CEP não encontrado.");
+        return;
+      }
+
+      // Step 2: Nominatim to geocode the address
+      const searchParts = [
+        viaCepData.logradouro,
+        viaCepData.bairro,
+        viaCepData.localidade,
+        viaCepData.uf,
+        "Brazil",
+      ].filter(Boolean);
+
+      const nominatimRes = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchParts.join(", "))}&limit=1&countrycodes=br`,
+        { headers: { "Accept-Language": "pt-BR" } }
+      );
+      const nominatimData = await nominatimRes.json();
+
+      if (!nominatimData.length) {
+        // Fallback: try city + state only
+        const fallbackRes = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(`${viaCepData.localidade}, ${viaCepData.uf}, Brazil`)}&limit=1&countrycodes=br`,
+          { headers: { "Accept-Language": "pt-BR" } }
+        );
+        const fallbackData = await fallbackRes.json();
+
+        if (!fallbackData.length) {
+          toast.error("Não foi possível localizar coordenadas para este CEP.");
+          return;
+        }
+
+        const lat = parseFloat(fallbackData[0].lat);
+        const lng = parseFloat(fallbackData[0].lon);
+        setTempPin({ lat, lng });
+        toast.success(`CEP ${clean} → ${viaCepData.localidade}/${viaCepData.uf} (aproximado)`);
+        return;
+      }
+
+      const lat = parseFloat(nominatimData[0].lat);
+      const lng = parseFloat(nominatimData[0].lon);
+      setTempPin({ lat, lng });
+      toast.success(`CEP ${clean} → ${viaCepData.logradouro || viaCepData.localidade}, ${viaCepData.localidade}/${viaCepData.uf}`);
+    } catch (err) {
+      toast.error("Erro ao buscar CEP. Tente novamente.");
+      console.error("CEP geocoding error:", err);
+    } finally {
+      setIsSearchingCep(false);
+    }
+  };
+
   const radiusMeters = parseInt(radius) * 1000;
 
   const defaultCenter = useMemo(() => {
     if (existingPins.length > 0) {
       return [existingPins[0].latitude, existingPins[0].longitude] as [number, number];
     }
-    return [-14.235, -51.9253] as [number, number]; // Brazil center
+    return [-14.235, -51.9253] as [number, number];
   }, [existingPins]);
 
   return (
     <div className="space-y-3">
+      {/* CEP search */}
+      <div className="flex gap-2">
+        <Input
+          placeholder="Buscar por CEP (ex: 64000-020)"
+          value={cepInput}
+          onChange={(e) => setCepInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && searchByCep()}
+          className="text-sm h-9"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={searchByCep}
+          disabled={isSearchingCep || !cepInput.trim()}
+          className="gap-1 shrink-0"
+        >
+          {isSearchingCep ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          CEP
+        </Button>
+      </div>
+
       <p className="text-xs text-muted-foreground">
-        Clique no mapa para soltar um pino. Depois selecione o raio e confirme.
+        Digite um CEP acima ou clique no mapa para soltar um pino.
       </p>
 
       <div className="rounded-md overflow-hidden border" style={{ height: 300 }}>
