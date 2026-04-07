@@ -22,11 +22,24 @@ interface GeoLocation {
   type?: string;
 }
 
+interface CustomLocation {
+  latitude: number;
+  longitude: number;
+  radius?: number;
+  distance_unit?: string;
+  name?: string;
+  primary_city?: string;
+  region?: string;
+  country?: string;
+  key?: string;
+}
+
 interface GeoTargeting {
   countries?: string[];
   cities?: GeoLocation[];
   regions?: GeoLocation[];
   zips?: GeoLocation[];
+  custom_locations?: CustomLocation[];
 }
 
 interface GeoTargetingDialogProps {
