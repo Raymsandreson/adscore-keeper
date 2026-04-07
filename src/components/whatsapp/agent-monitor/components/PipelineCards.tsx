@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles, Clock, TrendingUp, FileSignature, Users, Briefcase, Scale, AlertTriangle, FileText, UserPlus } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -208,59 +207,60 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
         </div>
       )}
 
-      {/* AI vs Human closing breakdown */}
+      {/* Unified closing analysis card */}
       {dashboardMetrics && dashboardMetrics.closedTotal > 0 && (
-        <div className="grid grid-cols-3 gap-2">
-          <Card>
-            <CardContent className="p-3 text-center">
-              <CheckCircle className="h-4 w-4 mx-auto mb-1 text-green-500" />
-              <p className="text-xl font-bold">{dashboardMetrics.closedTotal}</p>
-              <p className="text-[10px] text-muted-foreground">Total Fechados</p>
-            </CardContent>
-          </Card>
-          <Card className="border-purple-200 dark:border-purple-800">
-            <CardContent className="p-3 text-center">
-              <Sparkles className="h-4 w-4 mx-auto mb-1 text-purple-500" />
-              <p className="text-xl font-bold text-purple-600">{dashboardMetrics.closedByAI}</p>
-              <p className="text-[10px] text-muted-foreground">100% IA</p>
-              {dashboardMetrics.closedTotal > 0 && (
-                <p className="text-[9px] font-medium text-purple-500">{Math.round((dashboardMetrics.closedByAI / dashboardMetrics.closedTotal) * 100)}%</p>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 text-center">
-              <MessageCircle className="h-4 w-4 mx-auto mb-1 text-blue-500" />
-              <p className="text-xl font-bold">{dashboardMetrics.closedWithHuman}</p>
-              <p className="text-[10px] text-muted-foreground">Com Humano</p>
-              {dashboardMetrics.closedTotal > 0 && (
-                <p className="text-[9px] font-medium text-blue-500">{Math.round((dashboardMetrics.closedWithHuman / dashboardMetrics.closedTotal) * 100)}%</p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Closing analysis - derived from filtered conversations */}
-      {dashboardMetrics && dashboardMetrics.closedByAgent.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <Card>
-            <CardContent className="p-3">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase mb-2">Fechamentos por Acolhedor</p>
-              <div className="space-y-1">
-                {dashboardMetrics.closedByAgent.slice(0, 5).map(({ agent, count }) => (
-                  <div key={agent} className="flex items-center justify-between text-xs">
-                    <span className="truncate flex-1 mr-2">{agent}</span>
-                    <span className="font-bold text-green-600">{count}</span>
-                  </div>
-                ))}
+        <Card>
+          <CardContent className="p-3">
+            {/* Header with totals */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <span className="text-sm font-semibold">{dashboardMetrics.closedTotal} Fechados</span>
               </div>
-            </CardContent>
-          </Card>
-          {dashboardMetrics.closedByCampaign && dashboardMetrics.closedByCampaign.length > 0 && (
-            <Card>
-              <CardContent className="p-3">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase mb-2">Fechamentos por Campanha</p>
+              <div className="flex items-center gap-3 text-xs">
+                <span className="flex items-center gap-1">
+                  <Sparkles className="h-3 w-3 text-purple-500" />
+                  <span className="font-bold text-purple-600">{dashboardMetrics.closedByAI}</span>
+                  <span className="text-muted-foreground">IA ({dashboardMetrics.closedTotal > 0 ? Math.round((dashboardMetrics.closedByAI / dashboardMetrics.closedTotal) * 100) : 0}%)</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <MessageCircle className="h-3 w-3 text-blue-500" />
+                  <span className="font-bold text-blue-600">{dashboardMetrics.closedWithHuman}</span>
+                  <span className="text-muted-foreground">Humano ({dashboardMetrics.closedTotal > 0 ? Math.round((dashboardMetrics.closedWithHuman / dashboardMetrics.closedTotal) * 100) : 0}%)</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Table with per-agent AI/Human breakdown */}
+            {dashboardMetrics.closedByAgentDetailed.length > 0 && (
+              <div className="border rounded-md overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-muted/50">
+                      <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Acolhedor</th>
+                      <th className="text-center px-2 py-1.5 font-medium text-purple-500 whitespace-nowrap">🤖 IA</th>
+                      <th className="text-center px-2 py-1.5 font-medium text-blue-500 whitespace-nowrap">👤 Humano</th>
+                      <th className="text-center px-2 py-1.5 font-medium text-muted-foreground">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dashboardMetrics.closedByAgentDetailed.map(({ agent, ai, human, total }) => (
+                      <tr key={agent} className="border-t border-border/50">
+                        <td className="px-2 py-1.5 truncate max-w-[160px]">{agent}</td>
+                        <td className="text-center px-2 py-1.5 font-bold text-purple-600">{ai}</td>
+                        <td className="text-center px-2 py-1.5 font-bold text-blue-600">{human}</td>
+                        <td className="text-center px-2 py-1.5 font-bold">{total}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Campaigns sub-section */}
+            {dashboardMetrics.closedByCampaign && dashboardMetrics.closedByCampaign.length > 0 && (
+              <div className="mt-3 pt-2 border-t">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase mb-1.5">Por Campanha</p>
                 <div className="space-y-1">
                   {dashboardMetrics.closedByCampaign.slice(0, 5).map(({ campaign, count }) => (
                     <div key={campaign} className="flex items-center justify-between text-xs">
@@ -269,10 +269,10 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
                     </div>
                   ))}
                 </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   );
