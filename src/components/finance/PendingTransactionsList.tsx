@@ -293,7 +293,11 @@ export function PendingTransactionsList({
           state: leadFormData.visit_state || null,
         };
         if (sheetMode === 'create') {
-          const { data, error } = await supabase.from('leads').insert(payload).select('id, lead_name, city, state').single();
+          const { data, error } = await supabase.from('leads').insert({
+            ...payload,
+            created_by: user?.id || null,
+            updated_by: user?.id || null,
+          }).select('id, lead_name, city, state').single();
           if (error) throw error;
           setLocalLeads(prev => [...prev, data]);
           setEditData(prev => ({ ...prev, linkType: 'lead', linkId: data.id }));

@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { ExtractedAccidentData } from '@/components/leads/AccidentDataExtractor';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -38,6 +39,21 @@ interface CreateLeadFromSearchDialogProps {
   postData: PostData;
   comment?: CommentData;
   onSuccess?: () => void;
+}
+
+function getLeadInsertErrorMessage(error: unknown) {
+  if (error && typeof error === 'object') {
+    const typedError = error as { message?: string; details?: string; hint?: string };
+    const parts = [typedError.message, typedError.details, typedError.hint]
+      .filter((part): part is string => Boolean(part && part.trim()))
+      .map((part) => part.trim());
+
+    if (parts.length > 0) {
+      return parts.join(' • ');
+    }
+  }
+
+  return 'Erro ao criar lead';
 }
 
 const initialFormData: AccidentLeadFormData = {
@@ -275,6 +291,7 @@ export function CreateLeadFromSearchDialog({
   comment,
   onSuccess,
 }: CreateLeadFromSearchDialogProps) {
+  const { user } = useAuthContext();
   const [formData, setFormData] = useState<AccidentLeadFormData>(() => ({
     ...initialFormData,
     lead_name: comment?.ownerUsername || postData.username,
@@ -374,6 +391,8 @@ export function CreateLeadFromSearchDialog({
         liability_type: formData.liability_type || null,
         legal_viability: formData.legal_viability || null,
         instagram_username: comment?.ownerUsername || postData.username,
+        created_by: user?.id || null,
+        updated_by: user?.id || null,
       });
 
       if (error) throw error;
@@ -383,7 +402,7 @@ export function CreateLeadFromSearchDialog({
       onSuccess?.();
     } catch (error) {
       console.error('Create lead error:', error);
-      toast.error('Erro ao criar lead');
+      toast.error(getLeadInsertErrorMessage(error));
     } finally {
       setIsSubmitting(false);
     }

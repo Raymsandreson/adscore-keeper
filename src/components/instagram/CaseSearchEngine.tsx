@@ -62,6 +62,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { CaseSearchResultCard } from './CaseSearchResultCard';
 import { PostCommentsFetcher } from './PostCommentsFetcher';
 import { PostExtractionHistory } from './PostExtractionHistory';
@@ -153,6 +154,7 @@ interface SavedSettings {
 }
 
 export function CaseSearchEngine() {
+  const { user } = useAuthContext();
   const [keywords, setKeywords] = useState('');
   const [minComments, setMinComments] = useState(0);
   const [maxPosts, setMaxPosts] = useState(50);
@@ -650,6 +652,8 @@ export function CaseSearchEngine() {
         source: 'case_search',
         notes: `Post: ${result.postUrl}\n\nCaption: ${result.caption?.substring(0, 500)}\n\n${comment ? `Comentário: ${comment.text}` : ''}`,
         news_link: result.postUrl,
+        created_by: user?.id || null,
+        updated_by: user?.id || null,
       });
 
       if (error) throw error;

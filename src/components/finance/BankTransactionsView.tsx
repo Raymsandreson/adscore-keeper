@@ -513,7 +513,11 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
           city: leadFormData.visit_city || null, state: leadFormData.visit_state || null,
         };
         if (sheetMode === 'create') {
-          const { data, error } = await supabase.from('leads').insert(payload).select('id, lead_name, city, state, acolhedor').single();
+          const { data, error } = await supabase.from('leads').insert({
+            ...payload,
+            created_by: user?.id || null,
+            updated_by: user?.id || null,
+          }).select('id, lead_name, city, state, acolhedor').single();
           if (error) throw error;
           setLeads(prev => [...prev, data]);
           setEditData(prev => ({ ...prev, linkType: 'lead', linkId: data.id }));
