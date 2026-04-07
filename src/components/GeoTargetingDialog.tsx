@@ -67,8 +67,24 @@ export const GeoTargetingDialog = ({
   const [isSearching, setIsSearching] = useState(false);
   const [geoLocations, setGeoLocations] = useState<GeoTargeting>({});
   const [originalGeo, setOriginalGeo] = useState<GeoTargeting>({});
+  const accessTokenRef = useRef<string | null>(null);
+
+  // Fetch access token from DB on mount
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from('meta_ad_accounts')
+        .select('access_token')
+        .order('created_at', { ascending: true })
+        .limit(1);
+      if (data && data.length > 0) {
+        accessTokenRef.current = data[0].access_token;
+      }
+    })();
+  }, []);
 
   const getAccessToken = (): string | null => {
+    if (accessTokenRef.current) return accessTokenRef.current;
     const savedAccounts = localStorage.getItem('meta_saved_accounts');
     if (savedAccounts) {
       const accounts = JSON.parse(savedAccounts);
@@ -83,6 +99,7 @@ export const GeoTargetingDialog = ({
     const accessToken = getAccessToken();
     if (!accessToken) {
       console.warn('[GeoDialog] No access token found');
+      toast.error('Token de acesso não encontrado. Reconecte sua conta Meta.');
       return;
     }
 
