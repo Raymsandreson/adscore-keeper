@@ -15,6 +15,7 @@ import {
 import { MapPin, Search, X, Loader2, Plus, Globe, Crosshair } from "lucide-react";
 import { toast } from "sonner";
 import { getMetaCredentials } from "@/utils/metaCredentials";
+import { GeoTargetingPinMap } from "./GeoTargetingPinMap";
 
 interface GeoLocation {
   key: string;
@@ -69,9 +70,6 @@ export const GeoTargetingDialog = ({
   const [geoLocations, setGeoLocations] = useState<GeoTargeting>({});
   const [originalGeo, setOriginalGeo] = useState<GeoTargeting>({});
   const [showPinForm, setShowPinForm] = useState(false);
-  const [pinLat, setPinLat] = useState('');
-  const [pinLng, setPinLng] = useState('');
-  const [pinRadius, setPinRadius] = useState('17');
 
   const fetchTargeting = useCallback(async () => {
     const { accessToken } = await getMetaCredentials();
@@ -233,20 +231,7 @@ export const GeoTargetingDialog = ({
     }));
   };
 
-  const addPin = () => {
-    const lat = parseFloat(pinLat.replace(',', '.'));
-    const lng = parseFloat(pinLng.replace(',', '.'));
-    const radius = parseInt(pinRadius);
-
-    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      toast.error('Coordenadas inválidas. Latitude: -90 a 90, Longitude: -180 a 180');
-      return;
-    }
-    if (isNaN(radius) || radius < 1 || radius > 80) {
-      toast.error('Raio inválido. Use entre 1 e 80 km');
-      return;
-    }
-
+  const addPin = (lat: number, lng: number, radius: number) => {
     const newPin: CustomLocation = {
       latitude: lat,
       longitude: lng,
@@ -259,9 +244,6 @@ export const GeoTargetingDialog = ({
       custom_locations: [...(prev.custom_locations || []), newPin],
     }));
 
-    setPinLat('');
-    setPinLng('');
-    setPinRadius('17');
     setShowPinForm(false);
     toast.success(`Pino adicionado: (${lat.toFixed(4)}, ${lng.toFixed(4)}) +${radius}km`);
   };
@@ -316,7 +298,7 @@ export const GeoTargetingDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MapPin className="h-5 w-5 text-primary" />
@@ -441,51 +423,19 @@ export const GeoTargetingDialog = ({
                 onClick={() => setShowPinForm(!showPinForm)}
               >
                 <Crosshair className="h-4 w-4" />
-                {showPinForm ? 'Fechar' : 'Adicionar pino (coordenadas + raio)'}
+                {showPinForm ? 'Fechar mapa' : 'Adicionar pino no mapa'}
               </Button>
 
               {showPinForm && (
-                <div className="mt-3 p-3 border rounded-md bg-muted/30 space-y-3">
-                  <p className="text-xs text-muted-foreground">
-                    Insira latitude e longitude para criar um pino com raio de alcance.
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label className="text-xs">Latitude</Label>
-                      <Input
-                        placeholder="-1.2632"
-                        value={pinLat}
-                        onChange={(e) => setPinLat(e.target.value)}
-                        className="text-sm"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Longitude</Label>
-                      <Input
-                        placeholder="-47.9071"
-                        value={pinLng}
-                        onChange={(e) => setPinLng(e.target.value)}
-                        className="text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Raio (km)</Label>
-                    <Select value={pinRadius} onValueChange={setPinRadius}>
-                      <SelectTrigger className="text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[1, 5, 10, 16, 17, 20, 24, 29, 30, 40, 50, 80].map(r => (
-                          <SelectItem key={r} value={String(r)}>{r} km</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button size="sm" className="w-full gap-2" onClick={addPin}>
-                    <Plus className="h-4 w-4" />
-                    Adicionar Pino
-                  </Button>
+                <div className="mt-3">
+                  <GeoTargetingPinMap
+                    onAddPin={addPin}
+                    existingPins={geoLocations.custom_locations?.map(cl => ({
+                      latitude: cl.latitude,
+                      longitude: cl.longitude,
+                      radius: cl.radius,
+                    })) || []}
+                  />
                 </div>
               )}
             </div>
