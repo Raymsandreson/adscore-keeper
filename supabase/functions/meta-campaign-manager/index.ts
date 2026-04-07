@@ -272,17 +272,21 @@ async function searchLocations(accessToken: string, query: string, locationType:
   const results: any[] = [];
 
   for (const step of searchPlan) {
-    const stepResults = await fetchLocationSearch(accessToken, step.type, step.query);
+    try {
+      const stepResults = await fetchLocationSearch(accessToken, step.type, step.query);
 
-    for (const item of stepResults) {
-      const dedupeKey = `${item.key || item.id || item.name}-${item.type || step.type}`;
-      if (seen.has(dedupeKey)) continue;
-      seen.add(dedupeKey);
-      results.push(item);
-    }
+      for (const item of stepResults) {
+        const dedupeKey = `${item.key || item.id || item.name}-${item.type || step.type}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        results.push(item);
+      }
 
-    if (results.length > 0 && isBrazilianZipQuery(trimmedQuery)) {
-      break;
+      if (results.length > 0 && isBrazilianZipQuery(trimmedQuery)) {
+        break;
+      }
+    } catch (e) {
+      console.warn(`[search_locations] Step type=${step.type} q="${step.query}" failed:`, e);
     }
   }
 
