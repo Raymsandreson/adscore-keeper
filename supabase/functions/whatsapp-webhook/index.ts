@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { geminiChat } from "../_shared/gemini.ts";
+import { getLocationFromDDD } from "../_shared/ddd-mapping.ts";
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
@@ -1202,6 +1203,52 @@ Deno.serve(async (req) => {
           contactId = linkedContacts[0].id
           break
         }
+      }
+    }
+
+    // ========== AUTO-REGISTER CONTACT IF NOT FOUND (inbound only) ==========
+    if (!contactId && direction === 'inbound' && normalizedPhone.length >= 10) {
+      try {
+        // Check if this phone belongs to one of our WhatsApp instances
+        const { data: ownInstances } = await supabase
+          .from('whatsapp_instances')
+          .select('owner_phone')
+          .eq('is_active', true);
+        
+        const instancePhones = (ownInstances || [])
+          .map((i: any) => (i.owner_phone || '').replace(/\D/g, ''))
+          .filter(Boolean);
+        
+        const isOurInstance = instancePhones.some((ip: string) => 
+          normalizedPhone.endsWith(ip) || ip.endsWith(normalizedPhone) || 
+          normalizedPhone.slice(-8) === ip.slice(-8)
+        );
+
+        if (!isOurInstance) {
+          const location = getLocationFromDDD(normalizedPhone);
+          const autoContactName = contactName || normalizedPhone;
+
+          const { data: newContact } = await supabase
+            .from('contacts')
+            .insert({
+              full_name: autoContactName,
+              phone: normalizedPhone,
+              city: location?.city || null,
+              state: location?.state || null,
+              classification: 'prospect',
+              action_source: 'system',
+              action_source_detail: `Auto-registro via WhatsApp (${instanceName || 'unknown'})`,
+            })
+            .select('id')
+            .single();
+
+          if (newContact) {
+            contactId = newContact.id;
+            console.log(`Auto-registered contact ${autoContactName} (${normalizedPhone}) → ${contactId}, state=${location?.state}, city=${location?.city}`);
+          }
+        }
+      } catch (autoRegErr: any) {
+        console.warn('Auto-register contact error:', autoRegErr.message);
       }
     }
 
