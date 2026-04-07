@@ -9314,6 +9314,7 @@ export type Database = {
       cleanup_old_command_history: { Args: never; Returns: undefined }
       cleanup_old_webhook_logs: { Args: never; Returns: undefined }
       cleanup_old_whatsapp_messages: { Args: never; Returns: undefined }
+      ensure_team_general_conversation: { Args: never; Returns: string }
       execute_and_cleanup_followup: {
         Args: { p_job_name: string; p_session_id: string }
         Returns: undefined
@@ -9342,6 +9343,10 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_team_conversation_member: {
+        Args: { _conversation_id: string; _user_id: string }
+        Returns: boolean
+      }
       notify_workflow_change: {
         Args: {
           p_board_id: string
@@ -9357,6 +9362,10 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      start_team_direct_conversation: {
+        Args: { _other_user_id: string }
+        Returns: string
+      }
     }
     Enums: {
       app_role: "admin" | "member"
