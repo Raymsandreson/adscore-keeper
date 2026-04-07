@@ -202,6 +202,21 @@ export function AgentMonitorDashboard() {
     };
   }, [metrics, filteredNewConvDetails, filteredClosedByAgent, operationalFilteredLeadIds, filters.agentFilter, filters.instanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
 
+  // Filter gaps by acolhedor
+  const filteredGaps = useMemo(() => {
+    const filterByAcolhedor = (items: typeof gaps.closedWithoutGroup) => {
+      if (filters.acolhedorFilter === 'all') return items;
+      if (filters.acolhedorFilter === '__none__') return items.filter(i => !i.acolhedor);
+      return items.filter(i => i.acolhedor === filters.acolhedorFilter);
+    };
+    return {
+      closedWithoutGroup: filterByAcolhedor(gaps.closedWithoutGroup),
+      withGroupWithoutCase: filterByAcolhedor(gaps.withGroupWithoutCase),
+      casesWithoutProcess: filterByAcolhedor(gaps.casesWithoutProcess),
+      processesWithoutActivity: filterByAcolhedor(gaps.processesWithoutActivity),
+    };
+  }, [gaps, filters.acolhedorFilter]);
+
   const batch = useBatchActions(conversations, fetchData);
 
   const handleOpenChat = (c: ConversationDetail) => setChatPreview(c);
@@ -312,6 +327,8 @@ export function AgentMonitorDashboard() {
             onNewConvsClick={() => setNewConvsSheetOpen(true)}
             onOperationalClick={(type) => setOperationalSheet(type)}
             filterBarProps={filterBarProps}
+            gaps={filteredGaps}
+            onGapClick={(type) => setGapSheet(type)}
           />
         </TabsContent>
 
