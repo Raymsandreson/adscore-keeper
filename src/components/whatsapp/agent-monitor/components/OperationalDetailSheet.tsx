@@ -75,11 +75,37 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
         } else if (metricType === 'groups') {
           const { data } = await supabase
             .from('leads')
-            .select('id, lead_name, whatsapp_group_id, acolhedor, created_at')
+            .select('id, lead_name, whatsapp_group_id, acolhedor, lead_phone, created_at')
             .not('whatsapp_group_id', 'is', null)
             .gte('created_at', start).lte('created_at', end)
             .order('created_at', { ascending: false });
-          setItems(data || []);
+          
+          // For each group, fetch contacts linked to it
+          const enrichedItems = await Promise.all((data || []).map(async (item: any) => {
+            const { data: contacts } = await supabase
+              .from('contacts')
+              .select('id, full_name, phone, city, state, created_by')
+              .eq('whatsapp_group_id', item.whatsapp_group_id)
+              .limit(20);
+            
+            // Also find contacts linked via contact_leads
+            const { data: linkedContacts } = await supabase
+              .from('contact_leads')
+              .select('contact_id, contacts:contact_id(id, full_name, phone, city, state, created_by)')
+              .eq('lead_id', item.id)
+              .limit(20);
+            
+            const allContacts = [
+              ...(contacts || []),
+              ...(linkedContacts || []).map((lc: any) => lc.contacts).filter(Boolean),
+            ];
+            // Deduplicate by id
+            const uniqueContacts = Array.from(new Map(allContacts.map((c: any) => [c.id, c])).values());
+            
+            return { ...item, _contacts: uniqueContacts };
+          }));
+          
+          setItems(enrichedItems);
         } else if (metricType === 'cases') {
           const { data } = await supabase
             .from('legal_cases')
