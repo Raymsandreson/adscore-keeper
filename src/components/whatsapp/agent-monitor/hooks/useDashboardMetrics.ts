@@ -53,7 +53,7 @@ export function useDashboardMetrics() {
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     newConversations: 0, responseRate: 0, avgResponseTimeMin: 0,
     respondedCount: 0, totalInbound: 0,
-    closedByAgent: [], closedByCampaign: [], closedByAI: 0, closedWithHuman: 0, closedTotal: 0,
+    closedByAgent: [], closedByAgentDetailed: [], closedByCampaign: [], closedByAI: 0, closedWithHuman: 0, closedTotal: 0,
     newConvDetails: [],
     signedDocuments: 0, pendingDocuments: 0, groupsCreated: 0, casesCreated: 0, processesCreated: 0, contactsCreated: 0,
     signedDocsDetails: [], pendingDocsDetails: [], groupsDetails: [], casesDetails: [], processesDetails: [], contactsDetails: [],
@@ -199,6 +199,7 @@ export function useDashboardMetrics() {
         .lte('updated_at', todayEnd);
 
       const agentMap = new Map<string, number>();
+      const agentDetailMap = new Map<string, { ai: number; human: number }>();
       const campaignMap = new Map<string, number>();
       const closedTotal = (closedLeads || []).length;
 
@@ -207,18 +208,14 @@ export function useDashboardMetrics() {
       let closedWithHuman = 0;
 
       if (closedTotal > 0) {
-        // Get all phones from closed leads
         const closedPhones = (closedLeads || [])
           .map((l: any) => (l.lead_phone || '').replace(/\D/g, ''))
           .filter((p: string) => p.length >= 8);
 
-        // Batch check: find phones that had manual outbound messages
         const phoneSuffixes = closedPhones.map((p: string) => p.slice(-8));
         const uniqueSuffixes = [...new Set(phoneSuffixes)];
 
-        // Query manual outbound messages for these phones
         const humanPhones = new Set<string>();
-        // Process in batches of 50 to avoid query limits
         for (let i = 0; i < uniqueSuffixes.length; i += 50) {
           const batch = uniqueSuffixes.slice(i, i + 50);
           const orFilter = batch.map(s => `phone.ilike.%${s}%`).join(',');
@@ -237,16 +234,24 @@ export function useDashboardMetrics() {
         }
 
         for (const l of (closedLeads || [])) {
-          if (l.acolhedor) agentMap.set(l.acolhedor, (agentMap.get(l.acolhedor) || 0) + 1);
+          const agentName = l.acolhedor || 'Sem acolhedor';
+          agentMap.set(agentName, (agentMap.get(agentName) || 0) + 1);
           if (l.campaign_name) campaignMap.set(l.campaign_name, (campaignMap.get(l.campaign_name) || 0) + 1);
           
           const phone = (l.lead_phone || '').replace(/\D/g, '');
           const suffix = phone.slice(-8);
-          if (humanPhones.has(suffix)) {
+          const isHuman = humanPhones.has(suffix);
+          
+          if (isHuman) {
             closedWithHuman++;
           } else {
             closedByAI++;
           }
+
+          // Track per-agent detail
+          if (!agentDetailMap.has(agentName)) agentDetailMap.set(agentName, { ai: 0, human: 0 });
+          const detail = agentDetailMap.get(agentName)!;
+          if (isHuman) detail.human++; else detail.ai++;
         }
       }
 
@@ -314,6 +319,7 @@ export function useDashboardMetrics() {
         respondedCount,
         totalInbound,
         closedByAgent: Array.from(agentMap.entries()).map(([agent, count]) => ({ agent, count })).sort((a, b) => b.count - a.count),
+        closedByAgentDetailed: Array.from(agentDetailMap.entries()).map(([agent, d]) => ({ agent, ai: d.ai, human: d.human, total: d.ai + d.human })).sort((a, b) => b.total - a.total),
         closedByCampaign: Array.from(campaignMap.entries()).map(([campaign, count]) => ({ campaign, count })).sort((a, b) => b.count - a.count),
         closedByAI,
         closedWithHuman,
