@@ -1617,6 +1617,8 @@ Deno.serve(async (req) => {
                 phone,
                 instance_name: instanceName,
                 contact_name: contactName || '',
+                is_group: isGroup,
+                group_id: isGroup ? chatId : null,
               }),
             }).catch(err => console.error('#shortcut automation trigger error:', err))
 
