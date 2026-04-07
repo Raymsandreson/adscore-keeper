@@ -575,3 +575,121 @@ async function updateCreative(accessToken: string, adId: string, creativeData: {
   if (updateData.error) throw new Error(updateData.error.message || 'Failed to update creative');
   return { adId, creativeId, updatedFields: creativeData, ...updateData };
 }
+
+async function addCityToAdSet(
+  accessToken: string,
+  adSetId: string,
+  cityName: string,
+  stateName: string | null,
+  radiusKm: number
+) {
+  console.log(`[add_city_to_adset] Adding city "${cityName}" (state: ${stateName}) to adset ${adSetId}, radius: ${radiusKm}km`);
+
+  // 1. Search for the city in Meta's location database
+  const searchQuery = stateName ? `${cityName}, ${stateName}` : cityName;
+  const searchUrl = `https://graph.facebook.com/v21.0/search?type=adgeolocation&location_types=["city"]&q=${encodeURIComponent(searchQuery)}&limit=10&access_token=${accessToken}`;
+  const searchResp = await fetch(searchUrl);
+  const searchData = await searchResp.json();
+
+  if (searchData.error) {
+    throw new Error(`Erro ao buscar cidade: ${searchData.error.message}`);
+  }
+
+  const locations = searchData.data || [];
+  if (locations.length === 0) {
+    // Fallback: try geocoding via Nominatim and use custom_location
+    console.log(`[add_city_to_adset] City not found in Meta, trying Nominatim geocoding`);
+    const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery + ', Brazil')}&format=json&limit=1`;
+    const geoResp = await fetch(nominatimUrl, { headers: { 'User-Agent': 'AdManager/1.0' } });
+    const geoData = await geoResp.json();
+
+    if (geoData.length > 0) {
+      const lat = parseFloat(geoData[0].lat);
+      const lng = parseFloat(geoData[0].lon);
+      return await addCustomLocationToAdSet(accessToken, adSetId, lat, lng, radiusKm, cityName);
+    }
+    throw new Error(`Cidade "${cityName}" não encontrada. Verifique o nome.`);
+  }
+
+  // Find best match (prefer Brazil)
+  const brCity = locations.find((l: any) => l.country_code === 'BR') || locations[0];
+  console.log(`[add_city_to_adset] Found city: ${brCity.name} (key: ${brCity.key})`);
+
+  // 2. Get current targeting
+  const current = await getTargeting(accessToken, adSetId);
+  const currentGeo = current.geo_locations || {};
+  const currentCities = currentGeo.cities || [];
+
+  // Check if city already exists
+  if (currentCities.some((c: any) => c.key === brCity.key)) {
+    console.log(`[add_city_to_adset] City ${brCity.name} already in targeting`);
+    return { adSetId, message: `Cidade ${brCity.name} já está na segmentação`, alreadyExists: true };
+  }
+
+  // 3. Add city to existing targeting
+  const updatedCities = [...currentCities, {
+    key: brCity.key,
+    name: brCity.name,
+    radius: radiusKm,
+    distance_unit: 'kilometer',
+  }];
+
+  const newGeo: any = { ...currentGeo, cities: updatedCities };
+  // Remove countries if adding specific cities (Meta requires one or the other)
+  if (newGeo.countries && updatedCities.length > 0) {
+    delete newGeo.countries;
+  }
+
+  await updateTargeting(accessToken, adSetId, { geo_locations: newGeo });
+
+  return {
+    adSetId,
+    addedCity: brCity.name,
+    cityKey: brCity.key,
+    radiusKm,
+    totalCities: updatedCities.length,
+  };
+}
+
+async function addCustomLocationToAdSet(
+  accessToken: string,
+  adSetId: string,
+  latitude: number,
+  longitude: number,
+  radiusKm: number,
+  name: string
+) {
+  const current = await getTargeting(accessToken, adSetId);
+  const currentGeo = current.geo_locations || {};
+  const currentCustom = currentGeo.custom_locations || [];
+
+  // Check for duplicate (within ~0.01 degree)
+  const isDuplicate = currentCustom.some((c: any) =>
+    Math.abs(c.latitude - latitude) < 0.01 && Math.abs(c.longitude - longitude) < 0.01
+  );
+  if (isDuplicate) {
+    return { adSetId, message: `Localização próxima a ${name} já existe na segmentação`, alreadyExists: true };
+  }
+
+  const updatedCustom = [...currentCustom, {
+    latitude,
+    longitude,
+    radius: radiusKm,
+    distance_unit: 'kilometer',
+    name,
+  }];
+
+  const newGeo: any = { ...currentGeo, custom_locations: updatedCustom };
+  if (newGeo.countries) delete newGeo.countries;
+
+  await updateTargeting(accessToken, adSetId, { geo_locations: newGeo });
+
+  return {
+    adSetId,
+    addedCustomLocation: name,
+    latitude,
+    longitude,
+    radiusKm,
+    totalCustomLocations: updatedCustom.length,
+  };
+}
