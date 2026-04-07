@@ -308,6 +308,17 @@ export const useLeads = (adAccountId?: string) => {
 
       toast.success('Lead adicionado com sucesso');
       fetchLeads();
+
+      // Apply geo-segmentation rules asynchronously
+      applyGeoRuleForLead({
+        id: newLead.id,
+        board_id: newLead.board_id,
+        status: newLead.status,
+        acolhedor: (newLead as any).acolhedor,
+        lead_city: (newLead as any).lead_city,
+        lead_state: (newLead as any).lead_state,
+      }).catch(e => console.warn('[GeoRule] Background error:', e));
+
       return newLead;
     } catch (error) {
       console.error('Error adding lead:', error);
