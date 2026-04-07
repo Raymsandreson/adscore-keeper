@@ -182,6 +182,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
         description: caseDescription,
         notes: caseNotes,
         case_number: caseCaseNumber || undefined,
+        acolhedor: caseAcolhedor && caseAcolhedor !== '__none__' ? caseAcolhedor : undefined,
       });
       setExpandedCaseId(newCase.id);
       // Auto-create selected processes
