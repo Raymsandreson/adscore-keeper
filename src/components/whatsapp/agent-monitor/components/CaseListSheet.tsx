@@ -31,10 +31,9 @@ interface CaseListSheetProps {
   generatingLeadId?: string | null;
   onGenerateActivity?: (c: ConversationDetail) => void;
   acolhedorPreFilter?: string | null;
-  closingTypePreFilter?: 'ai' | 'human' | null;
 }
 
-export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, onClose, onOpenChat, generatingLeadId, onGenerateActivity, acolhedorPreFilter, closingTypePreFilter }: CaseListSheetProps) {
+export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, onClose, onOpenChat, generatingLeadId, onGenerateActivity, acolhedorPreFilter }: CaseListSheetProps) {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [responseFilter, setResponseFilter] = useState<'all' | 'responded' | 'waiting'>('all');
