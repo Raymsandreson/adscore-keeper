@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { facebookCAPI } from '@/services/facebookCAPI';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { applyGeoRuleForLead } from '@/utils/applyGeoRuleForLead';
 
 // Columns to fetch - avoids pulling unnecessary large text columns
 const LEAD_SELECT_COLUMNS = [
