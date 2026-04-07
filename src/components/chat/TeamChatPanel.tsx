@@ -199,7 +199,6 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
                   <p className="whitespace-pre-wrap break-words text-[13px]">
                     {renderMessageWithMentions(msg.content, isMe)}
                   </p>
-                  </p>
                   <div className={cn(
                     "text-[9px] mt-0.5",
                     isMe ? "text-primary-foreground/60 text-right" : "text-muted-foreground"
