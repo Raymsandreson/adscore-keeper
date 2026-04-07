@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,13 +7,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { useAdSetGeoRules, AdSetGeoRule } from '@/hooks/useAdSetGeoRules';
 import { useKanbanBoards, KanbanBoard } from '@/hooks/useKanbanBoards';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { getMetaCredentials } from '@/utils/metaCredentials';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
-import { MapPin, Plus, Trash2, Loader2, Target, FolderKanban, User, Zap } from 'lucide-react';
+import { MapPin, Plus, Trash2, Loader2, Target, FolderKanban, User, Zap, ChevronsUpDown, Check } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 interface MetaAdSet {
   id: string;
