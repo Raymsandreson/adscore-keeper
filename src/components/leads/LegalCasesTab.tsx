@@ -168,6 +168,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
         description: caseDescription || null,
         nucleus_id: caseNucleusId && caseNucleusId !== '__none__' ? caseNucleusId : null,
         notes: caseNotes || null,
+        acolhedor: caseAcolhedor || null,
       } as Partial<LegalCase>);
       // Auto-create selected processes on edit too
       if (selectedProcesses.size > 0) {
@@ -316,6 +317,22 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
             <div>
               <Label>Observações</Label>
               <Textarea value={caseNotes} onChange={e => setCaseNotes(e.target.value)} rows={2} />
+            </div>
+            <div>
+              <Label>👤 Assessor Responsável</Label>
+              <Select value={caseAcolhedor} onValueChange={setCaseAcolhedor}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o assessor..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nenhum</SelectItem>
+                  {profiles.map(p => (
+                    <SelectItem key={p.user_id} value={p.full_name || p.email || p.user_id}>
+                      {p.full_name || p.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label className="flex items-center gap-2 mb-2">
