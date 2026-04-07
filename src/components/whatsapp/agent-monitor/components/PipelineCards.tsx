@@ -208,6 +208,39 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
         </div>
       )}
 
+      {/* AI vs Human closing breakdown */}
+      {dashboardMetrics && dashboardMetrics.closedTotal > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          <Card>
+            <CardContent className="p-3 text-center">
+              <CheckCircle className="h-4 w-4 mx-auto mb-1 text-green-500" />
+              <p className="text-xl font-bold">{dashboardMetrics.closedTotal}</p>
+              <p className="text-[10px] text-muted-foreground">Total Fechados</p>
+            </CardContent>
+          </Card>
+          <Card className="border-purple-200 dark:border-purple-800">
+            <CardContent className="p-3 text-center">
+              <Sparkles className="h-4 w-4 mx-auto mb-1 text-purple-500" />
+              <p className="text-xl font-bold text-purple-600">{dashboardMetrics.closedByAI}</p>
+              <p className="text-[10px] text-muted-foreground">100% IA</p>
+              {dashboardMetrics.closedTotal > 0 && (
+                <p className="text-[9px] font-medium text-purple-500">{Math.round((dashboardMetrics.closedByAI / dashboardMetrics.closedTotal) * 100)}%</p>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3 text-center">
+              <MessageCircle className="h-4 w-4 mx-auto mb-1 text-blue-500" />
+              <p className="text-xl font-bold">{dashboardMetrics.closedWithHuman}</p>
+              <p className="text-[10px] text-muted-foreground">Com Humano</p>
+              {dashboardMetrics.closedTotal > 0 && (
+                <p className="text-[9px] font-medium text-blue-500">{Math.round((dashboardMetrics.closedWithHuman / dashboardMetrics.closedTotal) * 100)}%</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Closing analysis - derived from filtered conversations */}
       {dashboardMetrics && dashboardMetrics.closedByAgent.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
