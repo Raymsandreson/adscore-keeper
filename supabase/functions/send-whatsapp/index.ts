@@ -418,7 +418,10 @@ Deno.serve(async (req) => {
       })
 
       if (!uazResponse.ok) {
-        const errorText = await uazResponse.text()
+        const errorText = await readResponseTextSafe(uazResponse)
+        if (isWhatsAppDisconnected(uazResponse.status, errorText)) {
+          return buildJsonResponse(buildDisconnectedPayload(instance.instance_name, errorText))
+        }
         throw new Error(`UazAPI location error: ${uazResponse.status} - ${errorText}`)
       }
 
@@ -486,7 +489,10 @@ Deno.serve(async (req) => {
     })
 
     if (!uazResponse.ok) {
-      const errorText = await uazResponse.text()
+      const errorText = await readResponseTextSafe(uazResponse)
+      if (isWhatsAppDisconnected(uazResponse.status, errorText)) {
+        return buildJsonResponse(buildDisconnectedPayload(instance.instance_name, errorText))
+      }
       throw new Error(`UazAPI error: ${uazResponse.status} - ${errorText}`)
     }
     
@@ -523,10 +529,8 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Send WhatsApp error:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    const status = /INSTANCE_DISCONNECTED|WhatsApp instance is disconnected|UazAPI error: 503/i.test(errorMessage) ? 200 : 500
+    return buildJsonResponse({ success: false, error: errorMessage }, status)
   }
 })
 
