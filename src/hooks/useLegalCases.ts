@@ -152,14 +152,14 @@ export function useLegalCases(leadId?: string) {
           try {
             const { data: lead } = await supabase
               .from('leads')
-              .select('whatsapp_group_id, lead_phone, lead_name, case_type, lead_city, lead_state')
+              .select('whatsapp_group_id, lead_phone, lead_name, case_type, city, state')
               .eq('id', caseData.lead_id)
               .maybeSingle();
             if (lead) {
               groupContext = [
                 lead.lead_name && `Cliente: ${lead.lead_name}`,
                 lead.case_type && `Tipo: ${lead.case_type}`,
-                lead.lead_city && `Cidade: ${lead.lead_city}/${lead.lead_state || ''}`,
+                lead.city && `Cidade: ${lead.city}/${lead.state || ''}`,
               ].filter(Boolean).join(' | ');
             }
           } catch { /* ignore */ }
