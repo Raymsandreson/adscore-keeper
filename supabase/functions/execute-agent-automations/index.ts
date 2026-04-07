@@ -102,6 +102,7 @@ async function registerGroupParticipants(
   groupId: string,
   agentLabel: string,
   conversationCity: string | null,
+  responsibleUserId: string | null = null,
 ): Promise<any[]> {
   const results: any[] = [];
 
@@ -140,6 +141,7 @@ async function registerGroupParticipants(
           phone: participantPhone,
           city,
           state,
+          created_by: responsibleUserId,
           action_source: 'system',
           action_source_detail: agentLabel,
         })
@@ -211,8 +213,18 @@ Deno.serve(async (req) => {
     let createdContactId: string | null = null;
 
     // If it's a group, register participants as contacts first
+    // Resolve acolhedor (responsible member) for created_by
+    let responsibleUserId: string | null = null;
+    if (lead_id) {
+      const { data: leadData } = await supabase.from('leads').select('acolhedor').eq('id', lead_id).maybeSingle();
+      if (leadData?.acolhedor) {
+        const { data: profile } = await supabase.from('profiles').select('user_id').ilike('full_name', leadData.acolhedor).limit(1).maybeSingle();
+        responsibleUserId = profile?.user_id || null;
+      }
+    }
+
     if (is_group && group_id && instance_name) {
-      const groupResults = await registerGroupParticipants(supabase, instance_name, group_id, agentLabel, conversationCity);
+      const groupResults = await registerGroupParticipants(supabase, instance_name, group_id, agentLabel, conversationCity, responsibleUserId);
       results.push(...groupResults);
     }
 
@@ -252,6 +264,7 @@ Deno.serve(async (req) => {
                 phone: normalizedMainPhone,
                 city,
                 state,
+                created_by: responsibleUserId,
                 action_source: 'system',
                 action_source_detail: agentLabel,
               })

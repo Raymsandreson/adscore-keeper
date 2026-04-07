@@ -75,11 +75,37 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
         } else if (metricType === 'groups') {
           const { data } = await supabase
             .from('leads')
-            .select('id, lead_name, whatsapp_group_id, acolhedor, created_at')
+            .select('id, lead_name, whatsapp_group_id, acolhedor, lead_phone, created_at')
             .not('whatsapp_group_id', 'is', null)
             .gte('created_at', start).lte('created_at', end)
             .order('created_at', { ascending: false });
-          setItems(data || []);
+          
+          // For each group, fetch contacts linked to it
+          const enrichedItems = await Promise.all((data || []).map(async (item: any) => {
+            const { data: contacts } = await supabase
+              .from('contacts')
+              .select('id, full_name, phone, city, state, created_by')
+              .eq('whatsapp_group_id', item.whatsapp_group_id)
+              .limit(20);
+            
+            // Also find contacts linked via contact_leads
+            const { data: linkedContacts } = await supabase
+              .from('contact_leads')
+              .select('contact_id, contacts:contact_id(id, full_name, phone, city, state, created_by)')
+              .eq('lead_id', item.id)
+              .limit(20);
+            
+            const allContacts = [
+              ...(contacts || []),
+              ...(linkedContacts || []).map((lc: any) => lc.contacts).filter(Boolean),
+            ];
+            // Deduplicate by id
+            const uniqueContacts = Array.from(new Map(allContacts.map((c: any) => [c.id, c])).values());
+            
+            return { ...item, _contacts: uniqueContacts };
+          }));
+          
+          setItems(enrichedItems);
         } else if (metricType === 'cases') {
           const { data } = await supabase
             .from('legal_cases')
@@ -233,16 +259,47 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
               ))}
 
               {metricType === 'groups' && filteredItems.map(item => (
-                <div key={item.id} className="border rounded-lg p-3 space-y-1">
-                  <p className="text-sm font-medium truncate">{item.lead_name || 'Lead'}</p>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span className="truncate">{item.whatsapp_group_id}</span>
-                    <span>{format(parseISO(item.created_at), 'HH:mm')}</span>
+                <div key={item.id} className="border rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium truncate flex-1">{item.lead_name || 'Lead'}</p>
+                    <span className="text-[10px] text-muted-foreground">{format(parseISO(item.created_at), 'HH:mm')}</span>
                   </div>
+                  {item.acolhedor && (
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <UsersRound className="h-2.5 w-2.5" />
+                      <span>Responsável: <strong className="text-foreground">{item.acolhedor}</strong></span>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-muted-foreground truncate">{item.whatsapp_group_id}</p>
+                  
+                  {/* Participants/Contacts */}
+                  {item._contacts && item._contacts.length > 0 && (
+                    <div className="border-t pt-2 mt-1">
+                      <p className="text-[10px] font-medium text-muted-foreground mb-1">
+                        Contatos vinculados ({item._contacts.length})
+                      </p>
+                      <div className="space-y-1">
+                        {item._contacts.map((contact: any) => (
+                          <div key={contact.id} className="flex items-center justify-between text-[10px] bg-muted/50 rounded px-2 py-1">
+                            <span className="font-medium truncate flex-1">{contact.full_name}</span>
+                            <span className="text-muted-foreground ml-2">
+                              {contact.city && contact.state ? `${contact.city}/${contact.state}` : contact.state || '—'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="flex items-center gap-1.5 pt-1">
                     <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1" onClick={() => handleOpenLead(item.id)}>
                       <ExternalLink className="h-3 w-3" /> Abrir Lead
                     </Button>
+                    {item.whatsapp_group_id && (
+                      <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1 border-cyan-200 text-cyan-700" onClick={() => handleOpenChat(item.whatsapp_group_id, undefined, item.lead_name)}>
+                        <MessageSquare className="h-3 w-3" /> Chat Grupo
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
