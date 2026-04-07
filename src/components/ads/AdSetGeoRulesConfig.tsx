@@ -47,6 +47,18 @@ export function AdSetGeoRulesConfig() {
 
   const selectedBoard = funnelBoards.find(b => b.id === formBoardId);
 
+  const statusOrder = (s?: string) => s === 'ACTIVE' ? 0 : (s === 'PAUSED' || s === 'CAMPAIGN_PAUSED' || s === 'ADSET_PAUSED') ? 1 : 2;
+
+  const sortedAdSets = useMemo(() => {
+    return [...adSets].sort((a, b) => {
+      if (adSetSort === 'status') {
+        const diff = statusOrder(a.effective_status) - statusOrder(b.effective_status);
+        return diff !== 0 ? diff : a.name.localeCompare(b.name);
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }, [adSets, adSetSort]);
+
   const fetchAdSets = async () => {
     setLoadingAdSets(true);
     try {
