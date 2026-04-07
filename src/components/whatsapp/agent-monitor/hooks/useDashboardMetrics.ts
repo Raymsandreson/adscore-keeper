@@ -189,19 +189,64 @@ export function useDashboardMetrics() {
         };
       });
 
-      // Closed leads by agent (acolhedor) and campaign
+      // Closed leads by agent (acolhedor) and campaign + AI vs human distinction
       const { data: closedLeads } = await supabase
         .from('leads')
-        .select('acolhedor, campaign_name, lead_status')
+        .select('id, acolhedor, campaign_name, lead_status, lead_phone')
         .eq('lead_status', 'closed')
         .gte('updated_at', todayStart)
         .lte('updated_at', todayEnd);
 
       const agentMap = new Map<string, number>();
       const campaignMap = new Map<string, number>();
-      for (const l of (closedLeads || [])) {
-        if (l.acolhedor) agentMap.set(l.acolhedor, (agentMap.get(l.acolhedor) || 0) + 1);
-        if (l.campaign_name) campaignMap.set(l.campaign_name, (campaignMap.get(l.campaign_name) || 0) + 1);
+      const closedTotal = (closedLeads || []).length;
+
+      // Check which closed leads had human interaction (manual outbound messages)
+      let closedByAI = 0;
+      let closedWithHuman = 0;
+
+      if (closedTotal > 0) {
+        // Get all phones from closed leads
+        const closedPhones = (closedLeads || [])
+          .map((l: any) => (l.lead_phone || '').replace(/\D/g, ''))
+          .filter((p: string) => p.length >= 8);
+
+        // Batch check: find phones that had manual outbound messages
+        const phoneSuffixes = closedPhones.map((p: string) => p.slice(-8));
+        const uniqueSuffixes = [...new Set(phoneSuffixes)];
+
+        // Query manual outbound messages for these phones
+        const humanPhones = new Set<string>();
+        // Process in batches of 50 to avoid query limits
+        for (let i = 0; i < uniqueSuffixes.length; i += 50) {
+          const batch = uniqueSuffixes.slice(i, i + 50);
+          const orFilter = batch.map(s => `phone.ilike.%${s}%`).join(',');
+          const { data: manualMsgs } = await supabase
+            .from('whatsapp_messages')
+            .select('phone')
+            .eq('direction', 'outbound')
+            .eq('action_source', 'manual')
+            .or(orFilter)
+            .limit(500);
+          
+          for (const msg of (manualMsgs || [])) {
+            const msgSuffix = (msg.phone || '').replace(/\D/g, '').slice(-8);
+            humanPhones.add(msgSuffix);
+          }
+        }
+
+        for (const l of (closedLeads || [])) {
+          if (l.acolhedor) agentMap.set(l.acolhedor, (agentMap.get(l.acolhedor) || 0) + 1);
+          if (l.campaign_name) campaignMap.set(l.campaign_name, (campaignMap.get(l.campaign_name) || 0) + 1);
+          
+          const phone = (l.lead_phone || '').replace(/\D/g, '');
+          const suffix = phone.slice(-8);
+          if (humanPhones.has(suffix)) {
+            closedWithHuman++;
+          } else {
+            closedByAI++;
+          }
+        }
       }
 
       // Operational metrics: signed docs, groups, cases, processes
