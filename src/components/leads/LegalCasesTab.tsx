@@ -508,6 +508,9 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
                 {legalCase.nucleus_name && (
                   <p className="text-xs text-muted-foreground">{legalCase.nucleus_name}</p>
                 )}
+                {legalCase.acolhedor && (
+                  <p className="text-xs text-muted-foreground">👤 {legalCase.acolhedor}</p>
+                )}
               </div>
             </div>
             <Badge variant="secondary" className={`text-xs ${statusColors[legalCase.status]}`}>
