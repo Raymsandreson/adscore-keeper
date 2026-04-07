@@ -175,6 +175,30 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
         ))}
       </div>
 
+      {/* Operational Gaps row */}
+      {gaps && (gaps.closedWithoutGroup.length > 0 || gaps.withGroupWithoutCase.length > 0 || gaps.casesWithoutProcess.length > 0 || gaps.processesWithoutActivity.length > 0) && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {([
+            { key: 'closedWithoutGroup' as GapType, label: 'Fechados s/ Grupo', icon: Users, color: 'text-red-500', bgColor: 'bg-red-50 dark:bg-red-950/30' },
+            { key: 'withGroupWithoutCase' as GapType, label: 'Grupo s/ Caso', icon: Briefcase, color: 'text-amber-500', bgColor: 'bg-amber-50 dark:bg-amber-950/30' },
+            { key: 'casesWithoutProcess' as GapType, label: 'Caso s/ Processo', icon: Scale, color: 'text-orange-500', bgColor: 'bg-orange-50 dark:bg-orange-950/30' },
+            { key: 'processesWithoutActivity' as GapType, label: 'Processo s/ Atividade', icon: FileText, color: 'text-rose-500', bgColor: 'bg-rose-50 dark:bg-rose-950/30' },
+          ]).map(({ key, label, icon: GapIcon, color, bgColor }) => {
+            const count = gaps[key].length;
+            if (count === 0) return null;
+            return (
+              <Card key={key} className={`cursor-pointer hover:shadow-md transition-all border-dashed ${bgColor}`} onClick={() => onGapClick?.(key)}>
+                <CardContent className="p-3 text-center">
+                  <AlertTriangle className={`h-3 w-3 mx-auto mb-0.5 ${color}`} />
+                  <p className={`text-lg font-bold ${color}`}>{count}</p>
+                  <p className="text-[9px] text-muted-foreground leading-tight">{label}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
       {/* Closing analysis - derived from filtered conversations */}
       {dashboardMetrics && dashboardMetrics.closedByAgent.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
