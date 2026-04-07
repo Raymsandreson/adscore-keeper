@@ -102,6 +102,7 @@ async function registerGroupParticipants(
   groupId: string,
   agentLabel: string,
   conversationCity: string | null,
+  responsibleUserId: string | null = null,
 ): Promise<any[]> {
   const results: any[] = [];
 
@@ -140,6 +141,7 @@ async function registerGroupParticipants(
           phone: participantPhone,
           city,
           state,
+          created_by: responsibleUserId,
           action_source: 'system',
           action_source_detail: agentLabel,
         })
