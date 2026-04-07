@@ -233,6 +233,39 @@ export const GeoTargetingDialog = ({
     }));
   };
 
+  const addPin = () => {
+    const lat = parseFloat(pinLat.replace(',', '.'));
+    const lng = parseFloat(pinLng.replace(',', '.'));
+    const radius = parseInt(pinRadius);
+
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      toast.error('Coordenadas inválidas. Latitude: -90 a 90, Longitude: -180 a 180');
+      return;
+    }
+    if (isNaN(radius) || radius < 1 || radius > 80) {
+      toast.error('Raio inválido. Use entre 1 e 80 km');
+      return;
+    }
+
+    const newPin: CustomLocation = {
+      latitude: lat,
+      longitude: lng,
+      radius,
+      distance_unit: 'kilometer',
+    };
+
+    setGeoLocations(prev => ({
+      ...prev,
+      custom_locations: [...(prev.custom_locations || []), newPin],
+    }));
+
+    setPinLat('');
+    setPinLng('');
+    setPinRadius('17');
+    setShowPinForm(false);
+    toast.success(`Pino adicionado: (${lat.toFixed(4)}, ${lng.toFixed(4)}) +${radius}km`);
+  };
+
   const handleSave = async () => {
     const { accessToken } = await getMetaCredentials();
     if (!accessToken) {
