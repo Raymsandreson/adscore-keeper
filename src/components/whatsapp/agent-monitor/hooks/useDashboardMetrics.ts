@@ -16,11 +16,13 @@ export interface DashboardMetrics {
   groupsCreated: number;
   casesCreated: number;
   processesCreated: number;
+  contactsCreated: number;
   signedDocsDetails: OperationalDetail[];
   pendingDocsDetails: OperationalDetail[];
   groupsDetails: OperationalDetail[];
   casesDetails: OperationalDetail[];
   processesDetails: OperationalDetail[];
+  contactsDetails: OperationalDetail[];
 }
 
 export interface OperationalDetail {
@@ -48,8 +50,8 @@ export function useDashboardMetrics() {
     newConversations: 0, responseRate: 0, avgResponseTimeMin: 0,
     respondedCount: 0, totalInbound: 0,
     closedByAgent: [], closedByCampaign: [], newConvDetails: [],
-    signedDocuments: 0, pendingDocuments: 0, groupsCreated: 0, casesCreated: 0, processesCreated: 0,
-    signedDocsDetails: [], pendingDocsDetails: [], groupsDetails: [], casesDetails: [], processesDetails: [],
+    signedDocuments: 0, pendingDocuments: 0, groupsCreated: 0, casesCreated: 0, processesCreated: 0, contactsCreated: 0,
+    signedDocsDetails: [], pendingDocsDetails: [], groupsDetails: [], casesDetails: [], processesDetails: [], contactsDetails: [],
   });
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsProgress, setMetricsProgress] = useState(0);
@@ -199,12 +201,13 @@ export function useDashboardMetrics() {
       }
 
       // Operational metrics: signed docs, groups, cases, processes
-      const [signedDocsRes, pendingDocsRes, groupsRes, casesRes, processesRes] = await Promise.all([
+      const [signedDocsRes, pendingDocsRes, groupsRes, casesRes, processesRes, contactsRes] = await Promise.all([
         supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at, signed_at').eq('signer_status', 'signed').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
         supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at').eq('signer_status', 'new').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
         supabase.from('leads').select('id, lead_name, acolhedor, board_id, campaign_name, created_at').not('whatsapp_group_id', 'is', null).gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
         supabase.from('legal_cases').select('id, case_number, title, acolhedor, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
         supabase.from('case_process_tracking').select('id, cliente, acolhedor, lead_id, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
+        supabase.from('contacts').select('id, full_name, city, state, created_by, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
       ]);
 
       // Fetch acolhedor for docs that have lead_id
@@ -240,6 +243,20 @@ export function useDashboardMetrics() {
         instance_name: null, lead_id: d.lead_id || null, created_at: d.created_at,
       }));
 
+      // Resolve created_by user names for contacts
+      const contactCreatorIds = (contactsRes.data || []).map((c: any) => c.created_by).filter(Boolean);
+      let contactCreatorMap = new Map<string, string>();
+      if (contactCreatorIds.length > 0) {
+        const { data: creators } = await supabase.from('profiles').select('user_id, full_name').in('user_id', [...new Set(contactCreatorIds)]);
+        contactCreatorMap = new Map((creators || []).map((p: any) => [p.user_id, p.full_name]));
+      }
+
+      const contactsDetails: OperationalDetail[] = (contactsRes.data || []).map((d: any) => ({
+        id: d.id, name: d.full_name || 'Contato',
+        acolhedor: (d.created_by && contactCreatorMap.get(d.created_by)) || null,
+        instance_name: null, lead_id: null, created_at: d.created_at,
+      }));
+
       setMetrics({
         newConversations: trulyNewPhones.length,
         responseRate,
@@ -254,11 +271,13 @@ export function useDashboardMetrics() {
         groupsCreated: groupsDetails.length,
         casesCreated: casesDetails.length,
         processesCreated: processesDetails.length,
+        contactsCreated: contactsDetails.length,
         signedDocsDetails,
         pendingDocsDetails,
         groupsDetails,
         casesDetails,
         processesDetails,
+        contactsDetails,
       });
     } catch (err) {
       console.error('Error fetching dashboard metrics:', err);
