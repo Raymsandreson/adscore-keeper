@@ -119,6 +119,8 @@ async function getTargeting(accessToken: string, adSetId: string) {
   }
 
   const targeting = data.targeting || {};
+  console.log(`[get_targeting] Raw geo_locations for ${adSetId}:`, JSON.stringify(targeting.geo_locations || {}).substring(0, 1000));
+  
   return {
     adSetId,
     name: data.name,

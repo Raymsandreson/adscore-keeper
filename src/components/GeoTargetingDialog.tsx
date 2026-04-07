@@ -22,11 +22,24 @@ interface GeoLocation {
   type?: string;
 }
 
+interface CustomLocation {
+  latitude: number;
+  longitude: number;
+  radius?: number;
+  distance_unit?: string;
+  name?: string;
+  primary_city?: string;
+  region?: string;
+  country?: string;
+  key?: string;
+}
+
 interface GeoTargeting {
   countries?: string[];
   cities?: GeoLocation[];
   regions?: GeoLocation[];
   zips?: GeoLocation[];
+  custom_locations?: CustomLocation[];
 }
 
 interface GeoTargetingDialogProps {
@@ -195,6 +208,13 @@ export const GeoTargetingDialog = ({
     }));
   };
 
+  const removeCustomLocation = (index: number) => {
+    setGeoLocations(prev => ({
+      ...prev,
+      custom_locations: (prev.custom_locations || []).filter((_, i) => i !== index),
+    }));
+  };
+
   const handleSave = async () => {
     const accessToken = getAccessToken();
     if (!accessToken) {
@@ -231,7 +251,7 @@ export const GeoTargetingDialog = ({
     }
   };
 
-  const totalLocations = (geoLocations.cities?.length || 0) + (geoLocations.regions?.length || 0) + (geoLocations.zips?.length || 0) + (geoLocations.countries?.length || 0);
+  const totalLocations = (geoLocations.cities?.length || 0) + (geoLocations.regions?.length || 0) + (geoLocations.zips?.length || 0) + (geoLocations.countries?.length || 0) + (geoLocations.custom_locations?.length || 0);
 
   const getLocationTypeLabel = (type: string) => {
     switch (type) {
@@ -305,6 +325,18 @@ export const GeoTargetingDialog = ({
                     </button>
                   </Badge>
                 ))}
+                {geoLocations.custom_locations?.map((cl, i) => {
+                  const name = cl.name || cl.primary_city || `${cl.latitude?.toFixed(2)}, ${cl.longitude?.toFixed(2)}`;
+                  const radius = cl.radius ? ` (+${cl.radius}km)` : '';
+                  return (
+                    <Badge key={`custom-${i}`} variant="secondary" className="text-xs gap-1 bg-purple-100 dark:bg-purple-900/30">
+                      📍 {name}{radius}
+                      <button onClick={() => removeCustomLocation(i)} className="ml-1 hover:text-destructive">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  );
+                })}
               </div>
             </div>
 
