@@ -288,7 +288,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "delete_message") {
-      const { message_id, instance_id, external_message_id, phone } = body;
+      const { message_id, instance_id, external_message_id } = body;
 
       if (!message_id) {
         return new Response(
@@ -392,7 +392,6 @@ Deno.serve(async (req) => {
         contact_id,
         lead_id,
         instance_id,
-        file_name,
       } = body;
 
       if (!phone || !media_url) {
