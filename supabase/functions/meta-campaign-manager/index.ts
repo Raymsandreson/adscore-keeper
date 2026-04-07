@@ -69,10 +69,18 @@ serve(async (req) => {
         result = await updateCreative(accessToken, entityId, body.creativeData!);
         break;
       case 'get_targeting':
-        result = await getTargeting(accessToken, entityId);
+        if (entityType === 'campaign') {
+          result = await getCampaignTargeting(accessToken, entityId);
+        } else {
+          result = await getTargeting(accessToken, entityId);
+        }
         break;
       case 'update_targeting':
-        result = await updateTargeting(accessToken, entityId, body.targeting!);
+        if (entityType === 'campaign') {
+          result = await updateCampaignTargeting(accessToken, entityId, body.targeting!);
+        } else {
+          result = await updateTargeting(accessToken, entityId, body.targeting!);
+        }
         break;
       case 'search_locations':
         result = await searchLocations(accessToken, body.searchQuery!, body.locationType || 'adgeolocation');
@@ -121,6 +129,45 @@ async function getTargeting(accessToken: string, adSetId: string) {
       genders: targeting.genders,
     },
   };
+}
+
+async function getAdSetsForCampaign(accessToken: string, campaignId: string): Promise<string[]> {
+  const url = `https://graph.facebook.com/v21.0/${campaignId}/adsets?access_token=${accessToken}&fields=id&limit=100`;
+  const response = await fetch(url);
+  const data = await response.json();
+  if (data.error) throw new Error(data.error.message || 'Failed to get ad sets');
+  return (data.data || []).map((a: any) => a.id);
+}
+
+async function getCampaignTargeting(accessToken: string, campaignId: string) {
+  const adSetIds = await getAdSetsForCampaign(accessToken, campaignId);
+  if (adSetIds.length === 0) {
+    return { campaignId, adSetCount: 0, targeting: { geo_locations: {} } };
+  }
+  // Get targeting from first ad set as representative
+  const first = await getTargeting(accessToken, adSetIds[0]);
+  return { campaignId, adSetCount: adSetIds.length, adSetIds, ...first };
+}
+
+async function updateCampaignTargeting(
+  accessToken: string,
+  campaignId: string,
+  targeting: { geo_locations?: any }
+) {
+  const adSetIds = await getAdSetsForCampaign(accessToken, campaignId);
+  if (adSetIds.length === 0) throw new Error('Nenhum conjunto de anúncios encontrado nesta campanha');
+  
+  const results = [];
+  const errors = [];
+  for (const adSetId of adSetIds) {
+    try {
+      const r = await updateTargeting(accessToken, adSetId, targeting);
+      results.push({ adSetId, success: true, ...r });
+    } catch (e) {
+      errors.push({ adSetId, error: e.message });
+    }
+  }
+  return { campaignId, totalAdSets: adSetIds.length, updated: results.length, errors, results };
 }
 
 async function updateTargeting(

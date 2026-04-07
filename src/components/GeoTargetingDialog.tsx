@@ -34,6 +34,7 @@ interface GeoTargetingDialogProps {
   onOpenChange: (open: boolean) => void;
   entityId: string;
   entityName: string;
+  entityType?: 'campaign' | 'adset' | 'ad';
   onActionComplete?: () => void;
 }
 
@@ -42,6 +43,7 @@ export const GeoTargetingDialog = ({
   onOpenChange,
   entityId,
   entityName,
+  entityType = 'campaign',
   onActionComplete,
 }: GeoTargetingDialogProps) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -76,7 +78,7 @@ export const GeoTargetingDialog = ({
           action: 'get_targeting',
           accessToken,
           entityId,
-          entityType: 'adset',
+          entityType,
         }),
       });
       const data = await response.json();
@@ -209,7 +211,7 @@ export const GeoTargetingDialog = ({
           action: 'update_targeting',
           accessToken,
           entityId,
-          entityType: 'adset',
+          entityType,
           targeting: { geo_locations: geoLocations },
         }),
       });
@@ -250,7 +252,7 @@ export const GeoTargetingDialog = ({
             Segmentação Geográfica
           </DialogTitle>
           <DialogDescription>
-            Edite as localizações do conjunto "{entityName}"
+            Edite as localizações da {entityType === 'campaign' ? 'campanha' : 'conjunto'} "{entityName}"
           </DialogDescription>
         </DialogHeader>
 
