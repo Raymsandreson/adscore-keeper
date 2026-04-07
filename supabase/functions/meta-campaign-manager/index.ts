@@ -6,31 +6,35 @@ const corsHeaders = {
 };
 
 interface CampaignRequest {
-  action: 'update_status' | 'update_budget' | 'update_bid' | 'duplicate' | 'update_creative';
+  action: 'update_status' | 'update_budget' | 'update_bid' | 'duplicate' | 'update_creative' | 'get_targeting' | 'update_targeting' | 'search_locations';
   accessToken: string;
-  entityId: string; // campaign_id, adset_id, or ad_id
+  entityId: string;
   entityType: 'campaign' | 'adset' | 'ad';
-  // For update_status
   status?: 'ACTIVE' | 'PAUSED';
-  // For update_budget
   dailyBudget?: number;
   lifetimeBudget?: number;
-  // For update_bid
   bidAmount?: number;
   bidStrategy?: string;
-  // For duplicate
   adAccountId?: string;
-  // For update_creative
   creativeData?: {
     title?: string;
     body?: string;
     linkDescription?: string;
     callToActionType?: string;
   };
+  targeting?: {
+    geo_locations?: {
+      countries?: string[];
+      cities?: { key: string; name?: string; radius?: number; distance_unit?: string }[];
+      zips?: { key: string; name?: string }[];
+      regions?: { key: string; name?: string }[];
+    };
+  };
+  searchQuery?: string;
+  locationType?: string;
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -39,9 +43,9 @@ serve(async (req) => {
     const body: CampaignRequest = await req.json();
     const { action, accessToken, entityId, entityType } = body;
 
-    if (!accessToken || !entityId || !action) {
+    if (!accessToken || !action) {
       return new Response(
-        JSON.stringify({ error: 'Missing required parameters: accessToken, entityId, action' }),
+        JSON.stringify({ error: 'Missing required parameters: accessToken, action' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -64,6 +68,15 @@ serve(async (req) => {
       case 'update_creative':
         result = await updateCreative(accessToken, entityId, body.creativeData!);
         break;
+      case 'get_targeting':
+        result = await getTargeting(accessToken, entityId);
+        break;
+      case 'update_targeting':
+        result = await updateTargeting(accessToken, entityId, body.targeting!);
+        break;
+      case 'search_locations':
+        result = await searchLocations(accessToken, body.searchQuery!, body.locationType || 'adgeolocation');
+        break;
       default:
         return new Response(
           JSON.stringify({ error: 'Invalid action' }),
@@ -71,7 +84,7 @@ serve(async (req) => {
         );
     }
 
-    console.log(`Action ${action} completed for ${entityType} ${entityId}:`, result);
+    console.log(`Action ${action} completed for ${entityType} ${entityId}:`, JSON.stringify(result).substring(0, 500));
 
     return new Response(
       JSON.stringify({ success: true, data: result }),
@@ -88,269 +101,175 @@ serve(async (req) => {
   }
 });
 
-async function updateStatus(accessToken: string, entityId: string, status: 'ACTIVE' | 'PAUSED') {
-  const url = `https://graph.facebook.com/v21.0/${entityId}`;
+async function getTargeting(accessToken: string, adSetId: string) {
+  const url = `https://graph.facebook.com/v21.0/${adSetId}?access_token=${accessToken}&fields=targeting,name`;
+  const response = await fetch(url);
+  const data = await response.json();
+
+  if (data.error) {
+    throw new Error(data.error.message || 'Failed to get targeting');
+  }
+
+  const targeting = data.targeting || {};
+  return {
+    adSetId,
+    name: data.name,
+    targeting: {
+      geo_locations: targeting.geo_locations || {},
+      age_min: targeting.age_min,
+      age_max: targeting.age_max,
+      genders: targeting.genders,
+    },
+  };
+}
+
+async function updateTargeting(
+  accessToken: string,
+  adSetId: string,
+  targeting: {
+    geo_locations?: {
+      countries?: string[];
+      cities?: { key: string; name?: string; radius?: number; distance_unit?: string }[];
+      zips?: { key: string; name?: string }[];
+      regions?: { key: string; name?: string }[];
+    };
+  }
+) {
+  // First get existing targeting to merge
+  const getUrl = `https://graph.facebook.com/v21.0/${adSetId}?access_token=${accessToken}&fields=targeting`;
+  const getResp = await fetch(getUrl);
+  const getData = await getResp.json();
+
+  if (getData.error) {
+    throw new Error(getData.error.message || 'Failed to get current targeting');
+  }
+
+  const currentTargeting = getData.targeting || {};
   
-  const response = await fetch(url, {
+  // Merge: replace only geo_locations, keep everything else
+  const updatedTargeting = {
+    ...currentTargeting,
+    geo_locations: targeting.geo_locations,
+  };
+
+  const updateUrl = `https://graph.facebook.com/v21.0/${adSetId}`;
+  const updateResp = await fetch(updateUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       access_token: accessToken,
-      status: status,
+      targeting: JSON.stringify(updatedTargeting),
     }),
   });
 
-  const data = await response.json();
-  
-  if (data.error) {
-    throw new Error(data.error.message || 'Failed to update status');
+  const updateData = await updateResp.json();
+
+  if (updateData.error) {
+    throw new Error(updateData.error.message || 'Failed to update targeting');
   }
-  
+
+  return { adSetId, updatedGeoLocations: targeting.geo_locations, ...updateData };
+}
+
+async function searchLocations(accessToken: string, query: string, locationType: string) {
+  const url = `https://graph.facebook.com/v21.0/search?type=${locationType}&q=${encodeURIComponent(query)}&access_token=${accessToken}&locale=pt_BR&limit=20`;
+  const response = await fetch(url);
+  const data = await response.json();
+
+  if (data.error) {
+    throw new Error(data.error.message || 'Failed to search locations');
+  }
+
+  return { results: data.data || [] };
+}
+
+async function updateStatus(accessToken: string, entityId: string, status: 'ACTIVE' | 'PAUSED') {
+  const url = `https://graph.facebook.com/v21.0/${entityId}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ access_token: accessToken, status }),
+  });
+  const data = await response.json();
+  if (data.error) throw new Error(data.error.message || 'Failed to update status');
   return { entityId, newStatus: status, ...data };
 }
 
-async function updateBudget(
-  accessToken: string, 
-  entityId: string, 
-  entityType: string,
-  dailyBudget?: number, 
-  lifetimeBudget?: number
-) {
+async function updateBudget(accessToken: string, entityId: string, entityType: string, dailyBudget?: number, lifetimeBudget?: number) {
   const url = `https://graph.facebook.com/v21.0/${entityId}`;
-  
-  const params: Record<string, any> = {
-    access_token: accessToken,
-  };
-
-  // Budget values need to be in cents for Meta API
-  if (dailyBudget !== undefined) {
-    params.daily_budget = Math.round(dailyBudget * 100);
-  }
-  if (lifetimeBudget !== undefined) {
-    params.lifetime_budget = Math.round(lifetimeBudget * 100);
-  }
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
-
+  const params: Record<string, any> = { access_token: accessToken };
+  if (dailyBudget !== undefined) params.daily_budget = Math.round(dailyBudget * 100);
+  if (lifetimeBudget !== undefined) params.lifetime_budget = Math.round(lifetimeBudget * 100);
+  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params) });
   const data = await response.json();
-  
-  if (data.error) {
-    throw new Error(data.error.message || 'Failed to update budget');
-  }
-  
+  if (data.error) throw new Error(data.error.message || 'Failed to update budget');
   return { entityId, dailyBudget, lifetimeBudget, ...data };
 }
 
-async function updateBid(
-  accessToken: string, 
-  entityId: string, 
-  bidAmount?: number,
-  bidStrategy?: string
-) {
+async function updateBid(accessToken: string, entityId: string, bidAmount?: number, bidStrategy?: string) {
   const url = `https://graph.facebook.com/v21.0/${entityId}`;
-  
-  const params: Record<string, any> = {
-    access_token: accessToken,
-  };
-
-  if (bidAmount !== undefined) {
-    // Bid amount in cents
-    params.bid_amount = Math.round(bidAmount * 100);
-  }
-  if (bidStrategy) {
-    params.bid_strategy = bidStrategy;
-  }
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
-
+  const params: Record<string, any> = { access_token: accessToken };
+  if (bidAmount !== undefined) params.bid_amount = Math.round(bidAmount * 100);
+  if (bidStrategy) params.bid_strategy = bidStrategy;
+  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params) });
   const data = await response.json();
-  
-  if (data.error) {
-    throw new Error(data.error.message || 'Failed to update bid');
-  }
-  
+  if (data.error) throw new Error(data.error.message || 'Failed to update bid');
   return { entityId, bidAmount, bidStrategy, ...data };
 }
 
-async function duplicateEntity(
-  accessToken: string, 
-  entityId: string, 
-  entityType: string,
-  adAccountId: string
-) {
-  // For campaigns
+async function duplicateEntity(accessToken: string, entityId: string, entityType: string, adAccountId: string) {
   if (entityType === 'campaign') {
     const url = `https://graph.facebook.com/v21.0/${entityId}/copies`;
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        access_token: accessToken,
-        deep_copy: true,
-        status_option: 'PAUSED',
-      }),
-    });
-
+    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_token: accessToken, deep_copy: true, status_option: 'PAUSED' }) });
     const data = await response.json();
-    
-    if (data.error) {
-      throw new Error(data.error.message || 'Failed to duplicate campaign');
-    }
-    
+    if (data.error) throw new Error(data.error.message || 'Failed to duplicate campaign');
     return { originalId: entityId, newId: data.copied_campaign_id, ...data };
   }
-  
-  // For ad sets
   if (entityType === 'adset') {
     const url = `https://graph.facebook.com/v21.0/${entityId}/copies`;
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        access_token: accessToken,
-        deep_copy: true,
-        status_option: 'PAUSED',
-      }),
-    });
-
+    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_token: accessToken, deep_copy: true, status_option: 'PAUSED' }) });
     const data = await response.json();
-    
-    if (data.error) {
-      throw new Error(data.error.message || 'Failed to duplicate ad set');
-    }
-    
+    if (data.error) throw new Error(data.error.message || 'Failed to duplicate ad set');
     return { originalId: entityId, newId: data.copied_adset_id, ...data };
   }
-
-  // For ads
   if (entityType === 'ad') {
     const url = `https://graph.facebook.com/v21.0/${entityId}/copies`;
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        access_token: accessToken,
-      }),
-    });
-
+    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_token: accessToken }) });
     const data = await response.json();
-    
-    if (data.error) {
-      throw new Error(data.error.message || 'Failed to duplicate ad');
-    }
-    
+    if (data.error) throw new Error(data.error.message || 'Failed to duplicate ad');
     return { originalId: entityId, newId: data.copied_ad_id, ...data };
   }
-
   throw new Error('Invalid entity type for duplication');
 }
 
-async function updateCreative(
-  accessToken: string,
-  adId: string,
-  creativeData: {
-    title?: string;
-    body?: string;
-    linkDescription?: string;
-    callToActionType?: string;
-  }
-) {
-  console.log('Updating creative for ad:', adId, creativeData);
-  
-  // First, get the current ad to find the creative ID
+async function updateCreative(accessToken: string, adId: string, creativeData: { title?: string; body?: string; linkDescription?: string; callToActionType?: string }) {
   const adUrl = `https://graph.facebook.com/v21.0/${adId}?fields=creative{id}&access_token=${accessToken}`;
   const adResponse = await fetch(adUrl);
   const adData = await adResponse.json();
-  
-  if (adData.error) {
-    throw new Error(adData.error.message || 'Failed to get ad creative');
-  }
-  
+  if (adData.error) throw new Error(adData.error.message || 'Failed to get ad creative');
   const creativeId = adData.creative?.id;
-  if (!creativeId) {
-    throw new Error('Creative ID not found for this ad');
-  }
-  
-  console.log('Found creative ID:', creativeId);
-  
-  // Get current creative data to preserve unchanged fields
+  if (!creativeId) throw new Error('Creative ID not found for this ad');
+
   const creativeUrl = `https://graph.facebook.com/v21.0/${creativeId}?fields=object_story_spec,name&access_token=${accessToken}`;
   const creativeResponse = await fetch(creativeUrl);
   const currentCreative = await creativeResponse.json();
-  
-  if (currentCreative.error) {
-    throw new Error(currentCreative.error.message || 'Failed to get creative details');
-  }
-  
-  console.log('Current creative:', JSON.stringify(currentCreative, null, 2));
-  
-  // Build updated object_story_spec
+  if (currentCreative.error) throw new Error(currentCreative.error.message || 'Failed to get creative details');
+
   const objectStorySpec = currentCreative.object_story_spec || {};
-  
   if (objectStorySpec.link_data) {
-    if (creativeData.body !== undefined) {
-      objectStorySpec.link_data.message = creativeData.body;
-    }
-    if (creativeData.title !== undefined) {
-      objectStorySpec.link_data.name = creativeData.title;
-    }
-    if (creativeData.linkDescription !== undefined) {
-      objectStorySpec.link_data.description = creativeData.linkDescription;
-    }
-    if (creativeData.callToActionType !== undefined) {
-      objectStorySpec.link_data.call_to_action = {
-        type: creativeData.callToActionType
-      };
-    }
+    if (creativeData.body !== undefined) objectStorySpec.link_data.message = creativeData.body;
+    if (creativeData.title !== undefined) objectStorySpec.link_data.name = creativeData.title;
+    if (creativeData.linkDescription !== undefined) objectStorySpec.link_data.description = creativeData.linkDescription;
+    if (creativeData.callToActionType !== undefined) objectStorySpec.link_data.call_to_action = { type: creativeData.callToActionType };
   } else if (objectStorySpec.video_data) {
-    if (creativeData.body !== undefined) {
-      objectStorySpec.video_data.message = creativeData.body;
-    }
-    if (creativeData.title !== undefined) {
-      objectStorySpec.video_data.title = creativeData.title;
-    }
-    if (creativeData.callToActionType !== undefined) {
-      objectStorySpec.video_data.call_to_action = {
-        type: creativeData.callToActionType
-      };
-    }
+    if (creativeData.body !== undefined) objectStorySpec.video_data.message = creativeData.body;
+    if (creativeData.title !== undefined) objectStorySpec.video_data.title = creativeData.title;
+    if (creativeData.callToActionType !== undefined) objectStorySpec.video_data.call_to_action = { type: creativeData.callToActionType };
   }
-  
-  // Update the creative
+
   const updateUrl = `https://graph.facebook.com/v21.0/${creativeId}`;
-  const updateResponse = await fetch(updateUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      access_token: accessToken,
-      object_story_spec: JSON.stringify(objectStorySpec),
-    }),
-  });
-  
+  const updateResponse = await fetch(updateUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_token: accessToken, object_story_spec: JSON.stringify(objectStorySpec) }) });
   const updateData = await updateResponse.json();
-  
-  if (updateData.error) {
-    console.error('Error updating creative:', updateData.error);
-    throw new Error(updateData.error.message || 'Failed to update creative');
-  }
-  
-  console.log('Creative updated successfully:', updateData);
-  
-  return { 
-    adId, 
-    creativeId, 
-    updatedFields: creativeData,
-    ...updateData 
-  };
+  if (updateData.error) throw new Error(updateData.error.message || 'Failed to update creative');
+  return { adId, creativeId, updatedFields: creativeData, ...updateData };
 }

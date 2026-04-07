@@ -17,6 +17,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Lightbulb, TrendingDown, TrendingUp, Target, Megaphone, X, Calendar as CalendarIcon, Loader2, Users, Pause, Play, Settings2, Sparkles, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX } from "lucide-react";
+import { AdSetGeoDisplay } from "./AdSetGeoDisplay";
 import { CampaignInsight } from "@/services/metaAPI";
 import { DateRangeOption } from "@/hooks/useMetaAPI";
 import { CampaignControls } from "./CampaignControls";
@@ -375,6 +376,11 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
           >
             {isActive ? '🟢 Ativo' : '⏸️ Pausado'}
           </Badge>
+          {item.type === 'adset' && (
+            <div className="mt-1.5">
+              <AdSetGeoDisplay adSetId={item.id} />
+            </div>
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-xs text-muted-foreground">

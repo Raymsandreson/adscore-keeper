@@ -24,9 +24,11 @@ import {
   DollarSign, 
   Copy, 
   TrendingUp,
-  Loader2
+  Loader2,
+  MapPin
 } from "lucide-react";
 import { useCampaignManager } from "@/hooks/useCampaignManager";
+import { GeoTargetingDialog } from "./GeoTargetingDialog";
 
 interface CampaignControlsProps {
   entityId: string;
@@ -49,6 +51,7 @@ export const CampaignControls = ({
   
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
   const [bidDialogOpen, setBidDialogOpen] = useState(false);
+  const [geoDialogOpen, setGeoDialogOpen] = useState(false);
   const [newBudget, setNewBudget] = useState(currentBudget?.toString() || '');
   const [newBid, setNewBid] = useState('');
 
@@ -126,10 +129,16 @@ export const CampaignControls = ({
           )}
           
           {entityType === 'adset' && (
-            <DropdownMenuItem onClick={() => setBidDialogOpen(true)}>
-              <TrendingUp className="h-4 w-4 mr-2" />
-              Alterar Lance
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuItem onClick={() => setBidDialogOpen(true)}>
+                <TrendingUp className="h-4 w-4 mr-2" />
+                Alterar Lance
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setGeoDialogOpen(true)}>
+                <MapPin className="h-4 w-4 mr-2" />
+                Segmentação Geográfica
+              </DropdownMenuItem>
+            </>
           )}
           
           <DropdownMenuSeparator />
@@ -216,6 +225,15 @@ export const CampaignControls = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Geo Targeting Dialog */}
+      <GeoTargetingDialog
+        open={geoDialogOpen}
+        onOpenChange={setGeoDialogOpen}
+        entityId={entityId}
+        entityName={entityName}
+        onActionComplete={onActionComplete}
+      />
     </>
   );
 };
