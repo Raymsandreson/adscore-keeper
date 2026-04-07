@@ -89,12 +89,12 @@ export function GapDetailSheet({ open, onClose, gapType, items, onOpenChat }: Pr
                         </Button>
                       )}
                       {item.whatsapp_phone && (
-                        <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1" onClick={() => handleOpenChat(item.whatsapp_phone!, item.instance_name || undefined, item.name)}>
+                        <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1" onClick={() => handleOpenChat(item.whatsapp_phone!, undefined, item.name)}>
                           <MessageSquare className="h-3 w-3" /> Chat
                         </Button>
                       )}
                       {item.whatsapp_group_id && (
-                        <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1 border-cyan-200 text-cyan-700" onClick={() => handleOpenChat(item.whatsapp_group_id!, item.instance_name || undefined, item.name)}>
+                        <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1 border-cyan-200/50 text-cyan-600" onClick={() => handleOpenChat(item.whatsapp_group_id!, undefined, item.name)}>
                           <UsersRound className="h-3 w-3" /> Grupo
                         </Button>
                       )}

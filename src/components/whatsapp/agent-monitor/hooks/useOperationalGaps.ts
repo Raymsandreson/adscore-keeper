@@ -10,7 +10,6 @@ export interface GapItem {
   lead_id?: string | null;
   whatsapp_phone?: string | null;
   whatsapp_group_id?: string | null;
-  instance_name?: string | null;
 }
 
 export interface OperationalGaps {
