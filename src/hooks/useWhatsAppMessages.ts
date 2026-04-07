@@ -469,7 +469,13 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         },
       });
       if (error) throw error;
-      if (!data.success) throw new Error(data.error);
+      if (!data.success) {
+        if (data.error_code === 'INSTANCE_DISCONNECTED') {
+          toast.error(`Instância ${data.instance_name || ''} desconectada. Reconecte o WhatsApp e tente novamente.`.trim());
+          return false;
+        }
+        throw new Error(data.error);
+      }
       toast.success('Mensagem enviada!');
 
       // Optimistic local update instead of full refetch
@@ -544,7 +550,13 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         },
       });
       if (error) throw error;
-      if (!data.success) throw new Error(data.error);
+      if (!data.success) {
+        if (data.error_code === 'INSTANCE_DISCONNECTED') {
+          toast.error(`Instância ${data.instance_name || ''} desconectada. Reconecte o WhatsApp e tente novamente.`.trim());
+          return false;
+        }
+        throw new Error(data.error);
+      }
       toast.success('Mídia enviada!');
 
       const msgType = mediaType?.startsWith('audio') ? 'audio' : mediaType?.startsWith('image') ? 'image' : mediaType?.startsWith('video') ? 'video' : 'document';
@@ -600,7 +612,13 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         },
       });
       if (error) throw error;
-      if (!data.success) throw new Error(data.error);
+      if (!data.success) {
+        if (data.error_code === 'INSTANCE_DISCONNECTED') {
+          toast.error(`Instância ${data.instance_name || ''} desconectada. Reconecte o WhatsApp e tente novamente.`.trim());
+          return false;
+        }
+        throw new Error(data.error);
+      }
       toast.success('Localização enviada!');
 
       const locationText = `📍 ${name || 'Localização'}${address ? `\n${address}` : ''}`;
