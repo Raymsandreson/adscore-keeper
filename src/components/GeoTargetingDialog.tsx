@@ -80,7 +80,10 @@ export const GeoTargetingDialog = ({
 
   const fetchTargeting = useCallback(async () => {
     const accessToken = getAccessToken();
-    if (!accessToken) return;
+    if (!accessToken) {
+      console.warn('[GeoDialog] No access token found');
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -95,10 +98,15 @@ export const GeoTargetingDialog = ({
         }),
       });
       const data = await response.json();
+      console.log('[GeoDialog] Targeting response:', JSON.stringify(data).substring(0, 1000));
       if (data.success) {
         const geo = data.data.targeting?.geo_locations || {};
+        console.log('[GeoDialog] Parsed geo_locations:', JSON.stringify(geo));
         setGeoLocations(geo);
         setOriginalGeo(geo);
+      } else {
+        console.error('[GeoDialog] API error:', data.error);
+        toast.error(data.error || 'Erro ao carregar segmentação');
       }
     } catch (error) {
       console.error('Error fetching targeting:', error);
