@@ -1206,8 +1206,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ========== AUTO-REGISTER CONTACT IF NOT FOUND (inbound only) ==========
-    if (!contactId && direction === 'inbound' && normalizedPhone.length >= 10) {
+    // ========== AUTO-REGISTER CONTACT IF NOT FOUND (inbound, individual chats only) ==========
+    if (!contactId && direction === 'inbound' && normalizedPhone.length >= 10 && !isGroup) {
       try {
         // Check if this phone belongs to one of our WhatsApp instances
         const { data: ownInstances } = await supabase
