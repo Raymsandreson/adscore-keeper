@@ -248,6 +248,7 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
           <SheetTitle className="flex items-center gap-2">
             {statusFilter && (() => { const Icon = icons[statusFilter]; return <Icon className="h-5 w-5" />; })()}
             {statusFilter ? statusLabel(statusFilter) : ''} ({sheetCases.length})
+            {acolhedorPreFilter && <Badge variant="secondary" className="text-[10px] ml-1">{acolhedorPreFilter}</Badge>}
           </SheetTitle>
         </SheetHeader>
 
