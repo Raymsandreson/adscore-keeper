@@ -670,6 +670,48 @@ Deno.serve(async (req) => {
         .update(updatePayload)
         .eq('id', leadData.id)
         .is('whatsapp_group_id', null)
+
+      // Create/link a contact record for the group
+      try {
+        const groupContactName = `Grupo - ${leadData.lead_name || lead_name}`
+        // Check if a contact for this group already exists
+        const { data: existingGroupContact } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('whatsapp_group_id', groupId)
+          .maybeSingle()
+
+        let groupContactId: string | null = existingGroupContact?.id || null
+
+        if (!groupContactId) {
+          const { data: newContact } = await supabase
+            .from('contacts')
+            .insert({
+              full_name: groupContactName,
+              lead_id: leadData.id,
+              whatsapp_group_id: groupId,
+              phone: normalizedContact || null,
+              city: leadData.city || null,
+              state: leadData.state || null,
+              notes: groupInviteLink ? `Link do grupo: ${groupInviteLink}` : null,
+              action_source: 'group_creation',
+              action_source_detail: `Grupo criado automaticamente para o lead ${leadData.lead_name || lead_name}`,
+            })
+            .select('id')
+            .single()
+          groupContactId = newContact?.id || null
+          console.log(`[create-group] Contact created for group: ${groupContactId}`)
+        } else {
+          // Update existing contact to link to this lead
+          await supabase
+            .from('contacts')
+            .update({ lead_id: leadData.id })
+            .eq('id', groupContactId)
+          console.log(`[create-group] Existing contact ${groupContactId} linked to lead ${leadData.id}`)
+        }
+      } catch (contactErr) {
+        console.error('[create-group] Error creating group contact:', contactErr)
+      }
     }
 
     // Send private message to client with group link
