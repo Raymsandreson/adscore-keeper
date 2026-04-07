@@ -10,6 +10,7 @@ import { useMonitorData } from './agent-monitor/hooks/useMonitorData';
 import { useMonitorFilters } from './agent-monitor/hooks/useMonitorFilters';
 import { useBatchActions } from './agent-monitor/hooks/useBatchActions';
 import { useDashboardMetrics } from './agent-monitor/hooks/useDashboardMetrics';
+import { useOperationalGaps, type GapType } from './agent-monitor/hooks/useOperationalGaps';
 import type { ConversationDetail, CaseStatus } from './agent-monitor/types';
 import { convKey } from './agent-monitor/utils';
 
@@ -18,6 +19,7 @@ import { UnifiedMonitorTab } from './agent-monitor/components/UnifiedMonitorTab'
 import { CaseListSheet } from './agent-monitor/components/CaseListSheet';
 import { OperationalDetailSheet, type OperationalMetricType, type OperationalFilters } from './agent-monitor/components/OperationalDetailSheet';
 import { NewConversationsSheet } from './agent-monitor/components/NewConversationsSheet';
+import { GapDetailSheet } from './agent-monitor/components/GapDetailSheet';
 import { ReferralsTab } from './agent-monitor/components/ReferralsTab';
 import { AIActivitiesPanel } from './AIActivitiesPanel';
 import { AIActivityPromptDialog } from './AIActivityPromptDialog';
@@ -33,9 +35,11 @@ export function AgentMonitorDashboard() {
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [promptDialogLead, setPromptDialogLead] = useState<{ id: string; name: string } | null>(null);
   const [operationalSheet, setOperationalSheet] = useState<OperationalMetricType | null>(null);
+  const [gapSheet, setGapSheet] = useState<GapType | null>(null);
 
   const { agents, conversations, agentStats, referrals, boards, loading: monitorLoading, fetchData: fetchDataRaw } = useMonitorData();
   const { metrics, metricsLoading, fetchMetrics } = useDashboardMetrics();
+  const { gaps, gapsLoading, fetchGaps } = useOperationalGaps();
 
   const isLoading = monitorLoading || metricsLoading;
   const [animatedProgress, setAnimatedProgress] = useState(0);
@@ -62,7 +66,8 @@ export function AgentMonitorDashboard() {
   const fetchData = useCallback(() => {
     fetchDataRaw(dateRange);
     fetchMetrics(dateRange);
-  }, [fetchDataRaw, fetchMetrics, dateRange]);
+    fetchGaps(dateRange);
+  }, [fetchDataRaw, fetchMetrics, fetchGaps, dateRange]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
