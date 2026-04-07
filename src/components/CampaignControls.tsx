@@ -122,23 +122,25 @@ export const CampaignControls = ({
           </DropdownMenuItem>
           
           {(entityType === 'campaign' || entityType === 'adset') && (
-            <DropdownMenuItem onClick={() => setBudgetDialogOpen(true)}>
-              <DollarSign className="h-4 w-4 mr-2" />
-              Alterar Orçamento
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuItem onClick={() => setBudgetDialogOpen(true)}>
+                <DollarSign className="h-4 w-4 mr-2" />
+                Alterar Orçamento
+              </DropdownMenuItem>
+              {entityType === 'campaign' && (
+                <DropdownMenuItem onClick={() => setGeoDialogOpen(true)}>
+                  <MapPin className="h-4 w-4 mr-2" />
+                  Segmentação Geográfica
+                </DropdownMenuItem>
+              )}
+            </>
           )}
           
           {entityType === 'adset' && (
-            <>
-              <DropdownMenuItem onClick={() => setBidDialogOpen(true)}>
-                <TrendingUp className="h-4 w-4 mr-2" />
-                Alterar Lance
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setGeoDialogOpen(true)}>
-                <MapPin className="h-4 w-4 mr-2" />
-                Segmentação Geográfica
-              </DropdownMenuItem>
-            </>
+            <DropdownMenuItem onClick={() => setBidDialogOpen(true)}>
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Alterar Lance
+            </DropdownMenuItem>
           )}
           
           <DropdownMenuSeparator />
@@ -232,6 +234,7 @@ export const CampaignControls = ({
         onOpenChange={setGeoDialogOpen}
         entityId={entityId}
         entityName={entityName}
+        entityType={entityType}
         onActionComplete={onActionComplete}
       />
     </>
