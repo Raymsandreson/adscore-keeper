@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles, Clock, TrendingUp, FileSignature, Users, Briefcase, Scale, AlertTriangle, FileText } from 'lucide-react';
+import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles, Clock, TrendingUp, FileSignature, Users, Briefcase, Scale, AlertTriangle, FileText, UserPlus } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { CaseStatus } from '../types';
 import { statusLabel } from '../utils';
@@ -115,7 +115,7 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
 
       {/* Operational metrics row */}
       {dashboardMetrics && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
           <MemberBreakdownPopover details={[...dashboardMetrics.signedDocsDetails, ...dashboardMetrics.pendingDocsDetails]}>
             <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('signed_docs')}>
               <CardContent className="p-3 text-center">
@@ -152,6 +152,15 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
                 <Scale className="h-4 w-4 mx-auto mb-1 text-indigo-500" />
                 <p className="text-xl font-bold">{dashboardMetrics.processesCreated}</p>
                 <p className="text-[10px] text-muted-foreground">Processos Criados</p>
+              </CardContent>
+            </Card>
+          </MemberBreakdownPopover>
+          <MemberBreakdownPopover details={dashboardMetrics.contactsDetails}>
+            <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => onOperationalClick?.('contacts')}>
+              <CardContent className="p-3 text-center">
+                <UserPlus className="h-4 w-4 mx-auto mb-1 text-emerald-500" />
+                <p className="text-xl font-bold">{dashboardMetrics.contactsCreated}</p>
+                <p className="text-[10px] text-muted-foreground">Contatos Criados</p>
               </CardContent>
             </Card>
           </MemberBreakdownPopover>

@@ -10,7 +10,7 @@ import { startOfDay, endOfDay, format, parseISO } from 'date-fns';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import type { Lead } from '@/hooks/useLeads';
 
-export type OperationalMetricType = 'signed_docs' | 'groups' | 'cases' | 'processes';
+export type OperationalMetricType = 'signed_docs' | 'groups' | 'cases' | 'processes' | 'contacts';
 
 export interface OperationalFilters {
   instanceFilter: string;
