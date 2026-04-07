@@ -321,7 +321,7 @@ export function AgentMonitorDashboard() {
           <UnifiedMonitorTab
             conversations={conversations} agentStats={agentStats} loading={isLoading}
             pipelineCounts={pipelineCounts}
-            onPipelineClick={(s) => setSheetStatusFilter(prev => prev === s ? null : s)}
+            onPipelineClick={(s) => { setClosingAcolhedorFilter(null); setSheetStatusFilter(prev => prev === s ? null : s); }}
             activeStatus={sheetStatusFilter}
             onOpenChat={handleOpenChat} onEventClick={handleEventClick}
             dashboardMetrics={filteredMetrics}
@@ -330,6 +330,10 @@ export function AgentMonitorDashboard() {
             filterBarProps={filterBarProps}
             gaps={filteredGaps}
             onGapClick={(type) => setGapSheet(type)}
+            onClosingDetailClick={(filter) => {
+              setClosingAcolhedorFilter(filter.agent || null);
+              setSheetStatusFilter('fechado');
+            }}
           />
         </TabsContent>
 
@@ -339,8 +343,9 @@ export function AgentMonitorDashboard() {
 
       <CaseListSheet
         statusFilter={sheetStatusFilter} conversations={conversations}
-        applyBaseFilters={applyBaseFilters} onClose={() => setSheetStatusFilter(null)}
+        applyBaseFilters={applyBaseFilters} onClose={() => { setSheetStatusFilter(null); setClosingAcolhedorFilter(null); }}
         onOpenChat={handleOpenChat} generatingLeadId={generatingLeadId} onGenerateActivity={handleGenerateActivity}
+        acolhedorPreFilter={closingAcolhedorFilter}
       />
 
       <OperationalDetailSheet
