@@ -531,22 +531,30 @@ export const useLeads = (adAccountId?: string) => {
     }
   };
 
+  // Debounced realtime - prevents cascade re-fetches when multiple leads update rapidly
+  const realtimeTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     fetchLeads();
 
-    // Realtime subscription to auto-refresh when leads are added/updated/deleted externally
     const channel = supabase
       .channel('leads-realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'leads' },
         () => {
-          fetchLeads();
+          // Debounce: wait 3s after last event before re-fetching
+          if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
+          realtimeTimerRef.current = setTimeout(() => {
+            console.log('🔄 Realtime: atualizando leads...');
+            fetchLeads();
+          }, 3000);
         }
       )
       .subscribe();
 
     return () => {
+      if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
       supabase.removeChannel(channel);
     };
   }, [fetchLeads]);
