@@ -10,6 +10,9 @@ export interface DashboardMetrics {
   totalInbound: number;
   closedByAgent: { agent: string; count: number }[];
   closedByCampaign: { campaign: string; count: number }[];
+  closedByAI: number;
+  closedWithHuman: number;
+  closedTotal: number;
   newConvDetails: NewConvDetail[];
   signedDocuments: number;
   pendingDocuments: number;
