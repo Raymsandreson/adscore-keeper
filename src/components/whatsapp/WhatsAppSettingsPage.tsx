@@ -84,15 +84,6 @@ const tabs: Tab[] = [
     accentColor: 'text-orange-500',
   },
   {
-    id: 'geo',
-    label: 'Geo-Segmentação',
-    icon: <MapPin className="h-5 w-5" />,
-    description: 'Regras automáticas de localização em anúncios',
-    badge: '📍 Novo',
-    badgeVariant: 'default',
-    accentColor: 'text-teal-500',
-  },
-  {
     id: 'groups',
     label: 'Grupos',
     icon: <Users className="h-5 w-5" />,
