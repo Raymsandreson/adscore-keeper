@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 interface CampaignRequest {
-  action: 'update_status' | 'update_budget' | 'update_bid' | 'duplicate' | 'update_creative' | 'get_targeting' | 'update_targeting' | 'search_locations';
+  action: 'update_status' | 'update_budget' | 'update_bid' | 'duplicate' | 'update_creative' | 'get_targeting' | 'update_targeting' | 'search_locations' | 'add_city_to_adset';
   accessToken: string;
   entityId: string;
   entityType: 'campaign' | 'adset' | 'ad';
@@ -33,6 +33,11 @@ interface CampaignRequest {
   };
   searchQuery?: string;
   locationType?: string;
+  // add_city_to_adset params
+  adSetId?: string;
+  cityName?: string;
+  stateName?: string;
+  radiusKm?: number;
 }
 
 serve(async (req) => {
