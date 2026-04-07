@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { geminiChat } from "../_shared/gemini.ts";
+import { getLocationFromDDD } from "../_shared/ddd-mapping.ts";
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
