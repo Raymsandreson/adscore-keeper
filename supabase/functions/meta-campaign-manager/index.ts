@@ -91,6 +91,9 @@ serve(async (req) => {
       case 'search_locations':
         result = await searchLocations(accessToken, body.searchQuery!, body.locationType || 'adgeolocation');
         break;
+      case 'add_city_to_adset':
+        result = await addCityToAdSet(accessToken, body.adSetId!, body.cityName!, body.stateName || null, body.radiusKm || 10);
+        break;
       default:
         return new Response(
           JSON.stringify({ error: 'Invalid action' }),
