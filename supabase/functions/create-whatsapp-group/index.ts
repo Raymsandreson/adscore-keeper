@@ -749,10 +749,18 @@ Deno.serve(async (req) => {
 
     // Promote ALL board instances as admins (except lead contact)
     if (groupId) {
-      // Collect all phones to promote (all instances except creator who is already admin)
-      const phonesToPromote: string[] = []
+      const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
       const normalizedLeadContact = (contact_phone || phone || '').replace(/\D/g, '')
 
+      // First, get ALL active instances to promote everyone in the group
+      const { data: allInstances } = await supabase
+        .from('whatsapp_instances')
+        .select('id, owner_phone, instance_name')
+        .eq('is_active', true)
+
+      const phonesToPromote: string[] = []
+
+      // Add board instances first
       for (const inst of boardInstances) {
         if (inst.id === creatorInstance.id) continue
         if (!inst.owner_phone) continue
@@ -762,8 +770,23 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Also promote any other active instance that was added to the group
+      if (allInstances) {
+        for (const inst of allInstances) {
+          if (inst.id === creatorInstance.id) continue
+          if (!inst.owner_phone) continue
+          const instPhone = inst.owner_phone.replace(/\D/g, '')
+          if (instPhone && instPhone !== normalizedLeadContact && !phonesToPromote.includes(instPhone)) {
+            // Check if this phone is actually in the group participants
+            const isInGroup = participants.some(p => phoneMatches(p, instPhone))
+            if (isInGroup) {
+              phonesToPromote.push(instPhone)
+            }
+          }
+        }
+      }
+
       if (phonesToPromote.length > 0) {
-        const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
         try {
           console.log(`Promoting ${phonesToPromote.length} participants as admin:`, phonesToPromote)
 
