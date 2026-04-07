@@ -264,6 +264,7 @@ Deno.serve(async (req) => {
                 phone: normalizedMainPhone,
                 city,
                 state,
+                created_by: responsibleUserId,
                 action_source: 'system',
                 action_source_detail: agentLabel,
               })
