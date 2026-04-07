@@ -55,7 +55,8 @@ export function AdSetGeoRulesConfig() {
         `https://graph.facebook.com/v21.0/${actId}/adsets?fields=id,name,effective_status,campaign_id,campaign{name}&limit=100&access_token=${accessToken}`
       );
       const data = await res.json();
-      if (data.error) throw new Error(data.error.message);
+      console.log('Meta AdSets API response:', JSON.stringify(data, null, 2));
+      if (data.error) throw new Error(JSON.stringify(data.error));
       setAdSets(
         (data.data || []).map((a: any) => ({
           id: a.id,
