@@ -208,7 +208,7 @@ export const useMetaAPI = () => {
 
   useEffect(() => {
     if (!isConnected || !config) return;
-    const interval = setInterval(refreshMetrics, 30000);
+    const interval = setInterval(refreshMetrics, 5 * 60 * 1000); // 5 minutes instead of 30s
     return () => clearInterval(interval);
   }, [isConnected, config, refreshMetrics]);
 
