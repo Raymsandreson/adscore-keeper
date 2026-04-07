@@ -231,11 +231,14 @@ export function AdSetGeoRulesConfig() {
                 <Select value={formAdSetId} onValueChange={setFormAdSetId}>
                   <SelectTrigger><SelectValue placeholder="Selecione o ad set" /></SelectTrigger>
                   <SelectContent>
-                    {adSets.map(a => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.name} {a.campaign_name ? `(${a.campaign_name})` : ''}
-                      </SelectItem>
-                    ))}
+                    {adSets.map(a => {
+                      const statusLabel = a.effective_status === 'ACTIVE' ? '🟢' : a.effective_status === 'PAUSED' || a.effective_status === 'CAMPAIGN_PAUSED' || a.effective_status === 'ADSET_PAUSED' ? '⏸️' : '⚪';
+                      return (
+                        <SelectItem key={a.id} value={a.id}>
+                          {statusLabel} {a.name} {a.campaign_name ? `(${a.campaign_name})` : ''}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               )}
