@@ -431,6 +431,64 @@ export const GeoTargetingDialog = ({
                 ))}
               </div>
             )}
+
+            {/* Add Pin section */}
+            <div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full gap-2"
+                onClick={() => setShowPinForm(!showPinForm)}
+              >
+                <Crosshair className="h-4 w-4" />
+                {showPinForm ? 'Fechar' : 'Adicionar pino (coordenadas + raio)'}
+              </Button>
+
+              {showPinForm && (
+                <div className="mt-3 p-3 border rounded-md bg-muted/30 space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Insira latitude e longitude para criar um pino com raio de alcance.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">Latitude</Label>
+                      <Input
+                        placeholder="-1.2632"
+                        value={pinLat}
+                        onChange={(e) => setPinLat(e.target.value)}
+                        className="text-sm"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Longitude</Label>
+                      <Input
+                        placeholder="-47.9071"
+                        value={pinLng}
+                        onChange={(e) => setPinLng(e.target.value)}
+                        className="text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Raio (km)</Label>
+                    <Select value={pinRadius} onValueChange={setPinRadius}>
+                      <SelectTrigger className="text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[1, 5, 10, 16, 17, 20, 24, 29, 30, 40, 50, 80].map(r => (
+                          <SelectItem key={r} value={String(r)}>{r} km</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button size="sm" className="w-full gap-2" onClick={addPin}>
+                    <Plus className="h-4 w-4" />
+                    Adicionar Pino
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
