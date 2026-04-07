@@ -235,9 +235,24 @@ async function fetchLocationSearch(
   accessToken: string,
   type: string,
   query: string,
+  options?: { locationTypes?: string[] },
 ) {
-  const url = `https://graph.facebook.com/v21.0/search?type=${type}&q=${encodeURIComponent(query)}&access_token=${accessToken}&locale=pt_BR&limit=25`;
-  console.log(`[search_locations] Searching for "${query}" with type=${type}`);
+  const params = new URLSearchParams({
+    type,
+    q: query,
+    access_token: accessToken,
+    locale: 'pt_BR',
+    limit: '25',
+  });
+
+  if (options?.locationTypes?.length) {
+    params.set('location_types', JSON.stringify(options.locationTypes));
+  }
+
+  const url = `https://graph.facebook.com/v21.0/search?${params.toString()}`;
+  console.log(
+    `[search_locations] Searching for "${query}" with type=${type} location_types=${JSON.stringify(options?.locationTypes || [])}`,
+  );
 
   const response = await fetch(url);
   const data = await response.json();
@@ -250,22 +265,47 @@ async function fetchLocationSearch(
   return data.data || [];
 }
 
+function isPostalCodeLikeQuery(query: string) {
+  const normalized = query.trim();
+  return /^\d{4,10}$/.test(normalized) || /^\d{3,6}-\d{2,4}$/.test(normalized);
+}
+
+function getLocationTypeFilters(locationType: string): string[] | undefined {
+  switch (locationType) {
+    case 'adcountry':
+      return ['country'];
+    case 'adregion':
+      return ['region'];
+    case 'adcity':
+      return ['city'];
+    case 'adzip':
+      return ['zip'];
+    default:
+      return undefined;
+  }
+}
+
 async function searchLocations(accessToken: string, query: string, locationType: string) {
   const trimmedQuery = query.trim();
-  const searchPlan: Array<{ type: string; query: string }> = [];
+  const searchPlan: Array<{ type: string; query: string; locationTypes?: string[] }> = [];
 
   if (isBrazilianZipQuery(trimmedQuery)) {
-    const formattedZip = formatBrazilianZip(trimmedQuery);
-    const rawZip = trimmedQuery.replace(/\D/g, '');
+    throw new Error(
+      'A API da Meta não oferece segmentação por CEP no Brasil. Use cidade, estado ou pin com raio para localizar essa região.',
+    );
+  }
 
+  if (isPostalCodeLikeQuery(trimmedQuery)) {
     searchPlan.push(
-      { type: 'adzip', query: formattedZip },
-      { type: 'adzip', query: rawZip },
-      { type: 'adgeolocation', query: formattedZip },
-      { type: 'adgeolocation', query: rawZip },
+      { type: 'adgeolocation', query: trimmedQuery, locationTypes: ['zip'] },
+      { type: 'adgeolocation', query: trimmedQuery },
     );
   } else {
-    searchPlan.push({ type: locationType, query: trimmedQuery });
+    searchPlan.push({
+      type: 'adgeolocation',
+      query: trimmedQuery,
+      locationTypes: getLocationTypeFilters(locationType),
+    });
   }
 
   const seen = new Set<string>();
@@ -273,7 +313,9 @@ async function searchLocations(accessToken: string, query: string, locationType:
 
   for (const step of searchPlan) {
     try {
-      const stepResults = await fetchLocationSearch(accessToken, step.type, step.query);
+      const stepResults = await fetchLocationSearch(accessToken, step.type, step.query, {
+        locationTypes: step.locationTypes,
+      });
 
       for (const item of stepResults) {
         const dedupeKey = `${item.key || item.id || item.name}-${item.type || step.type}`;
