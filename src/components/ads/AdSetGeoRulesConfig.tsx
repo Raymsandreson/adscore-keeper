@@ -50,22 +50,14 @@ export function AdSetGeoRulesConfig() {
         toast.error('Conecte sua conta Meta primeiro');
         return;
       }
-      const actId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
-      const res = await fetch(
-        `https://graph.facebook.com/v21.0/${actId}/adsets?fields=id,name,effective_status,campaign_id,campaign{name}&limit=100&access_token=${accessToken}`
-      );
-      const data = await res.json();
-      console.log('Meta AdSets API response:', JSON.stringify(data, null, 2));
-      if (data.error) throw new Error(JSON.stringify(data.error));
-      setAdSets(
-        (data.data || []).map((a: any) => ({
-          id: a.id,
-          name: a.name,
-          campaign_id: a.campaign_id,
-          campaign_name: a.campaign?.name || '',
-          effective_status: a.effective_status || 'UNKNOWN',
-        }))
-      );
+      const formattedAdAccountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+      const { data, error } = await cloudFunctions.invoke('list-meta-adsets', {
+        body: { accessToken, adAccountId: formattedAdAccountId, limit: 100 },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      console.log('Meta AdSets response:', data);
+      setAdSets(data?.adsets || []);
     } catch (e: any) {
       console.error('Error fetching ad sets:', e);
       toast.error('Erro ao buscar conjuntos de anúncios');
