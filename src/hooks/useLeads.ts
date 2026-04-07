@@ -1,9 +1,35 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { facebookCAPI } from '@/services/facebookCAPI';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+
+// Columns to fetch - avoids pulling unnecessary large text columns
+const LEAD_SELECT_COLUMNS = [
+  'id', 'ad_account_id', 'campaign_id', 'campaign_name', 'adset_id', 'adset_name',
+  'creative_id', 'creative_name', 'ad_name', 'ad_start_date',
+  'lead_name', 'lead_phone', 'lead_email', 'source', 'status',
+  'ad_spend_at_conversion', 'conversion_value', 'notes',
+  'qualified_at', 'converted_at', 'created_at', 'updated_at',
+  'facebook_lead_id', 'sync_status', 'last_sync_at',
+  'instagram_comment_id', 'instagram_username', 'is_follower',
+  'client_classification', 'classification_date', 'became_client_date',
+  'city', 'state', 'neighborhood',
+  'followup_count', 'last_followup_at', 'first_visit_at', 'first_meeting_at',
+  'board_id', 'news_link', 'created_by', 'updated_by',
+  'victim_name', 'victim_age', 'case_type', 'accident_date',
+  'acolhedor', 'visit_state', 'visit_city', 'visit_region', 'visit_address',
+  'accident_address', 'damage_description', 'contractor_company', 'main_company',
+  'sector', 'company_size_justification', 'liability_type', 'legal_viability',
+  'group_link', 'lead_status', 'product_service_id',
+  'whatsapp_group_id', 'last_edit_summary', 'expected_birth_date',
+  'case_number', 'in_progress_date', 'ctwa_context',
+  'action_source', 'action_source_detail',
+  'lead_status_reason', 'lead_status_changed_at', 'cac', 'inviavel_date'
+].join(',');
+
+const PAGE_SIZE = 1000;
 
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'not_qualified' | 'converted' | 'lost' | 'comment';
 export type LeadBusinessStatus = 'active' | 'closed' | 'refused' | 'inviavel';
