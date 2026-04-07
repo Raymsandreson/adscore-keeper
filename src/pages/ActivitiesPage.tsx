@@ -550,7 +550,7 @@ const ActivitiesPage = () => {
         .maybeSingle()
         .then(({ data, error }) => {
           if (error || !data) {
-            toast.error('Não foi possível abrir a atividade do link.');
+            toast.error('Esta atividade não existe mais ou foi excluída.');
             clearOpenActivityParam();
             return;
           }

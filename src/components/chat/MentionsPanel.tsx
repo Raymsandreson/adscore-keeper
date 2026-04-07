@@ -49,6 +49,29 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
       toast.info('Clique em "Dar ciência" antes de abrir a menção.');
       return;
     }
+
+    // Validate that the referenced entity still exists before navigating
+    try {
+      let entityExists = true;
+      if (mention.entity_type === 'activity') {
+        const { data } = await supabase.from('lead_activities').select('id').eq('id', mention.entity_id).maybeSingle();
+        entityExists = !!data;
+      } else if (mention.entity_type === 'lead') {
+        const { data } = await supabase.from('leads').select('id').eq('id', mention.entity_id).maybeSingle();
+        entityExists = !!data;
+      } else if (mention.entity_type === 'contact') {
+        const { data } = await supabase.from('contacts').select('id').eq('id', mention.entity_id).maybeSingle();
+        entityExists = !!data;
+      }
+      if (!entityExists) {
+        const label = mention.entity_type === 'activity' ? 'Atividade' : mention.entity_type === 'lead' ? 'Lead' : 'Contato';
+        toast.error(`${label} foi excluído(a) e não existe mais.`);
+        return;
+      }
+    } catch (e) {
+      console.error('Error validating entity:', e);
+      }
+
     onOpenChange(false);
 
     // Navigate to entity with deep link
@@ -68,7 +91,7 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
           }
         } catch (e) {
           console.error('Error fetching lead board:', e);
-        }
+          }
         navigate(`/leads?${boardParam}openLead=${mention.entity_id}${msgParam}`);
         break;
       }
