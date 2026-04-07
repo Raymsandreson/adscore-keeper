@@ -39,7 +39,7 @@ export function useOperationalGaps() {
       // 1. Closed leads in period
       const { data: closedLeads } = await supabase
         .from('leads')
-        .select('id, lead_name, acolhedor, whatsapp_group_id, lead_phone, updated_at')
+        .select('id, lead_name, acolhedor, whatsapp_group_id, group_link, lead_phone, updated_at')
         .eq('lead_status', 'closed')
         .gte('updated_at', start)
         .lte('updated_at', end);
