@@ -135,6 +135,31 @@ export interface LeadStats {
   qualificationRate: number;
 }
 
+const getReadableErrorMessage = (error: unknown, fallback: string) => {
+  if (error && typeof error === 'object') {
+    const typedError = error as {
+      message?: string;
+      details?: string;
+      hint?: string;
+      code?: string;
+    };
+
+    const parts = [typedError.message, typedError.details, typedError.hint]
+      .filter((part): part is string => Boolean(part && part.trim()))
+      .map((part) => part.trim());
+
+    if (parts.length > 0) {
+      return parts.join(' • ');
+    }
+
+    if (typedError.code) {
+      return `${fallback} (${typedError.code})`;
+    }
+  }
+
+  return fallback;
+};
+
 export const useLeads = (adAccountId?: string) => {
   const { user } = useAuthContext();
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -285,7 +310,7 @@ export const useLeads = (adAccountId?: string) => {
       return newLead;
     } catch (error) {
       console.error('Error adding lead:', error);
-      toast.error('Erro ao adicionar lead');
+      toast.error(getReadableErrorMessage(error, 'Erro ao adicionar lead'));
       throw error;
     }
   };
