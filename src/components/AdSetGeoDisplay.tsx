@@ -49,6 +49,13 @@ export const AdSetGeoDisplay = ({ adSetId }: AdSetGeoDisplayProps) => {
           geo.regions?.forEach((r: any) => locs.push(r.name || r.key));
           geo.cities?.forEach((c: any) => locs.push(c.name));
           geo.zips?.forEach((z: any) => locs.push(z.name || z.key));
+          geo.custom_locations?.forEach((cl: any) => {
+            const name = cl.name || cl.primary_city || `${cl.latitude?.toFixed(2)}, ${cl.longitude?.toFixed(2)}`;
+            const radius = cl.radius ? ` (+${cl.radius}km)` : '';
+            locs.push(`${name}${radius}`);
+          });
+          geo.location_types?.forEach((lt: string) => {/* skip, not a location */});
+          geo.geo_markets?.forEach((gm: any) => locs.push(gm.name || gm.key));
           setLocations(locs);
         }
       } catch (error) {
