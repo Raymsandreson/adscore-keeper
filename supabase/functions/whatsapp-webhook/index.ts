@@ -1228,6 +1228,25 @@ Deno.serve(async (req) => {
           const location = getLocationFromDDD(normalizedPhone);
           const autoContactName = contactName || normalizedPhone;
 
+          // Resolve acolhedor (responsible member) from lead if available
+          let responsibleUserId: string | null = null;
+          if (leadId) {
+            const { data: leadData } = await supabase
+              .from('leads')
+              .select('acolhedor')
+              .eq('id', leadId)
+              .maybeSingle();
+            if (leadData?.acolhedor) {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('user_id')
+                .ilike('full_name', leadData.acolhedor)
+                .limit(1)
+                .maybeSingle();
+              responsibleUserId = profile?.user_id || null;
+            }
+          }
+
           const { data: newContact } = await supabase
             .from('contacts')
             .insert({
@@ -1236,6 +1255,7 @@ Deno.serve(async (req) => {
               city: location?.city || null,
               state: location?.state || null,
               classification: 'prospect',
+              created_by: responsibleUserId,
               action_source: 'system',
               action_source_detail: `Auto-registro via WhatsApp (${instanceName || 'unknown'})`,
             })
