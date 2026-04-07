@@ -70,9 +70,6 @@ export const GeoTargetingDialog = ({
   const [geoLocations, setGeoLocations] = useState<GeoTargeting>({});
   const [originalGeo, setOriginalGeo] = useState<GeoTargeting>({});
   const [showPinForm, setShowPinForm] = useState(false);
-  const [pinLat, setPinLat] = useState('');
-  const [pinLng, setPinLng] = useState('');
-  const [pinRadius, setPinRadius] = useState('17');
 
   const fetchTargeting = useCallback(async () => {
     const { accessToken } = await getMetaCredentials();
