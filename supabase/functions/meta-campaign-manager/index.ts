@@ -293,37 +293,95 @@ async function searchLocations(accessToken: string, query: string, locationType:
     // Convert CEP to coordinates via ViaCEP + Nominatim, return as custom_location
     try {
       const cleanCep = trimmedQuery.replace(/\D/g, '');
-      const viaCepRes = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
-      const viaCepData = await viaCepRes.json();
-      if (viaCepData.erro) {
-        throw new Error('CEP não encontrado');
+      let cityName = '';
+      let stateName = '';
+      let neighborhood = '';
+      let street = '';
+
+      // Try ViaCEP first
+      try {
+        const viaCepRes = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+        const viaCepData = await viaCepRes.json();
+        if (!viaCepData.erro) {
+          cityName = viaCepData.localidade || '';
+          stateName = viaCepData.uf || '';
+          neighborhood = viaCepData.bairro || '';
+          street = viaCepData.logradouro || '';
+        }
+      } catch (e) {
+        console.log('ViaCEP failed, trying BrasilAPI fallback');
       }
 
-      // Geocode via Nominatim
-      const address = [viaCepData.logradouro, viaCepData.bairro, viaCepData.localidade, viaCepData.uf, 'Brazil']
-        .filter(Boolean).join(', ');
+      // Fallback: try BrasilAPI
+      if (!cityName) {
+        try {
+          const brasilRes = await fetch(`https://brasilapi.com.br/api/cep/v2/${cleanCep}`);
+          const brasilData = await brasilRes.json();
+          if (brasilData.city) {
+            cityName = brasilData.city;
+            stateName = brasilData.state || '';
+            neighborhood = brasilData.neighborhood || '';
+            street = brasilData.street || '';
+          }
+        } catch (e) {
+          console.log('BrasilAPI also failed');
+        }
+      }
+
+      // Fallback: use CEP prefix to guess the state/region
+      if (!cityName) {
+        const prefix = parseInt(cleanCep.substring(0, 1));
+        const cepRegionMap: Record<number, string> = {
+          0: 'São Paulo', 1: 'São Paulo', 2: 'Rio de Janeiro',
+          3: 'Minas Gerais', 4: 'Bahia', 5: 'Goiás',
+          6: 'Piauí', 7: 'Pernambuco', 8: 'Paraná', 9: 'Rio Grande do Sul',
+        };
+        stateName = cepRegionMap[prefix] || 'Brazil';
+        // Search Nominatim directly with the CEP
+        const directRes = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=CEP+${cleanCep}+Brazil&limit=1&countrycodes=br`,
+          { headers: { 'User-Agent': 'LovableApp/1.0' } }
+        );
+        const directData = await directRes.json();
+        if (directData.length > 0) {
+          const lat = parseFloat(directData[0].lat);
+          const lng = parseFloat(directData[0].lon);
+          const name = directData[0].display_name?.split(',').slice(0, 2).join(',').trim() || stateName;
+          console.log(`CEP ${cleanCep} resolved via direct Nominatim: ${lat}, ${lng}`);
+          return [{
+            key: `custom_${lat}_${lng}`,
+            name: `📍 ${name} (CEP ${cleanCep})`,
+            type: 'custom_location',
+            country_code: 'BR',
+            country_name: 'Brazil',
+            latitude: lat,
+            longitude: lng,
+            radius: 10,
+            distance_unit: 'kilometer',
+          }];
+        }
+      }
+
+      // Geocode via Nominatim with available address data
+      const addressParts = [street, neighborhood, cityName, stateName, 'Brazil'].filter(Boolean);
       let lat: number | null = null;
       let lng: number | null = null;
 
-      const nominatimRes = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
-        { headers: { 'User-Agent': 'LovableApp/1.0' } }
-      );
-      const nominatimData = await nominatimRes.json();
-      
-      if (nominatimData.length > 0) {
-        lat = parseFloat(nominatimData[0].lat);
-        lng = parseFloat(nominatimData[0].lon);
-      } else {
-        // Fallback: search by city only
-        const fallbackRes = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(`${viaCepData.localidade}, ${viaCepData.uf}, Brazil`)}&limit=1`,
+      // Try full address first
+      for (const query of [
+        addressParts.join(', '),
+        [cityName, stateName, 'Brazil'].filter(Boolean).join(', '),
+      ]) {
+        if (!query || query === 'Brazil') continue;
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&countrycodes=br`,
           { headers: { 'User-Agent': 'LovableApp/1.0' } }
         );
-        const fallbackData = await fallbackRes.json();
-        if (fallbackData.length > 0) {
-          lat = parseFloat(fallbackData[0].lat);
-          lng = parseFloat(fallbackData[0].lon);
+        const data = await res.json();
+        if (data.length > 0) {
+          lat = parseFloat(data[0].lat);
+          lng = parseFloat(data[0].lon);
+          break;
         }
       }
 
@@ -331,10 +389,9 @@ async function searchLocations(accessToken: string, query: string, locationType:
         throw new Error('Coordenadas não encontradas');
       }
 
-      const locationName = [viaCepData.bairro, viaCepData.localidade, viaCepData.uf].filter(Boolean).join(', ');
+      const locationName = [neighborhood, cityName, stateName].filter(Boolean).join(', ');
       console.log(`CEP ${cleanCep} resolved to coordinates: ${lat}, ${lng} (${locationName})`);
 
-      // Return as a custom_location result that the frontend can use directly
       return [{
         key: `custom_${lat}_${lng}`,
         name: `📍 ${locationName} (CEP ${cleanCep})`,
