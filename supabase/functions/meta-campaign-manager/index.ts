@@ -290,9 +290,25 @@ async function searchLocations(accessToken: string, query: string, locationType:
   const searchPlan: Array<{ type: string; query: string; locationTypes?: string[] }> = [];
 
   if (isBrazilianZipQuery(trimmedQuery)) {
-    throw new Error(
-      'A API da Meta não oferece segmentação por CEP no Brasil. Use cidade, estado ou pin com raio para localizar essa região.',
-    );
+    // Convert CEP to city name via ViaCEP, then search Meta by city
+    try {
+      const cleanCep = trimmedQuery.replace(/\D/g, '');
+      const viaCepRes = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+      const viaCepData = await viaCepRes.json();
+      if (viaCepData.erro) {
+        throw new Error('CEP não encontrado');
+      }
+      const cityQuery = `${viaCepData.localidade}, ${viaCepData.uf}`;
+      console.log(`CEP ${cleanCep} resolved to city: ${cityQuery}`);
+      
+      const cityResults = await fetchLocationSearch(accessToken, 'adgeolocation', cityQuery, {
+        locationTypes: ['city'],
+      });
+      return cityResults;
+    } catch (e) {
+      console.error('ViaCEP lookup failed:', e);
+      throw new Error(`Não foi possível converter o CEP "${trimmedQuery}" em localização. Tente buscar pelo nome da cidade.`);
+    }
   }
 
   if (isPostalCodeLikeQuery(trimmedQuery)) {
