@@ -19,12 +19,39 @@ const corsHeaders = {
 /** Normalize Brazilian phone: strip non-digits, add DDI 55 if missing */
 function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, '')
-  // Already has DDI 55 (13 digits for mobile, 12 for landline)
   if (digits.startsWith('55') && digits.length >= 12) return digits
-  // Has DDD + number (10-11 digits) — add 55
   if (digits.length >= 10 && digits.length <= 11) return '55' + digits
-  // Fallback: return as-is
   return digits
+}
+
+function buildJsonResponse(payload: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
+}
+
+async function readResponseTextSafe(response: Response) {
+  try {
+    return await response.text()
+  } catch {
+    return ''
+  }
+}
+
+function isWhatsAppDisconnected(status: number, errorText: string) {
+  return status === 503 && /whatsapp disconnected|websocket disconnected/i.test(errorText)
+}
+
+function buildDisconnectedPayload(instanceName?: string, details?: string) {
+  return {
+    success: false,
+    error: 'WhatsApp instance is disconnected. Reconnect the instance and try again.',
+    error_code: 'INSTANCE_DISCONNECTED',
+    instance_name: instanceName || null,
+    retryable: true,
+    details: details || null,
+  }
 }
 
 Deno.serve(async (req) => {
