@@ -127,12 +127,10 @@ export const CampaignControls = ({
                 <DollarSign className="h-4 w-4 mr-2" />
                 Alterar Orçamento
               </DropdownMenuItem>
-              {entityType === 'campaign' && (
-                <DropdownMenuItem onClick={() => setGeoDialogOpen(true)}>
-                  <MapPin className="h-4 w-4 mr-2" />
-                  Segmentação Geográfica
-                </DropdownMenuItem>
-              )}
+              <DropdownMenuItem onClick={() => setGeoDialogOpen(true)}>
+                <MapPin className="h-4 w-4 mr-2" />
+                Segmentação Geográfica
+              </DropdownMenuItem>
             </>
           )}
           
