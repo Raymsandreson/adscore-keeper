@@ -57,13 +57,19 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
     if (!statusFilter) return [];
     return conversations.filter(c => {
       if (!applyBaseFilters(c)) return false;
-      return getCaseStatus(c) === statusFilter;
+      if (getCaseStatus(c) !== statusFilter) return false;
+      // Pre-filter by acolhedor from closing detail table
+      if (acolhedorPreFilter) {
+        const acolhedor = c.acolhedor || 'Sem acolhedor';
+        if (acolhedor !== acolhedorPreFilter) return false;
+      }
+      return true;
     }).sort((a, b) => {
       const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
       return dateB - dateA;
     });
-  }, [conversations, statusFilter, applyBaseFilters]);
+  }, [conversations, statusFilter, applyBaseFilters, acolhedorPreFilter]);
 
   const filteredCases = useMemo(() => {
     return sheetCases.filter(c => {
