@@ -328,37 +328,60 @@ async function searchLocations(accessToken: string, query: string, locationType:
         }
       }
 
-      // Fallback: use CEP prefix to guess the state/region
+      // Fallback: use CEP prefix to resolve city via known ranges
       if (!cityName) {
-        const prefix = parseInt(cleanCep.substring(0, 1));
-        const cepRegionMap: Record<number, string> = {
-          0: 'São Paulo', 1: 'São Paulo', 2: 'Rio de Janeiro',
-          3: 'Minas Gerais', 4: 'Bahia', 5: 'Goiás',
-          6: 'Piauí', 7: 'Pernambuco', 8: 'Paraná', 9: 'Rio Grande do Sul',
+        // Brazilian CEP prefix → city mapping (3-digit prefixes for major cities)
+        const cepCityMap: Record<string, { city: string; uf: string }> = {
+          '010': { city: 'São Paulo', uf: 'SP' }, '011': { city: 'São Paulo', uf: 'SP' },
+          '012': { city: 'São José dos Campos', uf: 'SP' }, '013': { city: 'Santos', uf: 'SP' },
+          '014': { city: 'Campinas', uf: 'SP' }, '015': { city: 'Sorocaba', uf: 'SP' },
+          '016': { city: 'Ribeirão Preto', uf: 'SP' }, '019': { city: 'Americana', uf: 'SP' },
+          '200': { city: 'Rio de Janeiro', uf: 'RJ' }, '201': { city: 'Rio de Janeiro', uf: 'RJ' },
+          '210': { city: 'Niterói', uf: 'RJ' }, '240': { city: 'Nova Iguaçu', uf: 'RJ' },
+          '300': { city: 'Belo Horizonte', uf: 'MG' }, '301': { city: 'Belo Horizonte', uf: 'MG' },
+          '400': { city: 'Salvador', uf: 'BA' }, '401': { city: 'Salvador', uf: 'BA' },
+          '450': { city: 'Feira de Santana', uf: 'BA' },
+          '500': { city: 'Recife', uf: 'PE' }, '501': { city: 'Recife', uf: 'PE' },
+          '570': { city: 'Maceió', uf: 'AL' },
+          '580': { city: 'João Pessoa', uf: 'PB' },
+          '590': { city: 'Natal', uf: 'RN' },
+          '600': { city: 'Fortaleza', uf: 'CE' }, '601': { city: 'Fortaleza', uf: 'CE' },
+          '630': { city: 'Juazeiro do Norte', uf: 'CE' },
+          '640': { city: 'Teresina', uf: 'PI' }, '641': { city: 'Teresina', uf: 'PI' },
+          '650': { city: 'São Luís', uf: 'MA' }, '651': { city: 'São Luís', uf: 'MA' },
+          '660': { city: 'Belém', uf: 'PA' }, '661': { city: 'Belém', uf: 'PA' },
+          '690': { city: 'Manaus', uf: 'AM' }, '691': { city: 'Manaus', uf: 'AM' },
+          '700': { city: 'Brasília', uf: 'DF' }, '701': { city: 'Brasília', uf: 'DF' },
+          '740': { city: 'Goiânia', uf: 'GO' }, '741': { city: 'Goiânia', uf: 'GO' },
+          '780': { city: 'Cuiabá', uf: 'MT' },
+          '790': { city: 'Campo Grande', uf: 'MS' },
+          '800': { city: 'Curitiba', uf: 'PR' }, '801': { city: 'Curitiba', uf: 'PR' },
+          '860': { city: 'Londrina', uf: 'PR' }, '870': { city: 'Maringá', uf: 'PR' },
+          '880': { city: 'Florianópolis', uf: 'SC' }, '890': { city: 'Joinville', uf: 'SC' },
+          '900': { city: 'Porto Alegre', uf: 'RS' }, '901': { city: 'Porto Alegre', uf: 'RS' },
+          '490': { city: 'Aracaju', uf: 'SE' },
+          '760': { city: 'Palmas', uf: 'TO' },
+          '769': { city: 'Porto Velho', uf: 'RO' },
+          '696': { city: 'Rio Branco', uf: 'AC' },
+          '689': { city: 'Macapá', uf: 'AP' },
+          '693': { city: 'Boa Vista', uf: 'RR' },
         };
-        stateName = cepRegionMap[prefix] || 'Brazil';
-        // Search Nominatim directly with the CEP
-        const directRes = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=CEP+${cleanCep}+Brazil&limit=1&countrycodes=br`,
-          { headers: { 'User-Agent': 'LovableApp/1.0' } }
-        );
-        const directData = await directRes.json();
-        if (directData.length > 0) {
-          const lat = parseFloat(directData[0].lat);
-          const lng = parseFloat(directData[0].lon);
-          const name = directData[0].display_name?.split(',').slice(0, 2).join(',').trim() || stateName;
-          console.log(`CEP ${cleanCep} resolved via direct Nominatim: ${lat}, ${lng}`);
-          return [{
-            key: `custom_${lat}_${lng}`,
-            name: `📍 ${name} (CEP ${cleanCep})`,
-            type: 'custom_location',
-            country_code: 'BR',
-            country_name: 'Brazil',
-            latitude: lat,
-            longitude: lng,
-            radius: 10,
-            distance_unit: 'kilometer',
-          }];
+        
+        const prefix3 = cleanCep.substring(0, 3);
+        const prefix2 = cleanCep.substring(0, 2);
+        const match = cepCityMap[prefix3];
+        
+        if (match) {
+          cityName = match.city;
+          stateName = match.uf;
+          console.log(`CEP ${cleanCep} resolved via prefix map: ${cityName}, ${stateName}`);
+        } else {
+          // Broader state-level fallback by first digit
+          const stateMap: Record<string, string> = {
+            '0': 'SP', '1': 'SP', '2': 'RJ', '3': 'MG', '4': 'BA',
+            '5': 'PE', '6': 'CE', '7': 'DF', '8': 'PR', '9': 'RS',
+          };
+          stateName = stateMap[cleanCep[0]] || '';
         }
       }
 
