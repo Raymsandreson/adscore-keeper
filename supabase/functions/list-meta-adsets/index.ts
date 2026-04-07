@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 serve(async (req) => {
@@ -20,16 +20,20 @@ serve(async (req) => {
       );
     }
 
-    const fields = 'id,name,effective_status,campaign_id,campaign{name}';
-    const url = `https://graph.facebook.com/v21.0/${adAccountId}/adsets?fields=${fields}&limit=${limit}&access_token=${accessToken}`;
+    const fields = 'id,name,status,effective_status,campaign_id,campaign{name}';
+    const url = `https://graph.facebook.com/v25.0/${adAccountId}/adsets?fields=${fields}&limit=${limit}&access_token=${accessToken}`;
+
+    console.log('Fetching adsets from:', url.replace(accessToken, '***'));
 
     const res = await fetch(url);
     const data = await res.json();
 
+    console.log('Meta API response status:', res.status, 'data keys:', Object.keys(data));
+
     if (data.error) {
       console.error('Meta API error:', JSON.stringify(data.error));
       return new Response(
-        JSON.stringify({ error: data.error.message || 'Failed to fetch adsets' }),
+        JSON.stringify({ error: data.error.message || 'Failed to fetch adsets', meta_error: data.error }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -37,6 +41,7 @@ serve(async (req) => {
     const adsets = (data.data || []).map((a: any) => ({
       id: a.id,
       name: a.name,
+      status: a.status,
       campaign_id: a.campaign_id,
       campaign_name: a.campaign?.name || '',
       effective_status: a.effective_status || 'UNKNOWN',
