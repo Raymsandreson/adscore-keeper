@@ -1,4 +1,5 @@
 import type { OperationalGaps, GapType } from '../hooks/useOperationalGaps';
+import type { ClosingDetailFilter } from './PipelineCards';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -28,6 +29,7 @@ interface UnifiedMonitorTabProps {
   onOperationalClick?: (type: OperationalMetricType) => void;
   gaps?: OperationalGaps;
   onGapClick?: (type: GapType) => void;
+  onClosingDetailClick?: (filter: ClosingDetailFilter) => void;
   filterBarProps: {
     agents: AgentData[];
     uniqueInstances: string[];
@@ -55,7 +57,7 @@ export function UnifiedMonitorTab({
   conversations, agentStats, loading,
   pipelineCounts, onPipelineClick, activeStatus,
   onOpenChat, onEventClick, dashboardMetrics, onNewConvsClick, onOperationalClick, filterBarProps,
-  gaps, onGapClick,
+  gaps, onGapClick, onClosingDetailClick,
 }: UnifiedMonitorTabProps) {
   return (
     <div className="space-y-4">
@@ -72,6 +74,7 @@ export function UnifiedMonitorTab({
         onOperationalClick={onOperationalClick}
         gaps={gaps}
         onGapClick={onGapClick}
+        onClosingDetailClick={onClosingDetailClick}
       />
 
       {/* Sub-tabs */}
