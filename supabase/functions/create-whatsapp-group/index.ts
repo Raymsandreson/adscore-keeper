@@ -1069,7 +1069,7 @@ REGRAS:
           const aiResult = await geminiChat({
             model: 'google/gemini-2.5-flash',
             messages: [{ role: 'user', content: aiPrompt }],
-            max_tokens: 4096,
+            max_tokens: 8192,
           })
           messageText = aiResult?.choices?.[0]?.message?.content || ''
           console.log('AI message substitution result length:', messageText.length)
@@ -1105,7 +1105,7 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
           const aiResult = await geminiChat({
             model: 'google/gemini-2.5-flash',
             messages: [{ role: 'user', content: aiPrompt }],
-            max_tokens: 2048,
+            max_tokens: 8192,
           })
           messageText = aiResult?.choices?.[0]?.message?.content || ''
           console.log('AI message generation result length:', messageText.length)
