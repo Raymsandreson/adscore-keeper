@@ -20,6 +20,7 @@ interface MetaAdSet {
   name: string;
   campaign_id: string;
   campaign_name?: string;
+  effective_status?: string;
 }
 
 export function AdSetGeoRulesConfig() {
@@ -50,8 +51,9 @@ export function AdSetGeoRulesConfig() {
         return;
       }
       const actId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+      const statusFilter = encodeURIComponent(JSON.stringify([{"field":"effective_status","operator":"IN","value":["ACTIVE","PAUSED","ARCHIVED","CAMPAIGN_PAUSED","ADSET_PAUSED","PENDING_REVIEW","DISAPPROVED","PREAPPROVED","PENDING_BILLING_INFO","WITH_ISSUES"]}]));
       const res = await fetch(
-        `https://graph.facebook.com/v21.0/${actId}/adsets?fields=id,name,campaign_id,campaign{name}&limit=100&access_token=${accessToken}`
+        `https://graph.facebook.com/v21.0/${actId}/adsets?fields=id,name,effective_status,campaign_id,campaign{name}&limit=200&filtering=${statusFilter}&access_token=${accessToken}`
       );
       const data = await res.json();
       if (data.error) throw new Error(data.error.message);
@@ -61,6 +63,7 @@ export function AdSetGeoRulesConfig() {
           name: a.name,
           campaign_id: a.campaign_id,
           campaign_name: a.campaign?.name || '',
+          effective_status: a.effective_status || 'UNKNOWN',
         }))
       );
     } catch (e: any) {
@@ -228,11 +231,14 @@ export function AdSetGeoRulesConfig() {
                 <Select value={formAdSetId} onValueChange={setFormAdSetId}>
                   <SelectTrigger><SelectValue placeholder="Selecione o ad set" /></SelectTrigger>
                   <SelectContent>
-                    {adSets.map(a => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.name} {a.campaign_name ? `(${a.campaign_name})` : ''}
-                      </SelectItem>
-                    ))}
+                    {adSets.map(a => {
+                      const statusLabel = a.effective_status === 'ACTIVE' ? '🟢' : a.effective_status === 'PAUSED' || a.effective_status === 'CAMPAIGN_PAUSED' || a.effective_status === 'ADSET_PAUSED' ? '⏸️' : '⚪';
+                      return (
+                        <SelectItem key={a.id} value={a.id}>
+                          {statusLabel} {a.name} {a.campaign_name ? `(${a.campaign_name})` : ''}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               )}
