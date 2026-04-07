@@ -121,6 +121,21 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
             .gte('created_at', start).lte('created_at', end)
             .order('created_at', { ascending: false });
           setItems(data || []);
+        } else if (metricType === 'contacts') {
+          const { data } = await supabase
+            .from('contacts')
+            .select('id, full_name, phone, city, state, classification, created_by, action_source_detail, created_at')
+            .gte('created_at', start).lte('created_at', end)
+            .order('created_at', { ascending: false });
+          
+          // Resolve created_by names
+          const creatorIds = (data || []).map((c: any) => c.created_by).filter(Boolean);
+          let creatorMap: Record<string, string> = {};
+          if (creatorIds.length > 0) {
+            const { data: profiles } = await supabase.from('profiles').select('user_id, full_name').in('user_id', [...new Set(creatorIds)]);
+            creatorMap = Object.fromEntries((profiles || []).map((p: any) => [p.user_id, p.full_name]));
+          }
+          setItems((data || []).map((c: any) => ({ ...c, _creator_name: c.created_by ? creatorMap[c.created_by] || null : null })));
         }
       } catch (err) {
         console.error('Error fetching operational details:', err);
@@ -330,6 +345,33 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
                   </div>
                   {item.numero_processo && (
                     <p className="text-[10px] text-muted-foreground truncate">Nº {item.numero_processo}</p>
+                  )}
+                </div>
+              ))}
+
+              {metricType === 'contacts' && filteredItems.map(item => (
+                <div key={item.id} className="border rounded-lg p-3 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium truncate flex-1">{item.full_name || 'Contato'}</p>
+                    {item.classification && <Badge variant="outline" className="text-[9px]">{item.classification}</Badge>}
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{item.phone || '—'}</span>
+                    <span>{format(parseISO(item.created_at), 'HH:mm')}</span>
+                  </div>
+                  {(item.city || item.state) && (
+                    <p className="text-[10px] text-muted-foreground">{[item.city, item.state].filter(Boolean).join(', ')}</p>
+                  )}
+                  {item._creator_name && (
+                    <p className="text-[10px] text-muted-foreground">Responsável: {item._creator_name}</p>
+                  )}
+                  {item.action_source_detail && (
+                    <p className="text-[9px] text-muted-foreground truncate">{item.action_source_detail}</p>
+                  )}
+                  {item.phone && (
+                    <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => handleOpenChat(item.phone)}>
+                      <MessageSquare className="h-3 w-3 mr-1" /> Chat
+                    </Button>
                   )}
                 </div>
               ))}
