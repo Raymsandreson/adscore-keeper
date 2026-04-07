@@ -78,6 +78,18 @@ export interface Lead {
   group_link: string | null;
   lead_status: LeadBusinessStatus;
   product_service_id: string | null;
+  whatsapp_group_id: string | null;
+  last_edit_summary: string | null;
+  expected_birth_date: string | null;
+  case_number: string | null;
+  in_progress_date: string | null;
+  ctwa_context: any | null;
+  action_source: string | null;
+  action_source_detail: string | null;
+  lead_status_reason: string | null;
+  lead_status_changed_at: string | null;
+  cac: number | null;
+  inviavel_date: string | null;
 }
 
 export interface LeadStats {
