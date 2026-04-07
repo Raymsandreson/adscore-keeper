@@ -60,7 +60,7 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
       if (getCaseStatus(c) !== statusFilter) return false;
       // Pre-filter by acolhedor from closing detail table
       if (acolhedorPreFilter) {
-        const acolhedor = c.acolhedor || 'Sem acolhedor';
+        const acolhedor = c.lead_acolhedor || 'Sem acolhedor';
         if (acolhedor !== acolhedorPreFilter) return false;
       }
       return true;
