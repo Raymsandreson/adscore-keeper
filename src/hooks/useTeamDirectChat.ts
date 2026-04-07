@@ -24,6 +24,11 @@ export interface TeamMessage {
   content: string | null;
   message_type: string;
   created_at: string;
+  file_url?: string | null;
+  file_name?: string | null;
+  file_size?: number | null;
+  file_type?: string | null;
+  audio_duration?: number | null;
 }
 
 const GENERAL_CHAT_NAME = '💬 Chat Geral da Equipe';
@@ -220,8 +225,19 @@ export function useTeamDirectChat() {
     };
   }, [activeConversationId, user?.id]);
 
-  const sendMessage = useCallback(async (content: string) => {
-    if (!activeConversationId || !user?.id || !content.trim()) return;
+  const sendMessage = useCallback(async (
+    content: string,
+    options?: {
+      message_type?: string;
+      file_url?: string;
+      file_name?: string;
+      file_size?: number;
+      file_type?: string;
+      audio_duration?: number;
+    }
+  ) => {
+    if (!activeConversationId || !user?.id) return;
+    if (!content.trim() && !options?.file_url) return;
 
     setSendingMessage(true);
 
@@ -236,8 +252,13 @@ export function useTeamDirectChat() {
         conversation_id: activeConversationId,
         sender_id: user.id,
         sender_name: profile?.full_name || user.email || 'Anônimo',
-        content: content.trim(),
-        message_type: 'text',
+        content: content.trim() || null,
+        message_type: options?.message_type || 'text',
+        file_url: options?.file_url || null,
+        file_name: options?.file_name || null,
+        file_size: options?.file_size || null,
+        file_type: options?.file_type || null,
+        audio_duration: options?.audio_duration || null,
       });
 
       if (error) {
