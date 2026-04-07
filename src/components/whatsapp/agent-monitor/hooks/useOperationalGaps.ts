@@ -46,13 +46,13 @@ export function useOperationalGaps() {
 
       const closed = closedLeads || [];
 
-      // Closed without group
+      // Closed without group (check both whatsapp_group_id and group_link)
       const closedWithoutGroup: GapItem[] = closed
-        .filter(l => !l.whatsapp_group_id)
+        .filter(l => !l.whatsapp_group_id && !l.group_link)
         .map(l => ({ id: l.id, name: l.lead_name || 'Lead', acolhedor: l.acolhedor, created_at: l.updated_at, lead_id: l.id, whatsapp_phone: l.lead_phone }));
 
       // Leads with group (closed in period)
-      const withGroup = closed.filter(l => !!l.whatsapp_group_id);
+      const withGroup = closed.filter(l => !!l.whatsapp_group_id || !!l.group_link);
       const withGroupIds = withGroup.map(l => l.id);
 
       // 2. Check which of those have cases
