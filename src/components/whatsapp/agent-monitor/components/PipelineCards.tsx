@@ -7,6 +7,11 @@ import type { DashboardMetrics, OperationalDetail } from '../hooks/useDashboardM
 import type { OperationalMetricType } from './OperationalDetailSheet';
 import type { OperationalGaps, GapType } from '../hooks/useOperationalGaps';
 
+export interface ClosingDetailFilter {
+  agent?: string;
+  type?: 'ai' | 'human' | 'all';
+}
+
 interface PipelineCardsProps {
   counts: Record<CaseStatus, number> & { novas?: number };
   activeStatus: CaseStatus | null;
@@ -16,6 +21,7 @@ interface PipelineCardsProps {
   onOperationalClick?: (type: OperationalMetricType) => void;
   gaps?: OperationalGaps;
   onGapClick?: (type: GapType) => void;
+  onClosingDetailClick?: (filter: ClosingDetailFilter) => void;
 }
 
 const statusConfig: { key: CaseStatus; icon: typeof AlertCircle; color: string }[] = [
@@ -71,7 +77,7 @@ function MemberBreakdownPopover({ details, children }: { details: OperationalDet
   );
 }
 
-export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics, onNewConvsClick, onOperationalClick, gaps, onGapClick }: PipelineCardsProps) {
+export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics, onNewConvsClick, onOperationalClick, gaps, onGapClick, onClosingDetailClick }: PipelineCardsProps) {
   const newConvs = dashboardMetrics?.newConversations ?? counts.novas ?? 0;
   const responseRate = dashboardMetrics?.responseRate ?? 0;
   const avgTime = dashboardMetrics?.avgResponseTimeMin ?? 0;
