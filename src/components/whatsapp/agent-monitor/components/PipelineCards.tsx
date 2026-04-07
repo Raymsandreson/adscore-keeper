@@ -213,8 +213,8 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
         </div>
       )}
 
-      {/* Unified closing analysis card */}
-      {dashboardMetrics && dashboardMetrics.closedTotal > 0 && (
+      {/* Unified closing analysis card - uses pipeline count for consistency */}
+      {counts.fechado > 0 && dashboardMetrics && (
         <Card>
           <CardContent className="p-3">
             {/* Header with totals - clickable */}
@@ -224,26 +224,28 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
                 onClick={() => onClosingDetailClick?.({ type: 'all' })}
               >
                 <CheckCircle className="h-4 w-4 text-green-500" />
-                <span className="text-sm font-semibold">{dashboardMetrics.closedTotal} Fechados</span>
+                <span className="text-sm font-semibold">{counts.fechado} Fechados</span>
               </div>
-              <div className="flex items-center gap-3 text-xs">
-                <span
-                  className="flex items-center gap-1 cursor-pointer hover:underline"
-                  onClick={() => onClosingDetailClick?.({ type: 'ai' })}
-                >
-                  <Sparkles className="h-3 w-3 text-purple-500" />
-                  <span className="font-bold text-purple-600">{dashboardMetrics.closedByAI}</span>
-                  <span className="text-muted-foreground">IA ({dashboardMetrics.closedTotal > 0 ? Math.round((dashboardMetrics.closedByAI / dashboardMetrics.closedTotal) * 100) : 0}%)</span>
-                </span>
-                <span
-                  className="flex items-center gap-1 cursor-pointer hover:underline"
-                  onClick={() => onClosingDetailClick?.({ type: 'human' })}
-                >
-                  <MessageCircle className="h-3 w-3 text-blue-500" />
-                  <span className="font-bold text-blue-600">{dashboardMetrics.closedWithHuman}</span>
-                  <span className="text-muted-foreground">Humano ({dashboardMetrics.closedTotal > 0 ? Math.round((dashboardMetrics.closedWithHuman / dashboardMetrics.closedTotal) * 100) : 0}%)</span>
-                </span>
-              </div>
+              {dashboardMetrics.closedTotal > 0 && (
+                <div className="flex items-center gap-3 text-xs">
+                  <span
+                    className="flex items-center gap-1 cursor-pointer hover:underline"
+                    onClick={() => onClosingDetailClick?.({ type: 'ai' })}
+                  >
+                    <Sparkles className="h-3 w-3 text-purple-500" />
+                    <span className="font-bold text-purple-600">{dashboardMetrics.closedByAI}</span>
+                    <span className="text-muted-foreground">IA ({Math.round((dashboardMetrics.closedByAI / dashboardMetrics.closedTotal) * 100)}%)</span>
+                  </span>
+                  <span
+                    className="flex items-center gap-1 cursor-pointer hover:underline"
+                    onClick={() => onClosingDetailClick?.({ type: 'human' })}
+                  >
+                    <MessageCircle className="h-3 w-3 text-blue-500" />
+                    <span className="font-bold text-blue-600">{dashboardMetrics.closedWithHuman}</span>
+                    <span className="text-muted-foreground">Humano ({Math.round((dashboardMetrics.closedWithHuman / dashboardMetrics.closedTotal) * 100)}%)</span>
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Table with per-agent AI/Human breakdown */}
