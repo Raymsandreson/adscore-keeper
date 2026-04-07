@@ -749,10 +749,18 @@ Deno.serve(async (req) => {
 
     // Promote ALL board instances as admins (except lead contact)
     if (groupId) {
-      // Collect all phones to promote (all instances except creator who is already admin)
-      const phonesToPromote: string[] = []
+      const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
       const normalizedLeadContact = (contact_phone || phone || '').replace(/\D/g, '')
 
+      // First, get ALL active instances to promote everyone in the group
+      const { data: allInstances } = await supabase
+        .from('whatsapp_instances')
+        .select('id, owner_phone, instance_name')
+        .eq('is_active', true)
+
+      const phonesToPromote: string[] = []
+
+      // Add board instances first
       for (const inst of boardInstances) {
         if (inst.id === creatorInstance.id) continue
         if (!inst.owner_phone) continue
@@ -762,8 +770,23 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Also promote any other active instance that was added to the group
+      if (allInstances) {
+        for (const inst of allInstances) {
+          if (inst.id === creatorInstance.id) continue
+          if (!inst.owner_phone) continue
+          const instPhone = inst.owner_phone.replace(/\D/g, '')
+          if (instPhone && instPhone !== normalizedLeadContact && !phonesToPromote.includes(instPhone)) {
+            // Check if this phone is actually in the group participants
+            const isInGroup = participants.some(p => phoneMatches(p, instPhone))
+            if (isInGroup) {
+              phonesToPromote.push(instPhone)
+            }
+          }
+        }
+      }
+
       if (phonesToPromote.length > 0) {
-        const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
         try {
           console.log(`Promoting ${phonesToPromote.length} participants as admin:`, phonesToPromote)
 
@@ -1046,7 +1069,7 @@ REGRAS:
           const aiResult = await geminiChat({
             model: 'google/gemini-2.5-flash',
             messages: [{ role: 'user', content: aiPrompt }],
-            max_tokens: 4096,
+            max_tokens: 8192,
           })
           messageText = aiResult?.choices?.[0]?.message?.content || ''
           console.log('AI message substitution result length:', messageText.length)
@@ -1082,7 +1105,7 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
           const aiResult = await geminiChat({
             model: 'google/gemini-2.5-flash',
             messages: [{ role: 'user', content: aiPrompt }],
-            max_tokens: 2048,
+            max_tokens: 8192,
           })
           messageText = aiResult?.choices?.[0]?.message?.content || ''
           console.log('AI message generation result length:', messageText.length)
@@ -1208,6 +1231,36 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
         await sendAudioMessage(supabase, messageText, audioVoiceId, groupId, baseUrl, creatorInstance)
       } else if (!audioVoiceId) {
         console.log('Skipping audio: no voice ID configured')
+      }
+      // Set group description with the initial message text
+      if (groupId) {
+        try {
+          const groupJidForDesc = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
+          // Truncate description to WhatsApp's 2048 char limit
+          const descriptionText = messageText.length > 2048 ? messageText.substring(0, 2045) + '...' : messageText
+          const descRes = await fetch(`${baseUrl}/group/updateDescription`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+            body: JSON.stringify({ groupjid: groupJidForDesc, description: descriptionText }),
+          })
+          if (!descRes.ok) {
+            // Try alternative endpoint
+            const descRes2 = await fetch(`${baseUrl}/group/description`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+              body: JSON.stringify({ groupjid: groupJidForDesc, description: descriptionText }),
+            })
+            if (!descRes2.ok) {
+              console.warn('Failed to set group description:', descRes2.status, await descRes2.text())
+            } else {
+              console.log('Group description set successfully (alt endpoint)')
+            }
+          } else {
+            console.log('Group description set successfully')
+          }
+        } catch (descErr) {
+          console.error('Error setting group description:', descErr)
+        }
       }
     }
   } catch (err) {
