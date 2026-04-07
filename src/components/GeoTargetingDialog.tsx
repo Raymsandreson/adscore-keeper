@@ -251,7 +251,7 @@ export const GeoTargetingDialog = ({
     }
   };
 
-  const totalLocations = (geoLocations.cities?.length || 0) + (geoLocations.regions?.length || 0) + (geoLocations.zips?.length || 0) + (geoLocations.countries?.length || 0);
+  const totalLocations = (geoLocations.cities?.length || 0) + (geoLocations.regions?.length || 0) + (geoLocations.zips?.length || 0) + (geoLocations.countries?.length || 0) + (geoLocations.custom_locations?.length || 0);
 
   const getLocationTypeLabel = (type: string) => {
     switch (type) {
