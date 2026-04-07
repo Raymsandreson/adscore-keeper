@@ -727,9 +727,29 @@ const BMConnection = ({
                     <div className="w-2 h-2 bg-success rounded-full"></div>
                     Conectado - Dados reais da Meta API
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    Dados atualizados automaticamente a cada 30 segundos
-                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-xs text-muted-foreground">Atualizar a cada:</p>
+                    <Select
+                      value={localStorage.getItem('meta_refresh_interval_minutes') || '5'}
+                      onValueChange={(val) => {
+                        localStorage.setItem('meta_refresh_interval_minutes', val);
+                        window.location.reload();
+                      }}
+                    >
+                      <SelectTrigger className="h-6 w-[130px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Desativado</SelectItem>
+                        <SelectItem value="1">1 minuto</SelectItem>
+                        <SelectItem value="2">2 minutos</SelectItem>
+                        <SelectItem value="5">5 minutos</SelectItem>
+                        <SelectItem value="10">10 minutos</SelectItem>
+                        <SelectItem value="15">15 minutos</SelectItem>
+                        <SelectItem value="30">30 minutos</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <Button 

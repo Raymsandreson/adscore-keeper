@@ -208,7 +208,10 @@ export const useMetaAPI = () => {
 
   useEffect(() => {
     if (!isConnected || !config) return;
-    const interval = setInterval(refreshMetrics, 5 * 60 * 1000); // 5 minutes instead of 30s
+    const savedInterval = localStorage.getItem('meta_refresh_interval_minutes');
+    const intervalMinutes = savedInterval ? parseInt(savedInterval, 10) : 5;
+    if (intervalMinutes <= 0) return; // 0 = disabled
+    const interval = setInterval(refreshMetrics, intervalMinutes * 60 * 1000);
     return () => clearInterval(interval);
   }, [isConnected, config, refreshMetrics]);
 
