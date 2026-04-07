@@ -208,6 +208,13 @@ export const GeoTargetingDialog = ({
     }));
   };
 
+  const removeCustomLocation = (index: number) => {
+    setGeoLocations(prev => ({
+      ...prev,
+      custom_locations: (prev.custom_locations || []).filter((_, i) => i !== index),
+    }));
+  };
+
   const handleSave = async () => {
     const accessToken = getAccessToken();
     if (!accessToken) {
