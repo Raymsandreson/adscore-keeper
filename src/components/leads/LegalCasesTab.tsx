@@ -26,6 +26,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { useLegalCases, LegalCase } from '@/hooks/useLegalCases';
+import { useProfilesList } from '@/hooks/useProfilesList';
 import { useLeadProcesses, LeadProcess } from '@/hooks/useLeadProcesses';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { useProcessParties, partyRoleLabels, PartyRole } from '@/hooks/useProcessParties';
@@ -51,6 +52,7 @@ interface LegalCasesTabProps {
 export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabProps) {
   const { cases, loading: casesLoading, fetchCases, createCase, updateCase, deleteCase } = useLegalCases(leadId);
   const { nuclei } = useSpecializedNuclei();
+  const profiles = useProfilesList();
 
   const [showCaseDialog, setShowCaseDialog] = useState(false);
   const [editingCase, setEditingCase] = useState<LegalCase | null>(null);
@@ -59,6 +61,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   const [caseDescription, setCaseDescription] = useState('');
   const [caseNucleusId, setCaseNucleusId] = useState('');
   const [caseNotes, setCaseNotes] = useState('');
+  const [caseAcolhedor, setCaseAcolhedor] = useState('');
   const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null);
   const [processRefreshKey, setProcessRefreshKey] = useState(0);
   const [selectedProcesses, setSelectedProcesses] = useState<Set<string>>(new Set());
@@ -84,6 +87,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     setCaseDescription('');
     setCaseNucleusId('');
     setCaseNotes('');
+    setCaseAcolhedor('');
     setEditingCase(null);
     setSelectedProcesses(new Set());
   };
@@ -164,6 +168,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
         description: caseDescription || null,
         nucleus_id: caseNucleusId && caseNucleusId !== '__none__' ? caseNucleusId : null,
         notes: caseNotes || null,
+        acolhedor: caseAcolhedor || null,
       } as Partial<LegalCase>);
       // Auto-create selected processes on edit too
       if (selectedProcesses.size > 0) {
@@ -177,6 +182,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
         description: caseDescription,
         notes: caseNotes,
         case_number: caseCaseNumber || undefined,
+        acolhedor: caseAcolhedor && caseAcolhedor !== '__none__' ? caseAcolhedor : undefined,
       });
       setExpandedCaseId(newCase.id);
       // Auto-create selected processes
@@ -198,6 +204,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     setCaseDescription(c.description || '');
     setCaseNucleusId(c.nucleus_id || '');
     setCaseNotes(c.notes || '');
+    setCaseAcolhedor(c.acolhedor || '');
     setShowCaseDialog(true);
   };
 
@@ -311,6 +318,22 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
             <div>
               <Label>Observações</Label>
               <Textarea value={caseNotes} onChange={e => setCaseNotes(e.target.value)} rows={2} />
+            </div>
+            <div>
+              <Label>👤 Assessor Responsável</Label>
+              <Select value={caseAcolhedor} onValueChange={setCaseAcolhedor}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o assessor..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nenhum</SelectItem>
+                  {profiles.map(p => (
+                    <SelectItem key={p.user_id} value={p.full_name || p.email || p.user_id}>
+                      {p.full_name || p.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label className="flex items-center gap-2 mb-2">
@@ -484,6 +507,9 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
                 <p className="text-sm font-medium">{legalCase.case_number} — {legalCase.title}</p>
                 {legalCase.nucleus_name && (
                   <p className="text-xs text-muted-foreground">{legalCase.nucleus_name}</p>
+                )}
+                {legalCase.acolhedor && (
+                  <p className="text-xs text-muted-foreground">👤 {legalCase.acolhedor}</p>
                 )}
               </div>
             </div>
