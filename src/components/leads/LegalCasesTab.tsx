@@ -202,6 +202,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     setCaseDescription(c.description || '');
     setCaseNucleusId(c.nucleus_id || '');
     setCaseNotes(c.notes || '');
+    setCaseAcolhedor(c.acolhedor || '');
     setShowCaseDialog(true);
   };
 
