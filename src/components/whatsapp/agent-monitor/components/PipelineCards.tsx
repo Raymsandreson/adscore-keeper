@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles, Clock, TrendingUp, FileSignature, Users, Briefcase, Scale, AlertTriangle, FileText, UserPlus } from 'lucide-react';
+import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles, Clock, TrendingUp, FileSignature, Users, Briefcase, Scale, AlertTriangle, FileText, UserPlus, Bot, User } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { CaseStatus } from '../types';
 import { statusLabel } from '../utils';
