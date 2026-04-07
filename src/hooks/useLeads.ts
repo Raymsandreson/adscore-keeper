@@ -156,29 +156,54 @@ export const useLeads = (adAccountId?: string) => {
     qualificationRate: 0,
   });
 
-  const fetchLeads = useCallback(async () => {
+  const fetchLeads = useCallback(async (retryCount = 0) => {
     setLoading(true);
     try {
-      let query = supabase
-        .from('leads')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(2000);
+      // Paginated fetch to avoid timeouts on large datasets
+      let allData: any[] = [];
+      let page = 0;
+      let hasMore = true;
 
-      if (adAccountId) {
-        query = query.eq('ad_account_id', adAccountId);
+      while (hasMore) {
+        const from = page * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
+
+        let query = supabase
+          .from('leads')
+          .select(LEAD_SELECT_COLUMNS)
+          .order('created_at', { ascending: false })
+          .range(from, to);
+
+        if (adAccountId) {
+          query = query.eq('ad_account_id', adAccountId);
+        }
+
+        const { data, error } = await query;
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          allData = allData.concat(data);
+          hasMore = data.length === PAGE_SIZE;
+          page++;
+        } else {
+          hasMore = false;
+        }
       }
 
-      const { data, error } = await query;
+      console.log(`✅ Leads carregados: ${allData.length} (${page} página(s))`);
 
-      if (error) throw error;
-
-      // Type assertion to handle the database response
-      const typedLeads = (data || []) as Lead[];
+      const typedLeads = allData as Lead[];
       setLeads(typedLeads);
       calculateStats(typedLeads);
     } catch (error) {
       console.error('Error fetching leads:', error);
+      // Retry up to 2 times with increasing delay
+      if (retryCount < 2) {
+        console.log(`🔄 Retry ${retryCount + 1}/2 em ${(retryCount + 1) * 2}s...`);
+        setTimeout(() => fetchLeads(retryCount + 1), (retryCount + 1) * 2000);
+        return;
+      }
       toast.error('Erro ao carregar leads');
     } finally {
       setLoading(false);
