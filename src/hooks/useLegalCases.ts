@@ -133,69 +133,26 @@ export function useLegalCases(leadId?: string) {
         console.warn('Could not auto-create tracking record:', trackingError);
       }
 
-      // Auto-create predefined processes + activities for CASO-prefixed cases
+      // Auto-create ONBOARDING CLIENTE activity for CASO-prefixed cases
       if (caseNumber && caseNumber.startsWith('CASO')) {
-        const CASO_PROCESSES: Array<{ title: string; userId: string; userName: string }> = [
-          { title: 'Onboarding', userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
-          { title: 'Indenização', userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
-          { title: 'Relatório de Acidente', userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
-          { title: 'TRCT + Verbas', userId: '44fd2301-47c6-4912-a583-0213b1c368eb', userName: 'João Vitor' },
-          { title: 'Seguro de Vida', userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
-          { title: 'Benefício INSS', userId: '4dba2de0-5357-49ab-8bf9-4c248a1440de', userName: 'Gisele' },
-          { title: 'Inquérito Policial', userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
-          { title: 'Organizar docs', userId: '7f41a35e-7d98-4ade-8270-52d727433e6a', userName: 'Abderaman' },
-        ];
-
-        // Fetch WhatsApp group info for context
-        let groupContext = '';
-        if (caseData.lead_id) {
-          try {
-            const { data: lead } = await supabase
-              .from('leads')
-              .select('whatsapp_group_id, lead_phone, lead_name, case_type, city, state')
-              .eq('id', caseData.lead_id)
-              .maybeSingle();
-            if (lead) {
-              groupContext = [
-                lead.lead_name && `Cliente: ${lead.lead_name}`,
-                lead.case_type && `Tipo: ${lead.case_type}`,
-                lead.city && `Cidade: ${lead.city}/${lead.state || ''}`,
-              ].filter(Boolean).join(' | ');
-            }
-          } catch { /* ignore */ }
-        }
-
-        for (const proc of CASO_PROCESSES) {
-          try {
-            const { data: savedProcess } = await supabase.from('lead_processes').insert({
-              lead_id: caseData.lead_id || null,
-              case_id: enriched.id,
-              process_type: 'administrativo',
-              title: proc.title,
-              description: groupContext ? `Dados do lead: ${groupContext}` : null,
-              status: 'em_andamento',
-              started_at: new Date().toISOString().split('T')[0],
-              created_by: user?.id,
-            } as any).select('id').single();
-
-            // Create activity assigned to the responsible person
-            await supabase.from('lead_activities').insert({
-              lead_id: caseData.lead_id || null,
-              lead_name: caseData.title,
-              title: `Dar andamento - ${proc.title}`,
-              description: `Atividade criada automaticamente para o caso ${caseNumber}. ${groupContext}`,
-              activity_type: 'tarefa',
-              status: 'pendente',
-              priority: proc.title === 'Onboarding' ? 'alta' : 'normal',
-              assigned_to: proc.userId,
-              assigned_to_name: proc.userName,
-              created_by: user?.id,
-              deadline: new Date().toISOString().split('T')[0],
-              process_id: savedProcess?.id || null,
-            } as any);
-          } catch (procErr) {
-            console.warn(`Could not auto-create process "${proc.title}":`, procErr);
-          }
+        try {
+          const WANESSA_USER_ID = '1f788b8d-e30e-484a-9460-39a881d25128';
+          const WANESSA_NAME = 'Wanessa Vitória Rodrigues de Sousa';
+          await supabase.from('lead_activities').insert({
+            lead_id: caseData.lead_id || null,
+            lead_name: caseData.title,
+            title: 'ONBOARDING CLIENTE',
+            description: `Atividade de onboarding criada automaticamente para o caso ${caseNumber}`,
+            activity_type: 'tarefa',
+            status: 'pendente',
+            priority: 'alta',
+            assigned_to: WANESSA_USER_ID,
+            assigned_to_name: WANESSA_NAME,
+            created_by: user?.id,
+            deadline: new Date().toISOString().split('T')[0],
+          } as any);
+        } catch (onboardingError) {
+          console.warn('Could not auto-create onboarding activity:', onboardingError);
         }
       }
 
