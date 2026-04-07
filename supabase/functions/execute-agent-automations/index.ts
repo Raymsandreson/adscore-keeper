@@ -213,8 +213,18 @@ Deno.serve(async (req) => {
     let createdContactId: string | null = null;
 
     // If it's a group, register participants as contacts first
+    // Resolve acolhedor (responsible member) for created_by
+    let responsibleUserId: string | null = null;
+    if (lead_id) {
+      const { data: leadData } = await supabase.from('leads').select('acolhedor').eq('id', lead_id).maybeSingle();
+      if (leadData?.acolhedor) {
+        const { data: profile } = await supabase.from('profiles').select('user_id').ilike('full_name', leadData.acolhedor).limit(1).maybeSingle();
+        responsibleUserId = profile?.user_id || null;
+      }
+    }
+
     if (is_group && group_id && instance_name) {
-      const groupResults = await registerGroupParticipants(supabase, instance_name, group_id, agentLabel, conversationCity);
+      const groupResults = await registerGroupParticipants(supabase, instance_name, group_id, agentLabel, conversationCity, responsibleUserId);
       results.push(...groupResults);
     }
 
