@@ -123,9 +123,35 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     }
   };
 
-  const renderContent = (content: string) => {
-    // Highlight @mentions
-    return content.replace(/@([^\s@]+(?:\s[^\s@]+)?)/g, (match) => match);
+  const renderMessageWithMentions = (content: string, isMe: boolean) => {
+    // Build a regex that matches known member names after @
+    const memberNames = members
+      .map(m => m.full_name || m.email)
+      .filter(Boolean)
+      .sort((a, b) => b!.length - a!.length); // longest first to avoid partial matches
+    
+    if (memberNames.length === 0) {
+      return <>{content}</>;
+    }
+
+    const escapedNames = memberNames.map(n => n!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const pattern = new RegExp(`(@(?:${escapedNames.join('|')}))`, 'gi');
+    const parts = content.split(pattern);
+
+    return (
+      <>
+        {parts.map((part, i) =>
+          part.startsWith('@') ? (
+            <span key={i} className={cn(
+              "font-semibold",
+              isMe ? "text-primary-foreground/90 underline" : "text-primary"
+            )}>{part}</span>
+          ) : (
+            <span key={i}>{part}</span>
+          )
+        )}
+      </>
+    );
   };
 
   if (loading) {
