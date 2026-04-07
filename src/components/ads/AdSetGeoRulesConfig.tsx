@@ -33,6 +33,8 @@ export function AdSetGeoRulesConfig() {
   const [showDialog, setShowDialog] = useState(false);
   const [adSets, setAdSets] = useState<MetaAdSet[]>([]);
   const [loadingAdSets, setLoadingAdSets] = useState(false);
+  const [adSetOpen, setAdSetOpen] = useState(false);
+  const [adSetSort, setAdSetSort] = useState<'name' | 'status'>('status');
 
   // Form state
   const [formBoardId, setFormBoardId] = useState('');
