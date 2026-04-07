@@ -30,9 +30,10 @@ interface CaseListSheetProps {
   onOpenChat: (c: ConversationDetail) => void;
   generatingLeadId?: string | null;
   onGenerateActivity?: (c: ConversationDetail) => void;
+  acolhedorPreFilter?: string | null;
 }
 
-export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, onClose, onOpenChat, generatingLeadId, onGenerateActivity }: CaseListSheetProps) {
+export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, onClose, onOpenChat, generatingLeadId, onGenerateActivity, acolhedorPreFilter }: CaseListSheetProps) {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [responseFilter, setResponseFilter] = useState<'all' | 'responded' | 'waiting'>('all');
@@ -55,13 +56,19 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
     if (!statusFilter) return [];
     return conversations.filter(c => {
       if (!applyBaseFilters(c)) return false;
-      return getCaseStatus(c) === statusFilter;
+      if (getCaseStatus(c) !== statusFilter) return false;
+      // Pre-filter by acolhedor from closing detail table
+      if (acolhedorPreFilter) {
+        const acolhedor = c.lead_acolhedor || 'Sem acolhedor';
+        if (acolhedor !== acolhedorPreFilter) return false;
+      }
+      return true;
     }).sort((a, b) => {
       const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
       return dateB - dateA;
     });
-  }, [conversations, statusFilter, applyBaseFilters]);
+  }, [conversations, statusFilter, applyBaseFilters, acolhedorPreFilter]);
 
   const filteredCases = useMemo(() => {
     return sheetCases.filter(c => {
@@ -241,6 +248,7 @@ export function CaseListSheet({ statusFilter, conversations, applyBaseFilters, o
           <SheetTitle className="flex items-center gap-2">
             {statusFilter && (() => { const Icon = icons[statusFilter]; return <Icon className="h-5 w-5" />; })()}
             {statusFilter ? statusLabel(statusFilter) : ''} ({sheetCases.length})
+            {acolhedorPreFilter && <Badge variant="secondary" className="text-[10px] ml-1">{acolhedorPreFilter}</Badge>}
           </SheetTitle>
         </SheetHeader>
 

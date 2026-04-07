@@ -7,6 +7,11 @@ import type { DashboardMetrics, OperationalDetail } from '../hooks/useDashboardM
 import type { OperationalMetricType } from './OperationalDetailSheet';
 import type { OperationalGaps, GapType } from '../hooks/useOperationalGaps';
 
+export interface ClosingDetailFilter {
+  agent?: string;
+  type?: 'ai' | 'human' | 'all';
+}
+
 interface PipelineCardsProps {
   counts: Record<CaseStatus, number> & { novas?: number };
   activeStatus: CaseStatus | null;
@@ -16,6 +21,7 @@ interface PipelineCardsProps {
   onOperationalClick?: (type: OperationalMetricType) => void;
   gaps?: OperationalGaps;
   onGapClick?: (type: GapType) => void;
+  onClosingDetailClick?: (filter: ClosingDetailFilter) => void;
 }
 
 const statusConfig: { key: CaseStatus; icon: typeof AlertCircle; color: string }[] = [
@@ -71,7 +77,7 @@ function MemberBreakdownPopover({ details, children }: { details: OperationalDet
   );
 }
 
-export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics, onNewConvsClick, onOperationalClick, gaps, onGapClick }: PipelineCardsProps) {
+export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics, onNewConvsClick, onOperationalClick, gaps, onGapClick, onClosingDetailClick }: PipelineCardsProps) {
   const newConvs = dashboardMetrics?.newConversations ?? counts.novas ?? 0;
   const responseRate = dashboardMetrics?.responseRate ?? 0;
   const avgTime = dashboardMetrics?.avgResponseTimeMin ?? 0;
@@ -211,19 +217,28 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
       {dashboardMetrics && dashboardMetrics.closedTotal > 0 && (
         <Card>
           <CardContent className="p-3">
-            {/* Header with totals */}
+            {/* Header with totals - clickable */}
             <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
+              <div
+                className="flex items-center gap-2 cursor-pointer hover:underline"
+                onClick={() => onClosingDetailClick?.({ type: 'all' })}
+              >
                 <CheckCircle className="h-4 w-4 text-green-500" />
                 <span className="text-sm font-semibold">{dashboardMetrics.closedTotal} Fechados</span>
               </div>
               <div className="flex items-center gap-3 text-xs">
-                <span className="flex items-center gap-1">
+                <span
+                  className="flex items-center gap-1 cursor-pointer hover:underline"
+                  onClick={() => onClosingDetailClick?.({ type: 'ai' })}
+                >
                   <Sparkles className="h-3 w-3 text-purple-500" />
                   <span className="font-bold text-purple-600">{dashboardMetrics.closedByAI}</span>
                   <span className="text-muted-foreground">IA ({dashboardMetrics.closedTotal > 0 ? Math.round((dashboardMetrics.closedByAI / dashboardMetrics.closedTotal) * 100) : 0}%)</span>
                 </span>
-                <span className="flex items-center gap-1">
+                <span
+                  className="flex items-center gap-1 cursor-pointer hover:underline"
+                  onClick={() => onClosingDetailClick?.({ type: 'human' })}
+                >
                   <MessageCircle className="h-3 w-3 text-blue-500" />
                   <span className="font-bold text-blue-600">{dashboardMetrics.closedWithHuman}</span>
                   <span className="text-muted-foreground">Humano ({dashboardMetrics.closedTotal > 0 ? Math.round((dashboardMetrics.closedWithHuman / dashboardMetrics.closedTotal) * 100) : 0}%)</span>
@@ -247,9 +262,18 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
                     {dashboardMetrics.closedByAgentDetailed.map(({ agent, ai, human, total }) => (
                       <tr key={agent} className="border-t border-border/50">
                         <td className="px-2 py-1.5 truncate max-w-[160px]">{agent}</td>
-                        <td className="text-center px-2 py-1.5 font-bold text-purple-600">{ai}</td>
-                        <td className="text-center px-2 py-1.5 font-bold text-blue-600">{human}</td>
-                        <td className="text-center px-2 py-1.5 font-bold">{total}</td>
+                        <td
+                          className="text-center px-2 py-1.5 font-bold text-purple-600 cursor-pointer hover:underline hover:bg-purple-50 dark:hover:bg-purple-950/30 rounded"
+                          onClick={() => ai > 0 && onClosingDetailClick?.({ agent, type: 'ai' })}
+                        >{ai}</td>
+                        <td
+                          className="text-center px-2 py-1.5 font-bold text-blue-600 cursor-pointer hover:underline hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded"
+                          onClick={() => human > 0 && onClosingDetailClick?.({ agent, type: 'human' })}
+                        >{human}</td>
+                        <td
+                          className="text-center px-2 py-1.5 font-bold cursor-pointer hover:underline"
+                          onClick={() => total > 0 && onClosingDetailClick?.({ agent, type: 'all' })}
+                        >{total}</td>
                       </tr>
                     ))}
                   </tbody>
