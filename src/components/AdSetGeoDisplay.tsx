@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { getMetaCredentials } from "@/utils/metaCredentials";
 
 interface AdSetGeoDisplayProps {
   adSetId: string;
@@ -11,25 +11,12 @@ export const AdSetGeoDisplay = ({ adSetId }: AdSetGeoDisplayProps) => {
   const [locations, setLocations] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [fetched, setFetched] = useState(false);
-  const accessTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (fetched) return;
 
     const fetchGeo = async () => {
-      // Get token from DB
-      if (!accessTokenRef.current) {
-        const { data } = await supabase
-          .from('meta_ad_accounts')
-          .select('access_token')
-          .order('created_at', { ascending: true })
-          .limit(1);
-        if (data && data.length > 0) {
-          accessTokenRef.current = data[0].access_token;
-        }
-      }
-
-      const accessToken = accessTokenRef.current;
+      const { accessToken } = await getMetaCredentials();
       if (!accessToken) return;
 
       setIsLoading(true);

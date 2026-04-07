@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { MapPin, Search, X, Loader2, Plus, Globe } from "lucide-react";
 import { toast } from "sonner";
+import { getMetaCredentials } from "@/utils/metaCredentials";
 
 interface GeoLocation {
   key: string;
@@ -67,36 +67,9 @@ export const GeoTargetingDialog = ({
   const [isSearching, setIsSearching] = useState(false);
   const [geoLocations, setGeoLocations] = useState<GeoTargeting>({});
   const [originalGeo, setOriginalGeo] = useState<GeoTargeting>({});
-  const accessTokenRef = useRef<string | null>(null);
-
-  // Fetch access token from DB on mount
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from('meta_ad_accounts')
-        .select('access_token')
-        .order('created_at', { ascending: true })
-        .limit(1);
-      if (data && data.length > 0) {
-        accessTokenRef.current = data[0].access_token;
-      }
-    })();
-  }, []);
-
-  const getAccessToken = (): string | null => {
-    if (accessTokenRef.current) return accessTokenRef.current;
-    const savedAccounts = localStorage.getItem('meta_saved_accounts');
-    if (savedAccounts) {
-      const accounts = JSON.parse(savedAccounts);
-      const selectedId = localStorage.getItem('meta_selected_account');
-      const selected = accounts.find((a: any) => a.id === selectedId) || accounts[0];
-      return selected?.accessToken || null;
-    }
-    return localStorage.getItem('meta_access_token');
-  };
 
   const fetchTargeting = useCallback(async () => {
-    const accessToken = getAccessToken();
+    const { accessToken } = await getMetaCredentials();
     if (!accessToken) {
       console.warn('[GeoDialog] No access token found');
       toast.error('Token de acesso não encontrado. Reconecte sua conta Meta.');
@@ -150,7 +123,7 @@ export const GeoTargetingDialog = ({
 
   const searchLocations = async () => {
     if (!searchQuery.trim()) return;
-    const accessToken = getAccessToken();
+    const { accessToken } = await getMetaCredentials();
     if (!accessToken) return;
 
     setIsSearching(true);
@@ -256,7 +229,7 @@ export const GeoTargetingDialog = ({
   };
 
   const handleSave = async () => {
-    const accessToken = getAccessToken();
+    const { accessToken } = await getMetaCredentials();
     if (!accessToken) {
       toast.error('Token de acesso não encontrado');
       return;

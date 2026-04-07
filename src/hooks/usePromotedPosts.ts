@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { getMetaCredentials } from '@/utils/metaCredentials';
 
 export interface PromotedPost {
   id: string;
@@ -94,20 +95,7 @@ export function usePromotedPosts() {
       callToAction?: string;
     };
   }) => {
-    const savedAccounts = localStorage.getItem('meta_saved_accounts');
-    let accessToken: string | null = null;
-    let adAccountId: string | null = null;
-
-    if (savedAccounts) {
-      const accounts = JSON.parse(savedAccounts);
-      const selectedId = localStorage.getItem('meta_selected_account');
-      const selected = accounts.find((a: any) => a.id === selectedId) || accounts[0];
-      accessToken = selected?.accessToken || null;
-      adAccountId = selected?.adAccountId || null;
-    } else {
-      accessToken = localStorage.getItem('meta_access_token');
-      adAccountId = localStorage.getItem('meta_ad_account_id');
-    }
+    const { accessToken, adAccountId } = await getMetaCredentials();
 
     if (!accessToken || !adAccountId) {
       toast.error('Token Meta não encontrado. Conecte sua conta primeiro.');
