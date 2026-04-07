@@ -1639,6 +1639,96 @@ Deno.serve(async (req) => {
 
     console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName, 'StoredMedia:', storedMediaUrl ? 'yes' : 'no')
 
+    // ========== PROGRESSIVE CONTACT DATA UPDATE ==========
+    // When we already have a contactId, update missing fields (name, city, state) progressively
+    if (contactId && direction === 'inbound' && !isGroup) {
+      try {
+        const { data: existingContact } = await supabase
+          .from('contacts')
+          .select('full_name, city, state, phone')
+          .eq('id', contactId)
+          .maybeSingle();
+
+        if (existingContact) {
+          const updates: Record<string, any> = {};
+          const currentName = existingContact.full_name || '';
+          const isNameJustPhone = /^\+?\d[\d\s\-()]*$/.test(currentName.trim());
+
+          // Update name if current is just a phone number and we have a real name
+          if (contactName && contactName.trim() && isNameJustPhone && !/^\+?\d[\d\s\-()]*$/.test(contactName.trim())) {
+            updates.full_name = contactName.trim();
+          }
+
+          // Update city/state from DDD if missing
+          const contactPhone = existingContact.phone || normalizedPhone;
+          if (!existingContact.state || !existingContact.city) {
+            const location = getLocationFromDDD(contactPhone);
+            if (location) {
+              if (!existingContact.state) updates.state = location.state;
+              if (!existingContact.city) updates.city = location.city;
+            }
+          }
+
+          if (Object.keys(updates).length > 0) {
+            await supabase.from('contacts').update(updates).eq('id', contactId);
+            console.log('Progressive contact update:', contactId, JSON.stringify(updates));
+          }
+        }
+      } catch (progressiveErr: any) {
+        console.warn('Progressive contact update error:', progressiveErr.message);
+      }
+    }
+
+    // ========== AUTO-CREATE CONTACT FOR INSTANCE'S OWN PHONE (outbound) ==========
+    // Register the instance's own phone number as a contact if not already registered
+    if (direction === 'outbound' && instanceName && !isGroup) {
+      try {
+        // Get instance owner phone
+        const { data: inst } = await supabase
+          .from('whatsapp_instances')
+          .select('owner_phone, instance_name')
+          .eq('instance_name', instanceName)
+          .maybeSingle();
+
+        if (inst?.owner_phone) {
+          const instPhone = inst.owner_phone.replace(/\D/g, '');
+          if (instPhone.length >= 10) {
+            const instLast8 = instPhone.slice(-8);
+            // Check if contact exists for this instance phone
+            const { data: existingInstContact } = await supabase
+              .from('contacts')
+              .select('id')
+              .or(`phone.ilike.%${instLast8}%`)
+              .limit(1)
+              .maybeSingle();
+
+            if (!existingInstContact) {
+              const instLocation = getLocationFromDDD(instPhone);
+              const { data: newInstContact } = await supabase
+                .from('contacts')
+                .insert({
+                  full_name: inst.instance_name || instPhone,
+                  phone: instPhone,
+                  city: instLocation?.city || null,
+                  state: instLocation?.state || null,
+                  classification: 'interno',
+                  action_source: 'system',
+                  action_source_detail: `Auto-registro instância WhatsApp (${instanceName})`,
+                })
+                .select('id')
+                .single();
+
+              if (newInstContact) {
+                console.log(`Auto-registered instance contact: ${instanceName} (${instPhone}) → ${newInstContact.id}`);
+              }
+            }
+          }
+        }
+      } catch (instContactErr: any) {
+        console.warn('Auto-create instance contact error:', instContactErr.message);
+      }
+    }
+
     // ========== #SHORTCUT AGENT ACTIVATION (single # outbound) ==========
     // MUST run BEFORE human-pause and command-processor blocks which can return early
     if (direction === 'outbound' && instanceName && phone && messageText) {
