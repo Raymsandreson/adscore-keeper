@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles, Clock, TrendingUp, FileSignature, Users, Briefcase, Scale } from 'lucide-react';
+import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles, Clock, TrendingUp, FileSignature, Users, Briefcase, Scale, AlertTriangle, FileText } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { CaseStatus } from '../types';
 import { statusLabel } from '../utils';
 import type { DashboardMetrics, OperationalDetail } from '../hooks/useDashboardMetrics';
 import type { OperationalMetricType } from './OperationalDetailSheet';
+import type { OperationalGaps, GapType } from '../hooks/useOperationalGaps';
 
 interface PipelineCardsProps {
   counts: Record<CaseStatus, number> & { novas?: number };
@@ -14,6 +15,8 @@ interface PipelineCardsProps {
   dashboardMetrics?: DashboardMetrics;
   onNewConvsClick?: () => void;
   onOperationalClick?: (type: OperationalMetricType) => void;
+  gaps?: OperationalGaps;
+  onGapClick?: (type: GapType) => void;
 }
 
 const statusConfig: { key: CaseStatus; icon: typeof AlertCircle; color: string }[] = [
@@ -69,7 +72,7 @@ function MemberBreakdownPopover({ details, children }: { details: OperationalDet
   );
 }
 
-export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics, onNewConvsClick, onOperationalClick }: PipelineCardsProps) {
+export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics, onNewConvsClick, onOperationalClick, gaps, onGapClick }: PipelineCardsProps) {
   const newConvs = dashboardMetrics?.newConversations ?? counts.novas ?? 0;
   const responseRate = dashboardMetrics?.responseRate ?? 0;
   const avgTime = dashboardMetrics?.avgResponseTimeMin ?? 0;
@@ -171,6 +174,30 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
           </Card>
         ))}
       </div>
+
+      {/* Operational Gaps row */}
+      {gaps && (gaps.closedWithoutGroup.length > 0 || gaps.withGroupWithoutCase.length > 0 || gaps.casesWithoutProcess.length > 0 || gaps.processesWithoutActivity.length > 0) && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {([
+            { key: 'closedWithoutGroup' as GapType, label: 'Fechados s/ Grupo', icon: Users, color: 'text-red-500', bgColor: 'bg-red-50 dark:bg-red-950/30' },
+            { key: 'withGroupWithoutCase' as GapType, label: 'Grupo s/ Caso', icon: Briefcase, color: 'text-amber-500', bgColor: 'bg-amber-50 dark:bg-amber-950/30' },
+            { key: 'casesWithoutProcess' as GapType, label: 'Caso s/ Processo', icon: Scale, color: 'text-orange-500', bgColor: 'bg-orange-50 dark:bg-orange-950/30' },
+            { key: 'processesWithoutActivity' as GapType, label: 'Processo s/ Atividade', icon: FileText, color: 'text-rose-500', bgColor: 'bg-rose-50 dark:bg-rose-950/30' },
+          ]).map(({ key, label, icon: GapIcon, color, bgColor }) => {
+            const count = gaps[key].length;
+            if (count === 0) return null;
+            return (
+              <Card key={key} className={`cursor-pointer hover:shadow-md transition-all border-dashed ${bgColor}`} onClick={() => onGapClick?.(key)}>
+                <CardContent className="p-3 text-center">
+                  <AlertTriangle className={`h-3 w-3 mx-auto mb-0.5 ${color}`} />
+                  <p className={`text-lg font-bold ${color}`}>{count}</p>
+                  <p className="text-[9px] text-muted-foreground leading-tight">{label}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {/* Closing analysis - derived from filtered conversations */}
       {dashboardMetrics && dashboardMetrics.closedByAgent.length > 0 && (

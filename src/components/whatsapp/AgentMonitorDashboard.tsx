@@ -10,6 +10,7 @@ import { useMonitorData } from './agent-monitor/hooks/useMonitorData';
 import { useMonitorFilters } from './agent-monitor/hooks/useMonitorFilters';
 import { useBatchActions } from './agent-monitor/hooks/useBatchActions';
 import { useDashboardMetrics } from './agent-monitor/hooks/useDashboardMetrics';
+import { useOperationalGaps, type GapType } from './agent-monitor/hooks/useOperationalGaps';
 import type { ConversationDetail, CaseStatus } from './agent-monitor/types';
 import { convKey } from './agent-monitor/utils';
 
@@ -18,6 +19,7 @@ import { UnifiedMonitorTab } from './agent-monitor/components/UnifiedMonitorTab'
 import { CaseListSheet } from './agent-monitor/components/CaseListSheet';
 import { OperationalDetailSheet, type OperationalMetricType, type OperationalFilters } from './agent-monitor/components/OperationalDetailSheet';
 import { NewConversationsSheet } from './agent-monitor/components/NewConversationsSheet';
+import { GapDetailSheet } from './agent-monitor/components/GapDetailSheet';
 import { ReferralsTab } from './agent-monitor/components/ReferralsTab';
 import { AIActivitiesPanel } from './AIActivitiesPanel';
 import { AIActivityPromptDialog } from './AIActivityPromptDialog';
@@ -33,9 +35,11 @@ export function AgentMonitorDashboard() {
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [promptDialogLead, setPromptDialogLead] = useState<{ id: string; name: string } | null>(null);
   const [operationalSheet, setOperationalSheet] = useState<OperationalMetricType | null>(null);
+  const [gapSheet, setGapSheet] = useState<GapType | null>(null);
 
   const { agents, conversations, agentStats, referrals, boards, loading: monitorLoading, fetchData: fetchDataRaw } = useMonitorData();
   const { metrics, metricsLoading, fetchMetrics } = useDashboardMetrics();
+  const { gaps, gapsLoading, fetchGaps } = useOperationalGaps();
 
   const isLoading = monitorLoading || metricsLoading;
   const [animatedProgress, setAnimatedProgress] = useState(0);
@@ -62,7 +66,8 @@ export function AgentMonitorDashboard() {
   const fetchData = useCallback(() => {
     fetchDataRaw(dateRange);
     fetchMetrics(dateRange);
-  }, [fetchDataRaw, fetchMetrics, dateRange]);
+    fetchGaps(dateRange);
+  }, [fetchDataRaw, fetchMetrics, fetchGaps, dateRange]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -197,6 +202,21 @@ export function AgentMonitorDashboard() {
     };
   }, [metrics, filteredNewConvDetails, filteredClosedByAgent, operationalFilteredLeadIds, filters.agentFilter, filters.instanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
 
+  // Filter gaps by acolhedor
+  const filteredGaps = useMemo(() => {
+    const filterByAcolhedor = (items: typeof gaps.closedWithoutGroup) => {
+      if (filters.acolhedorFilter === 'all') return items;
+      if (filters.acolhedorFilter === '__none__') return items.filter(i => !i.acolhedor);
+      return items.filter(i => i.acolhedor === filters.acolhedorFilter);
+    };
+    return {
+      closedWithoutGroup: filterByAcolhedor(gaps.closedWithoutGroup),
+      withGroupWithoutCase: filterByAcolhedor(gaps.withGroupWithoutCase),
+      casesWithoutProcess: filterByAcolhedor(gaps.casesWithoutProcess),
+      processesWithoutActivity: filterByAcolhedor(gaps.processesWithoutActivity),
+    };
+  }, [gaps, filters.acolhedorFilter]);
+
   const batch = useBatchActions(conversations, fetchData);
 
   const handleOpenChat = (c: ConversationDetail) => setChatPreview(c);
@@ -307,6 +327,8 @@ export function AgentMonitorDashboard() {
             onNewConvsClick={() => setNewConvsSheetOpen(true)}
             onOperationalClick={(type) => setOperationalSheet(type)}
             filterBarProps={filterBarProps}
+            gaps={filteredGaps}
+            onGapClick={(type) => setGapSheet(type)}
           />
         </TabsContent>
 
@@ -350,6 +372,15 @@ export function AgentMonitorDashboard() {
           }
         }}
       />
+
+      {gapSheet && (
+        <GapDetailSheet
+          open={!!gapSheet}
+          onClose={() => setGapSheet(null)}
+          gapType={gapSheet}
+          items={filteredGaps[gapSheet]}
+        />
+      )}
 
       <NewConversationsSheet
         open={newConvsSheetOpen}
