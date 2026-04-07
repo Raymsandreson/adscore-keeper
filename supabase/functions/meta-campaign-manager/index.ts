@@ -28,6 +28,7 @@ interface CampaignRequest {
       cities?: { key: string; name?: string; radius?: number; distance_unit?: string }[];
       zips?: { key: string; name?: string }[];
       regions?: { key: string; name?: string }[];
+      custom_locations?: { latitude: number; longitude: number; radius?: number; distance_unit?: string; name?: string }[];
     };
   };
   searchQuery?: string;
@@ -119,7 +120,7 @@ async function getTargeting(accessToken: string, adSetId: string) {
   }
 
   const targeting = data.targeting || {};
-  console.log(`[get_targeting] Raw geo_locations for ${adSetId}:`, JSON.stringify(targeting.geo_locations || {}).substring(0, 1000));
+  console.log(`[get_targeting] Raw targeting for ${adSetId}:`, JSON.stringify(targeting).substring(0, 2000));
   
   return {
     adSetId,
@@ -146,7 +147,6 @@ async function getCampaignTargeting(accessToken: string, campaignId: string) {
   if (adSetIds.length === 0) {
     return { campaignId, adSetCount: 0, targeting: { geo_locations: {} } };
   }
-  // Get targeting from first ad set as representative
   const first = await getTargeting(accessToken, adSetIds[0]);
   return { campaignId, adSetCount: adSetIds.length, adSetIds, ...first };
 }
@@ -160,12 +160,12 @@ async function updateCampaignTargeting(
   if (adSetIds.length === 0) throw new Error('Nenhum conjunto de anúncios encontrado nesta campanha');
   
   const results = [];
-  const errors = [];
+  const errors: any[] = [];
   for (const adSetId of adSetIds) {
     try {
       const r = await updateTargeting(accessToken, adSetId, targeting);
       results.push({ adSetId, success: true, ...r });
-    } catch (e) {
+    } catch (e: any) {
       errors.push({ adSetId, error: e.message });
     }
   }
@@ -181,6 +181,7 @@ async function updateTargeting(
       cities?: { key: string; name?: string; radius?: number; distance_unit?: string }[];
       zips?: { key: string; name?: string }[];
       regions?: { key: string; name?: string }[];
+      custom_locations?: { latitude: number; longitude: number; radius?: number; distance_unit?: string }[];
     };
   }
 ) {
@@ -201,14 +202,16 @@ async function updateTargeting(
     geo_locations: targeting.geo_locations,
   };
 
+  // Use form-encoded POST as per Meta API docs
+  const params = new URLSearchParams();
+  params.append('access_token', accessToken);
+  params.append('targeting', JSON.stringify(updatedTargeting));
+
   const updateUrl = `https://graph.facebook.com/v21.0/${adSetId}`;
   const updateResp = await fetch(updateUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      access_token: accessToken,
-      targeting: JSON.stringify(updatedTargeting),
-    }),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
   });
 
   const updateData = await updateResp.json();
@@ -220,13 +223,27 @@ async function updateTargeting(
   return { adSetId, updatedGeoLocations: targeting.geo_locations, ...updateData };
 }
 
+// Search locations using Meta Marketing API
+// Docs: https://developers.facebook.com/docs/marketing-api/audiences/reference/basic-targeting/
+// type=adgeolocation searches across all location types (cities, regions, countries, zips)
+// type=adcountry, adregion, adcity, adzip for specific types
 async function searchLocations(accessToken: string, query: string, locationType: string) {
-  const url = `https://graph.facebook.com/v21.0/search?type=${locationType}&q=${encodeURIComponent(query)}&access_token=${accessToken}&locale=pt_BR&limit=20`;
+  // Use adgeolocation for broad search, which returns cities, regions, countries, zips
+  const url = `https://graph.facebook.com/v21.0/search?type=${locationType}&q=${encodeURIComponent(query)}&access_token=${accessToken}&locale=pt_BR&limit=25`;
+  
+  console.log(`[search_locations] Searching for "${query}" with type=${locationType}`);
+  
   const response = await fetch(url);
   const data = await response.json();
 
   if (data.error) {
+    console.error(`[search_locations] Error:`, JSON.stringify(data.error));
     throw new Error(data.error.message || 'Failed to search locations');
+  }
+
+  console.log(`[search_locations] Found ${data.data?.length || 0} results for "${query}"`);
+  if (data.data?.length > 0) {
+    console.log(`[search_locations] First result:`, JSON.stringify(data.data[0]));
   }
 
   return { results: data.data || [] };
