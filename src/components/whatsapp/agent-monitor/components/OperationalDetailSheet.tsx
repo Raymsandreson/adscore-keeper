@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Loader2, FileSignature, Users, Briefcase, Scale, ExternalLink, MessageSquare, UsersRound, Radio } from 'lucide-react';
+import { Loader2, FileSignature, Users, Briefcase, Scale, ExternalLink, MessageSquare, UsersRound, Radio, UserPlus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfDay, endOfDay, format, parseISO } from 'date-fns';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
@@ -35,6 +35,7 @@ const config: Record<OperationalMetricType, { title: string; icon: typeof FileSi
   groups: { title: 'Grupos Criados', icon: Users, color: 'text-cyan-500' },
   cases: { title: 'Casos Criados', icon: Briefcase, color: 'text-amber-600' },
   processes: { title: 'Processos Criados', icon: Scale, color: 'text-indigo-500' },
+  contacts: { title: 'Contatos Criados', icon: UserPlus, color: 'text-emerald-500' },
 };
 
 export function OperationalDetailSheet({ open, onClose, metricType, dateRange, filters, filteredLeadIds, onOpenChat }: Props) {
