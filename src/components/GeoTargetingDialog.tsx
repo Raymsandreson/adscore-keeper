@@ -145,7 +145,7 @@ export const GeoTargetingDialog = ({
       if (data.success) {
         setSearchResults(data.data.results || []);
         if ((data.data.results || []).length === 0) {
-          toast.info('Nenhuma localização encontrada para essa busca');
+          toast.info('Nenhuma localização encontrada. Para Brasil, a Meta não suporta busca por CEP; use cidade, estado ou pin com raio.');
         }
       } else {
         console.error('[GeoDialog] Search error:', data.error);
