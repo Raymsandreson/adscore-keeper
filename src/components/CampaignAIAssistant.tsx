@@ -40,6 +40,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useCampaignManager } from "@/hooks/useCampaignManager";
 import { AdFeedPreview } from "./AdFeedPreview";
+import { getMetaCredentials } from "@/utils/metaCredentials";
 
 interface Message {
   role: "user" | "assistant";
@@ -86,7 +87,7 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
   }, [item.id]);
 
   const loadEnrichedData = async () => {
-    const accessToken = localStorage.getItem('meta_access_token');
+    const { accessToken } = await getMetaCredentials();
     if (!accessToken) {
       console.log('No access token found, using item data');
       return;

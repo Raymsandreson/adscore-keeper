@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { getMetaCredentials } from '@/utils/metaCredentials';
 
 interface CampaignAction {
   action: 'update_status' | 'update_budget' | 'update_bid' | 'duplicate' | 'update_creative';
@@ -32,31 +33,9 @@ interface LogActionParams {
 export const useCampaignManager = () => {
   const [isLoading, setIsLoading] = useState(false);
 
-  const getAccessToken = (): string | null => {
-    const savedAccounts = localStorage.getItem('meta_saved_accounts');
-    if (savedAccounts) {
-      const accounts = JSON.parse(savedAccounts);
-      const selectedId = localStorage.getItem('meta_selected_account');
-      const selected = accounts.find((a: any) => a.id === selectedId) || accounts[0];
-      return selected?.accessToken || null;
-    }
-    return localStorage.getItem('meta_access_token');
-  };
-
-  const getAdAccountId = (): string | null => {
-    const savedAccounts = localStorage.getItem('meta_saved_accounts');
-    if (savedAccounts) {
-      const accounts = JSON.parse(savedAccounts);
-      const selectedId = localStorage.getItem('meta_selected_account');
-      const selected = accounts.find((a: any) => a.id === selectedId) || accounts[0];
-      return selected?.adAccountId || null;
-    }
-    return localStorage.getItem('meta_ad_account_id');
-  };
-
   const logAction = async (params: LogActionParams) => {
     try {
-      const adAccountId = getAdAccountId();
+      const { adAccountId } = await getMetaCredentials();
       await supabase.from('campaign_action_history').insert({
         entity_id: params.entityId,
         entity_type: params.entityType,
@@ -72,7 +51,7 @@ export const useCampaignManager = () => {
   };
 
   const executeAction = async (params: Omit<CampaignAction, 'accessToken'>) => {
-    const accessToken = getAccessToken();
+    const { accessToken, adAccountId } = await getMetaCredentials();
     if (!accessToken) {
       toast.error('Token de acesso não encontrado. Conecte sua conta Meta primeiro.');
       return { success: false, error: 'No access token' };
@@ -89,7 +68,7 @@ export const useCampaignManager = () => {
         body: JSON.stringify({
           ...params,
           accessToken,
-          adAccountId: params.adAccountId || getAdAccountId(),
+          adAccountId: params.adAccountId || adAccountId,
         }),
       });
 
