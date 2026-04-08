@@ -529,7 +529,7 @@ const ActivitiesPage = () => {
 
     if ((activity as any).case_id) {
       promises.push(
-        supabase.from('lead_processes').select('id, title, process_number').eq('case_id', (activity as any).case_id).then(({ data }) => {
+        Promise.resolve(supabase.from('lead_processes').select('id, title, process_number').eq('case_id', (activity as any).case_id)).then(({ data }) => {
           setCaseProcesses((data || []).map(p => ({ id: p.id, title: p.title, process_number: p.process_number })));
         })
       );
