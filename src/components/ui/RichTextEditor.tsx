@@ -1,12 +1,47 @@
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Underline from '@tiptap/extension-underline';
-import Link from '@tiptap/extension-link';
-import Placeholder from '@tiptap/extension-placeholder';
-import { useRef, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+
+import { LexicalComposer } from '@lexical/react/LexicalComposer';
+import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
+import { ContentEditable } from '@lexical/react/LexicalContentEditable';
+import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
+import { ListPlugin } from '@lexical/react/LexicalListPlugin';
+import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
+import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
+import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
+import { AutoFocusPlugin } from '@lexical/react/LexicalAutoFocusPlugin';
+
+import {
+  $getRoot,
+  $getSelection,
+  $isRangeSelection,
+  FORMAT_TEXT_COMMAND,
+  COMMAND_PRIORITY_CRITICAL,
+  SELECTION_CHANGE_COMMAND,
+  $createParagraphNode,
+  $createTextNode,
+  type EditorState,
+  type LexicalEditor,
+} from 'lexical';
+
+import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html';
+
+import {
+  INSERT_ORDERED_LIST_COMMAND,
+  INSERT_UNORDERED_LIST_COMMAND,
+  REMOVE_LIST_COMMAND,
+  $isListNode,
+  ListNode,
+  ListItemNode,
+} from '@lexical/list';
+
+import { AutoLinkNode, LinkNode, $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
+import { $isHeadingNode } from '@lexical/rich-text';
+import { $getNearestNodeOfType } from '@lexical/utils';
+
 import {
   Bold,
   Italic,
@@ -18,8 +53,9 @@ import {
   Maximize2,
   Sparkles,
   Loader2,
-  ChevronRight,
+  Strikethrough,
 } from 'lucide-react';
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +67,54 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 
+// ─── Theme ───────────────────────────────────────────────
+const editorTheme = {
+  paragraph: 'lexical-paragraph',
+  text: {
+    bold: 'lexical-bold',
+    italic: 'lexical-italic',
+    underline: 'lexical-underline',
+    strikethrough: 'lexical-strikethrough',
+  },
+  list: {
+    nested: { listitem: 'lexical-nested-listitem' },
+    ol: 'lexical-list-ol',
+    ul: 'lexical-list-ul',
+    listitem: 'lexical-listitem',
+  },
+  link: 'lexical-link',
+};
+
+// ─── AI Actions ──────────────────────────────────────────
+const AI_ACTIONS = {
+  summarize: { label: 'Resumir', icon: '📝' },
+  fix_typos: { label: 'Corrigir erros', icon: '✏️' },
+  humanize: { label: 'Humanizar', icon: '🤝' },
+  help_write: { label: 'Ajude-me a escrever', icon: '💡' },
+};
+
+const TONE_ACTIONS: Record<string, string> = {
+  formal: 'Formal',
+  friendly: 'Amigável',
+  funny: 'Engraçado',
+  engaging: 'Cativante',
+  concise: 'Conciso',
+  empathetic: 'Empático',
+};
+
+const TRANSLATE_ACTIONS: Record<string, string> = {
+  translate_en: 'Inglês',
+  translate_es: 'Espanhol',
+  translate_pt: 'Português',
+};
+
+const DRAFT_ACTIONS: Record<string, string> = {
+  draft_email: 'E-mail',
+  draft_message: 'Mensagem WhatsApp',
+  draft_report: 'Relatório',
+};
+
+// ─── Props ───────────────────────────────────────────────
 interface RichTextEditorProps {
   value: string;
   onChange: (v: string) => void;
@@ -41,252 +125,256 @@ interface RichTextEditorProps {
   autoFocus?: boolean;
 }
 
-const AI_ACTIONS = {
-  summarize: { label: 'Resumir', icon: '📝' },
-  fix_typos: { label: 'Corrigir erros de digitação', icon: '✏️' },
-  humanize: { label: 'Humanizar', icon: '🤝' },
-  help_write: { label: 'Ajude-me a escrever', icon: '💡' },
-};
-
-const TONE_ACTIONS = {
-  formal: 'Formal',
-  friendly: 'Amigável',
-  funny: 'Engraçado',
-  engaging: 'Cativante',
-  concise: 'Conciso',
-  empathetic: 'Empático',
-};
-
-const TRANSLATE_ACTIONS = {
-  translate_en: 'Inglês',
-  translate_es: 'Espanhol',
-  translate_pt: 'Português',
-};
-
-const DRAFT_ACTIONS = {
-  draft_email: 'E-mail',
-  draft_message: 'Mensagem WhatsApp',
-  draft_report: 'Relatório',
-};
-
-export function RichTextEditor({
-  value,
-  onChange,
-  placeholder,
-  className,
-  minHeight = '32px',
+// ─── Toolbar Plugin ──────────────────────────────────────
+function ToolbarPlugin({
   onExpand,
-  autoFocus,
-}: RichTextEditorProps) {
-  const isInternalChange = useRef(false);
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
-  const [aiLoading, setAiLoading] = useState(false);
+  aiLoading,
+  onAiAction,
+}: {
+  onExpand?: () => void;
+  aiLoading: boolean;
+  onAiAction: (action: string) => void;
+}) {
+  const [editor] = useLexicalComposerContext();
+  const [isBold, setIsBold] = useState(false);
+  const [isItalic, setIsItalic] = useState(false);
+  const [isUnderline, setIsUnderline] = useState(false);
+  const [isStrikethrough, setIsStrikethrough] = useState(false);
+  const [isLink, setIsLink] = useState(false);
+  const [blockType, setBlockType] = useState('paragraph');
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        bulletList: { HTMLAttributes: { class: 'list-disc pl-4' } },
-        orderedList: { HTMLAttributes: { class: 'list-decimal pl-4' } },
-        listItem: { HTMLAttributes: { class: 'leading-normal' } },
-      }),
-      Underline,
-      Link.configure({ openOnClick: false, HTMLAttributes: { class: 'text-primary underline cursor-pointer' } }),
-      Placeholder.configure({ placeholder: placeholder || '' }),
-    ],
-    content: value || '',
-    editorProps: {
-      attributes: {
-        class: 'prose prose-sm dark:prose-invert max-w-none focus:outline-none px-3 py-2 text-xs',
-        style: `min-height: ${minHeight}`,
-      },
-    },
-    onUpdate: ({ editor: ed }) => {
-      isInternalChange.current = true;
-      const html = ed.getHTML();
-      onChangeRef.current(html === '<p></p>' ? '' : html);
-      requestAnimationFrame(() => { isInternalChange.current = false; });
-    },
-    autofocus: autoFocus,
-  });
+  const updateToolbar = useCallback(() => {
+    const selection = $getSelection();
+    if ($isRangeSelection(selection)) {
+      setIsBold(selection.hasFormat('bold'));
+      setIsItalic(selection.hasFormat('italic'));
+      setIsUnderline(selection.hasFormat('underline'));
+      setIsStrikethrough(selection.hasFormat('strikethrough'));
+
+      const anchorNode = selection.anchor.getNode();
+      const element = anchorNode.getKey() === 'root'
+        ? anchorNode
+        : anchorNode.getTopLevelElementOrThrow();
+      const elementKey = element.getKey();
+      const elementDOM = editor.getElementByKey(elementKey);
+
+      if (elementDOM !== null) {
+        if ($isListNode(element)) {
+          const parentList = $getNearestNodeOfType(anchorNode, ListNode);
+          const type = parentList ? parentList.getListType() : element.getListType();
+          setBlockType(type === 'number' ? 'ol' : 'ul');
+        } else {
+          setBlockType('paragraph');
+        }
+      }
+
+      // Check for link
+      const node = selection.anchor.getNode();
+      const parent = node.getParent();
+      setIsLink($isLinkNode(parent) || $isLinkNode(node));
+    }
+  }, [editor]);
 
   useEffect(() => {
-    if (!editor || isInternalChange.current) return;
-    const currentHtml = editor.getHTML();
-    const normalized = currentHtml === '<p></p>' ? '' : currentHtml;
-    if (normalized !== value) {
-      editor.commands.setContent(value || '', { emitUpdate: false });
-    }
-  }, [value, editor]);
+    return editor.registerCommand(
+      SELECTION_CHANGE_COMMAND,
+      () => {
+        updateToolbar();
+        return false;
+      },
+      COMMAND_PRIORITY_CRITICAL,
+    );
+  }, [editor, updateToolbar]);
 
-  const setLink = useCallback(() => {
-    if (!editor) return;
-    const previousUrl = editor.getAttributes('link').href;
-    const url = window.prompt('URL do link:', previousUrl);
-    if (url === null) return;
-    if (url === '') {
-      editor.chain().focus().extendMarkRange('link').unsetLink().run();
-      return;
-    }
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-  }, [editor]);
-
-  const handleAiAction = useCallback(async (action: string) => {
-    if (!editor) return;
-    const text = editor.getText();
-    if (!text.trim()) {
-      toast.error('Escreva algo primeiro para usar a IA');
-      return;
-    }
-    setAiLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('ai-text-editor', {
-        body: { text, action },
-      });
-      if (error) throw error;
-      if (data?.result) {
-        editor.commands.setContent(data.result, { emitUpdate: true });
-        toast.success('Texto atualizado pela IA');
+  const insertLink = useCallback(() => {
+    if (isLink) {
+      editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
+    } else {
+      const url = window.prompt('URL do link:');
+      if (url) {
+        editor.dispatchCommand(TOGGLE_LINK_COMMAND, url);
       }
-    } catch (err: any) {
-      console.error('AI editor error:', err);
-      toast.error('Erro ao processar com IA');
-    } finally {
-      setAiLoading(false);
     }
-  }, [editor]);
+  }, [editor, isLink]);
 
-  if (!editor) return null;
+  const toggleList = useCallback((type: 'ul' | 'ol') => {
+    if (blockType === type) {
+      editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
+    } else {
+      editor.dispatchCommand(
+        type === 'ul' ? INSERT_UNORDERED_LIST_COMMAND : INSERT_ORDERED_LIST_COMMAND,
+        undefined,
+      );
+    }
+  }, [editor, blockType]);
 
   return (
-    <div className={cn('border rounded-md overflow-hidden bg-background', className)}>
-      {/* Toolbar */}
-      <div className="flex items-center gap-0.5 px-1.5 py-1 border-b bg-muted/30 flex-wrap">
-        {/* AI Edition */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              disabled={aiLoading}
-              className={cn(
-                'p-1 rounded hover:bg-accent transition-colors flex items-center gap-0.5 text-xs',
-                aiLoading && 'opacity-50'
-              )}
-              title="AI Edition"
-            >
-              {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              <span className="text-[10px] font-medium hidden sm:inline">AI</span>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
-            {Object.entries(AI_ACTIONS).map(([key, { label, icon }]) => (
-              <DropdownMenuItem key={key} onClick={() => handleAiAction(key)}>
-                <span className="mr-2">{icon}</span> {label}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <span className="mr-2">🎨</span> Mudar tom
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                {Object.entries(TONE_ACTIONS).map(([key, label]) => (
-                  <DropdownMenuItem key={key} onClick={() => handleAiAction(key)}>
-                    {label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <span className="mr-2">🌍</span> Traduzir
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                {Object.entries(TRANSLATE_ACTIONS).map(([key, label]) => (
-                  <DropdownMenuItem key={key} onClick={() => handleAiAction(key)}>
-                    {label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <span className="mr-2">📄</span> Rascunhar como
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                {Object.entries(DRAFT_ACTIONS).map(([key, label]) => (
-                  <DropdownMenuItem key={key} onClick={() => handleAiAction(key)}>
-                    {label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-          </DropdownMenuContent>
-        </DropdownMenu>
+    <div className="flex items-center gap-0.5 px-1.5 py-1 border-b bg-muted/30 flex-wrap">
+      {/* AI Edition */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            disabled={aiLoading}
+            className={cn(
+              'p-1 rounded hover:bg-accent transition-colors flex items-center gap-0.5 text-xs',
+              aiLoading && 'opacity-50',
+            )}
+            title="AI Edition"
+          >
+            {aiLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            <span className="text-[10px] font-medium hidden sm:inline">AI</span>
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-56">
+          {Object.entries(AI_ACTIONS).map(([key, { label, icon }]) => (
+            <DropdownMenuItem key={key} onClick={() => onAiAction(key)}>
+              <span className="mr-2">{icon}</span> {label}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <span className="mr-2">🎨</span> Mudar tom
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              {Object.entries(TONE_ACTIONS).map(([key, label]) => (
+                <DropdownMenuItem key={key} onClick={() => onAiAction(key)}>
+                  {label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <span className="mr-2">🌍</span> Traduzir
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              {Object.entries(TRANSLATE_ACTIONS).map(([key, label]) => (
+                <DropdownMenuItem key={key} onClick={() => onAiAction(key)}>
+                  {label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <span className="mr-2">📄</span> Rascunhar como
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              {Object.entries(DRAFT_ACTIONS).map(([key, label]) => (
+                <DropdownMenuItem key={key} onClick={() => onAiAction(key)}>
+                  {label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-        <div className="w-px h-4 bg-border mx-0.5" />
+      <div className="w-px h-4 bg-border mx-0.5" />
 
-        <ToolBtn
-          active={editor.isActive('bold')}
-          onClick={() => editor.chain().focus().toggleBold().run()}
-          title="Negrito"
-        >
-          <Bold className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <ToolBtn
-          active={editor.isActive('italic')}
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-          title="Itálico"
-        >
-          <Italic className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <ToolBtn
-          active={editor.isActive('underline')}
-          onClick={() => editor.chain().focus().toggleUnderline().run()}
-          title="Sublinhado"
-        >
-          <UnderlineIcon className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <div className="w-px h-4 bg-border mx-0.5" />
-        <ToolBtn
-          active={editor.isActive('bulletList')}
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-          title="Lista"
-        >
-          <List className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <ToolBtn
-          active={editor.isActive('orderedList')}
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          title="Lista numerada"
-        >
-          <ListOrdered className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <div className="w-px h-4 bg-border mx-0.5" />
-        <ToolBtn
-          active={editor.isActive('link')}
-          onClick={editor.isActive('link')
-            ? () => editor.chain().focus().unsetLink().run()
-            : setLink}
-          title={editor.isActive('link') ? 'Remover link' : 'Inserir link'}
-        >
-          {editor.isActive('link') ? <Unlink className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
-        </ToolBtn>
-        {onExpand && (
-          <>
-            <div className="flex-1" />
-            <ToolBtn active={false} onClick={onExpand} title="Expandir">
-              <Maximize2 className="h-3.5 w-3.5" />
-            </ToolBtn>
-          </>
-        )}
-      </div>
-      {/* Editor */}
-      <EditorContent editor={editor} />
+      <ToolBtn active={isBold} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} title="Negrito">
+        <Bold className="h-3.5 w-3.5" />
+      </ToolBtn>
+      <ToolBtn active={isItalic} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} title="Itálico">
+        <Italic className="h-3.5 w-3.5" />
+      </ToolBtn>
+      <ToolBtn active={isUnderline} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')} title="Sublinhado">
+        <UnderlineIcon className="h-3.5 w-3.5" />
+      </ToolBtn>
+      <ToolBtn active={isStrikethrough} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')} title="Tachado">
+        <Strikethrough className="h-3.5 w-3.5" />
+      </ToolBtn>
+
+      <div className="w-px h-4 bg-border mx-0.5" />
+
+      <ToolBtn active={blockType === 'ul'} onClick={() => toggleList('ul')} title="Lista">
+        <List className="h-3.5 w-3.5" />
+      </ToolBtn>
+      <ToolBtn active={blockType === 'ol'} onClick={() => toggleList('ol')} title="Lista numerada">
+        <ListOrdered className="h-3.5 w-3.5" />
+      </ToolBtn>
+
+      <div className="w-px h-4 bg-border mx-0.5" />
+
+      <ToolBtn active={isLink} onClick={insertLink} title={isLink ? 'Remover link' : 'Inserir link'}>
+        {isLink ? <Unlink className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
+      </ToolBtn>
+
+      {onExpand && (
+        <>
+          <div className="flex-1" />
+          <ToolBtn active={false} onClick={onExpand} title="Expandir">
+            <Maximize2 className="h-3.5 w-3.5" />
+          </ToolBtn>
+        </>
+      )}
     </div>
   );
 }
 
+// ─── Sync Plugin (external value → editor) ───────────────
+function SyncPlugin({ value }: { value: string }) {
+  const [editor] = useLexicalComposerContext();
+  const isInternalChange = useRef(false);
+  const lastExternalValue = useRef(value);
+
+  // Mark internal changes
+  useEffect(() => {
+    return editor.registerUpdateListener(({ tags }) => {
+      if (!tags.has('external-sync')) {
+        isInternalChange.current = true;
+        requestAnimationFrame(() => {
+          isInternalChange.current = false;
+        });
+      }
+    });
+  }, [editor]);
+
+  useEffect(() => {
+    if (isInternalChange.current) return;
+    if (value === lastExternalValue.current) return;
+    lastExternalValue.current = value;
+
+    editor.update(
+      () => {
+        const root = $getRoot();
+        // Clear and set new content
+        if (!value || value === '<p></p>' || value.trim() === '') {
+          root.clear();
+          root.append($createParagraphNode());
+          return;
+        }
+        const parser = new DOMParser();
+        const dom = parser.parseFromString(value, 'text/html');
+        const nodes = $generateNodesFromDOM(editor, dom);
+        root.clear();
+        nodes.forEach((node) => root.append(node));
+      },
+      { tag: 'external-sync' },
+    );
+  }, [value, editor]);
+
+  return null;
+}
+
+// ─── AI Action Handler Plugin ────────────────────────────
+function AiPlugin({
+  aiLoading,
+  setAiLoading,
+}: {
+  aiLoading: boolean;
+  setAiLoading: (v: boolean) => void;
+}) {
+  return null; // AI is handled at parent level
+}
+
+// ─── Tool Button ─────────────────────────────────────────
 function ToolBtn({
   active,
   onClick,
@@ -305,10 +393,129 @@ function ToolBtn({
       title={title}
       className={cn(
         'p-1 rounded hover:bg-accent transition-colors',
-        active && 'bg-accent text-accent-foreground'
+        active && 'bg-accent text-accent-foreground',
       )}
     >
       {children}
     </button>
   );
+}
+
+// ─── Main Component ──────────────────────────────────────
+export function RichTextEditor({
+  value,
+  onChange,
+  placeholder,
+  className,
+  minHeight = '32px',
+  onExpand,
+  autoFocus,
+}: RichTextEditorProps) {
+  const [aiLoading, setAiLoading] = useState(false);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const editorRef = useRef<LexicalEditor | null>(null);
+
+  const initialConfig = {
+    namespace: 'RichTextEditor',
+    theme: editorTheme,
+    onError: (error: Error) => console.error('Lexical error:', error),
+    nodes: [ListNode, ListItemNode, LinkNode, AutoLinkNode],
+  };
+
+  const handleEditorChange = useCallback(
+    (editorState: EditorState, editor: LexicalEditor) => {
+      editorRef.current = editor;
+      editorState.read(() => {
+        const html = $generateHtmlFromNodes(editor);
+        const root = $getRoot();
+        const text = root.getTextContent().trim();
+        onChangeRef.current(text === '' ? '' : html);
+      });
+    },
+    [],
+  );
+
+  const handleAiAction = useCallback(
+    async (action: string) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+
+      let text = '';
+      editor.getEditorState().read(() => {
+        text = $getRoot().getTextContent().trim();
+      });
+
+      if (!text) {
+        toast.error('Escreva algo primeiro para usar a IA');
+        return;
+      }
+
+      setAiLoading(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('ai-text-editor', {
+          body: { text, action },
+        });
+        if (error) throw error;
+        if (data?.result) {
+          editor.update(() => {
+            const root = $getRoot();
+            root.clear();
+            const p = $createParagraphNode();
+            p.append($createTextNode(data.result));
+            root.append(p);
+          });
+          toast.success('Texto atualizado pela IA');
+        }
+      } catch (err: any) {
+        console.error('AI editor error:', err);
+        toast.error('Erro ao processar com IA');
+      } finally {
+        setAiLoading(false);
+      }
+    },
+    [],
+  );
+
+  return (
+    <div className={cn('border rounded-md overflow-hidden bg-background', className)}>
+      <LexicalComposer initialConfig={initialConfig}>
+        <ToolbarPlugin onExpand={onExpand} aiLoading={aiLoading} onAiAction={handleAiAction} />
+        <div className="relative" style={{ minHeight }}>
+          <RichTextPlugin
+            contentEditable={
+              <ContentEditable
+                className="lexical-editor px-3 py-2 text-xs focus:outline-none"
+                style={{ minHeight }}
+              />
+            }
+            placeholder={
+              placeholder ? (
+                <div className="lexical-placeholder absolute top-2 left-3 text-xs text-muted-foreground/50 pointer-events-none select-none">
+                  {placeholder}
+                </div>
+              ) : null
+            }
+            ErrorBoundary={LexicalErrorBoundary}
+          />
+        </div>
+        <HistoryPlugin />
+        <ListPlugin />
+        <LinkPlugin />
+        <OnChangePlugin onChange={handleEditorChange} ignoreSelectionChange />
+        <SyncPlugin value={value} />
+        {autoFocus && <AutoFocusPlugin />}
+        <EditorRefPlugin editorRef={editorRef} />
+      </LexicalComposer>
+    </div>
+  );
+}
+
+// ─── Editor Ref Plugin ───────────────────────────────────
+function EditorRefPlugin({ editorRef }: { editorRef: React.MutableRefObject<LexicalEditor | null> }) {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor, editorRef]);
+  return null;
 }
