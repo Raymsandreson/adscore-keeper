@@ -283,7 +283,7 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
                     </tr>
                   </thead>
                   <tbody>
-                    {dashboardMetrics.closedByAgentDetailed.map(({ agent, ai, assisted, human, total }) => (
+                    {dashboardMetrics.closedByAgentDetailed.map(({ agent, ai, assisted, human, noInteraction, total }) => (
                       <tr key={agent} className="border-t border-border/50">
                         <td className="px-2 py-1.5 truncate max-w-[140px]">{agent}</td>
                         <td
@@ -298,6 +298,10 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
                           className="text-center px-2 py-1.5 font-bold text-blue-600 cursor-pointer hover:underline hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded"
                           onClick={() => human > 0 && onClosingDetailClick?.({ agent, type: 'human' })}
                         >{human}</td>
+                        <td
+                          className="text-center px-2 py-1.5 font-bold text-gray-400 cursor-pointer hover:underline hover:bg-gray-50 dark:hover:bg-gray-950/30 rounded"
+                          onClick={() => noInteraction > 0 && onClosingDetailClick?.({ agent, type: 'noInteraction' })}
+                        >{noInteraction > 0 ? noInteraction : '-'}</td>
                         <td
                           className="text-center px-2 py-1.5 font-bold cursor-pointer hover:underline"
                           onClick={() => total > 0 && onClosingDetailClick?.({ agent, type: 'all' })}
