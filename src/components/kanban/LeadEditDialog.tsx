@@ -973,7 +973,7 @@ ${scrapeData.content || ''}
                     })()}
                     <Badge variant="outline" className="gap-1">
                       <Calendar className="h-3 w-3" />
-                      Criado: {format(new Date(lead.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                      Criado: {lead.created_at ? format(new Date(lead.created_at), "dd/MM/yyyy", { locale: ptBR }) : '—'}
                       {creatorName && (
                         <span className="ml-1 flex items-center gap-0.5">
                           <UserCheck className="h-3 w-3" />
@@ -983,7 +983,7 @@ ${scrapeData.content || ''}
                     </Badge>
                     <Badge variant="outline" className="gap-1">
                       <Clock className="h-3 w-3" />
-                      Atualizado: {format(new Date(lead.updated_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                      Atualizado: {lead.updated_at ? format(new Date(lead.updated_at), "dd/MM/yyyy HH:mm", { locale: ptBR }) : '—'}
                       {hasEditor && editorName && (
                         <span className="ml-1 flex items-center gap-0.5">
                           <Edit3 className="h-3 w-3" />
