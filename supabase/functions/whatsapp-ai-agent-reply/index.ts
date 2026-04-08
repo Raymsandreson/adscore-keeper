@@ -916,6 +916,20 @@ Se o cliente NÃO estiver perguntando sobre processo/caso, NÃO use a tag [GRUPO
         });
       }
 
+      // ========== EXTRACT AND FORWARD GROUP MESSAGES ==========
+      let groupMessageToSend: string | null = null;
+      const grupoTagRegex = /\[GRUPO\]([\s\S]*?)\[\/GRUPO\]/gi;
+      const grupoMatches = reply.match(grupoTagRegex);
+      if (grupoMatches && grupoMatches.length > 0) {
+        // Extract all group messages
+        groupMessageToSend = grupoMatches
+          .map(m => m.replace(/\[GRUPO\]/gi, '').replace(/\[\/GRUPO\]/gi, '').trim())
+          .join('\n\n');
+        // Remove tags from private reply
+        reply = reply.replace(grupoTagRegex, '').replace(/\n{3,}/g, '\n\n').trim();
+        console.log(`[group-forward] Extracted group message (${groupMessageToSend.length} chars) for phone ${phone}`);
+      }
+
       // ========== SHORTCUT DOCUMENT HANDOFF ==========
       // If this agent is a shortcut with a template_token, detect when data collection
       // is complete and trigger wjia-agent to actually generate the document
