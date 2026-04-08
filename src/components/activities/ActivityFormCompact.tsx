@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Search, X, ChevronDown, Copy, Loader2, Maximize2 } from 'lucide-react';
+import { Search, X, ChevronDown, Copy, Loader2, Maximize2, UserPlus, Building2 } from 'lucide-react';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
@@ -95,17 +95,61 @@ const MATRIX_OPTIONS = [
 export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [expandedFieldKey, setExpandedFieldKey] = useState<string | null>(null);
-  const [linkedOpen, setLinkedOpen] = useState(!!props.formLeadId || !!props.formContactId || !!props.formCaseId);
+  const [linkedOpen, setLinkedOpen] = useState(!!props.formCaseId);
+  const [linkLeadOpen, setLinkLeadOpen] = useState(false);
+  const [linkContactOpen, setLinkContactOpen] = useState(false);
 
   return (
     <div className="space-y-3">
-      {/* === ROW 1: Title === */}
-      <Input
-        value={props.formTitle}
-        onChange={e => props.handleTitleChange(e.target.value)}
-        placeholder="Assunto da atividade *"
-        className="h-9 text-sm font-medium border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-primary placeholder:text-muted-foreground/60"
-      />
+      {/* === ROW 1: Title + Link buttons === */}
+      <div className="flex items-center gap-2">
+        <Input
+          value={props.formTitle}
+          onChange={e => props.handleTitleChange(e.target.value)}
+          placeholder="Assunto da atividade *"
+          className="h-9 text-sm font-medium border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-primary placeholder:text-muted-foreground/60 flex-1"
+        />
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Lead link button */}
+          {props.formLeadName ? (
+            <div className="flex items-center gap-0.5">
+              <Badge
+                variant="secondary"
+                className="text-[9px] h-5 max-w-[120px] truncate cursor-pointer hover:opacity-80"
+                onClick={() => setLinkLeadOpen(true)}
+              >
+                {props.formLeadName}
+              </Badge>
+              <button type="button" onClick={props.handleClearLead} className="text-muted-foreground hover:text-foreground">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1 text-muted-foreground" onClick={() => setLinkLeadOpen(true)}>
+              <Building2 className="h-3 w-3" /> Lead
+            </Button>
+          )}
+          {/* Contact link button */}
+          {props.formContactName ? (
+            <div className="flex items-center gap-0.5">
+              <Badge
+                variant="outline"
+                className="text-[9px] h-5 max-w-[120px] truncate cursor-pointer hover:opacity-80"
+                onClick={() => setLinkContactOpen(true)}
+              >
+                {props.formContactName}
+              </Badge>
+              <button type="button" onClick={() => { props.setFormContactId(''); props.setFormContactName(''); }} className="text-muted-foreground hover:text-foreground">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1 text-muted-foreground" onClick={() => setLinkContactOpen(true)}>
+              <UserPlus className="h-3 w-3" /> Contato
+            </Button>
+          )}
+        </div>
+      </div>
 
       {/* === ROW 2: Core selects - 4 columns === */}
       <div className="grid grid-cols-4 gap-2">
@@ -245,47 +289,12 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       <Collapsible open={linkedOpen} onOpenChange={setLinkedOpen}>
         <CollapsibleTrigger className="flex items-center gap-1.5 w-full text-left py-1">
           <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", linkedOpen && "rotate-180")} />
-          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Vínculos</span>
-          {(props.formLeadName || props.formContactName || props.formCaseTitle) && (
-            <div className="flex gap-1 ml-auto">
-              {props.formLeadName && <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{props.formLeadName}</Badge>}
-              {props.formContactName && <Badge variant="outline" className="text-[9px] h-4 px-1.5">{props.formContactName}</Badge>}
-            </div>
+          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Caso / Processo</span>
+          {props.formCaseTitle && (
+            <Badge variant="secondary" className="text-[9px] h-4 px-1.5 ml-auto">{props.formCaseTitle}</Badge>
           )}
         </CollapsibleTrigger>
         <CollapsibleContent className="space-y-2.5 pt-1.5">
-          {/* Lead */}
-          <CompactSearchField
-            label="Lead"
-            placeholder="Buscar lead..."
-            searchValue={props.leadSearch}
-            onSearchChange={props.setLeadSearch}
-            selectedName={props.formLeadName}
-            onClear={props.handleClearLead}
-            items={props.filteredLeads.map(l => ({ id: l.id, name: l.lead_name || 'Lead sem nome' }))}
-            selectedId={props.formLeadId}
-            onSelect={(id) => { props.handleSelectLead(id); props.setLeadSearch(''); }}
-            showList={!!props.leadSearch || !props.formLeadId}
-          />
-          {/* Contact */}
-          <CompactSearchField
-            label="Contato"
-            placeholder="Buscar contato..."
-            searchValue={props.contactSearch}
-            onSearchChange={props.setContactSearch}
-            selectedName={props.formContactName}
-            onClear={() => { props.setFormContactId(''); props.setFormContactName(''); }}
-            items={(props.contactSearch
-              ? props.availableContacts.filter(c => c.full_name?.toLowerCase().includes(props.contactSearch.toLowerCase()))
-              : props.availableContacts.slice(0, 20)
-            ).map(c => ({ id: c.id, name: c.full_name }))}
-            selectedId={props.formContactId}
-            onSelect={(id) => {
-              const c = props.availableContacts.find(c => c.id === id);
-              if (c) { props.setFormContactId(c.id); props.setFormContactName(c.full_name); props.setContactSearch(''); }
-            }}
-            showList={!!props.contactSearch || !props.formContactId}
-          />
           {/* Case */}
           <CompactSearchField
             label="Caso"
@@ -465,6 +474,98 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <ActivityFieldSettingsDialog fields={props.fieldSettings} onUpdateField={props.updateFieldSetting} onReorder={props.reorderFields} />
         </div>
       )}
+
+      {/* === SHEET: Link Lead === */}
+      <Sheet open={linkLeadOpen} onOpenChange={setLinkLeadOpen}>
+        <SheetContent className="w-full sm:max-w-sm">
+          <SheetHeader>
+            <SheetTitle className="text-base">Vincular Lead</SheetTitle>
+          </SheetHeader>
+          <div className="pt-4 space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar lead..."
+                value={props.leadSearch}
+                onChange={e => props.setLeadSearch(e.target.value)}
+                className="pl-9 h-9 text-sm"
+                autoFocus
+              />
+            </div>
+            <ScrollArea className="h-[calc(100vh-200px)]">
+              <div className="space-y-0.5">
+                {props.filteredLeads.map(l => (
+                  <button
+                    key={l.id}
+                    className={cn(
+                      "w-full text-left px-3 py-2.5 text-sm rounded-md hover:bg-accent transition-colors",
+                      props.formLeadId === l.id && "bg-accent font-medium"
+                    )}
+                    onClick={() => {
+                      props.handleSelectLead(l.id);
+                      props.setLeadSearch('');
+                      setLinkLeadOpen(false);
+                    }}
+                  >
+                    {l.lead_name || 'Lead sem nome'}
+                  </button>
+                ))}
+                {props.filteredLeads.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-8">Nenhum lead encontrado</p>
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* === SHEET: Link Contact === */}
+      <Sheet open={linkContactOpen} onOpenChange={setLinkContactOpen}>
+        <SheetContent className="w-full sm:max-w-sm">
+          <SheetHeader>
+            <SheetTitle className="text-base">Vincular Contato</SheetTitle>
+          </SheetHeader>
+          <div className="pt-4 space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar contato..."
+                value={props.contactSearch}
+                onChange={e => props.setContactSearch(e.target.value)}
+                className="pl-9 h-9 text-sm"
+                autoFocus
+              />
+            </div>
+            <ScrollArea className="h-[calc(100vh-200px)]">
+              <div className="space-y-0.5">
+                {(props.contactSearch
+                  ? props.availableContacts.filter(c => c.full_name?.toLowerCase().includes(props.contactSearch.toLowerCase()))
+                  : props.availableContacts.slice(0, 50)
+                ).map(c => (
+                  <button
+                    key={c.id}
+                    className={cn(
+                      "w-full text-left px-3 py-2.5 text-sm rounded-md hover:bg-accent transition-colors",
+                      props.formContactId === c.id && "bg-accent font-medium"
+                    )}
+                    onClick={() => {
+                      props.setFormContactId(c.id);
+                      props.setFormContactName(c.full_name);
+                      props.setContactSearch('');
+                      setLinkContactOpen(false);
+                    }}
+                  >
+                    {c.full_name}
+                  </button>
+                ))}
+                {props.availableContacts.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-8">Nenhum contato encontrado</p>
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
