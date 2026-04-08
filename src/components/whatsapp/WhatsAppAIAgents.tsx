@@ -14,6 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Bot, Plus, Pencil, Trash2, Power, PowerOff, Sparkles, Loader2, Phone, Clock, Megaphone, X, FileText, Zap, Layers, Volume2 } from 'lucide-react';
@@ -308,10 +309,13 @@ export function WhatsAppAIAgents() {
     fetchAgents();
   };
 
-  const handleDelete = async (agent: AIAgent) => {
-    if (!confirm(`Excluir agente "${agent.name}"?`)) return;
-    await supabase.from('whatsapp_ai_agents').delete().eq('id', agent.id);
+  const [deleteTarget, setDeleteTarget] = useState<AIAgent | null>(null);
+
+  const confirmDeleteAgent = async () => {
+    if (!deleteTarget) return;
+    await supabase.from('whatsapp_ai_agents').delete().eq('id', deleteTarget.id);
     toast.success('Agente excluído');
+    setDeleteTarget(null);
     fetchAgents();
   };
 
@@ -402,7 +406,7 @@ export function WhatsAppAIAgents() {
                         {agent.is_active ? <Power className="h-4 w-4 text-green-600" /> : <PowerOff className="h-4 w-4 text-muted-foreground" />}
                       </Button>
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditAgent(agent)}><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(agent)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setDeleteTarget(agent)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </div>
                 </CardContent>
@@ -984,6 +988,24 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir agente "{deleteTarget?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação é irreversível. O agente, suas configurações, automações e histórico de follow-up serão permanentemente removidos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteAgent} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Sim, excluir agente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
