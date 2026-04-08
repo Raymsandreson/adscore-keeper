@@ -42,6 +42,7 @@ import {
   Settings
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { logAudit } from '@/hooks/useAuditLog';
 import { toast } from 'sonner';
 import { useContactLeads } from '@/hooks/useContactLeads';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
