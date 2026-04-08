@@ -237,6 +237,8 @@ export function useMonitorData() {
         campaign_name: r.campaign_id ? campaignNames.get(r.campaign_id) || null : null,
       })));
 
+      setRedirections((redirectionsRes.data || []) as RedirectionData[]);
+
     } catch (error) {
       console.error('Error fetching agent monitor data:', error);
     } finally {
@@ -244,5 +246,5 @@ export function useMonitorData() {
     }
   }, []);
 
-  return { agents, conversations, agentStats, referrals, boards, loading, fetchData };
+  return { agents, conversations, agentStats, referrals, redirections, boards, loading, fetchData };
 }
