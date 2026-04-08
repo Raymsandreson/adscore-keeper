@@ -468,9 +468,17 @@ function RichTextEditorComponent({
 
   useEffect(() => {
     return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
+      }
+
+      const editor = editorRef.current;
+      if (editor) {
+        flushEditorHtml(editor);
+      }
     };
-  }, []);
+  }, [flushEditorHtml]);
 
   const flushEditorHtml = useCallback((editor: LexicalEditor) => {
     editor.getEditorState().read(() => {
