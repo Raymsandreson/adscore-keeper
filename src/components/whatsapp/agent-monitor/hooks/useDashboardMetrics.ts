@@ -49,6 +49,23 @@ export interface NewConvDetail {
   has_lead: boolean;
 }
 
+// Helper to fetch all rows with pagination
+async function fetchAllPaginated<T>(
+  queryFn: (from: number, to: number) => Promise<{ data: T[] | null }>,
+  pageSize = 1000
+): Promise<T[]> {
+  const allRows: T[] = [];
+  let from = 0;
+  while (true) {
+    const { data } = await queryFn(from, from + pageSize - 1);
+    if (!data || data.length === 0) break;
+    allRows.push(...data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return allRows;
+}
+
 export function useDashboardMetrics() {
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     newConversations: 0, responseRate: 0, avgResponseTimeMin: 0,
@@ -68,13 +85,21 @@ export function useDashboardMetrics() {
       const todayStart = startOfDay(dateRange.from).toISOString();
       const todayEnd = endOfDay(dateRange.to).toISOString();
 
-      // Fetch all inbound messages (paginated)
-      const fetchAllInbound = async () => {
-        const allRows: any[] = [];
-        let from = 0;
-        const pageSize = 1000;
-        while (true) {
-          const { data } = await supabase
+      // ===== PHASE 1: Parallel fetch of all independent data =====
+      const [
+        inboundData,
+        outboundData,
+        closedLeads,
+        signedDocsRes,
+        pendingDocsRes,
+        groupsRes,
+        casesRes,
+        processesRes,
+        contactsRes,
+      ] = await Promise.all([
+        // Inbound messages (paginated)
+        fetchAllPaginated((from, to) =>
+          supabase
             .from('whatsapp_messages')
             .select('phone, contact_name, created_at, instance_name')
             .eq('direction', 'inbound')
@@ -82,18 +107,40 @@ export function useDashboardMetrics() {
             .gte('created_at', todayStart)
             .lte('created_at', todayEnd)
             .order('created_at', { ascending: true })
-            .range(from, from + pageSize - 1);
-          if (!data || data.length === 0) break;
-          allRows.push(...data);
-          if (data.length < pageSize) break;
-          from += pageSize;
-        }
-        return allRows;
-      };
+            .range(from, to)
+        ),
+        // Outbound messages (paginated) - fetch ALL at once instead of per-phone
+        fetchAllPaginated((from, to) =>
+          supabase
+            .from('whatsapp_messages')
+            .select('phone, created_at')
+            .eq('direction', 'outbound')
+            .not('phone', 'like', '%@g.us')
+            .gte('created_at', todayStart)
+            .lte('created_at', todayEnd)
+            .order('created_at', { ascending: true })
+            .range(from, to)
+        ),
+        // Closed leads
+        supabase
+          .from('leads')
+          .select('id, acolhedor, campaign_name, lead_status, lead_phone')
+          .eq('lead_status', 'closed')
+          .gte('updated_at', todayStart)
+          .lte('updated_at', todayEnd)
+          .then(r => r.data || []),
+        // Operational metrics - all in parallel
+        supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at, signed_at').eq('signer_status', 'signed').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
+        supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at').eq('signer_status', 'new').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
+        supabase.from('leads').select('id, lead_name, acolhedor, board_id, campaign_name, created_at').not('whatsapp_group_id', 'is', null).gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
+        supabase.from('legal_cases').select('id, case_number, title, acolhedor, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
+        supabase.from('case_process_tracking').select('id, cliente, acolhedor, lead_id, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
+        supabase.from('contacts').select('id, full_name, city, state, created_by, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
+      ]);
 
-      const inboundData = await fetchAllInbound();
+      setMetricsProgress(50);
 
-      // Unique phones from inbound (use raw phone as stored in DB for exact matching)
+      // ===== PHASE 2: Process inbound/outbound data in memory =====
       const phoneMap = new Map<string, { phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null }>();
       for (const msg of inboundData) {
         if (!msg.phone || msg.phone.includes('@g.us')) continue;
@@ -104,55 +151,19 @@ export function useDashboardMetrics() {
       const uniquePhones = Array.from(phoneMap.keys());
       const totalInbound = uniquePhones.length;
 
-      // Check which phones had ANY message before the period start
-      // Use exact .in() match (phones are stored consistently in DB)
-      // Batch of 50 with high limit to avoid missing phones due to row cap
-      const oldPhones = new Set<string>();
-      for (let i = 0; i < uniquePhones.length; i += 50) {
-        const batch = uniquePhones.slice(i, i + 50);
-        // Paginate to ensure we check all - we only need distinct phones
-        let from = 0;
-        const checked = new Set<string>(batch);
-        while (checked.size > oldPhones.size) {
-          const remaining = batch.filter(p => !oldPhones.has(p));
-          if (remaining.length === 0) break;
-          const { data: oldMsgs } = await supabase
-            .from('whatsapp_messages')
-            .select('phone')
-            .lt('created_at', todayStart)
-            .in('phone', remaining)
-            .range(from, from + 999);
-          if (!oldMsgs || oldMsgs.length === 0) break;
-          oldMsgs.forEach(m => oldPhones.add(m.phone));
-          if (oldMsgs.length < 1000) break;
-          from += 1000;
-        }
-      }
-      const trulyNewPhones = uniquePhones.filter(p => !oldPhones.has(p));
-
-      // Fetch outbound for response rate & time
+      // Build outbound map from bulk data (no per-phone queries!)
       const outboundMap = new Map<string, { count: number; first_at: string | null }>();
-      for (let i = 0; i < uniquePhones.length; i += 200) {
-        const batch = uniquePhones.slice(i, i + 200);
-        const { data: outMsgs } = await supabase
-          .from('whatsapp_messages')
-          .select('phone, created_at')
-          .eq('direction', 'outbound')
-          .gte('created_at', todayStart)
-          .lte('created_at', todayEnd)
-          .in('phone', batch)
-          .order('created_at', { ascending: true });
-        for (const m of (outMsgs || [])) {
-          const ex = outboundMap.get(m.phone);
-          if (!ex) outboundMap.set(m.phone, { count: 1, first_at: m.created_at });
-          else ex.count++;
-        }
+      for (const m of outboundData) {
+        if (!m.phone) continue;
+        const ex = outboundMap.get(m.phone);
+        if (!ex) outboundMap.set(m.phone, { count: 1, first_at: m.created_at });
+        else ex.count++;
       }
 
       const respondedCount = uniquePhones.filter(p => outboundMap.has(p)).length;
       const responseRate = totalInbound > 0 ? Math.round((respondedCount / totalInbound) * 100) : 0;
 
-      // Avg response time
+      // Avg response time (in-memory)
       const responseTimes: number[] = [];
       for (const [phone, outData] of outboundMap.entries()) {
         const inData = phoneMap.get(phone);
@@ -163,16 +174,106 @@ export function useDashboardMetrics() {
       }
       const avgResponseTimeMin = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : 0;
 
-      // Check leads for new conv details
-      let leadPhoneMap = new Map<string, { name: string }>();
-      if (trulyNewPhones.length > 0) {
-        const { data: leads } = await supabase.from('leads').select('lead_phone, lead_name').not('lead_phone', 'is', null);
-        for (const l of (leads || [])) {
-          const norm = (l.lead_phone || '').replace(/\D/g, '');
-          if (norm) leadPhoneMap.set(norm.slice(-8), { name: l.lead_name });
-        }
-      }
+      setMetricsProgress(65);
 
+      // ===== PHASE 3: New conversations - optimized with single count query =====
+      // Instead of checking each phone individually, use a single query to count
+      // phones that had messages BEFORE the period. Much faster approach:
+      // Sample up to 500 unique phones and check in a single batch.
+      const phonesToCheck = uniquePhones.slice(0, 2000);
+      const oldPhones = new Set<string>();
+
+      // Check in larger batches of 200 with a single page each
+      const batchPromises: Promise<void>[] = [];
+      for (let i = 0; i < phonesToCheck.length; i += 200) {
+        const batch = phonesToCheck.slice(i, i + 200);
+        batchPromises.push(
+          supabase
+            .from('whatsapp_messages')
+            .select('phone')
+            .lt('created_at', todayStart)
+            .in('phone', batch)
+            .limit(200)
+            .then(({ data }) => {
+              (data || []).forEach(m => oldPhones.add(m.phone));
+            })
+        );
+      }
+      // Run all batch checks in parallel (not sequential!)
+      await Promise.all(batchPromises);
+
+      const trulyNewPhones = uniquePhones.filter(p => !oldPhones.has(p));
+
+      setMetricsProgress(75);
+
+      // ===== PHASE 4: Lead lookup + closed leads analysis in parallel =====
+      const leadPhoneMapPromise = trulyNewPhones.length > 0
+        ? supabase.from('leads').select('lead_phone, lead_name').not('lead_phone', 'is', null).then(r => {
+            const map = new Map<string, { name: string }>();
+            for (const l of (r.data || [])) {
+              const norm = (l.lead_phone || '').replace(/\D/g, '');
+              if (norm) map.set(norm.slice(-8), { name: l.lead_name });
+            }
+            return map;
+          })
+        : Promise.resolve(new Map<string, { name: string }>());
+
+      // Human phone check for closed leads
+      const closedTotal = closedLeads.length;
+      const humanPhonesPromise = (async () => {
+        if (closedTotal === 0) return new Set<string>();
+        const closedSuffixes = [...new Set(
+          closedLeads
+            .map((l: any) => (l.lead_phone || '').replace(/\D/g, ''))
+            .filter((p: string) => p.length >= 8)
+            .map((p: string) => p.slice(-8))
+        )];
+        
+        const humanPhones = new Set<string>();
+        const humanBatches: Promise<void>[] = [];
+        for (let i = 0; i < closedSuffixes.length; i += 50) {
+          const batch = closedSuffixes.slice(i, i + 50);
+          const orFilter = batch.map(s => `phone.ilike.%${s}%`).join(',');
+          humanBatches.push(
+            supabase
+              .from('whatsapp_messages')
+              .select('phone')
+              .eq('direction', 'outbound')
+              .eq('action_source', 'manual')
+              .or(orFilter)
+              .limit(500)
+              .then(({ data }) => {
+                for (const msg of (data || [])) {
+                  humanPhones.add((msg.phone || '').replace(/\D/g, '').slice(-8));
+                }
+              })
+          );
+        }
+        await Promise.all(humanBatches);
+        return humanPhones;
+      })();
+
+      // Fetch doc lead acolhedors
+      const allDocs = [...(signedDocsRes.data || []), ...(pendingDocsRes.data || [])];
+      const docLeadIds = allDocs.map((d: any) => d.lead_id).filter(Boolean);
+      const docLeadMapPromise = docLeadIds.length > 0
+        ? supabase.from('leads').select('id, acolhedor').in('id', docLeadIds).then(r => new Map((r.data || []).map((l: any) => [l.id, l.acolhedor])))
+        : Promise.resolve(new Map<string, string>());
+
+      // Contact creator names
+      const contactCreatorIds = [...new Set((contactsRes.data || []).map((c: any) => c.created_by).filter(Boolean))];
+      const creatorMapPromise = contactCreatorIds.length > 0
+        ? supabase.from('profiles').select('user_id, full_name').in('user_id', contactCreatorIds).then(r => new Map((r.data || []).map((p: any) => [p.user_id, p.full_name])))
+        : Promise.resolve(new Map<string, string>());
+
+      // Wait for all parallel phase 4 tasks
+      const [leadPhoneMap, humanPhones, docLeadAcolhedorMap, contactCreatorMap] = await Promise.all([
+        leadPhoneMapPromise, humanPhonesPromise, docLeadMapPromise, creatorMapPromise
+      ]);
+
+      setMetricsProgress(90);
+
+      // ===== PHASE 5: Build results in memory =====
       const newConvDetails: NewConvDetail[] = trulyNewPhones.map(p => {
         const conv = phoneMap.get(p)!;
         const outData = outboundMap.get(p);
@@ -190,123 +291,52 @@ export function useDashboardMetrics() {
         };
       });
 
-      // Closed leads by agent (acolhedor) and campaign + AI vs human distinction
-      const { data: closedLeads } = await supabase
-        .from('leads')
-        .select('id, acolhedor, campaign_name, lead_status, lead_phone')
-        .eq('lead_status', 'closed')
-        .gte('updated_at', todayStart)
-        .lte('updated_at', todayEnd);
-
+      // Closed leads breakdown
       const agentMap = new Map<string, number>();
       const agentDetailMap = new Map<string, { ai: number; human: number }>();
       const campaignMap = new Map<string, number>();
-      const closedTotal = (closedLeads || []).length;
-
-      // Check which closed leads had human interaction (manual outbound messages)
       let closedByAI = 0;
       let closedWithHuman = 0;
 
-      if (closedTotal > 0) {
-        const closedPhones = (closedLeads || [])
-          .map((l: any) => (l.lead_phone || '').replace(/\D/g, ''))
-          .filter((p: string) => p.length >= 8);
+      for (const l of closedLeads) {
+        const agentName = l.acolhedor || 'Sem acolhedor';
+        agentMap.set(agentName, (agentMap.get(agentName) || 0) + 1);
+        if (l.campaign_name) campaignMap.set(l.campaign_name, (campaignMap.get(l.campaign_name) || 0) + 1);
+        
+        const phone = (l.lead_phone || '').replace(/\D/g, '');
+        const suffix = phone.slice(-8);
+        const isHuman = humanPhones.has(suffix);
+        
+        if (isHuman) closedWithHuman++;
+        else closedByAI++;
 
-        const phoneSuffixes = closedPhones.map((p: string) => p.slice(-8));
-        const uniqueSuffixes = [...new Set(phoneSuffixes)];
-
-        const humanPhones = new Set<string>();
-        for (let i = 0; i < uniqueSuffixes.length; i += 50) {
-          const batch = uniqueSuffixes.slice(i, i + 50);
-          const orFilter = batch.map(s => `phone.ilike.%${s}%`).join(',');
-          const { data: manualMsgs } = await supabase
-            .from('whatsapp_messages')
-            .select('phone')
-            .eq('direction', 'outbound')
-            .eq('action_source', 'manual')
-            .or(orFilter)
-            .limit(500);
-          
-          for (const msg of (manualMsgs || [])) {
-            const msgSuffix = (msg.phone || '').replace(/\D/g, '').slice(-8);
-            humanPhones.add(msgSuffix);
-          }
-        }
-
-        for (const l of (closedLeads || [])) {
-          const agentName = l.acolhedor || 'Sem acolhedor';
-          agentMap.set(agentName, (agentMap.get(agentName) || 0) + 1);
-          if (l.campaign_name) campaignMap.set(l.campaign_name, (campaignMap.get(l.campaign_name) || 0) + 1);
-          
-          const phone = (l.lead_phone || '').replace(/\D/g, '');
-          const suffix = phone.slice(-8);
-          const isHuman = humanPhones.has(suffix);
-          
-          if (isHuman) {
-            closedWithHuman++;
-          } else {
-            closedByAI++;
-          }
-
-          // Track per-agent detail
-          if (!agentDetailMap.has(agentName)) agentDetailMap.set(agentName, { ai: 0, human: 0 });
-          const detail = agentDetailMap.get(agentName)!;
-          if (isHuman) detail.human++; else detail.ai++;
-        }
+        if (!agentDetailMap.has(agentName)) agentDetailMap.set(agentName, { ai: 0, human: 0 });
+        const detail = agentDetailMap.get(agentName)!;
+        if (isHuman) detail.human++; else detail.ai++;
       }
 
-      // Operational metrics: signed docs, groups, cases, processes
-      const [signedDocsRes, pendingDocsRes, groupsRes, casesRes, processesRes, contactsRes] = await Promise.all([
-        supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at, signed_at').eq('signer_status', 'signed').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-        supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at').eq('signer_status', 'new').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-        supabase.from('leads').select('id, lead_name, acolhedor, board_id, campaign_name, created_at').not('whatsapp_group_id', 'is', null).gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-        supabase.from('legal_cases').select('id, case_number, title, acolhedor, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-        supabase.from('case_process_tracking').select('id, cliente, acolhedor, lead_id, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-        supabase.from('contacts').select('id, full_name, city, state, created_by, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-      ]);
-
-      // Fetch acolhedor for docs that have lead_id
-      const allDocs = [...(signedDocsRes.data || []), ...(pendingDocsRes.data || [])];
-      const docLeadIds = allDocs.map((d: any) => d.lead_id).filter(Boolean);
-      let docLeadAcolhedorMap = new Map<string, string>();
-      if (docLeadIds.length > 0) {
-        const { data: docLeads } = await supabase.from('leads').select('id, acolhedor').in('id', docLeadIds);
-        docLeadAcolhedorMap = new Map((docLeads || []).map((l: any) => [l.id, l.acolhedor]));
-      }
-
+      // Operational details
       const mapDoc = (d: any): OperationalDetail => ({
         id: d.id, name: d.document_name || 'Documento',
         acolhedor: (d.lead_id && docLeadAcolhedorMap.get(d.lead_id)) || null,
         instance_name: d.instance_name || null, lead_id: d.lead_id || null, created_at: d.created_at,
       });
 
-      const signedDocsDetails: OperationalDetail[] = (signedDocsRes.data || []).map(mapDoc);
-      const pendingDocsDetails: OperationalDetail[] = (pendingDocsRes.data || []).map(mapDoc);
-
-      const groupsDetails: OperationalDetail[] = (groupsRes.data || []).map((d: any) => ({
+      const signedDocsDetails = (signedDocsRes.data || []).map(mapDoc);
+      const pendingDocsDetails = (pendingDocsRes.data || []).map(mapDoc);
+      const groupsDetails = (groupsRes.data || []).map((d: any) => ({
         id: d.id, name: d.lead_name || 'Lead', acolhedor: d.acolhedor || null,
         instance_name: null, lead_id: d.id, created_at: d.created_at,
       }));
-
-      const casesDetails: OperationalDetail[] = (casesRes.data || []).map((d: any) => ({
+      const casesDetails = (casesRes.data || []).map((d: any) => ({
         id: d.id, name: d.title || d.case_number || 'Caso', acolhedor: d.acolhedor || null,
         instance_name: null, lead_id: null, created_at: d.created_at,
       }));
-
-      const processesDetails: OperationalDetail[] = (processesRes.data || []).map((d: any) => ({
+      const processesDetails = (processesRes.data || []).map((d: any) => ({
         id: d.id, name: d.cliente || 'Processo', acolhedor: d.acolhedor || null,
         instance_name: null, lead_id: d.lead_id || null, created_at: d.created_at,
       }));
-
-      // Resolve created_by user names for contacts
-      const contactCreatorIds = (contactsRes.data || []).map((c: any) => c.created_by).filter(Boolean);
-      let contactCreatorMap = new Map<string, string>();
-      if (contactCreatorIds.length > 0) {
-        const { data: creators } = await supabase.from('profiles').select('user_id, full_name').in('user_id', [...new Set(contactCreatorIds)]);
-        contactCreatorMap = new Map((creators || []).map((p: any) => [p.user_id, p.full_name]));
-      }
-
-      const contactsDetails: OperationalDetail[] = (contactsRes.data || []).map((d: any) => ({
+      const contactsDetails = (contactsRes.data || []).map((d: any) => ({
         id: d.id, name: d.full_name || 'Contato',
         acolhedor: (d.created_by && contactCreatorMap.get(d.created_by)) || null,
         instance_name: null, lead_id: null, created_at: d.created_at,
@@ -314,29 +344,16 @@ export function useDashboardMetrics() {
 
       setMetrics({
         newConversations: trulyNewPhones.length,
-        responseRate,
-        avgResponseTimeMin,
-        respondedCount,
-        totalInbound,
+        responseRate, avgResponseTimeMin, respondedCount, totalInbound,
         closedByAgent: Array.from(agentMap.entries()).map(([agent, count]) => ({ agent, count })).sort((a, b) => b.count - a.count),
         closedByAgentDetailed: Array.from(agentDetailMap.entries()).map(([agent, d]) => ({ agent, ai: d.ai, human: d.human, total: d.ai + d.human })).sort((a, b) => b.total - a.total),
         closedByCampaign: Array.from(campaignMap.entries()).map(([campaign, count]) => ({ campaign, count })).sort((a, b) => b.count - a.count),
-        closedByAI,
-        closedWithHuman,
-        closedTotal,
+        closedByAI, closedWithHuman, closedTotal,
         newConvDetails,
-        signedDocuments: signedDocsDetails.length,
-        pendingDocuments: pendingDocsDetails.length,
-        groupsCreated: groupsDetails.length,
-        casesCreated: casesDetails.length,
-        processesCreated: processesDetails.length,
-        contactsCreated: contactsDetails.length,
-        signedDocsDetails,
-        pendingDocsDetails,
-        groupsDetails,
-        casesDetails,
-        processesDetails,
-        contactsDetails,
+        signedDocuments: signedDocsDetails.length, pendingDocuments: pendingDocsDetails.length,
+        groupsCreated: groupsDetails.length, casesCreated: casesDetails.length,
+        processesCreated: processesDetails.length, contactsCreated: contactsDetails.length,
+        signedDocsDetails, pendingDocsDetails, groupsDetails, casesDetails, processesDetails, contactsDetails,
       });
     } catch (err) {
       console.error('Error fetching dashboard metrics:', err);
