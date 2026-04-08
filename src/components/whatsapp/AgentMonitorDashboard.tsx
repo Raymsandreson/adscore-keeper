@@ -4,7 +4,7 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { ClipboardList, Heart, LayoutDashboard, Loader2 } from 'lucide-react';
+import { ArrowRightLeft, ClipboardList, Heart, LayoutDashboard, Loader2 } from 'lucide-react';
 
 import { useMonitorData } from './agent-monitor/hooks/useMonitorData';
 import { useMonitorFilters } from './agent-monitor/hooks/useMonitorFilters';
@@ -21,6 +21,7 @@ import { OperationalDetailSheet, type OperationalMetricType, type OperationalFil
 import { NewConversationsSheet } from './agent-monitor/components/NewConversationsSheet';
 import { GapDetailSheet } from './agent-monitor/components/GapDetailSheet';
 import { ReferralsTab } from './agent-monitor/components/ReferralsTab';
+import { RedirectionsTab } from './agent-monitor/components/RedirectionsTab';
 import { AIActivitiesPanel } from './AIActivitiesPanel';
 import { AIActivityPromptDialog } from './AIActivityPromptDialog';
 import { DashboardChatPreview } from './DashboardChatPreview';
@@ -38,7 +39,7 @@ export function AgentMonitorDashboard() {
   const [gapSheet, setGapSheet] = useState<GapType | null>(null);
   const [closingAcolhedorFilter, setClosingAcolhedorFilter] = useState<string | null>(null);
 
-  const { agents, conversations, agentStats, referrals, boards, loading: monitorLoading, fetchData: fetchDataRaw } = useMonitorData();
+  const { agents, conversations, agentStats, referrals, redirections, boards, loading: monitorLoading, fetchData: fetchDataRaw } = useMonitorData();
   const { metrics, metricsLoading, fetchMetrics } = useDashboardMetrics();
   const { gaps, gapsLoading, fetchGaps } = useOperationalGaps();
 
