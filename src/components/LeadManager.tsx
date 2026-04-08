@@ -1317,6 +1317,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
           )}
         </DialogContent>
       </Dialog>
+      <ConfirmDeleteDialog />
     </div>
   );
 };

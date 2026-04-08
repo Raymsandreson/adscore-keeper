@@ -491,5 +491,7 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
         </Tabs>
       </SheetContent>
     </Sheet>
+    <ConfirmDeleteDialog />
+    </>
   );
 }

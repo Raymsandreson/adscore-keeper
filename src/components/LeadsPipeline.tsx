@@ -532,6 +532,7 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
         onOpenChange={(open) => !open && setFollowupDialogLead(null)}
         onFollowupAdded={onLeadsRefresh}
       />
+      <ConfirmDeleteDialog />
       </>
     </TooltipProvider>
   );

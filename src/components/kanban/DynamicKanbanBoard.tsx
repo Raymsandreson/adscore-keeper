@@ -1124,6 +1124,7 @@ export function DynamicKanbanBoard({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      <ConfirmDeleteDialog />
       </>
     </TooltipProvider>
   );
