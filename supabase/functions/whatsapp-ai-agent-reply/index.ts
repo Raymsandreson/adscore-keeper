@@ -652,16 +652,21 @@ REGRAS DE EXTRAÇÃO DE DOCUMENTOS:
             if (cases?.[0]) processData = cases[0];
           }
 
-          // Resolve group
+          // Resolve group from lead's whatsapp_group_id
           let groupData: any = null;
-          if (targetLeadId) {
-            const { data: groups } = await supabase
-              .from("whatsapp_groups")
-              .select("group_name, group_jid, invite_link")
-              .eq("lead_id", targetLeadId)
-              .order("created_at", { ascending: false })
+          if (leadData?.whatsapp_group_id) {
+            // Try to get group info from whatsapp_messages (group conversations)
+            const { data: groupMsg } = await supabase
+              .from("whatsapp_messages")
+              .select("contact_name")
+              .eq("phone", leadData.whatsapp_group_id)
               .limit(1);
-            if (groups?.[0]) groupData = groups[0];
+            groupData = {
+              group_name: groupMsg?.[0]?.contact_name || '',
+              invite_link: leadData?.group_link || '',
+            };
+          } else if (leadData?.group_link) {
+            groupData = { group_name: '', invite_link: leadData.group_link };
           }
 
           // Build replacement map
