@@ -123,6 +123,13 @@ export function AgentAutomationRules({ agentId }: Props) {
     if (actionType === 'create_case') {
       defaultConfig.nucleus_id = nuclei[0]?.id || '';
     }
+    if (actionType === 'send_group_message') {
+      defaultConfig.message_template = 'Olá! {nome_cliente} foi orientado(a) a acompanhar o processo por aqui. Qualquer atualização será compartilhada neste grupo. 🙌';
+    }
+    if (actionType === 'send_private_redirect') {
+      defaultConfig.message_template = 'Oi {nome_cliente}! 😊 Para o acompanhamento do seu processo, nosso grupo é o melhor canal — lá toda a equipe jurídica está pronta pra te atualizar de forma proativa sobre tudo que acontece. Mas fico à disposição se precisar de algo!';
+      defaultConfig.deactivate_private_agent = true;
+    }
 
     setRules(prev => ({
       ...prev,
