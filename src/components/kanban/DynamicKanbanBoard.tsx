@@ -89,6 +89,7 @@ export function DynamicKanbanBoard({
   availableBoards = [],
   onChangeLeadStatus,
 }: DynamicKanbanBoardProps) {
+  const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [conversionDialog, setConversionDialog] = useState<{ open: boolean; leadId: string | null; stageId: string | null }>({
@@ -322,9 +323,7 @@ export function DynamicKanbanBoard({
   };
 
   const handleDeleteClick = (id: string) => {
-    if (confirm('Tem certeza que deseja remover este lead?')) {
-      onDeleteLead(id);
-    }
+    confirmDelete('Remover Lead', 'Tem certeza que deseja remover este lead? Esta ação não pode ser desfeita.', () => onDeleteLead(id));
   };
 
   const handleCreateActivity = async () => {

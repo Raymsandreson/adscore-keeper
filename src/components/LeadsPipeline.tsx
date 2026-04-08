@@ -82,6 +82,7 @@ const columns: PipelineColumn[] = [
 ];
 
 const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLead, onToggleFollower, onNavigateToComment, onClassificationChange, cardFieldsConfig, onLeadsRefresh, isLeadStagnant }: LeadsPipelineProps) => {
+  const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | null>(null);
   const [conversionDialog, setConversionDialog] = useState<{ open: boolean; leadId: string | null }>({
@@ -144,9 +145,7 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
   };
 
   const handleDeleteClick = (id: string) => {
-    if (confirm('Tem certeza que deseja remover este lead?')) {
-      onDeleteLead(id);
-    }
+    confirmDelete('Remover Lead', 'Tem certeza que deseja remover este lead? Esta ação não pode ser desfeita.', () => onDeleteLead(id));
   };
 
   if (loading) {

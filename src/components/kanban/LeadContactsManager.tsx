@@ -61,6 +61,7 @@ interface LeadContactsManagerProps {
 }
 
 export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsManagerProps) {
+  const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const [activeTab, setActiveTab] = useState<'contacts' | 'add' | 'link'>('contacts');
   const [searchQuery, setSearchQuery] = useState('');
   const [unlinkedContacts, setUnlinkedContacts] = useState<LeadContact[]>([]);
@@ -171,9 +172,7 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
   };
 
   const handleDeleteClick = async (contactId: string) => {
-    if (confirm('Tem certeza que deseja remover este contato permanentemente?')) {
-      await deleteContact(contactId);
-    }
+    confirmDelete('Remover Contato', 'Tem certeza que deseja remover este contato permanentemente?', () => deleteContact(contactId));
   };
 
   const getInitials = (name: string) => {

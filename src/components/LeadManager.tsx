@@ -89,6 +89,7 @@ const statusConfig: Record<LeadStatus, { label: string; color: string; icon: Rea
 };
 
 const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManagerProps) => {
+  const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const [searchParams, setSearchParams] = useSearchParams();
   const { leads, stats, loading, addLead, updateLead, deleteLead, updateLeadStatus, fetchLeads, toggleFollower, updateClientClassification } = useLeads(adAccountId);
   const { customFields, getFieldValues, saveAllFieldValues } = useLeadCustomFields(adAccountId);
@@ -434,9 +435,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
   };
 
   const handleDeleteLead = async (id: string) => {
-    if (confirm('Tem certeza que deseja remover este lead?')) {
-      await deleteLead(id);
-    }
+    confirmDelete('Remover Lead', 'Tem certeza que deseja remover este lead? Esta ação não pode ser desfeita.', () => deleteLead(id));
   };
 
   const handleEditLead = async () => {
