@@ -595,6 +595,12 @@ REGRAS DE ENDEREÇO E CEP:
 - DATA DE ASSINATURA de documentos é SEMPRE a data de hoje, nunca pergunte
 - LOCAL DE ASSINATURA é SEMPRE a mesma cidade/estado do endereço do cliente, nunca pergunte separadamente
 
+REGRAS DE IDENTIFICAÇÃO DO CLIENTE:
+- NUNCA assuma que o nome do perfil do WhatsApp é o nome real da pessoa — muitas vezes é apelido, nome fantasia ou irrelevante
+- Na sua PRIMEIRA interação, SEMPRE pergunte o nome completo da pessoa de forma natural (ex: "como posso te chamar?" ou "qual seu nome completo?")
+- Só use o nome fornecido VERBALMENTE pelo cliente na conversa, nunca o nome do perfil
+
+
 REGRAS DE EXTRAÇÃO DE DOCUMENTOS:
 - Se o cliente enviar uma FOTO ou PDF de documento (CNH, RG, comprovante, etc.), você DEVE LER e EXTRAIR automaticamente todos os dados visíveis: nome, CPF, endereço, data de nascimento, etc.
 - NUNCA peça ao cliente dados que estão visíveis em um documento que ele já enviou
@@ -1437,6 +1443,96 @@ REGRAS IMPORTANTES:
           .eq("phone", phone)
           .eq("instance_name", instance_name);
       } catch (_) { /* ignore */ }
+
+      // ========== POST-REPLY INELIGIBILITY DETECTION ==========
+      // After generating the reply, check if the AI's response indicates the person is clearly ineligible
+      // This fires auto-enrich-lead immediately (bypassing message threshold) to mark as inviavel
+      try {
+        const replyLower = reply.toLowerCase();
+        const incomingLower = (message_text || "").toLowerCase();
+        
+        // Detect patterns indicating clear ineligibility
+        const ineligibilityPatterns = [
+          // Agent detected wrong audience
+          /n[aã]o\s+(se\s+)?(?:enquadra|aplica|elegível|eleg[ií]vel)/i,
+          /caso\s+(?:n[aã]o|invi[aá]vel)/i,
+          /infelizmente.*n[aã]o.*(?:direito|benefício|beneficio)/i,
+          // Client is wrong target (e.g., man in maternity campaign)
+          /(?:somente|apenas|exclusivo|voltado).*(?:mulher|gestante|m[aã]e)/i,
+          // Agent saying goodbye due to ineligibility
+          /(?:sinto|lamento).*(?:n[aã]o.*(?:ajudar|atender|prosseguir))/i,
+        ];
+        
+        const clientIneligibilityPatterns = [
+          // Client reveals they're not the target audience
+          /sou\s+homem/i,
+          /n[aã]o\s+(?:sou|estou)\s+(?:gestante|gr[aá]vida)/i,
+          /n[aã]o\s+tenho\s+(?:filho|filha|beb[eê])/i,
+          /engano/i,
+          /n[uú]mero\s+errado/i,
+        ];
+        
+        const aiDetectedIneligible = ineligibilityPatterns.some(p => p.test(replyLower));
+        const clientRevealedIneligible = clientIneligibilityPatterns.some(p => p.test(incomingLower));
+        
+        if ((aiDetectedIneligible || clientRevealedIneligible) && (resolvedLeadId || lead_id)) {
+          const targetLeadId = resolvedLeadId || lead_id;
+          console.log(`[ineligibility-detection] Detected ineligibility for lead ${targetLeadId}. AI=${aiDetectedIneligible}, Client=${clientRevealedIneligible}. Triggering immediate auto-enrich.`);
+          
+          // Fire auto-enrich-lead immediately (bypasses threshold)
+          // But first, directly mark the lead as inviavel since we have clear signal
+          const { data: currentLead } = await supabase
+            .from("leads")
+            .select("lead_status")
+            .eq("id", targetLeadId)
+            .maybeSingle();
+          
+          if (currentLead?.lead_status === "active" || !currentLead?.lead_status) {
+            const inviableReason = clientRevealedIneligible 
+              ? `Cliente revelou inelegibilidade: "${(message_text || "").substring(0, 100)}"`
+              : `IA detectou inelegibilidade na resposta gerada`;
+            
+            await supabase
+              .from("leads")
+              .update({
+                lead_status: "inviavel",
+                lead_status_reason: inviableReason,
+                lead_status_changed_at: new Date().toISOString(),
+                inviavel_date: new Date().toISOString().slice(0, 10),
+              })
+              .eq("id", targetLeadId);
+            
+            // Log status change
+            await supabase.from("lead_status_history").insert({
+              lead_id: targetLeadId,
+              from_status: currentLead?.lead_status || "active",
+              to_status: "inviavel",
+              reason: inviableReason,
+              changed_by: null,
+              changed_by_type: "ai",
+            });
+            
+            // Deactivate agent conversation
+            await supabase
+              .from("whatsapp_conversation_agents")
+              .update({ is_active: false })
+              .eq("phone", phone)
+              .eq("instance_name", instance_name);
+            
+            // Cancel pending followups
+            await supabase
+              .from("whatsapp_agent_followups")
+              .update({ status: "cancelled" })
+              .eq("phone", phone)
+              .eq("instance_name", instance_name)
+              .eq("status", "pending");
+            
+            console.log(`[ineligibility-detection] Lead ${targetLeadId} marked as inviavel, agent deactivated, followups cancelled.`);
+          }
+        }
+      } catch (ineligErr) {
+        console.error("[ineligibility-detection] Error:", ineligErr);
+      }
 
       return new Response(JSON.stringify({ success: true, reply: reply.substring(0, 100) }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },

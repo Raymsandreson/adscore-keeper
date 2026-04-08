@@ -1419,7 +1419,9 @@ Deno.serve(async (req) => {
                 if (stages.length > 0) stageId = stages[0].id
               }
               
-              const leadName = contactName || `WhatsApp ${phone}`
+              // NEVER use WhatsApp profile name as lead name — it's often irrelevant (e.g. "Vovo Oficina")
+              // Use phone number as placeholder; the agent will ask for the real name
+              const leadName = `WhatsApp ${phone}`
 
               if (leadId) {
                 console.log('CTWA: Lead already linked/resolved for phone, reusing existing lead:', leadId)
