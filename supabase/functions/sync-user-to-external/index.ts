@@ -29,15 +29,30 @@ Deno.serve(async (req) => {
 
     const name = full_name || email.split('@')[0] || '';
 
+    // Check if profile already exists with a real name — never overwrite a manually-set name
+    const { data: existingProfile } = await externalClient
+      .from('profiles')
+      .select('full_name')
+      .eq('user_id', user_id)
+      .maybeSingle();
+
+    const existingName = existingProfile?.full_name || '';
+    const isExistingNameReal = existingName && existingName !== email && !existingName.includes('@') && !/^\+?\d[\d\s\-()]*$/.test(existingName.trim());
+    
+    // Only set name if there's no real name already saved
+    const profileData: Record<string, any> = {
+      user_id,
+      email,
+      updated_at: new Date().toISOString(),
+    };
+    if (!isExistingNameReal) {
+      profileData.full_name = name;
+    }
+
     // Upsert profile in external DB
     const { error: profileError } = await externalClient
       .from('profiles')
-      .upsert({
-        user_id,
-        email,
-        full_name: name,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' })
+      .upsert(profileData, { onConflict: 'user_id' })
       .select()
       .single();
 
