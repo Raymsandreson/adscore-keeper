@@ -9,7 +9,7 @@ import type { OperationalGaps, GapType } from '../hooks/useOperationalGaps';
 
 export interface ClosingDetailFilter {
   agent?: string;
-  type?: 'ai' | 'assisted' | 'human' | 'all';
+  type?: 'ai' | 'assisted' | 'human' | 'noInteraction' | 'all';
 }
 
 interface PipelineCardsProps {
@@ -254,6 +254,16 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
                     <span className="font-bold text-blue-600">{dashboardMetrics.closedWithHuman}</span>
                     <span className="text-muted-foreground">Humano</span>
                   </span>
+                  {dashboardMetrics.closedNoInteraction > 0 && (
+                    <span
+                      className="flex items-center gap-1 cursor-pointer hover:underline"
+                      onClick={() => onClosingDetailClick?.({ type: 'noInteraction' })}
+                    >
+                      <span className="h-3 w-3 text-gray-400">⚪</span>
+                      <span className="font-bold text-gray-500">{dashboardMetrics.closedNoInteraction}</span>
+                      <span className="text-muted-foreground">S/ WA</span>
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -267,12 +277,13 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
                       <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Acolhedor</th>
                       <th className="text-center px-2 py-1.5 font-medium text-purple-500 whitespace-nowrap">🤖 IA</th>
                       <th className="text-center px-2 py-1.5 font-medium text-orange-500 whitespace-nowrap">🤝 Assist.</th>
-                      <th className="text-center px-2 py-1.5 font-medium text-blue-500 whitespace-nowrap">👤 Humano</th>
-                      <th className="text-center px-2 py-1.5 font-medium text-muted-foreground">Total</th>
+                       <th className="text-center px-2 py-1.5 font-medium text-blue-500 whitespace-nowrap">👤 Humano</th>
+                       <th className="text-center px-2 py-1.5 font-medium text-gray-400 whitespace-nowrap">⚪ S/WA</th>
+                       <th className="text-center px-2 py-1.5 font-medium text-muted-foreground">Total</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {dashboardMetrics.closedByAgentDetailed.map(({ agent, ai, assisted, human, total }) => (
+                    {dashboardMetrics.closedByAgentDetailed.map(({ agent, ai, assisted, human, noInteraction, total }) => (
                       <tr key={agent} className="border-t border-border/50">
                         <td className="px-2 py-1.5 truncate max-w-[140px]">{agent}</td>
                         <td
@@ -287,6 +298,10 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
                           className="text-center px-2 py-1.5 font-bold text-blue-600 cursor-pointer hover:underline hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded"
                           onClick={() => human > 0 && onClosingDetailClick?.({ agent, type: 'human' })}
                         >{human}</td>
+                        <td
+                          className="text-center px-2 py-1.5 font-bold text-gray-400 cursor-pointer hover:underline hover:bg-gray-50 dark:hover:bg-gray-950/30 rounded"
+                          onClick={() => noInteraction > 0 && onClosingDetailClick?.({ agent, type: 'noInteraction' })}
+                        >{noInteraction > 0 ? noInteraction : '-'}</td>
                         <td
                           className="text-center px-2 py-1.5 font-bold cursor-pointer hover:underline"
                           onClick={() => total > 0 && onClosingDetailClick?.({ agent, type: 'all' })}
