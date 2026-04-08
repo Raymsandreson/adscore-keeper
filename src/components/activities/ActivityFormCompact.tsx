@@ -397,7 +397,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                     size="icon"
                     className="h-5 w-5 text-muted-foreground hover:text-foreground"
                     title="Expandir campo"
-                    onClick={() => setExpandedField({ key: field.field_key, label: field.label, value, setter, placeholder: field.placeholder || '' })}
+                    onClick={() => setExpandedFieldKey(field.field_key)}
                   >
                     <Maximize2 className="h-3 w-3" />
                   </Button>
@@ -410,19 +410,36 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       </Collapsible>
 
       {/* === SHEET: Single field expanded === */}
-      <Sheet open={!!expandedField} onOpenChange={(open) => { if (!open) setExpandedField(null); }}>
+      <Sheet open={!!expandedFieldKey} onOpenChange={(open) => { if (!open) setExpandedFieldKey(null); }}>
         <SheetContent className="w-full sm:max-w-lg flex flex-col">
-          <SheetHeader>
-            <SheetTitle className="text-base">{expandedField?.label}</SheetTitle>
-          </SheetHeader>
-          <div className="flex-1 pt-4">
-            <Textarea
-              value={expandedField?.value || ''}
-              onChange={e => expandedField?.setter(e.target.value)}
-              placeholder={expandedField?.placeholder || ''}
-              className="text-sm min-h-[300px] h-full resize-none"
-            />
-          </div>
+          {expandedFieldKey && (() => {
+            const fieldValueMap: Record<string, [string, (v: string) => void]> = {
+              what_was_done: [props.formWhatWasDone, props.setFormWhatWasDone],
+              current_status: [props.formCurrentStatus, props.setFormCurrentStatus],
+              next_steps: [props.formNextSteps, props.setFormNextSteps],
+              notes: [props.formNotes, props.setFormNotes],
+            };
+            const fieldDef = props.fieldSettings.find((f: any) => f.field_key === expandedFieldKey);
+            const entry = fieldValueMap[expandedFieldKey];
+            if (!fieldDef || !entry) return null;
+            const [val, set] = entry;
+            return (
+              <>
+                <SheetHeader>
+                  <SheetTitle className="text-base">{fieldDef.label}</SheetTitle>
+                </SheetHeader>
+                <div className="flex-1 pt-4">
+                  <Textarea
+                    value={val}
+                    onChange={e => set(e.target.value)}
+                    placeholder={fieldDef.placeholder || ''}
+                    className="text-sm min-h-[300px] h-full resize-none"
+                    autoFocus
+                  />
+                </div>
+              </>
+            );
+          })()}
         </SheetContent>
       </Sheet>
 
