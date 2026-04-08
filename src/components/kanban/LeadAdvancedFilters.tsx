@@ -223,7 +223,7 @@ export function LeadAdvancedFilters({
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Criado por</Label>
-                <Select value={filters.createdBy} onValueChange={v => update('createdBy', v === '_all' ? '' : v)}>
+                <Select value={filters.createdBy || '_all'} onValueChange={v => update('createdBy', v === '_all' ? '' : v)}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
@@ -238,7 +238,7 @@ export function LeadAdvancedFilters({
 
               <div className="space-y-1">
                 <Label className="text-xs">Atualizado por</Label>
-                <Select value={filters.updatedBy} onValueChange={v => update('updatedBy', v === '_all' ? '' : v)}>
+                <Select value={filters.updatedBy || '_all'} onValueChange={v => update('updatedBy', v === '_all' ? '' : v)}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
@@ -253,7 +253,7 @@ export function LeadAdvancedFilters({
 
               <div className="space-y-1">
                 <Label className="text-xs">Acolhedor</Label>
-                <Select value={filters.acolhedor} onValueChange={v => update('acolhedor', v === '_all' ? '' : v)}>
+                <Select value={filters.acolhedor || '_all'} onValueChange={v => update('acolhedor', v === '_all' ? '' : v)}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
@@ -302,7 +302,7 @@ export function LeadAdvancedFilters({
 
               <div className="space-y-1">
                 <Label className="text-xs">Faixa Etária</Label>
-                <Select value={filters.ageRange} onValueChange={v => update('ageRange', v === '_all' ? '' : v)}>
+                <Select value={filters.ageRange || '_all'} onValueChange={v => update('ageRange', v === '_all' ? '' : v)}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Todas" />
                   </SelectTrigger>
@@ -317,7 +317,7 @@ export function LeadAdvancedFilters({
 
               <div className="space-y-1">
                 <Label className="text-xs">Tipo de Caso</Label>
-                <Select value={filters.caseType} onValueChange={v => update('caseType', v === '_all' ? '' : v)}>
+                <Select value={filters.caseType || '_all'} onValueChange={v => update('caseType', v === '_all' ? '' : v)}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
@@ -351,7 +351,7 @@ export function LeadAdvancedFilters({
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Estado</Label>
-                <Select value={filters.visitState} onValueChange={v => update('visitState', v === '_all' ? '' : v)}>
+                <Select value={filters.visitState || '_all'} onValueChange={v => update('visitState', v === '_all' ? '' : v)}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
@@ -366,7 +366,7 @@ export function LeadAdvancedFilters({
 
               <div className="space-y-1">
                 <Label className="text-xs">Cidade</Label>
-                <Select value={filters.visitCity} onValueChange={v => update('visitCity', v === '_all' ? '' : v)}>
+                <Select value={filters.visitCity || '_all'} onValueChange={v => update('visitCity', v === '_all' ? '' : v)}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Todas" />
                   </SelectTrigger>
@@ -381,7 +381,7 @@ export function LeadAdvancedFilters({
 
               <div className="space-y-1">
                 <Label className="text-xs">Região</Label>
-                <Select value={filters.visitRegion} onValueChange={v => update('visitRegion', v === '_all' ? '' : v)}>
+                <Select value={filters.visitRegion || '_all'} onValueChange={v => update('visitRegion', v === '_all' ? '' : v)}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Todas" />
                   </SelectTrigger>

@@ -244,7 +244,7 @@ export function ImportInstagramProspects({
           {/* Target Board Selection */}
           <div>
             <label className="text-sm font-medium mb-2 block">Quadro de Destino</label>
-            <Select value={selectedBoardId || ''} onValueChange={setSelectedBoardId}>
+            <Select value={selectedBoardId || undefined} onValueChange={setSelectedBoardId}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecione um quadro" />
               </SelectTrigger>
