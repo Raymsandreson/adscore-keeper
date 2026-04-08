@@ -43,19 +43,47 @@ serve(async (req) => {
       });
     }
 
+    const multiOptionPrompt = `${systemPrompt}
+
+IMPORTANTE: Você DEVE retornar EXATAMENTE 3 opções diferentes do texto reescrito/processado.
+Retorne no formato JSON puro (sem markdown, sem backticks):
+{"options": ["opção 1 aqui", "opção 2 aqui", "opção 3 aqui"]}
+
+Cada opção deve ter uma abordagem ou estilo ligeiramente diferente, mas todas seguindo a instrução principal.
+Retorne APENAS o JSON, nada mais.`;
+
     const response = await geminiChat({
       model: "google/gemini-2.5-flash-lite",
-      temperature: 0.3,
-      max_tokens: 2048,
+      temperature: 0.7,
+      max_tokens: 4096,
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: multiOptionPrompt },
         { role: "user", content: text },
       ],
     });
 
-    const result = response?.choices?.[0]?.message?.content || '';
+    const raw = response?.choices?.[0]?.message?.content || '';
+    
+    // Try to parse as JSON with options array
+    let options: string[] = [];
+    try {
+      // Remove potential markdown code blocks
+      const cleaned = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (Array.isArray(parsed.options) && parsed.options.length > 0) {
+        options = parsed.options.slice(0, 3);
+      }
+    } catch {
+      // Fallback: use the raw text as single option
+      options = [raw.trim()];
+    }
 
-    return new Response(JSON.stringify({ result }), {
+    // Ensure we always have at least 1 option
+    if (options.length === 0) {
+      options = [raw.trim() || text];
+    }
+
+    return new Response(JSON.stringify({ options }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
