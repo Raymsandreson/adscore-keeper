@@ -211,7 +211,7 @@ function ToolbarPlugin({
   }, [editor, blockType]);
 
   return (
-    <div className="flex items-center gap-0.5 px-1.5 py-1 border-b bg-muted/30 flex-wrap">
+    <div className="sticky top-0 z-20 flex shrink-0 items-center gap-0.5 border-b bg-background/95 px-1.5 py-1 backdrop-blur supports-[backdrop-filter]:bg-background/85 flex-wrap">
       {/* AI Edition */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -501,6 +501,16 @@ function RichTextEditorComponent({
     flushEditorHtml(editor);
   }, [flushEditorHtml]);
 
+  const handleExpand = useCallback(() => {
+    const editor = editorRef.current;
+    if (editor) {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      flushEditorHtml(editor);
+    }
+
+    onExpand?.();
+  }, [flushEditorHtml, onExpand]);
+
   const fetchAiOptions = useCallback(async (action: string, text: string, customPrompt?: string) => {
     setAiLoading(true);
     setLastAiAction(action);
@@ -585,14 +595,14 @@ function RichTextEditorComponent({
   }, [lastAiAction, fetchAiOptions]);
 
   return (
-    <div className={cn('border rounded-md overflow-hidden bg-background resize-y', className)} style={{ minHeight, overflow: 'auto' }}>
+    <div className={cn('flex flex-col rounded-md border bg-background resize-y', className)} style={{ minHeight, overflow: 'auto' }}>
       <LexicalComposer initialConfig={initialConfig}>
-        <ToolbarPlugin onExpand={onExpand} aiLoading={aiLoading} onAiAction={handleAiAction} onCustomPrompt={handleCustomPrompt} />
-        <div className="relative">
+        <ToolbarPlugin onExpand={onExpand ? handleExpand : undefined} aiLoading={aiLoading} onAiAction={handleAiAction} onCustomPrompt={handleCustomPrompt} />
+        <div className="relative flex-1">
           <RichTextPlugin
             contentEditable={
               <ContentEditable
-                className="lexical-editor px-3 py-2 text-xs focus:outline-none"
+                className="lexical-editor h-full px-3 py-2 text-xs focus:outline-none"
                 style={{ minHeight: '24px' }}
                 onBlur={handleBlur}
               />
