@@ -601,7 +601,77 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
               </>
             )}
 
-            {activeTab === 'tribunal' && (
+            {activeTab === 'documentos' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold flex items-center gap-1.5">
+                    <FolderOpen className="h-3.5 w-3.5 text-primary" />
+                    Documentos ({documents.length})
+                  </h4>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={fetchEscavadorDocuments}
+                    disabled={fetchingEscavadorDocs || !form.process_number}
+                    className="h-7 text-xs gap-1"
+                  >
+                    {fetchingEscavadorDocs ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                    Importar do Escavador
+                  </Button>
+                </div>
+                
+                {loadingDocuments ? (
+                  <div className="text-center py-6 text-muted-foreground text-xs">
+                    <Loader2 className="h-4 w-4 animate-spin mx-auto mb-1" />
+                    Carregando documentos...
+                  </div>
+                ) : documents.length === 0 ? (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <FolderOpen className="h-6 w-6 mx-auto mb-1 opacity-50" />
+                    <p className="text-xs">Nenhum documento vinculado.</p>
+                    <p className="text-[10px] mt-1">Clique em "Importar do Escavador" para buscar documentos públicos.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {documents.map(doc => {
+                      const typeLabel = DOCUMENT_TYPE_LABELS[doc.document_type] || doc.document_type;
+                      const sourceLabel = doc.source === 'escavador' ? '📋 Escavador' : doc.source === 'zapsign' ? '✍️ ZapSign' : '📎 Upload';
+                      const isProcuracao = doc.document_type === 'procuracao';
+                      return (
+                        <div key={doc.id} className={`border rounded-lg p-3 space-y-1 ${isProcuracao ? 'border-primary/50 bg-primary/5' : ''}`}>
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-2">
+                              <FileText className={`h-3.5 w-3.5 ${isProcuracao ? 'text-primary' : 'text-muted-foreground'}`} />
+                              <span className="text-xs font-medium">{doc.title}</span>
+                            </div>
+                            <button onClick={() => deleteDocument(doc.id)} className="text-muted-foreground hover:text-destructive">
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap pl-5">
+                            <Badge variant={isProcuracao ? 'default' : 'secondary'} className="text-[9px]">{typeLabel}</Badge>
+                            <Badge variant="outline" className="text-[9px]">{sourceLabel}</Badge>
+                            {doc.document_date && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {new Date(doc.document_date + 'T00:00:00').toLocaleDateString('pt-BR')}
+                              </span>
+                            )}
+                          </div>
+                          {doc.description && <p className="text-[10px] text-muted-foreground pl-5 line-clamp-2">{doc.description}</p>}
+                          {doc.original_url && (
+                            <a href={doc.original_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary hover:underline flex items-center gap-1 pl-5">
+                              <ExternalLink className="h-2.5 w-2.5" /> Ver documento original
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+
               <>
                 <EditableField label="Tribunal" value={form.tribunal || ''} onChange={v => set('tribunal', v)} />
                 <EditableField label="Sigla" value={form.tribunal_sigla || ''} onChange={v => set('tribunal_sigla', v)} />
