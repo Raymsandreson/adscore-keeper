@@ -834,34 +834,30 @@ export const ContactsManager: React.FC = () => {
   const handleBatchDelete = async () => {
     if (selectedContacts.size === 0) return;
     
-    const confirmDelete = window.confirm(
-      `Tem certeza que deseja excluir ${selectedContacts.size} contato(s)? Esta ação não pode ser desfeita.`
-    );
-    
-    if (!confirmDelete) return;
-    
-    setIsDeleting(true);
-    let deleted = 0;
-    let errors = 0;
-    
-    for (const contactId of selectedContacts) {
-      try {
-        await deleteContact(contactId);
-        deleted++;
-      } catch {
-        errors++;
+    confirmDelete(
+      'Excluir Contatos',
+      `Tem certeza que deseja excluir ${selectedContacts.size} contato(s)? Esta ação não pode ser desfeita.`,
+      async () => {
+        setIsDeleting(true);
+        let deleted = 0;
+        let errors = 0;
+        
+        for (const contactId of selectedContacts) {
+          try {
+            await deleteContact(contactId);
+            deleted++;
+          } catch {
+            errors++;
+          }
+        }
+        
+        setSelectedContacts(new Set());
+        toast.success(`${deleted} contato(s) excluído(s)${errors > 0 ? `, ${errors} erro(s)` : ''}`);
+        setIsDeleting(false);
       }
-    }
-    
-    setIsDeleting(false);
-    setSelectedContacts(new Set());
-    
-    if (errors > 0) {
-      toast.warning(`${deleted} excluídos, ${errors} erros`);
-    } else {
-      toast.success(`${deleted} contatos excluídos!`);
-    }
+    );
   };
+
 
   // Batch classification change
   const handleBatchClassification = async (newClassification: ContactClassification) => {
@@ -942,34 +938,34 @@ export const ContactsManager: React.FC = () => {
       return;
     }
     
-    const confirmLink = window.confirm(
-      `Criar e vincular leads para ${contactsToConvert.length} contato(s)?`
-    );
-    
-    if (!confirmLink) return;
-    
-    setIsBatchProcessing(true);
-    let linked = 0;
-    let errors = 0;
-    
-    for (const contact of contactsToConvert) {
-      if (!contact) continue;
-      try {
-        await convertToLead(contact.id);
-        linked++;
-      } catch {
-        errors++;
+    confirmDelete(
+      'Criar Leads',
+      `Criar e vincular leads para ${contactsToConvert.length} contato(s)?`,
+      async () => {
+        setIsBatchProcessing(true);
+        let linked = 0;
+        let errors = 0;
+        
+        for (const contact of contactsToConvert) {
+          if (!contact) continue;
+          try {
+            await convertToLead(contact.id);
+            linked++;
+          } catch {
+            errors++;
+          }
+        }
+        
+        setIsBatchProcessing(false);
+        setSelectedContacts(new Set());
+        
+        if (errors > 0) {
+          toast.warning(`${linked} vinculados, ${errors} erros`);
+        } else {
+          toast.success(`${linked} leads criados e vinculados!`);
+        }
       }
-    }
-    
-    setIsBatchProcessing(false);
-    setSelectedContacts(new Set());
-    
-    if (errors > 0) {
-      toast.warning(`${linked} vinculados, ${errors} erros`);
-    } else {
-      toast.success(`${linked} leads criados e vinculados!`);
-    }
+    );
   };
 
   const downloadTemplate = () => {
