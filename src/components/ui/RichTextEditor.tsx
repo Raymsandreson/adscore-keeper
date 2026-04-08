@@ -381,6 +381,58 @@ function ToolBtn({
   );
 }
 
+// ─── AI Suggestion Cards ─────────────────────────────────
+function AiSuggestionCards({
+  options,
+  onSelect,
+  onRegenerate,
+  onDismiss,
+  loading,
+}: {
+  options: string[];
+  onSelect: (text: string) => void;
+  onRegenerate: () => void;
+  onDismiss: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div className="border-t bg-muted/20 p-2 space-y-1.5">
+      <div className="flex items-center justify-between px-1">
+        <span className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
+          <Sparkles className="h-3 w-3" /> Escolha uma opção:
+        </span>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          ✕ Fechar
+        </button>
+      </div>
+      {options.map((opt, i) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => onSelect(opt)}
+          className="w-full text-left p-2 rounded-md border bg-background hover:bg-accent hover:border-primary/30 transition-colors text-xs leading-relaxed line-clamp-4 cursor-pointer"
+        >
+          <span className="text-[10px] font-semibold text-primary mr-1">Opção {i + 1}:</span>
+          {opt}
+        </button>
+      ))}
+      <button
+        type="button"
+        onClick={onRegenerate}
+        disabled={loading}
+        className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent border border-dashed transition-colors disabled:opacity-50"
+      >
+        {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <span>🔄</span>}
+        Regerar
+      </button>
+    </div>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────
 function RichTextEditorComponent({
   value,
@@ -392,11 +444,14 @@ function RichTextEditorComponent({
   autoFocus,
 }: RichTextEditorProps) {
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiOptions, setAiOptions] = useState<string[]>([]);
+  const [lastAiAction, setLastAiAction] = useState<string | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const editorRef = useRef<LexicalEditor | null>(null);
   const lastEmittedHtml = useRef(value || '');
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAiText = useRef('');
 
   const initialConfig = useRef({
     namespace: 'RichTextEditor',
@@ -440,6 +495,28 @@ function RichTextEditorComponent({
     flushEditorHtml(editor);
   }, [flushEditorHtml]);
 
+  const fetchAiOptions = useCallback(async (action: string, text: string) => {
+    setAiLoading(true);
+    setLastAiAction(action);
+    lastAiText.current = text;
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-text-editor', {
+        body: { text, action },
+      });
+      if (error) throw error;
+      if (data?.options && data.options.length > 0) {
+        setAiOptions(data.options);
+      } else {
+        toast.error('Nenhuma sugestão retornada');
+      }
+    } catch (err: any) {
+      console.error('AI editor error:', err);
+      toast.error('Erro ao processar com IA');
+    } finally {
+      setAiLoading(false);
+    }
+  }, []);
+
   const handleAiAction = useCallback(
     async (action: string) => {
       const editor = editorRef.current;
@@ -455,31 +532,31 @@ function RichTextEditorComponent({
         return;
       }
 
-      setAiLoading(true);
-      try {
-        const { data, error } = await supabase.functions.invoke('ai-text-editor', {
-          body: { text, action },
-        });
-        if (error) throw error;
-        if (data?.result) {
-          editor.update(() => {
-            const root = $getRoot();
-            root.clear();
-            const p = $createParagraphNode();
-            p.append($createTextNode(data.result));
-            root.append(p);
-          });
-          toast.success('Texto atualizado pela IA');
-        }
-      } catch (err: any) {
-        console.error('AI editor error:', err);
-        toast.error('Erro ao processar com IA');
-      } finally {
-        setAiLoading(false);
-      }
+      await fetchAiOptions(action, text);
     },
-    [],
+    [fetchAiOptions],
   );
+
+  const handleSelectOption = useCallback((text: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.update(() => {
+      const root = $getRoot();
+      root.clear();
+      const p = $createParagraphNode();
+      p.append($createTextNode(text));
+      root.append(p);
+    });
+    setAiOptions([]);
+    setLastAiAction(null);
+    toast.success('Texto aplicado!');
+  }, []);
+
+  const handleRegenerate = useCallback(() => {
+    if (lastAiAction && lastAiText.current) {
+      fetchAiOptions(lastAiAction, lastAiText.current);
+    }
+  }, [lastAiAction, fetchAiOptions]);
 
   return (
     <div className={cn('border rounded-md overflow-hidden bg-background', className)}>
@@ -504,6 +581,15 @@ function RichTextEditorComponent({
             ErrorBoundary={LexicalErrorBoundary}
           />
         </div>
+        {aiOptions.length > 0 && (
+          <AiSuggestionCards
+            options={aiOptions}
+            onSelect={handleSelectOption}
+            onRegenerate={handleRegenerate}
+            onDismiss={() => { setAiOptions([]); setLastAiAction(null); }}
+            loading={aiLoading}
+          />
+        )}
         <HistoryPlugin />
         <ListPlugin />
         <LinkPlugin />
