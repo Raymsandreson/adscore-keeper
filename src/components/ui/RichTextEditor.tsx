@@ -396,25 +396,31 @@ export function RichTextEditor({
   onChangeRef.current = onChange;
   const editorRef = useRef<LexicalEditor | null>(null);
   const lastEmittedHtml = useRef(value || '');
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const initialConfig = {
+  // Memoize initialConfig so LexicalComposer doesn't remount
+  const initialConfig = useRef({
     namespace: 'RichTextEditor',
     theme: editorTheme,
     onError: (error: Error) => console.error('Lexical error:', error),
     nodes: [ListNode, ListItemNode, LinkNode, AutoLinkNode],
-  };
+  }).current;
 
+  // Debounced HTML generation — only serialize after 150ms idle
   const handleEditorChange = useCallback(
-    (editorState: EditorState, editor: LexicalEditor) => {
+    (_editorState: EditorState, editor: LexicalEditor) => {
       editorRef.current = editor;
-      editorState.read(() => {
-        const html = $generateHtmlFromNodes(editor);
-        const root = $getRoot();
-        const text = root.getTextContent().trim();
-        const output = text === '' ? '' : html;
-        lastEmittedHtml.current = output;
-        onChangeRef.current(output);
-      });
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      debounceTimer.current = setTimeout(() => {
+        editor.getEditorState().read(() => {
+          const html = $generateHtmlFromNodes(editor);
+          const root = $getRoot();
+          const text = root.getTextContent().trim();
+          const output = text === '' ? '' : html;
+          lastEmittedHtml.current = output;
+          onChangeRef.current(output);
+        });
+      }, 150);
     },
     [],
   );
