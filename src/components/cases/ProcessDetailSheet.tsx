@@ -100,6 +100,7 @@ function EditableSwitch({ label, checked, onChange }: {
 const TABS = [
   { id: 'partes', label: 'Partes', icon: Users },
   { id: 'dados', label: 'Dados', icon: Scale },
+  { id: 'documentos', label: 'Documentos', icon: FolderOpen },
   { id: 'tribunal', label: 'Tribunal', icon: Landmark },
   { id: 'local', label: 'Local', icon: MapPin },
   { id: 'datas', label: 'Datas', icon: Calendar },
