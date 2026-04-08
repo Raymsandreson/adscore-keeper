@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { PromptVariableSelector } from './PromptVariableSelector';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { logAudit } from '@/hooks/useAuditLog';
