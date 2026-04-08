@@ -406,7 +406,7 @@ export function RichTextEditor({
     nodes: [ListNode, ListItemNode, LinkNode, AutoLinkNode],
   }).current;
 
-  // Debounced HTML generation — only serialize after 150ms idle
+  // Serialize less often to avoid typing lag from HTML generation + parent rerenders
   const handleEditorChange = useCallback(
     (_editorState: EditorState, editor: LexicalEditor) => {
       editorRef.current = editor;
@@ -420,7 +420,7 @@ export function RichTextEditor({
           lastEmittedHtml.current = output;
           onChangeRef.current(output);
         });
-      }, 150);
+      }, 350);
     },
     [],
   );
