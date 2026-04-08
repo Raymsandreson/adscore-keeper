@@ -348,17 +348,30 @@ export function useDashboardMetrics() {
         if (l.campaign_name) campaignMap.set(l.campaign_name, (campaignMap.get(l.campaign_name) || 0) + 1);
         
         const phone = (l.lead_phone || '').replace(/\D/g, '');
-        const suffix = phone.slice(-8);
-        const stats = phoneStats.get(suffix);
+        const suffix = phone.length >= 8 ? phone.slice(-8) : '';
         
-        // Classify based on manual message ratio within lead lifecycle
+        // CRITICAL: leads without a valid phone cannot be classified by message analysis
+        // They are marked as 'ai' only if they have an acolhedor that is NOT a human name
+        // Otherwise they should not inflate AI metrics - classify as 'human' (conservative)
         let classification: 'ai' | 'assisted' | 'human';
-        if (!stats || stats.manual === 0) {
-          classification = 'ai'; // No manual messages = 100% IA
-        } else if (stats.total > 0 && (stats.manual / stats.total) >= 0.7) {
-          classification = 'human'; // >=70% manual = 100% Humano
+        
+        if (!suffix) {
+          // No phone = no message data to analyze. Conservative: classify as 'human'
+          classification = 'human';
         } else {
-          classification = 'assisted'; // Mixed = Assistido por IA
+          const stats = phoneStats.get(suffix);
+          // Classify based on manual message ratio within lead lifecycle
+          if (!stats || stats.total === 0) {
+            // No outbound messages found at all during lifecycle = 100% IA
+            classification = 'ai';
+          } else if (stats.manual === 0) {
+            // Outbound messages exist but zero manual = 100% IA
+            classification = 'ai';
+          } else if ((stats.manual / stats.total) >= 0.7) {
+            classification = 'human'; // >=70% manual = 100% Humano
+          } else {
+            classification = 'assisted'; // Mixed = Assistido por IA
+          }
         }
         
         if (classification === 'ai') closedByAI++;
