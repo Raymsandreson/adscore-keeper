@@ -923,6 +923,42 @@ export type Database = {
           },
         ]
       }
+      audit_logs: {
+        Row: {
+          action: string
+          created_at: string
+          details: Json | null
+          entity_id: string | null
+          entity_name: string | null
+          entity_type: string
+          id: string
+          user_id: string
+          user_name: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          details?: Json | null
+          entity_id?: string | null
+          entity_name?: string | null
+          entity_type: string
+          id?: string
+          user_id: string
+          user_name?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          details?: Json | null
+          entity_id?: string | null
+          entity_name?: string | null
+          entity_type?: string
+          id?: string
+          user_id?: string
+          user_name?: string | null
+        }
+        Relationships: []
+      }
       bank_transactions: {
         Row: {
           amount: number
@@ -9500,6 +9536,7 @@ export type Database = {
         Args: { _pluggy_account_id: string; _user_id: string }
         Returns: boolean
       }
+      cleanup_old_audit_logs: { Args: never; Returns: undefined }
       cleanup_old_command_history: { Args: never; Returns: undefined }
       cleanup_old_webhook_logs: { Args: never; Returns: undefined }
       cleanup_old_whatsapp_messages: { Args: never; Returns: undefined }
