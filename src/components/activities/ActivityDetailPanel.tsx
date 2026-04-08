@@ -192,6 +192,7 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
   const [leadActivities, setLeadActivities] = useState<LeadActivityEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('detalhes');
+  const [showLeadSheet, setShowLeadSheet] = useState(false);
 
   const fetchLeadData = useCallback(async () => {
     if (!leadId) {
