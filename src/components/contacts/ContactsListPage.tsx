@@ -116,7 +116,10 @@ export function ContactsListPage() {
     return (
       c.full_name.toLowerCase().includes(q) ||
       (c.phone && c.phone.includes(q)) ||
-      (c.email && c.email.toLowerCase().includes(q))
+      (c.email && c.email.toLowerCase().includes(q)) ||
+      (c.city && c.city.toLowerCase().includes(q)) ||
+      (c.state && c.state.toLowerCase().includes(q)) ||
+      (c.neighborhood && c.neighborhood.toLowerCase().includes(q))
     );
   });
 
@@ -289,7 +292,7 @@ export function ContactsListPage() {
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar contato..."
+                placeholder="Buscar por nome, telefone, cidade, estado..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="pl-9"
@@ -322,6 +325,11 @@ export function ContactsListPage() {
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <Phone className="h-3 w-3" />
                         {contact.phone}
+                        {(contact.city || contact.state) && (
+                          <span className="ml-2 text-muted-foreground/70">
+                            📍 {[contact.city, contact.state].filter(Boolean).join(', ')}
+                          </span>
+                        )}
                       </p>
                     </div>
                     {contact.classification && (
