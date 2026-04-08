@@ -868,6 +868,34 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     )}
                   </div>
                 </div>
+                {/* Group forwarding */}
+                <div className="border rounded-lg p-3 space-y-2">
+                  <Label className="text-sm font-medium">📨 Redirecionamento ao Grupo</Label>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-xs">Encaminhar perguntas ao grupo</Label>
+                      <p className="text-[10px] text-muted-foreground">Quando o cliente perguntar sobre o processo no privado, o agente envia a pergunta/resposta no grupo vinculado ao lead</p>
+                    </div>
+                    <Switch checked={form.forward_questions_to_group ?? false} onCheckedChange={v => setForm(f => ({ ...f, forward_questions_to_group: v }))} />
+                  </div>
+                  {form.forward_questions_to_group && (
+                    <div className="space-y-1 pl-2 border-l-2 border-primary/20">
+                      <Label className="text-xs">Instância para notificação privada</Label>
+                      <p className="text-[10px] text-muted-foreground">Selecione a instância que receberá um aviso privado alertando a equipe para responder no grupo</p>
+                      <Select value={form.notify_instance_name || '__none__'} onValueChange={v => setForm(f => ({ ...f, notify_instance_name: v === '__none__' ? null : v }))}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Nenhuma (só envia no grupo)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__" className="text-xs">Nenhuma (só envia no grupo)</SelectItem>
+                          {instances.map((inst: any) => (
+                            <SelectItem key={inst.id} value={inst.instance_name} className="text-xs">{inst.instance_name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
                 {/* Respond in Groups + Audio Reply */}
                 <div className="space-y-2 border rounded-lg p-3">
                   <div className="flex items-center justify-between">
