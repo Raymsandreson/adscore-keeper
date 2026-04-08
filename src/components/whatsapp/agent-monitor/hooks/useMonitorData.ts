@@ -1,13 +1,14 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { differenceInMinutes, endOfDay } from 'date-fns';
-import type { AgentData, ConversationDetail, AgentStats, ReferralData, BoardData } from '../types';
+import type { AgentData, ConversationDetail, AgentStats, ReferralData, BoardData, RedirectionData } from '../types';
 
 export function useMonitorData() {
   const [agents, setAgents] = useState<AgentData[]>([]);
   const [conversations, setConversations] = useState<ConversationDetail[]>([]);
   const [agentStats, setAgentStats] = useState<AgentStats[]>([]);
   const [referrals, setReferrals] = useState<ReferralData[]>([]);
+  const [redirections, setRedirections] = useState<RedirectionData[]>([]);
   const [boards, setBoards] = useState<BoardData[]>([]);
   const [loading, setLoading] = useState(true);
 
