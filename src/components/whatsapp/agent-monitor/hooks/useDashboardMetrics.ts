@@ -198,23 +198,26 @@ export function useDashboardMetrics() {
       const phonesToCheck = uniquePhones.slice(0, 2000);
       const oldPhones = new Set<string>();
 
-      // Check in larger batches of 200 with a single page each
+      // Check in batches with high enough limit to capture all distinct phones
+      // Bug fix: old code used .limit(200) which returned MESSAGE rows, not distinct phones.
+      // If one phone had 150+ old messages, it consumed the limit and other phones were missed.
+      // Fix: use smaller batches (50 phones) with limit = 5000 to ensure all phones are found.
       const batchPromises: Promise<void>[] = [];
-      for (let i = 0; i < phonesToCheck.length; i += 200) {
-        const batch = phonesToCheck.slice(i, i + 200);
+      for (let i = 0; i < phonesToCheck.length; i += 50) {
+        const batch = phonesToCheck.slice(i, i + 50);
         batchPromises.push(
           (supabase
             .from('whatsapp_messages')
             .select('phone')
             .lt('created_at', todayStart)
             .in('phone', batch)
-            .limit(200) as any)
+            .limit(5000) as any)
             .then(({ data }: any) => {
               (data || []).forEach((m: any) => oldPhones.add(m.phone));
             })
         );
       }
-      // Run all batch checks in parallel (not sequential!)
+      // Run all batch checks in parallel
       await Promise.all(batchPromises);
 
       const trulyNewPhones = uniquePhones.filter(p => !oldPhones.has(p));

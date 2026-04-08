@@ -182,7 +182,9 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
           >
             <CardContent className="p-3 text-center">
               <Icon className={`h-4 w-4 mx-auto mb-1 ${color}`} />
-              <p className="text-xl font-bold">{counts[key]}</p>
+              <p className="text-xl font-bold">
+                {key === 'fechado' && dashboardMetrics?.closedTotal != null ? dashboardMetrics.closedTotal : counts[key]}
+              </p>
               <p className="text-[10px] text-muted-foreground">{statusLabel(key)}</p>
             </CardContent>
           </Card>
@@ -214,7 +216,7 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
       )}
 
       {/* Unified closing analysis card - uses pipeline count for consistency */}
-      {counts.fechado > 0 && dashboardMetrics && (
+      {(dashboardMetrics?.closedTotal ?? counts.fechado) > 0 && dashboardMetrics && (
         <Card>
           <CardContent className="p-3">
             {/* Header with totals - clickable */}
