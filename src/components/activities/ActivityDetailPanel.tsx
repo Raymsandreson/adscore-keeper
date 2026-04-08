@@ -16,6 +16,8 @@ import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import type { Lead } from '@/hooks/useLeads';
 
 interface LeadData {
   id: string;
@@ -190,6 +192,7 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
   const [leadActivities, setLeadActivities] = useState<LeadActivityEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('detalhes');
+  const [showLeadSheet, setShowLeadSheet] = useState(false);
 
   const fetchLeadData = useCallback(async () => {
     if (!leadId) {
@@ -317,12 +320,12 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
               )}
             </div>
           </div>
-          {onNavigateToLead && (
+          {leadId && (
             <Button
               variant="ghost"
               size="sm"
               className="h-7 text-xs gap-1 shrink-0"
-              onClick={() => onNavigateToLead(leadId)}
+              onClick={() => setShowLeadSheet(true)}
             >
               <ExternalLink className="h-3 w-3" /> Abrir Lead
             </Button>
@@ -605,6 +608,20 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Lead Edit Sheet */}
+      {leadId && (
+        <LeadEditDialog
+          open={showLeadSheet}
+          onOpenChange={setShowLeadSheet}
+          lead={lead as any}
+          onSave={async () => {
+            setShowLeadSheet(false);
+            fetchLeadData();
+          }}
+          mode="sheet"
+        />
+      )}
     </div>
   );
 }
