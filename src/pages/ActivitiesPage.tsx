@@ -2689,42 +2689,28 @@ const ActivitiesPage = () => {
               )}
             </div>
 
-            {/* Switchable content: Form or Lead Context */}
-            {rightPanelTab === 'form' ? (
-              <>
-                {/* Form body - scrollable */}
-                <div className="flex-1 overflow-y-auto p-4">
-                  <div className="max-w-2xl">
-                    {activityFormContent}
+            {/* Form body - scrollable */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="max-w-2xl">
+                {activityFormContent}
 
-                    {sheetMode === 'edit' && selectedActivity?.completed_at && (
-                      <p className="text-xs text-muted-foreground mt-3">
-                        Concluída por: {selectedActivity.completed_by_name || '—'} em{' '}
-                        {format(parseISO(selectedActivity.completed_at), "dd/MM/yyyy 'às' HH:mm")}
-                      </p>
-                    )}
+                {sheetMode === 'edit' && selectedActivity?.completed_at && (
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Concluída por: {selectedActivity.completed_by_name || '—'} em{' '}
+                    {format(parseISO(selectedActivity.completed_at), "dd/MM/yyyy 'às' HH:mm")}
+                  </p>
+                )}
 
-                    {sheetMode === 'edit' && selectedActivity && (
-                      <div className="text-xs text-muted-foreground mt-3 space-y-1">
-                        <p>Criado por: {resolveUserName(selectedActivity.created_by) || '—'} em {format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
-                        {selectedActivity.updated_at && selectedActivity.updated_at !== selectedActivity.created_at && (
-                          <p>Última atualização por: {resolveUserName((selectedActivity as any).updated_by) || '—'} em {format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm")}</p>
-                        )}
-                      </div>
+                {sheetMode === 'edit' && selectedActivity && (
+                  <div className="text-xs text-muted-foreground mt-3 space-y-1">
+                    <p>Criado por: {resolveUserName(selectedActivity.created_by) || '—'} em {format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
+                    {selectedActivity.updated_at && selectedActivity.updated_at !== selectedActivity.created_at && (
+                      <p>Última atualização por: {resolveUserName((selectedActivity as any).updated_by) || '—'} em {format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm")}</p>
                     )}
                   </div>
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 overflow-y-auto">
-                <ActivityDetailPanel
-                  leadId={formLeadId}
-                  leadName={formLeadName}
-                  currentActivityId={selectedActivity?.id || null}
-                  onNavigateToLead={(id) => navigate(`/leads?id=${id}`)}
-                />
+                )}
               </div>
-            )}
+            </div>
 
             {/* Action bar - always visible at bottom */}
             <div className="shrink-0 border-t border-border bg-muted/60 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-10">
@@ -2985,6 +2971,18 @@ const ActivitiesPage = () => {
         </div>
       )}
       <ConfirmDeleteDialog />
+      {/* Lead Edit Sheet */}
+      {formLeadId && (
+        <LeadEditDialog
+          open={showLeadSheet}
+          onOpenChange={setShowLeadSheet}
+          lead={{ id: formLeadId, lead_name: formLeadName } as any}
+          onSave={async () => {
+            setShowLeadSheet(false);
+          }}
+          mode="sheet"
+        />
+      )}
     </div>
   );
 };
