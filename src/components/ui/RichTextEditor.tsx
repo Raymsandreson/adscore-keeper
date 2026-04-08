@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -482,13 +483,21 @@ function RichTextEditorComponent({
     nodes: [ListNode, ListItemNode, LinkNode, AutoLinkNode],
   }).current;
 
-  const flushEditorHtml = useCallback((editor: LexicalEditor) => {
+  const flushEditorHtml = useCallback((editor: LexicalEditor, options?: { sync?: boolean }) => {
     editor.getEditorState().read(() => {
       const html = $generateHtmlFromNodes(editor);
       const root = $getRoot();
       const text = root.getTextContent().trim();
       const output = text === '' ? '' : html;
       lastEmittedHtml.current = output;
+
+      if (options?.sync) {
+        flushSync(() => {
+          onChangeRef.current(output);
+        });
+        return;
+      }
+
       onChangeRef.current(output);
     });
   }, []);
@@ -529,7 +538,7 @@ function RichTextEditorComponent({
     const editor = editorRef.current;
     if (editor) {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
-      flushEditorHtml(editor);
+      flushEditorHtml(editor, { sync: true });
     }
 
     onExpand?.();
