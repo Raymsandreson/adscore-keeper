@@ -148,17 +148,6 @@ export function RichTextEditor({
       </div>
       {/* Editor */}
       <EditorContent editor={editor} />
-      {!value && placeholder && (
-        <style>{`
-          .ProseMirror p.is-editor-empty:first-child::before {
-            content: '${placeholder.replace(/'/g, "\\'")}';
-            color: hsl(var(--muted-foreground) / 0.6);
-            float: left;
-            pointer-events: none;
-            height: 0;
-          }
-        `}</style>
-      )}
     </div>
   );
 }
