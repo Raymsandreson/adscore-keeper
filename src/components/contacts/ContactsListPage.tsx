@@ -116,7 +116,10 @@ export function ContactsListPage() {
     return (
       c.full_name.toLowerCase().includes(q) ||
       (c.phone && c.phone.includes(q)) ||
-      (c.email && c.email.toLowerCase().includes(q))
+      (c.email && c.email.toLowerCase().includes(q)) ||
+      (c.city && c.city.toLowerCase().includes(q)) ||
+      (c.state && c.state.toLowerCase().includes(q)) ||
+      (c.neighborhood && c.neighborhood.toLowerCase().includes(q))
     );
   });
 
