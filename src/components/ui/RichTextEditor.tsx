@@ -8,6 +8,7 @@ import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { ListPlugin } from '@lexical/react/LexicalListPlugin';
+import { CheckListPlugin } from '@lexical/react/LexicalCheckListPlugin';
 import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
@@ -36,6 +37,7 @@ import {
   $isListNode,
   ListNode,
   ListItemNode,
+  INSERT_CHECK_LIST_COMMAND,
 } from '@lexical/list';
 
 import { AutoLinkNode, LinkNode, $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
@@ -48,6 +50,7 @@ import {
   Underline as UnderlineIcon,
   List,
   ListOrdered,
+  ListChecks,
   Link2,
   Unlink,
   Maximize2,
@@ -81,6 +84,8 @@ const editorTheme = {
     ol: 'lexical-list-ol',
     ul: 'lexical-list-ul',
     listitem: 'lexical-listitem',
+    listitemChecked: 'lexical-listitem-checked',
+    listitemUnchecked: 'lexical-listitem-unchecked',
   },
   link: 'lexical-link',
 };
@@ -164,7 +169,7 @@ function ToolbarPlugin({
         if ($isListNode(element)) {
           const parentList = $getNearestNodeOfType(anchorNode, ListNode);
           const type = parentList ? parentList.getListType() : element.getListType();
-          setBlockType(type === 'number' ? 'ol' : 'ul');
+          setBlockType(type === 'number' ? 'ol' : type === 'check' ? 'check' : 'ul');
         } else {
           setBlockType('paragraph');
         }
@@ -199,7 +204,15 @@ function ToolbarPlugin({
     }
   }, [editor, isLink]);
 
-  const toggleList = useCallback((type: 'ul' | 'ol') => {
+  const toggleList = useCallback((type: 'ul' | 'ol' | 'check') => {
+    if (type === 'check') {
+      if (blockType === 'check') {
+        editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
+      } else {
+        editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
+      }
+      return;
+    }
     if (blockType === type) {
       editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
     } else {
@@ -304,6 +317,9 @@ function ToolbarPlugin({
       </ToolBtn>
       <ToolBtn active={blockType === 'ol'} onClick={() => toggleList('ol')} title="Lista numerada">
         <ListOrdered className="h-3.5 w-3.5" />
+      </ToolBtn>
+      <ToolBtn active={blockType === 'check'} onClick={() => toggleList('check')} title="Checklist">
+        <ListChecks className="h-3.5 w-3.5" />
       </ToolBtn>
 
       <div className="w-px h-4 bg-border mx-0.5" />
@@ -636,6 +652,7 @@ function RichTextEditorComponent({
         )}
         <HistoryPlugin />
         <ListPlugin />
+        <CheckListPlugin />
         <LinkPlugin />
         <OnChangePlugin onChange={handleEditorChange} ignoreSelectionChange />
         <SyncPlugin value={value} lastEmittedHtml={lastEmittedHtml} />
