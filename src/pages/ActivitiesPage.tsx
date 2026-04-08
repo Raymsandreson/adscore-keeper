@@ -265,6 +265,9 @@ const ActivitiesPage = () => {
     const { data } = await supabase.from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status').limit(2000);
     setAllActivitiesRaw(data || []);
   }, []);
+  
+  // Wire up the ref so fetchActivities wrapper can call refreshCounts
+  useEffect(() => { refreshCountsRef.current = refreshCounts; }, [refreshCounts]);
 
   useEffect(() => {
     const loadSupport = async () => {
