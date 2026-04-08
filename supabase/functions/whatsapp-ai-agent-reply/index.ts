@@ -1370,7 +1370,7 @@ Se o cliente NÃO estiver perguntando sobre processo/caso, NÃO use a tag [GRUPO
       };
       await supabase.from("whatsapp_messages").insert(outboundMsg);
 
-      // ========== FORWARD MESSAGE TO GROUP ==========
+      // ========== FORWARD MESSAGE TO GROUP + NOTIFY INSTANCE ==========
       if (groupMessageToSend && instance && (instance as any).instance_token) {
         try {
           // Find the group JID from the lead
@@ -1385,17 +1385,19 @@ Se o cliente NÃO estiver perguntando sobre processo/caso, NÃO use a tag [GRUPO
             groupJid = groupLead?.whatsapp_group_id || null;
           }
 
+          const groupBaseUrl = (instance as any).base_url || "https://abraci.uazapi.com";
+          const groupToken = (instance as any).instance_token;
+          let groupSent = false;
+
           if (groupJid) {
-            const groupBaseUrl = (instance as any).base_url || "https://abraci.uazapi.com";
-            const groupToken = (instance as any).instance_token;
             const groupSendRes = await fetch(`${groupBaseUrl}/send/text`, {
               method: "POST",
               headers: { "Content-Type": "application/json", "token": groupToken },
               body: JSON.stringify({ number: groupJid, text: groupMessageToSend }),
             });
             if (groupSendRes.ok) {
+              groupSent = true;
               console.log(`[group-forward] Message sent to group ${groupJid} for lead ${groupLeadId}`);
-              // Save as outbound message in group conversation
               await supabase.from("whatsapp_messages").insert({
                 phone: groupJid, instance_name, direction: "outbound",
                 message_text: groupMessageToSend,
@@ -1410,6 +1412,66 @@ Se o cliente NÃO estiver perguntando sobre processo/caso, NÃO use a tag [GRUPO
           } else {
             console.log(`[group-forward] No group JID found for lead ${groupLeadId}, skipping group forward`);
           }
+
+          // ========== SEND PRIVATE NOTIFICATION TO CONFIGURED INSTANCE ==========
+          const notifyInstanceName = (agent as any).notify_instance_name;
+          let privateNotification: string | null = null;
+          if (notifyInstanceName && groupJid) {
+            try {
+              // Fetch the notify instance credentials
+              const { data: notifyInst } = await supabase
+                .from("whatsapp_instances")
+                .select("instance_name, instance_token, base_url")
+                .eq("instance_name", notifyInstanceName)
+                .eq("is_active", true)
+                .maybeSingle();
+
+              if (notifyInst?.instance_token) {
+                const notifyBaseUrl = notifyInst.base_url || "https://abraci.uazapi.com";
+                const contactName = contact_name || phone;
+                privateNotification = `⚠️ *Notificação do Agente ${(agent as any).name}*\n\n` +
+                  `O cliente *${contactName}* (${phone}) fez uma pergunta sobre o processo no privado.\n\n` +
+                  `📩 A pergunta foi encaminhada ao grupo do processo.\n` +
+                  `Por favor, responda no grupo para que o cliente receba o acompanhamento adequado.`;
+
+                // Send notification to the group JID via the notify instance
+                const notifySendRes = await fetch(`${notifyBaseUrl}/send/text`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "token": notifyInst.instance_token },
+                  body: JSON.stringify({ number: groupJid, text: privateNotification }),
+                });
+
+                if (notifySendRes.ok) {
+                  console.log(`[group-forward] Private notification sent via ${notifyInstanceName} to group ${groupJid}`);
+                  // Log notification in messages
+                  await supabase.from("whatsapp_messages").insert({
+                    phone: groupJid, instance_name: notifyInstanceName, direction: "outbound",
+                    message_text: privateNotification,
+                    metadata: { ai_agent: (agent as any).name, notification_type: 'group_redirect', source_phone: phone },
+                    action_source: 'agent',
+                    action_source_detail: `Notificação de redirecionamento: ${(agent as any).name}`,
+                  });
+                } else {
+                  console.error(`[group-forward] Failed to send notification via ${notifyInstanceName}:`, notifySendRes.status);
+                }
+              }
+            } catch (notifyErr) {
+              console.error("[group-forward] Error sending private notification:", notifyErr);
+            }
+          }
+
+          // ========== LOG REDIRECTION ==========
+          await supabase.from("agent_group_redirections").insert({
+            agent_id: assignment?.agent_id || (agent as any).id,
+            agent_name: (agent as any).name,
+            phone,
+            instance_name,
+            group_jid: groupJid,
+            notify_instance_name: notifyInstanceName || null,
+            group_message: groupMessageToSend,
+            private_notification: privateNotification,
+          });
+
         } catch (groupErr) {
           console.error("[group-forward] Error forwarding to group:", groupErr);
         }
