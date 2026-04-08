@@ -51,7 +51,7 @@ export interface NewConvDetail {
 
 // Helper to fetch all rows with pagination
 async function fetchAllPaginated<T>(
-  queryFn: (from: number, to: number) => Promise<{ data: T[] | null }>,
+  queryFn: (from: number, to: number) => PromiseLike<{ data: T[] | null }>,
   pageSize = 1000
 ): Promise<T[]> {
   const allRows: T[] = [];
@@ -98,7 +98,7 @@ export function useDashboardMetrics() {
         contactsRes,
       ] = await Promise.all([
         // Inbound messages (paginated)
-        fetchAllPaginated((from, to) =>
+        fetchAllPaginated<any>((from, to) =>
           supabase
             .from('whatsapp_messages')
             .select('phone, contact_name, created_at, instance_name')
@@ -107,10 +107,10 @@ export function useDashboardMetrics() {
             .gte('created_at', todayStart)
             .lte('created_at', todayEnd)
             .order('created_at', { ascending: true })
-            .range(from, to)
+            .range(from, to) as any
         ),
         // Outbound messages (paginated) - fetch ALL at once instead of per-phone
-        fetchAllPaginated((from, to) =>
+        fetchAllPaginated<any>((from, to) =>
           supabase
             .from('whatsapp_messages')
             .select('phone, created_at')
@@ -119,7 +119,7 @@ export function useDashboardMetrics() {
             .gte('created_at', todayStart)
             .lte('created_at', todayEnd)
             .order('created_at', { ascending: true })
-            .range(from, to)
+            .range(from, to) as any
         ),
         // Closed leads
         supabase
@@ -188,14 +188,14 @@ export function useDashboardMetrics() {
       for (let i = 0; i < phonesToCheck.length; i += 200) {
         const batch = phonesToCheck.slice(i, i + 200);
         batchPromises.push(
-          supabase
+          (supabase
             .from('whatsapp_messages')
             .select('phone')
             .lt('created_at', todayStart)
             .in('phone', batch)
-            .limit(200)
-            .then(({ data }) => {
-              (data || []).forEach(m => oldPhones.add(m.phone));
+            .limit(200) as any)
+            .then(({ data }: any) => {
+              (data || []).forEach((m: any) => oldPhones.add(m.phone));
             })
         );
       }
@@ -235,14 +235,14 @@ export function useDashboardMetrics() {
           const batch = closedSuffixes.slice(i, i + 50);
           const orFilter = batch.map(s => `phone.ilike.%${s}%`).join(',');
           humanBatches.push(
-            supabase
+            (supabase
               .from('whatsapp_messages')
               .select('phone')
               .eq('direction', 'outbound')
               .eq('action_source', 'manual')
               .or(orFilter)
-              .limit(500)
-              .then(({ data }) => {
+              .limit(500) as any)
+              .then(({ data }: any) => {
                 for (const msg of (data || [])) {
                   humanPhones.add((msg.phone || '').replace(/\D/g, '').slice(-8));
                 }
