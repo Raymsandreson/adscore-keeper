@@ -493,7 +493,7 @@ const ActivitiesPage = () => {
     setSheetMode('edit');
 
     // Fire all DB queries in parallel (non-blocking)
-    const promises: Promise<void>[] = [];
+    const promises: Promise<any>[] = [];
 
     if (activity.lead_id) {
       promises.push(
