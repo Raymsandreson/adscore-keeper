@@ -190,7 +190,100 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       });
   }, [activeTab, process?.id]);
 
-  const set = useCallback((key: string, value: any) => {
+  // Fetch documents when tab is activated
+  useEffect(() => {
+    if (activeTab !== 'documentos' || !process?.id) return;
+    setLoadingDocuments(true);
+    supabase
+      .from('process_documents')
+      .select('*')
+      .eq('process_id', process.id)
+      .order('document_date', { ascending: false, nullsFirst: false })
+      .then(({ data }) => {
+        setDocuments((data || []) as unknown as ProcessDocument[]);
+        setLoadingDocuments(false);
+      });
+  }, [activeTab, process?.id]);
+
+  const fetchEscavadorDocuments = async () => {
+    if (!form.process_number) {
+      toast.error('Número do processo necessário para buscar documentos');
+      return;
+    }
+    setFetchingEscavadorDocs(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke('search-escavador', {
+        body: { action: 'buscar_documentos', numero_cnj: form.process_number },
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      const docs = data.data?.items || data.data?.data || (Array.isArray(data.data) ? data.data : []);
+      
+      if (docs.length === 0) {
+        toast.info('Nenhum documento público encontrado no Escavador');
+        setFetchingEscavadorDocs(false);
+        return;
+      }
+
+      // Insert documents that don't already exist
+      let inserted = 0;
+      for (const doc of docs) {
+        const escId = String(doc.id || doc.documento_id || '');
+        if (!escId) continue;
+        
+        // Check if already imported
+        const existing = documents.find(d => d.escavador_document_id === escId);
+        if (existing) continue;
+
+        const docType = classifyDocumentType(doc.tipo || doc.descricao || doc.titulo || '');
+        
+        const { error: insertErr } = await supabase.from('process_documents').insert({
+          process_id: process.id,
+          case_id: process.case_id || null,
+          lead_id: process.lead_id || null,
+          document_type: docType,
+          title: doc.titulo || doc.descricao || doc.tipo || `Documento ${escId}`,
+          description: doc.conteudo || doc.descricao || null,
+          source: 'escavador',
+          escavador_document_id: escId,
+          original_url: doc.url || null,
+          document_date: doc.data || null,
+          metadata: doc,
+        } as any);
+        
+        if (!insertErr) inserted++;
+      }
+
+      toast.success(`${inserted} documento(s) importado(s) do Escavador`);
+      
+      // Refresh documents list
+      const { data: refreshed } = await supabase
+        .from('process_documents')
+        .select('*')
+        .eq('process_id', process.id)
+        .order('document_date', { ascending: false, nullsFirst: false });
+      setDocuments((refreshed || []) as unknown as ProcessDocument[]);
+    } catch (err: any) {
+      console.error('Error fetching Escavador documents:', err);
+      toast.error(err.message || 'Erro ao buscar documentos do Escavador');
+    } finally {
+      setFetchingEscavadorDocs(false);
+    }
+  };
+
+  const deleteDocument = async (docId: string) => {
+    if (!confirm('Excluir este documento?')) return;
+    const { error } = await supabase.from('process_documents').delete().eq('id', docId);
+    if (error) {
+      toast.error('Erro ao excluir documento');
+      return;
+    }
+    setDocuments(prev => prev.filter(d => d.id !== docId));
+    toast.success('Documento excluído');
+  };
+
+
     setForm(prev => ({ ...prev, [key]: value }));
     setDirty(true);
   }, []);
