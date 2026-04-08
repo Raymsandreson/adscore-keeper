@@ -12,10 +12,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Accept user data from the frontend (sent after successful Cloud auth)
-    const { user_id, email, full_name } = await req.json();
+    const body = await req.json();
+    const { action, user_id, email, full_name, phone } = body;
 
-    if (!user_id || !email) {
+    if (!user_id || (!email && action !== 'update_profile')) {
       return new Response(JSON.stringify({ error: 'Missing user_id or email' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -26,6 +26,29 @@ Deno.serve(async (req) => {
     const externalUrl = resolveSupabaseUrl();
     const externalKey = resolveServiceRoleKey();
     const externalClient = createClient(externalUrl, externalKey);
+
+    // Handle profile update from admin (MemberDetailSheet)
+    if (action === 'update_profile') {
+      const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (full_name !== undefined) updateData.full_name = full_name;
+      if (email !== undefined) updateData.email = email;
+      if (phone !== undefined) updateData.phone = phone;
+
+      const { error } = await externalClient
+        .from('profiles')
+        .update(updateData)
+        .eq('user_id', user_id);
+
+      if (error) {
+        console.error('Profile update error:', error);
+        return new Response(JSON.stringify({ ok: false, error: error.message }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const name = full_name || email.split('@')[0] || '';
 
