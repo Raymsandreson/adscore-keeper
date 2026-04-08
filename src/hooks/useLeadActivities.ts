@@ -45,6 +45,7 @@ export function useLeadActivities() {
     assigned_to?: string | string[];
     lead_id?: string | string[];
     contact_id?: string | string[];
+    limit?: number;
   }) => {
     setLoading(true);
     try {
@@ -72,7 +73,6 @@ export function useLeadActivities() {
         const userIds = filtered.filter(v => v !== '__unassigned__');
         
         if (hasUnassigned && userIds.length > 0) {
-          // Include both specific users AND unassigned activities
           query = query.or(`assigned_to.in.(${userIds.join(',')}),assigned_to.is.null`);
         } else if (hasUnassigned) {
           query = query.is('assigned_to', null);
@@ -94,6 +94,10 @@ export function useLeadActivities() {
         if (filtered.length === 1) query = query.eq('contact_id', filtered[0]);
         else if (filtered.length > 1) query = query.in('contact_id', filtered);
       }
+
+      // Apply limit to prevent loading too many records at once
+      const maxRows = filters?.limit ?? 500;
+      query = query.limit(maxRows);
 
       const { data, error } = await query;
       if (error) throw error;

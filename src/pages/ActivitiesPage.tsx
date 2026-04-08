@@ -95,7 +95,12 @@ const ActivitiesPage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthContext();
-  const { activities, loading, fetchActivities, createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
+  const { activities, loading, fetchActivities: _fetchActivities, createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
+  const refreshCountsRef = useRef<(() => Promise<void>) | null>(null);
+  const fetchActivities = useCallback(async (params?: Parameters<typeof _fetchActivities>[0]) => {
+    await _fetchActivities(params);
+    refreshCountsRef.current?.();
+  }, [_fetchActivities]);
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
 
@@ -225,10 +230,11 @@ const ActivitiesPage = () => {
       }
     } catch {}
 
-    // Default: show ALL activities (empty = "Todos")
-    setFilterAssigneeState([]);
+    // Default: show only current user's activities for better performance
+    const defaultFilter = user?.id ? [user.id] : [];
+    setFilterAssigneeState(defaultFilter);
     try {
-      localStorage.setItem(assigneeStorageKey, JSON.stringify([]));
+      localStorage.setItem(assigneeStorageKey, JSON.stringify(defaultFilter));
     } catch {}
   }, [assigneeStorageKey, user?.id]);
 
@@ -244,14 +250,25 @@ const ActivitiesPage = () => {
     setter(current.includes(value) ? current.filter(v => v !== value) : [...current, value]);
   };
 
-  // Fetch raw counts (lightweight)
+  // Fetch raw counts (lightweight) - only on mount, not on every activities change
+  const countsLoadedRef = useRef(false);
   useEffect(() => {
     const loadCounts = async () => {
-      const { data } = await supabase.from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status');
+      const { data } = await supabase.from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status').limit(2000);
       setAllActivitiesRaw(data || []);
+      countsLoadedRef.current = true;
     };
     loadCounts();
-  }, [activities]); // refresh when activities change
+  }, []); // Load once on mount
+  
+  // Refresh counts only after mutations (create/update/delete) - not on every fetch
+  const refreshCounts = useCallback(async () => {
+    const { data } = await supabase.from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status').limit(2000);
+    setAllActivitiesRaw(data || []);
+  }, []);
+  
+  // Wire up the ref so fetchActivities wrapper can call refreshCounts
+  useEffect(() => { refreshCountsRef.current = refreshCounts; }, [refreshCounts]);
 
   useEffect(() => {
     const loadSupport = async () => {
