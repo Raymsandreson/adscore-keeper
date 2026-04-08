@@ -452,50 +452,6 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   );
 }
 
-/* === Detail fields sub-component === */
-function DetailFields(props: ActivityFormCompactProps & { compact: boolean }) {
-  return (
-    <>
-      {props.fieldSettings.map(field => {
-        const valueMap: Record<string, [string, (v: string) => void]> = {
-          what_was_done: [props.formWhatWasDone, props.setFormWhatWasDone],
-          current_status: [props.formCurrentStatus, props.setFormCurrentStatus],
-          next_steps: [props.formNextSteps, props.setFormNextSteps],
-          notes: [props.formNotes, props.setFormNotes],
-        };
-        const entry = valueMap[field.field_key];
-        if (!entry) return null;
-        const [value, setter] = entry;
-
-        if (field.field_key === 'notes') {
-          return (
-            <ActivityNotesField
-              key={field.field_key}
-              value={value}
-              onChange={setter}
-              activityId={props.selectedActivity?.id || null}
-              placeholder={field.placeholder || 'Notas adicionais...'}
-              label={field.label}
-            />
-          );
-        }
-
-        return (
-          <div key={field.field_key}>
-            <span className={cn("text-muted-foreground uppercase tracking-wider", props.compact ? "text-[10px]" : "text-xs font-medium")}>{field.label}</span>
-            <Textarea
-              value={value}
-              onChange={e => setter(e.target.value)}
-              placeholder={field.placeholder || ''}
-              rows={props.compact ? 1 : 3}
-              className={cn("mt-0.5", props.compact ? "text-xs min-h-[32px] resize-none" : "text-sm min-h-[80px]")}
-            />
-          </div>
-        );
-      })}
-    </>
-  );
-}
 
 /* === Compact search field sub-component === */
 function CompactSearchField({
