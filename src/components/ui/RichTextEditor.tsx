@@ -486,7 +486,7 @@ export function RichTextEditor({
         <ListPlugin />
         <LinkPlugin />
         <OnChangePlugin onChange={handleEditorChange} ignoreSelectionChange />
-        <SyncPlugin value={value} />
+        <SyncPlugin value={value} lastEmittedHtml={lastEmittedHtml} />
         {autoFocus && <AutoFocusPlugin />}
         <EditorRefPlugin editorRef={editorRef} />
       </LexicalComposer>
