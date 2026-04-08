@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Search, X, ChevronDown, Copy, Loader2, Maximize2, UserPlus, Building2 } from 'lucide-react';
+import { Search, X, ChevronDown, Copy, Loader2, Maximize2, UserPlus, Building2, Briefcase } from 'lucide-react';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
@@ -95,9 +95,9 @@ const MATRIX_OPTIONS = [
 export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [expandedFieldKey, setExpandedFieldKey] = useState<string | null>(null);
-  const [linkedOpen, setLinkedOpen] = useState(!!props.formCaseId);
   const [linkLeadOpen, setLinkLeadOpen] = useState(false);
   const [linkContactOpen, setLinkContactOpen] = useState(false);
+  const [linkCaseOpen, setLinkCaseOpen] = useState(false);
 
   return (
     <div className="space-y-3">
@@ -146,6 +146,25 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           ) : (
             <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1 text-muted-foreground" onClick={() => setLinkContactOpen(true)}>
               <UserPlus className="h-3 w-3" /> Contato
+            </Button>
+          )}
+          {/* Case link button */}
+          {props.formCaseTitle ? (
+            <div className="flex items-center gap-0.5">
+              <Badge
+                variant="secondary"
+                className="text-[9px] h-5 max-w-[120px] truncate cursor-pointer hover:opacity-80 bg-orange-100 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400"
+                onClick={() => setLinkCaseOpen(true)}
+              >
+                {props.formCaseTitle}
+              </Badge>
+              <button type="button" onClick={() => { props.setFormCaseId(''); props.setFormCaseTitle(''); props.setFormProcessId(''); props.setFormProcessTitle(''); props.setCaseProcesses([]); }} className="text-muted-foreground hover:text-foreground">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1 text-muted-foreground" onClick={() => setLinkCaseOpen(true)}>
+              <Briefcase className="h-3 w-3" /> Caso
             </Button>
           )}
         </div>
@@ -285,85 +304,6 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         </div>
       )}
 
-      {/* === COLLAPSIBLE: Linked entities (Lead, Contact, Case) === */}
-      <Collapsible open={linkedOpen} onOpenChange={setLinkedOpen}>
-        <CollapsibleTrigger className="flex items-center gap-1.5 w-full text-left py-1">
-          <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", linkedOpen && "rotate-180")} />
-          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Caso / Processo</span>
-          {props.formCaseTitle && (
-            <Badge variant="secondary" className="text-[9px] h-4 px-1.5 ml-auto">{props.formCaseTitle}</Badge>
-          )}
-        </CollapsibleTrigger>
-        <CollapsibleContent className="space-y-2.5 pt-1.5">
-          {/* Case */}
-          <CompactSearchField
-            label="Caso"
-            placeholder="Buscar caso..."
-            searchValue={props.caseSearch}
-            onSearchChange={props.setCaseSearch}
-            selectedName={props.formCaseTitle}
-            onClear={() => { props.setFormCaseId(''); props.setFormCaseTitle(''); props.setFormProcessId(''); props.setFormProcessTitle(''); props.setCaseProcesses([]); }}
-            items={(() => {
-              const src = props.formLeadId
-                ? (props.caseSearch ? props.leadCases.filter(c => c.title?.toLowerCase().includes(props.caseSearch.toLowerCase()) || c.case_number?.toLowerCase().includes(props.caseSearch.toLowerCase())) : props.leadCases)
-                : (props.caseSearch ? props.availableCases.filter(c => c.title?.toLowerCase().includes(props.caseSearch.toLowerCase()) || c.case_number?.toLowerCase().includes(props.caseSearch.toLowerCase())) : props.availableCases.slice(0, 20));
-              return src.map(c => ({ id: c.id, name: `${c.case_number} — ${c.title}` }));
-            })()}
-            selectedId={props.formCaseId}
-            onSelect={async (id) => {
-              const c = [...props.leadCases, ...props.availableCases].find(c => c.id === id);
-              if (!c) return;
-              props.setFormCaseId(c.id);
-              props.setFormCaseTitle(`${c.case_number} - ${c.title}`);
-              props.setCaseSearch('');
-              props.setFormProcessId('');
-              props.setFormProcessTitle('');
-              if (!props.formLeadId) {
-                const fullCase = props.availableCases.find(ac => ac.id === c.id);
-                if (fullCase?.lead_id) {
-                  const lead = props.leads.find(l => l.id === fullCase.lead_id);
-                  if (lead) props.handleSelectLead(lead.id);
-                }
-              }
-              const { data: procs } = await props.supabase
-                .from('lead_processes')
-                .select('id, title, process_number')
-                .eq('case_id', c.id);
-              props.setCaseProcesses((procs || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number })));
-            }}
-            showList={!!props.caseSearch || !props.formCaseId}
-          />
-          {/* Process */}
-          {props.formCaseId && props.caseProcesses.length > 0 && (
-            <div>
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Processo</span>
-              <ScrollArea className="max-h-[60px] mt-0.5 border rounded">
-                {props.caseProcesses.map(p => (
-                  <button
-                    key={p.id}
-                    className={cn("w-full text-left px-2 py-1 text-xs hover:bg-accent", props.formProcessId === p.id && "bg-accent font-medium")}
-                    onClick={() => {
-                      props.setFormProcessId(p.id);
-                      props.setFormProcessTitle(p.process_number ? `${p.process_number} - ${p.title}` : p.title);
-                    }}
-                  >
-                    {p.process_number && <span className="font-medium">{p.process_number}</span>}
-                    {p.process_number ? ' — ' : ''}{p.title}
-                  </button>
-                ))}
-              </ScrollArea>
-              {props.formProcessTitle && (
-                <div className="flex items-center gap-1 mt-0.5">
-                  <Badge variant="outline" className="text-[9px] h-4">{props.formProcessTitle}</Badge>
-                  <button type="button" onClick={() => { props.setFormProcessId(''); props.setFormProcessTitle(''); }} className="text-muted-foreground hover:text-foreground">
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </CollapsibleContent>
-      </Collapsible>
 
       {/* === COLLAPSIBLE: Detail fields === */}
       <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
@@ -566,59 +506,99 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           </div>
         </SheetContent>
       </Sheet>
-    </div>
-  );
-}
 
-
-/* === Compact search field sub-component === */
-function CompactSearchField({
-  label, placeholder, searchValue, onSearchChange, selectedName, onClear,
-  items, selectedId, onSelect, showList
-}: {
-  label: string; placeholder: string;
-  searchValue: string; onSearchChange: (v: string) => void;
-  selectedName: string; onClear: () => void;
-  items: { id: string; name: string }[];
-  selectedId: string; onSelect: (id: string) => void;
-  showList: boolean;
-}) {
-  return (
-    <div>
-      <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</span>
-      {selectedName ? (
-        <div className="flex items-center gap-1.5 mt-0.5">
-          <Badge variant="secondary" className="text-[10px] h-5 max-w-[200px] truncate">{selectedName}</Badge>
-          <button type="button" onClick={onClear} className="text-muted-foreground hover:text-foreground">
-            <X className="h-3 w-3" />
-          </button>
-        </div>
-      ) : (
-        <>
-          <div className="relative mt-0.5">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-            <Input
-              placeholder={placeholder}
-              value={searchValue}
-              onChange={e => onSearchChange(e.target.value)}
-              className="h-7 text-xs pl-7"
-            />
-          </div>
-          {showList && items.length > 0 && (
-            <ScrollArea className="max-h-[80px] mt-0.5 border rounded">
-              {items.map(item => (
-                <button
-                  key={item.id}
-                  className={cn("w-full text-left px-2 py-1 text-xs hover:bg-accent", selectedId === item.id && "bg-accent font-medium")}
-                  onClick={() => onSelect(item.id)}
-                >
-                  {item.name}
-                </button>
-              ))}
+      {/* === SHEET: Link Case === */}
+      <Sheet open={linkCaseOpen} onOpenChange={setLinkCaseOpen}>
+        <SheetContent className="w-full sm:max-w-sm">
+          <SheetHeader>
+            <SheetTitle className="text-base">Vincular Caso</SheetTitle>
+          </SheetHeader>
+          <div className="pt-4 space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar caso..."
+                value={props.caseSearch}
+                onChange={e => props.setCaseSearch(e.target.value)}
+                className="pl-9 h-9 text-sm"
+                autoFocus
+              />
+            </div>
+            <ScrollArea className="h-[calc(100vh-200px)]">
+              <div className="space-y-0.5">
+                {(() => {
+                  const src = props.formLeadId
+                    ? (props.caseSearch ? props.leadCases.filter(c => c.title?.toLowerCase().includes(props.caseSearch.toLowerCase()) || c.case_number?.toLowerCase().includes(props.caseSearch.toLowerCase())) : props.leadCases)
+                    : (props.caseSearch ? props.availableCases.filter(c => c.title?.toLowerCase().includes(props.caseSearch.toLowerCase()) || c.case_number?.toLowerCase().includes(props.caseSearch.toLowerCase())) : props.availableCases.slice(0, 30));
+                  return src.map(c => (
+                    <button
+                      key={c.id}
+                      className={cn(
+                        "w-full text-left px-3 py-2.5 text-sm rounded-md hover:bg-accent transition-colors",
+                        props.formCaseId === c.id && "bg-accent font-medium"
+                      )}
+                      onClick={async () => {
+                        props.setFormCaseId(c.id);
+                        props.setFormCaseTitle(`${c.case_number} - ${c.title}`);
+                        props.setCaseSearch('');
+                        props.setFormProcessId('');
+                        props.setFormProcessTitle('');
+                        if (!props.formLeadId) {
+                          const fullCase = props.availableCases.find(ac => ac.id === c.id);
+                          if (fullCase?.lead_id) {
+                            const lead = props.leads.find(l => l.id === fullCase.lead_id);
+                            if (lead) props.handleSelectLead(lead.id);
+                          }
+                        }
+                        const { data: procs } = await props.supabase
+                          .from('lead_processes')
+                          .select('id, title, process_number')
+                          .eq('case_id', c.id);
+                        props.setCaseProcesses((procs || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number })));
+                        setLinkCaseOpen(false);
+                      }}
+                    >
+                      <span className="font-medium">{c.case_number}</span> — {c.title}
+                    </button>
+                  ));
+                })()}
+              </div>
             </ScrollArea>
-          )}
-        </>
-      )}
+            {/* Process selection within case sheet */}
+            {props.formCaseId && props.caseProcesses.length > 0 && (
+              <div className="border-t pt-3">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Processos do caso</span>
+                <div className="mt-2 space-y-0.5">
+                  {props.caseProcesses.map(p => (
+                    <button
+                      key={p.id}
+                      className={cn(
+                        "w-full text-left px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors",
+                        props.formProcessId === p.id && "bg-accent font-medium"
+                      )}
+                      onClick={() => {
+                        props.setFormProcessId(p.id);
+                        props.setFormProcessTitle(p.process_number ? `${p.process_number} - ${p.title}` : p.title);
+                      }}
+                    >
+                      {p.process_number && <span className="font-medium">{p.process_number}</span>}
+                      {p.process_number ? ' — ' : ''}{p.title}
+                    </button>
+                  ))}
+                </div>
+                {props.formProcessTitle && (
+                  <div className="flex items-center gap-1 mt-2">
+                    <Badge variant="outline" className="text-[10px]">{props.formProcessTitle}</Badge>
+                    <button type="button" onClick={() => { props.setFormProcessId(''); props.setFormProcessTitle(''); }} className="text-muted-foreground hover:text-foreground">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
