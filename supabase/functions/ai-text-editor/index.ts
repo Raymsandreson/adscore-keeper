@@ -43,7 +43,7 @@ serve(async (req) => {
       });
     }
 
-    const result = await geminiChat({
+    const response = await geminiChat({
       model: "google/gemini-2.5-flash-lite",
       temperature: 0.3,
       max_tokens: 2048,
@@ -52,6 +52,8 @@ serve(async (req) => {
         { role: "user", content: text },
       ],
     });
+
+    const result = response?.choices?.[0]?.message?.content || '';
 
     return new Response(JSON.stringify({ result }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
