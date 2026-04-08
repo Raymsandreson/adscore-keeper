@@ -8,6 +8,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
+import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -1131,424 +1132,79 @@ const ActivitiesPage = () => {
 
   const weekDays = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
 
+  const buildMsg = () => {
+    const notifDate = formNotificationDate ? (() => {
+      const d = parseISO(formNotificationDate);
+      const dias = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+      return `${format(d, 'dd/MM/yyyy')} ${dias[d.getDay()]}`;
+    })() : '';
+    const valueMap: Record<string, string> = { what_was_done: formWhatWasDone, current_status: formCurrentStatus, next_steps: formNextSteps, notes: formNotes };
+    const fieldLines = fieldSettings.filter(f => f.include_in_message).map(f => `*${f.label}:* ${valueMap[f.field_key] || '—'}`).join('\n\n');
+    const createdByName = selectedActivity ? resolveUserName(selectedActivity.created_by) : resolveUserName(user?.id || null);
+    const createdAtFmt = selectedActivity ? format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm") : format(new Date(), "dd/MM/yyyy 'às' HH:mm");
+    const updatedByName = selectedActivity ? resolveUserName((selectedActivity as any).updated_by) : null;
+    const updatedAtFmt = selectedActivity?.updated_at && selectedActivity.updated_at !== selectedActivity.created_at ? format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm") : null;
+    const timeSpent = workflowMode ? getActivityTimeSpent() : 0;
+    const tempoStr = timeSpent > 0 ? `\n⏱️ Tempo dedicado à atividade: ${formatDuration(timeSpent)}` : '';
+    const activityLink = selectedActivity ? `\n🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
+    return `*Boa tarde Sr(a). *\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${formLeadName ? `Referente ao caso de ${formLeadName}` : ''}\n\n${fieldLines}\n\n${formAssignedToName ? `*${formAssignedToName}* voltará com mais informações no dia *${notifDate || '—'}*, até o final do dia.` : ''}\n${tempoStr}\n\n*Registrado por:* ${createdByName || '—'} em ${createdAtFmt}${updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : ''}\n${activityLink}\n\nAtenciosamente, ${createdByName || 'Equipe'}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+  };
+
   const activityFormContent = (
-    <div className="space-y-4">
-      <div>
-        <Label>Assunto da atividade *</Label>
-        <Input value={formTitle} onChange={e => handleTitleChange(e.target.value)} placeholder="Ex: ACOMPANHAR PROTOCOLO" />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label>Assessor</Label>
-          <Select value={formAssignedTo} onValueChange={handleSelectAssignee}>
-            <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
-            <SelectContent>
-              {teamMembers.map(m => (
-                <SelectItem key={m.user_id} value={m.user_id}>{m.full_name || 'Sem nome'}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div>
-          <Label>Tipo de atividade * {aiSuggestingType && <Loader2 className="inline h-3 w-3 animate-spin ml-1" />}</Label>
-          <Select value={formType} onValueChange={setFormType}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {routineActivityTypes.map(t => (
-                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-              ))}
-              {routineActivityTypes.length === 0 && (
-                <div className="px-2 py-3 text-xs text-muted-foreground text-center">
-                  Configure sua rotina primeiro
-                </div>
-              )}
-            </SelectContent>
-          </Select>
-          {activeRoutine.length > 0 && formType && !activeRoutine.some(c => c.activityType === formType) && (
-            <p className="text-[10px] text-amber-600 mt-0.5">Tipo fora da rotina (permitido)</p>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label>Situação</Label>
-          <Select value={formStatus} onValueChange={setFormStatus}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="pendente">Pendente</SelectItem>
-              <SelectItem value="em_andamento">Em Andamento</SelectItem>
-              <SelectItem value="concluida">Concluída</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div>
-          <Label>Prioridade</Label>
-          <Select value={formPriority} onValueChange={setFormPriority}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {PRIORITY_OPTIONS.map(p => (
-                <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* Eisenhower Matrix Quadrant */}
-      <div>
-        <Label className="text-xs font-medium">Matriz de Eisenhower</Label>
-        <div className="grid grid-cols-2 gap-1.5 mt-1">
-          {[
-            { value: 'do_now', label: '🔥 Faça Agora', desc: 'Urgente + Importante', className: 'border-red-400 data-[selected=true]:bg-red-500 data-[selected=true]:text-white data-[selected=true]:border-red-500' },
-            { value: 'schedule', label: '📅 Agende', desc: 'Não urgente + Importante', className: 'border-blue-400 data-[selected=true]:bg-blue-600 data-[selected=true]:text-white data-[selected=true]:border-blue-600' },
-            { value: 'delegate', label: '🤝 Delegue', desc: 'Urgente + Pouco importante', className: 'border-orange-400 data-[selected=true]:bg-orange-500 data-[selected=true]:text-white data-[selected=true]:border-orange-500' },
-            { value: 'eliminate', label: '🗑️ Retire', desc: 'Não urgente + Pouco importante', className: 'border-muted-foreground data-[selected=true]:bg-muted-foreground data-[selected=true]:text-background data-[selected=true]:border-muted-foreground' },
-          ].map(q => (
-            <button
-              key={q.value}
-              type="button"
-              data-selected={formMatrixQuadrant === q.value}
-              className={cn(
-                'text-left px-2.5 py-2 rounded-lg border-2 transition-all text-xs',
-                q.className,
-                formMatrixQuadrant !== q.value && 'hover:bg-muted/50'
-              )}
-              onClick={() => setFormMatrixQuadrant(formMatrixQuadrant === q.value ? '' : q.value)}
-            >
-              <div className="font-semibold">{q.label}</div>
-              <div className="text-[10px] opacity-70">{q.desc}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <div className="flex items-center justify-between">
-            <Label>Prazo da atividade</Label>
-            {deadlineDateCount !== null && formDeadline && (
-              <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full", deadlineDateCount > 0 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400")}>
-                {deadlineDateCount} atv{deadlineDateCount !== 1 ? 's' : ''} abertas
-              </span>
-            )}
-          </div>
-          <Input type="date" value={formDeadline} onChange={e => handleDeadlineChange(e.target.value)} />
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between">
-            <Label>Prazo de notificação</Label>
-            {notifDateCount !== null && formNotificationDate && (
-              <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full", notifDateCount > 0 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400")}>
-                {notifDateCount} atv{notifDateCount !== 1 ? 's' : ''} abertas
-              </span>
-            )}
-          </div>
-          <Input type="date" value={formNotificationDate} onChange={e => setFormNotificationDate(e.target.value)} />
-        </div>
-      </div>
-
-      {/* Repeat weekly - only on create */}
-      {!selectedActivity && (
-        <div>
-          <Label className="text-xs">Repetir nos dias da semana</Label>
-          <div className="flex gap-1 mt-1">
-            {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((day, idx) => {
-              const isSelected = formRepeatWeekDays.includes(idx);
-              return (
-                <Button
-                  key={idx}
-                  type="button"
-                  variant={isSelected ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-7 w-9 px-0 text-[10px]"
-                  onClick={() => {
-                    setFormRepeatWeekDays(prev =>
-                      isSelected ? prev.filter(d => d !== idx) : [...prev, idx]
-                    );
-                  }}
-                >
-                  {day}
-                </Button>
-              );
-            })}
-            {formRepeatWeekDays.length > 0 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-[10px] text-muted-foreground"
-                onClick={() => setFormRepeatWeekDays([])}
-              >
-                Limpar
-              </Button>
-            )}
-          </div>
-          {formRepeatWeekDays.length > 0 && (
-            <p className="text-[10px] text-muted-foreground mt-0.5">
-              Será criada 1 atividade para cada dia selecionado na semana do prazo
-            </p>
-          )}
-        </div>
-      )}
-
-      <div>
-        <Label>Nome do cliente (Lead)</Label>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar lead..."
-            value={leadSearch}
-            onChange={e => setLeadSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        {(leadSearch || !formLeadId) && (
-          <ScrollArea className="max-h-[100px] mt-1 border rounded-md">
-            {filteredLeads.map(l => (
-              <button
-                key={l.id}
-                className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${formLeadId === l.id ? 'bg-accent font-medium' : ''}`}
-                onClick={() => { handleSelectLead(l.id); setLeadSearch(''); }}
-              >
-                {l.lead_name || 'Lead sem nome'}
-              </button>
-            ))}
-          </ScrollArea>
-        )}
-        {formLeadName && (
-          <div className="flex items-center gap-2 mt-1">
-            <Badge variant="secondary">{formLeadName}</Badge>
-            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleClearLead()}>
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
-        )}
-      </div>
-
-      <div>
-        <Label>Contato vinculado</Label>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar contato..."
-            value={contactSearch}
-            onChange={e => setContactSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        {(contactSearch || !formContactId) && (
-          <ScrollArea className="max-h-[100px] mt-1 border rounded-md">
-            {(contactSearch
-              ? availableContacts.filter(c => c.full_name?.toLowerCase().includes(contactSearch.toLowerCase()))
-              : availableContacts.slice(0, 20)
-            ).map(c => (
-              <button
-                key={c.id}
-                className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${formContactId === c.id ? 'bg-accent font-medium' : ''}`}
-                onClick={() => { setFormContactId(c.id); setFormContactName(c.full_name); setContactSearch(''); }}
-              >
-                {c.full_name}
-              </button>
-            ))}
-          </ScrollArea>
-        )}
-        {formContactName && (
-          <div className="flex items-center gap-2 mt-1">
-            <Badge variant="secondary">{formContactName}</Badge>
-            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setFormContactId(''); setFormContactName(''); }}>
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* Caso Jurídico - cascading: if lead selected, show lead's cases; otherwise search all */}
-      <div>
-        <Label>Caso Jurídico</Label>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={formLeadId ? "Selecionar caso deste lead..." : "Buscar caso..."}
-            value={caseSearch}
-            onChange={e => setCaseSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        {(caseSearch || !formCaseId) && (
-          <ScrollArea className="max-h-[100px] mt-1 border rounded-md">
-            {(() => {
-              // If lead is selected, show lead's cases; otherwise search all
-              const casesToShow = formLeadId
-                ? (caseSearch
-                    ? leadCases.filter(c => c.title?.toLowerCase().includes(caseSearch.toLowerCase()) || c.case_number?.toLowerCase().includes(caseSearch.toLowerCase()))
-                    : leadCases)
-                : (caseSearch
-                    ? availableCases.filter(c => c.title?.toLowerCase().includes(caseSearch.toLowerCase()) || c.case_number?.toLowerCase().includes(caseSearch.toLowerCase()))
-                    : availableCases.slice(0, 20));
-              return casesToShow.map(c => (
-                <button
-                  key={c.id}
-                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${formCaseId === c.id ? 'bg-accent font-medium' : ''}`}
-                  onClick={async () => {
-                    setFormCaseId(c.id);
-                    setFormCaseTitle(`${c.case_number} - ${c.title}`);
-                    setCaseSearch('');
-                    setFormProcessId('');
-                    setFormProcessTitle('');
-                    // Auto-select lead if case has lead_id and no lead selected
-                    if (!formLeadId) {
-                      const fullCase = availableCases.find(ac => ac.id === c.id);
-                      if (fullCase?.lead_id) {
-                        const lead = leads.find(l => l.id === fullCase.lead_id);
-                        if (lead) {
-                          setFormLeadId(lead.id);
-                          setFormLeadName(lead.lead_name || '');
-                        }
-                      }
-                    }
-                    // Load processes for this case
-                    const { data: procs } = await supabase
-                      .from('lead_processes')
-                      .select('id, title, process_number')
-                      .eq('case_id', c.id);
-                    setCaseProcesses((procs || []).map(p => ({ id: p.id, title: p.title, process_number: p.process_number })));
-                  }}
-                >
-                  <span className="font-medium">{c.case_number}</span> — {c.title}
-                </button>
-              ));
-            })()}
-          </ScrollArea>
-        )}
-        {formCaseTitle && (
-          <div className="flex items-center gap-2 mt-1">
-            <Badge variant="secondary" className="text-xs">{formCaseTitle}</Badge>
-            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => {
-              setFormCaseId('');
-              setFormCaseTitle('');
-              setFormProcessId('');
-              setFormProcessTitle('');
-              setCaseProcesses([]);
-            }}>
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* Processo vinculado - appears when a case is selected */}
-      {formCaseId && caseProcesses.length > 0 && (
-        <div>
-          <Label>Processo vinculado</Label>
-          <ScrollArea className="max-h-[100px] mt-1 border rounded-md">
-            {caseProcesses.map(p => (
-              <button
-                key={p.id}
-                className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${formProcessId === p.id ? 'bg-accent font-medium' : ''}`}
-                onClick={() => {
-                  setFormProcessId(p.id);
-                  setFormProcessTitle(p.process_number ? `${p.process_number} - ${p.title}` : p.title);
-                }}
-              >
-                {p.process_number && <span className="font-medium">{p.process_number}</span>}
-                {p.process_number ? ' — ' : ''}{p.title}
-              </button>
-            ))}
-          </ScrollArea>
-          {formProcessTitle && (
-            <div className="flex items-center gap-2 mt-1">
-              <Badge variant="outline" className="text-xs">{formProcessTitle}</Badge>
-              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setFormProcessId(''); setFormProcessTitle(''); }}>
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Dynamic fields based on settings */}
-      {fieldSettings.map(field => {
-        const valueMap: Record<string, [string, (v: string) => void]> = {
-          what_was_done: [formWhatWasDone, setFormWhatWasDone],
-          current_status: [formCurrentStatus, setFormCurrentStatus],
-          next_steps: [formNextSteps, setFormNextSteps],
-          notes: [formNotes, setFormNotes],
-        };
-        const entry = valueMap[field.field_key];
-        if (!entry) return null;
-        const [value, setter] = entry;
-
-        if (field.field_key === 'notes') {
-          return (
-            <ActivityNotesField
-              key={field.field_key}
-              value={value}
-              onChange={setter}
-              activityId={selectedActivity?.id || null}
-              placeholder={field.placeholder || 'Notas adicionais...'}
-              label={field.label}
-            />
-          );
-        }
-
-        return (
-          <div key={field.field_key}>
-            <Label>{field.label}</Label>
-            <Textarea value={value} onChange={e => setter(e.target.value)} placeholder={field.placeholder || ''} rows={2} />
-          </div>
-        );
-      })}
-
-      <Separator />
-
-      {(() => {
-        const buildMsg = () => {
-          const notifDate = formNotificationDate ? (() => {
-            const d = parseISO(formNotificationDate);
-            const dias = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
-            return `${format(d, 'dd/MM/yyyy')} ${dias[d.getDay()]}`;
-          })() : '';
-          const valueMap: Record<string, string> = { what_was_done: formWhatWasDone, current_status: formCurrentStatus, next_steps: formNextSteps, notes: formNotes };
-          const fieldLines = fieldSettings.filter(f => f.include_in_message).map(f => `*${f.label}:* ${valueMap[f.field_key] || '—'}`).join('\n\n');
-          const createdByName = selectedActivity ? resolveUserName(selectedActivity.created_by) : resolveUserName(user?.id || null);
-          const createdAtFmt = selectedActivity ? format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm") : format(new Date(), "dd/MM/yyyy 'às' HH:mm");
-          const updatedByName = selectedActivity ? resolveUserName((selectedActivity as any).updated_by) : null;
-          const updatedAtFmt = selectedActivity?.updated_at && selectedActivity.updated_at !== selectedActivity.created_at ? format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm") : null;
-          const timeSpent = workflowMode ? getActivityTimeSpent() : 0;
-          const tempoStr = timeSpent > 0 ? `\n⏱️ Tempo dedicado à atividade: ${formatDuration(timeSpent)}` : '';
-          const activityLink = selectedActivity ? `\n🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
-          return `*Boa tarde Sr(a). *\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${formLeadName ? `Referente ao caso de ${formLeadName}` : ''}\n\n${fieldLines}\n\n${formAssignedToName ? `*${formAssignedToName}* voltará com mais informações no dia *${notifDate || '—'}*, até o final do dia.` : ''}\n${tempoStr}\n\n*Registrado por:* ${createdByName || '—'} em ${createdAtFmt}${updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : ''}\n${activityLink}\n\nAtenciosamente, ${createdByName || 'Equipe'}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
-        };
-        return (
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="flex-1 gap-2"
-          onClick={() => {
-            navigator.clipboard.writeText(buildMsg());
-            toast.success('Mensagem copiada para o WhatsApp!');
-          }}
-        >
-          <Copy className="h-4 w-4" />
-          Gerar mensagem WhatsApp
-        </Button>
-        <ActivityTTSButton messageText={buildMsg()} leadId={formLeadId || undefined} contactId={formContactId || undefined} />
-        <ActivityFieldSettingsDialog
-          fields={fieldSettings}
-          onUpdateField={updateFieldSetting}
-          onReorder={reorderFields}
-        />
-      </div>
-        );
-      })()}
-    </div>
+    <ActivityFormCompact
+      formTitle={formTitle} setFormTitle={setFormTitle}
+      formAssignedTo={formAssignedTo} handleSelectAssignee={handleSelectAssignee}
+      formType={formType} setFormType={setFormType}
+      formStatus={formStatus} setFormStatus={setFormStatus}
+      formPriority={formPriority} setFormPriority={setFormPriority}
+      formDeadline={formDeadline} handleDeadlineChange={handleDeadlineChange}
+      formNotificationDate={formNotificationDate} setFormNotificationDate={setFormNotificationDate}
+      formMatrixQuadrant={formMatrixQuadrant} setFormMatrixQuadrant={setFormMatrixQuadrant}
+      formLeadId={formLeadId} formLeadName={formLeadName}
+      formContactId={formContactId} formContactName={formContactName}
+      formCaseId={formCaseId} formCaseTitle={formCaseTitle}
+      formProcessId={formProcessId} formProcessTitle={formProcessTitle}
+      formRepeatWeekDays={formRepeatWeekDays} setFormRepeatWeekDays={setFormRepeatWeekDays}
+      formWhatWasDone={formWhatWasDone} setFormWhatWasDone={setFormWhatWasDone}
+      formCurrentStatus={formCurrentStatus} setFormCurrentStatus={setFormCurrentStatus}
+      formNextSteps={formNextSteps} setFormNextSteps={setFormNextSteps}
+      formNotes={formNotes} setFormNotes={setFormNotes}
+      teamMembers={teamMembers}
+      routineActivityTypes={routineActivityTypes}
+      filteredLeads={filteredLeads}
+      availableContacts={availableContacts}
+      availableCases={availableCases}
+      leadCases={leadCases}
+      caseProcesses={caseProcesses}
+      deadlineDateCount={deadlineDateCount}
+      notifDateCount={notifDateCount}
+      handleTitleChange={handleTitleChange}
+      handleSelectLead={handleSelectLead}
+      handleClearLead={handleClearLead}
+      setFormContactId={setFormContactId}
+      setFormContactName={setFormContactName}
+      setFormCaseId={setFormCaseId}
+      setFormCaseTitle={setFormCaseTitle}
+      setFormProcessId={setFormProcessId}
+      setFormProcessTitle={setFormProcessTitle}
+      setCaseProcesses={setCaseProcesses}
+      setCaseSearch={setCaseSearch}
+      caseSearch={caseSearch}
+      leadSearch={leadSearch} setLeadSearch={setLeadSearch}
+      contactSearch={contactSearch} setContactSearch={setContactSearch}
+      fieldSettings={fieldSettings}
+      updateFieldSetting={updateFieldSetting}
+      reorderFields={reorderFields}
+      selectedActivity={selectedActivity}
+      aiSuggestingType={aiSuggestingType}
+      activeRoutine={activeRoutine}
+      buildMsg={buildMsg}
+      formAssignedToName={formAssignedToName}
+      formLeadIdForTTS={formLeadId || undefined}
+      formContactIdForTTS={formContactId || undefined}
+      supabase={supabase}
+      leads={leads}
+    />
   );
 
   if (workflowMode) {
