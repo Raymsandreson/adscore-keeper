@@ -12,10 +12,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Accept user data from the frontend (sent after successful Cloud auth)
-    const { user_id, email, full_name } = await req.json();
+    const body = await req.json();
+    const { action, user_id, email, full_name, phone } = body;
 
-    if (!user_id || !email) {
+    if (!user_id || (!email && action !== 'update_profile')) {
       return new Response(JSON.stringify({ error: 'Missing user_id or email' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -27,17 +27,55 @@ Deno.serve(async (req) => {
     const externalKey = resolveServiceRoleKey();
     const externalClient = createClient(externalUrl, externalKey);
 
+    // Handle profile update from admin (MemberDetailSheet)
+    if (action === 'update_profile') {
+      const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (full_name !== undefined) updateData.full_name = full_name;
+      if (email !== undefined) updateData.email = email;
+      if (phone !== undefined) updateData.phone = phone;
+
+      const { error } = await externalClient
+        .from('profiles')
+        .update(updateData)
+        .eq('user_id', user_id);
+
+      if (error) {
+        console.error('Profile update error:', error);
+        return new Response(JSON.stringify({ ok: false, error: error.message }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const name = full_name || email.split('@')[0] || '';
+
+    // Check if profile already exists with a real name — never overwrite a manually-set name
+    const { data: existingProfile } = await externalClient
+      .from('profiles')
+      .select('full_name')
+      .eq('user_id', user_id)
+      .maybeSingle();
+
+    const existingName = existingProfile?.full_name || '';
+    const isExistingNameReal = existingName && existingName !== email && !existingName.includes('@') && !/^\+?\d[\d\s\-()]*$/.test(existingName.trim());
+    
+    // Only set name if there's no real name already saved
+    const profileData: Record<string, any> = {
+      user_id,
+      email,
+      updated_at: new Date().toISOString(),
+    };
+    if (!isExistingNameReal) {
+      profileData.full_name = name;
+    }
 
     // Upsert profile in external DB
     const { error: profileError } = await externalClient
       .from('profiles')
-      .upsert({
-        user_id,
-        email,
-        full_name: name,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' })
+      .upsert(profileData, { onConflict: 'user_id' })
       .select()
       .single();
 

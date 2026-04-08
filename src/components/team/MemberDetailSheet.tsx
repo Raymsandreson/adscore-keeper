@@ -409,6 +409,21 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
 
       if (error) throw error;
 
+      // Also sync name/email to External DB (source of truth for auth profile)
+      try {
+        await cloudFunctions.invoke('sync-user-to-external', {
+          body: {
+            action: 'update_profile',
+            user_id: member.user_id,
+            full_name: fullName.trim(),
+            email: email.trim(),
+            phone: normalizedPhone || null,
+          },
+        });
+      } catch (syncErr) {
+        console.warn('External profile sync failed (non-blocking):', syncErr);
+      }
+
       // Sync OAB entries
       await supabase.from('profile_oab_entries').delete().eq('user_id', member.user_id);
       if (oabEntries.length > 0) {
