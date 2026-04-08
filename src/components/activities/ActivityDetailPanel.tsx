@@ -615,7 +615,7 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
           open={showLeadSheet}
           onOpenChange={setShowLeadSheet}
           lead={lead as any}
-          onSave={() => {
+          onSave={async () => {
             setShowLeadSheet(false);
             fetchLeadData();
           }}
