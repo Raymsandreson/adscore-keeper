@@ -130,10 +130,12 @@ function ToolbarPlugin({
   onExpand,
   aiLoading,
   onAiAction,
+  onCustomPrompt,
 }: {
   onExpand?: () => void;
   aiLoading: boolean;
   onAiAction: (action: string) => void;
+  onCustomPrompt: () => void;
 }) {
   const [editor] = useLexicalComposerContext();
   const [isBold, setIsBold] = useState(false);
@@ -273,6 +275,10 @@ function ToolbarPlugin({
               ))}
             </DropdownMenuSubContent>
           </DropdownMenuSub>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={onCustomPrompt}>
+            <span className="mr-2">💬</span> Prompt personalizado
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
