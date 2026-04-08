@@ -692,7 +692,22 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
             {formSection === 'ai' && (
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">🧠 Prompt do Agente</Label>
+                  <div className="flex items-center justify-between mb-1">
+                    <Label className="text-xs">🧠 Prompt do Agente</Label>
+                    <PromptVariableSelector onInsert={(variable) => {
+                      const textarea = document.querySelector<HTMLTextAreaElement>('#command-prompt-textarea');
+                      if (textarea) {
+                        const start = textarea.selectionStart;
+                        const end = textarea.selectionEnd;
+                        const currentVal = form.prompt_instructions || '';
+                        const newVal = currentVal.substring(0, start) + variable + currentVal.substring(end);
+                        setForm(f => ({ ...f, prompt_instructions: newVal }));
+                        setTimeout(() => { textarea.focus(); textarea.setSelectionRange(start + variable.length, start + variable.length); }, 50);
+                      } else {
+                        setForm(f => ({ ...f, prompt_instructions: (f.prompt_instructions || '') + ' ' + variable }));
+                      }
+                    }} />
+                  </div>
                   <p className="text-[10px] text-muted-foreground">Define a personalidade, tom, instruções de coleta e regras de comportamento do agente.</p>
                   <div className="relative">
                     <Textarea
