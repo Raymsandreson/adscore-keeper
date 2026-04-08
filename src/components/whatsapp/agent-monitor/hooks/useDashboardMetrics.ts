@@ -130,12 +130,25 @@ export function useDashboardMetrics() {
           .lte('updated_at', todayEnd)
           .then(r => r.data || []),
         // Operational metrics - all in parallel
-        supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at, signed_at').eq('signer_status', 'signed').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-        supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at').eq('signer_status', 'new').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-        supabase.from('leads').select('id, lead_name, acolhedor, board_id, campaign_name, created_at').not('whatsapp_group_id', 'is', null).gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-        supabase.from('legal_cases').select('id, case_number, title, acolhedor, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-        supabase.from('case_process_tracking').select('id, cliente, acolhedor, lead_id, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-        supabase.from('contacts').select('id, full_name, city, state, created_by, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
+        // Operational metrics - paginated to avoid 1000 row limit
+        fetchAllPaginated<any>((from, to) =>
+          supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at, signed_at').eq('signer_status', 'signed').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }).range(from, to) as any
+        ).then(data => ({ data })),
+        fetchAllPaginated<any>((from, to) =>
+          supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at').eq('signer_status', 'new').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }).range(from, to) as any
+        ).then(data => ({ data })),
+        fetchAllPaginated<any>((from, to) =>
+          supabase.from('leads').select('id, lead_name, acolhedor, board_id, campaign_name, created_at').not('whatsapp_group_id', 'is', null).gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }).range(from, to) as any
+        ).then(data => ({ data })),
+        fetchAllPaginated<any>((from, to) =>
+          supabase.from('legal_cases').select('id, case_number, title, acolhedor, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }).range(from, to) as any
+        ).then(data => ({ data })),
+        fetchAllPaginated<any>((from, to) =>
+          supabase.from('case_process_tracking').select('id, cliente, acolhedor, lead_id, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }).range(from, to) as any
+        ).then(data => ({ data })),
+        fetchAllPaginated<any>((from, to) =>
+          supabase.from('contacts').select('id, full_name, city, state, created_by, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }).range(from, to) as any
+        ).then(data => ({ data })),
       ]);
 
       setMetricsProgress(50);
