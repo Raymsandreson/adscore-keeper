@@ -33,6 +33,7 @@ import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 import { ActivityDetailPanel } from '@/components/activities/ActivityDetailPanel';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
@@ -177,6 +178,7 @@ const ActivitiesPage = () => {
   const selectedCalDay: string | null = selectedCalDays.length > 0 ? selectedCalDays[0] : null;
   const [chatOpen, setChatOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<'form' | 'context'>('form');
+  const [showLeadSheet, setShowLeadSheet] = useState(false);
   const [viewMode, setViewMode] = usePageState<'list' | 'matrix' | 'blocks'>('activities_viewMode', 'list');
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
   const [dragOverQuadrant, setDragOverQuadrant] = useState<string | null>(null);
@@ -2627,12 +2629,12 @@ const ActivitiesPage = () => {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className={cn("h-7 text-xs gap-1", rightPanelTab === 'context' && "bg-primary/10")}
-                      onClick={() => setRightPanelTab(rightPanelTab === 'context' ? 'form' : 'context')}
-                      title="Ver detalhes do lead"
+                      className={cn("h-7 text-xs gap-1")}
+                      onClick={() => setShowLeadSheet(true)}
+                      title="Abrir lead completo"
                     >
                       <ExternalLink className="h-3 w-3" />
-                      {rightPanelTab === 'context' ? 'Formulário' : 'Lead'}
+                      Lead
                     </Button>
                   )}
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={closeSheet}>
