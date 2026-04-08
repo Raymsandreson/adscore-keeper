@@ -198,23 +198,25 @@ export function useDashboardMetrics() {
       const phonesToCheck = uniquePhones.slice(0, 2000);
       const oldPhones = new Set<string>();
 
-      // Check in larger batches of 200 with a single page each
+      // Check in batches - use fetchAllPaginated to avoid .limit() bug
+      // that missed old phones when a single phone had many messages
       const batchPromises: Promise<void>[] = [];
-      for (let i = 0; i < phonesToCheck.length; i += 200) {
-        const batch = phonesToCheck.slice(i, i + 200);
+      for (let i = 0; i < phonesToCheck.length; i += 100) {
+        const batch = phonesToCheck.slice(i, i + 100);
         batchPromises.push(
-          (supabase
-            .from('whatsapp_messages')
-            .select('phone')
-            .lt('created_at', todayStart)
-            .in('phone', batch)
-            .limit(200) as any)
-            .then(({ data }: any) => {
-              (data || []).forEach((m: any) => oldPhones.add(m.phone));
-            })
+          fetchAllPaginated<any>((from, to) =>
+            supabase
+              .from('whatsapp_messages')
+              .select('phone')
+              .lt('created_at', todayStart)
+              .in('phone', batch)
+              .range(from, to) as any
+          ).then((data) => {
+            for (const m of data) oldPhones.add(m.phone);
+          })
         );
       }
-      // Run all batch checks in parallel (not sequential!)
+      // Run all batch checks in parallel
       await Promise.all(batchPromises);
 
       const trulyNewPhones = uniquePhones.filter(p => !oldPhones.has(p));
