@@ -608,6 +608,20 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Lead Edit Sheet */}
+      {leadId && (
+        <LeadEditDialog
+          open={showLeadSheet}
+          onOpenChange={setShowLeadSheet}
+          lead={lead as any}
+          onSave={() => {
+            setShowLeadSheet(false);
+            fetchLeadData();
+          }}
+          mode="sheet"
+        />
+      )}
     </div>
   );
 }
