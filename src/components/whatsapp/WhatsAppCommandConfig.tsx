@@ -23,6 +23,7 @@ import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { SuperPromptDiagnostic } from './SuperPromptDiagnostic';
 import { MemberAssistantSettings } from './MemberAssistantSettings';
 import { AgentAutomationRules } from './AgentAutomationRules';
+import { AgentInstanceSettings } from './AgentInstanceSettings';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 // ==================== TYPES ====================
