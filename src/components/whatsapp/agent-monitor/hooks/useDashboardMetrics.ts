@@ -370,54 +370,53 @@ export function useDashboardMetrics() {
         };
       });
 
-      // Closed leads breakdown - 3 levels
+      // Closed leads breakdown - 4 levels using lead_id-based stats
       // 🤖 100% IA: zero manual messages during lead lifecycle
       // 🤝 Assistido: mixed (manual < 70% of outbound)
       // 👤 100% Humano: manual >= 70% of outbound
+      // ⚪ Sem interação: no WhatsApp messages at all (judicial/external cases)
       const agentMap = new Map<string, number>();
-      const agentDetailMap = new Map<string, { ai: number; assisted: number; human: number }>();
+      const agentDetailMap = new Map<string, { ai: number; assisted: number; human: number; noInteraction: number }>();
       const campaignMap = new Map<string, number>();
       let closedByAI = 0;
       let closedAssisted = 0;
       let closedWithHuman = 0;
+      let closedNoInteraction = 0;
 
       for (const l of closedLeads) {
         const agentName = l.acolhedor || 'Sem acolhedor';
         agentMap.set(agentName, (agentMap.get(agentName) || 0) + 1);
         if (l.campaign_name) campaignMap.set(l.campaign_name, (campaignMap.get(l.campaign_name) || 0) + 1);
         
+        // STRUCTURAL: use lead_id-keyed stats (from dual matching: lead_id primary + phone fallback)
+        const stats = leadStats.get(l.id);
         const phone = (l.lead_phone || '').replace(/\D/g, '');
-        const suffix = phone.length >= 8 ? phone.slice(-8) : '';
+        const hasValidPhone = phone.length >= 8;
         
-        // CRITICAL: leads without a valid phone cannot be classified by message analysis
-        // They are marked as 'ai' only if they have an acolhedor that is NOT a human name
-        // Otherwise they should not inflate AI metrics - classify as 'human' (conservative)
-        let classification: 'ai' | 'assisted' | 'human';
+        let classification: 'ai' | 'assisted' | 'human' | 'noInteraction';
         
-        if (!suffix) {
-          // No phone = no message data to analyze. Conservative: classify as 'human'
-          classification = 'human';
-        } else {
-          const stats = phoneStats.get(suffix);
-          // Classify based on manual message ratio within lead lifecycle
-          if (!stats || stats.total === 0) {
-            // No outbound messages found at all during lifecycle = 100% IA
-            classification = 'ai';
-          } else if (stats.manual === 0) {
-            // Outbound messages exist but zero manual = 100% IA
-            classification = 'ai';
-          } else if ((stats.manual / stats.total) >= 0.7) {
-            classification = 'human'; // >=70% manual = 100% Humano
+        if (!stats || stats.total === 0) {
+          if (!hasValidPhone) {
+            // No phone AND no messages = managed outside WhatsApp
+            classification = 'noInteraction';
           } else {
-            classification = 'assisted'; // Mixed = Assistido por IA
+            // Has phone but no outbound messages found = 100% IA (auto-handled)
+            classification = 'ai';
           }
+        } else if (stats.manual === 0) {
+          classification = 'ai'; // Only agent/system messages = 100% IA
+        } else if ((stats.manual / stats.total) >= 0.7) {
+          classification = 'human'; // >=70% manual = 100% Humano
+        } else {
+          classification = 'assisted'; // Mixed = Assistido por IA
         }
         
         if (classification === 'ai') closedByAI++;
         else if (classification === 'assisted') closedAssisted++;
+        else if (classification === 'noInteraction') closedNoInteraction++;
         else closedWithHuman++;
 
-        if (!agentDetailMap.has(agentName)) agentDetailMap.set(agentName, { ai: 0, assisted: 0, human: 0 });
+        if (!agentDetailMap.has(agentName)) agentDetailMap.set(agentName, { ai: 0, assisted: 0, human: 0, noInteraction: 0 });
         const detail = agentDetailMap.get(agentName)!;
         detail[classification]++;
       }
