@@ -1369,6 +1369,51 @@ Se o cliente NÃO estiver perguntando sobre processo/caso, NÃO use a tag [GRUPO
       };
       await supabase.from("whatsapp_messages").insert(outboundMsg);
 
+      // ========== FORWARD MESSAGE TO GROUP ==========
+      if (groupMessageToSend && instance && (instance as any).instance_token) {
+        try {
+          // Find the group JID from the lead
+          const groupLeadId = resolvedLeadId || lead_id;
+          let groupJid: string | null = null;
+          if (groupLeadId) {
+            const { data: groupLead } = await supabase
+              .from("leads")
+              .select("whatsapp_group_id")
+              .eq("id", groupLeadId)
+              .maybeSingle();
+            groupJid = groupLead?.whatsapp_group_id || null;
+          }
+
+          if (groupJid) {
+            const groupBaseUrl = (instance as any).base_url || "https://abraci.uazapi.com";
+            const groupToken = (instance as any).instance_token;
+            const groupSendRes = await fetch(`${groupBaseUrl}/send/text`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "token": groupToken },
+              body: JSON.stringify({ number: groupJid, text: groupMessageToSend }),
+            });
+            if (groupSendRes.ok) {
+              console.log(`[group-forward] Message sent to group ${groupJid} for lead ${groupLeadId}`);
+              // Save as outbound message in group conversation
+              await supabase.from("whatsapp_messages").insert({
+                phone: groupJid, instance_name, direction: "outbound",
+                message_text: groupMessageToSend,
+                metadata: { ai_agent: (agent as any).name, forwarded_from_private: phone },
+                action_source: 'agent',
+                action_source_detail: `Encaminhamento do agente: ${(agent as any).name}`,
+                lead_id: groupLeadId,
+              });
+            } else {
+              console.error(`[group-forward] Failed to send to group ${groupJid}:`, groupSendRes.status);
+            }
+          } else {
+            console.log(`[group-forward] No group JID found for lead ${groupLeadId}, skipping group forward`);
+          }
+        } catch (groupErr) {
+          console.error("[group-forward] Error forwarding to group:", groupErr);
+        }
+      }
+
       // ========== AUTO-ADD CONTACT TO PHONE AGENDA via UazAPI ==========
       try {
         if (instance && (instance as any).instance_token) {
