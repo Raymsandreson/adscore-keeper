@@ -852,7 +852,6 @@ export const ContactsManager: React.FC = () => {
         }
         
         setSelectedContacts(new Set());
-        setIsSelectionMode(false);
         toast.success(`${deleted} contato(s) excluído(s)${errors > 0 ? `, ${errors} erro(s)` : ''}`);
         setIsDeleting(false);
       }
