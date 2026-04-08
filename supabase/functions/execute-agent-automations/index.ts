@@ -628,6 +628,7 @@ Deno.serve(async (req) => {
             results.push({ type: 'send_private_redirect', ok: sendPrivRes.ok });
             break;
           }
+        }
       } catch (actionError: any) {
         console.error(`[agent-automations] Action ${action.type} failed:`, actionError.message);
         results.push({ type: action.type, error: actionError.message });
