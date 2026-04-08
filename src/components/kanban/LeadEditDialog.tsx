@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { safeSelectValue } from '@/utils/selectValue';
 import { sendLeadConversionEvent } from '@/utils/metaConversionTracking';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfilesList } from '@/hooks/useProfilesList';
@@ -1475,7 +1476,7 @@ ${scrapeData.content || ''}
 
                 <div>
                   <Label>Tipo de Caso</Label>
-                  <Select value={caseType} onValueChange={setCaseType}>
+                  <Select value={safeSelectValue(caseType)} onValueChange={setCaseType}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
@@ -1514,7 +1515,7 @@ ${scrapeData.content || ''}
                 <div>
                   <Label>Estado da Visita</Label>
                   <Select 
-                    value={visitState} 
+                    value={safeSelectValue(visitState)} 
                     onValueChange={(value) => {
                       setVisitState(value);
                       setVisitCity(''); // Reset city when state changes
@@ -1538,7 +1539,7 @@ ${scrapeData.content || ''}
                 <div>
                   <Label>Cidade da Visita</Label>
                   <Select 
-                    value={visitCity} 
+                    value={safeSelectValue(visitCity)} 
                     onValueChange={setVisitCity}
                     disabled={!visitState || loadingCities}
                   >
@@ -1564,7 +1565,7 @@ ${scrapeData.content || ''}
 
                 <div>
                   <Label>Região da Visita</Label>
-                  <Select value={visitRegion} onValueChange={setVisitRegion}>
+                  <Select value={safeSelectValue(visitRegion)} onValueChange={setVisitRegion}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
@@ -1610,7 +1611,7 @@ ${scrapeData.content || ''}
 
                 <div>
                   <Label>Setor</Label>
-                  <Select value={sector} onValueChange={setSector}>
+                  <Select value={safeSelectValue(sector)} onValueChange={setSector}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
@@ -1722,7 +1723,7 @@ ${scrapeData.content || ''}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Tipo de Responsabilidade</Label>
-                  <Select value={liabilityType} onValueChange={setLiabilityType}>
+                  <Select value={safeSelectValue(liabilityType)} onValueChange={setLiabilityType}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
