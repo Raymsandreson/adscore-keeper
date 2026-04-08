@@ -153,6 +153,20 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   'outro': 'Outro',
 };
 
+function classifyDocumentType(text: string): string {
+  const t = text.toLowerCase();
+  if (t.includes('procura')) return 'procuracao';
+  if (t.includes('peti') && t.includes('inicial')) return 'peticao_inicial';
+  if (t.includes('contesta')) return 'contestacao';
+  if (t.includes('despacho')) return 'despacho';
+  if (t.includes('decis')) return 'decisao';
+  if (t.includes('senten')) return 'sentenca';
+  if (t.includes('acord')) return 'acordao';
+  if (t.includes('recurs')) return 'recurso';
+  if (t.includes('certid')) return 'certidao';
+  return 'outro';
+}
+
 export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet' }: ProcessDetailSheetProps) {
   const navFn = useNavigate();
   const [form, setForm] = useState<Record<string, any>>({});
