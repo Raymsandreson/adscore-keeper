@@ -13,6 +13,7 @@ import {
   MessageCircle,
   ExternalLink,
   Search,
+  DollarSign,
 } from "lucide-react";
 import { ContentTypeMetrics } from "@/components/analytics/ContentTypeMetrics";
 import { ContentStrategies } from "@/components/analytics/ContentStrategies";
@@ -22,6 +23,7 @@ import { InstagramMetricsChart } from "@/components/analytics/InstagramMetricsCh
 import { CommentsAdminPanel } from "@/components/instagram/CommentsAdminPanel";
 import { ExternalPostsManager } from "@/components/instagram/ExternalPostsManager";
 import { CaseSearchEngine } from "@/components/instagram/CaseSearchEngine";
+import { FollowerInsightsPanel } from "@/components/analytics/FollowerInsightsPanel";
 
 const AnalyticsPage = () => {
   const [period, setPeriod] = useState("7");
@@ -57,7 +59,7 @@ const AnalyticsPage = () => {
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-5xl grid-cols-8">
+          <TabsList className="grid w-full max-w-5xl grid-cols-9">
             <TabsTrigger value="accounts" className="gap-2">
               <Instagram className="h-4 w-4" />
               <span className="hidden sm:inline">Contas</span>
@@ -89,6 +91,10 @@ const AnalyticsPage = () => {
             <TabsTrigger value="strategies" className="gap-2">
               <Lightbulb className="h-4 w-4" />
               <span className="hidden sm:inline">Estratégias</span>
+            </TabsTrigger>
+            <TabsTrigger value="followers" className="gap-2">
+              <DollarSign className="h-4 w-4" />
+              <span className="hidden sm:inline">Seguidores</span>
             </TabsTrigger>
           </TabsList>
 
@@ -130,6 +136,10 @@ const AnalyticsPage = () => {
           {/* Strategies Tab */}
           <TabsContent value="strategies" className="space-y-6">
             <ContentStrategies />
+          </TabsContent>
+          {/* Follower Insights Tab */}
+          <TabsContent value="followers" className="space-y-6">
+            <FollowerInsightsPanel />
           </TabsContent>
         </Tabs>
       </main>
