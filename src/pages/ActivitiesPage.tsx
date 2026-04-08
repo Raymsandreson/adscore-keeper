@@ -244,14 +244,22 @@ const ActivitiesPage = () => {
     setter(current.includes(value) ? current.filter(v => v !== value) : [...current, value]);
   };
 
-  // Fetch raw counts (lightweight)
+  // Fetch raw counts (lightweight) - only on mount, not on every activities change
+  const countsLoadedRef = useRef(false);
   useEffect(() => {
     const loadCounts = async () => {
-      const { data } = await supabase.from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status');
+      const { data } = await supabase.from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status').limit(2000);
       setAllActivitiesRaw(data || []);
+      countsLoadedRef.current = true;
     };
     loadCounts();
-  }, [activities]); // refresh when activities change
+  }, []); // Load once on mount
+  
+  // Refresh counts only after mutations (create/update/delete) - not on every fetch
+  const refreshCounts = useCallback(async () => {
+    const { data } = await supabase.from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status').limit(2000);
+    setAllActivitiesRaw(data || []);
+  }, []);
 
   useEffect(() => {
     const loadSupport = async () => {
