@@ -6,11 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Zap, Plus, Trash2, UserPlus, FolderKanban, Briefcase, ListChecks, ChevronDown, ChevronUp, Users } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Loader2, Zap, Plus, Trash2, UserPlus, FolderKanban, Briefcase, ListChecks, ChevronDown, ChevronUp, Users, MessageSquare, ArrowRightLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface AutomationAction {
-  type: 'create_lead' | 'create_contact' | 'create_activity' | 'create_case' | 'move_lead_stage' | 'create_group';
+  type: 'create_lead' | 'create_contact' | 'create_activity' | 'create_case' | 'move_lead_stage' | 'create_group' | 'send_group_message' | 'send_private_redirect';
   config: Record<string, any>;
   enabled: boolean;
 }
@@ -52,6 +53,8 @@ const ACTION_TYPES = [
   { value: 'create_case', label: 'Criar Caso', icon: Briefcase, description: 'Cria um caso jurídico vinculado ao lead' },
   { value: 'move_lead_stage', label: 'Mover Lead de Etapa', icon: FolderKanban, description: 'Move o lead para um funil/etapa específico' },
   { value: 'create_group', label: 'Criar Grupo WhatsApp', icon: Users, description: 'Cria um grupo com as instâncias configuradas no funil' },
+  { value: 'send_group_message', label: 'Enviar Mensagem no Grupo', icon: MessageSquare, description: 'Envia uma mensagem configurável no grupo vinculado ao lead' },
+  { value: 'send_private_redirect', label: 'Redirecionar ao Grupo', icon: ArrowRightLeft, description: 'Envia mensagem no privado redirecionando o cliente para o grupo do processo' },
 ];
 
 interface Props {
