@@ -501,14 +501,14 @@ function RichTextEditorComponent({
     flushEditorHtml(editor);
   }, [flushEditorHtml]);
 
-  const fetchAiOptions = useCallback(async (action: string, text: string) => {
+  const fetchAiOptions = useCallback(async (action: string, text: string, customPrompt?: string) => {
     setAiLoading(true);
     setLastAiAction(action);
     lastAiText.current = text;
     try {
-      const { data, error } = await supabase.functions.invoke('ai-text-editor', {
-        body: { text, action },
-      });
+      const body: Record<string, string> = { text, action };
+      if (customPrompt) body.custom_prompt = customPrompt;
+      const { data, error } = await supabase.functions.invoke('ai-text-editor', { body });
       if (error) throw error;
       if (data?.options && data.options.length > 0) {
         setAiOptions(data.options);
@@ -543,6 +543,26 @@ function RichTextEditorComponent({
     [fetchAiOptions],
   );
 
+  const handleCustomPrompt = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    let text = '';
+    editor.getEditorState().read(() => {
+      text = $getRoot().getTextContent().trim();
+    });
+
+    if (!text) {
+      toast.error('Escreva algo primeiro para usar a IA');
+      return;
+    }
+
+    const userPrompt = window.prompt('Como você quer que a IA edite o texto?');
+    if (!userPrompt?.trim()) return;
+
+    fetchAiOptions('custom', text, userPrompt.trim());
+  }, [fetchAiOptions]);
+
   const handleSelectOption = useCallback((text: string) => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -567,7 +587,7 @@ function RichTextEditorComponent({
   return (
     <div className={cn('border rounded-md overflow-hidden bg-background', className)}>
       <LexicalComposer initialConfig={initialConfig}>
-        <ToolbarPlugin onExpand={onExpand} aiLoading={aiLoading} onAiAction={handleAiAction} />
+        <ToolbarPlugin onExpand={onExpand} aiLoading={aiLoading} onAiAction={handleAiAction} onCustomPrompt={handleCustomPrompt} />
         <div className="relative" style={{ minHeight }}>
           <RichTextPlugin
             contentEditable={
