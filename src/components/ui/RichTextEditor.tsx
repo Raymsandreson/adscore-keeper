@@ -585,15 +585,15 @@ function RichTextEditorComponent({
   }, [lastAiAction, fetchAiOptions]);
 
   return (
-    <div className={cn('border rounded-md overflow-hidden bg-background', className)}>
+    <div className={cn('border rounded-md overflow-hidden bg-background resize-y', className)} style={{ minHeight, overflow: 'auto' }}>
       <LexicalComposer initialConfig={initialConfig}>
         <ToolbarPlugin onExpand={onExpand} aiLoading={aiLoading} onAiAction={handleAiAction} onCustomPrompt={handleCustomPrompt} />
-        <div className="relative" style={{ minHeight }}>
+        <div className="relative">
           <RichTextPlugin
             contentEditable={
               <ContentEditable
                 className="lexical-editor px-3 py-2 text-xs focus:outline-none"
-                style={{ minHeight }}
+                style={{ minHeight: '24px' }}
                 onBlur={handleBlur}
               />
             }
