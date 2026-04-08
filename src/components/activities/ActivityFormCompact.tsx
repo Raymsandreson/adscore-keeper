@@ -474,6 +474,98 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <ActivityFieldSettingsDialog fields={props.fieldSettings} onUpdateField={props.updateFieldSetting} onReorder={props.reorderFields} />
         </div>
       )}
+
+      {/* === SHEET: Link Lead === */}
+      <Sheet open={linkLeadOpen} onOpenChange={setLinkLeadOpen}>
+        <SheetContent className="w-full sm:max-w-sm">
+          <SheetHeader>
+            <SheetTitle className="text-base">Vincular Lead</SheetTitle>
+          </SheetHeader>
+          <div className="pt-4 space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar lead..."
+                value={props.leadSearch}
+                onChange={e => props.setLeadSearch(e.target.value)}
+                className="pl-9 h-9 text-sm"
+                autoFocus
+              />
+            </div>
+            <ScrollArea className="h-[calc(100vh-200px)]">
+              <div className="space-y-0.5">
+                {props.filteredLeads.map(l => (
+                  <button
+                    key={l.id}
+                    className={cn(
+                      "w-full text-left px-3 py-2.5 text-sm rounded-md hover:bg-accent transition-colors",
+                      props.formLeadId === l.id && "bg-accent font-medium"
+                    )}
+                    onClick={() => {
+                      props.handleSelectLead(l.id);
+                      props.setLeadSearch('');
+                      setLinkLeadOpen(false);
+                    }}
+                  >
+                    {l.lead_name || 'Lead sem nome'}
+                  </button>
+                ))}
+                {props.filteredLeads.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-8">Nenhum lead encontrado</p>
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* === SHEET: Link Contact === */}
+      <Sheet open={linkContactOpen} onOpenChange={setLinkContactOpen}>
+        <SheetContent className="w-full sm:max-w-sm">
+          <SheetHeader>
+            <SheetTitle className="text-base">Vincular Contato</SheetTitle>
+          </SheetHeader>
+          <div className="pt-4 space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar contato..."
+                value={props.contactSearch}
+                onChange={e => props.setContactSearch(e.target.value)}
+                className="pl-9 h-9 text-sm"
+                autoFocus
+              />
+            </div>
+            <ScrollArea className="h-[calc(100vh-200px)]">
+              <div className="space-y-0.5">
+                {(props.contactSearch
+                  ? props.availableContacts.filter(c => c.full_name?.toLowerCase().includes(props.contactSearch.toLowerCase()))
+                  : props.availableContacts.slice(0, 50)
+                ).map(c => (
+                  <button
+                    key={c.id}
+                    className={cn(
+                      "w-full text-left px-3 py-2.5 text-sm rounded-md hover:bg-accent transition-colors",
+                      props.formContactId === c.id && "bg-accent font-medium"
+                    )}
+                    onClick={() => {
+                      props.setFormContactId(c.id);
+                      props.setFormContactName(c.full_name);
+                      props.setContactSearch('');
+                      setLinkContactOpen(false);
+                    }}
+                  >
+                    {c.full_name}
+                  </button>
+                ))}
+                {props.availableContacts.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-8">Nenhum contato encontrado</p>
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
