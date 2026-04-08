@@ -547,6 +547,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       history_limit: (form as any).history_limit ?? 50,
       zapsign_mode: (form as any).zapsign_mode || 'final_document',
       zapsign_settings: form.zapsign_settings || {},
+      forward_questions_to_group: form.forward_questions_to_group ?? false,
+      notify_instance_name: form.notify_instance_name || null,
     };
 
     let error;
