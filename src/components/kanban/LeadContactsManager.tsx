@@ -189,6 +189,7 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
   if (!lead) return null;
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-lg">
         <SheetHeader>
