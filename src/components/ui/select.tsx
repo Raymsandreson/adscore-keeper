@@ -4,7 +4,20 @@ import { Check, ChevronDown, ChevronUp } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-const Select = SelectPrimitive.Root;
+/**
+ * Safe Select wrapper: converts empty-string values to undefined
+ * to prevent Radix UI "removeChild" DOM crashes when no SelectItem
+ * matches an empty string value.
+ */
+const Select = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Root>
+>(({ value, ...props }, _ref) => {
+  // Sanitize: empty/whitespace-only strings → undefined (shows placeholder)
+  const safeValue = typeof value === 'string' && value.trim() === '' ? undefined : value;
+  return <SelectPrimitive.Root value={safeValue} {...props} />;
+}) as typeof SelectPrimitive.Root;
+Select.displayName = 'Select';
 
 const SelectGroup = SelectPrimitive.Group;
 
