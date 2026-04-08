@@ -278,6 +278,16 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [formSection, setFormSection] = useState<'general' | 'ai' | 'document' | 'followup' | 'automations'>('general');
   const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string }[]>([]);
+  const [instances, setInstances] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchInstances = async () => {
+      const { data } = await supabase.from('whatsapp_instances').select('id, instance_name').order('instance_name');
+      setInstances(data || []);
+    };
+    fetchInstances();
+  }, []);
+
   const [promptSheetOpen, setPromptSheetOpen] = useState(false);
   const [superPromptPreviewOpen, setSuperPromptPreviewOpen] = useState(false);
 
