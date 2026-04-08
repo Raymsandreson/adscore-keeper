@@ -214,7 +214,7 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
       )}
 
       {/* Unified closing analysis card - uses pipeline count for consistency */}
-      {counts.fechado > 0 && dashboardMetrics && (
+      {(dashboardMetrics?.closedTotal ?? counts.fechado) > 0 && dashboardMetrics && (
         <Card>
           <CardContent className="p-3">
             {/* Header with totals - clickable */}
