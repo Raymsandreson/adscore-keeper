@@ -325,6 +325,11 @@ export function ContactsListPage() {
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <Phone className="h-3 w-3" />
                         {contact.phone}
+                        {(contact.city || contact.state) && (
+                          <span className="ml-2 text-muted-foreground/70">
+                            📍 {[contact.city, contact.state].filter(Boolean).join(', ')}
+                          </span>
+                        )}
                       </p>
                     </div>
                     {contact.classification && (
