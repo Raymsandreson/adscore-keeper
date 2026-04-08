@@ -419,22 +419,59 @@ export function WhatsAppAIAgents() {
           </DialogHeader>
           {editingAgent && (
             <Tabs defaultValue="general" className="w-full">
-              <TabsList className="w-full grid grid-cols-7">
-                <TabsTrigger value="general" className="text-xs">Geral</TabsTrigger>
-                <TabsTrigger value="stages" className="text-xs">🎯 Etapas</TabsTrigger>
-                <TabsTrigger value="knowledge" className="text-xs">📚 Base</TabsTrigger>
+              <TabsList className="w-full grid grid-cols-6">
+                <TabsTrigger value="general" className="text-xs">⚙️ Geral</TabsTrigger>
+                <TabsTrigger value="ia" className="text-xs">🧠 IA</TabsTrigger>
                 <TabsTrigger value="automations" className="text-xs">⚡ Automações</TabsTrigger>
-                <TabsTrigger value="timing" className="text-xs">Tempos</TabsTrigger>
-                <TabsTrigger value="calls" className="text-xs">Chamadas</TabsTrigger>
-                <TabsTrigger value="campaigns" className="text-xs">Campanhas</TabsTrigger>
+                <TabsTrigger value="timing" className="text-xs">⏱️ Tempos</TabsTrigger>
+                <TabsTrigger value="calls" className="text-xs">📞 Chamadas</TabsTrigger>
+                <TabsTrigger value="campaigns" className="text-xs">📢 Campanhas</TabsTrigger>
               </TabsList>
 
-              {/* TAB: General */}
+              {/* TAB: General - only name, description, type, stages, knowledge */}
               <TabsContent value="general" className="space-y-4 mt-4">
                 <div>
                   <Label>Nome do Agente *</Label>
                   <Input value={editingAgent.name || ''} onChange={e => setEditingAgent({ ...editingAgent, name: e.target.value })} placeholder="Ex: Assistente de Vendas" />
                 </div>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Agente ativo</Label>
+                  <Switch checked={editingAgent.is_active ?? true} onCheckedChange={v => setEditingAgent({ ...editingAgent, is_active: v })} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Assinar mensagens</Label>
+                  <Switch checked={editingAgent.sign_messages ?? true} onCheckedChange={v => setEditingAgent({ ...editingAgent, sign_messages: v })} />
+                </div>
+                
+                {/* Stages */}
+                <div className="border rounded-lg p-3">
+                  <Label className="text-sm font-medium">🎯 Etapas vinculadas</Label>
+                  <p className="text-[10px] text-muted-foreground mb-2">Configure em quais etapas do funil este agente é ativado automaticamente</p>
+                  {editingAgent.id ? (
+                    <AgentStageConfig agentId={editingAgent.id} />
+                  ) : (
+                    <div className="text-sm text-muted-foreground p-4">
+                      <p>Salve o agente primeiro para configurar etapas.</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Knowledge Base */}
+                <div className="border rounded-lg p-3">
+                  <Label className="text-sm font-medium">📚 Base de Conhecimento</Label>
+                  <p className="text-[10px] text-muted-foreground mb-2">Documentos que o agente pode consultar para responder perguntas</p>
+                  {editingAgent.id ? (
+                    <AgentKnowledgeDocs agentId={editingAgent.id} />
+                  ) : (
+                    <div className="text-sm text-muted-foreground p-4">
+                      <p>Salve o agente primeiro para adicionar documentos.</p>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* TAB: IA - prompt, model, variables, audio, group forwarding */}
+              <TabsContent value="ia" className="space-y-4 mt-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label>Provedor</Label>
@@ -456,7 +493,7 @@ export function WhatsAppAIAgents() {
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <Label>Prompt Base *</Label>
+                    <Label>🧠 Prompt do Agente *</Label>
                     <div className="flex gap-1">
                       <PromptVariableSelector onInsert={(variable) => {
                         const textarea = document.querySelector<HTMLTextAreaElement>('#agent-prompt-textarea');
@@ -518,22 +555,10 @@ export function WhatsAppAIAgents() {
                     </div>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Assinar mensagens</Label>
-                    <Switch checked={editingAgent.sign_messages ?? true} onCheckedChange={v => setEditingAgent({ ...editingAgent, sign_messages: v })} />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Agente ativo</Label>
-                    <Switch checked={editingAgent.is_active ?? true} onCheckedChange={v => setEditingAgent({ ...editingAgent, is_active: v })} />
-                   </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-xs">Responder em grupos</Label>
-                      <p className="text-[10px] text-muted-foreground">Permitir que este agente responda mensagens em grupos do WhatsApp</p>
-                    </div>
-                    <Switch checked={editingAgent.respond_in_groups ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, respond_in_groups: v })} />
-                  </div>
+
+                {/* Group forwarding */}
+                <div className="border rounded-lg p-3 space-y-2">
+                  <Label className="text-sm font-medium">📨 Redirecionamento ao Grupo</Label>
                   <div className="flex items-center justify-between">
                     <div>
                       <Label className="text-xs">Encaminhar perguntas ao grupo</Label>
@@ -558,9 +583,22 @@ export function WhatsAppAIAgents() {
                       </Select>
                     </div>
                   )}
+                </div>
+
+                {/* Respond in groups */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-xs">Responder em grupos</Label>
+                    <p className="text-[10px] text-muted-foreground">Permitir que este agente responda mensagens em grupos do WhatsApp</p>
+                  </div>
+                  <Switch checked={editingAgent.respond_in_groups ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, respond_in_groups: v })} />
+                </div>
+
+                {/* Audio response */}
+                <div className="border rounded-lg p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <div>
-                      <Label className="text-xs">Responder com áudio</Label>
+                      <Label className="text-xs">🔊 Responder com áudio</Label>
                       <p className="text-[10px] text-muted-foreground">Quando o contato enviar áudio, o agente responde com áudio também (via ElevenLabs TTS)</p>
                     </div>
                     <Switch checked={editingAgent.reply_with_audio ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, reply_with_audio: v })} />
@@ -580,64 +618,42 @@ export function WhatsAppAIAgents() {
                       </Select>
                       <p className="text-[10px] text-muted-foreground">Escolha a voz para respostas em áudio. Vozes personalizadas aparecem com 🎤</p>
                     </div>
-                    )}
-                  
-                   {/* Send call follow-up audio - moved to follow-up tab */}
-                  
-                  {/* STT Prompt */}
-                  <div className="space-y-1">
-                    <Label className="text-xs flex items-center gap-1">🎙️ Prompt de Transcrição (STT)</Label>
-                    <Textarea
-                      className="text-xs min-h-[60px]"
-                      placeholder="Transcreva fielmente esta mensagem de voz. Retorne SOMENTE o texto exato..."
-                      value={editingAgent.stt_prompt || ''}
-                      onChange={e => setEditingAgent({ ...editingAgent, stt_prompt: e.target.value || null })}
-                    />
-                    <p className="text-[10px] text-muted-foreground">
-                      Prompt usado como fallback (Gemini) quando ElevenLabs Scribe não está disponível. Deixe vazio para usar o padrão.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-xs">Dividir mensagens longas</Label>
-                      <p className="text-[10px] text-muted-foreground">Quebra a resposta em partes menores para parecer mais natural</p>
-                    </div>
-                    <Switch checked={editingAgent.split_messages ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, split_messages: v })} />
-                  </div>
-                  {editingAgent.split_messages && (
-                    <div className="space-y-1 pl-2 border-l-2 border-primary/20">
-                      <Label className="text-xs">Delay entre partes: {editingAgent.split_delay_seconds ?? 2}s</Label>
-                      <Slider min={1} max={10} step={1} value={[editingAgent.split_delay_seconds ?? 2]} onValueChange={v => setEditingAgent({ ...editingAgent, split_delay_seconds: v[0] })} />
-                      <p className="text-[10px] text-muted-foreground">Tempo de espera entre cada parte da mensagem</p>
-                    </div>
                   )}
                 </div>
-              </TabsContent>
+                   
+                {/* STT Prompt */}
+                <div className="space-y-1">
+                  <Label className="text-xs flex items-center gap-1">🎙️ Prompt de Transcrição (STT)</Label>
+                  <Textarea
+                    className="text-xs min-h-[60px]"
+                    placeholder="Transcreva fielmente esta mensagem de voz. Retorne SOMENTE o texto exato..."
+                    value={editingAgent.stt_prompt || ''}
+                    onChange={e => setEditingAgent({ ...editingAgent, stt_prompt: e.target.value || null })}
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Prompt usado como fallback (Gemini) quando ElevenLabs Scribe não está disponível. Deixe vazio para usar o padrão.
+                  </p>
+                </div>
 
-              {/* TAB: Stages */}
-              <TabsContent value="stages" className="mt-4">
-                {editingAgent.id ? (
-                  <AgentStageConfig agentId={editingAgent.id} />
-                ) : (
-                  <div className="text-center py-8">
-                    <Layers className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Salve o agente primeiro para configurar etapas</p>
+                {/* Split messages */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-xs">Dividir mensagens longas</Label>
+                    <p className="text-[10px] text-muted-foreground">Quebra a resposta em partes menores para parecer mais natural</p>
+                  </div>
+                  <Switch checked={editingAgent.split_messages ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, split_messages: v })} />
+                </div>
+                {editingAgent.split_messages && (
+                  <div className="space-y-1 pl-2 border-l-2 border-primary/20">
+                    <Label className="text-xs">Delay entre partes: {editingAgent.split_delay_seconds ?? 2}s</Label>
+                    <Slider min={1} max={10} step={1} value={[editingAgent.split_delay_seconds ?? 2]} onValueChange={v => setEditingAgent({ ...editingAgent, split_delay_seconds: v[0] })} />
+                    <p className="text-[10px] text-muted-foreground">Tempo de espera entre cada parte da mensagem</p>
                   </div>
                 )}
               </TabsContent>
 
-              {/* TAB: Knowledge Base */}
-              <TabsContent value="knowledge" className="mt-4">
-                {editingAgent.id ? (
-                  <AgentKnowledgeDocs agentId={editingAgent.id} />
-                ) : (
-                  <div className="text-center py-8">
-                    <FileText className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Salve o agente primeiro para adicionar documentos à base de conhecimento</p>
-                  </div>
-                )}
-              </TabsContent>
+
+
 
               {/* TAB: Automations */}
               <TabsContent value="automations" className="mt-4">
