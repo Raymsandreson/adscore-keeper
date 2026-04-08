@@ -248,18 +248,19 @@ export function useDashboardMetrics() {
           const batch = closedSuffixes.slice(i, i + 50);
           const orFilter = batch.map(s => `phone.ilike.%${s}%`).join(',');
           humanBatches.push(
-            (supabase
-              .from('whatsapp_messages')
-              .select('phone')
-              .eq('direction', 'outbound')
-              .eq('action_source', 'manual')
-              .or(orFilter)
-              .limit(500) as any)
-              .then(({ data }: any) => {
-                for (const msg of (data || [])) {
-                  humanPhones.add((msg.phone || '').replace(/\D/g, '').slice(-8));
-                }
-              })
+            fetchAllPaginated<any>((from, to) =>
+              supabase
+                .from('whatsapp_messages')
+                .select('phone')
+                .eq('direction', 'outbound')
+                .eq('action_source', 'manual')
+                .or(orFilter)
+                .range(from, to) as any
+            ).then((data) => {
+              for (const msg of data) {
+                humanPhones.add((msg.phone || '').replace(/\D/g, '').slice(-8));
+              }
+            })
           );
         }
         await Promise.all(humanBatches);

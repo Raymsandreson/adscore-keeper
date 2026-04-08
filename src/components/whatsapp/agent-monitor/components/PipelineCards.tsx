@@ -224,7 +224,7 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
                 onClick={() => onClosingDetailClick?.({ type: 'all' })}
               >
                 <CheckCircle className="h-4 w-4 text-green-500" />
-                <span className="text-sm font-semibold">{counts.fechado} Fechados</span>
+                <span className="text-sm font-semibold">{dashboardMetrics.closedTotal} Fechados</span>
               </div>
               {dashboardMetrics.closedTotal > 0 && (
                 <div className="flex items-center gap-3 text-xs">
