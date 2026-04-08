@@ -113,6 +113,8 @@ interface ShortcutFormState {
   send_call_followup_audio: boolean;
   zapsign_mode: 'final_document' | 'prefilled_form';
   zapsign_settings: Record<string, any>;
+  forward_questions_to_group: boolean;
+  notify_instance_name: string | null;
 }
 
 const DEFAULT_FORM: ShortcutFormState = {
@@ -128,6 +130,7 @@ const DEFAULT_FORM: ShortcutFormState = {
   reply_with_audio: false, reply_voice_id: null, respond_in_groups: false,
   max_tts_chars: 1000, send_window_start_hour: 8, send_window_end_hour: 20,
   send_call_followup_audio: false, zapsign_mode: 'final_document', zapsign_settings: {},
+  forward_questions_to_group: false, notify_instance_name: null,
 };
 
 interface Profile { user_id: string; full_name: string | null; }
