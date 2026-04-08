@@ -125,6 +125,34 @@ interface ProcessActivity {
   created_at: string;
 }
 
+interface ProcessDocument {
+  id: string;
+  document_type: string;
+  title: string;
+  description: string | null;
+  source: string;
+  file_url: string | null;
+  original_url: string | null;
+  document_date: string | null;
+  file_name: string | null;
+  escavador_document_id: string | null;
+  zapsign_document_id: string | null;
+  created_at: string;
+}
+
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  'procuracao': 'Procuração',
+  'peticao_inicial': 'Petição Inicial',
+  'contestacao': 'Contestação',
+  'despacho': 'Despacho',
+  'decisao': 'Decisão',
+  'sentenca': 'Sentença',
+  'acordao': 'Acórdão',
+  'recurso': 'Recurso',
+  'certidao': 'Certidão',
+  'outro': 'Outro',
+};
+
 export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet' }: ProcessDetailSheetProps) {
   const navFn = useNavigate();
   const [form, setForm] = useState<Record<string, any>>({});
@@ -133,6 +161,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [activeTab, setActiveTab] = useState<TabId>('partes');
   const [activities, setActivities] = useState<ProcessActivity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
+  const [documents, setDocuments] = useState<ProcessDocument[]>([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const [fetchingEscavadorDocs, setFetchingEscavadorDocs] = useState(false);
 
   useEffect(() => {
     if (process) {
@@ -140,6 +171,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       setDirty(false);
       setActiveTab('partes');
       setActivities([]);
+      setDocuments([]);
     }
   }, [process]);
 
