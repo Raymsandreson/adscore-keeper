@@ -126,7 +126,7 @@ export function useDashboardMetrics() {
         fetchAllPaginated<any>((from, to) =>
           supabase
             .from('leads')
-            .select('id, acolhedor, campaign_name, lead_status, lead_phone')
+            .select('id, acolhedor, campaign_name, lead_status, lead_phone, created_at, updated_at')
             .eq('lead_status', 'closed')
             .gte('updated_at', todayStart)
             .lte('updated_at', todayEnd)
