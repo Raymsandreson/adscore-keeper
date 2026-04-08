@@ -365,7 +365,7 @@ export function KanbanBoardSelector({
   return (
     <>
       <div className="flex items-center gap-2">
-        <Select value={selectedBoardId || ''} onValueChange={onSelectBoard}>
+        <Select value={selectedBoardId || undefined} onValueChange={onSelectBoard}>
           <SelectTrigger className="w-[200px]">
             <SelectValue placeholder="Selecionar quadro">
               {selectedBoard && (
