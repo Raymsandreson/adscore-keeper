@@ -345,6 +345,47 @@ export function AgentAutomationRules({ agentId }: Props) {
             <p className="text-[10px] text-muted-foreground mt-1">O nome do grupo será o nome do lead. Configure as instâncias em Configurações → Grupos.</p>
           </div>
         )}
+
+        {action.type === 'send_group_message' && (
+          <div className="space-y-2">
+            <div>
+              <Label className="text-[10px]">Mensagem para o grupo</Label>
+              <Textarea
+                className="text-xs min-h-[60px]"
+                value={action.config.message_template || ''}
+                onChange={e => handleUpdateActionConfig(trigger, index, 'message_template', e.target.value)}
+                placeholder="Mensagem a ser enviada no grupo..."
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Variáveis: <code className="bg-muted px-1 rounded">{'{nome_cliente}'}</code> <code className="bg-muted px-1 rounded">{'{telefone}'}</code> <code className="bg-muted px-1 rounded">{'{numero_processo}'}</code>
+              </p>
+            </div>
+          </div>
+        )}
+
+        {action.type === 'send_private_redirect' && (
+          <div className="space-y-2">
+            <div>
+              <Label className="text-[10px]">Mensagem de redirecionamento (privado)</Label>
+              <Textarea
+                className="text-xs min-h-[80px]"
+                value={action.config.message_template || ''}
+                onChange={e => handleUpdateActionConfig(trigger, index, 'message_template', e.target.value)}
+                placeholder="Mensagem educada redirecionando ao grupo..."
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Variáveis: <code className="bg-muted px-1 rounded">{'{nome_cliente}'}</code> <code className="bg-muted px-1 rounded">{'{telefone}'}</code> <code className="bg-muted px-1 rounded">{'{numero_processo}'}</code>
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={action.config.deactivate_private_agent !== false}
+                onCheckedChange={v => handleUpdateActionConfig(trigger, index, 'deactivate_private_agent', v)}
+              />
+              <Label className="text-[10px]">Desativar agente no privado após redirecionar</Label>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
