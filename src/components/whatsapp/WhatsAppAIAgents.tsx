@@ -289,10 +289,12 @@ export function WhatsAppAIAgents() {
         const { error } = await supabase.from('whatsapp_ai_agents').update(payload as any).eq('id', editingAgent.id);
         if (error) throw error;
         toast.success('Agente atualizado!');
+        logAudit({ action: 'update', entityType: 'agent', entityId: editingAgent.id, entityName: editingAgent.name });
       } else {
-        const { error } = await supabase.from('whatsapp_ai_agents').insert(payload as any);
+        const { data: created, error } = await supabase.from('whatsapp_ai_agents').insert(payload as any).select('id').single();
         if (error) throw error;
         toast.success('Agente criado!');
+        logAudit({ action: 'create', entityType: 'agent', entityId: (created as any)?.id, entityName: editingAgent.name });
       }
       setShowEditor(false);
       setEditingAgent(null);
