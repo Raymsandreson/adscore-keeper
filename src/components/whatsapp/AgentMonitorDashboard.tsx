@@ -316,6 +316,7 @@ export function AgentMonitorDashboard() {
           <TabsTrigger value="monitor" className="text-xs flex items-center gap-1.5"><LayoutDashboard className="h-3.5 w-3.5" /> Monitor</TabsTrigger>
           <TabsTrigger value="ai-activities" className="text-xs flex items-center gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Atividades IA</TabsTrigger>
           <TabsTrigger value="referrals" className="text-xs flex items-center gap-1.5"><Heart className="h-3.5 w-3.5" /> Indicações</TabsTrigger>
+          <TabsTrigger value="redirections" className="text-xs flex items-center gap-1.5"><ArrowRightLeft className="h-3.5 w-3.5" /> Redirecionamentos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="monitor" className="space-y-4">
@@ -340,6 +341,7 @@ export function AgentMonitorDashboard() {
 
         <TabsContent value="ai-activities" className="space-y-4"><AIActivitiesPanel /></TabsContent>
         <TabsContent value="referrals" className="space-y-4"><ReferralsTab referrals={referrals} loading={isLoading} /></TabsContent>
+        <TabsContent value="redirections" className="space-y-4"><RedirectionsTab redirections={redirections} loading={isLoading} /></TabsContent>
       </Tabs>
 
       <CaseListSheet
