@@ -1672,6 +1672,11 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
               🧠 Prompt do Agente
             </SheetTitle>
             <p className="text-xs text-muted-foreground">Edite o prompt com mais espaço. As alterações são aplicadas em tempo real.</p>
+            <div className="mt-2">
+              <PromptVariableSelector onInsert={(variable) => {
+                setForm(f => ({ ...f, prompt_instructions: (f.prompt_instructions || '') + variable }));
+              }} />
+            </div>
           </SheetHeader>
           <div className="flex-1 p-4 overflow-hidden">
             <Textarea
