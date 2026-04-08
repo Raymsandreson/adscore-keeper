@@ -55,6 +55,7 @@ interface AIAgent {
   send_window_end_hour: number;
   send_call_followup_audio: boolean;
   forward_questions_to_group: boolean;
+  notify_instance_name: string | null;
   created_at: string;
 }
 
@@ -223,6 +224,7 @@ export function WhatsAppAIAgents() {
       stt_prompt: null, send_window_start_hour: 8, send_window_end_hour: 20,
       send_call_followup_audio: false,
       forward_questions_to_group: false,
+      notify_instance_name: null,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
@@ -273,6 +275,7 @@ export function WhatsAppAIAgents() {
         send_window_end_hour: editingAgent.send_window_end_hour ?? 20,
         send_call_followup_audio: editingAgent.send_call_followup_audio ?? false,
         forward_questions_to_group: editingAgent.forward_questions_to_group ?? false,
+        notify_instance_name: editingAgent.notify_instance_name || null,
         max_repeat_cycles: (editingAgent as any).max_repeat_cycles ?? 3,
         min_call_delay_minutes: (editingAgent as any).min_call_delay_minutes ?? 30,
         max_consecutive_call_failures: (editingAgent as any).max_consecutive_call_failures ?? 3,
@@ -538,6 +541,23 @@ export function WhatsAppAIAgents() {
                     </div>
                     <Switch checked={editingAgent.forward_questions_to_group ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, forward_questions_to_group: v })} />
                   </div>
+                  {editingAgent.forward_questions_to_group && (
+                    <div className="space-y-1 pl-2 border-l-2 border-primary/20">
+                      <Label className="text-xs">Instância para notificação privada</Label>
+                      <p className="text-[10px] text-muted-foreground">Selecione a instância que receberá um aviso privado alertando a equipe para responder no grupo</p>
+                      <Select value={editingAgent.notify_instance_name || '__none__'} onValueChange={v => setEditingAgent({ ...editingAgent, notify_instance_name: v === '__none__' ? null : v })}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Nenhuma (só envia no grupo)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__" className="text-xs">Nenhuma (só envia no grupo)</SelectItem>
+                          {instances.map((inst: any) => (
+                            <SelectItem key={inst.id} value={inst.instance_name} className="text-xs">{inst.instance_name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <div>
                       <Label className="text-xs">Responder com áudio</Label>

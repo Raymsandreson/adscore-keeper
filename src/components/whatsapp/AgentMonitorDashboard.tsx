@@ -4,7 +4,7 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { ClipboardList, Heart, LayoutDashboard, Loader2 } from 'lucide-react';
+import { ArrowRightLeft, ClipboardList, Heart, LayoutDashboard, Loader2 } from 'lucide-react';
 
 import { useMonitorData } from './agent-monitor/hooks/useMonitorData';
 import { useMonitorFilters } from './agent-monitor/hooks/useMonitorFilters';
@@ -21,6 +21,7 @@ import { OperationalDetailSheet, type OperationalMetricType, type OperationalFil
 import { NewConversationsSheet } from './agent-monitor/components/NewConversationsSheet';
 import { GapDetailSheet } from './agent-monitor/components/GapDetailSheet';
 import { ReferralsTab } from './agent-monitor/components/ReferralsTab';
+import { RedirectionsTab } from './agent-monitor/components/RedirectionsTab';
 import { AIActivitiesPanel } from './AIActivitiesPanel';
 import { AIActivityPromptDialog } from './AIActivityPromptDialog';
 import { DashboardChatPreview } from './DashboardChatPreview';
@@ -38,7 +39,7 @@ export function AgentMonitorDashboard() {
   const [gapSheet, setGapSheet] = useState<GapType | null>(null);
   const [closingAcolhedorFilter, setClosingAcolhedorFilter] = useState<string | null>(null);
 
-  const { agents, conversations, agentStats, referrals, boards, loading: monitorLoading, fetchData: fetchDataRaw } = useMonitorData();
+  const { agents, conversations, agentStats, referrals, redirections, boards, loading: monitorLoading, fetchData: fetchDataRaw } = useMonitorData();
   const { metrics, metricsLoading, fetchMetrics } = useDashboardMetrics();
   const { gaps, gapsLoading, fetchGaps } = useOperationalGaps();
 
@@ -315,6 +316,7 @@ export function AgentMonitorDashboard() {
           <TabsTrigger value="monitor" className="text-xs flex items-center gap-1.5"><LayoutDashboard className="h-3.5 w-3.5" /> Monitor</TabsTrigger>
           <TabsTrigger value="ai-activities" className="text-xs flex items-center gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Atividades IA</TabsTrigger>
           <TabsTrigger value="referrals" className="text-xs flex items-center gap-1.5"><Heart className="h-3.5 w-3.5" /> Indicações</TabsTrigger>
+          <TabsTrigger value="redirections" className="text-xs flex items-center gap-1.5"><ArrowRightLeft className="h-3.5 w-3.5" /> Redirecionamentos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="monitor" className="space-y-4">
@@ -339,6 +341,7 @@ export function AgentMonitorDashboard() {
 
         <TabsContent value="ai-activities" className="space-y-4"><AIActivitiesPanel /></TabsContent>
         <TabsContent value="referrals" className="space-y-4"><ReferralsTab referrals={referrals} loading={isLoading} /></TabsContent>
+        <TabsContent value="redirections" className="space-y-4"><RedirectionsTab redirections={redirections} loading={isLoading} /></TabsContent>
       </Tabs>
 
       <CaseListSheet
