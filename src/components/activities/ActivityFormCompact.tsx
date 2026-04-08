@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Search, X, ChevronDown, Copy, Loader2, Maximize2, UserPlus, Building2 } from 'lucide-react';
+import { Search, X, ChevronDown, Copy, Loader2, Maximize2, UserPlus, Building2, Briefcase } from 'lucide-react';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
@@ -95,9 +95,9 @@ const MATRIX_OPTIONS = [
 export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [expandedFieldKey, setExpandedFieldKey] = useState<string | null>(null);
-  const [linkedOpen, setLinkedOpen] = useState(!!props.formCaseId);
   const [linkLeadOpen, setLinkLeadOpen] = useState(false);
   const [linkContactOpen, setLinkContactOpen] = useState(false);
+  const [linkCaseOpen, setLinkCaseOpen] = useState(false);
 
   return (
     <div className="space-y-3">
@@ -146,6 +146,25 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           ) : (
             <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1 text-muted-foreground" onClick={() => setLinkContactOpen(true)}>
               <UserPlus className="h-3 w-3" /> Contato
+            </Button>
+          )}
+          {/* Case link button */}
+          {props.formCaseTitle ? (
+            <div className="flex items-center gap-0.5">
+              <Badge
+                variant="secondary"
+                className="text-[9px] h-5 max-w-[120px] truncate cursor-pointer hover:opacity-80 bg-orange-100 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400"
+                onClick={() => setLinkCaseOpen(true)}
+              >
+                {props.formCaseTitle}
+              </Badge>
+              <button type="button" onClick={() => { props.setFormCaseId(''); props.setFormCaseTitle(''); props.setFormProcessId(''); props.setFormProcessTitle(''); props.setCaseProcesses([]); }} className="text-muted-foreground hover:text-foreground">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1 text-muted-foreground" onClick={() => setLinkCaseOpen(true)}>
+              <Briefcase className="h-3 w-3" /> Caso
             </Button>
           )}
         </div>
