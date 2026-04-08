@@ -711,6 +711,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                   <p className="text-[10px] text-muted-foreground">Define a personalidade, tom, instruções de coleta e regras de comportamento do agente.</p>
                   <div className="relative">
                     <Textarea
+                      id="command-prompt-textarea"
                       placeholder="Você é um assistente jurídico profissional. Ao interagir com o cliente, colete nome completo, CPF, RG, endereço..."
                       value={form.prompt_instructions}
                       onChange={e => setForm(f => ({ ...f, prompt_instructions: e.target.value }))}
