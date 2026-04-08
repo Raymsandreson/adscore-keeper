@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { Card, CardContent } from '@/components/ui/card';
 import { CardFieldsConfig } from '@/hooks/useCardFieldsSettings';
 import { Badge } from '@/components/ui/badge';
