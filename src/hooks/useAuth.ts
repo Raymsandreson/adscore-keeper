@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
-import { cacheSet, cacheGet, CACHE_TTL } from '@/lib/offlineCache';
-
+import { cacheSet, cacheGet, cacheRemove, CACHE_TTL } from '@/lib/offlineCache';
 
 interface Profile {
   id: string;
@@ -12,6 +11,35 @@ interface Profile {
   created_at: string;
   updated_at: string;
 }
+
+const AUTH_STORAGE_KEY = 'sb-gliigkupoebmlbwyvijp-auth-token';
+
+const isInvalidAuthError = (err: unknown) => {
+  const message = err instanceof Error ? err.message : String((err as any)?.message || err || '');
+  const code = (err as any)?.code;
+
+  return (
+    message.includes('Refresh Token') ||
+    message.includes('refresh token') ||
+    message.includes('bad_jwt') ||
+    message.includes('JWT') ||
+    message.includes('missing sub claim') ||
+    code === 'refresh_token_not_found' ||
+    code === 'bad_jwt'
+  );
+};
+
+const clearLocalAuthState = async () => {
+  try {
+    await supabase.auth.signOut({ scope: 'local' });
+  } catch {
+    // ignore local signout failures
+  }
+
+  localStorage.removeItem(AUTH_STORAGE_KEY);
+  cacheRemove('auth_session');
+  cacheRemove('auth_profile');
+};
 
 // Sync user to external DB - sends user data from session
 async function syncUserToExternal(user: User): Promise<Profile | null> {
@@ -81,37 +109,39 @@ export const useAuth = () => {
       }
     };
 
+    const resetToLoggedOut = async () => {
+      await clearLocalAuthState();
+      setUser(null);
+      setSession(null);
+      setProfile(null);
+      setIsOfflineMode(false);
+    };
+
     const timeout = setTimeout(() => {
       settle('Tempo limite excedido ao conectar com o servidor.');
     }, 8000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        // Handle token errors - clear stale session
-        if (_event === 'TOKEN_REFRESHED' && !session) {
-          console.warn('[AUTH] Token refresh falhou, limpando sessão...');
-          localStorage.removeItem('sb-gliigkupoebmlbwyvijp-auth-token');
-          setUser(null);
-          setSession(null);
-          setProfile(null);
+        if ((_event === 'TOKEN_REFRESHED' || _event === 'SIGNED_OUT') && !session) {
+          console.warn('[AUTH] Sessão ausente após evento de auth, limpando estado local...');
+          await resetToLoggedOut();
           settle();
           return;
         }
 
         setSession(session);
         setUser(session?.user ?? null);
-        
+
         if (session?.user) {
           cacheSet('auth_session', { user: session.user, session }, CACHE_TTL.SESSION);
-          
-          // Sync to external DB and get profile from there
+
           setTimeout(async () => {
             const syncedProfile = await syncUserToExternal(session.user);
             if (syncedProfile) {
               setProfile(syncedProfile);
               cacheSet('auth_profile', syncedProfile, CACHE_TTL.PROFILE);
             } else {
-              // Use cached profile as fallback
               const cached = cacheGet<Profile>('auth_profile');
               if (cached?.data) setProfile(cached.data);
             }
@@ -127,11 +157,10 @@ export const useAuth = () => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      
+
       if (session?.user) {
         cacheSet('auth_session', { user: session.user, session }, CACHE_TTL.SESSION);
-        
-        // Sync to external DB
+
         const syncedProfile = await syncUserToExternal(session.user);
         if (syncedProfile) {
           setProfile(syncedProfile);
@@ -143,17 +172,12 @@ export const useAuth = () => {
       }
       settle();
     }).catch(async (err) => {
-      // If refresh token is invalid/expired, clear local storage and show login
-      if (err?.message?.includes('Refresh Token') || err?.code === 'refresh_token_not_found') {
+      if (isInvalidAuthError(err)) {
         console.warn('[AUTH] Token inválido detectado, limpando sessão local...');
-        await supabase.auth.signOut({ scope: 'local' });
-        localStorage.removeItem('sb-gliigkupoebmlbwyvijp-auth-token');
-        setUser(null);
-        setSession(null);
-        setProfile(null);
+        await resetToLoggedOut();
         settle();
       } else {
-        settle(`Erro ao obter sessão: ${err?.message || 'desconhecido'}`);
+        settle(`Erro ao obter sessão: ${(err as any)?.message || 'desconhecido'}`);
       }
     });
 
@@ -188,14 +212,13 @@ export const useAuth = () => {
   const signOut = async () => {
     try {
       const { error } = await supabase.auth.signOut();
-      // Ignore "session_not_found" or "Auth session missing" - user is already logged out
       if (error && !error.message?.includes('session_not_found') && !error.message?.includes('Auth session missing')) {
         return { error };
       }
-    } catch (err) {
+    } catch {
       // Network errors during signout are fine - clear local state anyway
     }
-    // Always clear local state
+    await clearLocalAuthState();
     setUser(null);
     setSession(null);
     setProfile(null);
@@ -204,14 +227,14 @@ export const useAuth = () => {
 
   const updateProfile = async (updates: Partial<Profile>) => {
     if (!user) return { error: new Error('No user logged in') };
-    
+
     const { data, error } = await supabase
       .from('profiles')
       .update(updates)
       .eq('user_id', user.id)
       .select()
       .single();
-    
+
     if (data) {
       setProfile(data);
       cacheSet('auth_profile', data, CACHE_TTL.PROFILE);

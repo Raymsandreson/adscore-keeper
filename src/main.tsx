@@ -6,6 +6,7 @@ import { initPWAUpdater } from "./lib/pwaUpdater";
 
 const PRELOAD_RELOAD_KEY = "vite-preload-reload";
 const PREVIEW_CACHE_BUST_KEY = "preview-cache-busted-once";
+const INVALID_AUTH_RECOVERY_KEY = "invalid-auth-recovery-once";
 const isPreviewHost = window.location.hostname.includes("id-preview--");
 
 const clearRuntimeCaches = async () => {
@@ -24,8 +25,51 @@ const clearRuntimeCaches = async () => {
   }
 };
 
+const clearInvalidAuthStorage = () => {
+  try {
+    const authKeys = Object.keys(localStorage).filter(
+      (key) => key.startsWith("sb-") && key.endsWith("-auth-token")
+    );
+
+    let removedInvalidToken = false;
+
+    authKeys.forEach((key) => {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+
+      try {
+        const parsed = JSON.parse(raw);
+        const accessToken = parsed?.access_token ?? parsed?.currentSession?.access_token ?? null;
+        const refreshToken = parsed?.refresh_token ?? parsed?.currentSession?.refresh_token ?? null;
+
+        const looksInvalid =
+          !accessToken ||
+          typeof accessToken !== "string" ||
+          accessToken.split(".").length !== 3 ||
+          !refreshToken;
+
+        if (looksInvalid) {
+          localStorage.removeItem(key);
+          removedInvalidToken = true;
+        }
+      } catch {
+        localStorage.removeItem(key);
+        removedInvalidToken = true;
+      }
+    });
+
+    if (removedInvalidToken && sessionStorage.getItem(INVALID_AUTH_RECOVERY_KEY) !== "1") {
+      sessionStorage.setItem(INVALID_AUTH_RECOVERY_KEY, "1");
+      window.location.reload();
+    }
+  } catch {
+    // no-op
+  }
+};
+
 // Initialize debug logging for native app monitoring
 logAppInit();
+clearInvalidAuthStorage();
 
 // In preview/dev, clear old SW/cache to prevent stale module fetches.
 if (import.meta.env.DEV || isPreviewHost) {
