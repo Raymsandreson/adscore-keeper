@@ -449,6 +449,45 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_group_redirections: {
+        Row: {
+          agent_id: string
+          agent_name: string | null
+          created_at: string
+          group_jid: string | null
+          group_message: string | null
+          id: string
+          instance_name: string
+          notify_instance_name: string | null
+          phone: string
+          private_notification: string | null
+        }
+        Insert: {
+          agent_id: string
+          agent_name?: string | null
+          created_at?: string
+          group_jid?: string | null
+          group_message?: string | null
+          id?: string
+          instance_name: string
+          notify_instance_name?: string | null
+          phone: string
+          private_notification?: string | null
+        }
+        Update: {
+          agent_id?: string
+          agent_name?: string | null
+          created_at?: string
+          group_jid?: string | null
+          group_message?: string | null
+          id?: string
+          instance_name?: string
+          notify_instance_name?: string | null
+          phone?: string
+          private_notification?: string | null
+        }
+        Relationships: []
+      }
       agent_knowledge_documents: {
         Row: {
           agent_id: string
@@ -8831,6 +8870,7 @@ export type Database = {
           media_extraction_prompt: string | null
           min_call_delay_minutes: number
           model: string | null
+          notify_instance_name: string | null
           notify_on_signature: boolean
           partial_min_fields: string[] | null
           prompt_instructions: string | null
@@ -8881,6 +8921,7 @@ export type Database = {
           media_extraction_prompt?: string | null
           min_call_delay_minutes?: number
           model?: string | null
+          notify_instance_name?: string | null
           notify_on_signature?: boolean
           partial_min_fields?: string[] | null
           prompt_instructions?: string | null
@@ -8931,6 +8972,7 @@ export type Database = {
           media_extraction_prompt?: string | null
           min_call_delay_minutes?: number
           model?: string | null
+          notify_instance_name?: string | null
           notify_on_signature?: boolean
           partial_min_fields?: string[] | null
           prompt_instructions?: string | null
@@ -9314,6 +9356,7 @@ export type Database = {
           max_tts_chars: number | null
           model: string | null
           name: string | null
+          notify_instance_name: string | null
           provider: string | null
           read_messages: boolean | null
           reply_voice_id: string | null
@@ -9353,6 +9396,7 @@ export type Database = {
           max_tts_chars?: number | null
           model?: never
           name?: string | null
+          notify_instance_name?: string | null
           provider?: never
           read_messages?: never
           reply_voice_id?: string | null
@@ -9392,6 +9436,7 @@ export type Database = {
           max_tts_chars?: number | null
           model?: never
           name?: string | null
+          notify_instance_name?: string | null
           provider?: never
           read_messages?: never
           reply_voice_id?: string | null
