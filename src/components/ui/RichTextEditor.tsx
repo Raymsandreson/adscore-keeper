@@ -354,7 +354,7 @@ function SyncPlugin({ value, lastEmittedHtml }: { value: string; lastEmittedHtml
       },
       { tag: 'external-sync' },
     );
-  }, [value, editor]);
+  }, [value, editor, lastEmittedHtml]);
 
   return null;
 }
@@ -466,6 +466,17 @@ function RichTextEditorComponent({
     nodes: [ListNode, ListItemNode, LinkNode, AutoLinkNode],
   }).current;
 
+  const flushEditorHtml = useCallback((editor: LexicalEditor) => {
+    editor.getEditorState().read(() => {
+      const html = $generateHtmlFromNodes(editor);
+      const root = $getRoot();
+      const text = root.getTextContent().trim();
+      const output = text === '' ? '' : html;
+      lastEmittedHtml.current = output;
+      onChangeRef.current(output);
+    });
+  }, []);
+
   useEffect(() => {
     return () => {
       if (debounceTimer.current) {
@@ -479,17 +490,6 @@ function RichTextEditorComponent({
       }
     };
   }, [flushEditorHtml]);
-
-  const flushEditorHtml = useCallback((editor: LexicalEditor) => {
-    editor.getEditorState().read(() => {
-      const html = $generateHtmlFromNodes(editor);
-      const root = $getRoot();
-      const text = root.getTextContent().trim();
-      const output = text === '' ? '' : html;
-      lastEmittedHtml.current = output;
-      onChangeRef.current(output);
-    });
-  }, []);
 
   const handleEditorChange = useCallback(
     (_editorState: EditorState, editor: LexicalEditor) => {
