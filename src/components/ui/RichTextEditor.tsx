@@ -39,7 +39,7 @@ import {
 } from '@lexical/list';
 
 import { AutoLinkNode, LinkNode, $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
-import { $isHeadingNode } from '@lexical/rich-text';
+
 import { $getNearestNodeOfType } from '@lexical/utils';
 
 import {
@@ -318,33 +318,23 @@ function ToolbarPlugin({
   );
 }
 
-// ─── Sync Plugin (external value → editor) ───────────────
-function SyncPlugin({ value }: { value: string }) {
+// ─── Sync Plugin (external value → editor, skip internal changes) ────
+function SyncPlugin({ value, lastEmittedHtml }: { value: string; lastEmittedHtml: React.MutableRefObject<string> }) {
   const [editor] = useLexicalComposerContext();
-  const isInternalChange = useRef(false);
-  const lastExternalValue = useRef(value);
-
-  // Mark internal changes
-  useEffect(() => {
-    return editor.registerUpdateListener(({ tags }) => {
-      if (!tags.has('external-sync')) {
-        isInternalChange.current = true;
-        requestAnimationFrame(() => {
-          isInternalChange.current = false;
-        });
-      }
-    });
-  }, [editor]);
 
   useEffect(() => {
-    if (isInternalChange.current) return;
-    if (value === lastExternalValue.current) return;
-    lastExternalValue.current = value;
+    // If the incoming value matches what we last emitted, skip (it's our own echo)
+    if (value === lastEmittedHtml.current) return;
+    // Also skip empty equivalents
+    const normalizedValue = (!value || value === '<p></p>') ? '' : value;
+    const normalizedEmitted = (!lastEmittedHtml.current || lastEmittedHtml.current === '<p></p>') ? '' : lastEmittedHtml.current;
+    if (normalizedValue === normalizedEmitted) return;
+
+    lastEmittedHtml.current = value;
 
     editor.update(
       () => {
         const root = $getRoot();
-        // Clear and set new content
         if (!value || value === '<p></p>' || value.trim() === '') {
           root.clear();
           root.append($createParagraphNode());
@@ -363,16 +353,6 @@ function SyncPlugin({ value }: { value: string }) {
   return null;
 }
 
-// ─── AI Action Handler Plugin ────────────────────────────
-function AiPlugin({
-  aiLoading,
-  setAiLoading,
-}: {
-  aiLoading: boolean;
-  setAiLoading: (v: boolean) => void;
-}) {
-  return null; // AI is handled at parent level
-}
 
 // ─── Tool Button ─────────────────────────────────────────
 function ToolBtn({
@@ -415,6 +395,7 @@ export function RichTextEditor({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const editorRef = useRef<LexicalEditor | null>(null);
+  const lastEmittedHtml = useRef(value || '');
 
   const initialConfig = {
     namespace: 'RichTextEditor',
@@ -430,7 +411,9 @@ export function RichTextEditor({
         const html = $generateHtmlFromNodes(editor);
         const root = $getRoot();
         const text = root.getTextContent().trim();
-        onChangeRef.current(text === '' ? '' : html);
+        const output = text === '' ? '' : html;
+        lastEmittedHtml.current = output;
+        onChangeRef.current(output);
       });
     },
     [],
@@ -503,7 +486,7 @@ export function RichTextEditor({
         <ListPlugin />
         <LinkPlugin />
         <OnChangePlugin onChange={handleEditorChange} ignoreSelectionChange />
-        <SyncPlugin value={value} />
+        <SyncPlugin value={value} lastEmittedHtml={lastEmittedHtml} />
         {autoFocus && <AutoFocusPlugin />}
         <EditorRefPlugin editorRef={editorRef} />
       </LexicalComposer>
