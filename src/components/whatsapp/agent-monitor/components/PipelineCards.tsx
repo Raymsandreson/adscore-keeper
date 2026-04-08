@@ -266,18 +266,23 @@ export function PipelineCards({ counts, activeStatus, onToggle, dashboardMetrics
                     <tr className="bg-muted/50">
                       <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Acolhedor</th>
                       <th className="text-center px-2 py-1.5 font-medium text-purple-500 whitespace-nowrap">🤖 IA</th>
+                      <th className="text-center px-2 py-1.5 font-medium text-orange-500 whitespace-nowrap">🤝 Assist.</th>
                       <th className="text-center px-2 py-1.5 font-medium text-blue-500 whitespace-nowrap">👤 Humano</th>
                       <th className="text-center px-2 py-1.5 font-medium text-muted-foreground">Total</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {dashboardMetrics.closedByAgentDetailed.map(({ agent, ai, human, total }) => (
+                    {dashboardMetrics.closedByAgentDetailed.map(({ agent, ai, assisted, human, total }) => (
                       <tr key={agent} className="border-t border-border/50">
-                        <td className="px-2 py-1.5 truncate max-w-[160px]">{agent}</td>
+                        <td className="px-2 py-1.5 truncate max-w-[140px]">{agent}</td>
                         <td
                           className="text-center px-2 py-1.5 font-bold text-purple-600 cursor-pointer hover:underline hover:bg-purple-50 dark:hover:bg-purple-950/30 rounded"
                           onClick={() => ai > 0 && onClosingDetailClick?.({ agent, type: 'ai' })}
                         >{ai}</td>
+                        <td
+                          className="text-center px-2 py-1.5 font-bold text-orange-600 cursor-pointer hover:underline hover:bg-orange-50 dark:hover:bg-orange-950/30 rounded"
+                          onClick={() => assisted > 0 && onClosingDetailClick?.({ agent, type: 'assisted' })}
+                        >{assisted}</td>
                         <td
                           className="text-center px-2 py-1.5 font-bold text-blue-600 cursor-pointer hover:underline hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded"
                           onClick={() => human > 0 && onClosingDetailClick?.({ agent, type: 'human' })}
