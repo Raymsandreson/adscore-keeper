@@ -94,7 +94,7 @@ const MATRIX_OPTIONS = [
 
 export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [expandedField, setExpandedField] = useState<{ key: string; label: string; value: string; setter: (v: string) => void; placeholder: string } | null>(null);
+  const [expandedFieldKey, setExpandedFieldKey] = useState<string | null>(null);
   const [linkedOpen, setLinkedOpen] = useState(!!props.formLeadId || !!props.formContactId || !!props.formCaseId);
 
   return (
