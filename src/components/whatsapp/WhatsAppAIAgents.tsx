@@ -272,6 +272,7 @@ export function WhatsAppAIAgents() {
         send_window_start_hour: editingAgent.send_window_start_hour ?? 8,
         send_window_end_hour: editingAgent.send_window_end_hour ?? 20,
         send_call_followup_audio: editingAgent.send_call_followup_audio ?? false,
+        forward_questions_to_group: editingAgent.forward_questions_to_group ?? false,
         max_repeat_cycles: (editingAgent as any).max_repeat_cycles ?? 3,
         min_call_delay_minutes: (editingAgent as any).min_call_delay_minutes ?? 30,
         max_consecutive_call_failures: (editingAgent as any).max_consecutive_call_failures ?? 3,
