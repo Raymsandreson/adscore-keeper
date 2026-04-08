@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { RichTextEditor } from '@/components/ui/RichTextEditor';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
@@ -195,11 +195,11 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
   return (
     <div>
       {label && <Label>{label}</Label>}
-      <Textarea
+      <RichTextEditor
         value={value}
-        onChange={e => onChange(e.target.value)}
+        onChange={onChange}
         placeholder={placeholder || 'Notas adicionais...'}
-        rows={2}
+        minHeight="60px"
       />
 
       {/* Attachment toolbar */}
