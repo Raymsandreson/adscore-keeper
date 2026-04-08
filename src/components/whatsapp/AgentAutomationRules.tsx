@@ -7,11 +7,11 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Zap, Plus, Trash2, UserPlus, FolderKanban, Briefcase, ListChecks, ChevronDown, ChevronUp, Users, MessageSquare, ArrowRightLeft } from 'lucide-react';
+import { Loader2, Zap, Plus, Trash2, UserPlus, FolderKanban, Briefcase, ListChecks, ChevronDown, ChevronUp, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface AutomationAction {
-  type: 'create_lead' | 'create_contact' | 'create_activity' | 'create_case' | 'move_lead_stage' | 'create_group' | 'send_group_message' | 'send_private_redirect';
+  type: 'create_lead' | 'create_contact' | 'create_activity' | 'create_case' | 'move_lead_stage' | 'create_group';
   config: Record<string, any>;
   enabled: boolean;
 }
@@ -53,8 +53,6 @@ const ACTION_TYPES = [
   { value: 'create_case', label: 'Criar Caso', icon: Briefcase, description: 'Cria um caso jurídico vinculado ao lead' },
   { value: 'move_lead_stage', label: 'Mover Lead de Etapa', icon: FolderKanban, description: 'Move o lead para um funil/etapa específico' },
   { value: 'create_group', label: 'Criar Grupo WhatsApp', icon: Users, description: 'Cria um grupo com as instâncias configuradas no funil' },
-  { value: 'send_group_message', label: 'Enviar Mensagem no Grupo', icon: MessageSquare, description: 'Envia uma mensagem configurável no grupo vinculado ao lead' },
-  { value: 'send_private_redirect', label: 'Redirecionar ao Grupo', icon: ArrowRightLeft, description: 'Envia mensagem no privado redirecionando o cliente para o grupo do processo' },
 ];
 
 interface Props {
@@ -122,13 +120,6 @@ export function AgentAutomationRules({ agentId }: Props) {
     }
     if (actionType === 'create_case') {
       defaultConfig.nucleus_id = nuclei[0]?.id || '';
-    }
-    if (actionType === 'send_group_message') {
-      defaultConfig.message_template = 'Olá! {nome_cliente} foi orientado(a) a acompanhar o processo por aqui. Qualquer atualização será compartilhada neste grupo. 🙌';
-    }
-    if (actionType === 'send_private_redirect') {
-      defaultConfig.message_template = 'Oi {nome_cliente}! 😊 Para o acompanhamento do seu processo, nosso grupo é o melhor canal — lá toda a equipe jurídica está pronta pra te atualizar de forma proativa sobre tudo que acontece. Mas fico à disposição se precisar de algo!';
-      defaultConfig.deactivate_private_agent = true;
     }
 
     setRules(prev => ({
@@ -346,46 +337,6 @@ export function AgentAutomationRules({ agentId }: Props) {
           </div>
         )}
 
-        {action.type === 'send_group_message' && (
-          <div className="space-y-2">
-            <div>
-              <Label className="text-[10px]">Mensagem para o grupo</Label>
-              <Textarea
-                className="text-xs min-h-[60px]"
-                value={action.config.message_template || ''}
-                onChange={e => handleUpdateActionConfig(trigger, index, 'message_template', e.target.value)}
-                placeholder="Mensagem a ser enviada no grupo..."
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Variáveis: <code className="bg-muted px-1 rounded">{'{nome_cliente}'}</code> <code className="bg-muted px-1 rounded">{'{telefone}'}</code> <code className="bg-muted px-1 rounded">{'{numero_processo}'}</code>
-              </p>
-            </div>
-          </div>
-        )}
-
-        {action.type === 'send_private_redirect' && (
-          <div className="space-y-2">
-            <div>
-              <Label className="text-[10px]">Mensagem de redirecionamento (privado)</Label>
-              <Textarea
-                className="text-xs min-h-[80px]"
-                value={action.config.message_template || ''}
-                onChange={e => handleUpdateActionConfig(trigger, index, 'message_template', e.target.value)}
-                placeholder="Mensagem educada redirecionando ao grupo..."
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Variáveis: <code className="bg-muted px-1 rounded">{'{nome_cliente}'}</code> <code className="bg-muted px-1 rounded">{'{telefone}'}</code> <code className="bg-muted px-1 rounded">{'{numero_processo}'}</code>
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={action.config.deactivate_private_agent !== false}
-                onCheckedChange={v => handleUpdateActionConfig(trigger, index, 'deactivate_private_agent', v)}
-              />
-              <Label className="text-[10px]">Desativar agente no privado após redirecionar</Label>
-            </div>
-          </div>
-        )}
       </div>
     );
   };

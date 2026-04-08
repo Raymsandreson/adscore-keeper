@@ -612,6 +612,116 @@ REGRAS DE EXTRAÇÃO DE DOCUMENTOS:
         ? (agent as any).followup_prompt
         : (agent as any).base_prompt || '';
       let systemPrompt = humanizationPrefix + effectivePrompt;
+
+      // ========== RESOLVE DYNAMIC PROMPT VARIABLES ==========
+      if (systemPrompt.includes('{lead.') || systemPrompt.includes('{contato.') || systemPrompt.includes('{processo.') || systemPrompt.includes('{grupo.') || systemPrompt.includes('{campo.')) {
+        try {
+          const normalizedPhoneVar = phone.replace(/\D/g, '');
+          const phoneSuffixVar = normalizedPhoneVar.slice(-8);
+
+          // Resolve contact
+          let contactData: any = null;
+          const { data: contactRows } = await supabase
+            .from("contacts")
+            .select("id, full_name, phone, email, cpf, city, state, profession, classifications, birth_date, contact_leads(lead_id)")
+            .ilike("phone", `%${phoneSuffixVar}`)
+            .limit(1);
+          if (contactRows?.[0]) contactData = contactRows[0];
+
+          // Resolve lead
+          let leadData: any = null;
+          const targetLeadId = lead_id || contactData?.contact_leads?.[0]?.lead_id;
+          if (targetLeadId) {
+            const { data: ld } = await supabase
+              .from("leads")
+              .select("id, lead_name, lead_phone, email, lead_status, board_id, status, acolhedor, product_service_id, notes, created_at, custom_fields, group_link, whatsapp_group_id, kanban_boards:board_id(name), products_services:product_service_id(name)")
+              .eq("id", targetLeadId)
+              .maybeSingle();
+            leadData = ld;
+          }
+
+          // Resolve process/case
+          let processData: any = null;
+          if (targetLeadId) {
+            const { data: cases } = await supabase
+              .from("legal_cases")
+              .select("id, case_number, case_type, status, process_number, court, specialized_nuclei:nucleus_id(name)")
+              .eq("lead_id", targetLeadId)
+              .order("created_at", { ascending: false })
+              .limit(1);
+            if (cases?.[0]) processData = cases[0];
+          }
+
+          // Resolve group from lead's whatsapp_group_id
+          let groupData: any = null;
+          if (leadData?.whatsapp_group_id) {
+            // Try to get group info from whatsapp_messages (group conversations)
+            const { data: groupMsg } = await supabase
+              .from("whatsapp_messages")
+              .select("contact_name")
+              .eq("phone", leadData.whatsapp_group_id)
+              .limit(1);
+            groupData = {
+              group_name: groupMsg?.[0]?.contact_name || '',
+              invite_link: leadData?.group_link || '',
+            };
+          } else if (leadData?.group_link) {
+            groupData = { group_name: '', invite_link: leadData.group_link };
+          }
+
+          // Build replacement map
+          const vars: Record<string, string> = {
+            '{lead.nome}': leadData?.lead_name || '',
+            '{lead.telefone}': leadData?.lead_phone || phone,
+            '{lead.email}': leadData?.email || '',
+            '{lead.status}': leadData?.lead_status || '',
+            '{lead.funil}': (leadData?.kanban_boards as any)?.name || '',
+            '{lead.etapa}': leadData?.status || '',
+            '{lead.acolhedor}': leadData?.acolhedor || '',
+            '{lead.produto}': (leadData?.products_services as any)?.name || '',
+            '{lead.data_criacao}': leadData?.created_at ? new Date(leadData.created_at).toLocaleDateString('pt-BR') : '',
+            '{lead.observacoes}': leadData?.notes || '',
+            '{contato.nome}': contactData?.full_name || contact_name || '',
+            '{contato.telefone}': contactData?.phone || phone,
+            '{contato.email}': contactData?.email || '',
+            '{contato.cpf}': contactData?.cpf || '',
+            '{contato.cidade}': contactData?.city || '',
+            '{contato.estado}': contactData?.state || '',
+            '{contato.profissao}': contactData?.profession || '',
+            '{contato.classificacao}': Array.isArray(contactData?.classifications) ? contactData.classifications.join(', ') : '',
+            '{contato.data_nascimento}': contactData?.birth_date ? new Date(contactData.birth_date).toLocaleDateString('pt-BR') : '',
+            '{processo.numero}': processData?.process_number || '',
+            '{processo.caso}': processData?.case_number || '',
+            '{processo.tipo}': processData?.case_type || '',
+            '{processo.status}': processData?.status || '',
+            '{processo.nucleo}': (processData?.specialized_nuclei as any)?.name || '',
+            '{processo.tribunal}': processData?.court || '',
+            '{grupo.nome}': groupData?.group_name || '',
+            '{grupo.link_convite}': groupData?.invite_link || '',
+          };
+
+          // Resolve custom fields
+          if (systemPrompt.includes('{campo.') && leadData?.custom_fields) {
+            const customFields = typeof leadData.custom_fields === 'string' ? JSON.parse(leadData.custom_fields) : leadData.custom_fields;
+            const cfRegex = /\{campo\.([^}]+)\}/g;
+            let cfMatch;
+            while ((cfMatch = cfRegex.exec(systemPrompt)) !== null) {
+              const fieldName = cfMatch[1];
+              const fieldValue = customFields[fieldName] || customFields[fieldName.toLowerCase()] || '';
+              vars[cfMatch[0]] = String(fieldValue);
+            }
+          }
+
+          // Apply replacements
+          for (const [key, value] of Object.entries(vars)) {
+            systemPrompt = systemPrompt.replaceAll(key, value);
+          }
+
+          console.log(`Resolved ${Object.keys(vars).length} prompt variables for phone ${phone}`);
+        } catch (varErr) {
+          console.error("Error resolving prompt variables:", varErr);
+        }
+      }
       
       if (is_followup) {
         systemPrompt += `\n\nCONTEXTO DE FOLLOW-UP:
