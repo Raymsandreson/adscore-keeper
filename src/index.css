@@ -290,3 +290,13 @@ div[id*="callface"][style*="position: absolute"] {
 .tiptap li p {
   margin: 0;
 }
+/* Tiptap inline formatting */
+.tiptap strong {
+  font-weight: 700;
+}
+.tiptap em {
+  font-style: italic;
+}
+.tiptap u {
+  text-decoration: underline;
+}
