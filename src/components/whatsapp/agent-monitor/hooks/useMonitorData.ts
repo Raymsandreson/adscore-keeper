@@ -18,7 +18,7 @@ export function useMonitorData() {
       const startDate = dateRange.from.toISOString();
       const endDate = endOfDay(dateRange.to).toISOString();
 
-      const [agentsRes, convAgentsRes, messagesRes, leadsRes, boardsRes, followupsRes, referralsRes] = await Promise.all([
+      const [agentsRes, convAgentsRes, messagesRes, leadsRes, boardsRes, followupsRes, referralsRes, redirectionsRes] = await Promise.all([
         supabase.from('wjia_command_shortcuts').select('id, shortcut_name, description, is_active, followup_steps, followup_repeat_forever').order('shortcut_name'),
         supabase.from('whatsapp_conversation_agents').select('*').or('is_active.eq.true,is_blocked.eq.true'),
         supabase.from('whatsapp_messages')
@@ -31,6 +31,9 @@ export function useMonitorData() {
         supabase.from('lead_followups').select('lead_id, followup_type').gte('followup_date', startDate).lte('followup_date', endDate),
         supabase.from('ambassador_referrals')
           .select('id, ambassador_id, contact_id, lead_id, status, created_at, campaign_id, notes, member_user_id')
+          .gte('created_at', startDate).lte('created_at', endDate).order('created_at', { ascending: false }),
+        supabase.from('agent_group_redirections')
+          .select('id, agent_name, phone, instance_name, group_jid, notify_instance_name, group_message, private_notification, created_at')
           .gte('created_at', startDate).lte('created_at', endDate).order('created_at', { ascending: false }),
       ]);
 
