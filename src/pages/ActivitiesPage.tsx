@@ -95,7 +95,12 @@ const ActivitiesPage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthContext();
-  const { activities, loading, fetchActivities, createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
+  const { activities, loading, fetchActivities: _fetchActivities, createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
+  const refreshCountsRef = useRef<(() => Promise<void>) | null>(null);
+  const fetchActivities = useCallback(async (params?: Parameters<typeof _fetchActivities>[0]) => {
+    await _fetchActivities(params);
+    refreshCountsRef.current?.();
+  }, [_fetchActivities]);
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
 
