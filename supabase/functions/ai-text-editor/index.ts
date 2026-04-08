@@ -29,18 +29,23 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { text, action } = await req.json();
+    const { text, action, custom_prompt } = await req.json();
     if (!text || !action) {
       return new Response(JSON.stringify({ error: "text and action required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const systemPrompt = PROMPTS[action];
-    if (!systemPrompt) {
-      return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    let systemPrompt: string;
+    if (action === 'custom' && custom_prompt) {
+      systemPrompt = `Aplique a seguinte instrução ao texto do usuário: ${custom_prompt}. Mantenha o idioma original do texto.`;
+    } else {
+      systemPrompt = PROMPTS[action];
+      if (!systemPrompt) {
+        return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const multiOptionPrompt = `${systemPrompt}
