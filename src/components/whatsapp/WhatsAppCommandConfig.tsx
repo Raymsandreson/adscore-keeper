@@ -473,6 +473,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_call_followup_audio: (s as any).send_call_followup_audio ?? false,
       zapsign_mode: (s as any).zapsign_mode || 'final_document',
       zapsign_settings: (s as any).zapsign_settings || {},
+      forward_questions_to_group: (s as any).forward_questions_to_group ?? false,
+      notify_instance_name: (s as any).notify_instance_name || null,
     });
     setFollowupSteps(s.followup_steps || []);
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
