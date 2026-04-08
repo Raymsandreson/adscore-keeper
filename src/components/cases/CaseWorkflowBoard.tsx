@@ -129,7 +129,7 @@ export function CaseWorkflowBoard({ caseId, processes, onProcessUpdated }: CaseW
         <Workflow className="h-4 w-4 text-primary" />
         <h4 className="text-xs font-semibold">Fluxo de Trabalho</h4>
         {workflowBoards.length > 1 && (
-          <Select value={selectedBoardId || ''} onValueChange={handleSelectBoard}>
+          <Select value={selectedBoardId || undefined} onValueChange={handleSelectBoard}>
             <SelectTrigger className="h-7 text-xs w-[180px]">
               <SelectValue placeholder="Selecionar fluxo" />
             </SelectTrigger>
