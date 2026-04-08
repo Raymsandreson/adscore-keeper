@@ -223,7 +223,7 @@ export function LeadAdvancedFilters({
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Criado por</Label>
-                <Select value={filters.createdBy} onValueChange={v => update('createdBy', v === '_all' ? '' : v)}>
+                <Select value={filters.createdBy || '_all'} onValueChange={v => update('createdBy', v === '_all' ? '' : v)}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
@@ -238,7 +238,7 @@ export function LeadAdvancedFilters({
 
               <div className="space-y-1">
                 <Label className="text-xs">Atualizado por</Label>
-                <Select value={filters.updatedBy} onValueChange={v => update('updatedBy', v === '_all' ? '' : v)}>
+                <Select value={filters.updatedBy || '_all'} onValueChange={v => update('updatedBy', v === '_all' ? '' : v)}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
