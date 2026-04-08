@@ -309,10 +309,13 @@ export function WhatsAppAIAgents() {
     fetchAgents();
   };
 
-  const handleDelete = async (agent: AIAgent) => {
-    if (!confirm(`Excluir agente "${agent.name}"?`)) return;
-    await supabase.from('whatsapp_ai_agents').delete().eq('id', agent.id);
+  const [deleteTarget, setDeleteTarget] = useState<AIAgent | null>(null);
+
+  const confirmDeleteAgent = async () => {
+    if (!deleteTarget) return;
+    await supabase.from('whatsapp_ai_agents').delete().eq('id', deleteTarget.id);
     toast.success('Agente excluído');
+    setDeleteTarget(null);
     fetchAgents();
   };
 
