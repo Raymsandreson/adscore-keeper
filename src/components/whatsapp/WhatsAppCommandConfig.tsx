@@ -662,6 +662,15 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     <Input placeholder="Gera procuração ad judicia" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="h-9" />
                   </div>
                 </div>
+
+                {/* Instance Settings */}
+                {editingId && (
+                  <div className="border rounded-lg p-3 space-y-1">
+                    <Label className="text-xs font-medium">📱 Instâncias (Pessoas)</Label>
+                    <p className="text-[10px] text-muted-foreground">Selecione em quais instâncias este agente deve estar ativado</p>
+                    <AgentInstanceSettings agentId={editingId} />
+                  </div>
+                )}
               </div>
             )}
 
