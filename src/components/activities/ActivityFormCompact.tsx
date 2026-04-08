@@ -339,14 +339,18 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             return (
               <div key={field.field_key}>
                 <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
-                <RichTextEditor
-                  value={value}
-                  onChange={setter}
-                  placeholder={field.placeholder || ''}
-                  minHeight="32px"
-                  onExpand={() => setExpandedFieldKey(field.field_key)}
-                  className="mt-0.5"
-                />
+                {expandedFieldKey === field.field_key ? (
+                  <div className="mt-0.5 min-h-8 rounded-md border border-dashed border-border bg-muted/20" />
+                ) : (
+                  <RichTextEditor
+                    value={value}
+                    onChange={setter}
+                    placeholder={field.placeholder || ''}
+                    minHeight="32px"
+                    onExpand={() => setExpandedFieldKey(field.field_key)}
+                    className="mt-0.5"
+                  />
+                )}
               </div>
             );
           })}
