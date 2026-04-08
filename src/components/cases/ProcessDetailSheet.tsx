@@ -671,7 +671,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
               </div>
             )}
 
-
+            {activeTab === 'tribunal' && (
               <>
                 <EditableField label="Tribunal" value={form.tribunal || ''} onChange={v => set('tribunal', v)} />
                 <EditableField label="Sigla" value={form.tribunal_sigla || ''} onChange={v => set('tribunal_sigla', v)} />
