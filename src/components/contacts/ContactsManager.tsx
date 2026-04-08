@@ -854,6 +854,7 @@ export const ContactsManager: React.FC = () => {
         
         setSelectedContacts(new Set());
         toast.success(`${deleted} contato(s) excluído(s)${errors > 0 ? `, ${errors} erro(s)` : ''}`);
+        logAudit({ action: 'delete', entityType: 'contact', details: { count: deleted } });
         setIsDeleting(false);
       }
     );

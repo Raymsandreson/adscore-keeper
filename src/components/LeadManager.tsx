@@ -401,6 +401,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
             lead_id: createdLead.id,
           });
         toast.success('Lead criado e vinculado ao contato!');
+        logAudit({ action: 'create', entityType: 'lead', entityId: createdLead.id, entityName: createdLead.lead_name });
       } catch (error) {
         console.error('Error linking lead to contact:', error);
       }
@@ -468,6 +469,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
     setEditingLead(null);
     setCustomFieldValues({});
     toast.success('Lead atualizado com sucesso!');
+    logAudit({ action: 'update', entityType: 'lead', entityId: editingLead.id, entityName: editingLead.lead_name });
   };
 
   return (
