@@ -75,7 +75,7 @@ export function RichTextEditor({
     const currentHtml = editor.getHTML();
     const normalized = currentHtml === '<p></p>' ? '' : currentHtml;
     if (normalized !== value) {
-      editor.commands.setContent(value || '', false);
+      editor.commands.setContent(value || '', { emitUpdate: false });
     }
   }, [value, editor]);
 
