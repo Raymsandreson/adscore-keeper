@@ -9,7 +9,7 @@ import type { OperationalGaps, GapType } from '../hooks/useOperationalGaps';
 
 export interface ClosingDetailFilter {
   agent?: string;
-  type?: 'ai' | 'assisted' | 'human' | 'all';
+  type?: 'ai' | 'assisted' | 'human' | 'noInteraction' | 'all';
 }
 
 interface PipelineCardsProps {
