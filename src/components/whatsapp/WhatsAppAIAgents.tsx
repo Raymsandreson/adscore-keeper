@@ -3,7 +3,7 @@ import { AIPromptGenerator } from './AIPromptGenerator';
 import { PromptVariableSelector } from './PromptVariableSelector';
 import { AgentAutomationRules } from './AgentAutomationRules';
 import { AgentStageConfig } from './AgentStageConfig';
-import { AgentInstanceSettings } from './AgentInstanceSettings';
+
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
