@@ -9,9 +9,10 @@ export interface DashboardMetrics {
   respondedCount: number;
   totalInbound: number;
   closedByAgent: { agent: string; count: number }[];
-  closedByAgentDetailed: { agent: string; ai: number; human: number; total: number }[];
+  closedByAgentDetailed: { agent: string; ai: number; assisted: number; human: number; total: number }[];
   closedByCampaign: { campaign: string; count: number }[];
   closedByAI: number;
+  closedAssisted: number;
   closedWithHuman: number;
   closedTotal: number;
   newConvDetails: NewConvDetail[];
@@ -70,7 +71,7 @@ export function useDashboardMetrics() {
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     newConversations: 0, responseRate: 0, avgResponseTimeMin: 0,
     respondedCount: 0, totalInbound: 0,
-    closedByAgent: [], closedByAgentDetailed: [], closedByCampaign: [], closedByAI: 0, closedWithHuman: 0, closedTotal: 0,
+    closedByAgent: [], closedByAgentDetailed: [], closedByCampaign: [], closedByAI: 0, closedAssisted: 0, closedWithHuman: 0, closedTotal: 0,
     newConvDetails: [],
     signedDocuments: 0, pendingDocuments: 0, groupsCreated: 0, casesCreated: 0, processesCreated: 0, contactsCreated: 0,
     signedDocsDetails: [], pendingDocsDetails: [], groupsDetails: [], casesDetails: [], processesDetails: [], contactsDetails: [],
@@ -125,7 +126,7 @@ export function useDashboardMetrics() {
         fetchAllPaginated<any>((from, to) =>
           supabase
             .from('leads')
-            .select('id, acolhedor, campaign_name, lead_status, lead_phone')
+            .select('id, acolhedor, campaign_name, lead_status, lead_phone, created_at, updated_at')
             .eq('lead_status', 'closed')
             .gte('updated_at', todayStart)
             .lte('updated_at', todayEnd)
@@ -236,40 +237,60 @@ export function useDashboardMetrics() {
           })
         : Promise.resolve(new Map<string, { name: string }>());
 
-      // Human phone check for closed leads
+      // Human intervention analysis for closed leads - temporal windowing
       const closedTotal = closedLeads.length;
-      const humanPhonesPromise = (async () => {
-        if (closedTotal === 0) return new Set<string>();
-        const closedSuffixes = [...new Set(
-          closedLeads
-            .map((l: any) => (l.lead_phone || '').replace(/\D/g, ''))
-            .filter((p: string) => p.length >= 8)
-            .map((p: string) => p.slice(-8))
-        )];
+      // Returns map: phone_suffix -> { manual_count, total_outbound }
+      const humanAnalysisPromise = (async () => {
+        if (closedTotal === 0) return new Map<string, { manual: number; total: number }>();
         
-        const humanPhones = new Set<string>();
-        const humanBatches: Promise<void>[] = [];
+        // Build per-lead phone->window mapping
+        const leadWindows = new Map<string, { created: string; closed: string }>();
+        for (const l of closedLeads) {
+          const phone = (l.lead_phone || '').replace(/\D/g, '');
+          if (phone.length < 8) continue;
+          const suffix = phone.slice(-8);
+          // Use lead lifecycle: created_at -> updated_at (when it was closed)
+          leadWindows.set(suffix, { 
+            created: l.created_at || todayStart, 
+            closed: l.updated_at || todayEnd 
+          });
+        }
+        
+        const closedSuffixes = [...leadWindows.keys()];
+        const phoneStats = new Map<string, { manual: number; total: number }>();
+        
+        // Query outbound messages within each lead's lifecycle window
+        // We batch by phone suffix groups and use the global date range
+        const analysisBatches: Promise<void>[] = [];
         for (let i = 0; i < closedSuffixes.length; i += 50) {
           const batch = closedSuffixes.slice(i, i + 50);
           const orFilter = batch.map(s => `phone.ilike.%${s}%`).join(',');
-          humanBatches.push(
+          analysisBatches.push(
             fetchAllPaginated<any>((from, to) =>
               supabase
                 .from('whatsapp_messages')
-                .select('phone')
+                .select('phone, action_source, created_at')
                 .eq('direction', 'outbound')
-                .eq('action_source', 'manual')
                 .or(orFilter)
                 .range(from, to) as any
             ).then((data) => {
               for (const msg of data) {
-                humanPhones.add((msg.phone || '').replace(/\D/g, '').slice(-8));
+                const msgSuffix = (msg.phone || '').replace(/\D/g, '').slice(-8);
+                const window = leadWindows.get(msgSuffix);
+                if (!window) continue;
+                // Only count messages within lead lifecycle (before closure)
+                if (msg.created_at > window.closed || msg.created_at < window.created) continue;
+                
+                if (!phoneStats.has(msgSuffix)) phoneStats.set(msgSuffix, { manual: 0, total: 0 });
+                const stats = phoneStats.get(msgSuffix)!;
+                stats.total++;
+                if (msg.action_source === 'manual') stats.manual++;
               }
             })
           );
         }
-        await Promise.all(humanBatches);
-        return humanPhones;
+        await Promise.all(analysisBatches);
+        return phoneStats;
       })();
 
       // Fetch doc lead acolhedors
@@ -286,8 +307,8 @@ export function useDashboardMetrics() {
         : Promise.resolve(new Map<string, string>());
 
       // Wait for all parallel phase 4 tasks
-      const [leadPhoneMap, humanPhones, docLeadAcolhedorMap, contactCreatorMap] = await Promise.all([
-        leadPhoneMapPromise, humanPhonesPromise, docLeadMapPromise, creatorMapPromise
+      const [leadPhoneMap, phoneStats, docLeadAcolhedorMap, contactCreatorMap] = await Promise.all([
+        leadPhoneMapPromise, humanAnalysisPromise, docLeadMapPromise, creatorMapPromise
       ]);
 
       setMetricsProgress(90);
@@ -310,11 +331,15 @@ export function useDashboardMetrics() {
         };
       });
 
-      // Closed leads breakdown
+      // Closed leads breakdown - 3 levels
+      // 🤖 100% IA: zero manual messages during lead lifecycle
+      // 🤝 Assistido: mixed (manual < 70% of outbound)
+      // 👤 100% Humano: manual >= 70% of outbound
       const agentMap = new Map<string, number>();
-      const agentDetailMap = new Map<string, { ai: number; human: number }>();
+      const agentDetailMap = new Map<string, { ai: number; assisted: number; human: number }>();
       const campaignMap = new Map<string, number>();
       let closedByAI = 0;
+      let closedAssisted = 0;
       let closedWithHuman = 0;
 
       for (const l of closedLeads) {
@@ -324,14 +349,25 @@ export function useDashboardMetrics() {
         
         const phone = (l.lead_phone || '').replace(/\D/g, '');
         const suffix = phone.slice(-8);
-        const isHuman = humanPhones.has(suffix);
+        const stats = phoneStats.get(suffix);
         
-        if (isHuman) closedWithHuman++;
-        else closedByAI++;
+        // Classify based on manual message ratio within lead lifecycle
+        let classification: 'ai' | 'assisted' | 'human';
+        if (!stats || stats.manual === 0) {
+          classification = 'ai'; // No manual messages = 100% IA
+        } else if (stats.total > 0 && (stats.manual / stats.total) >= 0.7) {
+          classification = 'human'; // >=70% manual = 100% Humano
+        } else {
+          classification = 'assisted'; // Mixed = Assistido por IA
+        }
+        
+        if (classification === 'ai') closedByAI++;
+        else if (classification === 'assisted') closedAssisted++;
+        else closedWithHuman++;
 
-        if (!agentDetailMap.has(agentName)) agentDetailMap.set(agentName, { ai: 0, human: 0 });
+        if (!agentDetailMap.has(agentName)) agentDetailMap.set(agentName, { ai: 0, assisted: 0, human: 0 });
         const detail = agentDetailMap.get(agentName)!;
-        if (isHuman) detail.human++; else detail.ai++;
+        detail[classification]++;
       }
 
       // Operational details
@@ -365,9 +401,9 @@ export function useDashboardMetrics() {
         newConversations: trulyNewPhones.length,
         responseRate, avgResponseTimeMin, respondedCount, totalInbound,
         closedByAgent: Array.from(agentMap.entries()).map(([agent, count]) => ({ agent, count })).sort((a, b) => b.count - a.count),
-        closedByAgentDetailed: Array.from(agentDetailMap.entries()).map(([agent, d]) => ({ agent, ai: d.ai, human: d.human, total: d.ai + d.human })).sort((a, b) => b.total - a.total),
+        closedByAgentDetailed: Array.from(agentDetailMap.entries()).map(([agent, d]) => ({ agent, ai: d.ai, assisted: d.assisted, human: d.human, total: d.ai + d.assisted + d.human })).sort((a, b) => b.total - a.total),
         closedByCampaign: Array.from(campaignMap.entries()).map(([campaign, count]) => ({ campaign, count })).sort((a, b) => b.count - a.count),
-        closedByAI, closedWithHuman, closedTotal,
+        closedByAI, closedAssisted, closedWithHuman, closedTotal,
         newConvDetails,
         signedDocuments: signedDocsDetails.length, pendingDocuments: pendingDocsDetails.length,
         groupsCreated: groupsDetails.length, casesCreated: casesDetails.length,
