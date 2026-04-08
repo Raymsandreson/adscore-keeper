@@ -6271,6 +6271,94 @@ export type Database = {
         }
         Relationships: []
       }
+      process_documents: {
+        Row: {
+          case_id: string | null
+          created_at: string
+          description: string | null
+          document_date: string | null
+          document_type: string
+          escavador_document_id: string | null
+          file_name: string | null
+          file_size: number | null
+          file_url: string | null
+          id: string
+          lead_id: string | null
+          metadata: Json | null
+          original_url: string | null
+          process_id: string | null
+          source: string
+          title: string
+          updated_at: string
+          uploaded_by: string | null
+          zapsign_document_id: string | null
+        }
+        Insert: {
+          case_id?: string | null
+          created_at?: string
+          description?: string | null
+          document_date?: string | null
+          document_type?: string
+          escavador_document_id?: string | null
+          file_name?: string | null
+          file_size?: number | null
+          file_url?: string | null
+          id?: string
+          lead_id?: string | null
+          metadata?: Json | null
+          original_url?: string | null
+          process_id?: string | null
+          source?: string
+          title: string
+          updated_at?: string
+          uploaded_by?: string | null
+          zapsign_document_id?: string | null
+        }
+        Update: {
+          case_id?: string | null
+          created_at?: string
+          description?: string | null
+          document_date?: string | null
+          document_type?: string
+          escavador_document_id?: string | null
+          file_name?: string | null
+          file_size?: number | null
+          file_url?: string | null
+          id?: string
+          lead_id?: string | null
+          metadata?: Json | null
+          original_url?: string | null
+          process_id?: string | null
+          source?: string
+          title?: string
+          updated_at?: string
+          uploaded_by?: string | null
+          zapsign_document_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "process_documents_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "legal_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "process_documents_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "process_documents_process_id_fkey"
+            columns: ["process_id"]
+            isOneToOne: false
+            referencedRelation: "lead_processes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       process_movement_monitors: {
         Row: {
           contact_id: string | null
