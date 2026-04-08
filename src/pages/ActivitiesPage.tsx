@@ -230,10 +230,11 @@ const ActivitiesPage = () => {
       }
     } catch {}
 
-    // Default: show ALL activities (empty = "Todos")
-    setFilterAssigneeState([]);
+    // Default: show only current user's activities for better performance
+    const defaultFilter = user?.id ? [user.id] : [];
+    setFilterAssigneeState(defaultFilter);
     try {
-      localStorage.setItem(assigneeStorageKey, JSON.stringify([]));
+      localStorage.setItem(assigneeStorageKey, JSON.stringify(defaultFilter));
     } catch {}
   }, [assigneeStorageKey, user?.id]);
 
