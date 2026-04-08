@@ -3,6 +3,7 @@ import { AIPromptGenerator } from './AIPromptGenerator';
 import { PromptVariableSelector } from './PromptVariableSelector';
 import { AgentAutomationRules } from './AgentAutomationRules';
 import { AgentStageConfig } from './AgentStageConfig';
+import { AgentInstanceSettings } from './AgentInstanceSettings';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -452,6 +453,19 @@ export function WhatsAppAIAgents() {
                   ) : (
                     <div className="text-sm text-muted-foreground p-4">
                       <p>Salve o agente primeiro para configurar etapas.</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Instance Settings */}
+                <div className="border rounded-lg p-3">
+                  <Label className="text-sm font-medium">📱 Instâncias (Pessoas)</Label>
+                  <p className="text-[10px] text-muted-foreground mb-2">Selecione em quais instâncias este agente deve estar ativado. Cada acolhedor pode ter o agente ligado ou desligado.</p>
+                  {editingAgent.id ? (
+                    <AgentInstanceSettings agentId={editingAgent.id} />
+                  ) : (
+                    <div className="text-sm text-muted-foreground p-4">
+                      <p>Salve o agente primeiro para configurar instâncias.</p>
                     </div>
                   )}
                 </div>

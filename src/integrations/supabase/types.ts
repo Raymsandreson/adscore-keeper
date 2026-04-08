@@ -488,6 +488,41 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_instance_settings: {
+        Row: {
+          agent_id: string
+          created_at: string
+          id: string
+          instance_id: string
+          is_enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          id?: string
+          instance_id: string
+          is_enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          id?: string
+          instance_id?: string
+          is_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_instance_settings_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_knowledge_documents: {
         Row: {
           agent_id: string
