@@ -54,6 +54,7 @@ interface AIAgent {
   send_window_start_hour: number;
   send_window_end_hour: number;
   send_call_followup_audio: boolean;
+  forward_questions_to_group: boolean;
   created_at: string;
 }
 
@@ -221,6 +222,7 @@ export function WhatsAppAIAgents() {
       respond_in_groups: false, reply_with_audio: false, reply_voice_id: null,
       stt_prompt: null, send_window_start_hour: 8, send_window_end_hour: 20,
       send_call_followup_audio: false,
+      forward_questions_to_group: false,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
@@ -270,6 +272,7 @@ export function WhatsAppAIAgents() {
         send_window_start_hour: editingAgent.send_window_start_hour ?? 8,
         send_window_end_hour: editingAgent.send_window_end_hour ?? 20,
         send_call_followup_audio: editingAgent.send_call_followup_audio ?? false,
+        forward_questions_to_group: editingAgent.forward_questions_to_group ?? false,
         max_repeat_cycles: (editingAgent as any).max_repeat_cycles ?? 3,
         min_call_delay_minutes: (editingAgent as any).min_call_delay_minutes ?? 30,
         max_consecutive_call_failures: (editingAgent as any).max_consecutive_call_failures ?? 3,
@@ -527,6 +530,13 @@ export function WhatsAppAIAgents() {
                       <p className="text-[10px] text-muted-foreground">Permitir que este agente responda mensagens em grupos do WhatsApp</p>
                     </div>
                     <Switch checked={editingAgent.respond_in_groups ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, respond_in_groups: v })} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-xs">Encaminhar perguntas ao grupo</Label>
+                      <p className="text-[10px] text-muted-foreground">Quando o cliente perguntar sobre o processo no privado, o agente envia a pergunta/resposta no grupo vinculado ao lead</p>
+                    </div>
+                    <Switch checked={editingAgent.forward_questions_to_group ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, forward_questions_to_group: v })} />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>

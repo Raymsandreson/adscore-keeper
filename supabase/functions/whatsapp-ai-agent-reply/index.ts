@@ -785,6 +785,26 @@ REGRAS IMPORTANTES:
         systemPrompt += "\n\n=== BASE DE CONHECIMENTO ===\nUse as informações abaixo como referência para responder perguntas. Baseie suas respostas nestes documentos quando relevante:\n\n" + knowledgeContext + "\n\n=== FIM DA BASE DE CONHECIMENTO ===";
       }
 
+      // ========== GROUP FORWARDING PROMPT INJECTION ==========
+      if ((agent as any).forward_questions_to_group) {
+        systemPrompt += `\n\n=== ENCAMINHAMENTO PARA GRUPO ===
+REGRA IMPORTANTE: Se o cliente perguntar sobre o andamento do processo, status, documentos, prazos, decisões judiciais, ou qualquer assunto relacionado ao caso/processo dele, você DEVE:
+1. Responder normalmente ao cliente no privado
+2. ALÉM DISSO, incluir na sua resposta uma tag [GRUPO]...[/GRUPO] com uma mensagem para ser enviada no grupo do processo
+
+A mensagem dentro de [GRUPO]...[/GRUPO] deve:
+- Informar a equipe sobre a pergunta/solicitação do cliente
+- Ser clara e objetiva para que a equipe possa dar andamento
+- Incluir o contexto necessário
+
+Exemplo:
+"Oi Maria, seu processo está em andamento! Vou verificar com a equipe os detalhes. [GRUPO]Pessoal, a cliente Maria está perguntando sobre o andamento do processo dela. Ela quer saber se já houve alguma movimentação recente. Podem atualizar?[/GRUPO]"
+
+A tag [GRUPO] NÃO aparecerá para o cliente — será removida automaticamente e enviada apenas no grupo.
+Se o cliente NÃO estiver perguntando sobre processo/caso, NÃO use a tag [GRUPO].
+=== FIM ENCAMINHAMENTO ===`;
+      }
+
       // Get recent context (include media info)
       const { data: recentMessages } = await supabase
         .from("whatsapp_messages")
@@ -894,6 +914,20 @@ REGRAS IMPORTANTES:
         return new Response(JSON.stringify({ skipped: true, reason: "Empty response" }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
+      }
+
+      // ========== EXTRACT AND FORWARD GROUP MESSAGES ==========
+      let groupMessageToSend: string | null = null;
+      const grupoTagRegex = /\[GRUPO\]([\s\S]*?)\[\/GRUPO\]/gi;
+      const grupoMatches = reply.match(grupoTagRegex);
+      if (grupoMatches && grupoMatches.length > 0) {
+        // Extract all group messages
+        groupMessageToSend = grupoMatches
+          .map(m => m.replace(/\[GRUPO\]/gi, '').replace(/\[\/GRUPO\]/gi, '').trim())
+          .join('\n\n');
+        // Remove tags from private reply
+        reply = reply.replace(grupoTagRegex, '').replace(/\n{3,}/g, '\n\n').trim();
+        console.log(`[group-forward] Extracted group message (${groupMessageToSend.length} chars) for phone ${phone}`);
       }
 
       // ========== SHORTCUT DOCUMENT HANDOFF ==========
@@ -1334,6 +1368,51 @@ REGRAS IMPORTANTES:
         contact_id: resolvedContactId,
       };
       await supabase.from("whatsapp_messages").insert(outboundMsg);
+
+      // ========== FORWARD MESSAGE TO GROUP ==========
+      if (groupMessageToSend && instance && (instance as any).instance_token) {
+        try {
+          // Find the group JID from the lead
+          const groupLeadId = resolvedLeadId || lead_id;
+          let groupJid: string | null = null;
+          if (groupLeadId) {
+            const { data: groupLead } = await supabase
+              .from("leads")
+              .select("whatsapp_group_id")
+              .eq("id", groupLeadId)
+              .maybeSingle();
+            groupJid = groupLead?.whatsapp_group_id || null;
+          }
+
+          if (groupJid) {
+            const groupBaseUrl = (instance as any).base_url || "https://abraci.uazapi.com";
+            const groupToken = (instance as any).instance_token;
+            const groupSendRes = await fetch(`${groupBaseUrl}/send/text`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "token": groupToken },
+              body: JSON.stringify({ number: groupJid, text: groupMessageToSend }),
+            });
+            if (groupSendRes.ok) {
+              console.log(`[group-forward] Message sent to group ${groupJid} for lead ${groupLeadId}`);
+              // Save as outbound message in group conversation
+              await supabase.from("whatsapp_messages").insert({
+                phone: groupJid, instance_name, direction: "outbound",
+                message_text: groupMessageToSend,
+                metadata: { ai_agent: (agent as any).name, forwarded_from_private: phone },
+                action_source: 'agent',
+                action_source_detail: `Encaminhamento do agente: ${(agent as any).name}`,
+                lead_id: groupLeadId,
+              });
+            } else {
+              console.error(`[group-forward] Failed to send to group ${groupJid}:`, groupSendRes.status);
+            }
+          } else {
+            console.log(`[group-forward] No group JID found for lead ${groupLeadId}, skipping group forward`);
+          }
+        } catch (groupErr) {
+          console.error("[group-forward] Error forwarding to group:", groupErr);
+        }
+      }
 
       // ========== AUTO-ADD CONTACT TO PHONE AGENDA via UazAPI ==========
       try {

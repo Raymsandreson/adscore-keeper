@@ -8816,6 +8816,7 @@ export type Database = {
           document_types: string[] | null
           followup_repeat_forever: boolean
           followup_steps: Json | null
+          forward_questions_to_group: boolean | null
           history_limit: number | null
           human_reply_pause_minutes: number | null
           id: string
@@ -8865,6 +8866,7 @@ export type Database = {
           document_types?: string[] | null
           followup_repeat_forever?: boolean
           followup_steps?: Json | null
+          forward_questions_to_group?: boolean | null
           history_limit?: number | null
           human_reply_pause_minutes?: number | null
           id?: string
@@ -8914,6 +8916,7 @@ export type Database = {
           document_types?: string[] | null
           followup_repeat_forever?: boolean
           followup_steps?: Json | null
+          forward_questions_to_group?: boolean | null
           history_limit?: number | null
           human_reply_pause_minutes?: number | null
           id?: string
@@ -9303,6 +9306,7 @@ export type Database = {
           followup_max_attempts: number | null
           followup_message: string | null
           followup_prompt: string | null
+          forward_questions_to_group: boolean | null
           human_pause_minutes: number | null
           id: string | null
           is_active: boolean | null
@@ -9341,6 +9345,7 @@ export type Database = {
           followup_max_attempts?: never
           followup_message?: never
           followup_prompt?: never
+          forward_questions_to_group?: never
           human_pause_minutes?: never
           id?: string | null
           is_active?: boolean | null
@@ -9379,6 +9384,7 @@ export type Database = {
           followup_max_attempts?: never
           followup_message?: never
           followup_prompt?: never
+          forward_questions_to_group?: never
           human_pause_minutes?: never
           id?: string | null
           is_active?: boolean | null
