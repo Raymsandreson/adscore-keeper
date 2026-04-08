@@ -309,6 +309,7 @@ export function WhatsAppAIAgents() {
   const handleToggleActive = async (agent: AIAgent) => {
     await supabase.from('whatsapp_ai_agents').update({ is_active: !agent.is_active } as any).eq('id', agent.id);
     toast.success(agent.is_active ? 'Agente desativado' : 'Agente ativado');
+    logAudit({ action: 'update', entityType: 'agent', entityId: agent.id, entityName: agent.name, details: { field: 'is_active', value: !agent.is_active } });
     fetchAgents();
   };
 
@@ -318,6 +319,7 @@ export function WhatsAppAIAgents() {
     if (!deleteTarget) return;
     await supabase.from('whatsapp_ai_agents').delete().eq('id', deleteTarget.id);
     toast.success('Agente excluído');
+    logAudit({ action: 'delete', entityType: 'agent', entityId: deleteTarget.id, entityName: deleteTarget.name });
     setDeleteTarget(null);
     fetchAgents();
   };
