@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Search, X, ChevronDown, Copy, Loader2, Maximize2 } from 'lucide-react';
+import { Search, X, ChevronDown, Copy, Loader2, Maximize2, UserPlus, Building2 } from 'lucide-react';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
@@ -95,17 +95,61 @@ const MATRIX_OPTIONS = [
 export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [expandedFieldKey, setExpandedFieldKey] = useState<string | null>(null);
-  const [linkedOpen, setLinkedOpen] = useState(!!props.formLeadId || !!props.formContactId || !!props.formCaseId);
+  const [linkedOpen, setLinkedOpen] = useState(!!props.formCaseId);
+  const [linkLeadOpen, setLinkLeadOpen] = useState(false);
+  const [linkContactOpen, setLinkContactOpen] = useState(false);
 
   return (
     <div className="space-y-3">
-      {/* === ROW 1: Title === */}
-      <Input
-        value={props.formTitle}
-        onChange={e => props.handleTitleChange(e.target.value)}
-        placeholder="Assunto da atividade *"
-        className="h-9 text-sm font-medium border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-primary placeholder:text-muted-foreground/60"
-      />
+      {/* === ROW 1: Title + Link buttons === */}
+      <div className="flex items-center gap-2">
+        <Input
+          value={props.formTitle}
+          onChange={e => props.handleTitleChange(e.target.value)}
+          placeholder="Assunto da atividade *"
+          className="h-9 text-sm font-medium border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-primary placeholder:text-muted-foreground/60 flex-1"
+        />
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Lead link button */}
+          {props.formLeadName ? (
+            <div className="flex items-center gap-0.5">
+              <Badge
+                variant="secondary"
+                className="text-[9px] h-5 max-w-[120px] truncate cursor-pointer hover:opacity-80"
+                onClick={() => setLinkLeadOpen(true)}
+              >
+                {props.formLeadName}
+              </Badge>
+              <button type="button" onClick={props.handleClearLead} className="text-muted-foreground hover:text-foreground">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1 text-muted-foreground" onClick={() => setLinkLeadOpen(true)}>
+              <Building2 className="h-3 w-3" /> Lead
+            </Button>
+          )}
+          {/* Contact link button */}
+          {props.formContactName ? (
+            <div className="flex items-center gap-0.5">
+              <Badge
+                variant="outline"
+                className="text-[9px] h-5 max-w-[120px] truncate cursor-pointer hover:opacity-80"
+                onClick={() => setLinkContactOpen(true)}
+              >
+                {props.formContactName}
+              </Badge>
+              <button type="button" onClick={() => { props.setFormContactId(''); props.setFormContactName(''); }} className="text-muted-foreground hover:text-foreground">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1 text-muted-foreground" onClick={() => setLinkContactOpen(true)}>
+              <UserPlus className="h-3 w-3" /> Contato
+            </Button>
+          )}
+        </div>
+      </div>
 
       {/* === ROW 2: Core selects - 4 columns === */}
       <div className="grid grid-cols-4 gap-2">
