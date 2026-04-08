@@ -16,6 +16,8 @@ import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import type { Lead } from '@/hooks/useLeads';
 
 interface LeadData {
   id: string;
