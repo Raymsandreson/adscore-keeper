@@ -546,14 +546,17 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     // No separate filter save needed - filters are part of the view/base table
 
     toast.success(editingId ? 'Agente atualizado!' : 'Agente criado!');
+    logAudit({ action: editingId ? 'update' : 'create', entityType: 'agent', entityId: editingId || undefined, entityName: form.shortcut_name });
     resetForm();
     onReload();
   };
 
   const handleDelete = async (id: string) => {
+    const shortcut = shortcuts.find(s => s.id === id);
     await (supabase.from('wjia_command_shortcuts') as any).delete().eq('id', id);
     onReload();
     toast.success('Agente removido');
+    logAudit({ action: 'delete', entityType: 'agent', entityId: id, entityName: shortcut?.shortcut_name });
   };
 
   const handleToggle = async (id: string, isActive: boolean) => {
