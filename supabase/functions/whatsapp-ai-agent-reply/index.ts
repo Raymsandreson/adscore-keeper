@@ -634,7 +634,7 @@ REGRAS DE EXTRAÇÃO DE DOCUMENTOS:
           if (targetLeadId) {
             const { data: ld } = await supabase
               .from("leads")
-              .select("id, lead_name, lead_phone, email, lead_status, board_id, status, acolhedor, product_service_id, notes, created_at, custom_fields, group_link, whatsapp_group_id, kanban_boards:board_id(name), kanban_stages:status(name), products_services:product_service_id(name)")
+              .select("id, lead_name, lead_phone, email, lead_status, board_id, status, acolhedor, product_service_id, notes, created_at, custom_fields, group_link, whatsapp_group_id, kanban_boards:board_id(name), products_services:product_service_id(name)")
               .eq("id", targetLeadId)
               .maybeSingle();
             leadData = ld;
