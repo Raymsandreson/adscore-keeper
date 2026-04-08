@@ -541,6 +541,93 @@ Deno.serve(async (req) => {
             results.push({ type: 'create_group', ok: true, group_id: groupData.group_id });
             break;
           }
+
+          case 'send_group_message': {
+            // Find the group linked to the lead
+            let targetGroupId: string | null = null;
+            if (createdLeadId) {
+              const { data: leadG } = await supabase.from('leads').select('whatsapp_group_id').eq('id', createdLeadId).maybeSingle();
+              targetGroupId = leadG?.whatsapp_group_id || null;
+            }
+            if (!targetGroupId && normalizedMainPhone) {
+              const { data: contactG } = await supabase.from('contacts').select('whatsapp_group_id').eq('phone', normalizedMainPhone).maybeSingle();
+              targetGroupId = contactG?.whatsapp_group_id || null;
+            }
+
+            if (!targetGroupId) { results.push({ type: 'send_group_message', skipped: 'no group found' }); break; }
+            if (!instance_name) { results.push({ type: 'send_group_message', skipped: 'no instance' }); break; }
+
+            const msgTemplate = action.config?.message_template || '';
+            const resolvedMsg = msgTemplate
+              .replace(/\{nome_cliente\}/g, contact_name || '')
+              .replace(/\{telefone\}/g, normalizedMainPhone)
+              .replace(/\{numero_processo\}/g, '');
+
+            const { data: inst } = await supabase
+              .from('whatsapp_instances')
+              .select('instance_token, base_url')
+              .eq('instance_name', instance_name)
+              .eq('is_active', true)
+              .maybeSingle();
+
+            if (!inst?.instance_token) { results.push({ type: 'send_group_message', skipped: 'no instance token' }); break; }
+
+            const baseUrl = inst.base_url || 'https://abraci.uazapi.com';
+            const groupJid = targetGroupId.includes('@g.us') ? targetGroupId : `${targetGroupId}@g.us`;
+
+            const sendRes = await fetch(`${baseUrl}/send/text`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': inst.instance_token },
+              body: JSON.stringify({ id: groupJid, message: resolvedMsg }),
+            });
+
+            results.push({ type: 'send_group_message', ok: sendRes.ok, group_id: targetGroupId });
+            break;
+          }
+
+          case 'send_private_redirect': {
+            if (!normalizedMainPhone || !instance_name) {
+              results.push({ type: 'send_private_redirect', skipped: 'no phone or instance' });
+              break;
+            }
+
+            const redirectTemplate = action.config?.message_template || '';
+            const redirectMsg = redirectTemplate
+              .replace(/\{nome_cliente\}/g, contact_name || '')
+              .replace(/\{telefone\}/g, normalizedMainPhone)
+              .replace(/\{numero_processo\}/g, '');
+
+            const { data: instPriv } = await supabase
+              .from('whatsapp_instances')
+              .select('instance_token, base_url')
+              .eq('instance_name', instance_name)
+              .eq('is_active', true)
+              .maybeSingle();
+
+            if (!instPriv?.instance_token) { results.push({ type: 'send_private_redirect', skipped: 'no instance token' }); break; }
+
+            const baseUrlPriv = instPriv.base_url || 'https://abraci.uazapi.com';
+            const phoneJid = normalizedMainPhone.includes('@') ? normalizedMainPhone : `${normalizedMainPhone}@s.whatsapp.net`;
+
+            const sendPrivRes = await fetch(`${baseUrlPriv}/send/text`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': instPriv.instance_token },
+              body: JSON.stringify({ id: phoneJid, message: redirectMsg }),
+            });
+
+            // Optionally deactivate agent in private
+            if (action.config?.deactivate_private_agent !== false) {
+              await supabase
+                .from('whatsapp_conversation_agents')
+                .update({ is_active: false })
+                .eq('phone', phone)
+                .eq('instance_name', instance_name);
+              console.log(`[agent-automations] Deactivated private agent for ${phone}/${instance_name}`);
+            }
+
+            results.push({ type: 'send_private_redirect', ok: sendPrivRes.ok });
+            break;
+          }
         }
       } catch (actionError: any) {
         console.error(`[agent-automations] Action ${action.type} failed:`, actionError.message);
