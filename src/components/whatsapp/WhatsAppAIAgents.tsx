@@ -5,6 +5,7 @@ import { AgentAutomationRules } from './AgentAutomationRules';
 import { AgentStageConfig } from './AgentStageConfig';
 
 import { supabase } from '@/integrations/supabase/client';
+import { logAudit } from '@/hooks/useAuditLog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -288,10 +289,12 @@ export function WhatsAppAIAgents() {
         const { error } = await supabase.from('whatsapp_ai_agents').update(payload as any).eq('id', editingAgent.id);
         if (error) throw error;
         toast.success('Agente atualizado!');
+        logAudit({ action: 'update', entityType: 'agent', entityId: editingAgent.id, entityName: editingAgent.name });
       } else {
-        const { error } = await supabase.from('whatsapp_ai_agents').insert(payload as any);
+        const { data: created, error } = await supabase.from('whatsapp_ai_agents').insert(payload as any).select('id').single();
         if (error) throw error;
         toast.success('Agente criado!');
+        logAudit({ action: 'create', entityType: 'agent', entityId: (created as any)?.id, entityName: editingAgent.name });
       }
       setShowEditor(false);
       setEditingAgent(null);
@@ -306,6 +309,7 @@ export function WhatsAppAIAgents() {
   const handleToggleActive = async (agent: AIAgent) => {
     await supabase.from('whatsapp_ai_agents').update({ is_active: !agent.is_active } as any).eq('id', agent.id);
     toast.success(agent.is_active ? 'Agente desativado' : 'Agente ativado');
+    logAudit({ action: 'update', entityType: 'agent', entityId: agent.id, entityName: agent.name, details: { field: 'is_active', value: !agent.is_active } });
     fetchAgents();
   };
 
@@ -315,6 +319,7 @@ export function WhatsAppAIAgents() {
     if (!deleteTarget) return;
     await supabase.from('whatsapp_ai_agents').delete().eq('id', deleteTarget.id);
     toast.success('Agente excluído');
+    logAudit({ action: 'delete', entityType: 'agent', entityId: deleteTarget.id, entityName: deleteTarget.name });
     setDeleteTarget(null);
     fetchAgents();
   };

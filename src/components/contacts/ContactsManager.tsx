@@ -3,6 +3,7 @@ import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { useSearchParams } from 'react-router-dom';
 import { usePageState } from '@/hooks/usePageState';
 import { supabase } from '@/integrations/supabase/client';
+import { logAudit } from '@/hooks/useAuditLog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -853,6 +854,7 @@ export const ContactsManager: React.FC = () => {
         
         setSelectedContacts(new Set());
         toast.success(`${deleted} contato(s) excluído(s)${errors > 0 ? `, ${errors} erro(s)` : ''}`);
+        logAudit({ action: 'delete', entityType: 'contact', details: { count: deleted } });
         setIsDeleting(false);
       }
     );
