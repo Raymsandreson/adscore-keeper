@@ -353,16 +353,6 @@ function SyncPlugin({ value, lastEmittedHtml }: { value: string; lastEmittedHtml
   return null;
 }
 
-// ─── AI Action Handler Plugin ────────────────────────────
-function AiPlugin({
-  aiLoading,
-  setAiLoading,
-}: {
-  aiLoading: boolean;
-  setAiLoading: (v: boolean) => void;
-}) {
-  return null; // AI is handled at parent level
-}
 
 // ─── Tool Button ─────────────────────────────────────────
 function ToolBtn({
