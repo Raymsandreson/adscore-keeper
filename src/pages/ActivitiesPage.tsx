@@ -68,6 +68,9 @@ const PRIORITY_OPTIONS = [
   { value: 'urgente', label: 'Urgente' },
 ];
 
+const hasSelectValue = (value: string | null | undefined): value is string =>
+  typeof value === 'string' && value.trim().length > 0;
+
 const statusColors: Record<string, string> = {
   pendente: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
   em_andamento: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
@@ -1014,10 +1017,13 @@ const ActivitiesPage = () => {
     const allTypes = [...ACTIVITY_TYPES];
 
     for (const dbType of dbActivityTypes) {
-      if (!allTypes.some(t => t.value === dbType.key)) {
+      const activityTypeKey = dbType.key?.trim();
+      if (!hasSelectValue(activityTypeKey)) continue;
+
+      if (!allTypes.some(t => t.value === activityTypeKey)) {
         allTypes.push({
-          value: dbType.key,
-          label: dbType.label,
+          value: activityTypeKey,
+          label: dbType.label?.trim() || activityTypeKey,
           bg: 'bg-muted',
           border: 'border-border',
           header: dbType.color || 'bg-gray-500',
@@ -1028,10 +1034,13 @@ const ActivitiesPage = () => {
 
     const routineSources = [...timeBlockSettings, ...assigneeTimeBlockSettings, ...activeRoutine];
     for (const tb of routineSources) {
-      if (!allTypes.some(t => t.value === tb.activityType)) {
+      const activityTypeKey = tb.activityType?.trim();
+      if (!hasSelectValue(activityTypeKey)) continue;
+
+      if (!allTypes.some(t => t.value === activityTypeKey)) {
         allTypes.push({
-          value: tb.activityType,
-          label: tb.label || tb.activityType,
+          value: activityTypeKey,
+          label: tb.label?.trim() || activityTypeKey,
           bg: 'bg-muted',
           border: 'border-border',
           header: tb.color || 'bg-gray-500',
@@ -1041,10 +1050,13 @@ const ActivitiesPage = () => {
     }
 
     for (const activity of activities) {
-      if (!allTypes.some(t => t.value === activity.activity_type)) {
+      const activityTypeKey = activity.activity_type?.trim();
+      if (!hasSelectValue(activityTypeKey)) continue;
+
+      if (!allTypes.some(t => t.value === activityTypeKey)) {
         allTypes.push({
-          value: activity.activity_type,
-          label: activity.activity_type,
+          value: activityTypeKey,
+          label: activityTypeKey,
           bg: 'bg-muted',
           border: 'border-border',
           header: 'bg-gray-500',
@@ -1053,7 +1065,7 @@ const ActivitiesPage = () => {
       }
     }
 
-    return allTypes;
+    return allTypes.filter(type => hasSelectValue(type.value));
   }, [dbActivityTypes, timeBlockSettings, assigneeTimeBlockSettings, activeRoutine, activities]);
 
   // Only show activity types that are in the assignee's routine for form selection
