@@ -3,7 +3,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
-import { useEffect, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import {
   Bold,
@@ -35,11 +35,17 @@ export function RichTextEditor({
   onExpand,
   autoFocus,
 }: RichTextEditorProps) {
+  // Use ref to track internal changes and avoid feedback loops
+  const isInternalChange = useRef(false);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        bulletList: { keepMarks: true },
-        orderedList: { keepMarks: true },
+        bulletList: { HTMLAttributes: { class: 'list-disc pl-4' } },
+        orderedList: { HTMLAttributes: { class: 'list-decimal pl-4' } },
+        listItem: { HTMLAttributes: { class: 'leading-normal' } },
       }),
       Underline,
       Link.configure({ openOnClick: false, HTMLAttributes: { class: 'text-primary underline cursor-pointer' } }),
@@ -48,28 +54,28 @@ export function RichTextEditor({
     content: value || '',
     editorProps: {
       attributes: {
-        class: cn(
-          'prose prose-sm dark:prose-invert max-w-none focus:outline-none px-3 py-2 text-xs',
-          `min-h-[${minHeight}]`
-        ),
+        class: 'prose prose-sm dark:prose-invert max-w-none focus:outline-none px-3 py-2 text-xs',
         style: `min-height: ${minHeight}`,
       },
     },
     onUpdate: ({ editor: ed }) => {
+      isInternalChange.current = true;
       const html = ed.getHTML();
-      // If content is just empty paragraph, treat as empty
-      onChange(html === '<p></p>' ? '' : html);
+      onChangeRef.current(html === '<p></p>' ? '' : html);
+      // Reset flag after React processes the state update
+      requestAnimationFrame(() => { isInternalChange.current = false; });
     },
     autofocus: autoFocus,
   });
 
-  // Sync external value changes
+  // Only sync external value changes (e.g. form reset, loading activity)
+  // Skip when the change originated from typing (isInternalChange)
   useEffect(() => {
-    if (!editor) return;
+    if (!editor || isInternalChange.current) return;
     const currentHtml = editor.getHTML();
     const normalized = currentHtml === '<p></p>' ? '' : currentHtml;
     if (normalized !== value) {
-      editor.commands.setContent(value || '');
+      editor.commands.setContent(value || '', false);
     }
   }, [value, editor]);
 
