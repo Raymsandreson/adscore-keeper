@@ -857,7 +857,7 @@ export const ContactsManager: React.FC = () => {
         setIsDeleting(false);
       }
     );
-
+  };
 
 
   // Batch classification change
