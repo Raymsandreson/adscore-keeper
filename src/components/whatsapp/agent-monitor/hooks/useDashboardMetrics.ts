@@ -346,7 +346,7 @@ export function useDashboardMetrics() {
         : Promise.resolve(new Map<string, string>());
 
       // Wait for all parallel phase 4 tasks
-      const [leadPhoneMap, phoneStats, docLeadAcolhedorMap, contactCreatorMap] = await Promise.all([
+      const [leadPhoneMap, leadStats, docLeadAcolhedorMap, contactCreatorMap] = await Promise.all([
         leadPhoneMapPromise, humanAnalysisPromise, docLeadMapPromise, creatorMapPromise
       ]);
 
@@ -452,9 +452,9 @@ export function useDashboardMetrics() {
         newConversations: trulyNewPhones.length,
         responseRate, avgResponseTimeMin, respondedCount, totalInbound,
         closedByAgent: Array.from(agentMap.entries()).map(([agent, count]) => ({ agent, count })).sort((a, b) => b.count - a.count),
-        closedByAgentDetailed: Array.from(agentDetailMap.entries()).map(([agent, d]) => ({ agent, ai: d.ai, assisted: d.assisted, human: d.human, total: d.ai + d.assisted + d.human })).sort((a, b) => b.total - a.total),
+        closedByAgentDetailed: Array.from(agentDetailMap.entries()).map(([agent, d]) => ({ agent, ai: d.ai, assisted: d.assisted, human: d.human, noInteraction: d.noInteraction, total: d.ai + d.assisted + d.human + d.noInteraction })).sort((a, b) => b.total - a.total),
         closedByCampaign: Array.from(campaignMap.entries()).map(([campaign, count]) => ({ campaign, count })).sort((a, b) => b.count - a.count),
-        closedByAI, closedAssisted, closedWithHuman, closedTotal,
+        closedByAI, closedAssisted, closedWithHuman, closedNoInteraction, closedTotal,
         newConvDetails,
         signedDocuments: signedDocsDetails.length, pendingDocuments: pendingDocsDetails.length,
         groupsCreated: groupsDetails.length, casesCreated: casesDetails.length,
