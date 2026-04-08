@@ -121,21 +121,36 @@ export function useDashboardMetrics() {
             .order('created_at', { ascending: true })
             .range(from, to) as any
         ),
-        // Closed leads
-        supabase
-          .from('leads')
-          .select('id, acolhedor, campaign_name, lead_status, lead_phone')
-          .eq('lead_status', 'closed')
-          .gte('updated_at', todayStart)
-          .lte('updated_at', todayEnd)
-          .then(r => r.data || []),
+        // Closed leads (paginated)
+        fetchAllPaginated<any>((from, to) =>
+          supabase
+            .from('leads')
+            .select('id, acolhedor, campaign_name, lead_status, lead_phone')
+            .eq('lead_status', 'closed')
+            .gte('updated_at', todayStart)
+            .lte('updated_at', todayEnd)
+            .range(from, to) as any
+        ),
         // Operational metrics - all in parallel
-        supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at, signed_at').eq('signer_status', 'signed').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-        supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at').eq('signer_status', 'new').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-        supabase.from('leads').select('id, lead_name, acolhedor, board_id, campaign_name, created_at').not('whatsapp_group_id', 'is', null).gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-        supabase.from('legal_cases').select('id, case_number, title, acolhedor, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-        supabase.from('case_process_tracking').select('id, cliente, acolhedor, lead_id, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
-        supabase.from('contacts').select('id, full_name, city, state, created_by, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }),
+        // Operational metrics - paginated to avoid 1000 row limit
+        fetchAllPaginated<any>((from, to) =>
+          supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at, signed_at').eq('signer_status', 'signed').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }).range(from, to) as any
+        ).then(data => ({ data })),
+        fetchAllPaginated<any>((from, to) =>
+          supabase.from('zapsign_documents').select('id, document_name, instance_name, lead_id, created_at').eq('signer_status', 'new').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }).range(from, to) as any
+        ).then(data => ({ data })),
+        fetchAllPaginated<any>((from, to) =>
+          supabase.from('leads').select('id, lead_name, acolhedor, board_id, campaign_name, created_at').not('whatsapp_group_id', 'is', null).gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }).range(from, to) as any
+        ).then(data => ({ data })),
+        fetchAllPaginated<any>((from, to) =>
+          supabase.from('legal_cases').select('id, case_number, title, acolhedor, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }).range(from, to) as any
+        ).then(data => ({ data })),
+        fetchAllPaginated<any>((from, to) =>
+          supabase.from('case_process_tracking').select('id, cliente, acolhedor, lead_id, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }).range(from, to) as any
+        ).then(data => ({ data })),
+        fetchAllPaginated<any>((from, to) =>
+          supabase.from('contacts').select('id, full_name, city, state, created_by, created_at').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: false }).range(from, to) as any
+        ).then(data => ({ data })),
       ]);
 
       setMetricsProgress(50);
@@ -235,18 +250,19 @@ export function useDashboardMetrics() {
           const batch = closedSuffixes.slice(i, i + 50);
           const orFilter = batch.map(s => `phone.ilike.%${s}%`).join(',');
           humanBatches.push(
-            (supabase
-              .from('whatsapp_messages')
-              .select('phone')
-              .eq('direction', 'outbound')
-              .eq('action_source', 'manual')
-              .or(orFilter)
-              .limit(500) as any)
-              .then(({ data }: any) => {
-                for (const msg of (data || [])) {
-                  humanPhones.add((msg.phone || '').replace(/\D/g, '').slice(-8));
-                }
-              })
+            fetchAllPaginated<any>((from, to) =>
+              supabase
+                .from('whatsapp_messages')
+                .select('phone')
+                .eq('direction', 'outbound')
+                .eq('action_source', 'manual')
+                .or(orFilter)
+                .range(from, to) as any
+            ).then((data) => {
+              for (const msg of data) {
+                humanPhones.add((msg.phone || '').replace(/\D/g, '').slice(-8));
+              }
+            })
           );
         }
         await Promise.all(humanBatches);
