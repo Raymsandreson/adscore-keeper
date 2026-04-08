@@ -261,3 +261,15 @@ div[id*="callface"][style*="position: absolute"] {
   border-radius: 50% !important;
   font-size: 0 !important;
 }
+
+/* Tiptap placeholder */
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: hsl(var(--muted-foreground) / 0.5);
+  float: left;
+  pointer-events: none;
+  height: 0;
+}
+.tiptap:focus {
+  outline: none;
+}
