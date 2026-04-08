@@ -71,7 +71,7 @@ export function useDashboardMetrics() {
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     newConversations: 0, responseRate: 0, avgResponseTimeMin: 0,
     respondedCount: 0, totalInbound: 0,
-    closedByAgent: [], closedByAgentDetailed: [], closedByCampaign: [], closedByAI: 0, closedWithHuman: 0, closedTotal: 0,
+    closedByAgent: [], closedByAgentDetailed: [], closedByCampaign: [], closedByAI: 0, closedAssisted: 0, closedWithHuman: 0, closedTotal: 0,
     newConvDetails: [],
     signedDocuments: 0, pendingDocuments: 0, groupsCreated: 0, casesCreated: 0, processesCreated: 0, contactsCreated: 0,
     signedDocsDetails: [], pendingDocsDetails: [], groupsDetails: [], casesDetails: [], processesDetails: [], contactsDetails: [],
