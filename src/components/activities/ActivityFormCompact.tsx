@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/components/ui/RichTextEditor';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -338,20 +338,15 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
 
             return (
               <div key={field.field_key}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5 text-muted-foreground hover:text-foreground"
-                    title="Expandir campo"
-                    onClick={() => setExpandedFieldKey(field.field_key)}
-                  >
-                    <Maximize2 className="h-3 w-3" />
-                  </Button>
-                </div>
-                <Textarea value={value} onChange={e => setter(e.target.value)} placeholder={field.placeholder || ''} rows={1} className="text-xs min-h-[32px] resize-none mt-0.5" />
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
+                <RichTextEditor
+                  value={value}
+                  onChange={setter}
+                  placeholder={field.placeholder || ''}
+                  minHeight="32px"
+                  onExpand={() => setExpandedFieldKey(field.field_key)}
+                  className="mt-0.5"
+                />
               </div>
             );
           })}
@@ -378,11 +373,11 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                   <SheetTitle className="text-base">{fieldDef.label}</SheetTitle>
                 </SheetHeader>
                 <div className="flex-1 pt-4">
-                  <Textarea
+                  <RichTextEditor
                     value={val}
-                    onChange={e => set(e.target.value)}
+                    onChange={set}
                     placeholder={fieldDef.placeholder || ''}
-                    className="text-sm min-h-[300px] h-full resize-none"
+                    minHeight="300px"
                     autoFocus
                   />
                 </div>
