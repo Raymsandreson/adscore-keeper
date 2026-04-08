@@ -382,7 +382,7 @@ function ToolBtn({
 }
 
 // ─── Main Component ──────────────────────────────────────
-export function RichTextEditor({
+function RichTextEditorComponent({
   value,
   onChange,
   placeholder,
@@ -398,7 +398,6 @@ export function RichTextEditor({
   const lastEmittedHtml = useRef(value || '');
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Memoize initialConfig so LexicalComposer doesn't remount
   const initialConfig = useRef({
     namespace: 'RichTextEditor',
     theme: editorTheme,
@@ -406,24 +405,40 @@ export function RichTextEditor({
     nodes: [ListNode, ListItemNode, LinkNode, AutoLinkNode],
   }).current;
 
-  // Serialize less often to avoid typing lag from HTML generation + parent rerenders
+  useEffect(() => {
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
+  }, []);
+
+  const flushEditorHtml = useCallback((editor: LexicalEditor) => {
+    editor.getEditorState().read(() => {
+      const html = $generateHtmlFromNodes(editor);
+      const root = $getRoot();
+      const text = root.getTextContent().trim();
+      const output = text === '' ? '' : html;
+      lastEmittedHtml.current = output;
+      onChangeRef.current(output);
+    });
+  }, []);
+
   const handleEditorChange = useCallback(
     (_editorState: EditorState, editor: LexicalEditor) => {
       editorRef.current = editor;
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(() => {
-        editor.getEditorState().read(() => {
-          const html = $generateHtmlFromNodes(editor);
-          const root = $getRoot();
-          const text = root.getTextContent().trim();
-          const output = text === '' ? '' : html;
-          lastEmittedHtml.current = output;
-          onChangeRef.current(output);
-        });
-      }, 350);
+        flushEditorHtml(editor);
+      }, 500);
     },
-    [],
+    [flushEditorHtml],
   );
+
+  const handleBlur = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    flushEditorHtml(editor);
+  }, [flushEditorHtml]);
 
   const handleAiAction = useCallback(
     async (action: string) => {
@@ -476,6 +491,7 @@ export function RichTextEditor({
               <ContentEditable
                 className="lexical-editor px-3 py-2 text-xs focus:outline-none"
                 style={{ minHeight }}
+                onBlur={handleBlur}
               />
             }
             placeholder={
@@ -499,6 +515,8 @@ export function RichTextEditor({
     </div>
   );
 }
+
+export const RichTextEditor = memo(RichTextEditorComponent);
 
 // ─── Editor Ref Plugin ───────────────────────────────────
 function EditorRefPlugin({ editorRef }: { editorRef: React.MutableRefObject<LexicalEditor | null> }) {
