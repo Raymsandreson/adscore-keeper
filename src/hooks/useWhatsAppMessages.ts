@@ -314,10 +314,36 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
       const instanceNames = targetInstances.map(i => i.instance_name);
 
-      const { data: summaries, error: sumError } = await supabase
-        .rpc('get_conversation_summaries', { p_instance_names: instanceNames });
+      // Paginate RPC to bypass the 1000-row default limit
+      const PAGE_SIZE = 1000;
+      let allSummaries: any[] = [];
+      let page = 0;
+      let hasMore = true;
+      let sumError: any = null;
 
-      if (sumError) {
+      while (hasMore) {
+        const from = page * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
+        const { data: batch, error } = await supabase
+          .rpc('get_conversation_summaries', { p_instance_names: instanceNames })
+          .range(from, to);
+
+        if (error) {
+          sumError = error;
+          break;
+        }
+
+        if (batch && batch.length > 0) {
+          allSummaries = allSummaries.concat(batch);
+        }
+
+        hasMore = (batch?.length || 0) === PAGE_SIZE;
+        page++;
+      }
+
+      const summaries = allSummaries;
+
+      if (sumError && summaries.length === 0) {
         console.error('Error fetching conversation summaries:', sumError);
         const fallbackQuery = supabase
           .from('whatsapp_messages')
