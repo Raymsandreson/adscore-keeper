@@ -9,11 +9,12 @@ export interface DashboardMetrics {
   respondedCount: number;
   totalInbound: number;
   closedByAgent: { agent: string; count: number }[];
-  closedByAgentDetailed: { agent: string; ai: number; assisted: number; human: number; total: number }[];
+  closedByAgentDetailed: { agent: string; ai: number; assisted: number; human: number; noInteraction: number; total: number }[];
   closedByCampaign: { campaign: string; count: number }[];
   closedByAI: number;
   closedAssisted: number;
   closedWithHuman: number;
+  closedNoInteraction: number;
   closedTotal: number;
   newConvDetails: NewConvDetail[];
   signedDocuments: number;
@@ -71,7 +72,7 @@ export function useDashboardMetrics() {
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     newConversations: 0, responseRate: 0, avgResponseTimeMin: 0,
     respondedCount: 0, totalInbound: 0,
-    closedByAgent: [], closedByAgentDetailed: [], closedByCampaign: [], closedByAI: 0, closedAssisted: 0, closedWithHuman: 0, closedTotal: 0,
+    closedByAgent: [], closedByAgentDetailed: [], closedByCampaign: [], closedByAI: 0, closedAssisted: 0, closedWithHuman: 0, closedNoInteraction: 0, closedTotal: 0,
     newConvDetails: [],
     signedDocuments: 0, pendingDocuments: 0, groupsCreated: 0, casesCreated: 0, processesCreated: 0, contactsCreated: 0,
     signedDocsDetails: [], pendingDocsDetails: [], groupsDetails: [], casesDetails: [], processesDetails: [], contactsDetails: [],
