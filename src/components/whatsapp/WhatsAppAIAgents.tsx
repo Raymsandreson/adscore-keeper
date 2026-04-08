@@ -433,7 +433,6 @@ export function WhatsAppAIAgents() {
                   <Label>Nome do Agente *</Label>
                   <Input value={editingAgent.name || ''} onChange={e => setEditingAgent({ ...editingAgent, name: e.target.value })} placeholder="Ex: Assistente de Vendas" />
                 </div>
-                </div>
                 <div className="flex items-center justify-between">
                   <Label className="text-xs">Agente ativo</Label>
                   <Switch checked={editingAgent.is_active ?? true} onCheckedChange={v => setEditingAgent({ ...editingAgent, is_active: v })} />
