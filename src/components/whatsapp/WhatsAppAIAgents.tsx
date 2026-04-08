@@ -55,6 +55,7 @@ interface AIAgent {
   send_window_end_hour: number;
   send_call_followup_audio: boolean;
   forward_questions_to_group: boolean;
+  notify_instance_name: string | null;
   created_at: string;
 }
 
