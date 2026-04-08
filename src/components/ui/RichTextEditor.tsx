@@ -39,7 +39,7 @@ import {
 } from '@lexical/list';
 
 import { AutoLinkNode, LinkNode, $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
-import { $isHeadingNode } from '@lexical/rich-text';
+
 import { $getNearestNodeOfType } from '@lexical/utils';
 
 import {
