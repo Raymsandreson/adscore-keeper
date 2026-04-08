@@ -320,12 +320,12 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
               )}
             </div>
           </div>
-          {onNavigateToLead && (
+          {leadId && (
             <Button
               variant="ghost"
               size="sm"
               className="h-7 text-xs gap-1 shrink-0"
-              onClick={() => onNavigateToLead(leadId)}
+              onClick={() => setShowLeadSheet(true)}
             >
               <ExternalLink className="h-3 w-3" /> Abrir Lead
             </Button>
