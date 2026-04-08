@@ -406,7 +406,7 @@ export function WhatsAppAIAgents() {
                         {agent.is_active ? <Power className="h-4 w-4 text-green-600" /> : <PowerOff className="h-4 w-4 text-muted-foreground" />}
                       </Button>
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditAgent(agent)}><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(agent)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setDeleteTarget(agent)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </div>
                 </CardContent>
@@ -988,6 +988,24 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir agente "{deleteTarget?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação é irreversível. O agente, suas configurações, automações e histórico de follow-up serão permanentemente removidos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteAgent} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Sim, excluir agente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
