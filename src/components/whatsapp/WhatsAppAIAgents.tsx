@@ -433,9 +433,6 @@ export function WhatsAppAIAgents() {
                   <Label>Nome do Agente *</Label>
                   <Input value={editingAgent.name || ''} onChange={e => setEditingAgent({ ...editingAgent, name: e.target.value })} placeholder="Ex: Assistente de Vendas" />
                 </div>
-                <div>
-                  <Label>Descrição</Label>
-                  <Textarea value={editingAgent.description || ''} onChange={e => setEditingAgent({ ...editingAgent, description: e.target.value })} placeholder="Descreva o que este agente faz..." rows={2} />
                 </div>
                 <div className="flex items-center justify-between">
                   <Label className="text-xs">Agente ativo</Label>
