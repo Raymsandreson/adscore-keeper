@@ -857,30 +857,8 @@ export const ContactsManager: React.FC = () => {
         setIsDeleting(false);
       }
     );
-  };
-    
-    setIsDeleting(true);
-    let deleted = 0;
-    let errors = 0;
-    
-    for (const contactId of selectedContacts) {
-      try {
-        await deleteContact(contactId);
-        deleted++;
-      } catch {
-        errors++;
-      }
-    }
-    
-    setIsDeleting(false);
-    setSelectedContacts(new Set());
-    
-    if (errors > 0) {
-      toast.warning(`${deleted} excluídos, ${errors} erros`);
-    } else {
-      toast.success(`${deleted} contatos excluídos!`);
-    }
-  };
+
+
 
   // Batch classification change
   const handleBatchClassification = async (newClassification: ContactClassification) => {
@@ -965,29 +943,30 @@ export const ContactsManager: React.FC = () => {
       'Criar Leads',
       `Criar e vincular leads para ${contactsToConvert.length} contato(s)?`,
       async () => {
-    
-    setIsBatchProcessing(true);
-    let linked = 0;
-    let errors = 0;
-    
-    for (const contact of contactsToConvert) {
-      if (!contact) continue;
-      try {
-        await convertToLead(contact.id);
-        linked++;
-      } catch {
-        errors++;
+        setIsBatchProcessing(true);
+        let linked = 0;
+        let errors = 0;
+        
+        for (const contact of contactsToConvert) {
+          if (!contact) continue;
+          try {
+            await convertToLead(contact.id);
+            linked++;
+          } catch {
+            errors++;
+          }
+        }
+        
+        setIsBatchProcessing(false);
+        setSelectedContacts(new Set());
+        
+        if (errors > 0) {
+          toast.warning(`${linked} vinculados, ${errors} erros`);
+        } else {
+          toast.success(`${linked} leads criados e vinculados!`);
+        }
       }
-    }
-    
-    setIsBatchProcessing(false);
-    setSelectedContacts(new Set());
-    
-    if (errors > 0) {
-      toast.warning(`${linked} vinculados, ${errors} erros`);
-    } else {
-      toast.success(`${linked} leads criados e vinculados!`);
-    }
+    );
   };
 
   const downloadTemplate = () => {
