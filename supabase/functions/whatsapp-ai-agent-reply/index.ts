@@ -676,7 +676,7 @@ REGRAS DE EXTRAÇÃO DE DOCUMENTOS:
             '{lead.email}': leadData?.email || '',
             '{lead.status}': leadData?.lead_status || '',
             '{lead.funil}': (leadData?.kanban_boards as any)?.name || '',
-            '{lead.etapa}': (leadData?.kanban_stages as any)?.name || '',
+            '{lead.etapa}': leadData?.status || '',
             '{lead.acolhedor}': leadData?.acolhedor || '',
             '{lead.produto}': (leadData?.products_services as any)?.name || '',
             '{lead.data_criacao}': leadData?.created_at ? new Date(leadData.created_at).toLocaleDateString('pt-BR') : '',
