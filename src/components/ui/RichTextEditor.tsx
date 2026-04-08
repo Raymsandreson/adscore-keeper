@@ -2,6 +2,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
+import Placeholder from '@tiptap/extension-placeholder';
 import { useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import {
@@ -42,6 +43,7 @@ export function RichTextEditor({
       }),
       Underline,
       Link.configure({ openOnClick: false, HTMLAttributes: { class: 'text-primary underline cursor-pointer' } }),
+      Placeholder.configure({ placeholder: placeholder || '' }),
     ],
     content: value || '',
     editorProps: {
