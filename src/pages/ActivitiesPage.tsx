@@ -466,6 +466,7 @@ const ActivitiesPage = () => {
   };
 
   const handleOpenEdit = async (activity: LeadActivity) => {
+    // Set all form state synchronously first (instant UI)
     setSelectedActivity(activity);
     setSelectedActivityId(activity.id);
     setFormTitle(activity.title);
@@ -489,48 +490,52 @@ const ActivitiesPage = () => {
     setFormProcessId((activity as any).process_id || '');
     setFormProcessTitle((activity as any).process_title || '');
     setFormMatrixQuadrant((activity as any).matrix_quadrant || '');
-    // Load cases for this lead
+    setSheetMode('edit');
+
+    // Fire all DB queries in parallel (non-blocking)
+    const promises: Promise<any>[] = [];
+
     if (activity.lead_id) {
-      supabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id).then(({ data }) => {
-        setLeadCases(data || []);
-      });
-    }
-    // Load processes for this case
-    if ((activity as any).case_id) {
-      supabase.from('lead_processes').select('id, title, process_number').eq('case_id', (activity as any).case_id).then(({ data }) => {
-        setCaseProcesses((data || []).map(p => ({ id: p.id, title: p.title, process_number: p.process_number })));
-      });
-    }
-    // Load contacts and lead preview for this lead
-    if (activity.lead_id) {
-      try {
-        const [linkedData, leadPreviewRes] = await Promise.all([
+      promises.push(
+        Promise.all([
+          supabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id),
           supabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
           supabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id').eq('id', activity.lead_id).maybeSingle(),
-        ]);
-        let boardName: string | null = null;
-        if (leadPreviewRes.data?.board_id) {
-          const { data: boardData } = await supabase.from('kanban_boards').select('name').eq('id', leadPreviewRes.data.board_id).maybeSingle();
-          boardName = boardData?.name || null;
-        }
-        setLeadPreview(leadPreviewRes.data ? { ...leadPreviewRes.data, board_name: boardName } : null);
-        if (linkedData.data && linkedData.data.length > 0) {
-          const contactIds = linkedData.data.map(cl => cl.contact_id);
-          const { data: contactsData } = await supabase
-            .from('contacts')
-            .select('id, full_name')
-            .in('id', contactIds)
-            .order('full_name');
-          setAvailableContacts(contactsData || []);
-        } else {
-          const { data: allContacts } = await supabase.from('contacts').select('id, full_name').order('full_name').limit(500);
-          setAvailableContacts(allContacts || []);
-        }
-      } catch { /* keep existing */ }
+        ]).then(async ([casesRes, linkedRes, leadPreviewRes]) => {
+          setLeadCases(casesRes.data || []);
+
+          // Board name
+          let boardName: string | null = null;
+          if (leadPreviewRes.data?.board_id) {
+            const { data: boardData } = await supabase.from('kanban_boards').select('name').eq('id', leadPreviewRes.data.board_id).maybeSingle();
+            boardName = boardData?.name || null;
+          }
+          setLeadPreview(leadPreviewRes.data ? { ...leadPreviewRes.data, board_name: boardName } : null);
+
+          // Contacts
+          if (linkedRes.data && linkedRes.data.length > 0) {
+            const contactIds = linkedRes.data.map(cl => cl.contact_id);
+            const { data: contactsData } = await supabase.from('contacts').select('id, full_name').in('id', contactIds).order('full_name');
+            setAvailableContacts(contactsData || []);
+          } else {
+            const { data: allContacts } = await supabase.from('contacts').select('id, full_name').order('full_name').limit(500);
+            setAvailableContacts(allContacts || []);
+          }
+        }).catch(() => {})
+      );
     } else {
       setLeadPreview(null);
     }
-    setSheetMode('edit');
+
+    if ((activity as any).case_id) {
+      promises.push(
+        Promise.resolve(supabase.from('lead_processes').select('id, title, process_number').eq('case_id', (activity as any).case_id)).then(({ data }) => {
+          setCaseProcesses((data || []).map(p => ({ id: p.id, title: p.title, process_number: p.process_number })));
+        })
+      );
+    }
+
+    await Promise.all(promises);
   };
 
   // Restore selected activity after activities load (persist across browser tab switches)
