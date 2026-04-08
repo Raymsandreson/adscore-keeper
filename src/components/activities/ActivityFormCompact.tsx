@@ -289,47 +289,12 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       <Collapsible open={linkedOpen} onOpenChange={setLinkedOpen}>
         <CollapsibleTrigger className="flex items-center gap-1.5 w-full text-left py-1">
           <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", linkedOpen && "rotate-180")} />
-          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Vínculos</span>
-          {(props.formLeadName || props.formContactName || props.formCaseTitle) && (
-            <div className="flex gap-1 ml-auto">
-              {props.formLeadName && <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{props.formLeadName}</Badge>}
-              {props.formContactName && <Badge variant="outline" className="text-[9px] h-4 px-1.5">{props.formContactName}</Badge>}
-            </div>
+          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Caso / Processo</span>
+          {props.formCaseTitle && (
+            <Badge variant="secondary" className="text-[9px] h-4 px-1.5 ml-auto">{props.formCaseTitle}</Badge>
           )}
         </CollapsibleTrigger>
         <CollapsibleContent className="space-y-2.5 pt-1.5">
-          {/* Lead */}
-          <CompactSearchField
-            label="Lead"
-            placeholder="Buscar lead..."
-            searchValue={props.leadSearch}
-            onSearchChange={props.setLeadSearch}
-            selectedName={props.formLeadName}
-            onClear={props.handleClearLead}
-            items={props.filteredLeads.map(l => ({ id: l.id, name: l.lead_name || 'Lead sem nome' }))}
-            selectedId={props.formLeadId}
-            onSelect={(id) => { props.handleSelectLead(id); props.setLeadSearch(''); }}
-            showList={!!props.leadSearch || !props.formLeadId}
-          />
-          {/* Contact */}
-          <CompactSearchField
-            label="Contato"
-            placeholder="Buscar contato..."
-            searchValue={props.contactSearch}
-            onSearchChange={props.setContactSearch}
-            selectedName={props.formContactName}
-            onClear={() => { props.setFormContactId(''); props.setFormContactName(''); }}
-            items={(props.contactSearch
-              ? props.availableContacts.filter(c => c.full_name?.toLowerCase().includes(props.contactSearch.toLowerCase()))
-              : props.availableContacts.slice(0, 20)
-            ).map(c => ({ id: c.id, name: c.full_name }))}
-            selectedId={props.formContactId}
-            onSelect={(id) => {
-              const c = props.availableContacts.find(c => c.id === id);
-              if (c) { props.setFormContactId(c.id); props.setFormContactName(c.full_name); props.setContactSearch(''); }
-            }}
-            showList={!!props.contactSearch || !props.formContactId}
-          />
           {/* Case */}
           <CompactSearchField
             label="Caso"
