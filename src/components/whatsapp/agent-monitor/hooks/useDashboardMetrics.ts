@@ -238,60 +238,98 @@ export function useDashboardMetrics() {
           })
         : Promise.resolve(new Map<string, { name: string }>());
 
-      // Human intervention analysis for closed leads - temporal windowing
+      // Human intervention analysis for closed leads - STRUCTURAL: dual matching (lead_id primary + phone fallback)
       const closedTotal = closedLeads.length;
-      // Returns map: phone_suffix -> { manual_count, total_outbound }
+      // Returns map: lead_id -> { manual_count, total_outbound }
       const humanAnalysisPromise = (async () => {
         if (closedTotal === 0) return new Map<string, { manual: number; total: number }>();
         
-        // Build per-lead phone->window mapping
-        const leadWindows = new Map<string, { created: string; closed: string }>();
+        const leadStats = new Map<string, { manual: number; total: number }>();
+        
+        // STRATEGY 1: Query by lead_id (most accurate - no false positives)
+        const leadIds = closedLeads.map(l => l.id).filter(Boolean);
+        const leadWindowMap = new Map<string, { created: string; closed: string }>();
         for (const l of closedLeads) {
-          const phone = (l.lead_phone || '').replace(/\D/g, '');
-          if (phone.length < 8) continue;
-          const suffix = phone.slice(-8);
-          // Use lead lifecycle: created_at -> updated_at (when it was closed)
-          leadWindows.set(suffix, { 
+          leadWindowMap.set(l.id, { 
             created: l.created_at || todayStart, 
             closed: l.updated_at || todayEnd 
           });
         }
         
-        const closedSuffixes = [...leadWindows.keys()];
-        const phoneStats = new Map<string, { manual: number; total: number }>();
-        
-        // Query outbound messages within each lead's lifecycle window
-        // We batch by phone suffix groups and use the global date range
-        const analysisBatches: Promise<void>[] = [];
-        for (let i = 0; i < closedSuffixes.length; i += 50) {
-          const batch = closedSuffixes.slice(i, i + 50);
-          const orFilter = batch.map(s => `phone.ilike.%${s}%`).join(',');
-          analysisBatches.push(
+        const leadIdBatches: Promise<void>[] = [];
+        for (let i = 0; i < leadIds.length; i += 50) {
+          const batch = leadIds.slice(i, i + 50);
+          leadIdBatches.push(
             fetchAllPaginated<any>((from, to) =>
               supabase
                 .from('whatsapp_messages')
-                .select('phone, action_source, created_at')
+                .select('lead_id, action_source, created_at')
                 .eq('direction', 'outbound')
-                .or(orFilter)
+                .in('lead_id', batch)
                 .range(from, to) as any
             ).then((data) => {
               for (const msg of data) {
-                const msgSuffix = (msg.phone || '').replace(/\D/g, '').slice(-8);
-                const window = leadWindows.get(msgSuffix);
+                if (!msg.lead_id) continue;
+                const window = leadWindowMap.get(msg.lead_id);
                 if (!window) continue;
-                // Only count messages within lead lifecycle (before closure)
                 if (msg.created_at > window.closed || msg.created_at < window.created) continue;
                 
-                if (!phoneStats.has(msgSuffix)) phoneStats.set(msgSuffix, { manual: 0, total: 0 });
-                const stats = phoneStats.get(msgSuffix)!;
+                if (!leadStats.has(msg.lead_id)) leadStats.set(msg.lead_id, { manual: 0, total: 0 });
+                const stats = leadStats.get(msg.lead_id)!;
                 stats.total++;
                 if (msg.action_source === 'manual') stats.manual++;
               }
             })
           );
         }
-        await Promise.all(analysisBatches);
-        return phoneStats;
+        await Promise.all(leadIdBatches);
+        
+        // STRATEGY 2: Fallback to phone suffix for leads that got 0 results from lead_id
+        const leadsNeedingPhoneFallback = closedLeads.filter(l => {
+          const phone = (l.lead_phone || '').replace(/\D/g, '');
+          return !leadStats.has(l.id) && phone.length >= 8;
+        });
+        
+        if (leadsNeedingPhoneFallback.length > 0) {
+          const phoneSuffixMap = new Map<string, { leadId: string; created: string; closed: string }>();
+          for (const l of leadsNeedingPhoneFallback) {
+            const phone = (l.lead_phone || '').replace(/\D/g, '');
+            const suffix = phone.slice(-8);
+            phoneSuffixMap.set(suffix, { leadId: l.id, created: l.created_at || todayStart, closed: l.updated_at || todayEnd });
+          }
+          
+          const suffixes = [...phoneSuffixMap.keys()];
+          const phoneBatches: Promise<void>[] = [];
+          for (let i = 0; i < suffixes.length; i += 50) {
+            const batch = suffixes.slice(i, i + 50);
+            const orFilter = batch.map(s => `phone.ilike.%${s}%`).join(',');
+            phoneBatches.push(
+              fetchAllPaginated<any>((from, to) =>
+                supabase
+                  .from('whatsapp_messages')
+                  .select('phone, action_source, created_at')
+                  .eq('direction', 'outbound')
+                  .or(orFilter)
+                  .range(from, to) as any
+              ).then((data) => {
+                for (const msg of data) {
+                  const msgSuffix = (msg.phone || '').replace(/\D/g, '').slice(-8);
+                  const entry = phoneSuffixMap.get(msgSuffix);
+                  if (!entry) continue;
+                  if (msg.created_at > entry.closed || msg.created_at < entry.created) continue;
+                  
+                  if (!leadStats.has(entry.leadId)) leadStats.set(entry.leadId, { manual: 0, total: 0 });
+                  const stats = leadStats.get(entry.leadId)!;
+                  stats.total++;
+                  if (msg.action_source === 'manual') stats.manual++;
+                }
+              })
+            );
+          }
+          await Promise.all(phoneBatches);
+        }
+        
+        return leadStats;
       })();
 
       // Fetch doc lead acolhedors
