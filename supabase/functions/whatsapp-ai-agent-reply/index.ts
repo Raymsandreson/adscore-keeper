@@ -785,6 +785,26 @@ REGRAS IMPORTANTES:
         systemPrompt += "\n\n=== BASE DE CONHECIMENTO ===\nUse as informações abaixo como referência para responder perguntas. Baseie suas respostas nestes documentos quando relevante:\n\n" + knowledgeContext + "\n\n=== FIM DA BASE DE CONHECIMENTO ===";
       }
 
+      // ========== GROUP FORWARDING PROMPT INJECTION ==========
+      if ((agent as any).forward_questions_to_group) {
+        systemPrompt += `\n\n=== ENCAMINHAMENTO PARA GRUPO ===
+REGRA IMPORTANTE: Se o cliente perguntar sobre o andamento do processo, status, documentos, prazos, decisões judiciais, ou qualquer assunto relacionado ao caso/processo dele, você DEVE:
+1. Responder normalmente ao cliente no privado
+2. ALÉM DISSO, incluir na sua resposta uma tag [GRUPO]...[/GRUPO] com uma mensagem para ser enviada no grupo do processo
+
+A mensagem dentro de [GRUPO]...[/GRUPO] deve:
+- Informar a equipe sobre a pergunta/solicitação do cliente
+- Ser clara e objetiva para que a equipe possa dar andamento
+- Incluir o contexto necessário
+
+Exemplo:
+"Oi Maria, seu processo está em andamento! Vou verificar com a equipe os detalhes. [GRUPO]Pessoal, a cliente Maria está perguntando sobre o andamento do processo dela. Ela quer saber se já houve alguma movimentação recente. Podem atualizar?[/GRUPO]"
+
+A tag [GRUPO] NÃO aparecerá para o cliente — será removida automaticamente e enviada apenas no grupo.
+Se o cliente NÃO estiver perguntando sobre processo/caso, NÃO use a tag [GRUPO].
+=== FIM ENCAMINHAMENTO ===`;
+      }
+
       // Get recent context (include media info)
       const { data: recentMessages } = await supabase
         .from("whatsapp_messages")
