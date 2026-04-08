@@ -1308,10 +1308,11 @@ Deno.serve(async (req) => {
           // Try matching by source_id (Meta ad ID) or by ad title against campaign_name
           let matchedCampaignLink: any = null
           
-          // Fetch ALL campaign links (include paused ones - they still track)
+          // Fetch only ACTIVE campaign links — inactive campaigns must NEVER activate agents
           const { data: allCampaignLinks } = await supabase
             .from('whatsapp_agent_campaign_links')
             .select('*')
+            .eq('is_active', true)
           
           if (allCampaignLinks && allCampaignLinks.length > 0) {
             const links = allCampaignLinks as any[]

@@ -1589,6 +1589,29 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     </p>
                   );
                 })()}
+                {/* CTWA Ad Creative Card */}
+                {(() => {
+                  const meta = (msg as any).metadata;
+                  const msgObj = meta?.message || meta?.chat?.message || {};
+                  const msgContent = msgObj?.content || msgObj?.extendedTextMessage || {};
+                  const ctxInfo = msgContent?.contextInfo || msgObj?.contextInfo || msgObj?.imageMessage?.contextInfo || msgObj?.videoMessage?.contextInfo || {};
+                  const adReply = ctxInfo?.externalAdReply;
+                  if (!adReply) return null;
+                  return (
+                    <div className="mb-2 p-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 max-w-[280px]">
+                      {adReply.thumbnailUrl && (
+                        <img src={adReply.thumbnailUrl} alt="Anúncio" className="w-full rounded-md mb-1.5 max-h-[150px] object-cover" loading="lazy" />
+                      )}
+                      {adReply.title && (
+                        <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">{adReply.title}</p>
+                      )}
+                      {adReply.body && (
+                        <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-0.5 line-clamp-3">{adReply.body}</p>
+                      )}
+                      <p className="text-[9px] text-blue-500 mt-1 flex items-center gap-1">📢 Click-to-WhatsApp</p>
+                    </div>
+                  );
+                })()}
                 {/* Media rendering */}
                 {msg.message_type === 'audio' && msg.media_url && (
                   <div className="mb-1">
