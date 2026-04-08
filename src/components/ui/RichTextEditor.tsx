@@ -3,8 +3,10 @@ import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import {
   Bold,
   Italic,
@@ -14,7 +16,20 @@ import {
   Link2,
   Unlink,
   Maximize2,
+  Sparkles,
+  Loader2,
+  ChevronRight,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 
 interface RichTextEditorProps {
   value: string;
@@ -26,6 +41,34 @@ interface RichTextEditorProps {
   autoFocus?: boolean;
 }
 
+const AI_ACTIONS = {
+  summarize: { label: 'Resumir', icon: '📝' },
+  fix_typos: { label: 'Corrigir erros de digitação', icon: '✏️' },
+  humanize: { label: 'Humanizar', icon: '🤝' },
+  help_write: { label: 'Ajude-me a escrever', icon: '💡' },
+};
+
+const TONE_ACTIONS = {
+  formal: 'Formal',
+  friendly: 'Amigável',
+  funny: 'Engraçado',
+  engaging: 'Cativante',
+  concise: 'Conciso',
+  empathetic: 'Empático',
+};
+
+const TRANSLATE_ACTIONS = {
+  translate_en: 'Inglês',
+  translate_es: 'Espanhol',
+  translate_pt: 'Português',
+};
+
+const DRAFT_ACTIONS = {
+  draft_email: 'E-mail',
+  draft_message: 'Mensagem WhatsApp',
+  draft_report: 'Relatório',
+};
+
 export function RichTextEditor({
   value,
   onChange,
@@ -35,10 +78,10 @@ export function RichTextEditor({
   onExpand,
   autoFocus,
 }: RichTextEditorProps) {
-  // Use ref to track internal changes and avoid feedback loops
   const isInternalChange = useRef(false);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const [aiLoading, setAiLoading] = useState(false);
 
   const editor = useEditor({
     extensions: [
@@ -62,14 +105,11 @@ export function RichTextEditor({
       isInternalChange.current = true;
       const html = ed.getHTML();
       onChangeRef.current(html === '<p></p>' ? '' : html);
-      // Reset flag after React processes the state update
       requestAnimationFrame(() => { isInternalChange.current = false; });
     },
     autofocus: autoFocus,
   });
 
-  // Only sync external value changes (e.g. form reset, loading activity)
-  // Skip when the change originated from typing (isInternalChange)
   useEffect(() => {
     if (!editor || isInternalChange.current) return;
     const currentHtml = editor.getHTML();
@@ -91,12 +131,101 @@ export function RichTextEditor({
     editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
   }, [editor]);
 
+  const handleAiAction = useCallback(async (action: string) => {
+    if (!editor) return;
+    const text = editor.getText();
+    if (!text.trim()) {
+      toast.error('Escreva algo primeiro para usar a IA');
+      return;
+    }
+    setAiLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-text-editor', {
+        body: { text, action },
+      });
+      if (error) throw error;
+      if (data?.result) {
+        editor.commands.setContent(data.result, { emitUpdate: true });
+        toast.success('Texto atualizado pela IA');
+      }
+    } catch (err: any) {
+      console.error('AI editor error:', err);
+      toast.error('Erro ao processar com IA');
+    } finally {
+      setAiLoading(false);
+    }
+  }, [editor]);
+
   if (!editor) return null;
 
   return (
     <div className={cn('border rounded-md overflow-hidden bg-background', className)}>
       {/* Toolbar */}
       <div className="flex items-center gap-0.5 px-1.5 py-1 border-b bg-muted/30 flex-wrap">
+        {/* AI Edition */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              disabled={aiLoading}
+              className={cn(
+                'p-1 rounded hover:bg-accent transition-colors flex items-center gap-0.5 text-xs',
+                aiLoading && 'opacity-50'
+              )}
+              title="AI Edition"
+            >
+              {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              <span className="text-[10px] font-medium hidden sm:inline">AI</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            {Object.entries(AI_ACTIONS).map(([key, { label, icon }]) => (
+              <DropdownMenuItem key={key} onClick={() => handleAiAction(key)}>
+                <span className="mr-2">{icon}</span> {label}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <span className="mr-2">🎨</span> Mudar tom
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {Object.entries(TONE_ACTIONS).map(([key, label]) => (
+                  <DropdownMenuItem key={key} onClick={() => handleAiAction(key)}>
+                    {label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <span className="mr-2">🌍</span> Traduzir
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {Object.entries(TRANSLATE_ACTIONS).map(([key, label]) => (
+                  <DropdownMenuItem key={key} onClick={() => handleAiAction(key)}>
+                    {label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <span className="mr-2">📄</span> Rascunhar como
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {Object.entries(DRAFT_ACTIONS).map(([key, label]) => (
+                  <DropdownMenuItem key={key} onClick={() => handleAiAction(key)}>
+                    {label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <div className="w-px h-4 bg-border mx-0.5" />
+
         <ToolBtn
           active={editor.isActive('bold')}
           onClick={() => editor.chain().focus().toggleBold().run()}
