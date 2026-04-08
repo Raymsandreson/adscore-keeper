@@ -395,6 +395,7 @@ export function RichTextEditor({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const editorRef = useRef<LexicalEditor | null>(null);
+  const lastEmittedHtml = useRef(value || '');
 
   const initialConfig = {
     namespace: 'RichTextEditor',
@@ -410,7 +411,9 @@ export function RichTextEditor({
         const html = $generateHtmlFromNodes(editor);
         const root = $getRoot();
         const text = root.getTextContent().trim();
-        onChangeRef.current(text === '' ? '' : html);
+        const output = text === '' ? '' : html;
+        lastEmittedHtml.current = output;
+        onChangeRef.current(output);
       });
     },
     [],
