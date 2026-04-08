@@ -283,7 +283,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     toast.success('Documento excluído');
   };
 
-
+  const set = useCallback((key: string, value: any) => {
     setForm(prev => ({ ...prev, [key]: value }));
     setDirty(true);
   }, []);
