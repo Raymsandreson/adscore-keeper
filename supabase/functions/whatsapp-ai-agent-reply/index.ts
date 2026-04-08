@@ -787,6 +787,7 @@ REGRAS IMPORTANTES:
 
       // ========== GROUP FORWARDING PROMPT INJECTION ==========
       if ((agent as any).forward_questions_to_group) {
+        const notifyInst = (agent as any).notify_instance_name;
         systemPrompt += `\n\n=== ENCAMINHAMENTO PARA GRUPO ===
 REGRA IMPORTANTE: Se o cliente perguntar sobre o andamento do processo, status, documentos, prazos, decisões judiciais, ou qualquer assunto relacionado ao caso/processo dele, você DEVE:
 1. Responder normalmente ao cliente no privado
