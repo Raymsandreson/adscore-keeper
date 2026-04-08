@@ -94,7 +94,7 @@ const MATRIX_OPTIONS = [
 
 export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [detailsSheetOpen, setDetailsSheetOpen] = useState(false);
+  const [expandedFieldKey, setExpandedFieldKey] = useState<string | null>(null);
   const [linkedOpen, setLinkedOpen] = useState(!!props.formLeadId || !!props.formContactId || !!props.formCaseId);
 
   return (
@@ -358,36 +358,88 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
 
       {/* === COLLAPSIBLE: Detail fields === */}
       <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <div className="flex items-center gap-1.5 py-1">
-          <CollapsibleTrigger className="flex items-center gap-1.5 flex-1 text-left">
-            <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", detailsOpen && "rotate-180")} />
-            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Detalhes e Observações</span>
-          </CollapsibleTrigger>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            title="Expandir em painel lateral"
-            onClick={() => setDetailsSheetOpen(true)}
-          >
-            <Maximize2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+        <CollapsibleTrigger className="flex items-center gap-1.5 w-full text-left py-1">
+          <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", detailsOpen && "rotate-180")} />
+          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Detalhes e Observações</span>
+        </CollapsibleTrigger>
         <CollapsibleContent className="space-y-2.5 pt-1.5">
-          <DetailFields {...props} compact />
+          {props.fieldSettings.map(field => {
+            const valueMap: Record<string, [string, (v: string) => void]> = {
+              what_was_done: [props.formWhatWasDone, props.setFormWhatWasDone],
+              current_status: [props.formCurrentStatus, props.setFormCurrentStatus],
+              next_steps: [props.formNextSteps, props.setFormNextSteps],
+              notes: [props.formNotes, props.setFormNotes],
+            };
+            const entry = valueMap[field.field_key];
+            if (!entry) return null;
+            const [value, setter] = entry;
+
+            if (field.field_key === 'notes') {
+              return (
+                <ActivityNotesField
+                  key={field.field_key}
+                  value={value}
+                  onChange={setter}
+                  activityId={props.selectedActivity?.id || null}
+                  placeholder={field.placeholder || 'Notas adicionais...'}
+                  label={field.label}
+                />
+              );
+            }
+
+            return (
+              <div key={field.field_key}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                    title="Expandir campo"
+                    onClick={() => setExpandedFieldKey(field.field_key)}
+                  >
+                    <Maximize2 className="h-3 w-3" />
+                  </Button>
+                </div>
+                <Textarea value={value} onChange={e => setter(e.target.value)} placeholder={field.placeholder || ''} rows={1} className="text-xs min-h-[32px] resize-none mt-0.5" />
+              </div>
+            );
+          })}
         </CollapsibleContent>
       </Collapsible>
 
-      {/* === SHEET: Detail fields expanded === */}
-      <Sheet open={detailsSheetOpen} onOpenChange={setDetailsSheetOpen}>
+      {/* === SHEET: Single field expanded === */}
+      <Sheet open={!!expandedFieldKey} onOpenChange={(open) => { if (!open) setExpandedFieldKey(null); }}>
         <SheetContent className="w-full sm:max-w-lg flex flex-col">
-          <SheetHeader>
-            <SheetTitle className="text-base">Detalhes e Observações</SheetTitle>
-          </SheetHeader>
-          <div className="flex-1 overflow-y-auto space-y-4 pt-4">
-            <DetailFields {...props} compact={false} />
-          </div>
+          {expandedFieldKey && (() => {
+            const fieldValueMap: Record<string, [string, (v: string) => void]> = {
+              what_was_done: [props.formWhatWasDone, props.setFormWhatWasDone],
+              current_status: [props.formCurrentStatus, props.setFormCurrentStatus],
+              next_steps: [props.formNextSteps, props.setFormNextSteps],
+              notes: [props.formNotes, props.setFormNotes],
+            };
+            const fieldDef = props.fieldSettings.find((f: any) => f.field_key === expandedFieldKey);
+            const entry = fieldValueMap[expandedFieldKey];
+            if (!fieldDef || !entry) return null;
+            const [val, set] = entry;
+            return (
+              <>
+                <SheetHeader>
+                  <SheetTitle className="text-base">{fieldDef.label}</SheetTitle>
+                </SheetHeader>
+                <div className="flex-1 pt-4">
+                  <Textarea
+                    value={val}
+                    onChange={e => set(e.target.value)}
+                    placeholder={fieldDef.placeholder || ''}
+                    className="text-sm min-h-[300px] h-full resize-none"
+                    autoFocus
+                  />
+                </div>
+              </>
+            );
+          })()}
         </SheetContent>
       </Sheet>
 
@@ -417,50 +469,6 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   );
 }
 
-/* === Detail fields sub-component === */
-function DetailFields(props: ActivityFormCompactProps & { compact: boolean }) {
-  return (
-    <>
-      {props.fieldSettings.map(field => {
-        const valueMap: Record<string, [string, (v: string) => void]> = {
-          what_was_done: [props.formWhatWasDone, props.setFormWhatWasDone],
-          current_status: [props.formCurrentStatus, props.setFormCurrentStatus],
-          next_steps: [props.formNextSteps, props.setFormNextSteps],
-          notes: [props.formNotes, props.setFormNotes],
-        };
-        const entry = valueMap[field.field_key];
-        if (!entry) return null;
-        const [value, setter] = entry;
-
-        if (field.field_key === 'notes') {
-          return (
-            <ActivityNotesField
-              key={field.field_key}
-              value={value}
-              onChange={setter}
-              activityId={props.selectedActivity?.id || null}
-              placeholder={field.placeholder || 'Notas adicionais...'}
-              label={field.label}
-            />
-          );
-        }
-
-        return (
-          <div key={field.field_key}>
-            <span className={cn("text-muted-foreground uppercase tracking-wider", props.compact ? "text-[10px]" : "text-xs font-medium")}>{field.label}</span>
-            <Textarea
-              value={value}
-              onChange={e => setter(e.target.value)}
-              placeholder={field.placeholder || ''}
-              rows={props.compact ? 1 : 3}
-              className={cn("mt-0.5", props.compact ? "text-xs min-h-[32px] resize-none" : "text-sm min-h-[80px]")}
-            />
-          </div>
-        );
-      })}
-    </>
-  );
-}
 
 /* === Compact search field sub-component === */
 function CompactSearchField({
