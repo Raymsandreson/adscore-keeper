@@ -13,7 +13,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
-  Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock
+  Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
+  Download, Upload, File, Trash2, FolderOpen
 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
@@ -99,6 +100,7 @@ function EditableSwitch({ label, checked, onChange }: {
 const TABS = [
   { id: 'partes', label: 'Partes', icon: Users },
   { id: 'dados', label: 'Dados', icon: Scale },
+  { id: 'documentos', label: 'Documentos', icon: FolderOpen },
   { id: 'tribunal', label: 'Tribunal', icon: Landmark },
   { id: 'local', label: 'Local', icon: MapPin },
   { id: 'datas', label: 'Datas', icon: Calendar },
@@ -123,6 +125,48 @@ interface ProcessActivity {
   created_at: string;
 }
 
+interface ProcessDocument {
+  id: string;
+  document_type: string;
+  title: string;
+  description: string | null;
+  source: string;
+  file_url: string | null;
+  original_url: string | null;
+  document_date: string | null;
+  file_name: string | null;
+  escavador_document_id: string | null;
+  zapsign_document_id: string | null;
+  created_at: string;
+}
+
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  'procuracao': 'Procuração',
+  'peticao_inicial': 'Petição Inicial',
+  'contestacao': 'Contestação',
+  'despacho': 'Despacho',
+  'decisao': 'Decisão',
+  'sentenca': 'Sentença',
+  'acordao': 'Acórdão',
+  'recurso': 'Recurso',
+  'certidao': 'Certidão',
+  'outro': 'Outro',
+};
+
+function classifyDocumentType(text: string): string {
+  const t = text.toLowerCase();
+  if (t.includes('procura')) return 'procuracao';
+  if (t.includes('peti') && t.includes('inicial')) return 'peticao_inicial';
+  if (t.includes('contesta')) return 'contestacao';
+  if (t.includes('despacho')) return 'despacho';
+  if (t.includes('decis')) return 'decisao';
+  if (t.includes('senten')) return 'sentenca';
+  if (t.includes('acord')) return 'acordao';
+  if (t.includes('recurs')) return 'recurso';
+  if (t.includes('certid')) return 'certidao';
+  return 'outro';
+}
+
 export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet' }: ProcessDetailSheetProps) {
   const navFn = useNavigate();
   const [form, setForm] = useState<Record<string, any>>({});
@@ -131,6 +175,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [activeTab, setActiveTab] = useState<TabId>('partes');
   const [activities, setActivities] = useState<ProcessActivity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
+  const [documents, setDocuments] = useState<ProcessDocument[]>([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const [fetchingEscavadorDocs, setFetchingEscavadorDocs] = useState(false);
 
   useEffect(() => {
     if (process) {
@@ -138,6 +185,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       setDirty(false);
       setActiveTab('partes');
       setActivities([]);
+      setDocuments([]);
     }
   }, [process]);
 
@@ -155,6 +203,99 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         setLoadingActivities(false);
       });
   }, [activeTab, process?.id]);
+
+  // Fetch documents when tab is activated
+  useEffect(() => {
+    if (activeTab !== 'documentos' || !process?.id) return;
+    setLoadingDocuments(true);
+    supabase
+      .from('process_documents')
+      .select('*')
+      .eq('process_id', process.id)
+      .order('document_date', { ascending: false, nullsFirst: false })
+      .then(({ data }) => {
+        setDocuments((data || []) as unknown as ProcessDocument[]);
+        setLoadingDocuments(false);
+      });
+  }, [activeTab, process?.id]);
+
+  const fetchEscavadorDocuments = async () => {
+    if (!form.process_number) {
+      toast.error('Número do processo necessário para buscar documentos');
+      return;
+    }
+    setFetchingEscavadorDocs(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke('search-escavador', {
+        body: { action: 'buscar_documentos', numero_cnj: form.process_number },
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      const docs = data.data?.items || data.data?.data || (Array.isArray(data.data) ? data.data : []);
+      
+      if (docs.length === 0) {
+        toast.info('Nenhum documento público encontrado no Escavador');
+        setFetchingEscavadorDocs(false);
+        return;
+      }
+
+      // Insert documents that don't already exist
+      let inserted = 0;
+      for (const doc of docs) {
+        const escId = String(doc.id || doc.documento_id || '');
+        if (!escId) continue;
+        
+        // Check if already imported
+        const existing = documents.find(d => d.escavador_document_id === escId);
+        if (existing) continue;
+
+        const docType = classifyDocumentType(doc.tipo || doc.descricao || doc.titulo || '');
+        
+        const { error: insertErr } = await supabase.from('process_documents').insert({
+          process_id: process.id,
+          case_id: process.case_id || null,
+          lead_id: process.lead_id || null,
+          document_type: docType,
+          title: doc.titulo || doc.descricao || doc.tipo || `Documento ${escId}`,
+          description: doc.conteudo || doc.descricao || null,
+          source: 'escavador',
+          escavador_document_id: escId,
+          original_url: doc.url || null,
+          document_date: doc.data || null,
+          metadata: doc,
+        } as any);
+        
+        if (!insertErr) inserted++;
+      }
+
+      toast.success(`${inserted} documento(s) importado(s) do Escavador`);
+      
+      // Refresh documents list
+      const { data: refreshed } = await supabase
+        .from('process_documents')
+        .select('*')
+        .eq('process_id', process.id)
+        .order('document_date', { ascending: false, nullsFirst: false });
+      setDocuments((refreshed || []) as unknown as ProcessDocument[]);
+    } catch (err: any) {
+      console.error('Error fetching Escavador documents:', err);
+      toast.error(err.message || 'Erro ao buscar documentos do Escavador');
+    } finally {
+      setFetchingEscavadorDocs(false);
+    }
+  };
+
+  const deleteDocument = async (docId: string) => {
+    if (!confirm('Excluir este documento?')) return;
+    const { error } = await supabase.from('process_documents').delete().eq('id', docId);
+    if (error) {
+      toast.error('Erro ao excluir documento');
+      return;
+    }
+    setDocuments(prev => prev.filter(d => d.id !== docId));
+    toast.success('Documento excluído');
+  };
 
   const set = useCallback((key: string, value: any) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -458,6 +599,76 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 <EditableField label="Status Predito" value={form.status_predito || ''} onChange={v => set('status_predito', v)} />
                 <EditableTextarea label="Informações Complementares" value={form.informacoes_complementares || ''} onChange={v => set('informacoes_complementares', v)} />
               </>
+            )}
+
+            {activeTab === 'documentos' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold flex items-center gap-1.5">
+                    <FolderOpen className="h-3.5 w-3.5 text-primary" />
+                    Documentos ({documents.length})
+                  </h4>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={fetchEscavadorDocuments}
+                    disabled={fetchingEscavadorDocs || !form.process_number}
+                    className="h-7 text-xs gap-1"
+                  >
+                    {fetchingEscavadorDocs ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                    Importar do Escavador
+                  </Button>
+                </div>
+                
+                {loadingDocuments ? (
+                  <div className="text-center py-6 text-muted-foreground text-xs">
+                    <Loader2 className="h-4 w-4 animate-spin mx-auto mb-1" />
+                    Carregando documentos...
+                  </div>
+                ) : documents.length === 0 ? (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <FolderOpen className="h-6 w-6 mx-auto mb-1 opacity-50" />
+                    <p className="text-xs">Nenhum documento vinculado.</p>
+                    <p className="text-[10px] mt-1">Clique em "Importar do Escavador" para buscar documentos públicos.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {documents.map(doc => {
+                      const typeLabel = DOCUMENT_TYPE_LABELS[doc.document_type] || doc.document_type;
+                      const sourceLabel = doc.source === 'escavador' ? '📋 Escavador' : doc.source === 'zapsign' ? '✍️ ZapSign' : '📎 Upload';
+                      const isProcuracao = doc.document_type === 'procuracao';
+                      return (
+                        <div key={doc.id} className={`border rounded-lg p-3 space-y-1 ${isProcuracao ? 'border-primary/50 bg-primary/5' : ''}`}>
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-2">
+                              <FileText className={`h-3.5 w-3.5 ${isProcuracao ? 'text-primary' : 'text-muted-foreground'}`} />
+                              <span className="text-xs font-medium">{doc.title}</span>
+                            </div>
+                            <button onClick={() => deleteDocument(doc.id)} className="text-muted-foreground hover:text-destructive">
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap pl-5">
+                            <Badge variant={isProcuracao ? 'default' : 'secondary'} className="text-[9px]">{typeLabel}</Badge>
+                            <Badge variant="outline" className="text-[9px]">{sourceLabel}</Badge>
+                            {doc.document_date && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {new Date(doc.document_date + 'T00:00:00').toLocaleDateString('pt-BR')}
+                              </span>
+                            )}
+                          </div>
+                          {doc.description && <p className="text-[10px] text-muted-foreground pl-5 line-clamp-2">{doc.description}</p>}
+                          {doc.original_url && (
+                            <a href={doc.original_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary hover:underline flex items-center gap-1 pl-5">
+                              <ExternalLink className="h-2.5 w-2.5" /> Ver documento original
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
 
             {activeTab === 'tribunal' && (

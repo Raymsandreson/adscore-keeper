@@ -20,7 +20,7 @@ serve(async (req) => {
       });
     }
 
-    const { action, numero_cnj, nome, cpf_cnpj, oab_numero, oab_estado, cursor } = await req.json();
+    const { action, numero_cnj, nome, cpf_cnpj, oab_numero, oab_estado, cursor, documento_id } = await req.json();
 
     let url = '';
     let method = 'GET';
@@ -50,6 +50,31 @@ serve(async (req) => {
       case 'buscar_movimentacoes':
         if (!numero_cnj) throw new Error('numero_cnj é obrigatório');
         url = `${ESCAVADOR_BASE}/processos/numero_cnj/${encodeURIComponent(numero_cnj)}/movimentacoes`;
+        if (cursor) {
+          url += `?cursor=${encodeURIComponent(cursor)}`;
+        }
+        break;
+      case 'buscar_documentos':
+        if (!numero_cnj) throw new Error('numero_cnj é obrigatório');
+        url = `${ESCAVADOR_BASE}/processos/numero_cnj/${encodeURIComponent(numero_cnj)}/documentos`;
+        if (cursor) {
+          url += `?cursor=${encodeURIComponent(cursor)}`;
+        }
+        break;
+      case 'buscar_autos':
+        if (!numero_cnj) throw new Error('numero_cnj é obrigatório');
+        url = `${ESCAVADOR_BASE}/processos/numero_cnj/${encodeURIComponent(numero_cnj)}/autos`;
+        if (cursor) {
+          url += `?cursor=${encodeURIComponent(cursor)}`;
+        }
+        break;
+      case 'download_documento_pdf':
+        if (!documento_id) throw new Error('documento_id é obrigatório');
+        url = `${ESCAVADOR_BASE}/documentos/${encodeURIComponent(documento_id)}/pdf`;
+        break;
+      case 'buscar_envolvidos':
+        if (!numero_cnj) throw new Error('numero_cnj é obrigatório');
+        url = `${ESCAVADOR_BASE}/processos/numero_cnj/${encodeURIComponent(numero_cnj)}/envolvidos`;
         if (cursor) {
           url += `?cursor=${encodeURIComponent(cursor)}`;
         }
@@ -90,10 +115,47 @@ serve(async (req) => {
         }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         
       default:
-        throw new Error('Ação inválida. Use: buscar_por_numero, buscar_por_nome, buscar_por_cpf_cnpj, buscar_por_oab, buscar_movimentacoes, buscar_completo');
+        throw new Error('Ação inválida. Use: buscar_por_numero, buscar_por_nome, buscar_por_cpf_cnpj, buscar_por_oab, buscar_movimentacoes, buscar_documentos, buscar_autos, download_documento_pdf, buscar_envolvidos, buscar_completo');
     }
 
     console.log(`Escavador request: ${method} ${url}`);
+
+    // For PDF downloads, handle binary response
+    if (action === 'download_documento_pdf') {
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/pdf',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Escavador PDF error:', response.status, errorText);
+        return new Response(JSON.stringify({
+          success: false,
+          error: `Erro ${response.status} ao baixar PDF`,
+          status_code: response.status,
+        }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Return PDF as base64
+      const pdfBuffer = await response.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(pdfBuffer)));
+      
+      return new Response(JSON.stringify({
+        success: true,
+        data: {
+          pdf_base64: base64,
+          content_type: response.headers.get('content-type') || 'application/pdf',
+        },
+      }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const response = await fetch(url, {
       method,
