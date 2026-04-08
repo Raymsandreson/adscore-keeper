@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.cleanup_old_audit_logs();

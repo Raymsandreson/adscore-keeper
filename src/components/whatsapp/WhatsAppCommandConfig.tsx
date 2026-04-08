@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { PromptVariableSelector } from './PromptVariableSelector';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { logAudit } from '@/hooks/useAuditLog';
@@ -112,6 +113,8 @@ interface ShortcutFormState {
   send_call_followup_audio: boolean;
   zapsign_mode: 'final_document' | 'prefilled_form';
   zapsign_settings: Record<string, any>;
+  forward_questions_to_group: boolean;
+  notify_instance_name: string | null;
 }
 
 const DEFAULT_FORM: ShortcutFormState = {
@@ -127,6 +130,7 @@ const DEFAULT_FORM: ShortcutFormState = {
   reply_with_audio: false, reply_voice_id: null, respond_in_groups: false,
   max_tts_chars: 1000, send_window_start_hour: 8, send_window_end_hour: 20,
   send_call_followup_audio: false, zapsign_mode: 'final_document', zapsign_settings: {},
+  forward_questions_to_group: false, notify_instance_name: null,
 };
 
 interface Profile { user_id: string; full_name: string | null; }
@@ -274,6 +278,16 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [formSection, setFormSection] = useState<'general' | 'ai' | 'document' | 'followup' | 'automations'>('general');
   const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string }[]>([]);
+  const [instances, setInstances] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchInstances = async () => {
+      const { data } = await supabase.from('whatsapp_instances').select('id, instance_name').order('instance_name');
+      setInstances(data || []);
+    };
+    fetchInstances();
+  }, []);
+
   const [promptSheetOpen, setPromptSheetOpen] = useState(false);
   const [superPromptPreviewOpen, setSuperPromptPreviewOpen] = useState(false);
 
@@ -459,6 +473,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       send_call_followup_audio: (s as any).send_call_followup_audio ?? false,
       zapsign_mode: (s as any).zapsign_mode || 'final_document',
       zapsign_settings: (s as any).zapsign_settings || {},
+      forward_questions_to_group: (s as any).forward_questions_to_group ?? false,
+      notify_instance_name: (s as any).notify_instance_name || null,
     });
     setFollowupSteps(s.followup_steps || []);
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
@@ -531,6 +547,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       history_limit: (form as any).history_limit ?? 50,
       zapsign_mode: (form as any).zapsign_mode || 'final_document',
       zapsign_settings: form.zapsign_settings || {},
+      forward_questions_to_group: form.forward_questions_to_group ?? false,
+      notify_instance_name: form.notify_instance_name || null,
     };
 
     let error;
@@ -674,10 +692,26 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
             {formSection === 'ai' && (
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">🧠 Prompt do Agente</Label>
+                  <div className="flex items-center justify-between mb-1">
+                    <Label className="text-xs">🧠 Prompt do Agente</Label>
+                    <PromptVariableSelector onInsert={(variable) => {
+                      const textarea = document.querySelector<HTMLTextAreaElement>('#command-prompt-textarea');
+                      if (textarea) {
+                        const start = textarea.selectionStart;
+                        const end = textarea.selectionEnd;
+                        const currentVal = form.prompt_instructions || '';
+                        const newVal = currentVal.substring(0, start) + variable + currentVal.substring(end);
+                        setForm(f => ({ ...f, prompt_instructions: newVal }));
+                        setTimeout(() => { textarea.focus(); textarea.setSelectionRange(start + variable.length, start + variable.length); }, 50);
+                      } else {
+                        setForm(f => ({ ...f, prompt_instructions: (f.prompt_instructions || '') + ' ' + variable }));
+                      }
+                    }} />
+                  </div>
                   <p className="text-[10px] text-muted-foreground">Define a personalidade, tom, instruções de coleta e regras de comportamento do agente.</p>
                   <div className="relative">
                     <Textarea
+                      id="command-prompt-textarea"
                       placeholder="Você é um assistente jurídico profissional. Ao interagir com o cliente, colete nome completo, CPF, RG, endereço..."
                       value={form.prompt_instructions}
                       onChange={e => setForm(f => ({ ...f, prompt_instructions: e.target.value }))}
@@ -833,6 +867,34 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       </div>
                     )}
                   </div>
+                </div>
+                {/* Group forwarding */}
+                <div className="border rounded-lg p-3 space-y-2">
+                  <Label className="text-sm font-medium">📨 Redirecionamento ao Grupo</Label>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-xs">Encaminhar perguntas ao grupo</Label>
+                      <p className="text-[10px] text-muted-foreground">Quando o cliente perguntar sobre o processo no privado, o agente envia a pergunta/resposta no grupo vinculado ao lead</p>
+                    </div>
+                    <Switch checked={form.forward_questions_to_group ?? false} onCheckedChange={v => setForm(f => ({ ...f, forward_questions_to_group: v }))} />
+                  </div>
+                  {form.forward_questions_to_group && (
+                    <div className="space-y-1 pl-2 border-l-2 border-primary/20">
+                      <Label className="text-xs">Instância para notificação privada</Label>
+                      <p className="text-[10px] text-muted-foreground">Selecione a instância que receberá um aviso privado alertando a equipe para responder no grupo</p>
+                      <Select value={form.notify_instance_name || '__none__'} onValueChange={v => setForm(f => ({ ...f, notify_instance_name: v === '__none__' ? null : v }))}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Nenhuma (só envia no grupo)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__" className="text-xs">Nenhuma (só envia no grupo)</SelectItem>
+                          {instances.map((inst: any) => (
+                            <SelectItem key={inst.id} value={inst.instance_name} className="text-xs">{inst.instance_name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
                 {/* Respond in Groups + Audio Reply */}
                 <div className="space-y-2 border rounded-lg p-3">
@@ -1610,6 +1672,11 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
               🧠 Prompt do Agente
             </SheetTitle>
             <p className="text-xs text-muted-foreground">Edite o prompt com mais espaço. As alterações são aplicadas em tempo real.</p>
+            <div className="mt-2">
+              <PromptVariableSelector onInsert={(variable) => {
+                setForm(f => ({ ...f, prompt_instructions: (f.prompt_instructions || '') + variable }));
+              }} />
+            </div>
           </SheetHeader>
           <div className="flex-1 p-4 overflow-hidden">
             <Textarea
