@@ -1076,7 +1076,7 @@ ${scrapeData.content || ''}
                       </PopoverContent>
                     </Popover>
                   </div>
-                  <Select value={source} onValueChange={setSource}>
+                  <Select value={safeSelectValue(source)} onValueChange={setSource}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
