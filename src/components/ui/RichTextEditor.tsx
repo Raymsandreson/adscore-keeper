@@ -511,7 +511,8 @@ function RichTextEditorComponent({
       }
 
       const editor = editorRef.current;
-      if (editor) {
+      if (editor && dirtyRef.current) {
+        dirtyRef.current = false;
         flushEditorHtml(editor);
       }
     };
