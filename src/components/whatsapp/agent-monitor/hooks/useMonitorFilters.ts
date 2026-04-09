@@ -81,7 +81,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       }
       return true;
     });
-  }, [conversations, agentFilter, effectiveInstanceFilter, boardFilter, campaignFilter, acolhedorFilter, caseStatusFilter, agentActiveFilter, followupConfigFilter, searchQuery]);
+  }, [conversations, agentFilter, effectiveInstanceFilter, boardFilter, campaignFilter, acolhedorFilter, effectiveAcolhedorFromUser, caseStatusFilter, agentActiveFilter, followupConfigFilter, searchQuery]);
 
   const pipelineCounts = useMemo(() => {
     const base = conversations.filter(applyBaseFilters);
