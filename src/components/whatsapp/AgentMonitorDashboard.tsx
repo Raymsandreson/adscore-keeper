@@ -99,12 +99,11 @@ export function AgentMonitorDashboard() {
   // Derive closedByAgent from filtered conversations (consistent with pipeline counts)
   const filteredClosedByAgent = useMemo(() => {
     const base = conversations.filter(c => {
-      // Apply base filters
       if (filters.agentFilter !== 'all') {
         if (filters.agentFilter === '__none__' && c.agent_id) return false;
         if (filters.agentFilter !== '__none__' && c.agent_id !== filters.agentFilter) return false;
       }
-      if (filters.instanceFilter !== 'all' && c.instance_name !== filters.instanceFilter) return false;
+      if (effectiveInstanceFilter !== 'all' && c.instance_name !== effectiveInstanceFilter) return false;
       if (filters.boardFilter !== 'all' && c.board_id !== filters.boardFilter) return false;
       if (filters.campaignFilter !== 'all') {
         if (filters.campaignFilter === '__none__' && c.campaign_name) return false;
@@ -124,7 +123,7 @@ export function AgentMonitorDashboard() {
     return Array.from(map.entries())
       .map(([agent, count]) => ({ agent, count }))
       .sort((a, b) => b.count - a.count);
-  }, [conversations, filters.agentFilter, filters.instanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
+  }, [conversations, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
 
   // Build a set of lead_ids from filtered conversations for cross-referencing operational metrics
   const operationalFilteredLeadIds = useMemo(() => new Set(
@@ -133,7 +132,7 @@ export function AgentMonitorDashboard() {
         if (filters.agentFilter === '__none__' && c.agent_id) return false;
         if (filters.agentFilter !== '__none__' && c.agent_id !== filters.agentFilter) return false;
       }
-      if (filters.instanceFilter !== 'all' && c.instance_name !== filters.instanceFilter) return false;
+      if (effectiveInstanceFilter !== 'all' && c.instance_name !== effectiveInstanceFilter) return false;
       if (filters.boardFilter !== 'all' && c.board_id !== filters.boardFilter) return false;
       if (filters.campaignFilter !== 'all') {
         if (filters.campaignFilter === '__none__' && c.campaign_name) return false;
