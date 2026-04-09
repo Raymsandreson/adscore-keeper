@@ -5,10 +5,16 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, UserPlus, Check, Users, Phone } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Loader2, UserPlus, Users, Phone, MapPin, Mail, Briefcase, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
+
+const BRAZILIAN_STATES = [
+  'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT',
+  'PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'
+];
 
 interface ContactSuggestion {
   phone: string;
@@ -19,6 +25,11 @@ interface ContactSuggestion {
   // User editable
   final_name: string;
   should_create: boolean;
+  city: string;
+  state: string;
+  email: string;
+  profession: string;
+  notes: string;
 }
 
 interface SyncResult {
@@ -46,11 +57,25 @@ export function GroupContactSyncDialog({
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [suggestions, setSuggestions] = useState<ContactSuggestion[]>([]);
   const [phase, setPhase] = useState<'loading' | 'results' | 'done'>('loading');
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [leadCity, setLeadCity] = useState<string | null>(null);
+  const [leadState, setLeadState] = useState<string | null>(null);
 
   const startSync = async () => {
     setLoading(true);
     setPhase('loading');
     try {
+      // Fetch lead location to pre-fill
+      if (leadId) {
+        const { data: leadData } = await supabase
+          .from('leads')
+          .select('city, state')
+          .eq('id', leadId)
+          .maybeSingle();
+        setLeadCity(leadData?.city || null);
+        setLeadState(leadData?.state || null);
+      }
+
       const { data, error } = await cloudFunctions.invoke('sync-group-contacts', {
         body: { group_jid: groupJid, lead_id: leadId, instance_id: instanceId },
       });
@@ -67,6 +92,11 @@ export function GroupContactSyncDialog({
           ...s,
           final_name: s.suggested_name || '',
           should_create: true,
+          city: '',
+          state: '',
+          email: '',
+          profession: '',
+          notes: '',
         }))
       );
       setPhase('results');
@@ -81,6 +111,12 @@ export function GroupContactSyncDialog({
     setLoading(false);
   };
 
+  const updateSuggestion = (idx: number, updates: Partial<ContactSuggestion>) => {
+    setSuggestions(prev => prev.map((item, i) =>
+      i === idx ? { ...item, ...updates } : item
+    ));
+  };
+
   const handleCreateContacts = async () => {
     const toCreate = suggestions.filter(s => s.should_create && s.final_name.trim());
     if (toCreate.length === 0) {
@@ -92,21 +128,7 @@ export function GroupContactSyncDialog({
     setSyncing(true);
     let created = 0;
 
-    // Get current user for created_by
     const { data: { user: authUser } } = await supabase.auth.getUser();
-
-    // Get lead data to inherit location info
-    let leadCity: string | null = null;
-    let leadState: string | null = null;
-    if (leadId) {
-      const { data: leadData } = await supabase
-        .from('leads')
-        .select('city, state')
-        .eq('id', leadId)
-        .maybeSingle();
-      leadCity = leadData?.city || null;
-      leadState = leadData?.state || null;
-    }
 
     for (const s of toCreate) {
       try {
@@ -119,8 +141,11 @@ export function GroupContactSyncDialog({
             classification: 'prospect',
             whatsapp_group_id: groupJid || null,
             lead_id: leadId || null,
-            city: leadCity,
-            state: leadState,
+            city: s.city.trim() || leadCity || null,
+            state: s.state || leadState || null,
+            email: s.email.trim() || null,
+            profession: s.profession.trim() || null,
+            notes: s.notes.trim() || null,
             created_by: authUser?.id || null,
           })
           .select('id')
@@ -131,7 +156,6 @@ export function GroupContactSyncDialog({
           continue;
         }
 
-        // Link to lead
         await supabase
           .from('contact_leads')
           .insert({ contact_id: newContact.id, lead_id: leadId });
@@ -148,12 +172,15 @@ export function GroupContactSyncDialog({
     onClose();
   };
 
-  // Auto-start sync when dialog opens
   useEffect(() => {
     if (open && groupJid) {
       startSync();
     }
   }, [open, groupJid]);
+
+  const toggleExpand = (idx: number) => {
+    setExpandedIdx(prev => prev === idx ? null : idx);
+  };
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -193,64 +220,135 @@ export function GroupContactSyncDialog({
               </div>
             </div>
 
-            {/* New contacts to create */}
             {suggestions.length > 0 ? (
               <>
                 <p className="text-sm font-medium">
-                  Novos contatos encontrados — confirme os nomes para cadastrar:
+                  Novos contatos encontrados — preencha os dados para cadastrar:
                 </p>
-                <ScrollArea className="max-h-[350px]">
+                <ScrollArea className="max-h-[400px]">
                   <div className="space-y-2">
                     {suggestions.map((s, idx) => (
                       <div
                         key={s.phone}
-                        className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                        className={`rounded-lg border transition-colors ${
                           s.should_create ? 'bg-background' : 'bg-muted/40 opacity-60'
                         }`}
                       >
-                        <Switch
-                          checked={s.should_create}
-                          onCheckedChange={(v) => {
-                            setSuggestions(prev => prev.map((item, i) =>
-                              i === idx ? { ...item, should_create: v } : item
-                            ));
-                          }}
-                        />
-                        <div className="flex-1 space-y-1">
-                          <Input
-                            value={s.final_name}
-                            onChange={(e) => {
-                              setSuggestions(prev => prev.map((item, i) =>
-                                i === idx ? { ...item, final_name: e.target.value } : item
-                              ));
-                            }}
-                            placeholder="Nome do contato"
-                            className="h-8"
-                            disabled={!s.should_create}
+                        {/* Header row */}
+                        <div className="flex items-center gap-3 p-3">
+                          <Switch
+                            checked={s.should_create}
+                            onCheckedChange={(v) => updateSuggestion(idx, { should_create: v })}
                           />
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Phone className="h-3 w-3" />
-                            <span className="font-mono">{s.phone}</span>
-                            {s.message_count > 0 && (
-                              <Badge variant="secondary" className="text-[10px]">
-                                {s.message_count} msgs em {s.instances_seen.length} instância(s)
-                              </Badge>
-                            )}
-                            {s.suggested_name && s.suggested_name !== s.final_name && (
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] cursor-pointer"
-                                onClick={() => {
-                                  setSuggestions(prev => prev.map((item, i) =>
-                                    i === idx ? { ...item, final_name: s.suggested_name } : item
-                                  ));
-                                }}
-                              >
-                                Sugestão: {s.suggested_name}
-                              </Badge>
-                            )}
+                          <div className="flex-1 min-w-0">
+                            <Input
+                              value={s.final_name}
+                              onChange={(e) => updateSuggestion(idx, { final_name: e.target.value })}
+                              placeholder="Nome do contato"
+                              className="h-8"
+                              disabled={!s.should_create}
+                            />
+                            <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                              <Phone className="h-3 w-3" />
+                              <span className="font-mono">{s.phone}</span>
+                              {s.message_count > 0 && (
+                                <Badge variant="secondary" className="text-[10px]">
+                                  {s.message_count} msgs em {s.instances_seen.length} instância(s)
+                                </Badge>
+                              )}
+                              {s.suggested_name && s.suggested_name !== s.final_name && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] cursor-pointer"
+                                  onClick={() => updateSuggestion(idx, { final_name: s.suggested_name })}
+                                >
+                                  Sugestão: {s.suggested_name}
+                                </Badge>
+                              )}
+                            </div>
                           </div>
+                          {s.should_create && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={() => toggleExpand(idx)}
+                            >
+                              {expandedIdx === idx ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            </Button>
+                          )}
                         </div>
+
+                        {/* Expanded fields */}
+                        {s.should_create && expandedIdx === idx && (
+                          <div className="px-3 pb-3 pt-1 border-t space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
+                                  <MapPin className="h-3 w-3" /> Cidade
+                                </label>
+                                <Input
+                                  value={s.city}
+                                  onChange={(e) => updateSuggestion(idx, { city: e.target.value })}
+                                  placeholder={leadCity || 'Cidade'}
+                                  className="h-8"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
+                                  <MapPin className="h-3 w-3" /> Estado
+                                </label>
+                                <Select
+                                  value={s.state}
+                                  onValueChange={(v) => updateSuggestion(idx, { state: v })}
+                                >
+                                  <SelectTrigger className="h-8">
+                                    <SelectValue placeholder={leadState || 'UF'} />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {BRAZILIAN_STATES.map(uf => (
+                                      <SelectItem key={uf} value={uf}>{uf}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
+                                  <Mail className="h-3 w-3" /> Email
+                                </label>
+                                <Input
+                                  value={s.email}
+                                  onChange={(e) => updateSuggestion(idx, { email: e.target.value })}
+                                  placeholder="email@exemplo.com"
+                                  className="h-8"
+                                  type="email"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
+                                  <Briefcase className="h-3 w-3" /> Profissão
+                                </label>
+                                <Input
+                                  value={s.profession}
+                                  onChange={(e) => updateSuggestion(idx, { profession: e.target.value })}
+                                  placeholder="Profissão"
+                                  className="h-8"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground mb-1 block">Observações</label>
+                              <Input
+                                value={s.notes}
+                                onChange={(e) => updateSuggestion(idx, { notes: e.target.value })}
+                                placeholder="Notas sobre o contato"
+                                className="h-8"
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
