@@ -118,9 +118,10 @@ async function fetchGroupInviteInfo(instance: any, groupLink: string) {
     throw new Error(`Não foi possível resolver o link do grupo. Último erro: ${lastError}`);
   }
 
-  const groupId = groupData?.id || groupData?.jid || groupData?.data?.id || null;
-  const groupName = groupData?.subject || groupData?.name ||
-    groupData?.data?.subject || "";
+  // UazAPI returns PascalCase: JID, Name; also handle nested .group and lowercase variants
+  const gd = groupData?.group || groupData?.data || groupData;
+  const groupId = gd?.JID || gd?.jid || gd?.id || groupData?.JID || groupData?.jid || groupData?.id || null;
+  const groupName = gd?.Name || gd?.name || gd?.subject || groupData?.Name || groupData?.name || groupData?.subject || "";
 
   if (!groupId) {
     throw new Error("Resposta da API não contém ID do grupo");
