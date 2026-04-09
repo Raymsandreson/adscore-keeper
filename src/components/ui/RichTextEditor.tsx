@@ -529,7 +529,8 @@ function RichTextEditorComponent({
 
   const handleBlur = useCallback(() => {
     const editor = editorRef.current;
-    if (!editor) return;
+    if (!editor || !dirtyRef.current) return;
+    dirtyRef.current = false;
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     flushEditorHtml(editor);
   }, [flushEditorHtml]);
