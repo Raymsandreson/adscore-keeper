@@ -91,6 +91,7 @@ import { useLeadSources } from '@/hooks/useLeadSources';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Pencil, Trash2 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDialog';
 
 interface LeadEditDialogProps {
   open: boolean;
