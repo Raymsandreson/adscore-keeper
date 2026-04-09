@@ -57,7 +57,7 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
     queryFn: async () => {
       let query = supabase
         .from('leads')
-        .select('id, name, created_at, lead_status, status')
+        .select('id, lead_name, created_at, lead_status, status')
         .eq('board_id', board.id)
         .order('created_at', { ascending: false });
 
