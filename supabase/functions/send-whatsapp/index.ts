@@ -19,12 +19,35 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-/** Normalize Brazilian phone: strip non-digits, add DDI 55 if missing */
+function isWhatsAppInviteLink(raw?: string): boolean {
+  return typeof raw === "string" && /chat\.whatsapp\.com\/[A-Za-z0-9]+/i.test(raw);
+}
+
+function isWhatsAppJid(raw?: string): boolean {
+  return typeof raw === "string" && /@(g\.us|s\.whatsapp\.net|c\.us|lid)$/i.test(raw.trim());
+}
+
+function extractInviteCode(groupLink: string): string | null {
+  return groupLink.match(/chat\.whatsapp\.com\/([A-Za-z0-9]+)/i)?.[1] || null;
+}
+
+/** Normalize Brazilian phone without corrupting WhatsApp group links/JIDs */
 function normalizePhone(raw: string): string {
-  const digits = raw.replace(/\D/g, "");
+  const trimmed = raw.trim();
+  if (!trimmed || isWhatsAppInviteLink(trimmed) || isWhatsAppJid(trimmed)) {
+    return trimmed;
+  }
+
+  const digits = trimmed.replace(/\D/g, "");
   if (digits.startsWith("55") && digits.length >= 12) return digits;
   if (digits.length >= 10 && digits.length <= 11) return "55" + digits;
   return digits;
+}
+
+function getRequestedTarget(phone?: string, chatId?: string): string {
+  if (typeof chatId === "string" && chatId.trim()) return chatId.trim();
+  if (typeof phone === "string" && phone.trim()) return phone.trim();
+  return "";
 }
 
 function buildJsonResponse(payload: Record<string, unknown>, status = 200) {
@@ -40,6 +63,47 @@ async function readResponseTextSafe(response: Response) {
   } catch {
     return "";
   }
+}
+
+async function fetchGroupInviteInfo(instance: any, groupLink: string) {
+  const inviteCode = extractInviteCode(groupLink);
+  if (!inviteCode) {
+    throw new Error(
+      "Link de grupo inválido. Use o formato https://chat.whatsapp.com/...",
+    );
+  }
+
+  const baseUrl = instance.base_url || "https://abraci.uazapi.com";
+  const res = await fetch(`${baseUrl}/group/inviteInfo`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      token: instance.instance_token,
+    },
+    body: JSON.stringify({ code: inviteCode }),
+  });
+
+  if (!res.ok) {
+    const errText = await readResponseTextSafe(res);
+    console.error("Group inviteInfo error:", res.status, errText);
+    throw new Error(`Erro ao resolver link: ${res.status}`);
+  }
+
+  const groupData = await res.json();
+  console.log(
+    "Group inviteInfo response:",
+    JSON.stringify(groupData).substring(0, 500),
+  );
+
+  const groupId = groupData?.id || groupData?.jid || groupData?.data?.id || null;
+  const groupName = groupData?.subject || groupData?.name ||
+    groupData?.data?.subject || "";
+
+  if (!groupId) {
+    throw new Error("Não foi possível extrair o ID do grupo");
+  }
+
+  return { groupId, groupName };
 }
 
 function isWhatsAppDisconnected(status: number, errorText: string) {
@@ -79,7 +143,37 @@ Deno.serve(async (req) => {
     if (body.phone && typeof body.phone === "string") {
       body.phone = normalizePhone(body.phone);
     }
+    if (body.chat_id && typeof body.chat_id === "string") {
+      body.chat_id = body.chat_id.trim();
+    }
     const { action } = body;
+
+    const actionUsesTarget = action === undefined || action === "send_media" ||
+      action === "send_location" || action === "send_text";
+    const requestedTarget = getRequestedTarget(body.phone, body.chat_id);
+
+    if (actionUsesTarget && isWhatsAppInviteLink(requestedTarget)) {
+      const instance = await getInstance(internalClient, body.instance_id);
+      if (!instance) {
+        return buildJsonResponse({
+          success: false,
+          error: "No active WhatsApp instance found",
+        });
+      }
+
+      try {
+        const { groupId } = await fetchGroupInviteInfo(instance, requestedTarget);
+        body.phone = groupId;
+        body.chat_id = groupId;
+        body.group_link = requestedTarget;
+        console.log("Resolved group invite link to group ID:", groupId);
+      } catch (e) {
+        return buildJsonResponse({
+          success: false,
+          error: e instanceof Error ? e.message : "Unknown error",
+        });
+      }
+    }
 
     // ========================
     // RESOLVE GROUP INVITE LINK
@@ -88,89 +182,25 @@ Deno.serve(async (req) => {
       const { group_link, instance_id } = body;
 
       if (!group_link) {
-        return new Response(
-          JSON.stringify({ success: false, error: "group_link is required" }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
+        return buildJsonResponse({
+          success: false,
+          error: "group_link is required",
+        });
       }
-
-      // Extract invite code from link
-      const match = group_link.match(/chat\.whatsapp\.com\/([A-Za-z0-9]+)/);
-      if (!match) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error:
-              "Link de grupo inválido. Use o formato https://chat.whatsapp.com/...",
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
-      }
-      const inviteCode = match[1];
 
       const instance = await getInstance(internalClient, instance_id);
       if (!instance) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "No active WhatsApp instance found",
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
+        return buildJsonResponse({
+          success: false,
+          error: "No active WhatsApp instance found",
+        });
       }
 
-      const baseUrl = instance.base_url || "https://abraci.uazapi.com";
-
       try {
-        const res = await fetch(`${baseUrl}/group/inviteInfo`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "token": instance.instance_token,
-          },
-          body: JSON.stringify({ code: inviteCode }),
-        });
-
-        if (!res.ok) {
-          const errText = await res.text();
-          console.error("Group inviteInfo error:", res.status, errText);
-          return new Response(
-            JSON.stringify({
-              success: false,
-              error: `Erro ao resolver link: ${res.status}`,
-            }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-          );
-        }
-
-        const groupData = await res.json();
-        console.log(
-          "Group inviteInfo response:",
-          JSON.stringify(groupData).substring(0, 500),
+        const { groupId, groupName } = await fetchGroupInviteInfo(
+          instance,
+          group_link,
         );
-        const groupId = groupData?.id || groupData?.jid ||
-          groupData?.data?.id || null;
-        const groupName = groupData?.subject || groupData?.name ||
-          groupData?.data?.subject || "";
-
-        if (!groupId) {
-          return new Response(
-            JSON.stringify({
-              success: false,
-              error: "Não foi possível extrair o ID do grupo",
-            }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-          );
-        }
 
         return new Response(
           JSON.stringify({
@@ -182,13 +212,10 @@ Deno.serve(async (req) => {
         );
       } catch (e) {
         console.error("Error resolving group link:", e);
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: e instanceof Error ? e.message : "Unknown error",
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+        return buildJsonResponse({
+          success: false,
+          error: e instanceof Error ? e.message : "Unknown error",
+        });
       }
     }
 
@@ -202,27 +229,18 @@ Deno.serve(async (req) => {
       const { group_id, instance_id } = body;
 
       if (!group_id) {
-        return new Response(
-          JSON.stringify({ success: false, error: "group_id is required" }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
+        return buildJsonResponse({
+          success: false,
+          error: "group_id is required",
+        });
       }
 
       const instance = await getInstance(internalClient, instance_id);
       if (!instance) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "No active WhatsApp instance found",
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
+        return buildJsonResponse({
+          success: false,
+          error: "No active WhatsApp instance found",
+        });
       }
 
       const baseUrl = instance.base_url || "https://abraci.uazapi.com";
@@ -277,13 +295,10 @@ Deno.serve(async (req) => {
         );
       } catch (e) {
         console.error("Error fetching group info:", e);
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: e instanceof Error ? e.message : "Unknown error",
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+        return buildJsonResponse({
+          success: false,
+          error: e instanceof Error ? e.message : "Unknown error",
+        });
       }
     }
 
@@ -291,13 +306,10 @@ Deno.serve(async (req) => {
       const { message_id, instance_id, external_message_id } = body;
 
       if (!message_id) {
-        return new Response(
-          JSON.stringify({ success: false, error: "message_id is required" }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
+        return buildJsonResponse({
+          success: false,
+          error: "message_id is required",
+        });
       }
 
       // Try to delete from WhatsApp via UazAPI if we have the external ID
@@ -346,13 +358,10 @@ Deno.serve(async (req) => {
       const { phone: clearPhone, instance_name } = body;
 
       if (!clearPhone) {
-        return new Response(
-          JSON.stringify({ success: false, error: "phone is required" }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
+        return buildJsonResponse({
+          success: false,
+          error: "phone is required",
+        });
       }
 
       let query = supabase.from("whatsapp_messages").delete().eq(
@@ -394,35 +403,24 @@ Deno.serve(async (req) => {
         instance_id,
       } = body;
 
-      if (!phone || !media_url) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "phone and media_url are required",
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
+      const targetNumber = getRequestedTarget(phone, chat_id);
+
+      if (!targetNumber || !media_url) {
+        return buildJsonResponse({
+          success: false,
+          error: "phone/chat_id and media_url are required",
+        });
       }
 
       const instance = await getInstance(internalClient, instance_id);
       if (!instance) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "No active WhatsApp instance found",
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
+        return buildJsonResponse({
+          success: false,
+          error: "No active WhatsApp instance found",
+        });
       }
 
       const baseUrl = instance.base_url || "https://abraci.uazapi.com";
-      const targetNumber = chat_id?.trim() || phone;
 
       // UazAPI v2: unified /send/media endpoint
       const endpoint = "/send/media";
@@ -482,7 +480,7 @@ Deno.serve(async (req) => {
       const { data: savedMessage, error } = await supabase
         .from("whatsapp_messages")
         .insert({
-          phone,
+          phone: targetNumber,
           message_text: caption || null,
           message_type: messageType,
           media_url,
@@ -526,35 +524,24 @@ Deno.serve(async (req) => {
         instance_id,
       } = body;
 
-      if (!phone || latitude === undefined || longitude === undefined) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "phone, latitude and longitude are required",
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
+      const targetNumber = getRequestedTarget(phone, chat_id);
+
+      if (!targetNumber || latitude === undefined || longitude === undefined) {
+        return buildJsonResponse({
+          success: false,
+          error: "phone/chat_id, latitude and longitude are required",
+        });
       }
 
       const instance = await getInstance(internalClient, instance_id);
       if (!instance) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "No active WhatsApp instance found",
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
+        return buildJsonResponse({
+          success: false,
+          error: "No active WhatsApp instance found",
+        });
       }
 
       const baseUrl = instance.base_url || "https://abraci.uazapi.com";
-      const targetNumber = chat_id?.trim() || phone;
 
       const uazResponse = await fetch(`${baseUrl}/send/location`, {
         method: "POST",
@@ -590,7 +577,7 @@ Deno.serve(async (req) => {
       const { data: savedMessage, error } = await supabase
         .from("whatsapp_messages")
         .insert({
-          phone,
+          phone: targetNumber,
           message_text: locationText,
           message_type: "location",
           direction: "outbound",
@@ -621,31 +608,21 @@ Deno.serve(async (req) => {
     // ========================
     const { phone, chat_id, message, contact_id, lead_id, instance_id } = body;
 
-    if (!phone || !message) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "phone and message are required",
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
-      );
+    const targetNumber = getRequestedTarget(phone, chat_id);
+
+    if (!targetNumber || !message) {
+      return buildJsonResponse({
+        success: false,
+        error: "phone/chat_id and message are required",
+      });
     }
 
     const instance = await getInstance(internalClient, instance_id);
     if (!instance) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "No active WhatsApp instance found",
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
-      );
+      return buildJsonResponse({
+        success: false,
+        error: "No active WhatsApp instance found",
+      });
     }
 
     const baseUrl = instance.base_url || "https://abraci.uazapi.com";
@@ -656,13 +633,9 @@ Deno.serve(async (req) => {
       sendUrl,
       "instance:",
       instance.instance_name,
-      "to phone:",
-      phone,
+      "to target:",
+      targetNumber,
     );
-
-    const targetNumber = typeof chat_id === "string" && chat_id.trim()
-      ? chat_id.trim()
-      : phone;
 
     const uazResponse = await fetch(sendUrl, {
       method: "POST",
@@ -695,7 +668,7 @@ Deno.serve(async (req) => {
     const { data: savedMessage, error } = await supabase
       .from("whatsapp_messages")
       .insert({
-        phone,
+        phone: targetNumber,
         message_text: message,
         message_type: "text",
         direction: "outbound",
