@@ -288,7 +288,7 @@ export function AgentMonitorDashboard() {
   };
 
   const filterBarProps = {
-    agents, uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores,
+    agents, uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores, uniqueUsers,
     agentFilter: filters.agentFilter, setAgentFilter: filters.setAgentFilter,
     instanceFilter: filters.instanceFilter, setInstanceFilter: filters.setInstanceFilter,
     boardFilter: filters.boardFilter, setBoardFilter: filters.setBoardFilter,
@@ -296,6 +296,7 @@ export function AgentMonitorDashboard() {
     acolhedorFilter: filters.acolhedorFilter, setAcolhedorFilter: filters.setAcolhedorFilter,
     agentActiveFilter: filters.agentActiveFilter, setAgentActiveFilter: filters.setAgentActiveFilter,
     followupConfigFilter: filters.followupConfigFilter, setFollowupConfigFilter: filters.setFollowupConfigFilter,
+    userFilter: filters.userFilter, setUserFilter: filters.setUserFilter,
   };
 
   const batchProps = {
