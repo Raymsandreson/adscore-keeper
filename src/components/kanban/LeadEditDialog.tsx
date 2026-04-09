@@ -168,6 +168,7 @@ export function LeadEditDialog({
   mode = 'dialog',
   initialTab,
 }: LeadEditDialogProps) {
+  const [hydratedLead, setHydratedLead] = useState<Lead | null>(lead);
   // Basic fields state
   const [leadName, setLeadName] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
@@ -244,24 +245,53 @@ export function LeadEditDialog({
   const [tempNewsLink, setTempNewsLink] = useState('');
   const [selectedBoardId, setSelectedBoardId] = useState('');
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateLead = async () => {
+      if (!open || !lead?.id) {
+        setHydratedLead(lead);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('id', lead.id)
+        .maybeSingle();
+
+      if (!cancelled) {
+        setHydratedLead(!error && data ? (data as Lead) : lead);
+      }
+    };
+
+    hydrateLead();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, lead]);
+
+  const currentLead = hydratedLead ?? lead;
+
   // Load lead data when dialog opens
   useEffect(() => {
-    if (lead && open) {
-      const leadAny = lead as any;
+    if (currentLead && open) {
+      const leadAny = currentLead as any;
       
       // Reset tab (use initialTab if provided, e.g. from deep link)
       setActiveTab(initialTab || 'basic');
       // Basic fields
-      setLeadName(lead.lead_name || '');
-      setLeadPhone(lead.lead_phone || '');
-      setLeadEmail(lead.lead_email || '');
-      setInstagramUsername(lead.instagram_username || '');
-      setSource(lead.source || 'manual');
-      setNotes(lead.notes || '');
+      setLeadName(currentLead.lead_name || '');
+      setLeadPhone(currentLead.lead_phone || '');
+      setLeadEmail(currentLead.lead_email || '');
+      setInstagramUsername(currentLead.instagram_username || '');
+      setSource(currentLead.source || 'manual');
+      setNotes(currentLead.notes || '');
       setAcolhedor(leadAny.acolhedor || '');
       setGroupLink(leadAny.group_link || '');
       setWhatsappGroupId(leadAny.whatsapp_group_id || '');
-      setClientClassification(lead.client_classification || '');
+      setClientClassification(currentLead.client_classification || '');
       setExpectedBirthDate(leadAny.expected_birth_date || '');
       setSelectedBoardId(leadAny.board_id || '');
       // Outcome
@@ -314,16 +344,16 @@ export function LeadEditDialog({
       
       // Legal fields
       setLiabilityType(leadAny.liability_type || '');
-      setNewsLink(lead.news_link || '');
+      setNewsLink(currentLead.news_link || '');
       setLegalViability(leadAny.legal_viability || '');
       
       // Load custom field values
-      loadCustomFieldValues(lead.id);
+      loadCustomFieldValues(currentLead.id);
       
       // Fetch profile names for created_by and updated_by
       fetchProfileNames([leadAny.created_by, leadAny.updated_by]);
     }
-  }, [lead, open, fetchProfileNames]);
+  }, [currentLead, open, fetchProfileNames]);
 
   const loadCustomFieldValues = async (leadId: string) => {
     const values = await getFieldValues(leadId);
@@ -577,14 +607,14 @@ ${scrapeData.content || ''}
   };
 
   const handleSave = async () => {
-    if (!lead) return;
+    if (!currentLead) return;
     
     if (!leadName.trim()) {
       toast.error('Nome é obrigatório');
       return;
     }
 
-    console.log('[handleSave] Starting save for lead:', lead.id);
+    console.log('[handleSave] Starting save for lead:', currentLead.id);
     setSaving(true);
     try {
       // Determine the raw input value
@@ -621,7 +651,7 @@ ${scrapeData.content || ''}
 
       console.log('[handleSave] Calling onSave with updates...');
       // Save all fields
-      await onSave(lead.id, {
+      await onSave(currentLead.id, {
         lead_name: leadName.trim(),
         lead_phone: leadPhone || null,
         lead_email: leadEmail || null,
@@ -654,7 +684,7 @@ ${scrapeData.content || ''}
         news_link: newsLink || null,
         legal_viability: legalViability || null,
         board_id: selectedBoardId || null,
-        ...(selectedBoardId && selectedBoardId !== (lead as any).board_id ? (() => {
+        ...(selectedBoardId && selectedBoardId !== (currentLead as any).board_id ? (() => {
           const newBoard = boards.find(b => b.id === selectedBoardId);
           const firstStage = newBoard?.stages?.[0] as any;
           return firstStage?.id ? { status: firstStage.id } : {};
@@ -669,16 +699,16 @@ ${scrapeData.content || ''}
       } as any);
 
       // Save custom field values
-      if (Object.keys(localFieldValues).length > 0) {
-        await saveAllFieldValues(lead.id, localFieldValues);
-      }
+       if (Object.keys(localFieldValues).length > 0) {
+         await saveAllFieldValues(currentLead.id, localFieldValues);
+       }
 
       // Save status history if outcome changed
-      const previousOutcome = (lead as any).became_client_date ? 'closed' : (lead as any).inviavel_date ? 'inviavel' : (lead as any).classification_date ? 'refused' : (lead as any).in_progress_date ? 'in_progress' : 'active';
-      if (leadOutcome && leadOutcome !== previousOutcome) {
-        const { data: { user } } = await supabase.auth.getUser();
-        await supabase.from('lead_status_history' as any).insert({
-          lead_id: lead.id,
+       const previousOutcome = (currentLead as any).became_client_date ? 'closed' : (currentLead as any).inviavel_date ? 'inviavel' : (currentLead as any).classification_date ? 'refused' : (currentLead as any).in_progress_date ? 'in_progress' : 'active';
+       if (leadOutcome && leadOutcome !== previousOutcome) {
+         const { data: { user } } = await supabase.auth.getUser();
+         await supabase.from('lead_status_history' as any).insert({
+           lead_id: currentLead.id,
           from_status: previousOutcome,
           to_status: leadOutcome,
           reason: leadOutcomeReason || null,
@@ -686,39 +716,39 @@ ${scrapeData.content || ''}
           changed_by_type: 'manual',
         });
         // Also record in lead_stage_history so metrics/ranking can track who closed
-        await supabase.from('lead_stage_history').insert({
-          lead_id: lead.id,
-          from_stage: (lead as any).status || previousOutcome,
-          to_stage: leadOutcome,
-          changed_by: user?.id || null,
-          to_board_id: (lead as any).board_id || null,
-          from_board_id: (lead as any).board_id || null,
-        });
-      }
+         await supabase.from('lead_stage_history').insert({
+           lead_id: currentLead.id,
+           from_stage: (currentLead as any).status || previousOutcome,
+           to_stage: leadOutcome,
+           changed_by: user?.id || null,
+           to_board_id: (currentLead as any).board_id || null,
+           from_board_id: (currentLead as any).board_id || null,
+         });
+       }
 
       // Auto-create legal case when lead is marked as closed (or was already closed but has no case yet)
-      const wasAlreadyClosed = !!(lead as any).became_client_date;
-      if (leadOutcome === 'closed') {
-        if (!wasAlreadyClosed) {
-          // Also update lead_status
-          await supabase.from('leads').update({ lead_status: 'closed' } as any).eq('id', lead.id);
-          // Send conversion event to Meta CAPI
-          sendLeadConversionEvent({
-            id: lead.id,
-            lead_name: lead.lead_name,
-            lead_phone: (lead as any).lead_phone,
-            ctwa_context: (lead as any).ctwa_context,
-            campaign_id: (lead as any).campaign_id,
-            contract_value: (lead as any).contract_value,
-          }, 'closed');
-        }
+       const wasAlreadyClosed = !!(currentLead as any).became_client_date;
+       if (leadOutcome === 'closed') {
+         if (!wasAlreadyClosed) {
+           // Also update lead_status
+           await supabase.from('leads').update({ lead_status: 'closed' } as any).eq('id', currentLead.id);
+           // Send conversion event to Meta CAPI
+           sendLeadConversionEvent({
+             id: currentLead.id,
+             lead_name: currentLead.lead_name,
+             lead_phone: (currentLead as any).lead_phone,
+             ctwa_context: (currentLead as any).ctwa_context,
+             campaign_id: (currentLead as any).campaign_id,
+             contract_value: (currentLead as any).contract_value,
+           }, 'closed');
+         }
 
         try {
-          const { data: existingCases } = await supabase
-            .from('legal_cases')
-            .select('id')
-            .eq('lead_id', lead.id)
-            .limit(1);
+             const { data: existingCases } = await supabase
+             .from('legal_cases')
+             .select('id')
+             .eq('lead_id', currentLead.id)
+             .limit(1);
           
           if (!existingCases || existingCases.length === 0) {
             const { data: { user } } = await supabase.auth.getUser();
@@ -764,8 +794,8 @@ ${scrapeData.content || ''}
             
             const { data: insertedCase, error: insertError } = await supabase
               .from('legal_cases')
-              .insert({
-                lead_id: lead.id,
+                .insert({
+                 lead_id: currentLead.id,
                 nucleus_id: matchedNucleusId,
                 case_number: finalCaseNumber,
                 title: leadName.trim() || lead.lead_name || 'Novo Caso',
@@ -790,30 +820,30 @@ ${scrapeData.content || ''}
           console.error('Error auto-creating case:', caseErr);
           // Don't block the save
         }
-      } else if (leadOutcome === 'refused') {
-        await supabase.from('leads').update({ lead_status: 'refused' } as any).eq('id', lead.id);
-        // Send conversion event to Meta CAPI
-        sendLeadConversionEvent({
-          id: lead.id,
-          lead_name: lead.lead_name,
-          lead_phone: (lead as any).lead_phone,
-          ctwa_context: (lead as any).ctwa_context,
-          campaign_id: (lead as any).campaign_id,
-        }, 'refused');
-      } else if (leadOutcome === 'inviavel') {
-        await supabase.from('leads').update({ lead_status: 'inviavel' } as any).eq('id', lead.id);
-        // Send conversion event to Meta CAPI
-        sendLeadConversionEvent({
-          id: lead.id,
-          lead_name: lead.lead_name,
-          lead_phone: (lead as any).lead_phone,
-          ctwa_context: (lead as any).ctwa_context,
-          campaign_id: (lead as any).campaign_id,
-        }, 'inviavel');
-      } else if ((lead as any).became_client_date || (lead as any).inviavel_date) {
-        // Was closed/inviável, now reopened
-        await supabase.from('leads').update({ lead_status: 'active' } as any).eq('id', lead.id);
-      }
+       } else if (leadOutcome === 'refused') {
+         await supabase.from('leads').update({ lead_status: 'refused' } as any).eq('id', currentLead.id);
+         // Send conversion event to Meta CAPI
+         sendLeadConversionEvent({
+           id: currentLead.id,
+           lead_name: currentLead.lead_name,
+           lead_phone: (currentLead as any).lead_phone,
+           ctwa_context: (currentLead as any).ctwa_context,
+           campaign_id: (currentLead as any).campaign_id,
+         }, 'refused');
+       } else if (leadOutcome === 'inviavel') {
+         await supabase.from('leads').update({ lead_status: 'inviavel' } as any).eq('id', currentLead.id);
+         // Send conversion event to Meta CAPI
+         sendLeadConversionEvent({
+           id: currentLead.id,
+           lead_name: currentLead.lead_name,
+           lead_phone: (currentLead as any).lead_phone,
+           ctwa_context: (currentLead as any).ctwa_context,
+           campaign_id: (currentLead as any).campaign_id,
+         }, 'inviavel');
+       } else if ((currentLead as any).became_client_date || (currentLead as any).inviavel_date) {
+         // Was closed/inviável, now reopened
+         await supabase.from('leads').update({ lead_status: 'active' } as any).eq('id', currentLead.id);
+       }
 
       toast.success('Lead atualizado com sucesso!');
       onOpenChange(false);
@@ -825,7 +855,7 @@ ${scrapeData.content || ''}
     }
   };
 
-  if (!lead) return null;
+  if (!currentLead) return null;
 
   const Wrapper = mode === 'sheet' ? Sheet : Dialog;
   const Content = mode === 'sheet' ? SheetContent : DialogContent;
@@ -847,9 +877,9 @@ ${scrapeData.content || ''}
               <User className="h-5 w-5" />
               Editar Lead
             </Title>
-            {lead && (
+            {currentLead && (
               <div className="flex items-center gap-1">
-                <ShareMenu entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Lead'} />
+                <ShareMenu entityType="lead" entityId={currentLead.id} entityName={currentLead.lead_name || 'Lead'} />
               </div>
             )}
           </div>
