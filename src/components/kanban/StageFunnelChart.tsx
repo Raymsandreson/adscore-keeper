@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { TrendingDown, TrendingUp, Filter, AlertTriangle, CheckCircle2, XCircle, Ban, Loader2 } from 'lucide-react';
+import { TrendingDown, TrendingUp, Filter, AlertTriangle, CheckCircle2, XCircle, Ban, Loader2, ShieldOff, PlayCircle } from 'lucide-react';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -23,7 +23,7 @@ interface StageFunnelChartProps {
   conversionAlerts?: ConversionAlert[];
 }
 
-type StatusFilter = 'closed' | 'refused' | 'inviavel' | 'stage';
+type StatusFilter = 'closed' | 'refused' | 'inviavel' | 'blocked' | 'active' | 'stage';
 
 export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }: StageFunnelChartProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -37,15 +37,16 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
     queryFn: async () => {
       const { data, error } = await supabase
         .from('leads')
-        .select('lead_status')
-        .eq('board_id', board.id)
-        .in('lead_status', ['closed', 'refused', 'inviavel']);
+        .select('lead_status, is_blocked')
+        .eq('board_id', board.id);
       if (error) throw error;
-      const counts = { closed: 0, refused: 0, inviavel: 0 };
+      const counts = { closed: 0, refused: 0, inviavel: 0, blocked: 0, active: 0 };
       for (const l of data || []) {
+        if ((l as any).is_blocked) { counts.blocked++; continue; }
         if (l.lead_status === 'closed') counts.closed++;
         else if (l.lead_status === 'refused') counts.refused++;
         else if (l.lead_status === 'inviavel') counts.inviavel++;
+        else if (l.lead_status === 'active' || !l.lead_status) counts.active++;
       }
       return counts;
     },
@@ -63,6 +64,10 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
 
       if (activeFilter === 'stage' && activeStageId) {
         query = query.eq('status', activeStageId);
+      } else if (activeFilter === 'blocked') {
+        query = query.eq('is_blocked', true);
+      } else if (activeFilter === 'active') {
+        query = query.or('lead_status.eq.active,lead_status.is.null').eq('is_blocked', false);
       } else if (activeFilter) {
         query = query.eq('lead_status', activeFilter);
       }
@@ -138,6 +143,8 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
     if (activeFilter === 'closed') return 'Leads Fechados';
     if (activeFilter === 'refused') return 'Leads Recusados';
     if (activeFilter === 'inviavel') return 'Leads Inviáveis';
+    if (activeFilter === 'blocked') return 'Leads Bloqueados';
+    if (activeFilter === 'active') return 'Leads Em Andamento';
     if (activeFilter === 'stage' && activeStageId) {
       const stage = board.stages?.find(s => s.id === activeStageId);
       return `Leads em: ${stage?.name || activeStageId}`;
@@ -241,8 +248,18 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
             })}
           </div>
 
-          {/* Summary - Fechados, Recusados, Inviáveis */}
-          <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-border/50">
+          {/* Summary - Em andamento, Fechados, Recusados, Inviáveis, Bloqueados */}
+          <div className="grid grid-cols-5 gap-2 text-center pt-2 border-t border-border/50">
+            <div
+              className="p-2 rounded-md bg-primary/10 cursor-pointer hover:bg-primary/20 transition-colors"
+              onClick={() => openSheet('active')}
+            >
+              <div className="flex items-center justify-center gap-1">
+                <PlayCircle className="h-3.5 w-3.5 text-primary" />
+                <span className="text-lg font-bold text-primary">{statusCounts?.active || 0}</span>
+              </div>
+              <div className="text-[10px] text-muted-foreground">Andamento</div>
+            </div>
             <div
               className="p-2 rounded-md bg-green-500/10 cursor-pointer hover:bg-green-500/20 transition-colors"
               onClick={() => openSheet('closed')}
@@ -272,6 +289,16 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
                 <span className="text-lg font-bold text-orange-600">{statusCounts?.inviavel || 0}</span>
               </div>
               <div className="text-[10px] text-muted-foreground">Inviáveis</div>
+            </div>
+            <div
+              className="p-2 rounded-md bg-muted cursor-pointer hover:bg-muted/80 transition-colors"
+              onClick={() => openSheet('blocked')}
+            >
+              <div className="flex items-center justify-center gap-1">
+                <ShieldOff className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-lg font-bold text-muted-foreground">{statusCounts?.blocked || 0}</span>
+              </div>
+              <div className="text-[10px] text-muted-foreground">Bloqueados</div>
             </div>
           </div>
         </CardContent>
