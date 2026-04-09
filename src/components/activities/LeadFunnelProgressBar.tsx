@@ -42,7 +42,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const [currentStageId, setCurrentStageId] = useState<string | null>(null);
   const [instances, setInstances] = useState<ChecklistInstance[]>([]);
   const [expanded, setExpanded] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [_loading, setLoading] = useState(true);
   const [viewingStageId, setViewingStageId] = useState<string | null>(null);
   const { createLeadInstances, fetchLeadInstances } = useChecklists();
 
@@ -162,8 +162,6 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
   // Get instances for the viewed stage
   const currentStageInstances = instances.filter(i => i.stage_id === activeViewStageId);
-  const totalItems = currentStageInstances.reduce((sum, i) => sum + i.items.length, 0);
-  const completedItems = currentStageInstances.reduce((sum, i) => sum + i.items.filter(item => item.checked).length, 0);
 
   if (!boardId || stages.length === 0) return null;
 
