@@ -83,51 +83,61 @@ Deno.serve(async (req) => {
         .filter((p: string) => p.length >= 10)
     );
 
-    // 3. Fetch group participants from UazAPI
-    const baseUrl = instance.base_url || "https://abraci.uazapi.com";
-    // Normalize JID: ensure it ends with @g.us and strip any extra whitespace
+    // 3. Fetch group participants from UazAPI - try multiple instances
     let groupJid = (group_jid || "").trim();
-    // If it's a raw numeric ID, append @g.us
     if (!groupJid.includes("@")) {
       groupJid = `${groupJid}@g.us`;
     }
-    // Validate format: must be like "digits@g.us"
     if (!groupJid.endsWith("@g.us")) {
-      console.error("Invalid group JID format:", groupJid);
       return new Response(
-        JSON.stringify({ success: false, error: `Formato de JID inválido: ${groupJid}. Deve terminar com @g.us` }),
+        JSON.stringify({ success: false, error: `Formato de JID inválido: ${groupJid}` }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`Fetching group info for JID: ${groupJid} via instance: ${instance.instance_name}`);
+    let groupData: any = null;
+    let usedInstanceName = "";
+    let lastError = "";
 
-    const requestBody = { groupjid: groupJid };
-    console.log(`Request body: ${JSON.stringify(requestBody)}`);
-    
-    const infoRes = await fetch(`${baseUrl}/group/info`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        token: instance.instance_token,
-      },
-      body: JSON.stringify(requestBody),
-    });
+    for (const inst of orderedInstances) {
+      const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+      console.log(`Trying instance: ${inst.instance_name} for group ${groupJid}`);
+      try {
+        const infoRes = await fetch(`${baseUrl}/group/info`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", token: inst.instance_token },
+          body: JSON.stringify({ groupjid: groupJid }),
+        });
+        if (infoRes.ok) {
+          groupData = await infoRes.json();
+          usedInstanceName = inst.instance_name;
+          console.log(`Success with instance: ${inst.instance_name}`);
+          break;
+        } else {
+          const errText = await infoRes.text();
+          lastError = `${inst.instance_name}: ${errText}`;
+          console.log(`Instance ${inst.instance_name} failed: ${lastError}`);
+          if (infoRes.status === 400 && !errText.includes("not participating")) break;
+        }
+      } catch (e: any) {
+        lastError = `${inst.instance_name}: ${e.message}`;
+      }
+    }
 
-    if (!infoRes.ok) {
-      const errText = await infoRes.text();
-      console.error("Group info error:", infoRes.status, errText);
+    if (!groupData) {
       return new Response(
-        JSON.stringify({ success: false, error: `Erro ao buscar info do grupo (${infoRes.status}): ${errText}` }),
+        JSON.stringify({ 
+          success: false, 
+          error: `Nenhuma instância tem acesso ao grupo. Último erro: ${lastError}`,
+          tried_instances: orderedInstances.map((i: any) => i.instance_name),
+        }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const groupData = await infoRes.json();
     const participants = groupData?.participants || groupData?.Participants || 
       groupData?.data?.participants || [];
-    
-    console.log(`Group ${groupJid}: ${participants.length} participants found`);
+    console.log(`Group ${groupJid}: ${participants.length} participants found via ${usedInstanceName}`);
 
     // 4. Extract phone numbers from participants (exclude instances)
     const participantPhones: string[] = [];
