@@ -196,18 +196,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   useEffect(() => { fetchActivities(); }, [fetchActivities]);
 
   const openEdit = (a: LeadActivity) => {
-    setEditActivity(a);
-    setEditTitle(a.title);
-    setEditType(a.activity_type);
-    setEditPriority(a.priority || 'normal');
-    setEditDeadline(a.deadline ? a.deadline.slice(0, 16) : '');
-    setEditDescription(a.description || '');
-    setEditStatus(a.status);
-    setEditWhatWasDone(a.what_was_done || '');
-    setEditCurrentStatusNotes(a.current_status_notes || '');
-    setEditNextSteps(a.next_steps || '');
-    setEditAssignedTo(a.assigned_to || '');
-    setEditAssignedToName(a.assigned_to_name || '');
+    navigate(`/activities?openActivity=${a.id}`);
   };
 
   const handleSaveEdit = async () => {
