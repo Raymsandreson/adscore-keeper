@@ -44,6 +44,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const [expanded, setExpanded] = useState(false);
   const [_loading, setLoading] = useState(true);
   const [viewingStageId, setViewingStageId] = useState<string | null>(null);
+  const [isLeadClosed, setIsLeadClosed] = useState(false);
   const { createLeadInstances, fetchLeadInstances } = useChecklists();
 
   const fetchData = useCallback(async () => {
@@ -56,8 +57,13 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       const [boardRes, historyRes, leadRes] = await Promise.all([
         supabase.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
         supabase.from('lead_stage_history').select('to_stage').eq('lead_id', leadId).order('changed_at', { ascending: false }).limit(1),
-        supabase.from('leads').select('status').eq('id', leadId).maybeSingle(),
+        supabase.from('leads').select('status, lead_status, became_client_date').eq('id', leadId).maybeSingle(),
       ]);
+
+      // Check if lead is closed (won)
+      const leadData = leadRes.data as any;
+      const isClosed = leadData?.lead_status === 'closed' || !!leadData?.became_client_date;
+      setIsLeadClosed(isClosed);
 
       let stageId: string | null = null;
       let parsedStages: Stage[] = [];
@@ -147,11 +153,34 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     ));
   };
 
-  // Hierarchical progress calculation
+  // Hierarchical progress calculation — if lead is closed, always 100%
   const hierarchicalProgress = useMemo(() => {
+    if (isLeadClosed) {
+      // Return 100% for all stages when lead is closed
+      const stageIds = stages.map(s => s.id);
+      const phaseWeight = stageIds.length > 0 ? 100 / stageIds.length : 0;
+      return {
+        globalPercent: 100,
+        stageDetails: stageIds.map(stageId => {
+          const stageInstances = instances.filter(i => i.stage_id === stageId);
+          return {
+            stageId,
+            stagePercent: phaseWeight,
+            completedPercent: phaseWeight,
+            objectives: stageInstances.map(inst => ({
+              instanceId: inst.id,
+              objectiveWeight: stageInstances.length > 0 ? phaseWeight / stageInstances.length : 0,
+              totalSteps: inst.items.length,
+              completedSteps: inst.items.length,
+              completedPercent: stageInstances.length > 0 ? phaseWeight / stageInstances.length : 0,
+            })),
+          };
+        }),
+      };
+    }
     const stageIds = stages.map(s => s.id);
     return calculateHierarchicalProgress(stageIds, instances);
-  }, [stages, instances]);
+  }, [stages, instances, isLeadClosed]);
 
   const globalPercent = hierarchicalProgress.globalPercent;
 
