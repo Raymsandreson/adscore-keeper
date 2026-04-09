@@ -151,8 +151,10 @@ export function AgentMonitorDashboard() {
       if (!hasActiveFilter) return true;
       // Filter by instance if the detail has instance info
       if (effectiveInstanceFilter !== 'all' && detail.instance_name && detail.instance_name !== effectiveInstanceFilter) return false;
+      // Filter by user (acolhedor name match)
+      if (effectiveAcolhedorFromUser && detail.acolhedor && detail.acolhedor !== effectiveAcolhedorFromUser) return false;
       // Filter by acolhedor if available on the detail
-      if (filters.acolhedorFilter !== 'all' && detail.acolhedor) {
+      if (!effectiveAcolhedorFromUser && filters.acolhedorFilter !== 'all' && detail.acolhedor) {
         if (filters.acolhedorFilter === '__none__' && detail.acolhedor) return false;
         if (filters.acolhedorFilter !== '__none__' && detail.acolhedor !== filters.acolhedorFilter) return false;
       }
