@@ -63,6 +63,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   const [caseNotes, setCaseNotes] = useState('');
   const [caseAcolhedor, setCaseAcolhedor] = useState('');
   const [caseClosedAt, setCaseClosedAt] = useState(new Date().toISOString().split('T')[0]);
+  const [loadingGroupDate, setLoadingGroupDate] = useState(false);
   const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null);
   const [processRefreshKey, setProcessRefreshKey] = useState(0);
   const [selectedProcesses, setSelectedProcesses] = useState<Set<string>>(new Set());
@@ -81,6 +82,25 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   useEffect(() => {
     fetchCases();
   }, [leadId]);
+
+  // Auto-fetch group creation date when opening case dialog
+  const fetchGroupCreationDate = async () => {
+    if (!leadId) return;
+    setLoadingGroupDate(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-group-creation-date', {
+        body: { lead_id: leadId },
+      });
+      if (!error && data?.success && data?.creation_date) {
+        setCaseClosedAt(data.creation_date);
+        toast.info(`Data de criação do grupo preenchida: ${data.creation_date}`);
+      }
+    } catch (e) {
+      console.warn('Could not fetch group creation date:', e);
+    } finally {
+      setLoadingGroupDate(false);
+    }
+  };
 
   const resetCaseForm = () => {
     setCaseTitle('');
@@ -344,13 +364,26 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
             </div>
             {!editingCase && (
               <div>
-                <Label>📅 Data de Fechamento *</Label>
+                <Label className="flex items-center gap-2">📅 Data de Fechamento *
+                  {loadingGroupDate && <Loader2 className="h-3 w-3 animate-spin" />}
+                </Label>
                 <Input
                   type="date"
                   value={caseClosedAt}
                   onChange={e => setCaseClosedAt(e.target.value)}
                   required
                 />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mt-1 text-xs text-muted-foreground"
+                  onClick={fetchGroupCreationDate}
+                  disabled={loadingGroupDate}
+                >
+                  {loadingGroupDate ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+                  🔄 Buscar data de criação do grupo
+                </Button>
               </div>
             )}
             <div>
