@@ -170,7 +170,7 @@ export function AgentMonitorDashboard() {
     const filterOp = (detail: { acolhedor: string | null; instance_name: string | null; lead_id: string | null }) => {
       if (!hasActiveFilter) return true;
       // Filter by instance if the detail has instance info
-      if (filters.instanceFilter !== 'all' && detail.instance_name && detail.instance_name !== filters.instanceFilter) return false;
+      if (effectiveInstanceFilter !== 'all' && detail.instance_name && detail.instance_name !== effectiveInstanceFilter) return false;
       // Filter by acolhedor if available on the detail
       if (filters.acolhedorFilter !== 'all' && detail.acolhedor) {
         if (filters.acolhedorFilter === '__none__' && detail.acolhedor) return false;
@@ -211,7 +211,7 @@ export function AgentMonitorDashboard() {
       casesDetails: filteredCases,
       processesDetails: filteredProcesses,
     };
-  }, [metrics, filteredNewConvDetails, filteredClosedByAgent, operationalFilteredLeadIds, filters.agentFilter, filters.instanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
+  }, [metrics, filteredNewConvDetails, filteredClosedByAgent, operationalFilteredLeadIds, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
 
   // Filter gaps by acolhedor
   const filteredGaps = useMemo(() => {
