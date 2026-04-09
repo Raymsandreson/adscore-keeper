@@ -95,7 +95,7 @@ const MATRIX_OPTIONS = [
   { value: 'eliminate', emoji: '🗑️', label: 'Retirar', color: 'border-muted bg-muted/50 text-muted-foreground', active: 'border-muted-foreground bg-muted-foreground text-background' },
 ];
 
-function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSetting, reorderFields, formLeadIdForTTS, formContactIdForTTS }: {
+export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSetting, reorderFields, formLeadIdForTTS, formContactIdForTTS }: {
   buildMsg: () => string;
   leadId: string;
   fieldSettings: any[];
@@ -113,7 +113,6 @@ function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSettin
     }
     setSending(true);
     try {
-      // Fetch lead data and user's default instance in parallel
       const [leadRes, profileRes] = await Promise.all([
         supabase
           .from('leads')
@@ -139,7 +138,6 @@ function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSettin
         return;
       }
 
-      // Priority: 1) User's default instance, 2) Board instance, 3) fallback
       let instanceId: string | undefined = profileRes || undefined;
       if (!instanceId && lead?.board_id) {
         const { data: boardInstances } = await supabase
@@ -176,11 +174,11 @@ function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSettin
   };
 
   return (
-    <div className="flex items-center gap-2 pt-1 border-t">
-      <Button type="button" variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => { navigator.clipboard.writeText(buildMsg()); toast.success('Mensagem copiada!'); }}>
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <Button type="button" variant="outline" size="sm" className="gap-1 h-8 text-xs" onClick={() => { navigator.clipboard.writeText(buildMsg()); toast.success('Mensagem copiada!'); }}>
         <Copy className="h-3.5 w-3.5" /> Copiar
       </Button>
-      <Button type="button" variant="default" size="sm" className="flex-1 gap-1.5 h-8 text-xs" onClick={handleSendToGroup} disabled={sending}>
+      <Button type="button" variant="default" size="sm" className="gap-1 h-8 text-xs" onClick={handleSendToGroup} disabled={sending}>
         {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
         Enviar ao Grupo
       </Button>
@@ -438,9 +436,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         </div>
       )}
 
-      {props.buildMsg && (
-        <SendToGroupSection buildMsg={props.buildMsg} leadId={props.formLeadId} fieldSettings={props.fieldSettings} updateFieldSetting={props.updateFieldSetting} reorderFields={props.reorderFields} formLeadIdForTTS={props.formLeadIdForTTS} formContactIdForTTS={props.formContactIdForTTS} />
-      )}
+      {/* SendToGroupSection moved to action bar */}
       {/* === COLLAPSIBLE: Detail fields === */}
       <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
         <CollapsibleTrigger className="flex items-center gap-1.5 w-full text-left py-1">
