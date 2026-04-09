@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +15,7 @@ import { useProfilesList } from '@/hooks/useProfilesList';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
+import { ActivityEditSheet } from '@/components/activities/ActivityEditSheet';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
