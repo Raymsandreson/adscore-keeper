@@ -160,10 +160,90 @@ async function postUazApiWithRetry(
   }
 }
 
+// ============================================================
+// Isolated step runner: each post-creation step runs independently
+// so a failure in one (e.g. document forwarding) does NOT block
+// the others (e.g. participant addition, initial message).
+// ============================================================
+interface StepResult {
+  step: string
+  ok: boolean
+  error?: string
+  details?: string
+}
+
+async function runStep(name: string, fn: () => Promise<void>): Promise<StepResult> {
+  try {
+    await fn()
+    return { step: name, ok: true }
+  } catch (err: any) {
+    console.error(`[create-group][${name}] STEP FAILED:`, err)
+    return { step: name, ok: false, error: err?.message || String(err) }
+  }
+}
+
+async function addParticipantsToGroup(
+  baseUrl: string, token: string, groupJid: string,
+  participants: string[], retries = 5
+): Promise<{ added: string[]; failed: string[] }> {
+  const added: string[] = []
+  const failed: string[] = []
+
+  if (participants.length === 0) return { added, failed }
+
+  // Try bulk add first
+  let bulkOk = false
+  try {
+    console.log(`[add-participants] Bulk adding ${participants.length} participants`)
+    const bulkRes = await postUazApiWithRetry(baseUrl, token, '/group/updateParticipants', {
+      groupjid: groupJid, action: 'add', participants,
+    }, retries)
+    if (bulkRes.ok) {
+      bulkOk = true
+      added.push(...participants)
+      console.log('[add-participants] Bulk add succeeded')
+    } else {
+      const errText = await bulkRes.text()
+      console.warn('[add-participants] Bulk add failed:', bulkRes.status, errText)
+    }
+  } catch (e) {
+    console.warn('[add-participants] Bulk add error:', e)
+  }
+
+  // If bulk failed, try one by one
+  if (!bulkOk) {
+    console.log('[add-participants] Falling back to individual adds')
+    await sleep(3000)
+    for (const p of participants) {
+      try {
+        const addRes = await postUazApiWithRetry(baseUrl, token, '/group/updateParticipants', {
+          groupjid: groupJid, action: 'add', participants: [p],
+        }, retries)
+        if (addRes.ok) {
+          added.push(p)
+          console.log(`[add-participants] Added ${p} successfully`)
+        } else {
+          const errText = await addRes.text()
+          console.warn(`[add-participants] Failed to add ${p}:`, errText)
+          failed.push(p)
+        }
+      } catch (e) {
+        console.warn(`[add-participants] Error adding ${p}:`, e)
+        failed.push(p)
+      }
+      await sleep(2000)
+    }
+  }
+
+  return { added, failed }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const diagnostics: StepResult[] = []
 
   try {
     const supabaseUrl = RESOLVED_SUPABASE_URL
@@ -174,7 +254,7 @@ Deno.serve(async (req) => {
 
     if (!lead_name) {
       return new Response(JSON.stringify({ success: false, error: 'lead_name is required' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -222,7 +302,7 @@ Deno.serve(async (req) => {
 
     if (!creatorInstance) {
       return new Response(JSON.stringify({ success: false, error: 'Nenhuma instância WhatsApp ativa encontrada' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -330,7 +410,9 @@ Deno.serve(async (req) => {
     }
 
     if (participants.length === 0) {
-      throw new Error('Nenhum participante encontrado para criar o grupo.')
+      return new Response(JSON.stringify({ success: false, error: 'Nenhum participante encontrado para criar o grupo.' }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
     // Idempotência: só reaproveita se o grupo existente realmente tiver participantes esperados.
@@ -356,7 +438,6 @@ Deno.serve(async (req) => {
         .from('leads')
         .update({ whatsapp_group_id: null } as any)
         .eq('id', leadData.id)
-        .eq('whatsapp_group_id', leadData.whatsapp_group_id)
     }
 
     console.log(`Creating group "${groupName}" via instance ${creatorInstance.instance_name} with ${participants.length} participants:`, JSON.stringify(participants))
@@ -439,10 +520,20 @@ Deno.serve(async (req) => {
         const errText2 = await createRes.text()
 
         if (isRateLimited(createRes.status, errText2)) {
-          throw new Error('A instância atingiu limite temporário da API para criação de grupo. Aguarde 1-2 minutos e tente novamente.')
+          return new Response(JSON.stringify({ 
+            success: false, 
+            error: 'A instância atingiu limite temporário da API para criação de grupo. Aguarde 1-2 minutos e tente novamente.' 
+          }), {
+            status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
         }
 
-        throw new Error(`Erro ao criar grupo: ${createRes.status} - ${errText2}`)
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: `Erro ao criar grupo: ${createRes.status} - ${errText2}` 
+        }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
       }
 
       createdWithoutParticipants = true
@@ -455,8 +546,18 @@ Deno.serve(async (req) => {
     let groupId = groupData?.group?.JID || groupData?.id || groupData?.jid || groupData?.data?.id || groupData?.gid || null
     console.log('Resolved groupId:', groupId)
 
+    if (!groupId) {
+      console.error('Could not resolve group ID from response:', JSON.stringify(groupData).substring(0, 300))
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Grupo criado mas não foi possível obter o ID do grupo da resposta da API' 
+      }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     // Só confirma incremento de sequência após criação bem-sucedida
-    if (groupId && settings && board_id && nextSeq !== null) {
+    if (settings && board_id && nextSeq !== null) {
       const { error: sequenceError } = await supabase
         .from('board_group_settings')
         .update({ current_sequence: nextSeq, updated_at: new Date().toISOString() })
@@ -468,375 +569,264 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Extract conversation data and update lead
-    if (leadData?.id && normalizedContact) {
-      try {
-        console.log('Extracting conversation data for lead', leadData.id)
-        // Fetch recent messages from WhatsApp conversation
-        const { data: recentMessages } = await supabase
-          .from('whatsapp_messages')
-          .select('direction, message_text, created_at')
-          .or(`phone.eq.${normalizedContact},phone.ilike.%${normalizedContact.slice(-8)}%`)
-          .order('created_at', { ascending: true })
-          .limit(100)
-
-        if (recentMessages && recentMessages.length > 0) {
-          console.log(`Found ${recentMessages.length} messages for extraction`)
-          
-          // Call extract-conversation-data
-          const extractRes = await fetch(`${cloudFunctionsUrl}/functions/v1/extract-conversation-data`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${cloudAnonKey}`,
-            },
-            body: JSON.stringify({
-              messages: recentMessages,
-              targetType: 'lead',
-            }),
-          })
-
-          if (extractRes.ok) {
-            const extractData = await extractRes.json()
-            const extracted = extractData?.data || {}
-            console.log('Extracted data:', JSON.stringify(extracted).substring(0, 500))
-
-            // Map extracted fields to lead columns
-            const leadUpdate: Record<string, any> = {}
-            const fieldMap: Record<string, string> = {
-              victim_name: 'victim_name',
-              lead_email: 'lead_email',
-              city: 'city',
-              state: 'state',
-              neighborhood: 'neighborhood',
-              main_company: 'main_company',
-              contractor_company: 'contractor_company',
-              accident_address: 'accident_address',
-              accident_date: 'accident_date',
-              damage_description: 'damage_description',
-              case_number: 'case_number',
-              case_type: 'case_type',
-              sector: 'sector',
-              liability_type: 'liability_type',
-              news_link: 'news_link',
-              notes: 'notes',
-              visit_city: 'visit_city',
-              visit_state: 'visit_state',
-              visit_address: 'visit_address',
-            }
-
-            for (const [extractKey, leadKey] of Object.entries(fieldMap)) {
-              if (extracted[extractKey] && !leadData[leadKey]) {
-                leadUpdate[leadKey] = extracted[extractKey]
-              }
-            }
-
-            // Special: lead_phone from extraction
-            if (extracted.lead_phone && !leadData.lead_phone) {
-              leadUpdate.lead_phone = extracted.lead_phone
-            }
-
-            if (Object.keys(leadUpdate).length > 0) {
-              console.log('Updating lead with extracted data:', Object.keys(leadUpdate))
-              await supabase.from('leads').update(leadUpdate).eq('id', leadData.id)
-              // Refresh leadData for initial message
-              const { data: refreshed } = await supabase.from('leads').select('*').eq('id', leadData.id).maybeSingle()
-              if (refreshed) leadData = refreshed
-            }
-          } else {
-            console.error('Extract conversation data failed:', extractRes.status, await extractRes.text())
-          }
-        } else {
-          console.log('No messages found for extraction')
-        }
-      } catch (extractErr) {
-        console.error('Error extracting conversation data:', extractErr)
-      }
-    }
-
-    if (!groupId) {
-      console.error('Could not resolve group ID from response:', JSON.stringify(groupData).substring(0, 300))
-    }
+    const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
 
     // Wait for WhatsApp to fully process the group creation
-    await new Promise(resolve => setTimeout(resolve, 5000))
+    await sleep(5000)
 
-    // If group was created empty, add participants - try all at once first, then one by one
-    if (groupId && createdWithoutParticipants && participantsToCreate.length > 0) {
-      const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
-      
-      // Try adding all participants at once first
-      let bulkSuccess = false
-      try {
-        console.log(`[create-group] Trying to add all ${participantsToCreate.length} participants at once`)
-        const bulkRes = await postUazApiWithRetry(
-          baseUrl,
-          creatorInstance.instance_token,
-          '/group/updateParticipants',
-          { groupjid: groupJid, action: 'add', participants: participantsToCreate },
-          5, // more retries for this critical step
-        )
-        if (bulkRes.ok) {
-          bulkSuccess = true
-          console.log('[create-group] Bulk add succeeded')
-        } else {
-          console.warn('[create-group] Bulk add failed:', bulkRes.status, await bulkRes.text())
-        }
-      } catch (e) {
-        console.warn('[create-group] Bulk add error:', e)
+    // ============================================================
+    // POST-CREATION STEPS — Each runs independently with error isolation
+    // ============================================================
+
+    // STEP 1: Extract conversation data and update lead
+    diagnostics.push(await runStep('extract_conversation_data', async () => {
+      if (!leadData?.id || !normalizedContact) return
+      console.log('Extracting conversation data for lead', leadData.id)
+      const { data: recentMessages } = await supabase
+        .from('whatsapp_messages')
+        .select('direction, message_text, created_at')
+        .or(`phone.eq.${normalizedContact},phone.ilike.%${normalizedContact.slice(-8)}%`)
+        .order('created_at', { ascending: true })
+        .limit(100)
+
+      if (!recentMessages || recentMessages.length === 0) {
+        console.log('No messages found for extraction')
+        return
       }
 
-      // If bulk failed, try one by one with longer delays
-      if (!bulkSuccess) {
-        console.log('[create-group] Falling back to adding participants one by one')
-        await sleep(3000) // wait before retrying
-        for (const p of participantsToCreate) {
-          try {
-            const addRes = await postUazApiWithRetry(
-              baseUrl,
-              creatorInstance.instance_token,
-              '/group/updateParticipants',
-              { groupjid: groupJid, action: 'add', participants: [p] },
-              5,
-            )
+      console.log(`Found ${recentMessages.length} messages for extraction`)
+      const extractRes = await fetch(`${cloudFunctionsUrl}/functions/v1/extract-conversation-data`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${cloudAnonKey}`,
+        },
+        body: JSON.stringify({ messages: recentMessages, targetType: 'lead' }),
+      })
 
-            if (!addRes.ok) {
-              console.warn(`Failed to add ${p} to group:`, await addRes.text())
-            } else {
-              console.log(`[create-group] Added ${p} to group successfully`)
-            }
-          } catch (e) {
-            console.warn(`Error adding ${p} to group:`, e)
-          }
-          await sleep(2000) // longer delay between individual adds
+      if (!extractRes.ok) {
+        console.error('Extract conversation data failed:', extractRes.status, await extractRes.text())
+        return
+      }
+
+      const extractData = await extractRes.json()
+      const extracted = extractData?.data || {}
+      console.log('Extracted data:', JSON.stringify(extracted).substring(0, 500))
+
+      const leadUpdate: Record<string, any> = {}
+      const fieldMap: Record<string, string> = {
+        victim_name: 'victim_name', lead_email: 'lead_email', city: 'city',
+        state: 'state', neighborhood: 'neighborhood', main_company: 'main_company',
+        contractor_company: 'contractor_company', accident_address: 'accident_address',
+        accident_date: 'accident_date', damage_description: 'damage_description',
+        case_number: 'case_number', case_type: 'case_type', sector: 'sector',
+        liability_type: 'liability_type', news_link: 'news_link', notes: 'notes',
+        visit_city: 'visit_city', visit_state: 'visit_state', visit_address: 'visit_address',
+      }
+
+      for (const [extractKey, leadKey] of Object.entries(fieldMap)) {
+        if (extracted[extractKey] && !leadData[leadKey]) {
+          leadUpdate[leadKey] = extracted[extractKey]
         }
       }
-    }
+      if (extracted.lead_phone && !leadData.lead_phone) {
+        leadUpdate.lead_phone = extracted.lead_phone
+      }
 
+      if (Object.keys(leadUpdate).length > 0) {
+        console.log('Updating lead with extracted data:', Object.keys(leadUpdate))
+        await supabase.from('leads').update(leadUpdate).eq('id', leadData.id)
+        const { data: refreshed } = await supabase.from('leads').select('*').eq('id', leadData.id).maybeSingle()
+        if (refreshed) leadData = refreshed
+      }
+    }))
+
+    // STEP 2: Add participants if group was created empty
+    diagnostics.push(await runStep('add_participants', async () => {
+      if (!createdWithoutParticipants || participantsToCreate.length === 0) return
+      const result = await addParticipantsToGroup(
+        baseUrl, creatorInstance.instance_token, groupJid, participantsToCreate
+      )
+      if (result.failed.length > 0) {
+        console.warn(`[add-participants] ${result.failed.length} participants failed:`, result.failed)
+      }
+    }))
+
+    // STEP 3: Verify & re-add missing participants
     let participantsCount = participantsToCreate.length
     let verificationWarning: string | null = null
 
-    if (groupId) {
+    diagnostics.push(await runStep('verify_participants', async () => {
       let groupInfo = await fetchGroupInfo(baseUrl, creatorInstance.instance_token, groupId)
-      let matchedParticipants = countMatchedParticipants(groupInfo?.participants || [], participantsToCreate)
-      let mainContactAdded = normalizedContact ? countMatchedParticipants(groupInfo?.participants || [], [normalizedContact]) > 0 : true
 
-      // If group info failed (API issue), skip verification but DON'T abort
       if (!groupInfo) {
-        console.warn('Could not verify group participants (API issue). Proceeding with post-creation steps anyway.')
         verificationWarning = 'Não foi possível verificar participantes do grupo (problema na API), mas o grupo foi criado.'
-      } else {
-        const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
-        
-        // Find ALL missing participants (not just main contact)
-        const actualPhones = extractParticipantPhones(groupInfo?.participants || [])
-        const missingParticipants = participantsToCreate.filter(
-          (p) => !actualPhones.some((ap) => phoneMatches(ap, p))
+        console.warn(verificationWarning)
+        return
+      }
+
+      const actualPhones = extractParticipantPhones(groupInfo.participants || [])
+      const missingParticipants = participantsToCreate.filter(
+        (p) => !actualPhones.some((ap) => phoneMatches(ap, p))
+      )
+
+      if (missingParticipants.length > 0) {
+        console.log(`[verify] ${missingParticipants.length} participants missing, re-adding:`, missingParticipants)
+        const result = await addParticipantsToGroup(
+          baseUrl, creatorInstance.instance_token, groupJid, missingParticipants
         )
-        
-        if (missingParticipants.length > 0) {
-          console.log(`[create-group] ${missingParticipants.length} participants missing from group, adding them:`, JSON.stringify(missingParticipants))
-          
-          // Try adding all missing at once first
-          try {
-            const addAllRes = await postUazApiWithRetry(
-              baseUrl,
-              creatorInstance.instance_token,
-              '/group/updateParticipants',
-              { groupjid: groupJid, action: 'add', participants: missingParticipants },
-              5,
-            )
-            if (!addAllRes.ok) {
-              console.warn('[create-group] Bulk re-add failed:', await addAllRes.text(), '- trying one by one')
-              // Try one by one
-              for (const p of missingParticipants) {
-                try {
-                  await sleep(2000)
-                  const addRes = await postUazApiWithRetry(
-                    baseUrl,
-                    creatorInstance.instance_token,
-                    '/group/updateParticipants',
-                    { groupjid: groupJid, action: 'add', participants: [p] },
-                    5,
-                  )
-                  if (!addRes.ok) {
-                    console.warn(`[create-group] Failed to re-add ${p}:`, await addRes.text())
-                  }
-                } catch (e) {
-                  console.warn(`[create-group] Error re-adding ${p}:`, e)
-                }
-              }
-            }
-          } catch (e) {
-            console.warn('[create-group] Error in bulk re-add:', e)
-          }
 
-          // Re-verify after adding
-          await sleep(2000)
-          groupInfo = await fetchGroupInfo(baseUrl, creatorInstance.instance_token, groupId)
-          matchedParticipants = countMatchedParticipants(groupInfo?.participants || [], participantsToCreate)
-          mainContactAdded = normalizedContact ? countMatchedParticipants(groupInfo?.participants || [], [normalizedContact]) > 0 : true
-        }
-
-        participantsCount = matchedParticipants || participantsToCreate.length
-
-        if (normalizedContact && !mainContactAdded) {
-          verificationWarning = 'O contato principal pode não ter entrado no grupo automaticamente.'
-          console.warn(verificationWarning)
-        }
-
-        if (participantsToCreate.length > 0 && matchedParticipants === 0 && groupInfo) {
-          verificationWarning = 'Nenhum participante verificado no grupo, mas prosseguindo com envios.'
-          console.warn(verificationWarning)
-        }
+        // Re-verify
+        await sleep(2000)
+        groupInfo = await fetchGroupInfo(baseUrl, creatorInstance.instance_token, groupId)
       }
-    }
 
-    // Get invite link for the group
+      const matchedParticipants = countMatchedParticipants(groupInfo?.participants || [], participantsToCreate)
+      const mainContactAdded = normalizedContact
+        ? countMatchedParticipants(groupInfo?.participants || [], [normalizedContact]) > 0
+        : true
+
+      participantsCount = matchedParticipants || participantsToCreate.length
+
+      if (normalizedContact && !mainContactAdded) {
+        verificationWarning = 'O contato principal pode não ter entrado no grupo automaticamente.'
+        console.warn(verificationWarning)
+      }
+
+      if (participantsToCreate.length > 0 && matchedParticipants === 0 && groupInfo) {
+        verificationWarning = 'Nenhum participante verificado no grupo, mas prosseguindo com envios.'
+        console.warn(verificationWarning)
+      }
+    }))
+
+    // STEP 4: Get invite link
     let groupInviteLink: string | null = null
-    if (groupId) {
-      try {
-        const groupJidForInvite = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
-        const inviteRes = await fetch(`${baseUrl}/group/inviteCode`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-          body: JSON.stringify({ groupjid: groupJidForInvite }),
-        })
-        if (inviteRes.ok) {
-          const inviteData = await inviteRes.json()
-          const inviteCode = inviteData?.inviteCode || inviteData?.code || inviteData?.data?.inviteCode || inviteData?.data?.code || null
-          if (inviteCode) {
-            groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`
-            console.log(`[create-group] Invite link obtained: ${groupInviteLink}`)
-          } else {
-            console.warn('[create-group] inviteCode response had no code:', JSON.stringify(inviteData).substring(0, 300))
-          }
+    diagnostics.push(await runStep('get_invite_link', async () => {
+      const inviteRes = await fetch(`${baseUrl}/group/inviteCode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+        body: JSON.stringify({ groupjid: groupJid }),
+      })
+      if (inviteRes.ok) {
+        const inviteData = await inviteRes.json()
+        const inviteCode = inviteData?.inviteCode || inviteData?.code || inviteData?.data?.inviteCode || inviteData?.data?.code || null
+        if (inviteCode) {
+          groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`
+          console.log(`[invite] Invite link obtained: ${groupInviteLink}`)
         } else {
-          console.warn('[create-group] Failed to get invite code:', inviteRes.status, await inviteRes.text())
+          console.warn('[invite] inviteCode response had no code:', JSON.stringify(inviteData).substring(0, 300))
         }
-      } catch (inviteErr) {
-        console.error('[create-group] Error getting invite code:', inviteErr)
+      } else {
+        console.warn('[invite] Failed to get invite code:', inviteRes.status, await inviteRes.text())
       }
-    }
+    }))
 
-    if (groupId && leadData?.id) {
+    // STEP 5: Save group ID and link to lead
+    diagnostics.push(await runStep('save_to_lead', async () => {
+      if (!leadData?.id) return
       const updatePayload: any = { whatsapp_group_id: groupId }
       if (groupInviteLink) {
         updatePayload.group_link = groupInviteLink
       }
+      // Use simpler update without .is() constraint that could fail if value was set to empty string
       await supabase
         .from('leads')
         .update(updatePayload)
         .eq('id', leadData.id)
-        .is('whatsapp_group_id', null)
 
       // Create/link a contact record for the group
-      try {
-        const groupContactName = `Grupo - ${leadData.lead_name || lead_name}`
-        // Check if a contact for this group already exists
-        const { data: existingGroupContact } = await supabase
+      const groupContactName = `Grupo - ${leadData.lead_name || lead_name}`
+      const { data: existingGroupContact } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('whatsapp_group_id', groupId)
+        .maybeSingle()
+
+      let groupContactId: string | null = existingGroupContact?.id || null
+
+      if (!groupContactId) {
+        const { data: newContact } = await supabase
           .from('contacts')
-          .select('id')
-          .eq('whatsapp_group_id', groupId)
-          .maybeSingle()
-
-        let groupContactId: string | null = existingGroupContact?.id || null
-
-        if (!groupContactId) {
-          const { data: newContact } = await supabase
-            .from('contacts')
-            .insert({
-              full_name: groupContactName,
-              lead_id: leadData.id,
-              whatsapp_group_id: groupId,
-              phone: normalizedContact || null,
-              city: leadData.city || null,
-              state: leadData.state || null,
-              notes: groupInviteLink ? `Link do grupo: ${groupInviteLink}` : null,
-              action_source: 'group_creation',
-              action_source_detail: `Grupo criado automaticamente para o lead ${leadData.lead_name || lead_name}`,
-            })
-            .select('id')
-            .single()
-          groupContactId = newContact?.id || null
-          console.log(`[create-group] Contact created for group: ${groupContactId}`)
-        } else {
-          // Update existing contact to link to this lead
-          await supabase
-            .from('contacts')
-            .update({ lead_id: leadData.id })
-            .eq('id', groupContactId)
-          console.log(`[create-group] Existing contact ${groupContactId} linked to lead ${leadData.id}`)
-        }
-      } catch (contactErr) {
-        console.error('[create-group] Error creating group contact:', contactErr)
-      }
-    }
-
-    // Send private message to client with group link
-    if (groupId && groupInviteLink) {
-      const clientPhone = normalizePhone(contact_phone || phone)
-      if (clientPhone) {
-        try {
-          const linkMessage = `✅ Seu grupo foi criado com sucesso!\n\nAcesse pelo link abaixo:\n${groupInviteLink}`
-          const sendLinkRes = await fetch(`${baseUrl}/send/text`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-            body: JSON.stringify({ number: clientPhone, text: linkMessage }),
+          .insert({
+            full_name: groupContactName,
+            lead_id: leadData.id,
+            whatsapp_group_id: groupId,
+            phone: normalizedContact || null,
+            city: leadData.city || null,
+            state: leadData.state || null,
+            notes: groupInviteLink ? `Link do grupo: ${groupInviteLink}` : null,
+            action_source: 'group_creation',
+            action_source_detail: `Grupo criado automaticamente para o lead ${leadData.lead_name || lead_name}`,
           })
-          if (sendLinkRes.ok) {
-            console.log(`[create-group] Group link sent to client ${clientPhone}`)
-            // Save outbound message to DB
-            await supabase.from('whatsapp_messages').insert({
-              instance_name: creatorInstance.instance_name,
-              phone: clientPhone,
-              message_text: linkMessage,
-              message_type: 'text',
-              direction: 'outbound',
-              sender_name: 'Sistema',
-              lead_id: leadData?.id || null,
-              contact_id: leadData?.contact_id || null,
-            } as any)
-          } else {
-            console.warn('[create-group] Failed to send group link to client:', sendLinkRes.status)
-          }
-        } catch (sendErr) {
-          console.error('[create-group] Error sending group link:', sendErr)
-        }
+          .select('id')
+          .single()
+        groupContactId = newContact?.id || null
+        console.log(`[save] Contact created for group: ${groupContactId}`)
+      } else {
+        await supabase
+          .from('contacts')
+          .update({ lead_id: leadData.id })
+          .eq('id', groupContactId)
+        console.log(`[save] Existing contact ${groupContactId} linked to lead ${leadData.id}`)
       }
-    }
+    }))
 
-    // Promote ALL board instances as admins (except lead contact)
-    if (groupId) {
-      const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
-      const normalizedLeadContact = (contact_phone || phone || '').replace(/\D/g, '')
+    // STEP 6: Send private message to client with group link
+    diagnostics.push(await runStep('send_link_to_client', async () => {
+      if (!groupInviteLink) return
+      const clientPhone = normalizePhone(contact_phone || phone)
+      if (!clientPhone) return
 
-      // First, get ALL active instances to promote everyone in the group
-      const { data: allInstances } = await supabase
-        .from('whatsapp_instances')
-        .select('id, owner_phone, instance_name')
-        .eq('is_active', true)
+      const linkMessage = `✅ Seu grupo foi criado com sucesso!\n\nAcesse pelo link abaixo:\n${groupInviteLink}`
+      const sendLinkRes = await fetch(`${baseUrl}/send/text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+        body: JSON.stringify({ number: clientPhone, text: linkMessage }),
+      })
+      if (sendLinkRes.ok) {
+        console.log(`[send-link] Group link sent to client ${clientPhone}`)
+        await supabase.from('whatsapp_messages').insert({
+          instance_name: creatorInstance.instance_name,
+          phone: clientPhone,
+          message_text: linkMessage,
+          message_type: 'text',
+          direction: 'outbound',
+          sender_name: 'Sistema',
+          lead_id: leadData?.id || null,
+          contact_id: leadData?.contact_id || null,
+        } as any)
+      } else {
+        console.warn('[send-link] Failed to send group link to client:', sendLinkRes.status)
+      }
+    }))
+
+    // STEP 7: Promote board instances as admins
+    diagnostics.push(await runStep('promote_admins', async () => {
+      const normalizedLeadContact = normalizePhone(contact_phone || phone)
 
       const phonesToPromote: string[] = []
 
-      // Add board instances first
       for (const inst of boardInstances) {
         if (inst.id === creatorInstance.id) continue
         if (!inst.owner_phone) continue
-        const instPhone = inst.owner_phone.replace(/\D/g, '')
+        const instPhone = normalizePhone(inst.owner_phone)
         if (instPhone && instPhone !== normalizedLeadContact && !phonesToPromote.includes(instPhone)) {
           phonesToPromote.push(instPhone)
         }
       }
 
       // Also promote any other active instance that was added to the group
+      const { data: allInstances } = await supabase
+        .from('whatsapp_instances')
+        .select('id, owner_phone, instance_name')
+        .eq('is_active', true)
+
       if (allInstances) {
         for (const inst of allInstances) {
           if (inst.id === creatorInstance.id) continue
           if (!inst.owner_phone) continue
-          const instPhone = inst.owner_phone.replace(/\D/g, '')
+          const instPhone = normalizePhone(inst.owner_phone)
           if (instPhone && instPhone !== normalizedLeadContact && !phonesToPromote.includes(instPhone)) {
-            // Check if this phone is actually in the group participants
             const isInGroup = participants.some(p => phoneMatches(p, instPhone))
             if (isInGroup) {
               phonesToPromote.push(instPhone)
@@ -845,152 +835,143 @@ Deno.serve(async (req) => {
         }
       }
 
-      if (phonesToPromote.length > 0) {
-        try {
-          console.log(`Promoting ${phonesToPromote.length} participants as admin:`, phonesToPromote)
+      if (phonesToPromote.length === 0) return
 
-          for (const participant of phonesToPromote) {
-            const promoteRes = await postUazApiWithRetry(
-              baseUrl,
-              creatorInstance.instance_token,
-              '/group/updateParticipants',
-              { groupjid: groupJid, action: 'promote', participants: [participant] },
-            )
+      console.log(`[promote] Promoting ${phonesToPromote.length} participants as admin:`, phonesToPromote)
 
-            if (!promoteRes.ok) {
-              console.warn(`Failed to promote ${participant} as admin:`, await promoteRes.text())
-            }
-
-            await sleep(400)
-          }
-        } catch (e) {
-          console.error('Error promoting instances as admin:', e)
+      for (const participant of phonesToPromote) {
+        const promoteRes = await postUazApiWithRetry(
+          baseUrl, creatorInstance.instance_token,
+          '/group/updateParticipants',
+          { groupjid: groupJid, action: 'promote', participants: [participant] },
+        )
+        if (!promoteRes.ok) {
+          console.warn(`[promote] Failed to promote ${participant}:`, await promoteRes.text())
         }
+        await sleep(400)
       }
-    }
+    }))
 
-    // Forward documents FIRST (before initial message to avoid timeout issues)
-    // Use shared sentUrls set to avoid duplicate sends
+    // STEP 8: Forward documents
     const sentUrls = new Set<string>()
 
-    if (groupId && settings?.forward_document_types?.length > 0 && leadData) {
+    diagnostics.push(await runStep('forward_documents', async () => {
+      if (!settings?.forward_document_types?.length || !leadData) return
       console.log('Forwarding documents. Types:', settings.forward_document_types)
       await forwardDocuments(supabase, settings, leadData, groupId, baseUrl, creatorInstance, sentUrls)
-    } else {
-      console.log('Skipping document forwarding. groupId:', groupId, 'docTypes:', settings?.forward_document_types, 'hasLead:', !!leadData)
-    }
+    }))
 
-    // Forward conversation media (inbound images/documents) + signed ZapSign docs to the group
-    // Also search by lead_phone in case documents were sent from a different number
-    if (groupId && leadData) {
+    // STEP 9: Forward conversation media
+    diagnostics.push(await runStep('forward_conversation_media', async () => {
+      if (!leadData) return
       const phonesToSearch = new Set<string>()
-      const mainPhone = normalizedPhone || (contact_phone || phone || '').replace(/\D/g, '')
+      const mainPhone = normalizedPhone || normalizePhone(contact_phone || phone)
       if (mainPhone) phonesToSearch.add(mainPhone)
-      // Also include lead_phone if different
       if (leadData.lead_phone) {
-        const leadPh = leadData.lead_phone.replace(/\D/g, '')
+        const leadPh = normalizePhone(leadData.lead_phone)
         if (leadPh) phonesToSearch.add(leadPh)
       }
       await forwardConversationMedia(supabase, leadData, mainPhone, groupId, baseUrl, creatorInstance, sentUrls, Array.from(phonesToSearch))
-    }
+    }))
 
-    // Send initial message AFTER documents (so documents appear first in the group)
-    if (groupId && settings) {
+    // STEP 10: Send initial message (AFTER documents so documents appear first)
+    diagnostics.push(await runStep('send_initial_message', async () => {
+      if (!settings) return
       console.log('Sending initial message... use_ai_message:', settings.use_ai_message, 'template:', !!settings.initial_message_template)
       await sendInitialMessage(supabase, settings, leadData, lead_name, groupName, groupId, baseUrl, creatorInstance, board_id, boardInstances)
-    } else {
-      console.log('Skipping initial message. groupId:', groupId, 'settings:', !!settings)
-    }
+    }))
 
-    // Auto-create legal processes if configured
-    if (groupId && leadData?.id && settings?.auto_create_process) {
-      // Support new multi-workflow format (process_workflows) with fallback to legacy single workflow
+    // STEP 11: Auto-create legal processes
+    diagnostics.push(await runStep('auto_create_processes', async () => {
+      if (!leadData?.id || !settings?.auto_create_process) return
+
       const workflows: Array<{ workflow_board_id: string; activities: any[] }> = []
       
       if (settings.process_workflows && Array.isArray(settings.process_workflows) && settings.process_workflows.length > 0) {
         workflows.push(...settings.process_workflows)
       } else if (settings.process_workflow_board_id) {
-        // Legacy: single workflow
         workflows.push({ workflow_board_id: settings.process_workflow_board_id, activities: settings.process_auto_activities || [] })
       }
 
       for (const wf of workflows) {
-        try {
-          console.log(`[create-group] Auto-creating process for lead ${leadData.id}, workflow ${wf.workflow_board_id}`)
-          
-          // Resolve nucleus from workflow board → product → nucleus
-          let nucleusId = settings.process_nucleus_id || null
-          if (!nucleusId && wf.workflow_board_id) {
-            const { data: board } = await supabase.from('kanban_boards').select('product_service_id').eq('id', wf.workflow_board_id).maybeSingle()
-            if (board?.product_service_id) {
-              const { data: product } = await supabase.from('products_services').select('nucleus_id').eq('id', board.product_service_id).maybeSingle()
-              nucleusId = product?.nucleus_id || null
-            }
+        console.log(`[process] Auto-creating process for lead ${leadData.id}, workflow ${wf.workflow_board_id}`)
+        
+        let nucleusId = settings.process_nucleus_id || null
+        if (!nucleusId && wf.workflow_board_id) {
+          const { data: board } = await supabase.from('kanban_boards').select('product_service_id').eq('id', wf.workflow_board_id).maybeSingle()
+          if (board?.product_service_id) {
+            const { data: product } = await supabase.from('products_services').select('nucleus_id').eq('id', board.product_service_id).maybeSingle()
+            nucleusId = product?.nucleus_id || null
           }
+        }
 
-          const { data: caseNumber } = await supabase.rpc('generate_case_number', { p_nucleus_id: nucleusId })
-          if (!caseNumber) continue
+        const { data: caseNumber } = await supabase.rpc('generate_case_number', { p_nucleus_id: nucleusId })
+        if (!caseNumber) continue
 
-          // Get workflow name for the title
-          let workflowName = 'Processo'
-          const { data: wfBoard } = await supabase.from('kanban_boards').select('name').eq('id', wf.workflow_board_id).maybeSingle()
-          if (wfBoard?.name) workflowName = wfBoard.name
+        let workflowName = 'Processo'
+        const { data: wfBoard } = await supabase.from('kanban_boards').select('name').eq('id', wf.workflow_board_id).maybeSingle()
+        if (wfBoard?.name) workflowName = wfBoard.name
 
-          const caseTitle = `${leadData.lead_name || lead_name} - ${workflowName}`
-          
-          const { data: newCase, error: caseError } = await supabase
-            .from('legal_cases')
-            .insert({
-              case_number: caseNumber,
-              title: caseTitle,
-              lead_id: leadData.id,
-              nucleus_id: nucleusId,
-              workflow_board_id: wf.workflow_board_id || null,
-              status: 'em_andamento',
-              description: `Processo criado automaticamente ao criar grupo WhatsApp "${groupName}"`,
-              action_source: 'system',
-              action_source_detail: 'Criação automática via grupo WhatsApp',
-            })
-            .select('id')
-            .single()
-          
-          if (caseError) {
-            console.error('[create-group] Error creating case:', caseError)
-            continue
+        const caseTitle = `${leadData.lead_name || lead_name} - ${workflowName}`
+        
+        const { data: newCase, error: caseError } = await supabase
+          .from('legal_cases')
+          .insert({
+            case_number: caseNumber,
+            title: caseTitle,
+            lead_id: leadData.id,
+            nucleus_id: nucleusId,
+            workflow_board_id: wf.workflow_board_id || null,
+            status: 'em_andamento',
+            description: `Processo criado automaticamente ao criar grupo WhatsApp "${groupName}"`,
+            action_source: 'system',
+            action_source_detail: 'Criação automática via grupo WhatsApp',
+          })
+          .select('id')
+          .single()
+        
+        if (caseError) {
+          console.error('[process] Error creating case:', caseError)
+          continue
+        }
+        
+        console.log(`[process] Created case ${caseNumber} (${newCase.id})`)
+        
+        const activities = wf.activities || []
+        for (const act of activities) {
+          if (!act.title) continue
+          let assignedName = null
+          if (act.assigned_to) {
+            const { data: profile } = await supabase.from('profiles').select('full_name').eq('user_id', act.assigned_to).maybeSingle()
+            assignedName = profile?.full_name || null
           }
+          const deadline = new Date()
+          deadline.setDate(deadline.getDate() + (act.deadline_days || 1))
           
-          console.log(`[create-group] Created case ${caseNumber} (${newCase.id})`)
-          
-          // Create auto activities for this workflow
-          const activities = wf.activities || []
-          for (const act of activities) {
-            if (!act.title) continue
-            let assignedName = null
-            if (act.assigned_to) {
-              const { data: profile } = await supabase.from('profiles').select('full_name').eq('user_id', act.assigned_to).maybeSingle()
-              assignedName = profile?.full_name || null
-            }
-            const deadline = new Date()
-            deadline.setDate(deadline.getDate() + (act.deadline_days || 1))
-            
-            await supabase.from('lead_activities').insert({
-              lead_id: leadData.id,
-              lead_name: leadData.lead_name || lead_name,
-              title: act.title,
-              description: `Atividade do processo ${caseNumber}. Criada automaticamente.`,
-              activity_type: act.activity_type || 'tarefa',
-              status: 'pendente',
-              priority: act.priority || 'normal',
-              assigned_to: act.assigned_to || null,
-              assigned_to_name: assignedName,
-              deadline: deadline.toISOString().split('T')[0],
-            })
-            console.log(`[create-group] Created activity: ${act.title} -> ${assignedName || 'unassigned'}`)
-          }
-        } catch (processErr) {
-          console.error('[create-group] Error in auto-create process:', processErr)
+          await supabase.from('lead_activities').insert({
+            lead_id: leadData.id,
+            lead_name: leadData.lead_name || lead_name,
+            title: act.title,
+            description: `Atividade do processo ${caseNumber}. Criada automaticamente.`,
+            activity_type: act.activity_type || 'tarefa',
+            status: 'pendente',
+            priority: act.priority || 'normal',
+            assigned_to: act.assigned_to || null,
+            assigned_to_name: assignedName,
+            deadline: deadline.toISOString().split('T')[0],
+          })
+          console.log(`[process] Created activity: ${act.title} -> ${assignedName || 'unassigned'}`)
         }
       }
+    }))
+
+    // Summarize diagnostics
+    const failedSteps = diagnostics.filter(d => !d.ok)
+    if (failedSteps.length > 0) {
+      console.warn(`[create-group] ${failedSteps.length}/${diagnostics.length} steps failed:`, 
+        failedSteps.map(s => `${s.step}: ${s.error}`).join('; '))
+    } else {
+      console.log(`[create-group] All ${diagnostics.length} steps completed successfully`)
     }
 
     return new Response(JSON.stringify({
@@ -1000,14 +981,21 @@ Deno.serve(async (req) => {
       group_link: groupInviteLink || undefined,
       participants_count: participantsCount,
       warning: verificationWarning || undefined,
+      steps_total: diagnostics.length,
+      steps_failed: failedSteps.length,
+      failed_steps: failedSteps.length > 0 ? failedSteps.map(s => s.step) : undefined,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
 
   } catch (error: any) {
     console.error('Create group error:', error)
-    return new Response(JSON.stringify({ success: false, error: error.message }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: error.message,
+      diagnostics: diagnostics.filter(d => !d.ok),
+    }), {
+      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 })
@@ -1091,10 +1079,8 @@ async function sendInitialMessage(
     }
 
     if (settings.use_ai_message) {
-      // Check if there's a saved AI-generated message model
       if (settings.ai_generated_message) {
         console.log('Using saved AI message model with real data substitution')
-        // Use the saved model and ask AI to fill in real data
         const leadInfo = leadData ? Object.entries(leadData)
           .filter(([k, v]) => v && !['id', 'created_at', 'updated_at', 'created_by', 'assigned_to'].includes(k))
           .map(([k, v]) => `${k}: ${v}`)
@@ -1136,7 +1122,6 @@ REGRAS:
           console.error('AI message substitution error:', aiErr)
         }
       } else {
-        // Fallback: generate from scratch (legacy behavior)
         console.log('No saved AI model, generating from scratch')
         const leadInfo = leadData ? Object.entries(leadData)
           .filter(([k, v]) => v && !['id', 'created_at', 'updated_at', 'created_by', 'assigned_to'].includes(k))
@@ -1177,7 +1162,6 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
         messageText = `📋 *${groupName}*\n\nGrupo criado para acompanhamento do caso de *${lead_name}*.`
       }
     } else if (settings.initial_message_template) {
-      // Use template with variable substitution
       messageText = settings.initial_message_template
 
       const replacements: Record<string, string> = {
@@ -1203,14 +1187,12 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
       // Clean admin notes from AI output
       messageText = messageText.replace(/⚠️\s*OBSERV[AÇ]+[ÃO]+[:\s].*$/gims, '').trim()
       
-      // Remove incomplete/dangling lines (e.g., "* *Meses" without content)
+      // Remove incomplete/dangling lines
       messageText = messageText
         .split('\n')
         .filter(line => {
           const trimmed = line.trim()
-          // Remove lines that are just bullets with no real content
           if (/^\*?\s*\*[^*]*$/.test(trimmed) && trimmed.length < 15 && !trimmed.includes(':')) return false
-          // Remove lines that look like incomplete field labels
           if (/^\*\s*\*\w+$/.test(trimmed)) return false
           return true
         })
@@ -1221,7 +1203,6 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
       // Split long messages (WhatsApp limit ~4096 chars)
       const messageParts: string[] = []
       if (messageText.length > 3800) {
-        // Split on double newlines
         const sections = messageText.split('\n\n')
         let currentPart = ''
         for (const section of sections) {
@@ -1254,7 +1235,7 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
 
       await sleep(1000)
 
-      // Send activity links separately (so they're clickable but not in audio)
+      // Send activity links separately
       if (activitiesLinks.length > 0) {
         const linksMessage = '📎 *Links das atividades:*\n\n' + activitiesLinks.join('\n')
         await fetch(`${baseUrl}/send/text`, {
@@ -1266,11 +1247,10 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
         await sleep(1000)
       }
 
-      // Generate and send audio if configured - get voice from member profile (instance owner)
+      // Generate and send audio if configured
       let audioVoiceId = settings.audio_voice_id
       if (creatorInstance.owner_phone) {
         const ownerPhone = creatorInstance.owner_phone.replace(/\D/g, '')
-        // Try multiple phone format matches
         const { data: ownerProfile } = await supabase
           .from('profiles')
           .select('voice_id')
@@ -1291,11 +1271,11 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
       } else if (!audioVoiceId) {
         console.log('Skipping audio: no voice ID configured')
       }
-      // Set group description with the initial message text
+
+      // Set group description
       if (groupId) {
         try {
           const groupJidForDesc = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
-          // Truncate description to WhatsApp's 2048 char limit
           const descriptionText = messageText.length > 2048 ? messageText.substring(0, 2045) + '...' : messageText
           const descRes = await fetch(`${baseUrl}/group/updateDescription`, {
             method: 'POST',
@@ -1303,27 +1283,24 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
             body: JSON.stringify({ groupjid: groupJidForDesc, description: descriptionText }),
           })
           if (!descRes.ok) {
-            // Try alternative endpoint
             const descRes2 = await fetch(`${baseUrl}/group/description`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
               body: JSON.stringify({ groupjid: groupJidForDesc, description: descriptionText }),
             })
             if (!descRes2.ok) {
-              console.warn('Failed to set group description:', descRes2.status, await descRes2.text())
-            } else {
-              console.log('Group description set successfully (alt endpoint)')
+              console.warn('[initial-msg] Failed to set group description:', descRes2.status)
             }
-          } else {
-            console.log('Group description set successfully')
           }
+          console.log('[initial-msg] Group description set')
         } catch (descErr) {
-          console.error('Error setting group description:', descErr)
+          console.warn('[initial-msg] Error setting group description:', descErr)
         }
       }
     }
   } catch (err) {
     console.error('Error sending initial message:', err)
+    throw err // Re-throw so runStep captures it
   }
 }
 
@@ -1332,71 +1309,58 @@ async function sendAudioMessage(
   baseUrl: string, creatorInstance: any
 ) {
   try {
-    // Remove links/URLs from text for audio
-    const audioText = text
-      .replace(/https?:\/\/[^\s]+/g, '')
+    const cloudFunctionsUrl2 = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
+    const cloudAnonKey2 = Deno.env.get('SUPABASE_ANON_KEY') || ''
+
+    // Clean text for audio
+    const cleanText = text
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/_([^_]+)_/g, '$1')
+      .replace(/~([^~]+)~/g, '$1')
+      .replace(/```[^`]*```/g, '')
+      .replace(/https?:\/\/\S+/g, '')
+      .replace(/📎\s*Links das atividades:.*$/gms, '')
       .replace(/🔗[^\n]*/g, '')
-      .replace(/\n{3,}/g, '\n\n')
       .trim()
 
-    if (!audioText) return
-
-    const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY')
-    if (!ELEVENLABS_API_KEY) {
-      console.log('ElevenLabs API key not configured, skipping audio')
+    if (!cleanText || cleanText.length < 10) {
+      console.log('Text too short for audio, skipping')
       return
     }
 
-    // Generate TTS
-    const ttsRes = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
-      {
-        method: 'POST',
-        headers: {
-          'xi-api-key': ELEVENLABS_API_KEY,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: audioText,
-          model_id: 'eleven_multilingual_v2',
-          voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-        }),
-      }
-    )
+    const ttsRes = await fetch(`${cloudFunctionsUrl2}/functions/v1/elevenlabs-sts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cloudAnonKey2}`,
+      },
+      body: JSON.stringify({
+        text: cleanText.substring(0, 5000),
+        voice_id: voiceId,
+        output_format: 'mp3_44100_128',
+      }),
+    })
 
     if (!ttsRes.ok) {
-      console.error('TTS error:', ttsRes.status)
+      console.error('TTS API error:', ttsRes.status, await ttsRes.text())
       return
     }
 
-    const audioBuffer = await ttsRes.arrayBuffer()
-    const audioBytes = new Uint8Array(audioBuffer)
+    const ttsData = await ttsRes.json()
+    const audioUrl = ttsData?.audio_url
 
-    // Upload to storage
-    const fileName = `group-audio/${Date.now()}.mp3`
-    const { error: uploadError } = await supabase.storage
-      .from('whatsapp-media')
-      .upload(fileName, audioBytes, { contentType: 'audio/mpeg' })
-
-    if (uploadError) {
-      console.error('Upload error:', uploadError)
+    if (!audioUrl) {
+      console.error('No audio URL in TTS response')
       return
     }
 
-    const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(fileName)
-    const audioUrl = urlData?.publicUrl
-
-    if (!audioUrl) return
-
-    // Send audio to group
     await fetch(`${baseUrl}/send/media`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
       body: JSON.stringify({
-        phone: groupId,
+        number: groupId,
         file: audioUrl,
         type: 'audio',
-        ptt: true,
       }),
     })
     console.log('Audio message sent to group')
@@ -1423,12 +1387,13 @@ async function forwardDocuments(
       .limit(5)
     if (sessionsByLead) sessions.push(...sessionsByLead)
 
-    // Also search by lead_phone if available (sessions may not have lead_id linked)
+    // Also search by lead_phone if available
     if (leadData.lead_phone) {
       const leadPh = leadData.lead_phone.replace(/\D/g, '')
       if (leadPh) {
+        // FIX: use correct table name (was 'wjia_collection_sessions' which doesn't exist)
         const { data: sessionsByPhone } = await supabase
-          .from('wjia_collection_sessions')
+          .from('whatsapp_collection_sessions')
           .select('id, collected_data, received_documents, phone')
           .eq('phone', leadPh)
           .order('created_at', { ascending: false })
@@ -1491,7 +1456,7 @@ async function forwardDocuments(
       }
     }
 
-    // Send collected documents from sessions (collected_data fields)
+    // Send collected documents from sessions
     if (sessions && sessions.length > 0) {
       console.log(`[forward-docs] Found ${sessions.length} collection sessions`)
       for (const session of sessions) {
@@ -1522,7 +1487,7 @@ async function forwardDocuments(
           }
         }
 
-        // Also forward received_documents (media_url from WJIA doc collection)
+        // Also forward received_documents
         const receivedDocs = session.received_documents || []
         for (const rd of receivedDocs) {
           if (!rd.media_url || sentUrls.has(rd.media_url)) continue
@@ -1590,6 +1555,7 @@ async function forwardDocuments(
     console.log(`[forward-docs] Total unique URLs sent: ${sentUrls.size}`)
   } catch (err) {
     console.error('[forward-docs] Error forwarding documents:', err)
+    throw err // Re-throw so runStep captures it
   }
 }
 
@@ -1627,15 +1593,13 @@ async function forwardConversationMedia(
       }
     }
 
-    // 2. Forward inbound media from WhatsApp conversation (images, documents, PDFs)
-    // Search using ALL known phones for this lead (main phone + lead_phone)
+    // 2. Forward inbound media from WhatsApp conversation
     const phonesToSearch = allPhones && allPhones.length > 0 ? allPhones : (phone ? [phone] : [])
     if (phonesToSearch.length === 0) {
       console.log('[conv-media] No phone to search conversation media')
       return
     }
 
-    // Build OR filter for all phones
     const phoneFilters = phonesToSearch.flatMap(p => {
       const suffix = p.slice(-8)
       return [`phone.eq.${p}`, `phone.ilike.%${suffix}%`]
@@ -1652,7 +1616,6 @@ async function forwardConversationMedia(
 
     if (!mediaMessages || mediaMessages.length === 0) {
       console.log(`[conv-media] No inbound media found for phones: ${phonesToSearch.join(', ')}`)
-      console.log('[conv-media] No inbound media found in conversation')
       return
     }
 
@@ -1667,7 +1630,6 @@ async function forwardConversationMedia(
       const mediaType = isDoc ? 'document' : (msg.message_type === 'video' ? 'video' : 'image')
       const caption = msg.message_text ? `📎 ${msg.message_text}` : `📎 Documento do cliente - ${leadName}`
       
-      // Determine file extension based on type
       const ext = isDoc ? 'pdf' : (msg.message_type === 'video' ? 'mp4' : 'jpg')
       const fileName = isDoc ? `Documento_${mediaCount + 1}_${leadName}.${ext}` : undefined
 
@@ -1696,5 +1658,6 @@ async function forwardConversationMedia(
     console.log(`[conv-media] Forwarded ${mediaCount} media items to group`)
   } catch (err) {
     console.error('[conv-media] Error forwarding conversation media:', err)
+    throw err // Re-throw so runStep captures it
   }
 }
