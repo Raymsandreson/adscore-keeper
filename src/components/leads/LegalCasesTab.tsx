@@ -62,6 +62,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   const [caseNucleusId, setCaseNucleusId] = useState('');
   const [caseNotes, setCaseNotes] = useState('');
   const [caseAcolhedor, setCaseAcolhedor] = useState('');
+  const [caseClosedAt, setCaseClosedAt] = useState(new Date().toISOString().split('T')[0]);
   const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null);
   const [processRefreshKey, setProcessRefreshKey] = useState(0);
   const [selectedProcesses, setSelectedProcesses] = useState<Set<string>>(new Set());
@@ -88,6 +89,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     setCaseNucleusId('');
     setCaseNotes('');
     setCaseAcolhedor('');
+    setCaseClosedAt(new Date().toISOString().split('T')[0]);
     setEditingCase(null);
     setSelectedProcesses(new Set());
   };
@@ -162,6 +164,10 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
 
   const handleSaveCase = async () => {
     if (!caseTitle.trim()) return;
+    if (!editingCase && !caseClosedAt) {
+      toast.error('A data de fechamento é obrigatória');
+      return;
+    }
     if (editingCase) {
       await updateCase(editingCase.id, {
         title: caseTitle.trim(),
@@ -183,6 +189,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
         notes: caseNotes,
         case_number: caseCaseNumber || undefined,
         acolhedor: caseAcolhedor && caseAcolhedor !== '__none__' ? caseAcolhedor : undefined,
+        closed_at: caseClosedAt || undefined,
       });
       setExpandedCaseId(newCase.id);
       // Auto-create selected processes
