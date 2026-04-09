@@ -91,6 +91,7 @@ import { useLeadSources } from '@/hooks/useLeadSources';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Pencil, Trash2 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDialog';
 
 interface LeadEditDialogProps {
   open: boolean;
@@ -184,6 +185,7 @@ export function LeadEditDialog({
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [editingSourceLabel, setEditingSourceLabel] = useState('');
   const [whatsappGroups, setWhatsappGroups] = useState<Array<{ id?: string; group_link: string; group_jid: string; group_name: string; label: string }>>([]);
+  const [syncGroupData, setSyncGroupData] = useState<{ jid: string; name: string } | null>(null);
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
   const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress' | 'inviavel'>('');
@@ -679,6 +681,12 @@ ${scrapeData.content || ''}
         );
       }
       setWhatsappGroups(resolvedGroups);
+
+      // Auto-sync group contacts: trigger for first group with a resolved JID
+      const groupWithJid = resolvedGroups.find(g => g.group_jid?.includes('@g.us'));
+      if (groupWithJid) {
+        setSyncGroupData({ jid: groupWithJid.group_jid, name: groupWithJid.group_name || '' });
+      }
 
       // Keep legacy fields in sync (first group)
       const firstGroup = resolvedGroups[0];
@@ -1947,6 +1955,18 @@ ${scrapeData.content || ''}
         open={contactSheetOpen}
         onOpenChange={(v) => { setContactSheetOpen(v); if (!v) setViewingContact(null); }}
       />
+
+      {/* Group Contact Sync Dialog */}
+      {syncGroupData && currentLead && (
+        <GroupContactSyncDialog
+          open={!!syncGroupData}
+          onClose={() => setSyncGroupData(null)}
+          leadId={currentLead.id}
+          leadName={currentLead.lead_name || ''}
+          groupJid={syncGroupData.jid}
+          groupName={syncGroupData.name}
+        />
+      )}
     </>
   );
 }
