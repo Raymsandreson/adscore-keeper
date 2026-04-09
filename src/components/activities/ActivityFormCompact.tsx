@@ -660,7 +660,14 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                     <button type="button" onClick={() => { props.setFormProcessId(''); props.setFormProcessTitle(''); }} className="text-muted-foreground hover:text-foreground">
                       <X className="h-3 w-3" />
                     </button>
-                  </div>
+              </div>
+            )}
+            {props.formCaseId && (
+              <div className="border-t pt-3 mt-3">
+                <Button type="button" size="sm" className="w-full" onClick={() => setLinkCaseOpen(false)}>
+                  Confirmar
+                </Button>
+              </div>
                 )}
               </div>
             )}
