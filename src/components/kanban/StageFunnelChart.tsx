@@ -298,7 +298,7 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
                   onClick={() => setEditingLeadId(lead.id)}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium truncate">{lead.name}</span>
+                    <span className="text-sm font-medium truncate">{lead.lead_name}</span>
                     <Badge variant="outline" className="text-[10px] ml-2 shrink-0">
                       {lead.lead_status === 'closed' ? 'Fechado' :
                        lead.lead_status === 'refused' ? 'Recusado' :
