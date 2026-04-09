@@ -74,7 +74,7 @@ export function AgentMonitorDashboard() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const {
-    filters, filteredConversations, pipelineCounts, effectiveInstanceFilter,
+    filters, filteredConversations, pipelineCounts, effectiveInstanceFilter, effectiveAcolhedorFromUser,
     uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores, uniqueUsers, applyBaseFilters,
   } = useMonitorFilters(conversations, boards, users);
 

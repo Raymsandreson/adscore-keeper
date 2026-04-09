@@ -124,6 +124,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       searchQuery, setSearchQuery,
     },
     effectiveInstanceFilter,
+    effectiveAcolhedorFromUser,
     filteredConversations,
     pipelineCounts,
     uniqueInstances,
