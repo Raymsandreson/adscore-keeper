@@ -115,7 +115,7 @@ function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSettin
     try {
       const { data: lead } = await supabase
         .from('leads')
-        .select('whatsapp_group_id, group_link, lead_name')
+        .select('whatsapp_group_id, group_link, lead_name, board_id')
         .eq('id', leadId)
         .single();
 
@@ -126,9 +126,28 @@ function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSettin
         return;
       }
 
+      // Find the correct instance for this lead's board
+      let instanceId: string | undefined;
+      if (lead?.board_id) {
+        const { data: boardInstances } = await supabase
+          .from('board_group_instances')
+          .select('instance_id')
+          .eq('board_id', lead.board_id)
+          .limit(1);
+        instanceId = boardInstances?.[0]?.instance_id;
+      }
+
       const message = buildMsg();
+      const sendBody: Record<string, any> = { 
+        phone: groupId, 
+        chat_id: groupId, 
+        message, 
+        lead_id: leadId,
+      };
+      if (instanceId) sendBody.instance_id = instanceId;
+
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
-        body: { phone: groupId, chat_id: groupId, message, lead_id: leadId },
+        body: sendBody,
       });
 
       if (error || !data?.success) {

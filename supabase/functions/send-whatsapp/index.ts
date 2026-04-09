@@ -74,33 +74,56 @@ async function fetchGroupInviteInfo(instance: any, groupLink: string) {
   }
 
   const baseUrl = instance.base_url || "https://abraci.uazapi.com";
-  const res = await fetch(`${baseUrl}/group/inviteInfo`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      token: instance.instance_token,
-    },
-    body: JSON.stringify({ code: inviteCode }),
-  });
 
-  if (!res.ok) {
-    const errText = await readResponseTextSafe(res);
-    console.error("Group inviteInfo error:", res.status, errText);
-    throw new Error(`Erro ao resolver link: ${res.status}`);
+  // Try multiple endpoints to resolve the invite code
+  const endpoints = [
+    { url: `${baseUrl}/group/inviteInfo`, body: { code: inviteCode } },
+    { url: `${baseUrl}/group/acceptInvite`, body: { code: inviteCode } },
+    { url: `${baseUrl}/group/getInviteInfo`, body: { inviteCode } },
+  ];
+
+  let groupData: any = null;
+  let lastError = "";
+
+  for (const ep of endpoints) {
+    try {
+      const res = await fetch(ep.url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          token: instance.instance_token,
+        },
+        body: JSON.stringify(ep.body),
+      });
+
+      if (res.ok) {
+        groupData = await res.json();
+        console.log(
+          `Group resolved via ${ep.url}:`,
+          JSON.stringify(groupData).substring(0, 500),
+        );
+        break;
+      } else {
+        const errText = await readResponseTextSafe(res);
+        lastError = `${ep.url}: ${res.status} ${errText}`;
+        console.warn("Group resolve attempt failed:", lastError);
+      }
+    } catch (e) {
+      lastError = `${ep.url}: ${e instanceof Error ? e.message : "unknown"}`;
+      console.warn("Group resolve attempt error:", lastError);
+    }
   }
 
-  const groupData = await res.json();
-  console.log(
-    "Group inviteInfo response:",
-    JSON.stringify(groupData).substring(0, 500),
-  );
+  if (!groupData) {
+    throw new Error(`Não foi possível resolver o link do grupo. Último erro: ${lastError}`);
+  }
 
   const groupId = groupData?.id || groupData?.jid || groupData?.data?.id || null;
   const groupName = groupData?.subject || groupData?.name ||
     groupData?.data?.subject || "";
 
   if (!groupId) {
-    throw new Error("Não foi possível extrair o ID do grupo");
+    throw new Error("Resposta da API não contém ID do grupo");
   }
 
   return { groupId, groupName };
