@@ -815,11 +815,15 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         (payload) => {
           const newMsg = payload.new as WhatsAppMessage;
 
-          // If filtering by instance, skip irrelevant messages (case-insensitive)
+          // Skip messages from instances the user doesn't have access to
+          const allowedNames = new Set(instances.map(i => i.instance_name?.trim().toLowerCase()));
+          const incomingName = (newMsg.instance_name || '').trim().toLowerCase();
+          if (allowedNames.size > 0 && !allowedNames.has(incomingName)) return;
+
+          // If filtering by specific instance, skip irrelevant messages
           if (selectedInstanceId && selectedInstanceId !== 'all') {
             const inst = instances.find(i => i.id === selectedInstanceId);
             const selectedName = inst?.instance_name?.trim().toLowerCase();
-            const incomingName = (newMsg.instance_name || '').trim().toLowerCase();
             if (selectedName && incomingName !== selectedName) return;
           }
 
