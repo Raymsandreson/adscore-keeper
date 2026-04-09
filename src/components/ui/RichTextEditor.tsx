@@ -1,5 +1,4 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -480,7 +479,8 @@ function RichTextEditorComponent({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const editorRef = useRef<LexicalEditor | null>(null);
-  const lastEmittedHtml = useRef(value || '');
+  // Use a sentinel so SyncPlugin always runs on first mount to populate the editor
+  const lastEmittedHtml = useRef<string>('__INIT__');
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAiText = useRef('');
 
@@ -491,21 +491,13 @@ function RichTextEditorComponent({
     nodes: [ListNode, ListItemNode, LinkNode, AutoLinkNode],
   }).current;
 
-  const flushEditorHtml = useCallback((editor: LexicalEditor, options?: { sync?: boolean }) => {
+  const flushEditorHtml = useCallback((editor: LexicalEditor) => {
     editor.getEditorState().read(() => {
       const html = $generateHtmlFromNodes(editor);
       const root = $getRoot();
       const text = root.getTextContent().trim();
       const output = text === '' ? '' : html;
       lastEmittedHtml.current = output;
-
-      if (options?.sync) {
-        flushSync(() => {
-          onChangeRef.current(output);
-        });
-        return;
-      }
-
       onChangeRef.current(output);
     });
   }, []);
@@ -519,7 +511,7 @@ function RichTextEditorComponent({
 
       const editor = editorRef.current;
       if (editor) {
-        flushEditorHtml(editor, { sync: true });
+        flushEditorHtml(editor);
       }
     };
   }, [flushEditorHtml]);
@@ -530,7 +522,7 @@ function RichTextEditorComponent({
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(() => {
         flushEditorHtml(editor);
-      }, 500);
+      }, 250);
     },
     [flushEditorHtml],
   );
@@ -546,10 +538,12 @@ function RichTextEditorComponent({
     const editor = editorRef.current;
     if (editor) {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
-      flushEditorHtml(editor, { sync: true });
+      flushEditorHtml(editor);
     }
-
-    onExpand?.();
+    // Use microtask to ensure state is flushed before opening the sheet
+    queueMicrotask(() => {
+      onExpand?.();
+    });
   }, [flushEditorHtml, onExpand]);
 
   const fetchAiOptions = useCallback(async (action: string, text: string, customPrompt?: string) => {
