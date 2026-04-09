@@ -22,6 +22,32 @@ const STATE_IDS: Record<string, number> = {
   RS:43,RO:11,RR:14,SC:42,SP:35,SE:28,TO:17
 };
 
+// DDD → State mapping
+const DDD_TO_STATE: Record<string, string> = {
+  '11':'SP','12':'SP','13':'SP','14':'SP','15':'SP','16':'SP','17':'SP','18':'SP','19':'SP',
+  '21':'RJ','22':'RJ','24':'RJ',
+  '27':'ES','28':'ES',
+  '31':'MG','32':'MG','33':'MG','34':'MG','35':'MG','37':'MG','38':'MG',
+  '41':'PR','42':'PR','43':'PR','44':'PR','45':'PR','46':'PR',
+  '47':'SC','48':'SC','49':'SC',
+  '51':'RS','53':'RS','54':'RS','55':'RS',
+  '61':'DF','62':'GO','63':'TO','64':'GO','65':'MT','66':'MT','67':'MS','68':'AC','69':'RO',
+  '71':'BA','73':'BA','74':'BA','75':'BA','77':'BA',
+  '79':'SE',
+  '81':'PE','82':'AL','83':'PB','84':'RN','85':'CE','86':'PI','87':'PE','88':'CE','89':'PI',
+  '91':'PA','92':'AM','93':'PA','94':'PA','95':'RR','96':'AP','97':'AM','98':'MA','99':'MA',
+};
+
+function getStateFromPhone(phone: string): string {
+  // Phone format: 55DDXXXXXXXXX
+  const clean = phone.replace(/\D/g, '');
+  if (clean.length >= 4 && clean.startsWith('55')) {
+    const ddd = clean.substring(2, 4);
+    return DDD_TO_STATE[ddd] || '';
+  }
+  return '';
+}
+
 interface ContactSuggestion {
   phone: string;
   suggested_name: string;
@@ -207,7 +233,7 @@ export function GroupContactSyncDialog({
           final_name: s.suggested_name || '',
           should_create: true,
           city: '',
-          state: '',
+          state: getStateFromPhone(s.phone) || '',
           email: '',
           profession: '',
           notes: '',
@@ -232,7 +258,7 @@ export function GroupContactSyncDialog({
   };
 
   const handleCreateContacts = async () => {
-    const toCreate = suggestions.filter(s => s.should_create && s.final_name.trim());
+    const toCreate = suggestions.filter(s => s.should_create);
     if (toCreate.length === 0) {
       toast.info('Nenhum contato para criar');
       onClose();
@@ -248,7 +274,7 @@ export function GroupContactSyncDialog({
         const { data: newContact, error: createError } = await supabase
           .from('contacts')
           .insert({
-            full_name: s.final_name.trim(),
+            full_name: s.final_name.trim() || s.phone,
             phone: s.phone,
             source: 'whatsapp_group',
             classification: 'prospect',
@@ -478,7 +504,7 @@ export function GroupContactSyncDialog({
           {phase === 'results' && suggestions.filter(s => s.should_create).length > 0 && (
             <Button onClick={handleCreateContacts} disabled={syncing} className="gap-1">
               {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-              Criar {suggestions.filter(s => s.should_create && s.final_name.trim()).length} contato(s)
+              Criar {suggestions.filter(s => s.should_create).length} contato(s)
             </Button>
           )}
         </DialogFooter>
