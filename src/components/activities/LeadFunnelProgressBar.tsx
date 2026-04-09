@@ -153,11 +153,34 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     ));
   };
 
-  // Hierarchical progress calculation
+  // Hierarchical progress calculation — if lead is closed, always 100%
   const hierarchicalProgress = useMemo(() => {
+    if (isLeadClosed) {
+      // Return 100% for all stages when lead is closed
+      const stageIds = stages.map(s => s.id);
+      const phaseWeight = stageIds.length > 0 ? 100 / stageIds.length : 0;
+      return {
+        globalPercent: 100,
+        stageDetails: stageIds.map(stageId => {
+          const stageInstances = instances.filter(i => i.stage_id === stageId);
+          return {
+            stageId,
+            stagePercent: phaseWeight,
+            completedPercent: phaseWeight,
+            objectives: stageInstances.map(inst => ({
+              instanceId: inst.id,
+              objectiveWeight: stageInstances.length > 0 ? phaseWeight / stageInstances.length : 0,
+              totalSteps: inst.items.length,
+              completedSteps: inst.items.length,
+              completedPercent: stageInstances.length > 0 ? phaseWeight / stageInstances.length : 0,
+            })),
+          };
+        }),
+      };
+    }
     const stageIds = stages.map(s => s.id);
     return calculateHierarchicalProgress(stageIds, instances);
-  }, [stages, instances]);
+  }, [stages, instances, isLeadClosed]);
 
   const globalPercent = hierarchicalProgress.globalPercent;
 
