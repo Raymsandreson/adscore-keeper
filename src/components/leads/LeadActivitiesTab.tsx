@@ -45,6 +45,7 @@ interface LeadActivitiesTabProps {
 }
 
 export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) {
+  const navigate = useNavigate();
   const [activities, setActivities] = useState<LeadActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [showChatSheet, setShowChatSheet] = useState(false);
