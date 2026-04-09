@@ -158,7 +158,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   useEffect(() => { fetchActivities(); }, [fetchActivities]);
 
   const openEdit = (a: LeadActivity) => {
-    navigate(`/activities?openActivity=${a.id}`);
+    setEditActivityId(a.id);
   };
 
   const handleCreateFromChat = async (activityData: any) => {
