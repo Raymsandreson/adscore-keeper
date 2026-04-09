@@ -643,52 +643,49 @@ ${scrapeData.content || ''}
     console.log('[handleSave] Starting save for lead:', currentLead.id);
     setSaving(true);
     try {
-      // Determine group link and ID
-      const rawLink = groupLink || '';
-      const isLink = rawLink.includes('chat.whatsapp.com');
-      const isJid = rawLink.includes('@g.us');
+      // Save WhatsApp groups to new table
+      // First delete all existing groups for this lead, then insert current ones
+      await supabase.from('lead_whatsapp_groups').delete().eq('lead_id', currentLead.id);
       
-      let finalGroupLink: string | null = isLink ? rawLink : (isJid ? null : (rawLink || null));
-      let finalGroupId: string | null = whatsappGroupId || null;
-
-      // If user pasted a link and we don't have a JID yet, resolve it
-      if (isLink && !finalGroupId?.includes('@g.us')) {
-        console.log('[handleSave] Resolving WhatsApp group link...');
-        try {
-          const { data: resolveData } = await cloudFunctions.invoke('send-whatsapp', {
-            body: { action: 'resolve_group_link', group_link: rawLink },
-          });
-          if (resolveData?.success && resolveData.group_id) {
-            finalGroupId = resolveData.group_id;
-            setWhatsappGroupId(resolveData.group_id);
-            toast.success(`Grupo identificado: ${resolveData.group_name || resolveData.group_id}`);
-          } else {
-            console.warn('Could not resolve group link:', resolveData?.error);
-            toast.warning('Link do grupo salvo, mas não foi possível resolver o ID.');
+      const resolvedGroups = [...whatsappGroups];
+      for (let i = 0; i < resolvedGroups.length; i++) {
+        const g = resolvedGroups[i];
+        const rawLink = g.group_link || '';
+        const isLink = rawLink.includes('chat.whatsapp.com');
+        
+        if (isLink && !g.group_jid?.includes('@g.us')) {
+          try {
+            const { data: resolveData } = await cloudFunctions.invoke('send-whatsapp', {
+              body: { action: 'resolve_group_link', group_link: rawLink },
+            });
+            if (resolveData?.success && resolveData.group_id) {
+              resolvedGroups[i] = { ...g, group_jid: resolveData.group_id, group_name: resolveData.group_name || '' };
+            }
+          } catch (e) {
+            console.warn('Error resolving group link:', e);
           }
-        } catch (e) {
-          console.warn('Error resolving group link (non-blocking):', e);
-          toast.warning('Falha ao resolver link do grupo. Link salvo mesmo assim.');
+        } else if (rawLink.includes('@g.us')) {
+          resolvedGroups[i] = { ...g, group_jid: rawLink, group_link: '' };
         }
-      } else if (isJid) {
-        // User pasted a JID directly
-        finalGroupId = rawLink;
-        finalGroupLink = null;
       }
+      
+      if (resolvedGroups.length > 0) {
+        await supabase.from('lead_whatsapp_groups').insert(
+          resolvedGroups.map(g => ({
+            lead_id: currentLead.id,
+            group_link: g.group_link || null,
+            group_jid: g.group_jid || null,
+            group_name: g.group_name || null,
+            label: g.label || null,
+          }))
+        );
+      }
+      setWhatsappGroups(resolvedGroups);
 
-      console.log('[handleSave] Calling onSave with updates...');
-      // Save all fields
-      await onSave(currentLead.id, {
-        lead_name: leadName.trim(),
-        lead_phone: leadPhone || null,
-        lead_email: leadEmail || null,
-        instagram_username: instagramUsername || null,
-        source,
-        notes: notes || null,
-        client_classification: (clientClassification || null) as 'client' | 'non_client' | 'prospect' | null,
-        acolhedor: acolhedor || null,
-        group_link: finalGroupLink,
-        whatsapp_group_id: finalGroupId,
+      // Keep legacy fields in sync (first group)
+      const firstGroup = resolvedGroups[0];
+      const finalGroupLink = firstGroup?.group_link || null;
+      const finalGroupId = firstGroup?.group_jid || null;
         // Accident fields
         victim_name: victimName || null,
         victim_age: victimAge ? parseInt(victimAge) : null,
