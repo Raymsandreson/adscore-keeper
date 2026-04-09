@@ -96,7 +96,7 @@ const MATRIX_OPTIONS = [
   { value: 'eliminate', emoji: '🗑️', label: 'Retirar', color: 'border-muted bg-muted/50 text-muted-foreground', active: 'border-muted-foreground bg-muted-foreground text-background' },
 ];
 
-export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSetting, reorderFields, formLeadIdForTTS, formContactIdForTTS }: {
+export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSetting, reorderFields, formLeadIdForTTS, formContactIdForTTS, formAssignedTo }: {
   buildMsg: () => string;
   leadId: string;
   fieldSettings: any[];
@@ -104,14 +104,58 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   reorderFields: any;
   formLeadIdForTTS?: string;
   formContactIdForTTS?: string;
+  formAssignedTo?: string;
 }) {
   const [sending, setSending] = useState(false);
 
   const handleSendToGroup = async () => {
     if (!leadId) {
-      toast.error('Vincule um lead para enviar ao grupo');
+      // No lead: send to assessor's WhatsApp instance as private message
+      if (!formAssignedTo) {
+        toast.error('Vincule um lead ou selecione um assessor para enviar');
+        return;
+      }
+      setSending(true);
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('phone, default_instance_id, full_name')
+          .eq('user_id', formAssignedTo)
+          .maybeSingle();
+
+        if (!profile?.phone) {
+          toast.error('O assessor não possui telefone cadastrado no perfil');
+          setSending(false);
+          return;
+        }
+        if (!profile?.default_instance_id) {
+          toast.error('O assessor não possui instância WhatsApp configurada');
+          setSending(false);
+          return;
+        }
+
+        const message = buildMsg();
+        const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
+          body: {
+            phone: (profile.phone as string).replace(/\D/g, ''),
+            message,
+            instance_id: profile.default_instance_id,
+          },
+        });
+
+        if (error || !data?.success) {
+          toast.error(data?.error || 'Erro ao enviar mensagem');
+        } else {
+          toast.success(`Mensagem enviada para ${profile.full_name || 'o assessor'}!`);
+        }
+      } catch (e: any) {
+        toast.error(e.message || 'Erro ao enviar');
+      } finally {
+        setSending(false);
+      }
       return;
     }
+
     setSending(true);
     try {
       const [leadRes, profileRes] = await Promise.all([
@@ -174,6 +218,9 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
     }
   };
 
+  const hasLead = !!leadId;
+  const buttonLabel = hasLead ? 'Enviar ao Grupo' : 'Enviar ao Assessor';
+
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
       <Button type="button" variant="outline" size="sm" className="gap-1 h-8 text-xs" onClick={() => { navigator.clipboard.writeText(buildMsg()); toast.success('Mensagem copiada!'); }}>
@@ -181,7 +228,7 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
       </Button>
       <Button type="button" variant="default" size="sm" className="gap-1 h-8 text-xs" onClick={handleSendToGroup} disabled={sending}>
         {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-        Enviar ao Grupo
+        {buttonLabel}
       </Button>
       <ActivityTTSButton messageText={buildMsg()} leadId={formLeadIdForTTS} contactId={formContactIdForTTS} />
       <ActivityFieldSettingsDialog fields={fieldSettings} onUpdateField={updateFieldSetting} onReorder={reorderFields} />
