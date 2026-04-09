@@ -6,27 +6,21 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, UserPlus, Users, Phone, MapPin, Mail, Briefcase, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, UserPlus, Users, Phone, MapPin, Mail, Briefcase, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
-import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 
 const BRAZILIAN_STATES = [
   'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT',
   'PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'
 ];
 
-interface IBGECity {
-  id: number;
-  nome: string;
-}
-
-interface CboOption {
-  id: string;
-  cbo_code: string;
-  title: string;
-}
+const STATE_IDS: Record<string, number> = {
+  AC:12,AL:27,AP:16,AM:13,BA:29,CE:23,DF:53,ES:32,GO:52,MA:21,
+  MT:51,MS:50,MG:31,PA:15,PB:25,PR:41,PE:26,PI:22,RJ:33,RN:24,
+  RS:43,RO:11,RR:14,SC:42,SP:35,SE:28,TO:17
+};
 
 interface ContactSuggestion {
   phone: string;
@@ -34,7 +28,6 @@ interface ContactSuggestion {
   message_count: number;
   instances_seen: string[];
   conversation_preview: string;
-  // User editable
   final_name: string;
   should_create: boolean;
   city: string;
@@ -61,10 +54,120 @@ interface GroupContactSyncDialogProps {
   instanceId?: string;
 }
 
+// Searchable city input with IBGE API
+function CitySearchInput({ state, value, onChange, placeholder }: {
+  state: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const [cities, setCities] = useState<string[]>([]);
+  const [filtered, setFiltered] = useState<string[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [loadingCities, setLoadingCities] = useState(false);
+
+  useEffect(() => {
+    if (!state || !STATE_IDS[state]) { setCities([]); return; }
+    setLoadingCities(true);
+    fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${STATE_IDS[state]}/municipios?orderBy=nome`)
+      .then(r => r.json())
+      .then((data: { nome: string }[]) => setCities(data.map(c => c.nome)))
+      .catch(() => setCities([]))
+      .finally(() => setLoadingCities(false));
+  }, [state]);
+
+  useEffect(() => {
+    if (!value.trim()) { setFiltered(cities.slice(0, 20)); return; }
+    const q = value.toLowerCase();
+    setFiltered(cities.filter(c => c.toLowerCase().includes(q)).slice(0, 20));
+  }, [value, cities]);
+
+  return (
+    <div className="relative">
+      <Input
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setShowDropdown(true); }}
+        onFocus={() => setShowDropdown(true)}
+        onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+        placeholder={loadingCities ? 'Carregando...' : (placeholder || 'Buscar cidade')}
+        className="h-8"
+        disabled={!state}
+      />
+      {showDropdown && filtered.length > 0 && (
+        <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-40 overflow-y-auto">
+          {filtered.map(c => (
+            <button
+              key={c}
+              type="button"
+              className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent truncate"
+              onMouseDown={(e) => { e.preventDefault(); onChange(c); setShowDropdown(false); }}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Searchable CBO profession input
+function ProfessionSearchInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [results, setResults] = useState<{ cbo_code: string; title: string }[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    if (!value || value.length < 2) { setResults([]); return; }
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const { data } = await (supabase as any)
+          .from('cbo_professions')
+          .select('cbo_code, title')
+          .or(`title.ilike.%${value}%,cbo_code.ilike.%${value}%`)
+          .order('title', { ascending: true })
+          .limit(20);
+        setResults(data || []);
+      } catch { setResults([]); }
+      setSearching(false);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [value]);
+
+  return (
+    <div className="relative">
+      <Input
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setShowDropdown(true); }}
+        onFocus={() => value.length >= 2 && setShowDropdown(true)}
+        onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+        placeholder="Buscar profissão CBO..."
+        className="h-8"
+      />
+      {showDropdown && results.length > 0 && (
+        <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-40 overflow-y-auto">
+          {results.map(r => (
+            <button
+              key={r.cbo_code}
+              type="button"
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent truncate"
+              onMouseDown={(e) => { e.preventDefault(); onChange(r.title); setShowDropdown(false); }}
+            >
+              <span className="font-mono text-muted-foreground mr-1">{r.cbo_code}</span>
+              {r.title}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function GroupContactSyncDialog({
-  open, onClose, leadId, leadName, groupJid, groupName, instanceId
+  open, onClose, leadId, leadName: _leadName, groupJid, groupName, instanceId
 }: GroupContactSyncDialogProps) {
-  const [loading, setLoading] = useState(false);
+  const [_loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [suggestions, setSuggestions] = useState<ContactSuggestion[]>([]);
@@ -77,7 +180,6 @@ export function GroupContactSyncDialog({
     setLoading(true);
     setPhase('loading');
     try {
-      // Fetch lead location to pre-fill
       if (leadId) {
         const { data: leadData } = await supabase
           .from('leads')
@@ -139,7 +241,6 @@ export function GroupContactSyncDialog({
 
     setSyncing(true);
     let created = 0;
-
     const { data: { user: authUser } } = await supabase.auth.getUser();
 
     for (const s of toCreate) {
@@ -188,6 +289,7 @@ export function GroupContactSyncDialog({
     if (open && groupJid) {
       startSync();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, groupJid]);
 
   const toggleExpand = (idx: number) => {
@@ -216,7 +318,6 @@ export function GroupContactSyncDialog({
 
         {phase === 'results' && syncResult && (
           <div className="space-y-4">
-            {/* Summary */}
             <div className="grid grid-cols-3 gap-3">
               <div className="text-center p-3 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200">
                 <p className="text-2xl font-bold text-green-600">{syncResult.linked_existing}</p>
@@ -246,7 +347,6 @@ export function GroupContactSyncDialog({
                           s.should_create ? 'bg-background' : 'bg-muted/40 opacity-60'
                         }`}
                       >
-                        {/* Header row */}
                         <div className="flex items-center gap-3 p-3">
                           <Switch
                             checked={s.should_create}
@@ -291,28 +391,16 @@ export function GroupContactSyncDialog({
                           )}
                         </div>
 
-                        {/* Expanded fields */}
                         {s.should_create && expandedIdx === idx && (
                           <div className="px-3 pb-3 pt-1 border-t space-y-2">
                             <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <label className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
-                                  <MapPin className="h-3 w-3" /> Cidade
-                                </label>
-                                <Input
-                                  value={s.city}
-                                  onChange={(e) => updateSuggestion(idx, { city: e.target.value })}
-                                  placeholder={leadCity || 'Cidade'}
-                                  className="h-8"
-                                />
-                              </div>
                               <div>
                                 <label className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
                                   <MapPin className="h-3 w-3" /> Estado
                                 </label>
                                 <Select
                                   value={s.state}
-                                  onValueChange={(v) => updateSuggestion(idx, { state: v })}
+                                  onValueChange={(v) => updateSuggestion(idx, { state: v, city: '' })}
                                 >
                                   <SelectTrigger className="h-8">
                                     <SelectValue placeholder={leadState || 'UF'} />
@@ -323,6 +411,17 @@ export function GroupContactSyncDialog({
                                     ))}
                                   </SelectContent>
                                 </Select>
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
+                                  <MapPin className="h-3 w-3" /> Cidade
+                                </label>
+                                <CitySearchInput
+                                  state={s.state || leadState || ''}
+                                  value={s.city}
+                                  onChange={(v) => updateSuggestion(idx, { city: v })}
+                                  placeholder={leadCity || 'Buscar cidade'}
+                                />
                               </div>
                             </div>
                             <div className="grid grid-cols-2 gap-2">
@@ -342,11 +441,9 @@ export function GroupContactSyncDialog({
                                 <label className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
                                   <Briefcase className="h-3 w-3" /> Profissão
                                 </label>
-                                <Input
+                                <ProfessionSearchInput
                                   value={s.profession}
-                                  onChange={(e) => updateSuggestion(idx, { profession: e.target.value })}
-                                  placeholder="Profissão"
-                                  className="h-8"
+                                  onChange={(v) => updateSuggestion(idx, { profession: v })}
                                 />
                               </div>
                             </div>
