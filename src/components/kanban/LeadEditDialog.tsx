@@ -1207,38 +1207,42 @@ ${scrapeData.content || ''}
                   <Label>Grupos WhatsApp</Label>
                   <div className="space-y-2 mt-1">
                     {whatsappGroups.map((g, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <Input
-                          value={g.group_link || g.group_jid || ''}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setWhatsappGroups(prev => prev.map((item, i) => i === idx ? {
-                              ...item,
-                              group_link: val.includes('@g.us') ? '' : val,
-                              group_jid: val.includes('@g.us') ? val : item.group_jid,
-                            } : item));
-                          }}
-                          placeholder="https://chat.whatsapp.com/... ou JID"
-                          className="flex-1"
-                        />
-                        {(g.group_link || g.group_jid) && (
-                          <a href={g.group_link?.includes('chat.whatsapp.com') ? g.group_link : `https://chat.whatsapp.com/${g.group_link || ''}`} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                            <Button type="button" variant="outline" size="sm" className="gap-1 text-green-600 border-green-200">
-                              <ExternalLink className="h-3 w-3" /> Abrir
-                            </Button>
-                          </a>
+                      <div key={idx}>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={g.group_link || g.group_jid || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setWhatsappGroups(prev => prev.map((item, i) => i === idx ? {
+                                ...item,
+                                group_link: val.includes('@g.us') ? '' : val,
+                                group_jid: val.includes('@g.us') ? val : item.group_jid,
+                              } : item));
+                            }}
+                            placeholder="https://chat.whatsapp.com/... ou JID"
+                            className="flex-1"
+                          />
+                          {(g.group_link || g.group_jid) && (
+                            <a href={g.group_link?.includes('chat.whatsapp.com') ? g.group_link : `https://chat.whatsapp.com/${g.group_link || ''}`} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                              <Button type="button" variant="outline" size="sm" className="gap-1 text-green-600 border-green-200">
+                                <ExternalLink className="h-3 w-3" /> Abrir
+                              </Button>
+                            </a>
+                          )}
+                          <Button type="button" variant="ghost" size="sm" onClick={() => setWhatsappGroups(prev => prev.filter((_, i) => i !== idx))}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        {g.group_jid?.includes('@g.us') ? (
+                          <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
+                            ✅ ID: <span className="font-mono text-green-700">{g.group_jid}</span>
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Cole o link do grupo. O ID será extraído ao salvar.
+                          </p>
                         )}
-                        <Button type="button" variant="ghost" size="sm" onClick={() => setWhatsappGroups(prev => prev.filter((_, i) => i !== idx))}>
-                          <X className="h-3 w-3" />
-                        </Button>
                       </div>
-                    ))}
-                    {whatsappGroups.map((g, idx) => (
-                      g.group_jid?.includes('@g.us') ? (
-                        <p key={`jid-${idx}`} className="text-xs text-green-600 flex items-center gap-1 -mt-1">
-                          ✅ ID: <span className="font-mono text-green-700">{g.group_jid}</span>
-                        </p>
-                      ) : null
                     ))}
                     <Button
                       type="button"
