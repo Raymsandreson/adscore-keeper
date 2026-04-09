@@ -218,6 +218,10 @@ export function AgentMonitorDashboard() {
   // Filter gaps by acolhedor
   const filteredGaps = useMemo(() => {
     const filterByAcolhedor = (items: typeof gaps.closedWithoutGroup) => {
+      // User filter takes priority (maps user to acolhedor name)
+      if (effectiveAcolhedorFromUser) {
+        return items.filter(i => i.acolhedor === effectiveAcolhedorFromUser);
+      }
       if (filters.acolhedorFilter === 'all') return items;
       if (filters.acolhedorFilter === '__none__') return items.filter(i => !i.acolhedor);
       return items.filter(i => i.acolhedor === filters.acolhedorFilter);
@@ -228,7 +232,7 @@ export function AgentMonitorDashboard() {
       casesWithoutProcess: filterByAcolhedor(gaps.casesWithoutProcess),
       processesWithoutActivity: filterByAcolhedor(gaps.processesWithoutActivity),
     };
-  }, [gaps, filters.acolhedorFilter]);
+  }, [gaps, filters.acolhedorFilter, effectiveAcolhedorFromUser]);
 
   const batch = useBatchActions(conversations, fetchData);
 
