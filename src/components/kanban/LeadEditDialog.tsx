@@ -71,6 +71,7 @@ import {
   Loader2,
   Scale,
   RefreshCw,
+  Wrench,
   CheckSquare,
   CheckCircle,
   XCircle,
@@ -1236,6 +1237,71 @@ ${scrapeData.content || ''}
                                 <ExternalLink className="h-3 w-3" /> Abrir
                               </Button>
                             </a>
+                          )}
+                          {g.group_jid?.includes('@g.us') && currentLead && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="gap-1 text-orange-600 border-orange-200"
+                              onClick={async () => {
+                                try {
+                                  toast.info('Reparando grupo... Buscando contatos vinculados.');
+                                  // Get linked contacts for this lead
+                                  const { data: contactLinks } = await supabase
+                                    .from('contact_leads')
+                                    .select('contact_id, contacts(phone)')
+                                    .eq('lead_id', currentLead.id);
+                                  
+                                  const phones = (contactLinks || [])
+                                    .map((cl: any) => cl.contacts?.phone?.replace(/\D/g, ''))
+                                    .filter((p: string) => p && p.length >= 10);
+                                  
+                                  // Also add lead phone
+                                  const leadPhoneClean = currentLead.lead_phone?.replace(/\D/g, '') || '';
+                                  if (leadPhoneClean.length >= 10 && !phones.includes(leadPhoneClean)) {
+                                    phones.push(leadPhoneClean);
+                                  }
+                                  
+                                  if (phones.length === 0) {
+                                    toast.warning('Nenhum contato vinculado encontrado para adicionar ao grupo.');
+                                    return;
+                                  }
+
+                                  // Get user's default instance
+                                  const { data: { user } } = await supabase.auth.getUser();
+                                  let instanceId: string | null = null;
+                                  if (user) {
+                                    const { data: profile } = await supabase
+                                      .from('profiles')
+                                      .select('default_instance_id')
+                                      .eq('user_id', user.id)
+                                      .single();
+                                    instanceId = (profile as any)?.default_instance_id || null;
+                                  }
+
+                                  const participants = phones.map((p: string) => `${p}@s.whatsapp.net`);
+                                  
+                                  const { data: result, error } = await supabase.functions.invoke('repair-whatsapp-group', {
+                                    body: {
+                                      lead_id: currentLead.id,
+                                      group_jid: g.group_jid,
+                                      participants,
+                                      instance_id: instanceId,
+                                      forward_docs: false,
+                                    },
+                                  });
+                                  
+                                  if (error) throw error;
+                                  toast.success(`Reparo enviado! ${participants.length} participante(s) sendo adicionado(s) ao grupo.`);
+                                } catch (err: any) {
+                                  console.error('Repair error:', err);
+                                  toast.error('Erro ao reparar grupo: ' + (err.message || 'Erro desconhecido'));
+                                }
+                              }}
+                            >
+                              <Wrench className="h-3 w-3" /> Reparar
+                            </Button>
                           )}
                           <Button type="button" variant="ghost" size="sm" onClick={() => setWhatsappGroups(prev => prev.filter((_, i) => i !== idx))}>
                             <X className="h-3 w-3" />
