@@ -494,7 +494,13 @@ Deno.serve(async (req) => {
             buildDisconnectedPayload(instance.instance_name, errorText),
           );
         }
-        throw new Error(`UazAPI error: ${uazResponse.status} - ${errorText}`);
+        console.error("UazAPI send_media error:", uazResponse.status, errorText);
+        return buildJsonResponse({
+          success: false,
+          error: `Erro ao enviar mídia: ${errorText || uazResponse.status}`,
+          error_code: /not participating/i.test(errorText) ? "NOT_IN_GROUP" : "SEND_FAILED",
+          instance_name: instance.instance_name,
+        });
       }
 
       const uazData = await uazResponse.json().catch(() => ({}));
@@ -677,7 +683,13 @@ Deno.serve(async (req) => {
           buildDisconnectedPayload(instance.instance_name, errorText),
         );
       }
-      throw new Error(`UazAPI error: ${uazResponse.status} - ${errorText}`);
+      console.error("UazAPI send error:", uazResponse.status, errorText);
+      return buildJsonResponse({
+        success: false,
+        error: `Erro ao enviar mensagem: ${errorText || uazResponse.status}`,
+        error_code: /not participating/i.test(errorText) ? "NOT_IN_GROUP" : "SEND_FAILED",
+        instance_name: instance.instance_name,
+      });
     }
 
     const uazData = await uazResponse.json().catch(() => ({}));
