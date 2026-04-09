@@ -637,13 +637,19 @@ const ActivitiesPage = () => {
 
   const handleCompleteAndCreateNextWithNotify = async (notifyOptions?: { groupJid: string; message: string; sendAudio: boolean; audioText?: string }) => {
     if (!selectedActivity) return;
-    // Save current edits first (do NOT include status — completeActivity handles that)
-    await updateActivity(selectedActivity.id, {
+
+    const currentActivity = selectedActivity;
+
+    // Conclude the current activity without overwriting its existing data with the next activity form
+    await completeActivity(currentActivity.id);
+
+    // Create the next activity with the new data currently filled in the form
+    await createActivity({
       title: formTitle,
       description: null,
-      what_was_done: formWhatWasDone || null,
-      current_status_notes: formCurrentStatus || null,
-      next_steps: formNextSteps || null,
+      what_was_done: null,
+      current_status_notes: null,
+      next_steps: null,
       activity_type: formType,
       priority: formPriority,
       lead_id: formLeadId || null,
@@ -659,44 +665,18 @@ const ActivitiesPage = () => {
       case_title: formCaseTitle || null,
       process_id: formProcessId || null,
       process_title: formProcessTitle || null,
-    } as any);
-    // Complete it (sets status + completed_at + completed_by atomically)
-    await completeActivity(selectedActivity.id);
-    // Create next activity keeping context
-    const today = format(new Date(), 'yyyy-MM-dd');
-    await createActivity({
-      title: formTitle,
-      description: null,
-      what_was_done: null,
-      current_status_notes: null,
-      next_steps: null,
-      activity_type: formType,
-      priority: formPriority,
-      lead_id: formLeadId || null,
-      lead_name: formLeadName || null,
-      assigned_to: formAssignedTo || null,
-      assigned_to_name: formAssignedToName || null,
-      deadline: today,
-      notification_date: today,
-      notes: null,
-      contact_id: formContactId || null,
-      contact_name: formContactName || null,
-      case_id: formCaseId || null,
-      case_title: formCaseTitle || null,
-      process_id: formProcessId || null,
-      process_title: formProcessTitle || null,
+      matrix_quadrant: formMatrixQuadrant || null,
     });
 
-    // Send notification if requested
     if (notifyOptions) {
       await sendGroupNotification(notifyOptions);
     }
 
     toast.success('Atividade concluída e próxima criada!');
-    
+
     if (completeNotifySource === 'workflow') {
       const timeSpent = getActivityTimeSpent();
-      setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'completed_next', timeSpent }]);
+      setWorkflowCompleted(prev => [...prev, { activity: currentActivity, action: 'completed_next', timeSpent }]);
       workflowAdvance();
     } else {
       closeSheet();
