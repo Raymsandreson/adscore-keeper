@@ -617,20 +617,20 @@ ${scrapeData.content || ''}
     console.log('[handleSave] Starting save for lead:', currentLead.id);
     setSaving(true);
     try {
-      // Determine the raw input value
-      const rawInput = whatsappGroupId || groupLink || '';
-      const isLink = rawInput.includes('chat.whatsapp.com');
+      // Determine group link and ID
+      const rawLink = groupLink || '';
+      const isLink = rawLink.includes('chat.whatsapp.com');
+      const isJid = rawLink.includes('@g.us');
       
-      // Always save the link in group_link if it looks like a link
-      const finalGroupLink = isLink ? rawInput : (groupLink || null);
-      let finalGroupId: string | null = isLink ? null : (rawInput || null);
+      let finalGroupLink: string | null = isLink ? rawLink : (isJid ? null : (rawLink || null));
+      let finalGroupId: string | null = whatsappGroupId || null;
 
-      // Try to resolve link to JID (non-blocking)
-      if (isLink) {
+      // If user pasted a link and we don't have a JID yet, resolve it
+      if (isLink && !finalGroupId?.includes('@g.us')) {
         console.log('[handleSave] Resolving WhatsApp group link...');
         try {
           const { data: resolveData } = await cloudFunctions.invoke('send-whatsapp', {
-            body: { action: 'resolve_group_link', group_link: rawInput },
+            body: { action: 'resolve_group_link', group_link: rawLink },
           });
           if (resolveData?.success && resolveData.group_id) {
             finalGroupId = resolveData.group_id;
@@ -638,15 +638,16 @@ ${scrapeData.content || ''}
             toast.success(`Grupo identificado: ${resolveData.group_name || resolveData.group_id}`);
           } else {
             console.warn('Could not resolve group link:', resolveData?.error);
-            // Save link as-is in whatsapp_group_id too so messages can still use it
-            finalGroupId = rawInput;
             toast.warning('Link do grupo salvo, mas não foi possível resolver o ID.');
           }
         } catch (e) {
           console.warn('Error resolving group link (non-blocking):', e);
-          finalGroupId = rawInput;
           toast.warning('Falha ao resolver link do grupo. Link salvo mesmo assim.');
         }
+      } else if (isJid) {
+        // User pasted a JID directly
+        finalGroupId = rawLink;
+        finalGroupLink = null;
       }
 
       console.log('[handleSave] Calling onSave with updates...');
