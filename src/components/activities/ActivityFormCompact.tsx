@@ -178,7 +178,7 @@ function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSettin
 }
 
 export function ActivityFormCompact(props: ActivityFormCompactProps) {
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(true);
   const [expandedFieldKey, setExpandedFieldKey] = useState<string | null>(null);
   const [linkLeadOpen, setLinkLeadOpen] = useState(false);
   const [linkContactOpen, setLinkContactOpen] = useState(false);

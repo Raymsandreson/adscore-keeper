@@ -79,7 +79,7 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
   const [currentStatus, setCurrentStatus] = useState('');
   const [nextSteps, setNextSteps] = useState('');
   const [notes, setNotes] = useState('');
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(true);
 
   const { types: activityTypes } = useActivityTypes();
   const profiles = useProfilesList();
