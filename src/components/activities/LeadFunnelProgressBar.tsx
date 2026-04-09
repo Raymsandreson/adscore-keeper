@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -7,6 +7,7 @@ import { ChevronDown, ChevronUp, CheckCircle2, Circle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useChecklists } from '@/hooks/useChecklists';
+import { calculateHierarchicalProgress } from './progress/calculateHierarchicalProgress';
 
 interface Stage {
   id: string;
