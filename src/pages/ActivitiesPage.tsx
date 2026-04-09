@@ -9,6 +9,7 @@ import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
+import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -178,6 +179,8 @@ const ActivitiesPage = () => {
   const selectedCalDay: string | null = selectedCalDays.length > 0 ? selectedCalDays[0] : null;
   const [chatOpen, setChatOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<'form' | 'context'>('form');
+  const [completeNotifyOpen, setCompleteNotifyOpen] = useState(false);
+  const [completeNotifySource, setCompleteNotifySource] = useState<'sheet' | 'workflow'>('sheet');
   const [showLeadSheet, setShowLeadSheet] = useState(false);
   const [viewMode, setViewMode] = usePageState<'list' | 'matrix' | 'blocks'>('activities_viewMode', 'list');
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
