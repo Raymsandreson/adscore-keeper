@@ -186,73 +186,109 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
 
   return (
     <div className="space-y-3">
-      {/* === ROW 1: Title + Link buttons === */}
-      <div className="flex items-center gap-2">
+      {/* === ROW 1: Title === */}
+      <div>
         <Input
           value={props.formTitle}
           onChange={e => props.handleTitleChange(e.target.value)}
           placeholder="Assunto da atividade *"
-          className="h-9 text-sm font-medium border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-primary placeholder:text-muted-foreground/60 flex-1"
+          className="h-9 text-sm font-medium border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-primary placeholder:text-muted-foreground/60"
         />
-        <div className="flex items-center gap-1 shrink-0">
-          {/* Lead link button */}
-          {props.formLeadName ? (
+      </div>
+
+      {/* === ROW 2: Hierarchy links - Lead → Caso → Processo === */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {/* Lead */}
+        {props.formLeadName ? (
+          <div className="flex items-center gap-0.5">
+            <Badge
+              variant="secondary"
+              className="text-[10px] h-6 max-w-[160px] truncate cursor-pointer hover:opacity-80 gap-1"
+              onClick={() => setLinkLeadOpen(true)}
+            >
+              <Building2 className="h-3 w-3 shrink-0" />
+              {props.formLeadName}
+            </Badge>
+            <button type="button" onClick={props.handleClearLead} className="text-muted-foreground hover:text-foreground">
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ) : (
+          <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkLeadOpen(true)}>
+            <Building2 className="h-3 w-3" /> Lead
+          </Button>
+        )}
+
+        {/* Separator → */}
+        {props.formLeadName && <span className="text-muted-foreground text-xs">→</span>}
+
+        {/* Case (only show if lead is selected, or always as option) */}
+        {props.formCaseTitle ? (
+          <div className="flex items-center gap-0.5">
+            <Badge
+              variant="secondary"
+              className="text-[10px] h-6 max-w-[160px] truncate cursor-pointer hover:opacity-80 gap-1 bg-orange-100 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400"
+              onClick={() => setLinkCaseOpen(true)}
+            >
+              <Briefcase className="h-3 w-3 shrink-0" />
+              {props.formCaseTitle}
+            </Badge>
+            <button type="button" onClick={() => { props.setFormCaseId(''); props.setFormCaseTitle(''); props.setFormProcessId(''); props.setFormProcessTitle(''); props.setCaseProcesses([]); }} className="text-muted-foreground hover:text-foreground">
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ) : (
+          <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkCaseOpen(true)}>
+            <Briefcase className="h-3 w-3" /> Caso
+          </Button>
+        )}
+
+        {/* Separator → */}
+        {props.formCaseId && <span className="text-muted-foreground text-xs">→</span>}
+
+        {/* Process (only show if case is selected) */}
+        {props.formCaseId && (
+          props.formProcessTitle ? (
             <div className="flex items-center gap-0.5">
               <Badge
                 variant="secondary"
-                className="text-[9px] h-5 max-w-[120px] truncate cursor-pointer hover:opacity-80"
-                onClick={() => setLinkLeadOpen(true)}
-              >
-                {props.formLeadName}
-              </Badge>
-              <button type="button" onClick={props.handleClearLead} className="text-muted-foreground hover:text-foreground">
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ) : (
-            <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1 text-muted-foreground" onClick={() => setLinkLeadOpen(true)}>
-              <Building2 className="h-3 w-3" /> Lead
-            </Button>
-          )}
-          {/* Contact link button */}
-          {props.formContactName ? (
-            <div className="flex items-center gap-0.5">
-              <Badge
-                variant="outline"
-                className="text-[9px] h-5 max-w-[120px] truncate cursor-pointer hover:opacity-80"
-                onClick={() => setLinkContactOpen(true)}
-              >
-                {props.formContactName}
-              </Badge>
-              <button type="button" onClick={() => { props.setFormContactId(''); props.setFormContactName(''); }} className="text-muted-foreground hover:text-foreground">
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ) : (
-            <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1 text-muted-foreground" onClick={() => setLinkContactOpen(true)}>
-              <UserPlus className="h-3 w-3" /> Contato
-            </Button>
-          )}
-          {/* Case link button */}
-          {props.formCaseTitle ? (
-            <div className="flex items-center gap-0.5">
-              <Badge
-                variant="secondary"
-                className="text-[9px] h-5 max-w-[120px] truncate cursor-pointer hover:opacity-80 bg-orange-100 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400"
+                className="text-[10px] h-6 max-w-[160px] truncate cursor-pointer hover:opacity-80 gap-1 bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400"
                 onClick={() => setLinkCaseOpen(true)}
               >
-                {props.formCaseTitle}
+                {props.formProcessTitle}
               </Badge>
-              <button type="button" onClick={() => { props.setFormCaseId(''); props.setFormCaseTitle(''); props.setFormProcessId(''); props.setFormProcessTitle(''); props.setCaseProcesses([]); }} className="text-muted-foreground hover:text-foreground">
+              <button type="button" onClick={() => { props.setFormProcessId(''); props.setFormProcessTitle(''); }} className="text-muted-foreground hover:text-foreground">
                 <X className="h-3 w-3" />
               </button>
             </div>
-          ) : (
-            <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1 text-muted-foreground" onClick={() => setLinkCaseOpen(true)}>
-              <Briefcase className="h-3 w-3" /> Caso
+          ) : props.caseProcesses.length > 0 ? (
+            <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkCaseOpen(true)}>
+              Processo
             </Button>
-          )}
-        </div>
+          ) : null
+        )}
+
+        {/* Contact */}
+        <span className="text-muted-foreground text-xs">|</span>
+        {props.formContactName ? (
+          <div className="flex items-center gap-0.5">
+            <Badge
+              variant="outline"
+              className="text-[10px] h-6 max-w-[160px] truncate cursor-pointer hover:opacity-80 gap-1"
+              onClick={() => setLinkContactOpen(true)}
+            >
+              <UserPlus className="h-3 w-3 shrink-0" />
+              {props.formContactName}
+            </Badge>
+            <button type="button" onClick={() => { props.setFormContactId(''); props.setFormContactName(''); }} className="text-muted-foreground hover:text-foreground">
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ) : (
+          <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkContactOpen(true)}>
+            <UserPlus className="h-3 w-3" /> Contato
+          </Button>
+        )}
       </div>
 
       {/* === ROW 2: Core selects - 4 columns === */}
