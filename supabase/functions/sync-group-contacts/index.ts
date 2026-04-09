@@ -104,13 +104,16 @@ Deno.serve(async (req) => {
 
     console.log(`Fetching group info for JID: ${groupJid} via instance: ${instance.instance_name}`);
 
+    const requestBody = { groupjid: groupJid };
+    console.log(`Request body: ${JSON.stringify(requestBody)}`);
+    
     const infoRes = await fetch(`${baseUrl}/group/info`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         token: instance.instance_token,
       },
-      body: JSON.stringify({ id: groupJid }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!infoRes.ok) {
