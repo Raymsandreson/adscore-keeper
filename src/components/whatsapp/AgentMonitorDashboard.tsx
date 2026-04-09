@@ -78,13 +78,23 @@ export function AgentMonitorDashboard() {
     uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores, uniqueUsers, applyBaseFilters,
   } = useMonitorFilters(conversations, boards, users);
 
+  // Build a set of phones managed by the selected agent for cross-referencing
+  const agentPhoneSet = useMemo(() => {
+    if (filters.agentFilter === 'all') return null;
+    if (filters.agentFilter === '__none__') {
+      return new Set(conversations.filter(c => !c.agent_id).map(c => c.phone));
+    }
+    return new Set(conversations.filter(c => c.agent_id === filters.agentFilter).map(c => c.phone));
+  }, [conversations, filters.agentFilter]);
+
   // Filter metrics newConvDetails based on active filters
   const filteredNewConvDetails = useMemo(() => {
     return metrics.newConvDetails.filter(c => {
-      if (filters.instanceFilter !== 'all' && c.instance_name !== filters.instanceFilter) return false;
+      if (effectiveInstanceFilter !== 'all' && c.instance_name !== effectiveInstanceFilter) return false;
+      if (agentPhoneSet && !agentPhoneSet.has(c.phone)) return false;
       return true;
     });
-  }, [metrics.newConvDetails, filters.instanceFilter]);
+  }, [metrics.newConvDetails, effectiveInstanceFilter, agentPhoneSet]);
 
   // Derive closedByAgent from filtered conversations (consistent with pipeline counts)
   const filteredClosedByAgent = useMemo(() => {
