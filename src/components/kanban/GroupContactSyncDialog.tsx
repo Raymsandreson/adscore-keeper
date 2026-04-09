@@ -129,11 +129,11 @@ export function GroupContactSyncDialog({
   };
 
   // Auto-start sync when dialog opens
-  useState(() => {
+  useEffect(() => {
     if (open && groupJid) {
       startSync();
     }
-  });
+  }, [open, groupJid]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
