@@ -14,6 +14,7 @@ const SalesFunnelsPage = () => {
   const navigate = useNavigate();
   const { boards } = useKanbanBoards();
   const [search, setSearch] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const salesFunnels = useMemo(
     () => boards.filter(b => b.board_type === 'funnel'),
