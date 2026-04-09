@@ -1955,6 +1955,18 @@ ${scrapeData.content || ''}
         open={contactSheetOpen}
         onOpenChange={(v) => { setContactSheetOpen(v); if (!v) setViewingContact(null); }}
       />
+
+      {/* Group Contact Sync Dialog */}
+      {syncGroupData && currentLead && (
+        <GroupContactSyncDialog
+          open={!!syncGroupData}
+          onClose={() => setSyncGroupData(null)}
+          leadId={currentLead.id}
+          leadName={currentLead.lead_name || ''}
+          groupJid={syncGroupData.jid}
+          groupName={syncGroupData.name}
+        />
+      )}
     </>
   );
 }
