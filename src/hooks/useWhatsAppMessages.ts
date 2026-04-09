@@ -905,7 +905,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     };
   }, [hasLoaded, selectedInstanceId, instances, fetchMessages, realtimeRetryNonce]);
 
-  // Refresh conversation list when tab becomes visible (catches missed realtime events)
+  // Refresh conversation list when tab becomes visible + periodic polling fallback
   useEffect(() => {
     if (!hasLoaded) return;
 
@@ -916,8 +916,16 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     };
     document.addEventListener('visibilitychange', handleVisibility);
 
+    // Periodic polling every 30s as fallback for dropped WebSocket connections
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchMessages(true);
+      }
+    }, 30000);
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
+      clearInterval(pollInterval);
     };
   }, [hasLoaded, fetchMessages]);
 
