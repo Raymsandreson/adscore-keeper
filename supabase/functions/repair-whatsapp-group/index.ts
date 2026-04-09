@@ -30,11 +30,11 @@ Deno.serve(async (req) => {
     // Get instance
     let instance: any = null
     if (instance_id) {
-      const { data } = await supabase.from('whatsapp_instances').select('*').eq('id', instance_id).eq('is_active', true).single()
+      const { data } = await internalClient.from('whatsapp_instances').select('*').eq('id', instance_id).eq('is_active', true).single()
       instance = data
     }
     if (!instance) {
-      const { data } = await supabase.from('whatsapp_instances').select('*').eq('is_active', true).order('created_at').limit(1).single()
+      const { data } = await internalClient.from('whatsapp_instances').select('*').eq('is_active', true).order('created_at').limit(1).single()
       instance = data
     }
     if (!instance) throw new Error('No active instance found')
