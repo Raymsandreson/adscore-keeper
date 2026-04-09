@@ -119,10 +119,34 @@ export function AgentMonitorDashboard() {
       filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all' || filters.userFilter !== 'all';
 
     if (!hasActiveFilter) return metrics.closedLeadDetails;
-    if (operationalFilteredLeadIds.size === 0) return [];
 
-    return metrics.closedLeadDetails.filter(detail => operationalFilteredLeadIds.has(detail.leadId));
-  }, [metrics.closedLeadDetails, operationalFilteredLeadIds, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter, filters.userFilter]);
+    // Filters that can be applied directly from closedLeadDetails fields
+    const needsConversationCrossRef = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || filters.boardFilter !== 'all';
+
+    return metrics.closedLeadDetails.filter(detail => {
+      // Direct field filters (don't depend on conversations)
+      if (effectiveAcolhedorFromUser) {
+        if (detail.acolhedor.toLowerCase() !== effectiveAcolhedorFromUser.toLowerCase() && detail.acolhedor !== effectiveAcolhedorFromUser) return false;
+      } else if (filters.acolhedorFilter !== 'all') {
+        if (filters.acolhedorFilter === '__none__' && detail.acolhedor !== 'Sem acolhedor') return false;
+        if (filters.acolhedorFilter !== '__none__' && detail.acolhedor !== filters.acolhedorFilter) return false;
+      }
+
+      if (filters.campaignFilter !== 'all') {
+        if (filters.campaignFilter === '__none__' && detail.campaign) return false;
+        if (filters.campaignFilter !== '__none__' && detail.campaign !== filters.campaignFilter) return false;
+      }
+
+      // Cross-reference with conversations only for agent/instance/board filters
+      if (needsConversationCrossRef && operationalFilteredLeadIds.size > 0) {
+        if (!operationalFilteredLeadIds.has(detail.leadId)) return false;
+      } else if (needsConversationCrossRef && operationalFilteredLeadIds.size === 0) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [metrics.closedLeadDetails, operationalFilteredLeadIds, effectiveAcolhedorFromUser, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter, filters.userFilter]);
 
   const filteredClosedByAgent = useMemo(() => {
     const map = new Map<string, number>();
@@ -149,23 +173,28 @@ export function AgentMonitorDashboard() {
     const responseTimes = filtered.filter(c => c.response_time_minutes !== null).map(c => c.response_time_minutes!);
     const avgResponseTimeMin = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : 0;
 
-    const filteredLeadIds = operationalFilteredLeadIds;
-
     const hasActiveFilter = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || 
       filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all' || filters.userFilter !== 'all';
+    const needsConversationCrossRef = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || filters.boardFilter !== 'all';
 
     const filterOp = (detail: { acolhedor: string | null; instance_name: string | null; lead_id: string | null }) => {
       if (!hasActiveFilter) return true;
+      
+      // Direct field filters first (independent of conversations)
       if (effectiveInstanceFilter !== 'all' && detail.instance_name && detail.instance_name !== effectiveInstanceFilter) return false;
-      if (effectiveAcolhedorFromUser && detail.acolhedor && detail.acolhedor !== effectiveAcolhedorFromUser) return false;
-      if (!effectiveAcolhedorFromUser && filters.acolhedorFilter !== 'all' && detail.acolhedor) {
+      if (effectiveAcolhedorFromUser) {
+        if (detail.acolhedor && detail.acolhedor !== effectiveAcolhedorFromUser) return false;
+      } else if (filters.acolhedorFilter !== 'all') {
         if (filters.acolhedorFilter === '__none__' && detail.acolhedor) return false;
-        if (filters.acolhedorFilter !== '__none__' && detail.acolhedor !== filters.acolhedorFilter) return false;
+        if (filters.acolhedorFilter !== '__none__' && detail.acolhedor && detail.acolhedor !== filters.acolhedorFilter) return false;
       }
-      if (detail.lead_id && filteredLeadIds.size > 0) {
-        return filteredLeadIds.has(detail.lead_id);
+      
+      // Only cross-reference with conversations for agent/board filters that need it
+      if (needsConversationCrossRef && detail.lead_id) {
+        if (operationalFilteredLeadIds.size === 0) return false;
+        if (!operationalFilteredLeadIds.has(detail.lead_id)) return false;
       }
-      if (hasActiveFilter && !detail.acolhedor && !detail.instance_name && !detail.lead_id) return true;
+      
       return true;
     };
 
