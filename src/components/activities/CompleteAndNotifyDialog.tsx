@@ -130,7 +130,7 @@ export function CompleteAndNotifyDialog({ open, onClose, onConfirm, leadId, buil
               body: {
                 action: 'custom',
                 text: message,
-                customPrompt: `Você é o dono desta instância de WhatsApp. Gere APENAS o texto que será convertido em áudio para enviar ao grupo do cliente. NÃO leia o texto literal da mensagem escrita. Em vez disso, EXPLIQUE de forma natural o conteúdo/atualização da atividade como se estivesse falando ao vivo para o cliente. ${prompt}. O texto deve ser curto (máximo 3 frases) e soar como fala natural. Não use emojis, asteriscos ou formatação. Comece direto sem saudação genérica.`,
+                custom_prompt: `Você é o dono desta instância de WhatsApp. Gere APENAS o texto que será convertido em áudio para enviar ao grupo do cliente. NÃO leia o texto literal da mensagem escrita. Em vez disso, EXPLIQUE de forma natural o conteúdo/atualização da atividade como se estivesse falando ao vivo para o cliente. ${prompt}. O texto deve ser curto (máximo 3 frases) e soar como fala natural. Não use emojis, asteriscos ou formatação. Comece direto sem saudação genérica.`,
               },
             });
             audioText = aiData?.result || message;
