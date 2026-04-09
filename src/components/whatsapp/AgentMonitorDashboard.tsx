@@ -39,7 +39,7 @@ export function AgentMonitorDashboard() {
   const [gapSheet, setGapSheet] = useState<GapType | null>(null);
   const [closingAcolhedorFilter, setClosingAcolhedorFilter] = useState<string | null>(null);
 
-  const { agents, conversations, agentStats, referrals, redirections, boards, loading: monitorLoading, fetchData: fetchDataRaw } = useMonitorData();
+  const { agents, conversations, agentStats, referrals, redirections, boards, users, loading: monitorLoading, fetchData: fetchDataRaw } = useMonitorData();
   const { metrics, metricsLoading, fetchMetrics } = useDashboardMetrics();
   const { gaps, gapsLoading, fetchGaps } = useOperationalGaps();
 
@@ -74,9 +74,9 @@ export function AgentMonitorDashboard() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const {
-    filters, filteredConversations, pipelineCounts,
-    uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores, applyBaseFilters,
-  } = useMonitorFilters(conversations, boards);
+    filters, filteredConversations, pipelineCounts, effectiveInstanceFilter,
+    uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores, uniqueUsers, applyBaseFilters,
+  } = useMonitorFilters(conversations, boards, users);
 
   // Filter metrics newConvDetails based on active filters
   const filteredNewConvDetails = useMemo(() => {
