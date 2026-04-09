@@ -40,7 +40,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       if (agentFilter === '__none__' && c.agent_id) return false;
       if (agentFilter !== '__none__' && c.agent_id !== agentFilter) return false;
     }
-    if (instanceFilter !== 'all' && c.instance_name !== instanceFilter) return false;
+    if (effectiveInstanceFilter !== 'all' && c.instance_name !== effectiveInstanceFilter) return false;
     if (boardFilter !== 'all' && c.board_id !== boardFilter) return false;
     if (campaignFilter !== 'all') {
       if (campaignFilter === '__none__' && c.campaign_name) return false;
@@ -66,7 +66,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       }
       return true;
     });
-  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter, acolhedorFilter, caseStatusFilter, agentActiveFilter, followupConfigFilter, searchQuery]);
+  }, [conversations, agentFilter, effectiveInstanceFilter, boardFilter, campaignFilter, acolhedorFilter, caseStatusFilter, agentActiveFilter, followupConfigFilter, searchQuery]);
 
   const pipelineCounts = useMemo(() => {
     const base = conversations.filter(applyBaseFilters);
@@ -85,7 +85,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       inviavel: base.filter(c => getCaseStatus(c) === 'inviavel').length,
       bloqueado: base.filter(c => getCaseStatus(c) === 'bloqueado').length,
     };
-  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter, acolhedorFilter]);
+  }, [conversations, agentFilter, effectiveInstanceFilter, boardFilter, campaignFilter, acolhedorFilter]);
 
   const referralStats = (referrals: { status: string }[]) => ({
     total: referrals.length,
@@ -105,14 +105,17 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       caseStatusFilter, setCaseStatusFilter,
       agentActiveFilter, setAgentActiveFilter,
       followupConfigFilter, setFollowupConfigFilter,
+      userFilter, setUserFilter,
       searchQuery, setSearchQuery,
     },
+    effectiveInstanceFilter,
     filteredConversations,
     pipelineCounts,
     uniqueInstances,
     uniqueBoards,
     uniqueCampaigns,
     uniqueAcolhedores,
+    uniqueUsers,
     referralStats,
     applyBaseFilters,
   };
