@@ -618,8 +618,12 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                           .from('lead_processes')
                           .select('id, title, process_number')
                           .eq('case_id', c.id);
-                        props.setCaseProcesses((procs || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number })));
-                        setLinkCaseOpen(false);
+                        const processItems = (procs || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number }));
+                        props.setCaseProcesses(processItems);
+                        // Only close sheet if no processes to select
+                        if (processItems.length === 0) {
+                          setLinkCaseOpen(false);
+                        }
                       }}
                     >
                       <span className="font-medium">{c.case_number}</span> — {c.title}
@@ -656,7 +660,14 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                     <button type="button" onClick={() => { props.setFormProcessId(''); props.setFormProcessTitle(''); }} className="text-muted-foreground hover:text-foreground">
                       <X className="h-3 w-3" />
                     </button>
-                  </div>
+              </div>
+            )}
+            {props.formCaseId && (
+              <div className="border-t pt-3 mt-3">
+                <Button type="button" size="sm" className="w-full" onClick={() => setLinkCaseOpen(false)}>
+                  Confirmar
+                </Button>
+              </div>
                 )}
               </div>
             )}
