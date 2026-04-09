@@ -173,6 +173,8 @@ export function AgentMonitorDashboard() {
     const responseTimes = filtered.filter(c => c.response_time_minutes !== null).map(c => c.response_time_minutes!);
     const avgResponseTimeMin = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : 0;
 
+    const hasActiveFilter = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || 
+      filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all' || filters.userFilter !== 'all';
     const needsConversationCrossRef = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || filters.boardFilter !== 'all';
 
     const filterOp = (detail: { acolhedor: string | null; instance_name: string | null; lead_id: string | null }) => {
