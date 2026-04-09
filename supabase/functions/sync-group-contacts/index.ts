@@ -141,9 +141,9 @@ Deno.serve(async (req) => {
     
     const participantPhones: string[] = [];
     for (const p of participants) {
-      // Try multiple JID fields - UazAPI may use different structures
-      const jid = p.id || p.JID || p.jid || p.userJID || "";
-      const phone_field = p.phone || p.number || "";
+      // UazAPI returns: JID (LID format), PhoneNumber (with @s.whatsapp.net), LID, etc.
+      const phoneJid = p.PhoneNumber || p.phoneNumber || p.phone_number || "";
+      const jid = p.id || p.JID || p.jid || "";
       
       // Skip group JIDs
       if (jid.includes("@g.us")) continue;
