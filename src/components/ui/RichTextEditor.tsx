@@ -482,6 +482,7 @@ function RichTextEditorComponent({
   // Use a sentinel so SyncPlugin always runs on first mount to populate the editor
   const lastEmittedHtml = useRef<string>('__INIT__');
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dirtyRef = useRef(false);
   const lastAiText = useRef('');
 
   const initialConfig = useRef({
@@ -510,7 +511,8 @@ function RichTextEditorComponent({
       }
 
       const editor = editorRef.current;
-      if (editor) {
+      if (editor && dirtyRef.current) {
+        dirtyRef.current = false;
         flushEditorHtml(editor);
       }
     };
@@ -519,28 +521,28 @@ function RichTextEditorComponent({
   const handleEditorChange = useCallback(
     (_editorState: EditorState, editor: LexicalEditor) => {
       editorRef.current = editor;
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-      debounceTimer.current = setTimeout(() => {
-        flushEditorHtml(editor);
-      }, 250);
+      dirtyRef.current = true;
+      // No debounced HTML generation during typing — just mark dirty.
+      // HTML will be generated on blur or expand for performance.
     },
-    [flushEditorHtml],
+    [],
   );
 
   const handleBlur = useCallback(() => {
     const editor = editorRef.current;
-    if (!editor) return;
+    if (!editor || !dirtyRef.current) return;
+    dirtyRef.current = false;
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     flushEditorHtml(editor);
   }, [flushEditorHtml]);
 
   const handleExpand = useCallback(() => {
     const editor = editorRef.current;
-    if (editor) {
+    if (editor && dirtyRef.current) {
+      dirtyRef.current = false;
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       flushEditorHtml(editor);
     }
-    // Use microtask to ensure state is flushed before opening the sheet
     queueMicrotask(() => {
       onExpand?.();
     });
