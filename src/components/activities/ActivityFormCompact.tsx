@@ -7,11 +7,14 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase } from 'lucide-react';
+import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send } from 'lucide-react';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { toast } from 'sonner';
 
 interface TeamMember { user_id: string; full_name: string | null; }
 interface LeadOption { id: string; lead_name: string | null; }
@@ -91,6 +94,69 @@ const MATRIX_OPTIONS = [
   { value: 'delegate', emoji: '🤝', label: 'Delegar', color: 'border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-700 dark:bg-orange-950/30 dark:text-orange-400', active: 'border-orange-500 bg-orange-500 text-white' },
   { value: 'eliminate', emoji: '🗑️', label: 'Retirar', color: 'border-muted bg-muted/50 text-muted-foreground', active: 'border-muted-foreground bg-muted-foreground text-background' },
 ];
+
+function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSetting, reorderFields, formLeadIdForTTS, formContactIdForTTS }: {
+  buildMsg: () => string;
+  leadId: string;
+  fieldSettings: any[];
+  updateFieldSetting: any;
+  reorderFields: any;
+  formLeadIdForTTS?: string;
+  formContactIdForTTS?: string;
+}) {
+  const [sending, setSending] = useState(false);
+
+  const handleSendToGroup = async () => {
+    if (!leadId) {
+      toast.error('Vincule um lead para enviar ao grupo');
+      return;
+    }
+    setSending(true);
+    try {
+      const { data: lead } = await supabase
+        .from('leads')
+        .select('whatsapp_group_id, group_link, lead_name')
+        .eq('id', leadId)
+        .single();
+
+      const groupId = lead?.whatsapp_group_id;
+      if (!groupId) {
+        toast.error('Este lead não tem grupo WhatsApp vinculado');
+        setSending(false);
+        return;
+      }
+
+      const message = buildMsg();
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
+        body: { phone: groupId, chat_id: groupId, message, lead_id: leadId },
+      });
+
+      if (error || !data?.success) {
+        toast.error(data?.error || 'Erro ao enviar mensagem');
+      } else {
+        toast.success('Mensagem enviada ao grupo!');
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao enviar');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2 pt-1 border-t">
+      <Button type="button" variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => { navigator.clipboard.writeText(buildMsg()); toast.success('Mensagem copiada!'); }}>
+        <Copy className="h-3.5 w-3.5" /> Copiar
+      </Button>
+      <Button type="button" variant="default" size="sm" className="flex-1 gap-1.5 h-8 text-xs" onClick={handleSendToGroup} disabled={sending}>
+        {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+        Enviar ao Grupo
+      </Button>
+      <ActivityTTSButton messageText={buildMsg()} leadId={formLeadIdForTTS} contactId={formContactIdForTTS} />
+      <ActivityFieldSettingsDialog fields={fieldSettings} onUpdateField={updateFieldSetting} onReorder={reorderFields} />
+    </div>
+  );
+}
 
 export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -304,7 +370,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         </div>
       )}
 
-
+      {props.buildMsg && (
+        <SendToGroupSection buildMsg={props.buildMsg} leadId={props.formLeadId} fieldSettings={props.fieldSettings} updateFieldSetting={props.updateFieldSetting} reorderFields={props.reorderFields} formLeadIdForTTS={props.formLeadIdForTTS} formContactIdForTTS={props.formContactIdForTTS} />
+      )}
       {/* === COLLAPSIBLE: Detail fields === */}
       <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
         <CollapsibleTrigger className="flex items-center gap-1.5 w-full text-left py-1">
@@ -391,28 +459,6 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         </SheetContent>
       </Sheet>
 
-      {/* === WhatsApp Actions === */}
-      {props.buildMsg && (
-        <div className="flex items-center gap-2 pt-1 border-t">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="flex-1 gap-1.5 h-8 text-xs"
-            onClick={() => {
-              if (props.buildMsg) {
-                navigator.clipboard.writeText(props.buildMsg());
-                import('sonner').then(({ toast }) => toast.success('Mensagem copiada!'));
-              }
-            }}
-          >
-            <Copy className="h-3.5 w-3.5" />
-            Gerar mensagem WhatsApp
-          </Button>
-          <ActivityTTSButton messageText={props.buildMsg()} leadId={props.formLeadIdForTTS} contactId={props.formContactIdForTTS} />
-          <ActivityFieldSettingsDialog fields={props.fieldSettings} onUpdateField={props.updateFieldSetting} onReorder={props.reorderFields} />
-        </div>
-      )}
 
       {/* === SHEET: Link Lead === */}
       <Sheet open={linkLeadOpen} onOpenChange={setLinkLeadOpen}>
