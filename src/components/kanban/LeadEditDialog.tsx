@@ -183,8 +183,7 @@ export function LeadEditDialog({
   const [newSourceLabel, setNewSourceLabel] = useState('');
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [editingSourceLabel, setEditingSourceLabel] = useState('');
-  const [groupLink, setGroupLink] = useState('');
-  const [whatsappGroupId, setWhatsappGroupId] = useState('');
+  const [whatsappGroups, setWhatsappGroups] = useState<Array<{ id?: string; group_link: string; group_jid: string; group_name: string; label: string }>>([]);
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
   const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress' | 'inviavel'>('');
@@ -289,8 +288,33 @@ export function LeadEditDialog({
       setSource(currentLead.source || 'manual');
       setNotes(currentLead.notes || '');
       setAcolhedor(leadAny.acolhedor || '');
-      setGroupLink(leadAny.group_link || '');
-      setWhatsappGroupId(leadAny.whatsapp_group_id || '');
+      // Load whatsapp groups from new table
+      const loadGroups = async () => {
+        const { data: groups } = await supabase
+          .from('lead_whatsapp_groups')
+          .select('*')
+          .eq('lead_id', currentLead.id)
+          .order('created_at', { ascending: true });
+        if (groups) {
+          setWhatsappGroups(groups.map((g: any) => ({
+            id: g.id,
+            group_link: g.group_link || '',
+            group_jid: g.group_jid || '',
+            group_name: g.group_name || '',
+            label: g.label || '',
+          })));
+        }
+        // Also migrate legacy single group if exists and no groups in new table
+        if ((!groups || groups.length === 0) && (leadAny.group_link || leadAny.whatsapp_group_id)) {
+          setWhatsappGroups([{
+            group_link: leadAny.group_link || '',
+            group_jid: leadAny.whatsapp_group_id || '',
+            group_name: '',
+            label: '',
+          }]);
+        }
+      };
+      loadGroups();
       setClientClassification(currentLead.client_classification || '');
       setExpectedBirthDate(leadAny.expected_birth_date || '');
       setSelectedBoardId(leadAny.board_id || '');
@@ -617,41 +641,51 @@ ${scrapeData.content || ''}
     console.log('[handleSave] Starting save for lead:', currentLead.id);
     setSaving(true);
     try {
-      // Determine group link and ID
-      const rawLink = groupLink || '';
-      const isLink = rawLink.includes('chat.whatsapp.com');
-      const isJid = rawLink.includes('@g.us');
+      // Save WhatsApp groups to new table
+      // First delete all existing groups for this lead, then insert current ones
+      await supabase.from('lead_whatsapp_groups').delete().eq('lead_id', currentLead.id);
       
-      let finalGroupLink: string | null = isLink ? rawLink : (isJid ? null : (rawLink || null));
-      let finalGroupId: string | null = whatsappGroupId || null;
-
-      // If user pasted a link and we don't have a JID yet, resolve it
-      if (isLink && !finalGroupId?.includes('@g.us')) {
-        console.log('[handleSave] Resolving WhatsApp group link...');
-        try {
-          const { data: resolveData } = await cloudFunctions.invoke('send-whatsapp', {
-            body: { action: 'resolve_group_link', group_link: rawLink },
-          });
-          if (resolveData?.success && resolveData.group_id) {
-            finalGroupId = resolveData.group_id;
-            setWhatsappGroupId(resolveData.group_id);
-            toast.success(`Grupo identificado: ${resolveData.group_name || resolveData.group_id}`);
-          } else {
-            console.warn('Could not resolve group link:', resolveData?.error);
-            toast.warning('Link do grupo salvo, mas não foi possível resolver o ID.');
+      const resolvedGroups = [...whatsappGroups];
+      for (let i = 0; i < resolvedGroups.length; i++) {
+        const g = resolvedGroups[i];
+        const rawLink = g.group_link || '';
+        const isLink = rawLink.includes('chat.whatsapp.com');
+        
+        if (isLink && !g.group_jid?.includes('@g.us')) {
+          try {
+            const { data: resolveData } = await cloudFunctions.invoke('send-whatsapp', {
+              body: { action: 'resolve_group_link', group_link: rawLink },
+            });
+            if (resolveData?.success && resolveData.group_id) {
+              resolvedGroups[i] = { ...g, group_jid: resolveData.group_id, group_name: resolveData.group_name || '' };
+            }
+          } catch (e) {
+            console.warn('Error resolving group link:', e);
           }
-        } catch (e) {
-          console.warn('Error resolving group link (non-blocking):', e);
-          toast.warning('Falha ao resolver link do grupo. Link salvo mesmo assim.');
+        } else if (rawLink.includes('@g.us')) {
+          resolvedGroups[i] = { ...g, group_jid: rawLink, group_link: '' };
         }
-      } else if (isJid) {
-        // User pasted a JID directly
-        finalGroupId = rawLink;
-        finalGroupLink = null;
       }
+      
+      if (resolvedGroups.length > 0) {
+        await supabase.from('lead_whatsapp_groups').insert(
+          resolvedGroups.map(g => ({
+            lead_id: currentLead.id,
+            group_link: g.group_link || null,
+            group_jid: g.group_jid || null,
+            group_name: g.group_name || null,
+            label: g.label || null,
+          }))
+        );
+      }
+      setWhatsappGroups(resolvedGroups);
+
+      // Keep legacy fields in sync (first group)
+      const firstGroup = resolvedGroups[0];
+      const finalGroupLink = firstGroup?.group_link || null;
+      const finalGroupId = firstGroup?.group_jid || null;
 
       console.log('[handleSave] Calling onSave with updates...');
-      // Save all fields
       await onSave(currentLead.id, {
         lead_name: leadName.trim(),
         lead_phone: leadPhone || null,
@@ -663,7 +697,6 @@ ${scrapeData.content || ''}
         acolhedor: acolhedor || null,
         group_link: finalGroupLink,
         whatsapp_group_id: finalGroupId,
-        // Accident fields
         victim_name: victimName || null,
         victim_age: victimAge ? parseInt(victimAge) : null,
         accident_date: accidentDate || null,
@@ -1171,40 +1204,56 @@ ${scrapeData.content || ''}
                 </div>
 
                 <div className="col-span-2">
-                  <Label>Grupo WhatsApp</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={groupLink || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setGroupLink(val);
-                        // If it looks like a JID, set it directly
-                        if (val.includes('@g.us')) {
-                          setWhatsappGroupId(val);
-                        } else {
-                          // Clear JID so it gets resolved on save
-                          setWhatsappGroupId('');
-                        }
-                      }}
-                      placeholder="https://chat.whatsapp.com/... ou 120363xxx@g.us"
-                    />
-                    {groupLink && (
-                      <a href={groupLink.includes('chat.whatsapp.com') ? groupLink : `https://chat.whatsapp.com/${groupLink}`} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                        <Button type="button" variant="outline" size="sm" className="gap-1 text-green-600 border-green-200">
-                          <ExternalLink className="h-3 w-3" /> Abrir
-                        </Button>
-                      </a>
-                    )}
+                  <Label>Grupos WhatsApp</Label>
+                  <div className="space-y-2 mt-1">
+                    {whatsappGroups.map((g, idx) => (
+                      <div key={idx}>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={g.group_link || g.group_jid || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setWhatsappGroups(prev => prev.map((item, i) => i === idx ? {
+                                ...item,
+                                group_link: val.includes('@g.us') ? '' : val,
+                                group_jid: val.includes('@g.us') ? val : item.group_jid,
+                              } : item));
+                            }}
+                            placeholder="https://chat.whatsapp.com/... ou JID"
+                            className="flex-1"
+                          />
+                          {(g.group_link || g.group_jid) && (
+                            <a href={g.group_link?.includes('chat.whatsapp.com') ? g.group_link : `https://chat.whatsapp.com/${g.group_link || ''}`} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                              <Button type="button" variant="outline" size="sm" className="gap-1 text-green-600 border-green-200">
+                                <ExternalLink className="h-3 w-3" /> Abrir
+                              </Button>
+                            </a>
+                          )}
+                          <Button type="button" variant="ghost" size="sm" onClick={() => setWhatsappGroups(prev => prev.filter((_, i) => i !== idx))}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        {g.group_jid?.includes('@g.us') ? (
+                          <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
+                            ✅ ID: <span className="font-mono text-green-700">{g.group_jid}</span>
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Cole o link do grupo. O ID será extraído ao salvar.
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                      onClick={() => setWhatsappGroups(prev => [...prev, { group_link: '', group_jid: '', group_name: '', label: '' }])}
+                    >
+                      <Plus className="h-3 w-3" /> Adicionar grupo
+                    </Button>
                   </div>
-                  {whatsappGroupId && whatsappGroupId.includes('@g.us') ? (
-                    <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                      ✅ ID: <span className="font-mono text-green-700">{whatsappGroupId}</span>
-                    </p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Cole o link do grupo. O ID será extraído automaticamente ao salvar.
-                    </p>
-                  )}
                 </div>
 
                 <div>

@@ -511,7 +511,7 @@ function RichTextEditorComponent({
 
       const editor = editorRef.current;
       if (editor) {
-        flushEditorHtml(editor);
+        flushEditorHtml(editor, { sync: true });
       }
     };
   }, [flushEditorHtml]);

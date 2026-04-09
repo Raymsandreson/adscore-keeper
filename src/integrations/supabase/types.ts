@@ -5183,6 +5183,44 @@ export type Database = {
           },
         ]
       }
+      lead_whatsapp_groups: {
+        Row: {
+          created_at: string
+          group_jid: string | null
+          group_link: string | null
+          group_name: string | null
+          id: string
+          label: string | null
+          lead_id: string
+        }
+        Insert: {
+          created_at?: string
+          group_jid?: string | null
+          group_link?: string | null
+          group_name?: string | null
+          id?: string
+          label?: string | null
+          lead_id: string
+        }
+        Update: {
+          created_at?: string
+          group_jid?: string | null
+          group_link?: string | null
+          group_name?: string | null
+          id?: string
+          label?: string | null
+          lead_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_whatsapp_groups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           accident_address: string | null
