@@ -65,9 +65,9 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
       if (activeFilter === 'stage' && activeStageId) {
         query = query.eq('status', activeStageId);
       } else if (activeFilter === 'blocked') {
-        query = query.eq('is_blocked' as any, true);
+        query = query.eq('is_blocked', true);
       } else if (activeFilter === 'active') {
-        query = query.or('lead_status.eq.active,lead_status.is.null').eq('is_blocked' as any, false);
+        query = query.or('lead_status.eq.active,lead_status.is.null').eq('is_blocked', false);
       } else if (activeFilter) {
         query = query.eq('lead_status', activeFilter);
       }
