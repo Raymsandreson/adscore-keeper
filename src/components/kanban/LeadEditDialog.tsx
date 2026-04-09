@@ -1108,7 +1108,29 @@ ${scrapeData.content || ''}
                   />
                 </div>
 
-                {/* Telefone e Email ficam no Contato, não no Lead */}
+                <div>
+                  <Label className="flex items-center gap-1">
+                    <Phone className="h-3 w-3" />
+                    Telefone
+                  </Label>
+                  <Input
+                    value={leadPhone}
+                    onChange={(e) => setLeadPhone(e.target.value)}
+                    placeholder="(00) 00000-0000"
+                  />
+                </div>
+
+                <div>
+                  <Label className="flex items-center gap-1">
+                    <Mail className="h-3 w-3" />
+                    Email
+                  </Label>
+                  <Input
+                    value={leadEmail}
+                    onChange={(e) => setLeadEmail(e.target.value)}
+                    placeholder="email@exemplo.com"
+                  />
+                </div>
 
                 <div>
                   <div className="flex items-center justify-between">
