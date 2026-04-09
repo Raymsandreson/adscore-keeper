@@ -991,6 +991,7 @@ ${scrapeData.content || ''}
               {/* Meta info */}
               {(() => {
                 const leadAny = lead as any;
+                if (!leadAny) return null;
                 const creatorName = getDisplayName(leadAny.created_by);
                 const editorName = getDisplayName(leadAny.updated_by);
                 const hasEditor = leadAny.updated_by && leadAny.updated_by !== leadAny.created_by;
