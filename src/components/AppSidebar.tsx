@@ -88,6 +88,7 @@ export function AppSidebar() {
     { id: "whatsapp", label: "WhatsApp", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp", color: "text-green-500" },
     { id: "agent-monitor", label: "Monitor IA", icon: <Bot className="h-4 w-4" />, path: "/agent-monitor", color: "text-purple-500" },
     { id: "instagram", label: "Instagram", icon: <AtSign className="h-4 w-4" />, path: "/instagram", color: "text-pink-500" },
+    { id: "comment-workflow", label: "Fluxo de Respostas", icon: <MessageCircle className="h-4 w-4" />, path: "/workflow", color: "text-pink-500" },
     { id: "contacts", label: "Contatos", icon: <Users className="h-4 w-4" />, path: "/contacts", color: "text-primary" },
     { id: "referrals", label: "Indicações", icon: <Search className="h-4 w-4" />, path: "/referrals", color: "text-amber-500" },
     { id: "dashboard", label: "Visão Geral", icon: <LayoutDashboard className="h-4 w-4" />, path: "/dashboard" },
@@ -107,7 +108,7 @@ export function AppSidebar() {
     {
       id: "sales", label: "Vendas", icon: <Zap className="h-4 w-4" />,
       items: [
-        { id: "workflow", label: "Funil de Vendas", icon: <Zap className="h-3.5 w-3.5" />, path: "/workflow", color: "text-yellow-500" },
+        { id: "sales-funnels", label: "Funil de Vendas", icon: <Filter className="h-3.5 w-3.5" />, path: "/sales-funnels", color: "text-yellow-500" },
         { id: "goals", label: "Metas", icon: <Target className="h-3.5 w-3.5" />, path: "/dashboard?tab=goals", color: "text-emerald-500" },
         { id: "leaderboard", label: "Ranking", icon: <Trophy className="h-3.5 w-3.5" />, path: "/leaderboard", color: "text-yellow-500" },
       ],
