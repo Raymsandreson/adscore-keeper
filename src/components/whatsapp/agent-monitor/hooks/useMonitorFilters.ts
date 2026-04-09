@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
-import type { ConversationDetail, CaseStatus, BoardData } from '../types';
+import type { ConversationDetail, CaseStatus, BoardData, UserData } from '../types';
 import { getCaseStatus } from '../utils';
 
-export function useMonitorFilters(conversations: ConversationDetail[], boards: BoardData[]) {
+export function useMonitorFilters(conversations: ConversationDetail[], boards: BoardData[], users: UserData[] = []) {
   const [agentFilter, setAgentFilter] = useState('all');
   const [instanceFilter, setInstanceFilter] = useState('all');
   const [boardFilter, setBoardFilter] = useState('all');
@@ -11,6 +11,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
   const [caseStatusFilter, setCaseStatusFilter] = useState<CaseStatus | 'all'>('all');
   const [agentActiveFilter, setAgentActiveFilter] = useState<'all' | 'ativo'>('all');
   const [followupConfigFilter, setFollowupConfigFilter] = useState<'all' | 'com_followup' | 'sem_followup'>('all');
+  const [userFilter, setUserFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const uniqueInstances = useMemo(() => [...new Set(conversations.map(c => c.instance_name).filter(Boolean))].sort() as string[], [conversations]);
@@ -20,6 +21,19 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
   }, [conversations, boards]);
   const uniqueCampaigns = useMemo(() => [...new Set(conversations.map(c => c.campaign_name).filter(Boolean))].sort() as string[], [conversations]);
   const uniqueAcolhedores = useMemo(() => [...new Set(conversations.map(c => c.lead_acolhedor).filter(Boolean))].sort() as string[], [conversations]);
+  const uniqueUsers = useMemo(() => {
+    const instanceNames = new Set(conversations.map(c => c.instance_name));
+    return users.filter(u => u.instance_name && instanceNames.has(u.instance_name));
+  }, [conversations, users]);
+
+  // Resolve effective instance filter (user filter maps to instance_name)
+  const effectiveInstanceFilter = useMemo(() => {
+    if (userFilter !== 'all') {
+      const user = users.find(u => u.id === userFilter);
+      return user?.instance_name || 'all';
+    }
+    return instanceFilter;
+  }, [userFilter, instanceFilter, users]);
 
   const applyBaseFilters = (c: ConversationDetail) => {
     if (agentFilter !== 'all') {
