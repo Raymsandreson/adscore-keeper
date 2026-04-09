@@ -57,8 +57,13 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       const [boardRes, historyRes, leadRes] = await Promise.all([
         supabase.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
         supabase.from('lead_stage_history').select('to_stage').eq('lead_id', leadId).order('changed_at', { ascending: false }).limit(1),
-        supabase.from('leads').select('status').eq('id', leadId).maybeSingle(),
+        supabase.from('leads').select('status, lead_status, became_client_date').eq('id', leadId).maybeSingle(),
       ]);
+
+      // Check if lead is closed (won)
+      const leadData = leadRes.data as any;
+      const isClosed = leadData?.lead_status === 'closed' || !!leadData?.became_client_date;
+      setIsLeadClosed(isClosed);
 
       let stageId: string | null = null;
       let parsedStages: Stage[] = [];
