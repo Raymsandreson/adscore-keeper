@@ -71,11 +71,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 2. Get ALL instance phone numbers (to exclude them)
-    const { data: allInstances } = await internalClient
-      .from("whatsapp_instances")
-      .select("owner_phone")
-      .eq("is_active", true);
+    // 2. Get ALL instance phone numbers (to exclude them from participants)
     
     const instancePhones = new Set(
       orderedInstances
