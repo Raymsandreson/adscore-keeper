@@ -109,22 +109,30 @@ export function AgentMonitorDashboard() {
     });
   }, [metrics.newConvDetails, effectiveInstanceFilter, agentPhoneSet, baseFilteredPhoneSet]);
 
-  const filteredClosedByAgent = useMemo(() => {
-    const base = baseFilteredConversations.filter(c => c.lead_status === 'closed');
-    const map = new Map<string, number>();
-    for (const c of base) {
-      const name = c.lead_acolhedor || 'Sem acolhedor';
-      map.set(name, (map.get(name) || 0) + 1);
-    }
-    return Array.from(map.entries())
-      .map(([agent, count]) => ({ agent, count }))
-      .sort((a, b) => b.count - a.count);
-  }, [baseFilteredConversations]);
-
   // Build a set of lead_ids from filtered conversations for cross-referencing operational metrics
   const operationalFilteredLeadIds = useMemo(() => new Set(
     baseFilteredConversations.map(c => c.lead_id).filter(Boolean) as string[]
   ), [baseFilteredConversations]);
+
+  const filteredClosedLeadDetails = useMemo(() => {
+    const hasActiveFilter = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || 
+      filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all' || filters.userFilter !== 'all';
+
+    if (!hasActiveFilter) return metrics.closedLeadDetails;
+    if (operationalFilteredLeadIds.size === 0) return [];
+
+    return metrics.closedLeadDetails.filter(detail => operationalFilteredLeadIds.has(detail.leadId));
+  }, [metrics.closedLeadDetails, operationalFilteredLeadIds, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter, filters.userFilter]);
+
+  const filteredClosedByAgent = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const detail of filteredClosedLeadDetails) {
+      map.set(detail.acolhedor, (map.get(detail.acolhedor) || 0) + 1);
+    }
+    return Array.from(map.entries())
+      .map(([agent, count]) => ({ agent, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [filteredClosedLeadDetails]);
 
   const operationalFiltersObj: OperationalFilters = useMemo(() => ({
     instanceFilter: effectiveInstanceFilter,
@@ -146,7 +154,6 @@ export function AgentMonitorDashboard() {
     const hasActiveFilter = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || 
       filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all' || filters.userFilter !== 'all';
 
-    // Filter operational details by instance_name, acolhedor, or lead_id cross-reference
     const filterOp = (detail: { acolhedor: string | null; instance_name: string | null; lead_id: string | null }) => {
       if (!hasActiveFilter) return true;
       if (effectiveInstanceFilter !== 'all' && detail.instance_name && detail.instance_name !== effectiveInstanceFilter) return false;
@@ -168,27 +175,36 @@ export function AgentMonitorDashboard() {
     const filteredCases = metrics.casesDetails.filter(filterOp);
     const filteredProcesses = metrics.processesDetails.filter(filterOp);
 
-    // Filter closed leads breakdown by acolhedor/user filter
-    let filteredClosedByAgentDetailed = metrics.closedByAgentDetailed;
-    if (hasActiveFilter) {
-      // Determine the target acolhedor name for filtering
-      const targetAcolhedor = effectiveAcolhedorFromUser || (filters.acolhedorFilter !== 'all' ? filters.acolhedorFilter : null);
-      if (targetAcolhedor && targetAcolhedor !== '__none__') {
-        filteredClosedByAgentDetailed = metrics.closedByAgentDetailed.filter(
-          d => d.agent.toLowerCase() === targetAcolhedor.toLowerCase()
-        );
-      } else if (targetAcolhedor === '__none__' || filters.acolhedorFilter === '__none__') {
-        filteredClosedByAgentDetailed = metrics.closedByAgentDetailed.filter(
-          d => d.agent === 'Sem acolhedor'
-        );
+    const closedByAgentDetailMap = new Map<string, { ai: number; assisted: number; human: number; noInteraction: number }>();
+    const closedByCampaignMap = new Map<string, number>();
+    let closedByAI = 0;
+    let closedAssisted = 0;
+    let closedWithHuman = 0;
+    let closedNoInteraction = 0;
+
+    for (const detail of filteredClosedLeadDetails) {
+      if (!closedByAgentDetailMap.has(detail.acolhedor)) {
+        closedByAgentDetailMap.set(detail.acolhedor, { ai: 0, assisted: 0, human: 0, noInteraction: 0 });
       }
+      closedByAgentDetailMap.get(detail.acolhedor)![detail.classification]++;
+      if (detail.campaign) {
+        closedByCampaignMap.set(detail.campaign, (closedByCampaignMap.get(detail.campaign) || 0) + 1);
+      }
+
+      if (detail.classification === 'ai') closedByAI++;
+      else if (detail.classification === 'assisted') closedAssisted++;
+      else if (detail.classification === 'human') closedWithHuman++;
+      else closedNoInteraction++;
     }
 
-    // Recompute closed totals from filtered detailed data
-    const closedByAI = filteredClosedByAgentDetailed.reduce((s, d) => s + d.ai, 0);
-    const closedAssisted = filteredClosedByAgentDetailed.reduce((s, d) => s + d.assisted, 0);
-    const closedWithHuman = filteredClosedByAgentDetailed.reduce((s, d) => s + d.human, 0);
-    const closedNoInteraction = filteredClosedByAgentDetailed.reduce((s, d) => s + d.noInteraction, 0);
+    const filteredClosedByAgentDetailed = Array.from(closedByAgentDetailMap.entries())
+      .map(([agent, d]) => ({ agent, ai: d.ai, assisted: d.assisted, human: d.human, noInteraction: d.noInteraction, total: d.ai + d.assisted + d.human + d.noInteraction }))
+      .sort((a, b) => b.total - a.total);
+
+    const filteredClosedByCampaign = Array.from(closedByCampaignMap.entries())
+      .map(([campaign, count]) => ({ campaign, count }))
+      .sort((a, b) => b.count - a.count);
+
     const closedTotal = closedByAI + closedAssisted + closedWithHuman + closedNoInteraction;
 
     return {
@@ -201,6 +217,7 @@ export function AgentMonitorDashboard() {
       newConvDetails: filtered,
       closedByAgent: filteredClosedByAgent,
       closedByAgentDetailed: filteredClosedByAgentDetailed,
+      closedByCampaign: filteredClosedByCampaign,
       closedByAI, closedAssisted, closedWithHuman, closedNoInteraction, closedTotal,
       signedDocuments: filteredSignedDocs.length,
       pendingDocuments: filteredPendingDocs.length,
@@ -213,7 +230,7 @@ export function AgentMonitorDashboard() {
       casesDetails: filteredCases,
       processesDetails: filteredProcesses,
     };
-  }, [metrics, filteredNewConvDetails, filteredClosedByAgent, operationalFilteredLeadIds, effectiveAcolhedorFromUser, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter, filters.userFilter]);
+  }, [metrics, filteredNewConvDetails, filteredClosedLeadDetails, filteredClosedByAgent, operationalFilteredLeadIds, effectiveAcolhedorFromUser, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter, filters.userFilter]);
 
   // Filter gaps by acolhedor
   const filteredGaps = useMemo(() => {

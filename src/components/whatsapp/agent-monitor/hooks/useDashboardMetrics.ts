@@ -16,6 +16,12 @@ export interface DashboardMetrics {
   closedWithHuman: number;
   closedNoInteraction: number;
   closedTotal: number;
+  closedLeadDetails: {
+    leadId: string;
+    acolhedor: string;
+    campaign: string | null;
+    classification: 'ai' | 'assisted' | 'human' | 'noInteraction';
+  }[];
   newConvDetails: NewConvDetail[];
   signedDocuments: number;
   pendingDocuments: number;
@@ -73,6 +79,7 @@ export function useDashboardMetrics() {
     newConversations: 0, responseRate: 0, avgResponseTimeMin: 0,
     respondedCount: 0, totalInbound: 0,
     closedByAgent: [], closedByAgentDetailed: [], closedByCampaign: [], closedByAI: 0, closedAssisted: 0, closedWithHuman: 0, closedNoInteraction: 0, closedTotal: 0,
+    closedLeadDetails: [],
     newConvDetails: [],
     signedDocuments: 0, pendingDocuments: 0, groupsCreated: 0, casesCreated: 0, processesCreated: 0, contactsCreated: 0,
     signedDocsDetails: [], pendingDocsDetails: [], groupsDetails: [], casesDetails: [], processesDetails: [], contactsDetails: [],
@@ -378,17 +385,17 @@ export function useDashboardMetrics() {
       const agentMap = new Map<string, number>();
       const agentDetailMap = new Map<string, { ai: number; assisted: number; human: number; noInteraction: number }>();
       const campaignMap = new Map<string, number>();
+      const closedLeadDetails: DashboardMetrics['closedLeadDetails'] = [];
       let closedByAI = 0;
       let closedAssisted = 0;
       let closedWithHuman = 0;
       let closedNoInteraction = 0;
-
+ 
       for (const l of closedLeads) {
         const agentName = l.acolhedor || 'Sem acolhedor';
         agentMap.set(agentName, (agentMap.get(agentName) || 0) + 1);
         if (l.campaign_name) campaignMap.set(l.campaign_name, (campaignMap.get(l.campaign_name) || 0) + 1);
         
-        // STRUCTURAL: use lead_id-keyed stats (from dual matching: lead_id primary + phone fallback)
         const stats = leadStats.get(l.id);
         const phone = (l.lead_phone || '').replace(/\D/g, '');
         const hasValidPhone = phone.length >= 8;
@@ -396,36 +403,39 @@ export function useDashboardMetrics() {
         let classification: 'ai' | 'assisted' | 'human' | 'noInteraction';
         
         if (!stats || stats.total === 0) {
-          if (!hasValidPhone) {
-            // No phone AND no messages = managed outside WhatsApp
-            classification = 'noInteraction';
-          } else {
-            // Has phone but no outbound messages found = 100% IA (auto-handled)
-            classification = 'ai';
-          }
+          classification = hasValidPhone ? 'ai' : 'noInteraction';
         } else if (stats.manual === 0) {
-          classification = 'ai'; // Only agent/system messages = 100% IA
+          classification = 'ai';
         } else if ((stats.manual / stats.total) >= 0.7) {
-          classification = 'human'; // >=70% manual = 100% Humano
+          classification = 'human';
         } else {
-          classification = 'assisted'; // Mixed = Assistido por IA
+          classification = 'assisted';
         }
+
+        closedLeadDetails.push({
+          leadId: l.id,
+          acolhedor: agentName,
+          campaign: l.campaign_name || null,
+          classification,
+        });
         
         if (classification === 'ai') closedByAI++;
         else if (classification === 'assisted') closedAssisted++;
         else if (classification === 'noInteraction') closedNoInteraction++;
         else closedWithHuman++;
-
+ 
         if (!agentDetailMap.has(agentName)) agentDetailMap.set(agentName, { ai: 0, assisted: 0, human: 0, noInteraction: 0 });
         const detail = agentDetailMap.get(agentName)!;
         detail[classification]++;
       }
 
-      // Operational details
       const mapDoc = (d: any): OperationalDetail => ({
-        id: d.id, name: d.document_name || 'Documento',
+        id: d.id,
+        name: d.document_name || 'Documento',
         acolhedor: (d.lead_id && docLeadAcolhedorMap.get(d.lead_id)) || null,
-        instance_name: d.instance_name || null, lead_id: d.lead_id || null, created_at: d.created_at,
+        instance_name: d.instance_name || null,
+        lead_id: d.lead_id || null,
+        created_at: d.created_at,
       });
 
       const signedDocsDetails = (signedDocsRes.data || []).map(mapDoc);
@@ -447,7 +457,7 @@ export function useDashboardMetrics() {
         acolhedor: (d.created_by && contactCreatorMap.get(d.created_by)) || null,
         instance_name: null, lead_id: null, created_at: d.created_at,
       }));
-
+ 
       setMetrics({
         newConversations: trulyNewPhones.length,
         responseRate, avgResponseTimeMin, respondedCount, totalInbound,
@@ -455,6 +465,7 @@ export function useDashboardMetrics() {
         closedByAgentDetailed: Array.from(agentDetailMap.entries()).map(([agent, d]) => ({ agent, ai: d.ai, assisted: d.assisted, human: d.human, noInteraction: d.noInteraction, total: d.ai + d.assisted + d.human + d.noInteraction })).sort((a, b) => b.total - a.total),
         closedByCampaign: Array.from(campaignMap.entries()).map(([campaign, count]) => ({ campaign, count })).sort((a, b) => b.count - a.count),
         closedByAI, closedAssisted, closedWithHuman, closedNoInteraction, closedTotal,
+        closedLeadDetails,
         newConvDetails,
         signedDocuments: signedDocsDetails.length, pendingDocuments: pendingDocsDetails.length,
         groupsCreated: groupsDetails.length, casesCreated: casesDetails.length,
