@@ -113,12 +113,25 @@ function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSettin
     }
     setSending(true);
     try {
-      const { data: lead } = await supabase
-        .from('leads')
-        .select('whatsapp_group_id, group_link, lead_name, board_id')
-        .eq('id', leadId)
-        .single();
+      // Fetch lead data and user's default instance in parallel
+      const [leadRes, profileRes] = await Promise.all([
+        supabase
+          .from('leads')
+          .select('whatsapp_group_id, group_link, lead_name, board_id')
+          .eq('id', leadId)
+          .single(),
+        supabase.auth.getUser().then(async ({ data: { user } }) => {
+          if (!user) return null;
+          const { data } = await supabase
+            .from('profiles')
+            .select('default_instance_id')
+            .eq('user_id', user.id)
+            .maybeSingle();
+          return (data as any)?.default_instance_id || null;
+        }),
+      ]);
 
+      const lead = leadRes.data;
       const groupId = lead?.whatsapp_group_id;
       if (!groupId) {
         toast.error('Este lead não tem grupo WhatsApp vinculado');
@@ -126,9 +139,9 @@ function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSettin
         return;
       }
 
-      // Find the correct instance for this lead's board
-      let instanceId: string | undefined;
-      if (lead?.board_id) {
+      // Priority: 1) User's default instance, 2) Board instance, 3) fallback
+      let instanceId: string | undefined = profileRes || undefined;
+      if (!instanceId && lead?.board_id) {
         const { data: boardInstances } = await supabase
           .from('board_group_instances')
           .select('instance_id')
