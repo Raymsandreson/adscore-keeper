@@ -681,6 +681,12 @@ ${scrapeData.content || ''}
       }
       setWhatsappGroups(resolvedGroups);
 
+      // Auto-sync group contacts: trigger for first group with a resolved JID
+      const groupWithJid = resolvedGroups.find(g => g.group_jid?.includes('@g.us'));
+      if (groupWithJid) {
+        setSyncGroupData({ jid: groupWithJid.group_jid, name: groupWithJid.group_name || '' });
+      }
+
       // Keep legacy fields in sync (first group)
       const firstGroup = resolvedGroups[0];
       const finalGroupLink = firstGroup?.group_link || null;
