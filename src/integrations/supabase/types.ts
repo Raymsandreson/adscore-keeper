@@ -224,6 +224,57 @@ export type Database = {
         }
         Relationships: []
       }
+      activity_message_templates: {
+        Row: {
+          board_id: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_default: boolean | null
+          name: string
+          template_content: string
+          updated_at: string | null
+          workflow_id: string | null
+        }
+        Insert: {
+          board_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_default?: boolean | null
+          name?: string
+          template_content: string
+          updated_at?: string | null
+          workflow_id?: string | null
+        }
+        Update: {
+          board_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_default?: boolean | null
+          name?: string
+          template_content?: string
+          updated_at?: string | null
+          workflow_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_message_templates_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_message_templates_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       activity_types: {
         Row: {
           color: string
