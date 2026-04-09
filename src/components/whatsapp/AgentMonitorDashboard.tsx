@@ -144,15 +144,15 @@ export function AgentMonitorDashboard() {
       }
       return true;
     }).map(c => c.lead_id).filter(Boolean) as string[]
-  ), [conversations, filters.agentFilter, filters.instanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
+  ), [conversations, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
 
   const operationalFiltersObj: OperationalFilters = useMemo(() => ({
-    instanceFilter: filters.instanceFilter,
+    instanceFilter: effectiveInstanceFilter,
     acolhedorFilter: filters.acolhedorFilter,
     agentFilter: filters.agentFilter,
     boardFilter: filters.boardFilter,
     campaignFilter: filters.campaignFilter,
-  }), [filters.instanceFilter, filters.acolhedorFilter, filters.agentFilter, filters.boardFilter, filters.campaignFilter]);
+  }), [effectiveInstanceFilter, filters.acolhedorFilter, filters.agentFilter, filters.boardFilter, filters.campaignFilter]);
 
   // Filter dashboard metrics counts based on active filters
   const filteredMetrics = useMemo(() => {
@@ -163,7 +163,7 @@ export function AgentMonitorDashboard() {
 
     const filteredLeadIds = operationalFilteredLeadIds;
 
-    const hasActiveFilter = filters.agentFilter !== 'all' || filters.instanceFilter !== 'all' || 
+    const hasActiveFilter = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || 
       filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all';
 
     // Filter operational details by instance_name, acolhedor, or lead_id cross-reference
