@@ -147,11 +147,16 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     ));
   };
 
-  if (loading || !boardId || stages.length === 0) return null;
+  // Hierarchical progress calculation
+  const hierarchicalProgress = useMemo(() => {
+    const stageIds = stages.map(s => s.id);
+    return calculateHierarchicalProgress(stageIds, instances);
+  }, [stages, instances]);
+
+  const globalPercent = hierarchicalProgress.globalPercent;
 
   // Determine current stage index
   const currentIdx = stages.findIndex(s => s.id === currentStageId);
-  const progressPercent = currentIdx >= 0 ? ((currentIdx + 1) / stages.length) * 100 : 0;
 
   const activeViewStageId = viewingStageId || currentStageId;
 
