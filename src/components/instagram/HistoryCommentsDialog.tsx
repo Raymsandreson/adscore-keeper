@@ -636,22 +636,24 @@ export function HistoryCommentsDialog({
       />
       
       {/* Lead Edit Sheet (side panel) */}
-      <LeadEditDialog
-        open={showLeadEdit}
-        onOpenChange={(open) => {
-          setShowLeadEdit(open);
-          if (!open) {
-            setFullLead(null);
-            setEditingLeadId(null);
-          }
-        }}
-        lead={fullLead}
-        mode="sheet"
-        onSave={async (leadId, updates) => {
-          await updateLead(leadId, updates);
-          refetchContactData();
-        }}
-      />
+      {fullLead && (
+        <LeadEditDialog
+          open={showLeadEdit}
+          onOpenChange={(open) => {
+            setShowLeadEdit(open);
+            if (!open) {
+              setFullLead(null);
+              setEditingLeadId(null);
+            }
+          }}
+          lead={fullLead}
+          mode="sheet"
+          onSave={async (leadId, updates) => {
+            await updateLead(leadId, updates);
+            refetchContactData();
+          }}
+        />
+      )}
       
       {/* Contact Edit Sheet */}
       <ContactDetailSheet

@@ -1079,14 +1079,16 @@ export function WhatsAppInbox() {
       </div>
 
       {/* Lead Edit Panel - Full form with all tabs + AI */}
-      <LeadEditDialog
-        open={showLeadPanel}
-        onOpenChange={handleCloseLeadPanel}
-        lead={editingLead}
-        onSave={handleSaveLead}
-        boards={boards}
-        mode="sheet"
-      />
+      {editingLead && (
+        <LeadEditDialog
+          open={showLeadPanel}
+          onOpenChange={handleCloseLeadPanel}
+          lead={editingLead}
+          onSave={handleSaveLead}
+          boards={boards}
+          mode="sheet"
+        />
+      )}
 
       {/* Contact Detail Panel - Full form with all fields */}
       <ContactDetailSheet
