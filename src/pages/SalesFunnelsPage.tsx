@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter } from "lucide-react";
+import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter, Maximize2, Minimize2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
@@ -14,6 +14,7 @@ const SalesFunnelsPage = () => {
   const navigate = useNavigate();
   const { boards } = useKanbanBoards();
   const [search, setSearch] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const salesFunnels = useMemo(
     () => boards.filter(b => b.board_type === 'funnel'),
@@ -129,11 +130,14 @@ const SalesFunnelsPage = () => {
             const counts = leadCounts?.[board.id];
             const totalLeads = counts?.total || 0;
             const stageData = counts?.byStage || {};
+            const isExpanded = expandedId === board.id;
 
             return (
               <Card
                 key={board.id}
-                className="border-border/50 hover:shadow-md transition-shadow cursor-pointer group"
+                className={`border-border/50 hover:shadow-md transition-all cursor-pointer group ${
+                  isExpanded ? 'lg:col-span-2' : ''
+                }`}
                 onClick={() => handleOpenKanban(board.id)}
               >
                 <CardHeader className="pb-2">
@@ -142,10 +146,28 @@ const SalesFunnelsPage = () => {
                       <LayoutGrid className="h-4 w-4 text-primary" />
                       {board.name}
                     </CardTitle>
-                    <Badge variant="secondary" className="text-xs">
-                      <Users className="h-3 w-3 mr-1" />
-                      {totalLeads} leads
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-xs">
+                        <Users className="h-3 w-3 mr-1" />
+                        {totalLeads} leads
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedId(isExpanded ? null : board.id);
+                        }}
+                        title={isExpanded ? "Reduzir" : "Expandir"}
+                      >
+                        {isExpanded ? (
+                          <Minimize2 className="h-4 w-4" />
+                        ) : (
+                          <Maximize2 className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
                   </div>
                   {board.description && (
                     <CardDescription className="text-xs line-clamp-1">
