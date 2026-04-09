@@ -1245,69 +1245,117 @@ ${scrapeData.content || ''}
                             </a>
                           )}
                           {g.group_jid?.includes('@g.us') && currentLead && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="gap-1 text-orange-600 border-orange-200"
-                              onClick={async () => {
-                                try {
-                                  toast.info('Reparando grupo... Buscando contatos vinculados.');
-                                  // Get linked contacts for this lead
-                                  const { data: contactLinks } = await supabase
-                                    .from('contact_leads')
-                                    .select('contact_id, contacts(phone)')
-                                    .eq('lead_id', currentLead.id);
-                                  
-                                  const phones = (contactLinks || [])
-                                    .map((cl: any) => cl.contacts?.phone?.replace(/\D/g, ''))
-                                    .filter((p: string) => p && p.length >= 10);
-                                  
-                                  // Also add lead phone
-                                  const leadPhoneClean = currentLead.lead_phone?.replace(/\D/g, '') || '';
-                                  if (leadPhoneClean.length >= 10 && !phones.includes(leadPhoneClean)) {
-                                    phones.push(leadPhoneClean);
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button type="button" variant="outline" size="sm" className="gap-1 text-orange-600 border-orange-200">
+                                  <Wrench className="h-3 w-3" /> Ações <MoreVertical className="h-3 w-3" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuItem onClick={async () => {
+                                  try {
+                                    toast.info('Reparando grupo... Buscando contatos vinculados.');
+                                    const { data: contactLinks } = await supabase
+                                      .from('contact_leads')
+                                      .select('contact_id, contacts(phone)')
+                                      .eq('lead_id', currentLead.id);
+                                    const phones = (contactLinks || [])
+                                      .map((cl: any) => cl.contacts?.phone?.replace(/\D/g, ''))
+                                      .filter((p: string) => p && p.length >= 10);
+                                    const leadPhoneClean = currentLead.lead_phone?.replace(/\D/g, '') || '';
+                                    if (leadPhoneClean.length >= 10 && !phones.includes(leadPhoneClean)) {
+                                      phones.push(leadPhoneClean);
+                                    }
+                                    if (phones.length === 0) { toast.warning('Nenhum contato encontrado.'); return; }
+                                    const { data: { user } } = await supabase.auth.getUser();
+                                    let instId: string | null = null;
+                                    if (user) {
+                                      const { data: profile } = await supabase.from('profiles').select('default_instance_id').eq('user_id', user.id).single();
+                                      instId = (profile as any)?.default_instance_id || null;
+                                    }
+                                    const parts = phones.map((p: string) => `${p}@s.whatsapp.net`);
+                                    const { error } = await supabase.functions.invoke('repair-whatsapp-group', {
+                                      body: { lead_id: currentLead.id, group_jid: g.group_jid, participants: parts, instance_id: instId, forward_docs: false },
+                                    });
+                                    if (error) throw error;
+                                    toast.success(`${parts.length} participante(s) sendo adicionado(s) ao grupo.`);
+                                  } catch (err: any) {
+                                    toast.error('Erro ao reparar: ' + (err.message || 'Erro'));
                                   }
-                                  
-                                  if (phones.length === 0) {
-                                    toast.warning('Nenhum contato vinculado encontrado para adicionar ao grupo.');
-                                    return;
-                                  }
+                                }}>
+                                  <UserPlus className="h-4 w-4 mr-2" /> Reparar participantes
+                                </DropdownMenuItem>
 
-                                  // Get user's default instance
-                                  const { data: { user } } = await supabase.auth.getUser();
-                                  let instanceId: string | null = null;
-                                  if (user) {
-                                    const { data: profile } = await supabase
-                                      .from('profiles')
-                                      .select('default_instance_id')
-                                      .eq('user_id', user.id)
-                                      .single();
-                                    instanceId = (profile as any)?.default_instance_id || null;
+                                <DropdownMenuItem onClick={async () => {
+                                  try {
+                                    toast.info('Adicionando instâncias do funil ao grupo...');
+                                    const { data: { user } } = await supabase.auth.getUser();
+                                    let instId: string | null = null;
+                                    if (user) {
+                                      const { data: profile } = await supabase.from('profiles').select('default_instance_id').eq('user_id', user.id).single();
+                                      instId = (profile as any)?.default_instance_id || null;
+                                    }
+                                    const { data, error } = await supabase.functions.invoke('repair-whatsapp-group', {
+                                      body: { group_jid: g.group_jid, instance_id: instId, action: 'add_instances', board_id: currentLead.board_id },
+                                    });
+                                    if (error) throw error;
+                                    toast.success(data?.message || `${data?.added || 0} instância(s) adicionada(s).`);
+                                  } catch (err: any) {
+                                    toast.error('Erro: ' + (err.message || 'Erro'));
                                   }
+                                }}>
+                                  <Users className="h-4 w-4 mr-2" /> Adicionar instâncias do funil
+                                </DropdownMenuItem>
 
-                                  const participants = phones.map((p: string) => `${p}@s.whatsapp.net`);
-                                  
-                                  const { data: result, error } = await supabase.functions.invoke('repair-whatsapp-group', {
-                                    body: {
-                                      lead_id: currentLead.id,
-                                      group_jid: g.group_jid,
-                                      participants,
-                                      instance_id: instanceId,
-                                      forward_docs: false,
-                                    },
-                                  });
-                                  
-                                  if (error) throw error;
-                                  toast.success(`Reparo enviado! ${participants.length} participante(s) sendo adicionado(s) ao grupo.`);
-                                } catch (err: any) {
-                                  console.error('Repair error:', err);
-                                  toast.error('Erro ao reparar grupo: ' + (err.message || 'Erro desconhecido'));
-                                }
-                              }}
-                            >
-                              <Wrench className="h-3 w-3" /> Reparar
-                            </Button>
+                                <DropdownMenuSeparator />
+
+                                <DropdownMenuItem onClick={async () => {
+                                  try {
+                                    toast.info('Reenviando procuração assinada...');
+                                    const { data: { user } } = await supabase.auth.getUser();
+                                    let instId: string | null = null;
+                                    if (user) {
+                                      const { data: profile } = await supabase.from('profiles').select('default_instance_id').eq('user_id', user.id).single();
+                                      instId = (profile as any)?.default_instance_id || null;
+                                    }
+                                    const { data, error } = await supabase.functions.invoke('repair-whatsapp-group', {
+                                      body: { group_jid: g.group_jid, lead_id: currentLead.id, instance_id: instId, action: 'resend_signed_docs' },
+                                    });
+                                    if (error) throw error;
+                                    if (data?.docs_forwarded > 0) {
+                                      toast.success(`${data.docs_forwarded} documento(s) reenviado(s)!`);
+                                    } else {
+                                      toast.warning('Nenhum documento assinado encontrado.');
+                                    }
+                                  } catch (err: any) {
+                                    toast.error('Erro: ' + (err.message || 'Erro'));
+                                  }
+                                }}>
+                                  <FileSignature className="h-4 w-4 mr-2" /> Reenviar procuração assinada
+                                </DropdownMenuItem>
+
+                                <DropdownMenuItem onClick={async () => {
+                                  try {
+                                    toast.info('Reenviando mensagem inicial...');
+                                    const { data: { user } } = await supabase.auth.getUser();
+                                    let instId: string | null = null;
+                                    if (user) {
+                                      const { data: profile } = await supabase.from('profiles').select('default_instance_id').eq('user_id', user.id).single();
+                                      instId = (profile as any)?.default_instance_id || null;
+                                    }
+                                    const { data, error } = await supabase.functions.invoke('repair-whatsapp-group', {
+                                      body: { group_jid: g.group_jid, lead_id: currentLead.id, instance_id: instId, action: 'resend_initial_message', board_id: currentLead.board_id },
+                                    });
+                                    if (error) throw error;
+                                    toast.success(data?.message || 'Mensagem inicial reenviada!');
+                                  } catch (err: any) {
+                                    toast.error('Erro: ' + (err.message || 'Erro'));
+                                  }
+                                }}>
+                                  <Send className="h-4 w-4 mr-2" /> Reenviar mensagem inicial
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           )}
                           <Button type="button" variant="ghost" size="sm" onClick={() => setWhatsappGroups(prev => prev.filter((_, i) => i !== idx))}>
                             <X className="h-3 w-3" />
