@@ -184,6 +184,7 @@ export function LeadEditDialog({
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [editingSourceLabel, setEditingSourceLabel] = useState('');
   const [whatsappGroups, setWhatsappGroups] = useState<Array<{ id?: string; group_link: string; group_jid: string; group_name: string; label: string }>>([]);
+  const [syncGroupData, setSyncGroupData] = useState<{ jid: string; name: string } | null>(null);
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
   const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress' | 'inviavel'>('');
