@@ -136,17 +136,43 @@ Deno.serve(async (req) => {
     console.log(`Group ${groupJid}: ${participants.length} participants found via ${usedInstanceName}`);
 
     // 4. Extract phone numbers from participants (exclude instances)
+    // Log raw participant data to understand the structure
+    console.log(`Raw participants sample:`, JSON.stringify(participants.slice(0, 3)));
+    
     const participantPhones: string[] = [];
     for (const p of participants) {
+      // UazAPI returns: JID (LID format), PhoneNumber (with @s.whatsapp.net), LID, etc.
+      const phoneJid = p.PhoneNumber || p.phoneNumber || p.phone_number || "";
       const jid = p.id || p.JID || p.jid || "";
-      if (!jid || jid.includes("@lid") || jid.includes("@g.us")) continue;
-      const phone = extractPhoneFromJid(jid);
+      
+      // Skip group JIDs
+      if (jid.includes("@g.us")) continue;
+      
+      let phone = "";
+      // Priority 1: PhoneNumber field (e.g. "558999924118@s.whatsapp.net")
+      if (phoneJid && phoneJid.includes("@")) {
+        phone = extractPhoneFromJid(phoneJid);
+      } else if (phoneJid) {
+        phone = phoneJid.replace(/\D/g, "");
+      }
+      // Priority 2: JID if it's @s.whatsapp.net format
+      if (!phone && jid && jid.includes("@s.whatsapp.net")) {
+        phone = extractPhoneFromJid(jid);
+      }
+      // Priority 3: raw digits from JID (not @lid)
+      if (!phone && jid && !jid.includes("@lid")) {
+        phone = jid.replace(/\D/g, "");
+      }
+      
       if (phone && phone.length >= 10 && !instancePhones.has(phone)) {
         participantPhones.push(phone);
+        console.log(`Participant phone extracted: ${phone} from JID: ${jid}`);
+      } else if (jid) {
+        console.log(`Skipped participant: jid=${jid} phone=${phone} isInstance=${instancePhones.has(phone)}`);
       }
     }
 
-    console.log(`After filtering instances: ${participantPhones.length} participant phones`);
+    console.log(`After filtering: ${participantPhones.length} participant phones from ${participants.length} total`);
 
     // 5. Find existing contacts by phone
     const { data: existingContacts } = await dataClient
