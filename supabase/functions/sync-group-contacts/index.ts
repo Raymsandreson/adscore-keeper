@@ -149,25 +149,19 @@ Deno.serve(async (req) => {
       if (jid.includes("@g.us")) continue;
       
       let phone = "";
-      if (jid && jid.includes("@s.whatsapp.net")) {
-        phone = extractPhoneFromJid(jid);
-      } else if (jid && jid.includes("@lid")) {
-        // LID format - check if there's a phone/number field
-        if (phone_field) {
-          phone = phone_field.replace(/\D/g, "");
-        }
-        // Also check for nested fields
-        if (!phone && p.LID) {
-          console.log(`LID participant found: ${jid}, checking nested fields`);
-        }
-      } else if (jid) {
-        // Try extracting digits from unknown format
-        phone = jid.replace(/\D/g, "");
+      // Priority 1: PhoneNumber field (e.g. "558999924118@s.whatsapp.net")
+      if (phoneJid && phoneJid.includes("@")) {
+        phone = extractPhoneFromJid(phoneJid);
+      } else if (phoneJid) {
+        phone = phoneJid.replace(/\D/g, "");
       }
-      
-      // Fallback: direct phone field
-      if (!phone && phone_field) {
-        phone = phone_field.replace(/\D/g, "");
+      // Priority 2: JID if it's @s.whatsapp.net format
+      if (!phone && jid && jid.includes("@s.whatsapp.net")) {
+        phone = extractPhoneFromJid(jid);
+      }
+      // Priority 3: raw digits from JID (not @lid)
+      if (!phone && jid && !jid.includes("@lid")) {
+        phone = jid.replace(/\D/g, "");
       }
       
       if (phone && phone.length >= 10 && !instancePhones.has(phone)) {
