@@ -482,6 +482,7 @@ function RichTextEditorComponent({
   // Use a sentinel so SyncPlugin always runs on first mount to populate the editor
   const lastEmittedHtml = useRef<string>('__INIT__');
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dirtyRef = useRef(false);
   const lastAiText = useRef('');
 
   const initialConfig = useRef({
