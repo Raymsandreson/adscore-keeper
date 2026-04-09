@@ -1196,12 +1196,13 @@ ${scrapeData.content || ''}
                       </a>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Cole o link do grupo. O ID será extraído automaticamente ao salvar.
-                  </p>
-                  {whatsappGroupId && whatsappGroupId.includes('@g.us') && (
+                  {whatsappGroupId && whatsappGroupId.includes('@g.us') ? (
                     <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                      ✅ ID do grupo: <span className="font-mono">{whatsappGroupId}</span>
+                      ✅ ID: <span className="font-mono text-green-700">{whatsappGroupId}</span>
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Cole o link do grupo. O ID será extraído automaticamente ao salvar.
                     </p>
                   )}
                 </div>
