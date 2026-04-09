@@ -87,14 +87,23 @@ export function AgentMonitorDashboard() {
     return new Set(conversations.filter(c => c.agent_id === filters.agentFilter).map(c => c.phone));
   }, [conversations, filters.agentFilter]);
 
+  // Build phone set from base-filtered conversations for cross-referencing newConvDetails
+  const baseFilteredPhoneSet = useMemo(() => {
+    const hasActiveFilter = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || 
+      filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all' || filters.userFilter !== 'all';
+    if (!hasActiveFilter) return null;
+    return new Set(baseFilteredConversations.map(c => c.phone));
+  }, [baseFilteredConversations, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter, filters.userFilter]);
+
   // Filter metrics newConvDetails based on active filters
   const filteredNewConvDetails = useMemo(() => {
     return metrics.newConvDetails.filter(c => {
       if (effectiveInstanceFilter !== 'all' && c.instance_name !== effectiveInstanceFilter) return false;
       if (agentPhoneSet && !agentPhoneSet.has(c.phone)) return false;
+      if (baseFilteredPhoneSet && !baseFilteredPhoneSet.has(c.phone)) return false;
       return true;
     });
-  }, [metrics.newConvDetails, effectiveInstanceFilter, agentPhoneSet]);
+  }, [metrics.newConvDetails, effectiveInstanceFilter, agentPhoneSet, baseFilteredPhoneSet]);
 
   // Derive closedByAgent from filtered conversations (consistent with pipeline counts)
   // Use applyBaseFilters from the hook (already handles user filter, instance, acolhedor, etc.)
