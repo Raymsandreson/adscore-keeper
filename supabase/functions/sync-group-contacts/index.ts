@@ -44,33 +44,31 @@ Deno.serve(async (req) => {
     const internalClient = createClient(INTERNAL_SUPABASE_URL, INTERNAL_SERVICE_ROLE_KEY);
     const dataClient = createClient(RESOLVED_SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY);
 
-    // 1. Get instance for API calls
-    let instance: any = null;
-    if (instance_id) {
-      const { data } = await internalClient
-        .from("whatsapp_instances")
-        .select("*")
-        .eq("id", instance_id)
-        .eq("is_active", true)
-        .single();
-      instance = data;
-    }
-    if (!instance) {
-      const { data: fallback } = await internalClient
-        .from("whatsapp_instances")
-        .select("*")
-        .eq("is_active", true)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .single();
-      instance = fallback;
+    // 1. Build ordered list of instances to try:
+    // Priority: user's instance_id > all active instances
+    const { data: allActiveInstances } = await internalClient
+      .from("whatsapp_instances")
+      .select("*")
+      .eq("is_active", true)
+      .order("created_at", { ascending: true });
+
+    if (!allActiveInstances || allActiveInstances.length === 0) {
+      return new Response(
+        JSON.stringify({ success: false, error: "No active WhatsApp instance found" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    if (!instance) {
-      return new Response(
-        JSON.stringify({ error: "No active WhatsApp instance found" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // Put user's preferred instance first
+    const orderedInstances: any[] = [];
+    if (instance_id) {
+      const preferred = allActiveInstances.find((i: any) => i.id === instance_id);
+      if (preferred) orderedInstances.push(preferred);
+    }
+    for (const inst of allActiveInstances) {
+      if (!orderedInstances.some((o: any) => o.id === inst.id)) {
+        orderedInstances.push(inst);
+      }
     }
 
     // 2. Get ALL instance phone numbers (to exclude them)
