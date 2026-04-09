@@ -328,7 +328,6 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
                     onChange={setWhatWasDone}
                     placeholder="Descreva o que foi realizado..."
                     activityId={activityId || undefined}
-                    fieldKey="what_was_done"
                   />
                   <ActivityNotesField
                     label="Status Atual"
@@ -336,7 +335,6 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
                     onChange={setCurrentStatus}
                     placeholder="Qual o status atual..."
                     activityId={activityId || undefined}
-                    fieldKey="current_status_notes"
                   />
                   <ActivityNotesField
                     label="Próximos Passos"
@@ -344,7 +342,6 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
                     onChange={setNextSteps}
                     placeholder="O que precisa ser feito..."
                     activityId={activityId || undefined}
-                    fieldKey="next_steps"
                   />
                   <ActivityNotesField
                     label="Observações"
@@ -352,7 +349,6 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
                     onChange={setNotes}
                     placeholder="Anotações adicionais..."
                     activityId={activityId || undefined}
-                    fieldKey="notes"
                   />
                 </CollapsibleContent>
               </Collapsible>
