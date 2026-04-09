@@ -233,7 +233,7 @@ export function GroupContactSyncDialog({
           final_name: s.suggested_name || '',
           should_create: true,
           city: '',
-          state: '',
+          state: getStateFromPhone(s.phone) || '',
           email: '',
           profession: '',
           notes: '',
@@ -258,7 +258,7 @@ export function GroupContactSyncDialog({
   };
 
   const handleCreateContacts = async () => {
-    const toCreate = suggestions.filter(s => s.should_create && s.final_name.trim());
+    const toCreate = suggestions.filter(s => s.should_create);
     if (toCreate.length === 0) {
       toast.info('Nenhum contato para criar');
       onClose();
