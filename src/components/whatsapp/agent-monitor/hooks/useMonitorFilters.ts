@@ -22,18 +22,30 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
   const uniqueCampaigns = useMemo(() => [...new Set(conversations.map(c => c.campaign_name).filter(Boolean))].sort() as string[], [conversations]);
   const uniqueAcolhedores = useMemo(() => [...new Set(conversations.map(c => c.lead_acolhedor).filter(Boolean))].sort() as string[], [conversations]);
   const uniqueUsers = useMemo(() => {
-    const instanceNames = new Set(conversations.map(c => c.instance_name));
-    return users.filter(u => u.instance_name && instanceNames.has(u.instance_name));
-  }, [conversations, users]);
+    // All users with profiles, regardless of instance
+    return users;
+  }, [users]);
 
-  // Resolve effective instance filter (user filter maps to instance_name)
+  // When user filter is active, resolve to acolhedor name and optionally instance
   const effectiveInstanceFilter = useMemo(() => {
     if (userFilter !== 'all') {
       const user = users.find(u => u.id === userFilter);
-      return user?.instance_name || 'all';
+      // If user has a unique instance, also filter by it
+      if (user?.instance_name) {
+        const usersOnSameInstance = users.filter(u => u.instance_name === user.instance_name);
+        if (usersOnSameInstance.length === 1) return user.instance_name;
+      }
     }
     return instanceFilter;
   }, [userFilter, instanceFilter, users]);
+
+  const effectiveAcolhedorFromUser = useMemo(() => {
+    if (userFilter !== 'all') {
+      const user = users.find(u => u.id === userFilter);
+      return user?.full_name || null;
+    }
+    return null;
+  }, [userFilter, users]);
 
   const applyBaseFilters = (c: ConversationDetail) => {
     if (agentFilter !== 'all') {
