@@ -143,6 +143,8 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
     if (activeFilter === 'closed') return 'Leads Fechados';
     if (activeFilter === 'refused') return 'Leads Recusados';
     if (activeFilter === 'inviavel') return 'Leads Inviáveis';
+    if (activeFilter === 'blocked') return 'Leads Bloqueados';
+    if (activeFilter === 'active') return 'Leads Em Andamento';
     if (activeFilter === 'stage' && activeStageId) {
       const stage = board.stages?.find(s => s.id === activeStageId);
       return `Leads em: ${stage?.name || activeStageId}`;
@@ -246,8 +248,18 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
             })}
           </div>
 
-          {/* Summary - Fechados, Recusados, Inviáveis */}
-          <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-border/50">
+          {/* Summary - Em andamento, Fechados, Recusados, Inviáveis, Bloqueados */}
+          <div className="grid grid-cols-5 gap-2 text-center pt-2 border-t border-border/50">
+            <div
+              className="p-2 rounded-md bg-primary/10 cursor-pointer hover:bg-primary/20 transition-colors"
+              onClick={() => openSheet('active')}
+            >
+              <div className="flex items-center justify-center gap-1">
+                <PlayCircle className="h-3.5 w-3.5 text-primary" />
+                <span className="text-lg font-bold text-primary">{statusCounts?.active || 0}</span>
+              </div>
+              <div className="text-[10px] text-muted-foreground">Andamento</div>
+            </div>
             <div
               className="p-2 rounded-md bg-green-500/10 cursor-pointer hover:bg-green-500/20 transition-colors"
               onClick={() => openSheet('closed')}
@@ -277,6 +289,16 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
                 <span className="text-lg font-bold text-orange-600">{statusCounts?.inviavel || 0}</span>
               </div>
               <div className="text-[10px] text-muted-foreground">Inviáveis</div>
+            </div>
+            <div
+              className="p-2 rounded-md bg-muted cursor-pointer hover:bg-muted/80 transition-colors"
+              onClick={() => openSheet('blocked')}
+            >
+              <div className="flex items-center justify-center gap-1">
+                <ShieldOff className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-lg font-bold text-muted-foreground">{statusCounts?.blocked || 0}</span>
+              </div>
+              <div className="text-[10px] text-muted-foreground">Bloqueados</div>
             </div>
           </div>
         </CardContent>
