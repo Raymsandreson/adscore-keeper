@@ -78,6 +78,11 @@ import {
   AlertTriangle,
   DollarSign,
   ExternalLink,
+  MoreVertical,
+  UserPlus,
+  FileSignature,
+  MessageSquare,
+  Send,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
