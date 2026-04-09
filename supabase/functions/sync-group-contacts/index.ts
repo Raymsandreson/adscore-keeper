@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
       .eq("is_active", true);
     
     const instancePhones = new Set(
-      (allInstances || [])
+      orderedInstances
         .map((i: any) => normalizePhone(i.owner_phone || ""))
         .filter((p: string) => p.length >= 10)
     );
