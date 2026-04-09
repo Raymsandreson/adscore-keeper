@@ -110,7 +110,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
         } else if (metricType === 'cases') {
           const { data } = await supabase
             .from('legal_cases')
-            .select('id, case_number, title, status, acolhedor, created_at')
+            .select('id, case_number, title, status, acolhedor, lead_id, created_at')
             .gte('created_at', start).lte('created_at', end)
             .order('created_at', { ascending: false });
           setItems(data || []);
@@ -330,6 +330,13 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
                     <span>{item.acolhedor || '—'}</span>
                     <span>{format(parseISO(item.created_at), 'HH:mm')}</span>
                   </div>
+                  {item.lead_id && (
+                    <div className="pt-1">
+                      <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1" onClick={() => handleOpenLead(item.lead_id)}>
+                        <ExternalLink className="h-3 w-3" /> Abrir Lead
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ))}
 
