@@ -342,6 +342,17 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
                 </SelectContent>
               </Select>
             </div>
+            {!editingCase && (
+              <div>
+                <Label>📅 Data de Fechamento *</Label>
+                <Input
+                  type="date"
+                  value={caseClosedAt}
+                  onChange={e => setCaseClosedAt(e.target.value)}
+                  required
+                />
+              </div>
+            )}
             <div>
               <Label className="flex items-center gap-2 mb-2">
                 <CheckCircle className="h-4 w-4" />
