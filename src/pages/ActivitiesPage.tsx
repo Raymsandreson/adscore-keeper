@@ -8,7 +8,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
-import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
+import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
