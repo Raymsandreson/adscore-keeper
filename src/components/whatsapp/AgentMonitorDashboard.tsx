@@ -173,23 +173,26 @@ export function AgentMonitorDashboard() {
     const responseTimes = filtered.filter(c => c.response_time_minutes !== null).map(c => c.response_time_minutes!);
     const avgResponseTimeMin = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : 0;
 
-    const filteredLeadIds = operationalFilteredLeadIds;
-
-    const hasActiveFilter = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || 
-      filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all' || filters.userFilter !== 'all';
+    const needsConversationCrossRef = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || filters.boardFilter !== 'all';
 
     const filterOp = (detail: { acolhedor: string | null; instance_name: string | null; lead_id: string | null }) => {
       if (!hasActiveFilter) return true;
+      
+      // Direct field filters first (independent of conversations)
       if (effectiveInstanceFilter !== 'all' && detail.instance_name && detail.instance_name !== effectiveInstanceFilter) return false;
-      if (effectiveAcolhedorFromUser && detail.acolhedor && detail.acolhedor !== effectiveAcolhedorFromUser) return false;
-      if (!effectiveAcolhedorFromUser && filters.acolhedorFilter !== 'all' && detail.acolhedor) {
+      if (effectiveAcolhedorFromUser) {
+        if (detail.acolhedor && detail.acolhedor !== effectiveAcolhedorFromUser) return false;
+      } else if (filters.acolhedorFilter !== 'all') {
         if (filters.acolhedorFilter === '__none__' && detail.acolhedor) return false;
-        if (filters.acolhedorFilter !== '__none__' && detail.acolhedor !== filters.acolhedorFilter) return false;
+        if (filters.acolhedorFilter !== '__none__' && detail.acolhedor && detail.acolhedor !== filters.acolhedorFilter) return false;
       }
-      if (detail.lead_id && filteredLeadIds.size > 0) {
-        return filteredLeadIds.has(detail.lead_id);
+      
+      // Only cross-reference with conversations for agent/board filters that need it
+      if (needsConversationCrossRef && detail.lead_id) {
+        if (operationalFilteredLeadIds.size === 0) return false;
+        if (!operationalFilteredLeadIds.has(detail.lead_id)) return false;
       }
-      if (hasActiveFilter && !detail.acolhedor && !detail.instance_name && !detail.lead_id) return true;
+      
       return true;
     };
 
