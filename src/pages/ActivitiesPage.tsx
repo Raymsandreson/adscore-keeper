@@ -2812,7 +2812,7 @@ const ActivitiesPage = () => {
             {/* Action bar - always visible at bottom */}
             <div className="shrink-0 border-t border-border bg-muted/60 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-10 space-y-2">
               {buildMsg && (
-                <SendToGroupSection buildMsg={buildMsg} leadId={formLeadId} fieldSettings={fieldSettings} updateFieldSetting={updateFieldSetting} reorderFields={reorderFields} formLeadIdForTTS={formLeadId || undefined} formContactIdForTTS={formContactId || undefined} />
+                <SendToGroupSection buildMsg={buildMsg} leadId={formLeadId} fieldSettings={fieldSettings} updateFieldSetting={updateFieldSetting} reorderFields={reorderFields} formLeadIdForTTS={formLeadId || undefined} formContactIdForTTS={formContactId || undefined} formAssignedTo={formAssignedTo || undefined} />
               )}
               {sheetMode === 'edit' ? (
                 <div className="flex items-center justify-between gap-2 max-w-2xl flex-wrap">
