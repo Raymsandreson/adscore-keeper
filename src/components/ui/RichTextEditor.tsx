@@ -537,11 +537,11 @@ function RichTextEditorComponent({
 
   const handleExpand = useCallback(() => {
     const editor = editorRef.current;
-    if (editor) {
+    if (editor && dirtyRef.current) {
+      dirtyRef.current = false;
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       flushEditorHtml(editor);
     }
-    // Use microtask to ensure state is flushed before opening the sheet
     queueMicrotask(() => {
       onExpand?.();
     });
