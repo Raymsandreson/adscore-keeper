@@ -58,7 +58,10 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       if (campaignFilter === '__none__' && c.campaign_name) return false;
       if (campaignFilter !== '__none__' && c.campaign_name !== campaignFilter) return false;
     }
-    if (acolhedorFilter !== 'all') {
+    // User filter: filter by acolhedor name
+    if (effectiveAcolhedorFromUser) {
+      if (c.lead_acolhedor !== effectiveAcolhedorFromUser) return false;
+    } else if (acolhedorFilter !== 'all') {
       if (acolhedorFilter === '__none__' && c.lead_acolhedor) return false;
       if (acolhedorFilter !== '__none__' && c.lead_acolhedor !== acolhedorFilter) return false;
     }
