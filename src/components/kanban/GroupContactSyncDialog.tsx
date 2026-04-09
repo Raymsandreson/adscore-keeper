@@ -274,7 +274,7 @@ export function GroupContactSyncDialog({
         const { data: newContact, error: createError } = await supabase
           .from('contacts')
           .insert({
-            full_name: s.final_name.trim(),
+            full_name: s.final_name.trim() || s.phone,
             phone: s.phone,
             source: 'whatsapp_group',
             classification: 'prospect',
