@@ -39,7 +39,7 @@ export function AgentMonitorDashboard() {
   const [gapSheet, setGapSheet] = useState<GapType | null>(null);
   const [closingAcolhedorFilter, setClosingAcolhedorFilter] = useState<string | null>(null);
 
-  const { agents, conversations, agentStats, referrals, redirections, boards, loading: monitorLoading, fetchData: fetchDataRaw } = useMonitorData();
+  const { agents, conversations, agentStats, referrals, redirections, boards, users, loading: monitorLoading, fetchData: fetchDataRaw } = useMonitorData();
   const { metrics, metricsLoading, fetchMetrics } = useDashboardMetrics();
   const { gaps, gapsLoading, fetchGaps } = useOperationalGaps();
 
@@ -74,27 +74,36 @@ export function AgentMonitorDashboard() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const {
-    filters, filteredConversations, pipelineCounts,
-    uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores, applyBaseFilters,
-  } = useMonitorFilters(conversations, boards);
+    filters, filteredConversations, pipelineCounts, effectiveInstanceFilter,
+    uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores, uniqueUsers, applyBaseFilters,
+  } = useMonitorFilters(conversations, boards, users);
+
+  // Build a set of phones managed by the selected agent for cross-referencing
+  const agentPhoneSet = useMemo(() => {
+    if (filters.agentFilter === 'all') return null;
+    if (filters.agentFilter === '__none__') {
+      return new Set(conversations.filter(c => !c.agent_id).map(c => c.phone));
+    }
+    return new Set(conversations.filter(c => c.agent_id === filters.agentFilter).map(c => c.phone));
+  }, [conversations, filters.agentFilter]);
 
   // Filter metrics newConvDetails based on active filters
   const filteredNewConvDetails = useMemo(() => {
     return metrics.newConvDetails.filter(c => {
-      if (filters.instanceFilter !== 'all' && c.instance_name !== filters.instanceFilter) return false;
+      if (effectiveInstanceFilter !== 'all' && c.instance_name !== effectiveInstanceFilter) return false;
+      if (agentPhoneSet && !agentPhoneSet.has(c.phone)) return false;
       return true;
     });
-  }, [metrics.newConvDetails, filters.instanceFilter]);
+  }, [metrics.newConvDetails, effectiveInstanceFilter, agentPhoneSet]);
 
   // Derive closedByAgent from filtered conversations (consistent with pipeline counts)
   const filteredClosedByAgent = useMemo(() => {
     const base = conversations.filter(c => {
-      // Apply base filters
       if (filters.agentFilter !== 'all') {
         if (filters.agentFilter === '__none__' && c.agent_id) return false;
         if (filters.agentFilter !== '__none__' && c.agent_id !== filters.agentFilter) return false;
       }
-      if (filters.instanceFilter !== 'all' && c.instance_name !== filters.instanceFilter) return false;
+      if (effectiveInstanceFilter !== 'all' && c.instance_name !== effectiveInstanceFilter) return false;
       if (filters.boardFilter !== 'all' && c.board_id !== filters.boardFilter) return false;
       if (filters.campaignFilter !== 'all') {
         if (filters.campaignFilter === '__none__' && c.campaign_name) return false;
@@ -114,7 +123,7 @@ export function AgentMonitorDashboard() {
     return Array.from(map.entries())
       .map(([agent, count]) => ({ agent, count }))
       .sort((a, b) => b.count - a.count);
-  }, [conversations, filters.agentFilter, filters.instanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
+  }, [conversations, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
 
   // Build a set of lead_ids from filtered conversations for cross-referencing operational metrics
   const operationalFilteredLeadIds = useMemo(() => new Set(
@@ -123,7 +132,7 @@ export function AgentMonitorDashboard() {
         if (filters.agentFilter === '__none__' && c.agent_id) return false;
         if (filters.agentFilter !== '__none__' && c.agent_id !== filters.agentFilter) return false;
       }
-      if (filters.instanceFilter !== 'all' && c.instance_name !== filters.instanceFilter) return false;
+      if (effectiveInstanceFilter !== 'all' && c.instance_name !== effectiveInstanceFilter) return false;
       if (filters.boardFilter !== 'all' && c.board_id !== filters.boardFilter) return false;
       if (filters.campaignFilter !== 'all') {
         if (filters.campaignFilter === '__none__' && c.campaign_name) return false;
@@ -135,15 +144,15 @@ export function AgentMonitorDashboard() {
       }
       return true;
     }).map(c => c.lead_id).filter(Boolean) as string[]
-  ), [conversations, filters.agentFilter, filters.instanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
+  ), [conversations, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
 
   const operationalFiltersObj: OperationalFilters = useMemo(() => ({
-    instanceFilter: filters.instanceFilter,
+    instanceFilter: effectiveInstanceFilter,
     acolhedorFilter: filters.acolhedorFilter,
     agentFilter: filters.agentFilter,
     boardFilter: filters.boardFilter,
     campaignFilter: filters.campaignFilter,
-  }), [filters.instanceFilter, filters.acolhedorFilter, filters.agentFilter, filters.boardFilter, filters.campaignFilter]);
+  }), [effectiveInstanceFilter, filters.acolhedorFilter, filters.agentFilter, filters.boardFilter, filters.campaignFilter]);
 
   // Filter dashboard metrics counts based on active filters
   const filteredMetrics = useMemo(() => {
@@ -154,14 +163,14 @@ export function AgentMonitorDashboard() {
 
     const filteredLeadIds = operationalFilteredLeadIds;
 
-    const hasActiveFilter = filters.agentFilter !== 'all' || filters.instanceFilter !== 'all' || 
+    const hasActiveFilter = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || 
       filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all';
 
     // Filter operational details by instance_name, acolhedor, or lead_id cross-reference
     const filterOp = (detail: { acolhedor: string | null; instance_name: string | null; lead_id: string | null }) => {
       if (!hasActiveFilter) return true;
       // Filter by instance if the detail has instance info
-      if (filters.instanceFilter !== 'all' && detail.instance_name && detail.instance_name !== filters.instanceFilter) return false;
+      if (effectiveInstanceFilter !== 'all' && detail.instance_name && detail.instance_name !== effectiveInstanceFilter) return false;
       // Filter by acolhedor if available on the detail
       if (filters.acolhedorFilter !== 'all' && detail.acolhedor) {
         if (filters.acolhedorFilter === '__none__' && detail.acolhedor) return false;
@@ -202,7 +211,7 @@ export function AgentMonitorDashboard() {
       casesDetails: filteredCases,
       processesDetails: filteredProcesses,
     };
-  }, [metrics, filteredNewConvDetails, filteredClosedByAgent, operationalFilteredLeadIds, filters.agentFilter, filters.instanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
+  }, [metrics, filteredNewConvDetails, filteredClosedByAgent, operationalFilteredLeadIds, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
 
   // Filter gaps by acolhedor
   const filteredGaps = useMemo(() => {
@@ -278,7 +287,7 @@ export function AgentMonitorDashboard() {
   };
 
   const filterBarProps = {
-    agents, uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores,
+    agents, uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores, uniqueUsers,
     agentFilter: filters.agentFilter, setAgentFilter: filters.setAgentFilter,
     instanceFilter: filters.instanceFilter, setInstanceFilter: filters.setInstanceFilter,
     boardFilter: filters.boardFilter, setBoardFilter: filters.setBoardFilter,
@@ -286,6 +295,7 @@ export function AgentMonitorDashboard() {
     acolhedorFilter: filters.acolhedorFilter, setAcolhedorFilter: filters.setAcolhedorFilter,
     agentActiveFilter: filters.agentActiveFilter, setAgentActiveFilter: filters.setAgentActiveFilter,
     followupConfigFilter: filters.followupConfigFilter, setFollowupConfigFilter: filters.setFollowupConfigFilter,
+    userFilter: filters.userFilter, setUserFilter: filters.setUserFilter,
   };
 
   const batchProps = {

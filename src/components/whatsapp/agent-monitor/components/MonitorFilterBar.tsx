@@ -1,5 +1,5 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { AgentData, BoardData } from '../types';
+import type { AgentData, BoardData, UserData } from '../types';
 
 interface MonitorFilterBarProps {
   agents: AgentData[];
@@ -7,6 +7,7 @@ interface MonitorFilterBarProps {
   uniqueBoards: BoardData[];
   uniqueCampaigns: string[];
   uniqueAcolhedores: string[];
+  uniqueUsers: UserData[];
   agentFilter: string;
   setAgentFilter: (v: string) => void;
   instanceFilter: string;
@@ -21,14 +22,17 @@ interface MonitorFilterBarProps {
   setAgentActiveFilter: (v: 'all' | 'ativo') => void;
   followupConfigFilter: 'all' | 'com_followup' | 'sem_followup';
   setFollowupConfigFilter: (v: 'all' | 'com_followup' | 'sem_followup') => void;
+  userFilter: string;
+  setUserFilter: (v: string) => void;
 }
 
 export function MonitorFilterBar({
-  agents, uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores,
+  agents, uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores, uniqueUsers,
   agentFilter, setAgentFilter, instanceFilter, setInstanceFilter,
   boardFilter, setBoardFilter, campaignFilter, setCampaignFilter,
   acolhedorFilter, setAcolhedorFilter,
   agentActiveFilter, setAgentActiveFilter, followupConfigFilter, setFollowupConfigFilter,
+  userFilter, setUserFilter,
 }: MonitorFilterBarProps) {
   return (
     <div className="flex flex-wrap gap-2">
@@ -41,8 +45,18 @@ export function MonitorFilterBar({
         </SelectContent>
       </Select>
 
+      {uniqueUsers.length > 1 && (
+        <Select value={userFilter} onValueChange={(v) => { setUserFilter(v); if (v !== 'all') setInstanceFilter('all'); }}>
+          <SelectTrigger className="w-[150px] h-8 text-xs"><SelectValue placeholder="Usuário" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos Usuários</SelectItem>
+            {uniqueUsers.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      )}
+
       {uniqueInstances.length > 1 && (
-        <Select value={instanceFilter} onValueChange={setInstanceFilter}>
+        <Select value={instanceFilter} onValueChange={(v) => { setInstanceFilter(v); if (v !== 'all') setUserFilter('all'); }}>
           <SelectTrigger className="w-[140px] h-8 text-xs"><SelectValue placeholder="Instância" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas Instâncias</SelectItem>

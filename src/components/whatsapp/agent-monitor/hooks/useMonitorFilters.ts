@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
-import type { ConversationDetail, CaseStatus, BoardData } from '../types';
+import type { ConversationDetail, CaseStatus, BoardData, UserData } from '../types';
 import { getCaseStatus } from '../utils';
 
-export function useMonitorFilters(conversations: ConversationDetail[], boards: BoardData[]) {
+export function useMonitorFilters(conversations: ConversationDetail[], boards: BoardData[], users: UserData[] = []) {
   const [agentFilter, setAgentFilter] = useState('all');
   const [instanceFilter, setInstanceFilter] = useState('all');
   const [boardFilter, setBoardFilter] = useState('all');
@@ -11,6 +11,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
   const [caseStatusFilter, setCaseStatusFilter] = useState<CaseStatus | 'all'>('all');
   const [agentActiveFilter, setAgentActiveFilter] = useState<'all' | 'ativo'>('all');
   const [followupConfigFilter, setFollowupConfigFilter] = useState<'all' | 'com_followup' | 'sem_followup'>('all');
+  const [userFilter, setUserFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const uniqueInstances = useMemo(() => [...new Set(conversations.map(c => c.instance_name).filter(Boolean))].sort() as string[], [conversations]);
@@ -20,13 +21,26 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
   }, [conversations, boards]);
   const uniqueCampaigns = useMemo(() => [...new Set(conversations.map(c => c.campaign_name).filter(Boolean))].sort() as string[], [conversations]);
   const uniqueAcolhedores = useMemo(() => [...new Set(conversations.map(c => c.lead_acolhedor).filter(Boolean))].sort() as string[], [conversations]);
+  const uniqueUsers = useMemo(() => {
+    const instanceNames = new Set(conversations.map(c => c.instance_name));
+    return users.filter(u => u.instance_name && instanceNames.has(u.instance_name));
+  }, [conversations, users]);
+
+  // Resolve effective instance filter (user filter maps to instance_name)
+  const effectiveInstanceFilter = useMemo(() => {
+    if (userFilter !== 'all') {
+      const user = users.find(u => u.id === userFilter);
+      return user?.instance_name || 'all';
+    }
+    return instanceFilter;
+  }, [userFilter, instanceFilter, users]);
 
   const applyBaseFilters = (c: ConversationDetail) => {
     if (agentFilter !== 'all') {
       if (agentFilter === '__none__' && c.agent_id) return false;
       if (agentFilter !== '__none__' && c.agent_id !== agentFilter) return false;
     }
-    if (instanceFilter !== 'all' && c.instance_name !== instanceFilter) return false;
+    if (effectiveInstanceFilter !== 'all' && c.instance_name !== effectiveInstanceFilter) return false;
     if (boardFilter !== 'all' && c.board_id !== boardFilter) return false;
     if (campaignFilter !== 'all') {
       if (campaignFilter === '__none__' && c.campaign_name) return false;
@@ -52,7 +66,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       }
       return true;
     });
-  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter, acolhedorFilter, caseStatusFilter, agentActiveFilter, followupConfigFilter, searchQuery]);
+  }, [conversations, agentFilter, effectiveInstanceFilter, boardFilter, campaignFilter, acolhedorFilter, caseStatusFilter, agentActiveFilter, followupConfigFilter, searchQuery]);
 
   const pipelineCounts = useMemo(() => {
     const base = conversations.filter(applyBaseFilters);
@@ -71,7 +85,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       inviavel: base.filter(c => getCaseStatus(c) === 'inviavel').length,
       bloqueado: base.filter(c => getCaseStatus(c) === 'bloqueado').length,
     };
-  }, [conversations, agentFilter, instanceFilter, boardFilter, campaignFilter, acolhedorFilter]);
+  }, [conversations, agentFilter, effectiveInstanceFilter, boardFilter, campaignFilter, acolhedorFilter]);
 
   const referralStats = (referrals: { status: string }[]) => ({
     total: referrals.length,
@@ -91,14 +105,17 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       caseStatusFilter, setCaseStatusFilter,
       agentActiveFilter, setAgentActiveFilter,
       followupConfigFilter, setFollowupConfigFilter,
+      userFilter, setUserFilter,
       searchQuery, setSearchQuery,
     },
+    effectiveInstanceFilter,
     filteredConversations,
     pipelineCounts,
     uniqueInstances,
     uniqueBoards,
     uniqueCampaigns,
     uniqueAcolhedores,
+    uniqueUsers,
     referralStats,
     applyBaseFilters,
   };

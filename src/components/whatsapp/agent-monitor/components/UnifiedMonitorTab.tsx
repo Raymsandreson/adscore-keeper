@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Bot, Zap, PhoneCall, Sparkles, Radio } from 'lucide-react';
-import type { AgentStats, AgentData, BoardData, ConversationDetail, CaseStatus } from '../types';
+import type { AgentStats, AgentData, BoardData, ConversationDetail, CaseStatus, UserData } from '../types';
 import type { DashboardMetrics } from '../hooks/useDashboardMetrics';
 import { PipelineCards } from './PipelineCards';
 import type { OperationalMetricType } from './OperationalDetailSheet';
@@ -36,6 +36,7 @@ interface UnifiedMonitorTabProps {
     uniqueBoards: BoardData[];
     uniqueCampaigns: string[];
     uniqueAcolhedores: string[];
+    uniqueUsers: UserData[];
     agentFilter: string;
     setAgentFilter: (v: string) => void;
     instanceFilter: string;
@@ -50,6 +51,8 @@ interface UnifiedMonitorTabProps {
     setAgentActiveFilter: (v: 'all' | 'ativo') => void;
     followupConfigFilter: 'all' | 'com_followup' | 'sem_followup';
     setFollowupConfigFilter: (v: 'all' | 'com_followup' | 'sem_followup') => void;
+    userFilter: string;
+    setUserFilter: (v: string) => void;
   };
 }
 

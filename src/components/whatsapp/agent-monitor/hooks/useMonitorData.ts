@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { differenceInMinutes, endOfDay } from 'date-fns';
-import type { AgentData, ConversationDetail, AgentStats, ReferralData, BoardData, RedirectionData } from '../types';
+import type { AgentData, ConversationDetail, AgentStats, ReferralData, BoardData, RedirectionData, UserData } from '../types';
 
 export function useMonitorData() {
   const [agents, setAgents] = useState<AgentData[]>([]);
@@ -10,6 +10,7 @@ export function useMonitorData() {
   const [referrals, setReferrals] = useState<ReferralData[]>([]);
   const [redirections, setRedirections] = useState<RedirectionData[]>([]);
   const [boards, setBoards] = useState<BoardData[]>([]);
+  const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async (dateRange: { from: Date; to: Date }) => {
@@ -239,6 +240,26 @@ export function useMonitorData() {
 
       setRedirections((redirectionsRes.data || []) as RedirectionData[]);
 
+      // Fetch users with their default instances
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, full_name, default_instance_id')
+        .not('default_instance_id', 'is', null);
+
+      if (profilesData && profilesData.length > 0) {
+        const instanceIds = [...new Set(profilesData.map((p: any) => p.default_instance_id).filter(Boolean))];
+        const { data: instancesData } = await supabase
+          .from('whatsapp_instances')
+          .select('id, instance_name')
+          .in('id', instanceIds);
+        const instMap = new Map((instancesData || []).map((i: any) => [i.id, i.instance_name]));
+        setUsers(profilesData.map((p: any) => ({
+          id: p.id,
+          full_name: p.full_name,
+          instance_name: instMap.get(p.default_instance_id) || null,
+        })).filter((u: UserData) => u.instance_name));
+      }
+
     } catch (error) {
       console.error('Error fetching agent monitor data:', error);
     } finally {
@@ -246,5 +267,5 @@ export function useMonitorData() {
     }
   }, []);
 
-  return { agents, conversations, agentStats, referrals, redirections, boards, loading, fetchData };
+  return { agents, conversations, agentStats, referrals, redirections, boards, users, loading, fetchData };
 }

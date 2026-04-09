@@ -72,6 +72,12 @@ export interface BoardData {
 
 export type CaseStatus = 'sem_resposta' | 'em_andamento' | 'fechado' | 'recusado' | 'inviavel' | 'bloqueado';
 
+export interface UserData {
+  id: string;
+  full_name: string;
+  instance_name: string | null;
+}
+
 export interface RedirectionData {
   id: string;
   agent_name: string | null;
