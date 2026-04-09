@@ -290,8 +290,33 @@ export function LeadEditDialog({
       setSource(currentLead.source || 'manual');
       setNotes(currentLead.notes || '');
       setAcolhedor(leadAny.acolhedor || '');
-      setGroupLink(leadAny.group_link || '');
-      setWhatsappGroupId(leadAny.whatsapp_group_id || '');
+      // Load whatsapp groups from new table
+      const loadGroups = async () => {
+        const { data: groups } = await supabase
+          .from('lead_whatsapp_groups')
+          .select('*')
+          .eq('lead_id', currentLead.id)
+          .order('created_at', { ascending: true });
+        if (groups) {
+          setWhatsappGroups(groups.map((g: any) => ({
+            id: g.id,
+            group_link: g.group_link || '',
+            group_jid: g.group_jid || '',
+            group_name: g.group_name || '',
+            label: g.label || '',
+          })));
+        }
+        // Also migrate legacy single group if exists and no groups in new table
+        if ((!groups || groups.length === 0) && (leadAny.group_link || leadAny.whatsapp_group_id)) {
+          setWhatsappGroups([{
+            group_link: leadAny.group_link || '',
+            group_jid: leadAny.whatsapp_group_id || '',
+            group_name: '',
+            label: '',
+          }]);
+        }
+      };
+      loadGroups();
       setClientClassification(currentLead.client_classification || '');
       setExpectedBirthDate(leadAny.expected_birth_date || '');
       setSelectedBoardId(leadAny.board_id || '');
