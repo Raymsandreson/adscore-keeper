@@ -267,6 +267,8 @@ export function GroupContactSyncDialog({
 
     setSyncing(true);
     let created = 0;
+    let failed = 0;
+    let firstError: string | null = null;
     const { data: { user: authUser } } = await supabase.auth.getUser();
 
     for (const s of toCreate) {
@@ -276,7 +278,6 @@ export function GroupContactSyncDialog({
           .insert({
             full_name: s.final_name.trim() || s.phone,
             phone: s.phone,
-            source: 'whatsapp_group',
             classification: 'prospect',
             whatsapp_group_id: groupJid || null,
             lead_id: leadId || null,
@@ -286,28 +287,53 @@ export function GroupContactSyncDialog({
             profession: s.profession.trim() || null,
             notes: s.notes.trim() || null,
             created_by: authUser?.id || null,
+            action_source: 'whatsapp_group',
+            action_source_detail: groupName || groupJid || null,
           })
           .select('id')
           .single();
 
         if (createError || !newContact) {
+          failed++;
+          firstError = firstError || createError?.message || 'Falha ao criar contato';
           console.error('Error creating contact:', createError);
           continue;
         }
 
-        await supabase
+        const { error: linkError } = await supabase
           .from('contact_leads')
           .insert({ contact_id: newContact.id, lead_id: leadId });
 
+        if (linkError) {
+          failed++;
+          firstError = firstError || linkError.message || 'Falha ao vincular contato ao lead';
+          console.error('Error linking contact to lead:', linkError);
+          continue;
+        }
+
         created++;
-      } catch (e) {
+      } catch (e: any) {
+        failed++;
+        firstError = firstError || e?.message || 'Falha ao criar contato';
         console.error('Error creating contact:', e);
       }
     }
 
-    toast.success(`${created} contato(s) criado(s) e vinculado(s) ao lead`);
-    setPhase('done');
     setSyncing(false);
+
+    if (created === 0) {
+      toast.error(firstError || 'Nenhum contato pôde ser criado');
+      return;
+    }
+
+    if (failed > 0) {
+      toast.success(`${created} contato(s) criado(s) e vinculado(s) ao lead`);
+      toast.error(`${failed} contato(s) não puderam ser processados)`);
+    } else {
+      toast.success(`${created} contato(s) criado(s) e vinculado(s) ao lead`);
+    }
+
+    setPhase('done');
     onClose();
   };
 
