@@ -136,17 +136,49 @@ Deno.serve(async (req) => {
     console.log(`Group ${groupJid}: ${participants.length} participants found via ${usedInstanceName}`);
 
     // 4. Extract phone numbers from participants (exclude instances)
+    // Log raw participant data to understand the structure
+    console.log(`Raw participants sample:`, JSON.stringify(participants.slice(0, 3)));
+    
     const participantPhones: string[] = [];
     for (const p of participants) {
-      const jid = p.id || p.JID || p.jid || "";
-      if (!jid || jid.includes("@lid") || jid.includes("@g.us")) continue;
-      const phone = extractPhoneFromJid(jid);
+      // Try multiple JID fields - UazAPI may use different structures
+      const jid = p.id || p.JID || p.jid || p.userJID || "";
+      const phone_field = p.phone || p.number || "";
+      
+      // Skip group JIDs
+      if (jid.includes("@g.us")) continue;
+      
+      let phone = "";
+      if (jid && jid.includes("@s.whatsapp.net")) {
+        phone = extractPhoneFromJid(jid);
+      } else if (jid && jid.includes("@lid")) {
+        // LID format - check if there's a phone/number field
+        if (phone_field) {
+          phone = phone_field.replace(/\D/g, "");
+        }
+        // Also check for nested fields
+        if (!phone && p.LID) {
+          console.log(`LID participant found: ${jid}, checking nested fields`);
+        }
+      } else if (jid) {
+        // Try extracting digits from unknown format
+        phone = jid.replace(/\D/g, "");
+      }
+      
+      // Fallback: direct phone field
+      if (!phone && phone_field) {
+        phone = phone_field.replace(/\D/g, "");
+      }
+      
       if (phone && phone.length >= 10 && !instancePhones.has(phone)) {
         participantPhones.push(phone);
+        console.log(`Participant phone extracted: ${phone} from JID: ${jid}`);
+      } else if (jid) {
+        console.log(`Skipped participant: jid=${jid} phone=${phone} isInstance=${instancePhones.has(phone)}`);
       }
     }
 
-    console.log(`After filtering instances: ${participantPhones.length} participant phones`);
+    console.log(`After filtering: ${participantPhones.length} participant phones from ${participants.length} total`);
 
     // 5. Find existing contacts by phone
     const { data: existingContacts } = await dataClient
