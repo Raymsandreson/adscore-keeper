@@ -279,8 +279,33 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Get the creator instance
+    // Helper to check if an instance is connected via UazAPI
+    async function isInstanceConnected(inst: any): Promise<boolean> {
+      try {
+        const url = (inst.base_url || 'https://abraci.uazapi.com') + '/status'
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json', token: inst.instance_token },
+        })
+        if (!res.ok) return false
+        const data = await res.json()
+        // UazAPI returns connected/open status in various formats
+        const status = data?.status || data?.state || data?.connection || ''
+        const connected = typeof status === 'string' 
+          ? ['connected', 'open', 'CONNECTED'].includes(status)
+          : !!data?.connected
+        console.log(`[create-group] Instance ${inst.instance_name} connection status: ${status} -> ${connected}`)
+        return connected
+      } catch (e) {
+        console.warn(`[create-group] Failed to check status for ${inst.instance_name}:`, e)
+        return false
+      }
+    }
+
+    // Get the creator instance - try requested instance first, then board instances, then any active
     let creatorInstance: any = null
+    
+    // 1. Try the requested creator instance
     if (creator_instance_id) {
       const { data } = await supabase
         .from('whatsapp_instances')
@@ -288,16 +313,66 @@ Deno.serve(async (req) => {
         .eq('id', creator_instance_id)
         .eq('is_active', true)
         .single()
-      creatorInstance = data
+      if (data) {
+        const connected = await isInstanceConnected(data)
+        if (connected) {
+          creatorInstance = data
+          console.log(`[create-group] Using requested instance: ${data.instance_name}`)
+        } else {
+          console.warn(`[create-group] Requested instance ${data.instance_name} is NOT connected, trying board instances...`)
+        }
+      }
     }
+
+    // 2. If not connected, try board-linked instances
+    if (!creatorInstance && board_id) {
+      const { data: boardInstances } = await supabase
+        .from('board_group_instances')
+        .select('instance_id')
+        .eq('board_id', board_id)
+
+      if (boardInstances?.length) {
+        const instanceIds = boardInstances.map((bi: any) => bi.instance_id)
+        const { data: instances } = await supabase
+          .from('whatsapp_instances')
+          .select('*')
+          .in('id', instanceIds)
+          .eq('is_active', true)
+
+        if (instances?.length) {
+          for (const inst of instances) {
+            // Skip the already-tried instance
+            if (inst.id === creator_instance_id) continue
+            const connected = await isInstanceConnected(inst)
+            if (connected) {
+              creatorInstance = inst
+              console.log(`[create-group] Using board-linked instance: ${inst.instance_name}`)
+              break
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Last resort: any active instance
     if (!creatorInstance) {
-      const { data } = await supabase
+      const { data: allInstances } = await supabase
         .from('whatsapp_instances')
         .select('*')
         .eq('is_active', true)
-        .limit(1)
-        .single()
-      creatorInstance = data
+        .order('created_at')
+
+      if (allInstances?.length) {
+        for (const inst of allInstances) {
+          if (inst.id === creator_instance_id) continue
+          const connected = await isInstanceConnected(inst)
+          if (connected) {
+            creatorInstance = inst
+            console.log(`[create-group] Using fallback instance: ${inst.instance_name}`)
+            break
+          }
+        }
+      }
     }
 
     if (!creatorInstance) {
