@@ -110,7 +110,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
         } else if (metricType === 'cases') {
           const { data } = await supabase
             .from('legal_cases')
-            .select('id, case_number, title, status, acolhedor, created_at')
+            .select('id, case_number, title, status, acolhedor, lead_id, created_at')
             .gte('created_at', start).lte('created_at', end)
             .order('created_at', { ascending: false });
           setItems(data || []);
