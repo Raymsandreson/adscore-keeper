@@ -628,7 +628,12 @@ const ActivitiesPage = () => {
     fetchActivities(getFilterParams());
   };
 
-  const handleCompleteAndCreateNext = async () => {
+  const openCompleteAndNotify = (source: 'sheet' | 'workflow') => {
+    setCompleteNotifySource(source);
+    setCompleteNotifyOpen(true);
+  };
+
+  const handleCompleteAndCreateNextWithNotify = async (notifyOptions?: { groupJid: string; message: string; sendAudio: boolean; audioText?: string }) => {
     if (!selectedActivity) return;
     // Save current edits first
     await updateActivity(selectedActivity.id, {
@@ -680,9 +685,77 @@ const ActivitiesPage = () => {
       process_id: formProcessId || null,
       process_title: formProcessTitle || null,
     });
+
+    // Send notification if requested
+    if (notifyOptions) {
+      await sendGroupNotification(notifyOptions);
+    }
+
     toast.success('Atividade concluída e próxima criada!');
-    closeSheet();
-    fetchActivities(getFilterParams());
+    
+    if (completeNotifySource === 'workflow') {
+      const timeSpent = getActivityTimeSpent();
+      setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'completed_next', timeSpent }]);
+      workflowAdvance();
+    } else {
+      closeSheet();
+      fetchActivities(getFilterParams());
+    }
+  };
+
+  const sendGroupNotification = async (options: { groupJid: string; message: string; sendAudio: boolean; audioText?: string }) => {
+    try {
+      // Get user's instance
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      let instanceId: string | undefined;
+      if (authUser) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('default_instance_id')
+          .eq('user_id', authUser.id)
+          .maybeSingle();
+        instanceId = (profile as any)?.default_instance_id || undefined;
+      }
+
+      // Send text message
+      const sendBody: Record<string, any> = {
+        phone: options.groupJid,
+        chat_id: options.groupJid,
+        message: options.message,
+        lead_id: formLeadId || null,
+      };
+      if (instanceId) sendBody.instance_id = instanceId;
+
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: sendBody });
+      if (error || !data?.success) {
+        toast.error(data?.error || 'Erro ao enviar mensagem ao grupo');
+      } else {
+        toast.success('Mensagem enviada ao grupo!');
+      }
+
+      // Send audio if requested
+      if (options.sendAudio && options.audioText) {
+        const { data: ttsData } = await cloudFunctions.invoke('elevenlabs-tts', {
+          body: { text: options.audioText },
+        });
+        if (ttsData?.audio_url) {
+          await cloudFunctions.invoke('send-whatsapp', {
+            body: {
+              action: 'send_media',
+              phone: options.groupJid,
+              chat_id: options.groupJid,
+              media_url: ttsData.audio_url,
+              media_type: 'audio/mpeg',
+              lead_id: formLeadId || null,
+              ...(instanceId ? { instance_id: instanceId } : {}),
+            },
+          });
+          toast.success('Áudio enviado ao grupo!');
+        }
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao notificar grupo');
+    }
   };
 
   const handleDelete = (id: string) => {
