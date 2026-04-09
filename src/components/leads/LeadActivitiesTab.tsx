@@ -50,19 +50,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   const [loading, setLoading] = useState(true);
   const [showChatSheet, setShowChatSheet] = useState(false);
 
-  // Edit state
-  const [editActivity, setEditActivity] = useState<LeadActivity | null>(null);
-  const [editTitle, setEditTitle] = useState('');
-  const [editType, setEditType] = useState('');
-  const [editPriority, setEditPriority] = useState('normal');
-  const [editDeadline, setEditDeadline] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [editStatus, setEditStatus] = useState('pendente');
-  const [editWhatWasDone, setEditWhatWasDone] = useState('');
-  const [editCurrentStatusNotes, setEditCurrentStatusNotes] = useState('');
-  const [editNextSteps, setEditNextSteps] = useState('');
-  const [editAssignedTo, setEditAssignedTo] = useState('');
-  const [editAssignedToName, setEditAssignedToName] = useState('');
+  // Edit state - only used for complete/start actions on the list
   const [editSaving, setEditSaving] = useState(false);
 
   const [aiSuggestingType, setAiSuggestingType] = useState(false);
