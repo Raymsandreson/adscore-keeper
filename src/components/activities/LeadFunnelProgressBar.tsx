@@ -165,42 +165,39 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const totalItems = currentStageInstances.reduce((sum, i) => sum + i.items.length, 0);
   const completedItems = currentStageInstances.reduce((sum, i) => sum + i.items.filter(item => item.checked).length, 0);
 
+  if (!boardId || stages.length === 0) return null;
+
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded}>
       <CollapsibleTrigger asChild>
         <button className="w-full mt-2 group cursor-pointer">
           {/* Compact progress bar */}
           <div className="flex items-center gap-2">
-            {/* Stage dots */}
+            {/* Stage bars with hierarchical progress */}
             <div className="flex items-center gap-1 flex-1">
               {stages.map((stage, idx) => {
-                const isPast = idx < currentIdx;
+                const stageDetail = hierarchicalProgress.stageDetails.find(d => d.stageId === stage.id);
+                const stageWeight = stageDetail?.stagePercent || 0;
+                const stageCompleted = stageDetail?.completedPercent || 0;
+                const fillPercent = stageWeight > 0 ? (stageCompleted / stageWeight) * 100 : 0;
+                const isStageComplete = fillPercent >= 100;
+                const hasPartialProgress = fillPercent > 0 && !isStageComplete;
                 const isCurrent = idx === currentIdx;
-                // Check if this stage's checklist is fully completed
-                const stageInstances = instances.filter(i => i.stage_id === stage.id);
-                const stageTotal = stageInstances.reduce((s, i) => s + i.items.length, 0);
-                const stageCompleted = stageInstances.reduce((s, i) => s + i.items.filter(it => it.checked).length, 0);
-                const isStageComplete = stageTotal > 0 && stageCompleted === stageTotal;
-                const hasPartialProgress = stageTotal > 0 && stageCompleted > 0 && !isStageComplete;
-                const partialPercent = stageTotal > 0 ? (stageCompleted / stageTotal) * 100 : 0;
 
                 return (
                   <div key={stage.id} className="flex items-center flex-1 relative">
-                    {/* Background bar */}
                     <div
                       className={cn(
                         "h-2.5 w-full rounded-full transition-colors shadow-sm overflow-hidden",
-                        isStageComplete ? "bg-green-500" :
-                        isPast ? "bg-primary" :
+                        isStageComplete ? "bg-emerald-500" :
                         "bg-muted-foreground/20"
                       )}
-                      title={`${stage.name}${stageTotal > 0 ? ` (${stageCompleted}/${stageTotal})` : ''}`}
+                      title={`${stage.name} — ${Math.round(fillPercent)}% concluído (${Math.round(stageCompleted)}% de ${Math.round(stageWeight)}% total)`}
                     >
-                      {/* Partial progress fill for current stage */}
-                      {hasPartialProgress && isCurrent && (
+                      {hasPartialProgress && (
                         <div
-                          className="h-full bg-green-500/70 rounded-full transition-all duration-300"
-                          style={{ width: `${partialPercent}%` }}
+                          className="h-full bg-primary rounded-full transition-all duration-300"
+                          style={{ width: `${fillPercent}%` }}
                         />
                       )}
                     </div>
@@ -212,13 +209,17 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
               })}
             </div>
             <div className="flex items-center gap-1.5 text-xs shrink-0">
+              {/* Global percentage */}
+              <span className={cn(
+                "text-xs font-bold min-w-[36px] text-right",
+                globalPercent >= 100 ? "text-emerald-600" : "text-foreground"
+              )}>
+                {Math.round(globalPercent)}%
+              </span>
               {currentStageId && (
                 <Badge variant="default" className="text-[10px] px-2 py-0.5 h-5 font-semibold">
                   {stages.find(s => s.id === currentStageId)?.name || currentStageId}
                 </Badge>
-              )}
-              {totalItems > 0 && (
-                <span className="text-xs font-medium text-foreground">{completedItems}/{totalItems}</span>
               )}
               {expanded ? <ChevronUp className="h-3.5 w-3.5 text-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-foreground" />}
             </div>
