@@ -2977,7 +2977,9 @@ const ActivitiesPage = () => {
           open={showLeadSheet}
           onOpenChange={setShowLeadSheet}
           lead={{ id: formLeadId, lead_name: formLeadName } as any}
-          onSave={async () => {
+          onSave={async (leadId, updates) => {
+            const { error } = await supabase.from('leads').update(updates as any).eq('id', leadId);
+            if (error) throw error;
             setShowLeadSheet(false);
           }}
           mode="sheet"
