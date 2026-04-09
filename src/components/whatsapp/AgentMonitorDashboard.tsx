@@ -144,7 +144,7 @@ export function AgentMonitorDashboard() {
     const filteredLeadIds = operationalFilteredLeadIds;
 
     const hasActiveFilter = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || 
-      filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all';
+      filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all' || filters.userFilter !== 'all';
 
     // Filter operational details by instance_name, acolhedor, or lead_id cross-reference
     const filterOp = (detail: { acolhedor: string | null; instance_name: string | null; lead_id: string | null }) => {
@@ -191,7 +191,7 @@ export function AgentMonitorDashboard() {
       casesDetails: filteredCases,
       processesDetails: filteredProcesses,
     };
-  }, [metrics, filteredNewConvDetails, filteredClosedByAgent, operationalFilteredLeadIds, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
+  }, [metrics, filteredNewConvDetails, filteredClosedByAgent, operationalFilteredLeadIds, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter, filters.userFilter]);
 
   // Filter gaps by acolhedor
   const filteredGaps = useMemo(() => {
