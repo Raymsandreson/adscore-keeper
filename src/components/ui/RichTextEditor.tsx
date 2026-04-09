@@ -480,7 +480,8 @@ function RichTextEditorComponent({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const editorRef = useRef<LexicalEditor | null>(null);
-  const lastEmittedHtml = useRef(value || '');
+  // Use a sentinel so SyncPlugin always runs on first mount to populate the editor
+  const lastEmittedHtml = useRef<string>('__INIT__');
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAiText = useRef('');
 
@@ -491,21 +492,13 @@ function RichTextEditorComponent({
     nodes: [ListNode, ListItemNode, LinkNode, AutoLinkNode],
   }).current;
 
-  const flushEditorHtml = useCallback((editor: LexicalEditor, options?: { sync?: boolean }) => {
+  const flushEditorHtml = useCallback((editor: LexicalEditor) => {
     editor.getEditorState().read(() => {
       const html = $generateHtmlFromNodes(editor);
       const root = $getRoot();
       const text = root.getTextContent().trim();
       const output = text === '' ? '' : html;
       lastEmittedHtml.current = output;
-
-      if (options?.sync) {
-        flushSync(() => {
-          onChangeRef.current(output);
-        });
-        return;
-      }
-
       onChangeRef.current(output);
     });
   }, []);
