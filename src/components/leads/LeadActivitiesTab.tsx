@@ -10,12 +10,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Plus, CheckCircle2, Clock, AlertCircle, Loader2, ListTodo, Save, Trash2, Play, MessageCircle, Sparkles } from 'lucide-react';
+import { Plus, CheckCircle2, Clock, AlertCircle, Loader2, ListTodo, Sparkles } from 'lucide-react';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -50,9 +49,6 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   const [loading, setLoading] = useState(true);
   const [showChatSheet, setShowChatSheet] = useState(false);
 
-
-
-
   // New activity creation state
   const [showNewSheet, setShowNewSheet] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -72,25 +68,6 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   const allowedTypes = timeBlockSettings.length > 0
     ? activityTypes.filter(t => timeBlockSettings.some(c => c.activityType === t.key))
     : activityTypes;
-
-  const suggestActivityType = useCallback(async (title: string) => {
-    if (!title || title.trim().length < 5) return;
-    setAiSuggestingType(true);
-    try {
-      const { data, error } = await cloudFunctions.invoke('suggest-activity-type', { body: { title } });
-      if (!error && data?.suggested_type) {
-        const match = activityTypes.find(t => t.key === data.suggested_type);
-        if (match) {
-          const allowed = allowedTypes.length > 0 ? allowedTypes : activityTypes;
-          if (allowed.some(t => t.key === match.key)) {
-            setEditType(match.key);
-            toast.info(`Tipo sugerido pela IA: ${match.label}`, { duration: 2000 });
-          }
-        }
-      }
-    } catch { /* silent */ }
-    setAiSuggestingType(false);
-  }, [activityTypes, allowedTypes]);
 
   const suggestNewActivityType = useCallback(async (title: string) => {
     if (!title || title.trim().length < 5) return;
@@ -131,7 +108,6 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
       } as any).select().single();
       if (error) throw error;
 
-      // Send notification to assigned user (best-effort)
       if (data) {
         cloudFunctions.invoke('notify-activity-created', {
           body: {
@@ -183,93 +159,6 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
 
   const openEdit = (a: LeadActivity) => {
     navigate(`/activities?openActivity=${a.id}`);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editActivity) return;
-    if (!editTitle.trim()) { toast.error('Informe o título'); return; }
-    setEditSaving(true);
-    try {
-      const { error } = await supabase.from('lead_activities').update({
-        title: editTitle,
-        activity_type: editType,
-        priority: editPriority,
-        deadline: editDeadline || null,
-        description: editDescription || null,
-        status: editStatus,
-        what_was_done: editWhatWasDone || null,
-        current_status_notes: editCurrentStatusNotes || null,
-        next_steps: editNextSteps || null,
-        assigned_to: editAssignedTo || null,
-        assigned_to_name: editAssignedToName || null,
-      }).eq('id', editActivity.id);
-      if (error) throw error;
-      toast.success('Atividade atualizada!');
-      setEditActivity(null);
-      await fetchActivities();
-    } catch {
-      toast.error('Erro ao atualizar');
-    } finally {
-      setEditSaving(false);
-    }
-  };
-
-  const handleCompleteEdit = async () => {
-    if (!editActivity) return;
-    setEditSaving(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from('lead_activities').update({
-        status: 'concluida',
-        completed_at: new Date().toISOString(),
-        completed_by: user?.id || null,
-        what_was_done: editWhatWasDone || null,
-        current_status_notes: editCurrentStatusNotes || null,
-        next_steps: editNextSteps || null,
-      }).eq('id', editActivity.id);
-      if (error) throw error;
-      toast.success('Atividade concluída!');
-      setEditActivity(null);
-      await fetchActivities();
-    } catch {
-      toast.error('Erro ao concluir');
-    } finally {
-      setEditSaving(false);
-    }
-  };
-
-  const handleStartEdit = async () => {
-    if (!editActivity) return;
-    setEditSaving(true);
-    try {
-      const { error } = await supabase.from('lead_activities').update({
-        status: 'em_andamento',
-      }).eq('id', editActivity.id);
-      if (error) throw error;
-      toast.success('Atividade em andamento!');
-      setEditStatus('em_andamento');
-      await fetchActivities();
-    } catch {
-      toast.error('Erro ao atualizar');
-    } finally {
-      setEditSaving(false);
-    }
-  };
-
-  const handleDeleteEdit = async () => {
-    if (!editActivity) return;
-    setEditSaving(true);
-    try {
-      const { error } = await supabase.from('lead_activities').delete().eq('id', editActivity.id);
-      if (error) throw error;
-      toast.success('Atividade excluída!');
-      setEditActivity(null);
-      await fetchActivities();
-    } catch {
-      toast.error('Erro ao excluir');
-    } finally {
-      setEditSaving(false);
-    }
   };
 
   const handleCreateFromChat = async (activityData: any) => {
@@ -408,147 +297,6 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
           ))}
         </div>
       )}
-
-      {/* Edit Activity Sheet */}
-      <Sheet open={!!editActivity} onOpenChange={open => !open && setEditActivity(null)}>
-        <SheetContent className="w-full sm:max-w-md flex flex-col p-0">
-          <SheetHeader className="px-4 pt-4 pb-2 shrink-0">
-            <SheetTitle className="text-base">Editar Atividade</SheetTitle>
-          </SheetHeader>
-          <ScrollArea className="flex-1 px-4">
-            <div className="space-y-3 pb-4">
-              <div>
-                <Label className="text-xs">Título *</Label>
-                <Input
-                  value={editTitle}
-                  onChange={e => setEditTitle(e.target.value)}
-                  onBlur={() => suggestActivityType(editTitle)}
-                  className="h-8 text-sm"
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Status</Label>
-                <Select value={editStatus} onValueChange={setEditStatus}>
-                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pendente">Pendente</SelectItem>
-                    <SelectItem value="em_andamento">Em Andamento</SelectItem>
-                    <SelectItem value="concluida">Concluída</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs flex items-center gap-1">
-                    Tipo
-                    {aiSuggestingType && <Sparkles className="h-3 w-3 animate-pulse text-amber-500" />}
-                  </Label>
-                  <Select value={editType} onValueChange={setEditType}>
-                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {allowedTypes.map(t => (
-                        <SelectItem key={t.key} value={t.key}>
-                          <span className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />
-                            {t.label}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs">Prioridade</Label>
-                  <Select value={editPriority} onValueChange={setEditPriority}>
-                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="baixa">Baixa</SelectItem>
-                      <SelectItem value="normal">Normal</SelectItem>
-                      <SelectItem value="alta">Alta</SelectItem>
-                      <SelectItem value="urgente">Urgente</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs">Responsável</Label>
-                <Select value={editAssignedTo} onValueChange={val => {
-                  setEditAssignedTo(val);
-                  const p = profiles.find(pr => pr.user_id === val);
-                  setEditAssignedToName(p?.full_name || '');
-                }}>
-                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                  <SelectContent>
-                    {profiles.map(p => (
-                      <SelectItem key={p.user_id} value={p.user_id}>{p.full_name || p.email}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Prazo</Label>
-                <Input type="datetime-local" value={editDeadline} onChange={e => setEditDeadline(e.target.value)} className="h-8 text-sm" />
-              </div>
-              <div>
-                <Label className="text-xs">Descrição</Label>
-                <ActivityNotesField
-                  value={editDescription}
-                  onChange={setEditDescription}
-                  activityId={editActivity?.id}
-                  placeholder="Descrição..."
-                  label=""
-                />
-              </div>
-              <div>
-                <ActivityNotesField
-                  value={editWhatWasDone}
-                  onChange={setEditWhatWasDone}
-                  activityId={editActivity?.id}
-                  placeholder="Descreva o que já foi realizado..."
-                  label="O que foi feito"
-                />
-              </div>
-              <div>
-                <ActivityNotesField
-                  value={editCurrentStatusNotes}
-                  onChange={setEditCurrentStatusNotes}
-                  activityId={editActivity?.id}
-                  placeholder="Situação atual..."
-                  label="Status atual / Observações"
-                />
-              </div>
-              <div>
-                <ActivityNotesField
-                  value={editNextSteps}
-                  onChange={setEditNextSteps}
-                  activityId={editActivity?.id}
-                  placeholder="O que precisa ser feito a seguir..."
-                  label="Próximos passos"
-                />
-              </div>
-            </div>
-          </ScrollArea>
-          <div className="shrink-0 border-t p-3 flex flex-wrap gap-2">
-            {editStatus === 'pendente' && (
-              <Button size="sm" variant="outline" className="gap-1 text-amber-600 border-amber-300" onClick={handleStartEdit} disabled={editSaving}>
-                <Play className="h-3 w-3" /> Iniciar
-              </Button>
-            )}
-            {editStatus !== 'concluida' && (
-              <Button size="sm" className="gap-1 bg-green-600 hover:bg-green-700 text-white" onClick={handleCompleteEdit} disabled={editSaving}>
-                <CheckCircle2 className="h-3 w-3" /> Concluir
-              </Button>
-            )}
-            <Button size="sm" className="gap-1" onClick={handleSaveEdit} disabled={editSaving}>
-              {editSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Salvar
-            </Button>
-            <Button size="sm" variant="destructive" className="gap-1 ml-auto" onClick={handleDeleteEdit} disabled={editSaving}>
-              <Trash2 className="h-3 w-3" /> Excluir
-            </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
 
       {/* New Activity Creation Sheet */}
       <Sheet open={showNewSheet} onOpenChange={setShowNewSheet}>
