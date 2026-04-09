@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +15,7 @@ import { useProfilesList } from '@/hooks/useProfilesList';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
+import { ActivityEditSheet } from '@/components/activities/ActivityEditSheet';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
@@ -44,10 +44,10 @@ interface LeadActivitiesTabProps {
 }
 
 export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) {
-  const navigate = useNavigate();
   const [activities, setActivities] = useState<LeadActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [showChatSheet, setShowChatSheet] = useState(false);
+  const [editActivityId, setEditActivityId] = useState<string | null>(null);
 
   // New activity creation state
   const [showNewSheet, setShowNewSheet] = useState(false);
@@ -158,7 +158,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   useEffect(() => { fetchActivities(); }, [fetchActivities]);
 
   const openEdit = (a: LeadActivity) => {
-    navigate(`/activities?openActivity=${a.id}`);
+    setEditActivityId(a.id);
   };
 
   const handleCreateFromChat = async (activityData: any) => {
@@ -400,6 +400,14 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
         activityTitle={undefined}
         onApplySuggestion={() => {}}
         onCreateActivity={handleCreateFromChat}
+      />
+
+      {/* Activity Edit Sheet */}
+      <ActivityEditSheet
+        open={!!editActivityId}
+        onOpenChange={(open) => { if (!open) setEditActivityId(null); }}
+        activityId={editActivityId}
+        onUpdated={fetchActivities}
       />
     </div>
   );
