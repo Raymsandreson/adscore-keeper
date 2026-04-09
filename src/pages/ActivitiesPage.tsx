@@ -647,9 +647,9 @@ const ActivitiesPage = () => {
     await createActivity({
       title: formTitle,
       description: null,
-      what_was_done: null,
-      current_status_notes: null,
-      next_steps: null,
+      what_was_done: formWhatWasDone || null,
+      current_status_notes: formCurrentStatus || null,
+      next_steps: formNextSteps || null,
       activity_type: formType,
       priority: formPriority,
       lead_id: formLeadId || null,
