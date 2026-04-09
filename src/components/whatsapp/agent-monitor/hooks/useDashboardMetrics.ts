@@ -403,11 +403,7 @@ export function useDashboardMetrics() {
         let classification: 'ai' | 'assisted' | 'human' | 'noInteraction';
         
         if (!stats || stats.total === 0) {
-          if (!hasValidPhone) {
-            classification = 'noInteraction';
-          } else {
-            classification = 'ai';
-          }
+          classification = hasValidPhone ? 'ai' : 'noInteraction';
         } else if (stats.manual === 0) {
           classification = 'ai';
         } else if ((stats.manual / stats.total) >= 0.7) {
@@ -432,7 +428,16 @@ export function useDashboardMetrics() {
         const detail = agentDetailMap.get(agentName)!;
         detail[classification]++;
       }
- 
+
+      const mapDoc = (d: any): OperationalDetail => ({
+        id: d.id,
+        name: d.document_name || 'Documento',
+        acolhedor: (d.lead_id && docLeadAcolhedorMap.get(d.lead_id)) || null,
+        instance_name: d.instance_name || null,
+        lead_id: d.lead_id || null,
+        created_at: d.created_at,
+      });
+
       const signedDocsDetails = (signedDocsRes.data || []).map(mapDoc);
       const pendingDocsDetails = (pendingDocsRes.data || []).map(mapDoc);
       const groupsDetails = (groupsRes.data || []).map((d: any) => ({
