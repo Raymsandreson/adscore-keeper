@@ -50,10 +50,8 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   const [loading, setLoading] = useState(true);
   const [showChatSheet, setShowChatSheet] = useState(false);
 
-  // Edit state - only used for complete/start actions on the list
-  const [editSaving, setEditSaving] = useState(false);
 
-  const [aiSuggestingType, setAiSuggestingType] = useState(false);
+
 
   // New activity creation state
   const [showNewSheet, setShowNewSheet] = useState(false);
