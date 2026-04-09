@@ -9,6 +9,7 @@ import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
+import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -178,6 +179,8 @@ const ActivitiesPage = () => {
   const selectedCalDay: string | null = selectedCalDays.length > 0 ? selectedCalDays[0] : null;
   const [chatOpen, setChatOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<'form' | 'context'>('form');
+  const [completeNotifyOpen, setCompleteNotifyOpen] = useState(false);
+  const [completeNotifySource, setCompleteNotifySource] = useState<'sheet' | 'workflow'>('sheet');
   const [showLeadSheet, setShowLeadSheet] = useState(false);
   const [viewMode, setViewMode] = usePageState<'list' | 'matrix' | 'blocks'>('activities_viewMode', 'list');
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
@@ -625,7 +628,12 @@ const ActivitiesPage = () => {
     fetchActivities(getFilterParams());
   };
 
-  const handleCompleteAndCreateNext = async () => {
+  const openCompleteAndNotify = (source: 'sheet' | 'workflow') => {
+    setCompleteNotifySource(source);
+    setCompleteNotifyOpen(true);
+  };
+
+  const handleCompleteAndCreateNextWithNotify = async (notifyOptions?: { groupJid: string; message: string; sendAudio: boolean; audioText?: string }) => {
     if (!selectedActivity) return;
     // Save current edits first
     await updateActivity(selectedActivity.id, {
@@ -677,9 +685,77 @@ const ActivitiesPage = () => {
       process_id: formProcessId || null,
       process_title: formProcessTitle || null,
     });
+
+    // Send notification if requested
+    if (notifyOptions) {
+      await sendGroupNotification(notifyOptions);
+    }
+
     toast.success('Atividade concluída e próxima criada!');
-    closeSheet();
-    fetchActivities(getFilterParams());
+    
+    if (completeNotifySource === 'workflow') {
+      const timeSpent = getActivityTimeSpent();
+      setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'completed_next', timeSpent }]);
+      workflowAdvance();
+    } else {
+      closeSheet();
+      fetchActivities(getFilterParams());
+    }
+  };
+
+  const sendGroupNotification = async (options: { groupJid: string; message: string; sendAudio: boolean; audioText?: string }) => {
+    try {
+      // Get user's instance
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      let instanceId: string | undefined;
+      if (authUser) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('default_instance_id')
+          .eq('user_id', authUser.id)
+          .maybeSingle();
+        instanceId = (profile as any)?.default_instance_id || undefined;
+      }
+
+      // Send text message
+      const sendBody: Record<string, any> = {
+        phone: options.groupJid,
+        chat_id: options.groupJid,
+        message: options.message,
+        lead_id: formLeadId || null,
+      };
+      if (instanceId) sendBody.instance_id = instanceId;
+
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: sendBody });
+      if (error || !data?.success) {
+        toast.error(data?.error || 'Erro ao enviar mensagem ao grupo');
+      } else {
+        toast.success('Mensagem enviada ao grupo!');
+      }
+
+      // Send audio if requested
+      if (options.sendAudio && options.audioText) {
+        const { data: ttsData } = await cloudFunctions.invoke('elevenlabs-tts', {
+          body: { text: options.audioText },
+        });
+        if (ttsData?.audio_url) {
+          await cloudFunctions.invoke('send-whatsapp', {
+            body: {
+              action: 'send_media',
+              phone: options.groupJid,
+              chat_id: options.groupJid,
+              media_url: ttsData.audio_url,
+              media_type: 'audio/mpeg',
+              lead_id: formLeadId || null,
+              ...(instanceId ? { instance_id: instanceId } : {}),
+            },
+          });
+          toast.success('Áudio enviado ao grupo!');
+        }
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao notificar grupo');
+    }
   };
 
   const handleDelete = (id: string) => {
@@ -802,29 +878,8 @@ const ActivitiesPage = () => {
     workflowAdvance();
   };
 
-  const handleWorkflowCompleteAndNext = async () => {
-    if (!selectedActivity) return;
-    await updateActivity(selectedActivity.id, {
-      title: formTitle, what_was_done: formWhatWasDone || null,
-      current_status_notes: formCurrentStatus || null, next_steps: formNextSteps || null,
-      activity_type: formType, priority: formPriority, lead_id: formLeadId || null,
-      lead_name: formLeadName || null, assigned_to: formAssignedTo || null,
-      assigned_to_name: formAssignedToName || null, deadline: formDeadline || null,
-      notification_date: formNotificationDate || null, notes: formNotes || null,
-      status: formStatus, contact_id: formContactId || null, contact_name: formContactName || null,
-    } as any);
-    await completeActivity(selectedActivity.id);
-    const today = format(new Date(), 'yyyy-MM-dd');
-    await createActivity({
-      title: formTitle, what_was_done: null, current_status_notes: null, next_steps: null,
-      activity_type: formType, priority: formPriority, lead_id: formLeadId || null,
-      lead_name: formLeadName || null, assigned_to: formAssignedTo || null,
-      assigned_to_name: formAssignedToName || null, deadline: today, notification_date: today,
-      notes: null, contact_id: formContactId || null, contact_name: formContactName || null,
-    });
-    const timeSpent = getActivityTimeSpent();
-    setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'completed_next', timeSpent }]);
-    workflowAdvance();
+  const handleWorkflowCompleteAndNext = () => {
+    openCompleteAndNotify('workflow');
   };
 
   const handleWorkflowSkip = () => {
@@ -2793,7 +2848,7 @@ const ActivitiesPage = () => {
                         </Button>
                       )}
                       {selectedActivity?.status !== 'concluida' && (
-                        <Button size="sm" className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground" onClick={handleCompleteAndCreateNext}>
+                        <Button size="sm" className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground" onClick={() => openCompleteAndNotify('sheet')}>
                           <CheckCircle2 className="h-3.5 w-3.5" /> Concluir e Criar Próxima Atv
                         </Button>
                       )}
@@ -2988,6 +3043,14 @@ const ActivitiesPage = () => {
           mode="sheet"
         />
       )}
+
+      <CompleteAndNotifyDialog
+        open={completeNotifyOpen}
+        onClose={() => setCompleteNotifyOpen(false)}
+        onConfirm={handleCompleteAndCreateNextWithNotify}
+        leadId={formLeadId || null}
+        buildMsg={buildMsg}
+      />
     </div>
   );
 };
