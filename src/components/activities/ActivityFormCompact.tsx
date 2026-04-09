@@ -396,25 +396,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
 
       {/* === WhatsApp Actions === */}
       {props.buildMsg && (
-        <div className="flex items-center gap-2 pt-1 border-t">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="flex-1 gap-1.5 h-8 text-xs"
-            onClick={() => {
-              if (props.buildMsg) {
-                navigator.clipboard.writeText(props.buildMsg());
-                import('sonner').then(({ toast }) => toast.success('Mensagem copiada!'));
-              }
-            }}
-          >
-            <Copy className="h-3.5 w-3.5" />
-            Gerar mensagem WhatsApp
-          </Button>
-          <ActivityTTSButton messageText={props.buildMsg()} leadId={props.formLeadIdForTTS} contactId={props.formContactIdForTTS} />
-          <ActivityFieldSettingsDialog fields={props.fieldSettings} onUpdateField={props.updateFieldSetting} onReorder={props.reorderFields} />
-        </div>
+        <SendToGroupSection buildMsg={props.buildMsg} leadId={props.formLeadId} fieldSettings={props.fieldSettings} updateFieldSetting={props.updateFieldSetting} reorderFields={props.reorderFields} formLeadIdForTTS={props.formLeadIdForTTS} formContactIdForTTS={props.formContactIdForTTS} />
       )}
 
       {/* === SHEET: Link Lead === */}
