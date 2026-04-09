@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -7,6 +7,7 @@ import { ChevronDown, ChevronUp, CheckCircle2, Circle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useChecklists } from '@/hooks/useChecklists';
+import { calculateHierarchicalProgress } from './progress/calculateHierarchicalProgress';
 
 interface Stage {
   id: string;
@@ -41,7 +42,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const [currentStageId, setCurrentStageId] = useState<string | null>(null);
   const [instances, setInstances] = useState<ChecklistInstance[]>([]);
   const [expanded, setExpanded] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [_loading, setLoading] = useState(true);
   const [viewingStageId, setViewingStageId] = useState<string | null>(null);
   const { createLeadInstances, fetchLeadInstances } = useChecklists();
 
@@ -146,18 +147,23 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     ));
   };
 
-  if (loading || !boardId || stages.length === 0) return null;
+  // Hierarchical progress calculation
+  const hierarchicalProgress = useMemo(() => {
+    const stageIds = stages.map(s => s.id);
+    return calculateHierarchicalProgress(stageIds, instances);
+  }, [stages, instances]);
+
+  const globalPercent = hierarchicalProgress.globalPercent;
 
   // Determine current stage index
   const currentIdx = stages.findIndex(s => s.id === currentStageId);
-  const progressPercent = currentIdx >= 0 ? ((currentIdx + 1) / stages.length) * 100 : 0;
 
   const activeViewStageId = viewingStageId || currentStageId;
 
   // Get instances for the viewed stage
   const currentStageInstances = instances.filter(i => i.stage_id === activeViewStageId);
-  const totalItems = currentStageInstances.reduce((sum, i) => sum + i.items.length, 0);
-  const completedItems = currentStageInstances.reduce((sum, i) => sum + i.items.filter(item => item.checked).length, 0);
+
+  if (!boardId || stages.length === 0) return null;
 
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded}>
@@ -165,36 +171,31 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
         <button className="w-full mt-2 group cursor-pointer">
           {/* Compact progress bar */}
           <div className="flex items-center gap-2">
-            {/* Stage dots */}
+            {/* Stage bars with hierarchical progress */}
             <div className="flex items-center gap-1 flex-1">
               {stages.map((stage, idx) => {
-                const isPast = idx < currentIdx;
+                const stageDetail = hierarchicalProgress.stageDetails.find(d => d.stageId === stage.id);
+                const stageWeight = stageDetail?.stagePercent || 0;
+                const stageCompleted = stageDetail?.completedPercent || 0;
+                const fillPercent = stageWeight > 0 ? (stageCompleted / stageWeight) * 100 : 0;
+                const isStageComplete = fillPercent >= 100;
+                const hasPartialProgress = fillPercent > 0 && !isStageComplete;
                 const isCurrent = idx === currentIdx;
-                // Check if this stage's checklist is fully completed
-                const stageInstances = instances.filter(i => i.stage_id === stage.id);
-                const stageTotal = stageInstances.reduce((s, i) => s + i.items.length, 0);
-                const stageCompleted = stageInstances.reduce((s, i) => s + i.items.filter(it => it.checked).length, 0);
-                const isStageComplete = stageTotal > 0 && stageCompleted === stageTotal;
-                const hasPartialProgress = stageTotal > 0 && stageCompleted > 0 && !isStageComplete;
-                const partialPercent = stageTotal > 0 ? (stageCompleted / stageTotal) * 100 : 0;
 
                 return (
                   <div key={stage.id} className="flex items-center flex-1 relative">
-                    {/* Background bar */}
                     <div
                       className={cn(
                         "h-2.5 w-full rounded-full transition-colors shadow-sm overflow-hidden",
-                        isStageComplete ? "bg-green-500" :
-                        isPast ? "bg-primary" :
+                        isStageComplete ? "bg-emerald-500" :
                         "bg-muted-foreground/20"
                       )}
-                      title={`${stage.name}${stageTotal > 0 ? ` (${stageCompleted}/${stageTotal})` : ''}`}
+                      title={`${stage.name} — ${Math.round(fillPercent)}% concluído (${Math.round(stageCompleted)}% de ${Math.round(stageWeight)}% total)`}
                     >
-                      {/* Partial progress fill for current stage */}
-                      {hasPartialProgress && isCurrent && (
+                      {hasPartialProgress && (
                         <div
-                          className="h-full bg-green-500/70 rounded-full transition-all duration-300"
-                          style={{ width: `${partialPercent}%` }}
+                          className="h-full bg-primary rounded-full transition-all duration-300"
+                          style={{ width: `${fillPercent}%` }}
                         />
                       )}
                     </div>
@@ -206,13 +207,17 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
               })}
             </div>
             <div className="flex items-center gap-1.5 text-xs shrink-0">
+              {/* Global percentage */}
+              <span className={cn(
+                "text-xs font-bold min-w-[36px] text-right",
+                globalPercent >= 100 ? "text-emerald-600" : "text-foreground"
+              )}>
+                {Math.round(globalPercent)}%
+              </span>
               {currentStageId && (
                 <Badge variant="default" className="text-[10px] px-2 py-0.5 h-5 font-semibold">
                   {stages.find(s => s.id === currentStageId)?.name || currentStageId}
                 </Badge>
-              )}
-              {totalItems > 0 && (
-                <span className="text-xs font-medium text-foreground">{completedItems}/{totalItems}</span>
               )}
               {expanded ? <ChevronUp className="h-3.5 w-3.5 text-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-foreground" />}
             </div>
@@ -222,12 +227,35 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
       <CollapsibleContent>
         <div className="mt-2 space-y-2 max-h-[300px] overflow-y-auto">
+          {/* Global progress summary */}
+          <div className="flex items-center gap-2 px-1">
+            <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all duration-500",
+                  globalPercent >= 100 ? "bg-emerald-500" : "bg-primary"
+                )}
+                style={{ width: `${Math.min(globalPercent, 100)}%` }}
+              />
+            </div>
+            <span className={cn(
+              "text-[11px] font-bold",
+              globalPercent >= 100 ? "text-emerald-600" : "text-foreground"
+            )}>
+              {Math.round(globalPercent)}% concluído
+            </span>
+          </div>
+
           {/* Stage flow visualization */}
           <div className="flex flex-wrap gap-1 mb-2">
             {stages.map((stage, idx) => {
               const isPast = idx < currentIdx;
               const isCurrent = idx === currentIdx;
               const isViewing = stage.id === activeViewStageId;
+              const stageDetail = hierarchicalProgress.stageDetails.find(d => d.stageId === stage.id);
+              const stageFill = stageDetail && stageDetail.stagePercent > 0
+                ? Math.round((stageDetail.completedPercent / stageDetail.stagePercent) * 100)
+                : 0;
               return (
                 <button
                   key={stage.id}
@@ -240,48 +268,78 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                     !isPast && !isCurrent && "opacity-70 text-muted-foreground border-border hover:opacity-100 cursor-pointer"
                   )}
                 >
-                  {isPast && <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />}
-                  {isCurrent && <Circle className="h-2.5 w-2.5 mr-0.5 fill-current" />}
+                  {stageFill >= 100 && <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />}
+                  {isCurrent && stageFill < 100 && <Circle className="h-2.5 w-2.5 mr-0.5 fill-current" />}
                   {stage.name}
+                  <span className="ml-1 opacity-75">{stageFill}%</span>
                 </button>
               );
             })}
           </div>
 
-          {/* Current stage checklists */}
+          {/* Current stage checklists with objective percentages */}
           {currentStageInstances.length > 0 ? (
-            currentStageInstances.map(instance => (
-              <div key={instance.id} className="bg-muted/30 rounded-lg p-2 border border-border/50">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium">{instance.template_name}</span>
-                  <span className="text-[10px] text-muted-foreground">
-                    {instance.items.filter(i => i.checked).length}/{instance.items.length}
-                  </span>
+            currentStageInstances.map(instance => {
+              const objDetail = hierarchicalProgress.stageDetails
+                .find(d => d.stageId === activeViewStageId)
+                ?.objectives.find(o => o.instanceId === instance.id);
+              const objPercent = objDetail && objDetail.objectiveWeight > 0
+                ? Math.round((objDetail.completedPercent / objDetail.objectiveWeight) * 100)
+                : 0;
+
+              return (
+                <div key={instance.id} className="bg-muted/30 rounded-lg p-2 border border-border/50">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-medium">{instance.template_name}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-muted-foreground">
+                        {instance.items.filter(i => i.checked).length}/{instance.items.length}
+                      </span>
+                      <span className={cn(
+                        "text-[10px] font-semibold",
+                        objPercent >= 100 ? "text-emerald-600" : "text-primary"
+                      )}>
+                        {objPercent}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    {instance.items.map(item => {
+                      // Calculate individual step weight
+                      const stepWeight = objDetail && objDetail.totalSteps > 0
+                        ? (objDetail.objectiveWeight / objDetail.totalSteps)
+                        : 0;
+
+                      return (
+                        <label
+                          key={item.id}
+                          className="flex items-start gap-2 py-0.5 text-xs cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1"
+                        >
+                          <Checkbox
+                            checked={item.checked || false}
+                            onCheckedChange={() => handleToggleItem(instance, item.id)}
+                            className="mt-0.5"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <span className={cn(item.checked && "line-through text-muted-foreground")}>
+                              {item.label}
+                            </span>
+                            {item.description && (
+                              <p className="text-[10px] text-muted-foreground mt-0.5">{item.description}</p>
+                            )}
+                          </div>
+                          {stepWeight > 0 && (
+                            <span className="text-[9px] text-muted-foreground shrink-0 mt-0.5">
+                              {stepWeight.toFixed(1)}%
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  {instance.items.map(item => (
-                    <label
-                      key={item.id}
-                      className="flex items-start gap-2 py-0.5 text-xs cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1"
-                    >
-                      <Checkbox
-                        checked={item.checked || false}
-                        onCheckedChange={() => handleToggleItem(instance, item.id)}
-                        className="mt-0.5"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <span className={cn(item.checked && "line-through text-muted-foreground")}>
-                          {item.label}
-                        </span>
-                        {item.description && (
-                          <p className="text-[10px] text-muted-foreground mt-0.5">{item.description}</p>
-                        )}
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ))
+              );
+            })
           ) : (
             <p className="text-[11px] text-muted-foreground text-center py-2">
               Nenhum passo configurado para esta fase
