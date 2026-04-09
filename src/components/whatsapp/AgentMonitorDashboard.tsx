@@ -87,6 +87,10 @@ export function AgentMonitorDashboard() {
     return new Set(conversations.filter(c => c.agent_id === filters.agentFilter).map(c => c.phone));
   }, [conversations, filters.agentFilter]);
 
+  // Use applyBaseFilters from the hook (already handles user filter, instance, acolhedor, etc.)
+  const baseFilteredConversations = useMemo(() => conversations.filter(applyBaseFilters), 
+    [conversations, applyBaseFilters, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter, filters.userFilter]);
+
   // Build phone set from base-filtered conversations for cross-referencing newConvDetails
   const baseFilteredPhoneSet = useMemo(() => {
     const hasActiveFilter = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || 
@@ -104,11 +108,6 @@ export function AgentMonitorDashboard() {
       return true;
     });
   }, [metrics.newConvDetails, effectiveInstanceFilter, agentPhoneSet, baseFilteredPhoneSet]);
-
-  // Derive closedByAgent from filtered conversations (consistent with pipeline counts)
-  // Use applyBaseFilters from the hook (already handles user filter, instance, acolhedor, etc.)
-  const baseFilteredConversations = useMemo(() => conversations.filter(applyBaseFilters), 
-    [conversations, applyBaseFilters, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter, filters.userFilter]);
 
   const filteredClosedByAgent = useMemo(() => {
     const base = baseFilteredConversations.filter(c => c.lead_status === 'closed');
