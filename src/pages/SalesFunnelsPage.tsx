@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter, TrendingUp } from "lucide-react";
+import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
