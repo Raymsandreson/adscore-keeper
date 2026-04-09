@@ -87,7 +87,22 @@ Deno.serve(async (req) => {
 
     // 3. Fetch group participants from UazAPI
     const baseUrl = instance.base_url || "https://abraci.uazapi.com";
-    const groupJid = group_jid.includes("@g.us") ? group_jid : `${group_jid}@g.us`;
+    // Normalize JID: ensure it ends with @g.us and strip any extra whitespace
+    let groupJid = (group_jid || "").trim();
+    // If it's a raw numeric ID, append @g.us
+    if (!groupJid.includes("@")) {
+      groupJid = `${groupJid}@g.us`;
+    }
+    // Validate format: must be like "digits@g.us"
+    if (!groupJid.endsWith("@g.us")) {
+      console.error("Invalid group JID format:", groupJid);
+      return new Response(
+        JSON.stringify({ success: false, error: `Formato de JID inválido: ${groupJid}. Deve terminar com @g.us` }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`Fetching group info for JID: ${groupJid} via instance: ${instance.instance_name}`);
 
     const infoRes = await fetch(`${baseUrl}/group/info`, {
       method: "POST",
@@ -102,8 +117,8 @@ Deno.serve(async (req) => {
       const errText = await infoRes.text();
       console.error("Group info error:", infoRes.status, errText);
       return new Response(
-        JSON.stringify({ error: `Failed to fetch group info: ${infoRes.status}` }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ success: false, error: `Erro ao buscar info do grupo (${infoRes.status}): ${errText}` }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
