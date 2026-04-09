@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,11 +10,23 @@ import { Loader2, UserPlus, Users, Phone, MapPin, Mail, Briefcase, ChevronDown, 
 import { supabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
+import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 
 const BRAZILIAN_STATES = [
   'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT',
   'PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'
 ];
+
+interface IBGECity {
+  id: number;
+  nome: string;
+}
+
+interface CboOption {
+  id: string;
+  cbo_code: string;
+  title: string;
+}
 
 interface ContactSuggestion {
   phone: string;
