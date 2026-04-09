@@ -92,9 +92,24 @@ export function GroupContactSyncDialog({
     setSyncing(true);
     let created = 0;
 
+    // Get current user for created_by
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+
+    // Get lead data to inherit location info
+    let leadCity: string | null = null;
+    let leadState: string | null = null;
+    if (leadId) {
+      const { data: leadData } = await supabase
+        .from('leads')
+        .select('city, state')
+        .eq('id', leadId)
+        .maybeSingle();
+      leadCity = leadData?.city || null;
+      leadState = leadData?.state || null;
+    }
+
     for (const s of toCreate) {
       try {
-        // Create contact
         const { data: newContact, error: createError } = await supabase
           .from('contacts')
           .insert({
@@ -102,6 +117,11 @@ export function GroupContactSyncDialog({
             phone: s.phone,
             source: 'whatsapp_group',
             classification: 'prospect',
+            whatsapp_group_id: groupJid || null,
+            lead_id: leadId || null,
+            city: leadCity,
+            state: leadState,
+            created_by: authUser?.id || null,
           })
           .select('id')
           .single();
