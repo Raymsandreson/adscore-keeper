@@ -104,19 +104,28 @@ function extractChatArray(payload: any): any[] {
 }
 
 async function fetchChatsFromUaz(baseUrl: string, token: string): Promise<any[]> {
-  const endpoints = ['/chat/list', '/chat/getAll'];
+  // UazAPI uses POST for chat/list with optional body params
+  const attempts = [
+    { endpoint: '/chat/list', method: 'POST', body: JSON.stringify({ count: 150 }) },
+    { endpoint: '/chat/list', method: 'GET', body: undefined },
+    { endpoint: '/chat/getAll', method: 'GET', body: undefined },
+  ];
 
-  for (const endpoint of endpoints) {
+  for (const { endpoint, method, body } of attempts) {
     try {
+      console.log(`sync-whatsapp-recent: trying ${method} ${baseUrl}${endpoint}`);
       const res = await fetch(`${baseUrl}${endpoint}`, {
-        method: 'GET',
+        method,
         headers: { 'Content-Type': 'application/json', token },
+        ...(body ? { body } : {}),
       });
 
+      console.log(`sync-whatsapp-recent: ${endpoint} status=${res.status}`);
       if (!res.ok) continue;
 
       const payload = await res.json();
       const chats = extractChatArray(payload);
+      console.log(`sync-whatsapp-recent: ${endpoint} returned ${chats.length} chats`);
       if (chats.length > 0) return chats;
     } catch (err) {
       console.error(`sync-whatsapp-recent endpoint error (${endpoint}):`, err);
