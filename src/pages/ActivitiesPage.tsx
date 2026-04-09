@@ -878,29 +878,8 @@ const ActivitiesPage = () => {
     workflowAdvance();
   };
 
-  const handleWorkflowCompleteAndNext = async () => {
-    if (!selectedActivity) return;
-    await updateActivity(selectedActivity.id, {
-      title: formTitle, what_was_done: formWhatWasDone || null,
-      current_status_notes: formCurrentStatus || null, next_steps: formNextSteps || null,
-      activity_type: formType, priority: formPriority, lead_id: formLeadId || null,
-      lead_name: formLeadName || null, assigned_to: formAssignedTo || null,
-      assigned_to_name: formAssignedToName || null, deadline: formDeadline || null,
-      notification_date: formNotificationDate || null, notes: formNotes || null,
-      status: formStatus, contact_id: formContactId || null, contact_name: formContactName || null,
-    } as any);
-    await completeActivity(selectedActivity.id);
-    const today = format(new Date(), 'yyyy-MM-dd');
-    await createActivity({
-      title: formTitle, what_was_done: null, current_status_notes: null, next_steps: null,
-      activity_type: formType, priority: formPriority, lead_id: formLeadId || null,
-      lead_name: formLeadName || null, assigned_to: formAssignedTo || null,
-      assigned_to_name: formAssignedToName || null, deadline: today, notification_date: today,
-      notes: null, contact_id: formContactId || null, contact_name: formContactName || null,
-    });
-    const timeSpent = getActivityTimeSpent();
-    setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'completed_next', timeSpent }]);
-    workflowAdvance();
+  const handleWorkflowCompleteAndNext = () => {
+    openCompleteAndNotify('workflow');
   };
 
   const handleWorkflowSkip = () => {
@@ -2869,7 +2848,7 @@ const ActivitiesPage = () => {
                         </Button>
                       )}
                       {selectedActivity?.status !== 'concluida' && (
-                        <Button size="sm" className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground" onClick={handleCompleteAndCreateNext}>
+                        <Button size="sm" className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground" onClick={() => openCompleteAndNotify('sheet')}>
                           <CheckCircle2 className="h-3.5 w-3.5" /> Concluir e Criar Próxima Atv
                         </Button>
                       )}
