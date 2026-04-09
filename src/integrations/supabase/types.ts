@@ -5316,6 +5316,7 @@ export type Database = {
           instagram_comment_id: string | null
           instagram_username: string | null
           inviavel_date: string | null
+          is_blocked: boolean
           is_follower: boolean | null
           last_edit_summary: string | null
           last_followup_at: string | null
@@ -5392,6 +5393,7 @@ export type Database = {
           instagram_comment_id?: string | null
           instagram_username?: string | null
           inviavel_date?: string | null
+          is_blocked?: boolean
           is_follower?: boolean | null
           last_edit_summary?: string | null
           last_followup_at?: string | null
@@ -5468,6 +5470,7 @@ export type Database = {
           instagram_comment_id?: string | null
           instagram_username?: string | null
           inviavel_date?: string | null
+          is_blocked?: boolean
           is_follower?: boolean | null
           last_edit_summary?: string | null
           last_followup_at?: string | null
