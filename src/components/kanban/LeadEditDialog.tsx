@@ -1130,30 +1130,29 @@ ${scrapeData.content || ''}
 
                 <div className="col-span-2">
                   <Label>Grupo WhatsApp</Label>
-                  {(groupLink || whatsappGroupId) ? (
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={groupLink || whatsappGroupId}
-                        readOnly
-                        className="bg-muted"
-                      />
-                      {groupLink && (
-                        <a href={groupLink} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                          <Button type="button" variant="outline" size="sm" className="gap-1 text-green-600 border-green-200">
-                            <ExternalLink className="h-3 w-3" /> Abrir
-                          </Button>
-                        </a>
-                      )}
-                    </div>
-                  ) : (
+                  <div className="flex items-center gap-2">
                     <Input
-                      value={whatsappGroupId}
-                      onChange={(e) => setWhatsappGroupId(e.target.value)}
+                      value={whatsappGroupId || groupLink || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setWhatsappGroupId(val);
+                        // If it looks like a full link, also set groupLink
+                        if (val.includes('chat.whatsapp.com')) {
+                          setGroupLink(val);
+                        }
+                      }}
                       placeholder="https://chat.whatsapp.com/... ou 120363xxx@g.us"
                     />
-                  )}
+                    {groupLink && (
+                      <a href={groupLink} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                        <Button type="button" variant="outline" size="sm" className="gap-1 text-green-600 border-green-200">
+                          <ExternalLink className="h-3 w-3" /> Abrir
+                        </Button>
+                      </a>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {groupLink ? 'Link do grupo criado automaticamente' : 'Cole o link do grupo. O ID será extraído automaticamente ao salvar.'}
+                    Cole o link do grupo. O ID será extraído automaticamente ao salvar.
                   </p>
                 </div>
 
