@@ -81,6 +81,18 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       const defaultBoard = boards.find(b => b.is_default) || boards[0];
       setSelectedBoardId(defaultBoard?.id || '');
       hasAutoExtracted.current = false;
+
+      // Auto-fetch group creation date if lead has a group
+      if (leadId) {
+        supabase.functions.invoke('fetch-group-creation-date', {
+          body: { lead_id: leadId },
+        }).then(({ data }) => {
+          if (data?.success && data?.creation_date) {
+            setClosingDate(new Date(data.creation_date + 'T12:00:00'));
+            toast.info(`Data de criação do grupo preenchida: ${data.creation_date}`);
+          }
+        }).catch(() => {});
+      }
     }
   }, [open, leadName, contactName, boards]);
 
