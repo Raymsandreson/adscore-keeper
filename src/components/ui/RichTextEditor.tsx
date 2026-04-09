@@ -520,12 +520,11 @@ function RichTextEditorComponent({
   const handleEditorChange = useCallback(
     (_editorState: EditorState, editor: LexicalEditor) => {
       editorRef.current = editor;
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-      debounceTimer.current = setTimeout(() => {
-        flushEditorHtml(editor);
-      }, 250);
+      dirtyRef.current = true;
+      // No debounced HTML generation during typing — just mark dirty.
+      // HTML will be generated on blur or expand for performance.
     },
-    [flushEditorHtml],
+    [],
   );
 
   const handleBlur = useCallback(() => {
