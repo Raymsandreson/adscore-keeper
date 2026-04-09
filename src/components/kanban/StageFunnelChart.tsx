@@ -322,7 +322,7 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
           open={!!editingLeadId}
           onOpenChange={(open) => { if (!open) setEditingLeadId(null); }}
           lead={editingLead as any}
-          onSave={() => setEditingLeadId(null)}
+          onSave={async () => setEditingLeadId(null)}
         />
       )}
     </>
