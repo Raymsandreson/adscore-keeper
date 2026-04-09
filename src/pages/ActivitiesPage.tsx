@@ -1228,9 +1228,39 @@ const ActivitiesPage = () => {
     const updatedByName = selectedActivity ? resolveUserName((selectedActivity as any).updated_by) : null;
     const updatedAtFmt = selectedActivity?.updated_at && selectedActivity.updated_at !== selectedActivity.created_at ? format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm") : null;
     const timeSpent = workflowMode ? getActivityTimeSpent() : 0;
-    const tempoStr = timeSpent > 0 ? `\n⏱️ Tempo dedicado à atividade: ${formatDuration(timeSpent)}` : '';
-    const activityLink = selectedActivity ? `\n🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
-    return `*Boa tarde Sr(a). *\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${formLeadName ? `Referente ao caso de ${formLeadName}` : ''}\n\n${fieldLines}\n\n${formAssignedToName ? `*${formAssignedToName}* voltará com mais informações no dia *${notifDate || '—'}*, até o final do dia.` : ''}\n${tempoStr}\n\n*Registrado por:* ${createdByName || '—'} em ${createdAtFmt}${updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : ''}\n${activityLink}\n\nAtenciosamente, ${createdByName || 'Equipe'}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    const tempoStr = timeSpent > 0 ? `⏱️ Tempo dedicado à atividade: ${formatDuration(timeSpent)}` : '';
+    const activityLink = selectedActivity ? `🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
+    const updatedInfo = updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : '';
+
+    // Try to use a saved template for this board/workflow
+    const boardId = leadPreview?.board_id || undefined;
+    const template = getTemplateForContext(boardId);
+
+    // Check if template has mustache-style variables
+    if (template && template.includes('{{')) {
+      return template
+        .replace(/\{\{titulo\}\}/g, formTitle.toUpperCase())
+        .replace(/\{\{lead_name\}\}/g, formLeadName || '')
+        .replace(/\{\{campos_dinamicos\}\}/g, fieldLines)
+        .replace(/\{\{responsavel\}\}/g, formAssignedToName || '')
+        .replace(/\{\{data_retorno\}\}/g, notifDate || '—')
+        .replace(/\{\{criado_por\}\}/g, createdByName || '—')
+        .replace(/\{\{criado_em\}\}/g, createdAtFmt)
+        .replace(/\{\{atualizado_info\}\}/g, updatedInfo)
+        .replace(/\{\{tempo_dedicado\}\}/g, tempoStr)
+        .replace(/\{\{link_atividade\}\}/g, activityLink)
+        .replace(/\{\{what_was_done\}\}/g, valueMap.what_was_done || '—')
+        .replace(/\{\{current_status\}\}/g, valueMap.current_status || '—')
+        .replace(/\{\{next_steps\}\}/g, valueMap.next_steps || '—')
+        .replace(/\{\{notes\}\}/g, valueMap.notes || '—')
+        .replace(/\{\{case_number\}\}/g, formCaseTitle || '—')
+        .replace(/\{\{process_number\}\}/g, formProcessTitle || '—')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }
+
+    // Fallback: hardcoded default
+    return `*Boa tarde Sr(a). *\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${formLeadName ? `Referente ao caso de ${formLeadName}` : ''}\n\n${fieldLines}\n\n${formAssignedToName ? `*${formAssignedToName}* voltará com mais informações no dia *${notifDate || '—'}*, até o final do dia.` : ''}\n${tempoStr}\n\n*Registrado por:* ${createdByName || '—'} em ${createdAtFmt}${updatedInfo}\n${activityLink}\n\nAtenciosamente, ${createdByName || 'Equipe'}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
   const activityFormContent = (
