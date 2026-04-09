@@ -184,6 +184,7 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
       </Button>
       <ActivityTTSButton messageText={buildMsg()} leadId={formLeadIdForTTS} contactId={formContactIdForTTS} />
       <ActivityFieldSettingsDialog fields={fieldSettings} onUpdateField={updateFieldSetting} onReorder={reorderFields} />
+      <ActivityMessageTemplateSettings />
     </div>
   );
 }
