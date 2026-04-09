@@ -6118,6 +6118,48 @@ export type Database = {
           },
         ]
       }
+      monitor_kpi_snapshots: {
+        Row: {
+          closed_aggregates: Json
+          closed_lead_details: Json
+          computed_at: string
+          conversation_metrics: Json
+          created_at: string
+          gap_details: Json
+          id: string
+          new_conv_details: Json
+          operational_details: Json
+          operational_metrics: Json
+          snapshot_date: string
+        }
+        Insert: {
+          closed_aggregates?: Json
+          closed_lead_details?: Json
+          computed_at?: string
+          conversation_metrics?: Json
+          created_at?: string
+          gap_details?: Json
+          id?: string
+          new_conv_details?: Json
+          operational_details?: Json
+          operational_metrics?: Json
+          snapshot_date: string
+        }
+        Update: {
+          closed_aggregates?: Json
+          closed_lead_details?: Json
+          computed_at?: string
+          conversation_metrics?: Json
+          created_at?: string
+          gap_details?: Json
+          id?: string
+          new_conv_details?: Json
+          operational_details?: Json
+          operational_metrics?: Json
+          snapshot_date?: string
+        }
+        Relationships: []
+      }
       n8n_automation_logs: {
         Row: {
           action_type: string
