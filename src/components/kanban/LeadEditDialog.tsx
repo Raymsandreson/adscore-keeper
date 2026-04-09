@@ -587,25 +587,35 @@ ${scrapeData.content || ''}
     console.log('[handleSave] Starting save for lead:', lead.id);
     setSaving(true);
     try {
-      // Resolve WhatsApp group link to JID if it's a link (non-blocking)
-      let resolvedGroupId = whatsappGroupId || null;
-      if (whatsappGroupId && whatsappGroupId.includes('chat.whatsapp.com')) {
+      // Determine the raw input value
+      const rawInput = whatsappGroupId || groupLink || '';
+      const isLink = rawInput.includes('chat.whatsapp.com');
+      
+      // Always save the link in group_link if it looks like a link
+      const finalGroupLink = isLink ? rawInput : (groupLink || null);
+      let finalGroupId: string | null = isLink ? null : (rawInput || null);
+
+      // Try to resolve link to JID (non-blocking)
+      if (isLink) {
         console.log('[handleSave] Resolving WhatsApp group link...');
         try {
           const { data: resolveData } = await cloudFunctions.invoke('send-whatsapp', {
-            body: { action: 'resolve_group_link', group_link: whatsappGroupId },
+            body: { action: 'resolve_group_link', group_link: rawInput },
           });
           if (resolveData?.success && resolveData.group_id) {
-            resolvedGroupId = resolveData.group_id;
-            setWhatsappGroupId(resolvedGroupId);
+            finalGroupId = resolveData.group_id;
+            setWhatsappGroupId(resolveData.group_id);
             toast.success(`Grupo identificado: ${resolveData.group_name || resolveData.group_id}`);
           } else {
             console.warn('Could not resolve group link:', resolveData?.error);
-            toast.warning('Link do grupo não pôde ser resolvido, mas o lead será salvo mesmo assim.');
+            // Save link as-is in whatsapp_group_id too so messages can still use it
+            finalGroupId = rawInput;
+            toast.warning('Link do grupo salvo, mas não foi possível resolver o ID.');
           }
         } catch (e) {
           console.warn('Error resolving group link (non-blocking):', e);
-          toast.warning('Falha ao resolver link do grupo. Lead salvo sem vinculação ao grupo.');
+          finalGroupId = rawInput;
+          toast.warning('Falha ao resolver link do grupo. Link salvo mesmo assim.');
         }
       }
 
@@ -620,8 +630,8 @@ ${scrapeData.content || ''}
         notes: notes || null,
         client_classification: (clientClassification || null) as 'client' | 'non_client' | 'prospect' | null,
         acolhedor: acolhedor || null,
-        group_link: groupLink || null,
-        whatsapp_group_id: resolvedGroupId,
+        group_link: finalGroupLink,
+        whatsapp_group_id: finalGroupId,
         // Accident fields
         victim_name: victimName || null,
         victim_age: victimAge ? parseInt(victimAge) : null,
