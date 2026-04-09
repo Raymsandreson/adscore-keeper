@@ -686,7 +686,19 @@ ${scrapeData.content || ''}
       const firstGroup = resolvedGroups[0];
       const finalGroupLink = firstGroup?.group_link || null;
       const finalGroupId = firstGroup?.group_jid || null;
-        // Accident fields
+
+      console.log('[handleSave] Calling onSave with updates...');
+      await onSave(currentLead.id, {
+        lead_name: leadName.trim(),
+        lead_phone: leadPhone || null,
+        lead_email: leadEmail || null,
+        instagram_username: instagramUsername || null,
+        source,
+        notes: notes || null,
+        client_classification: (clientClassification || null) as 'client' | 'non_client' | 'prospect' | null,
+        acolhedor: acolhedor || null,
+        group_link: finalGroupLink,
+        whatsapp_group_id: finalGroupId,
         victim_name: victimName || null,
         victim_age: victimAge ? parseInt(victimAge) : null,
         accident_date: accidentDate || null,
