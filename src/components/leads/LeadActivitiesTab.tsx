@@ -401,6 +401,14 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
         onApplySuggestion={() => {}}
         onCreateActivity={handleCreateFromChat}
       />
+
+      {/* Activity Edit Sheet */}
+      <ActivityEditSheet
+        open={!!editActivityId}
+        onOpenChange={(open) => { if (!open) setEditActivityId(null); }}
+        activityId={editActivityId}
+        onUpdated={fetchActivities}
+      />
     </div>
   );
 }
