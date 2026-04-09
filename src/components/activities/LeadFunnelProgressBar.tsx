@@ -44,6 +44,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const [expanded, setExpanded] = useState(false);
   const [_loading, setLoading] = useState(true);
   const [viewingStageId, setViewingStageId] = useState<string | null>(null);
+  const [isLeadClosed, setIsLeadClosed] = useState(false);
   const { createLeadInstances, fetchLeadInstances } = useChecklists();
 
   const fetchData = useCallback(async () => {
