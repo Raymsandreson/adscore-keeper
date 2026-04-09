@@ -3043,6 +3043,14 @@ const ActivitiesPage = () => {
           mode="sheet"
         />
       )}
+
+      <CompleteAndNotifyDialog
+        open={completeNotifyOpen}
+        onClose={() => setCompleteNotifyOpen(false)}
+        onConfirm={handleCompleteAndCreateNextWithNotify}
+        leadId={formLeadId || null}
+        buildMsg={buildMsg}
+      />
     </div>
   );
 };
