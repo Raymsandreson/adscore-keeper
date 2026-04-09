@@ -637,7 +637,7 @@ const ActivitiesPage = () => {
 
   const handleCompleteAndCreateNextWithNotify = async (notifyOptions?: { groupJid: string; message: string; sendAudio: boolean; audioText?: string }) => {
     if (!selectedActivity) return;
-    // Save current edits first
+    // Save current edits first (do NOT include status — completeActivity handles that)
     await updateActivity(selectedActivity.id, {
       title: formTitle,
       description: null,
@@ -653,7 +653,6 @@ const ActivitiesPage = () => {
       deadline: formDeadline || null,
       notification_date: formNotificationDate || null,
       notes: formNotes || null,
-      status: formStatus,
       contact_id: formContactId || null,
       contact_name: formContactName || null,
       case_id: formCaseId || null,
@@ -661,7 +660,7 @@ const ActivitiesPage = () => {
       process_id: formProcessId || null,
       process_title: formProcessTitle || null,
     } as any);
-    // Complete it
+    // Complete it (sets status + completed_at + completed_by atomically)
     await completeActivity(selectedActivity.id);
     // Create next activity keeping context
     const today = format(new Date(), 'yyyy-MM-dd');
