@@ -522,7 +522,7 @@ function RichTextEditorComponent({
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(() => {
         flushEditorHtml(editor);
-      }, 500);
+      }, 250);
     },
     [flushEditorHtml],
   );
