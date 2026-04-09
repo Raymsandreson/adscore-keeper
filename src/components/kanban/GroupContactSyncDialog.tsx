@@ -504,7 +504,7 @@ export function GroupContactSyncDialog({
           {phase === 'results' && suggestions.filter(s => s.should_create).length > 0 && (
             <Button onClick={handleCreateContacts} disabled={syncing} className="gap-1">
               {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-              Criar {suggestions.filter(s => s.should_create && s.final_name.trim()).length} contato(s)
+              Criar {suggestions.filter(s => s.should_create).length} contato(s)
             </Button>
           )}
         </DialogFooter>
