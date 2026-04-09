@@ -243,21 +243,26 @@ export function useMonitorData() {
       // Fetch users with their default instances
       const { data: profilesData } = await supabase
         .from('profiles')
-        .select('id, full_name, default_instance_id')
-        .not('default_instance_id', 'is', null);
+        .select('id, full_name, default_instance_id');
 
       if (profilesData && profilesData.length > 0) {
         const instanceIds = [...new Set(profilesData.map((p: any) => p.default_instance_id).filter(Boolean))];
-        const { data: instancesData } = await supabase
-          .from('whatsapp_instances')
-          .select('id, instance_name')
-          .in('id', instanceIds);
-        const instMap = new Map((instancesData || []).map((i: any) => [i.id, i.instance_name]));
-        setUsers(profilesData.map((p: any) => ({
-          id: p.id,
-          full_name: p.full_name,
-          instance_name: instMap.get(p.default_instance_id) || null,
-        })).filter((u: UserData) => u.instance_name));
+        let instMap = new Map<string, string>();
+        if (instanceIds.length > 0) {
+          const { data: instancesData } = await supabase
+            .from('whatsapp_instances')
+            .select('id, instance_name')
+            .in('id', instanceIds);
+          instMap = new Map((instancesData || []).map((i: any) => [i.id, i.instance_name]));
+        }
+        setUsers(profilesData
+          .filter((p: any) => p.full_name)
+          .map((p: any) => ({
+            id: p.id,
+            full_name: p.full_name,
+            instance_name: p.default_instance_id ? instMap.get(p.default_instance_id) || null : null,
+          }))
+        );
       }
 
     } catch (error) {

@@ -74,7 +74,7 @@ export function AgentMonitorDashboard() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const {
-    filters, filteredConversations, pipelineCounts, effectiveInstanceFilter,
+    filters, filteredConversations, pipelineCounts, effectiveInstanceFilter, effectiveAcolhedorFromUser,
     uniqueInstances, uniqueBoards, uniqueCampaigns, uniqueAcolhedores, uniqueUsers, applyBaseFilters,
   } = useMonitorFilters(conversations, boards, users);
 
@@ -87,34 +87,30 @@ export function AgentMonitorDashboard() {
     return new Set(conversations.filter(c => c.agent_id === filters.agentFilter).map(c => c.phone));
   }, [conversations, filters.agentFilter]);
 
+  // Use applyBaseFilters from the hook (already handles user filter, instance, acolhedor, etc.)
+  const baseFilteredConversations = useMemo(() => conversations.filter(applyBaseFilters), 
+    [conversations, applyBaseFilters, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter, filters.userFilter]);
+
+  // Build phone set from base-filtered conversations for cross-referencing newConvDetails
+  const baseFilteredPhoneSet = useMemo(() => {
+    const hasActiveFilter = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || 
+      filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all' || filters.userFilter !== 'all';
+    if (!hasActiveFilter) return null;
+    return new Set(baseFilteredConversations.map(c => c.phone));
+  }, [baseFilteredConversations, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter, filters.userFilter]);
+
   // Filter metrics newConvDetails based on active filters
   const filteredNewConvDetails = useMemo(() => {
     return metrics.newConvDetails.filter(c => {
       if (effectiveInstanceFilter !== 'all' && c.instance_name !== effectiveInstanceFilter) return false;
       if (agentPhoneSet && !agentPhoneSet.has(c.phone)) return false;
+      if (baseFilteredPhoneSet && !baseFilteredPhoneSet.has(c.phone)) return false;
       return true;
     });
-  }, [metrics.newConvDetails, effectiveInstanceFilter, agentPhoneSet]);
+  }, [metrics.newConvDetails, effectiveInstanceFilter, agentPhoneSet, baseFilteredPhoneSet]);
 
-  // Derive closedByAgent from filtered conversations (consistent with pipeline counts)
   const filteredClosedByAgent = useMemo(() => {
-    const base = conversations.filter(c => {
-      if (filters.agentFilter !== 'all') {
-        if (filters.agentFilter === '__none__' && c.agent_id) return false;
-        if (filters.agentFilter !== '__none__' && c.agent_id !== filters.agentFilter) return false;
-      }
-      if (effectiveInstanceFilter !== 'all' && c.instance_name !== effectiveInstanceFilter) return false;
-      if (filters.boardFilter !== 'all' && c.board_id !== filters.boardFilter) return false;
-      if (filters.campaignFilter !== 'all') {
-        if (filters.campaignFilter === '__none__' && c.campaign_name) return false;
-        if (filters.campaignFilter !== '__none__' && c.campaign_name !== filters.campaignFilter) return false;
-      }
-      if (filters.acolhedorFilter !== 'all') {
-        if (filters.acolhedorFilter === '__none__' && c.lead_acolhedor) return false;
-        if (filters.acolhedorFilter !== '__none__' && c.lead_acolhedor !== filters.acolhedorFilter) return false;
-      }
-      return c.lead_status === 'closed';
-    });
+    const base = baseFilteredConversations.filter(c => c.lead_status === 'closed');
     const map = new Map<string, number>();
     for (const c of base) {
       const name = c.lead_acolhedor || 'Sem acolhedor';
@@ -123,28 +119,12 @@ export function AgentMonitorDashboard() {
     return Array.from(map.entries())
       .map(([agent, count]) => ({ agent, count }))
       .sort((a, b) => b.count - a.count);
-  }, [conversations, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
+  }, [baseFilteredConversations]);
 
   // Build a set of lead_ids from filtered conversations for cross-referencing operational metrics
   const operationalFilteredLeadIds = useMemo(() => new Set(
-    conversations.filter(c => {
-      if (filters.agentFilter !== 'all') {
-        if (filters.agentFilter === '__none__' && c.agent_id) return false;
-        if (filters.agentFilter !== '__none__' && c.agent_id !== filters.agentFilter) return false;
-      }
-      if (effectiveInstanceFilter !== 'all' && c.instance_name !== effectiveInstanceFilter) return false;
-      if (filters.boardFilter !== 'all' && c.board_id !== filters.boardFilter) return false;
-      if (filters.campaignFilter !== 'all') {
-        if (filters.campaignFilter === '__none__' && c.campaign_name) return false;
-        if (filters.campaignFilter !== '__none__' && c.campaign_name !== filters.campaignFilter) return false;
-      }
-      if (filters.acolhedorFilter !== 'all') {
-        if (filters.acolhedorFilter === '__none__' && c.lead_acolhedor) return false;
-        if (filters.acolhedorFilter !== '__none__' && c.lead_acolhedor !== filters.acolhedorFilter) return false;
-      }
-      return true;
-    }).map(c => c.lead_id).filter(Boolean) as string[]
-  ), [conversations, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
+    baseFilteredConversations.map(c => c.lead_id).filter(Boolean) as string[]
+  ), [baseFilteredConversations]);
 
   const operationalFiltersObj: OperationalFilters = useMemo(() => ({
     instanceFilter: effectiveInstanceFilter,
@@ -164,15 +144,17 @@ export function AgentMonitorDashboard() {
     const filteredLeadIds = operationalFilteredLeadIds;
 
     const hasActiveFilter = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || 
-      filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all';
+      filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all' || filters.userFilter !== 'all';
 
     // Filter operational details by instance_name, acolhedor, or lead_id cross-reference
     const filterOp = (detail: { acolhedor: string | null; instance_name: string | null; lead_id: string | null }) => {
       if (!hasActiveFilter) return true;
       // Filter by instance if the detail has instance info
       if (effectiveInstanceFilter !== 'all' && detail.instance_name && detail.instance_name !== effectiveInstanceFilter) return false;
+      // Filter by user (acolhedor name match)
+      if (effectiveAcolhedorFromUser && detail.acolhedor && detail.acolhedor !== effectiveAcolhedorFromUser) return false;
       // Filter by acolhedor if available on the detail
-      if (filters.acolhedorFilter !== 'all' && detail.acolhedor) {
+      if (!effectiveAcolhedorFromUser && filters.acolhedorFilter !== 'all' && detail.acolhedor) {
         if (filters.acolhedorFilter === '__none__' && detail.acolhedor) return false;
         if (filters.acolhedorFilter !== '__none__' && detail.acolhedor !== filters.acolhedorFilter) return false;
       }
@@ -211,7 +193,7 @@ export function AgentMonitorDashboard() {
       casesDetails: filteredCases,
       processesDetails: filteredProcesses,
     };
-  }, [metrics, filteredNewConvDetails, filteredClosedByAgent, operationalFilteredLeadIds, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter]);
+  }, [metrics, filteredNewConvDetails, filteredClosedByAgent, operationalFilteredLeadIds, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter, filters.userFilter]);
 
   // Filter gaps by acolhedor
   const filteredGaps = useMemo(() => {
