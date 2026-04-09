@@ -353,6 +353,14 @@ function SyncPlugin({ value, lastEmittedHtml }: { value: string; lastEmittedHtml
     const normalizedEmitted = (!lastEmittedHtml.current || lastEmittedHtml.current === '<p></p>') ? '' : lastEmittedHtml.current;
     if (normalizedValue === normalizedEmitted) return;
 
+    // Skip sync if this editor currently has focus — prevents stealing focus
+    const rootElement = editor.getRootElement();
+    if (rootElement && rootElement.ownerDocument.activeElement && rootElement.contains(rootElement.ownerDocument.activeElement)) {
+      // Still update our ref so future comparisons work
+      lastEmittedHtml.current = value;
+      return;
+    }
+
     lastEmittedHtml.current = value;
 
     editor.update(
