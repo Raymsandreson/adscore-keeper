@@ -635,52 +635,64 @@ const ActivitiesPage = () => {
     setCompleteNotifyOpen(true);
   };
 
+  const completeAndCreateLockRef = useRef(false);
+
   const handleCompleteAndCreateNextWithNotify = async (notifyOptions?: { groupJid: string; message: string; sendAudio: boolean; audioText?: string }) => {
     if (!selectedActivity) return;
+    // Prevent double execution
+    if (completeAndCreateLockRef.current) return;
+    completeAndCreateLockRef.current = true;
 
-    const currentActivity = selectedActivity;
+    try {
+      const currentActivity = selectedActivity;
 
-    // Conclude the current activity without overwriting its existing data with the next activity form
-    await completeActivity(currentActivity.id);
+      // Capture form values BEFORE any state changes
+      const nextData = {
+        title: formTitle,
+        description: null as string | null,
+        what_was_done: formWhatWasDone || null,
+        current_status_notes: formCurrentStatus || null,
+        next_steps: formNextSteps || null,
+        activity_type: formType,
+        priority: formPriority,
+        lead_id: formLeadId || null,
+        lead_name: formLeadName || null,
+        assigned_to: formAssignedTo || null,
+        assigned_to_name: formAssignedToName || null,
+        deadline: formDeadline || null,
+        notification_date: formNotificationDate || null,
+        notes: formNotes || null,
+        contact_id: formContactId || null,
+        contact_name: formContactName || null,
+        case_id: formCaseId || null,
+        case_title: formCaseTitle || null,
+        process_id: formProcessId || null,
+        process_title: formProcessTitle || null,
+        matrix_quadrant: formMatrixQuadrant || null,
+      };
 
-    // Create the next activity with the new data currently filled in the form
-    await createActivity({
-      title: formTitle,
-      description: null,
-      what_was_done: formWhatWasDone || null,
-      current_status_notes: formCurrentStatus || null,
-      next_steps: formNextSteps || null,
-      activity_type: formType,
-      priority: formPriority,
-      lead_id: formLeadId || null,
-      lead_name: formLeadName || null,
-      assigned_to: formAssignedTo || null,
-      assigned_to_name: formAssignedToName || null,
-      deadline: formDeadline || null,
-      notification_date: formNotificationDate || null,
-      notes: formNotes || null,
-      contact_id: formContactId || null,
-      contact_name: formContactName || null,
-      case_id: formCaseId || null,
-      case_title: formCaseTitle || null,
-      process_id: formProcessId || null,
-      process_title: formProcessTitle || null,
-      matrix_quadrant: formMatrixQuadrant || null,
-    });
+      // Conclude the current activity without overwriting its existing data
+      await completeActivity(currentActivity.id);
 
-    if (notifyOptions) {
-      await sendGroupNotification(notifyOptions);
-    }
+      // Create the next activity with the captured form data
+      await createActivity(nextData);
 
-    toast.success('Atividade concluída e próxima criada!');
+      if (notifyOptions) {
+        await sendGroupNotification(notifyOptions);
+      }
 
-    if (completeNotifySource === 'workflow') {
-      const timeSpent = getActivityTimeSpent();
-      setWorkflowCompleted(prev => [...prev, { activity: currentActivity, action: 'completed_next', timeSpent }]);
-      workflowAdvance();
-    } else {
-      closeSheet();
-      fetchActivities(getFilterParams());
+      toast.success('Atividade concluída e próxima criada!');
+
+      if (completeNotifySource === 'workflow') {
+        const timeSpent = getActivityTimeSpent();
+        setWorkflowCompleted(prev => [...prev, { activity: currentActivity, action: 'completed_next', timeSpent }]);
+        workflowAdvance();
+      } else {
+        closeSheet();
+        fetchActivities(getFilterParams());
+      }
+    } finally {
+      completeAndCreateLockRef.current = false;
     }
   };
 
