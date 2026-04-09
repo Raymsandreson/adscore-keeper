@@ -295,6 +295,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         description: description.trim() || undefined,
         notes: notes.trim() || undefined,
         case_number: caseNumber.trim() || undefined,
+        closed_at: closingDate ? closingDate.toISOString().split('T')[0] : undefined,
       });
 
       // Create extracted processes

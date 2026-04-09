@@ -5533,6 +5533,7 @@ export type Database = {
           assigned_to: string | null
           benefit_type: string | null
           case_number: string
+          closed_at: string | null
           created_at: string
           created_by: string | null
           description: string | null
@@ -5554,6 +5555,7 @@ export type Database = {
           assigned_to?: string | null
           benefit_type?: string | null
           case_number: string
+          closed_at?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -5575,6 +5577,7 @@ export type Database = {
           assigned_to?: string | null
           benefit_type?: string | null
           case_number?: string
+          closed_at?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null

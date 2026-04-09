@@ -56,7 +56,7 @@ export function useLegalCases(leadId?: string) {
     }
   }, [leadId]);
 
-  const createCase = useCallback(async (caseData: { lead_id?: string | null; nucleus_id?: string | null; title: string; description?: string; notes?: string; case_number?: string; acolhedor?: string }) => {
+  const createCase = useCallback(async (caseData: { lead_id?: string | null; nucleus_id?: string | null; title: string; description?: string; notes?: string; case_number?: string; acolhedor?: string; closed_at?: string }) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -91,6 +91,7 @@ export function useLegalCases(leadId?: string) {
           description: caseData.description || null,
           notes: caseData.notes || null,
           acolhedor: caseData.acolhedor || null,
+          closed_at: caseData.closed_at || null,
           created_by: user?.id,
         } as any)
         .select('*, specialized_nuclei(name, prefix, color)')
