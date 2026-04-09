@@ -1651,6 +1651,18 @@ ${scrapeData.content || ''}
                 </div>
 
                 <div className="col-span-2">
+                  <Label className="flex items-center gap-1">
+                    <ExternalLink className="h-3 w-3" />
+                    Link da Notícia
+                  </Label>
+                  <Input
+                    value={newsLink}
+                    onChange={(e) => setNewsLink(e.target.value)}
+                    placeholder="https://..."
+                  />
+                </div>
+
+                <div className="col-span-2">
                   <Label>Observações</Label>
                   <Textarea
                     value={notes}
