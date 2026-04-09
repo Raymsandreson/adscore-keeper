@@ -269,7 +269,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
           <Briefcase className="h-4 w-4" />
           Casos ({cases.length})
         </h3>
-        <Button size="sm" onClick={() => { resetCaseForm(); setShowCaseDialog(true); }}>
+        <Button size="sm" onClick={() => { resetCaseForm(); setShowCaseDialog(true); fetchGroupCreationDate(); }}>
           <Plus className="h-4 w-4 mr-1" />
           Novo Caso
         </Button>
