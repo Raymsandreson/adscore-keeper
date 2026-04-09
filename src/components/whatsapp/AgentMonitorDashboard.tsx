@@ -109,6 +109,11 @@ export function AgentMonitorDashboard() {
     });
   }, [metrics.newConvDetails, effectiveInstanceFilter, agentPhoneSet, baseFilteredPhoneSet]);
 
+  // Build a set of lead_ids from filtered conversations for cross-referencing operational metrics
+  const operationalFilteredLeadIds = useMemo(() => new Set(
+    baseFilteredConversations.map(c => c.lead_id).filter(Boolean) as string[]
+  ), [baseFilteredConversations]);
+
   const filteredClosedLeadDetails = useMemo(() => {
     const hasActiveFilter = filters.agentFilter !== 'all' || effectiveInstanceFilter !== 'all' || 
       filters.boardFilter !== 'all' || filters.campaignFilter !== 'all' || filters.acolhedorFilter !== 'all' || filters.userFilter !== 'all';
@@ -128,11 +133,6 @@ export function AgentMonitorDashboard() {
       .map(([agent, count]) => ({ agent, count }))
       .sort((a, b) => b.count - a.count);
   }, [filteredClosedLeadDetails]);
-
-  // Build a set of lead_ids from filtered conversations for cross-referencing operational metrics
-  const operationalFilteredLeadIds = useMemo(() => new Set(
-    baseFilteredConversations.map(c => c.lead_id).filter(Boolean) as string[]
-  ), [baseFilteredConversations]);
 
   const operationalFiltersObj: OperationalFilters = useMemo(() => ({
     instanceFilter: effectiveInstanceFilter,
