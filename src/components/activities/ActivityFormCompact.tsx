@@ -459,10 +459,6 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         </SheetContent>
       </Sheet>
 
-      {/* === WhatsApp Actions === */}
-      {props.buildMsg && (
-        <SendToGroupSection buildMsg={props.buildMsg} leadId={props.formLeadId} fieldSettings={props.fieldSettings} updateFieldSetting={props.updateFieldSetting} reorderFields={props.reorderFields} formLeadIdForTTS={props.formLeadIdForTTS} formContactIdForTTS={props.formContactIdForTTS} />
-      )}
 
       {/* === SHEET: Link Lead === */}
       <Sheet open={linkLeadOpen} onOpenChange={setLinkLeadOpen}>
