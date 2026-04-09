@@ -99,14 +99,14 @@ export function useDashboardMetrics() {
       }
 
       // Parse JSONB columns
-      const closedAgg = (snapshot.closed_aggregates || {}) as any;
-      const convMetrics = (snapshot.conversation_metrics || {}) as any;
-      const opMetrics = (snapshot.operational_metrics || {}) as any;
-      const opDetails = (snapshot.operational_details || {}) as any;
-      const closedLeadDetails = (snapshot.closed_lead_details || []) as unknown as DashboardMetrics['closedLeadDetails'];
-      const newConvDetails = (snapshot.new_conv_details || []) as unknown as NewConvDetail[];
       const closedAgg = (snapshot.closed_aggregates || {}) as Record<string, any>;
       const convMetrics = (snapshot.conversation_metrics || {}) as Record<string, any>;
+      const opMetrics = (snapshot.operational_metrics || {}) as Record<string, any>;
+      const opDetails = (snapshot.operational_details || {}) as Record<string, any>;
+      const closedLeadDetails = (snapshot.closed_lead_details || []) as unknown as DashboardMetrics['closedLeadDetails'];
+      const newConvDetails = (snapshot.new_conv_details || []) as unknown as NewConvDetail[];
+
+      setMetrics({
         newConversations: convMetrics.newConversations || 0,
         responseRate: convMetrics.responseRate || 0,
         avgResponseTimeMin: convMetrics.avgResponseTimeMin || 0,
