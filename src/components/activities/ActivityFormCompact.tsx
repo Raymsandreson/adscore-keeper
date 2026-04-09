@@ -307,6 +307,91 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         </div>
       )}
 
+function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSetting, reorderFields, formLeadIdForTTS, formContactIdForTTS }: {
+  buildMsg: () => string;
+  leadId: string;
+  fieldSettings: any[];
+  updateFieldSetting: any;
+  reorderFields: any;
+  formLeadIdForTTS?: string;
+  formContactIdForTTS?: string;
+}) {
+  const [sending, setSending] = useState(false);
+
+  const handleSendToGroup = async () => {
+    if (!leadId) {
+      toast.error('Vincule um lead para enviar ao grupo');
+      return;
+    }
+    setSending(true);
+    try {
+      // Fetch lead's whatsapp_group_id
+      const { data: lead } = await supabase
+        .from('leads')
+        .select('whatsapp_group_id, group_link, lead_name')
+        .eq('id', leadId)
+        .single();
+
+      const groupId = lead?.whatsapp_group_id;
+      if (!groupId) {
+        toast.error('Este lead não tem grupo WhatsApp vinculado');
+        setSending(false);
+        return;
+      }
+
+      const message = buildMsg();
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
+        body: {
+          phone: groupId,
+          chat_id: groupId,
+          message,
+          lead_id: leadId,
+        },
+      });
+
+      if (error || !data?.success) {
+        toast.error(data?.error || 'Erro ao enviar mensagem');
+      } else {
+        toast.success('Mensagem enviada ao grupo!');
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao enviar');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2 pt-1 border-t">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="gap-1.5 h-8 text-xs"
+        onClick={() => {
+          navigator.clipboard.writeText(buildMsg());
+          toast.success('Mensagem copiada!');
+        }}
+      >
+        <Copy className="h-3.5 w-3.5" />
+        Copiar
+      </Button>
+      <Button
+        type="button"
+        variant="default"
+        size="sm"
+        className="flex-1 gap-1.5 h-8 text-xs"
+        onClick={handleSendToGroup}
+        disabled={sending}
+      >
+        {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+        Enviar ao Grupo
+      </Button>
+      <ActivityTTSButton messageText={buildMsg()} leadId={formLeadIdForTTS} contactId={formContactIdForTTS} />
+      <ActivityFieldSettingsDialog fields={fieldSettings} onUpdateField={updateFieldSetting} onReorder={reorderFields} />
+    </div>
+  );
+}
 
       {/* === COLLAPSIBLE: Detail fields === */}
       <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
