@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
+import { cn } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -512,7 +512,7 @@ function RichTextEditorComponent({
 
       const editor = editorRef.current;
       if (editor) {
-        flushEditorHtml(editor, { sync: true });
+        flushEditorHtml(editor);
       }
     };
   }, [flushEditorHtml]);
@@ -539,10 +539,12 @@ function RichTextEditorComponent({
     const editor = editorRef.current;
     if (editor) {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
-      flushEditorHtml(editor, { sync: true });
+      flushEditorHtml(editor);
     }
-
-    onExpand?.();
+    // Use microtask to ensure state is flushed before opening the sheet
+    queueMicrotask(() => {
+      onExpand?.();
+    });
   }, [flushEditorHtml, onExpand]);
 
   const fetchAiOptions = useCallback(async (action: string, text: string, customPrompt?: string) => {
