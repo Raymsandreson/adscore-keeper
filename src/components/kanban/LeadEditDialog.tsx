@@ -692,7 +692,20 @@ ${scrapeData.content || ''}
       // Auto-sync group contacts: trigger for first group with a resolved JID
       const groupWithJid = resolvedGroups.find(g => g.group_jid?.includes('@g.us'));
       if (groupWithJid) {
-        setSyncGroupData({ jid: groupWithJid.group_jid, name: groupWithJid.group_name || '' });
+        // Get the user's default instance for the API call
+        let userInstanceId: string | undefined;
+        try {
+          const { data: { user: authUser } } = await supabase.auth.getUser();
+          if (authUser) {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('default_instance_id')
+              .eq('user_id', authUser.id)
+              .maybeSingle();
+            userInstanceId = (profile as any)?.default_instance_id || undefined;
+          }
+        } catch {}
+        setSyncGroupData({ jid: groupWithJid.group_jid, name: groupWithJid.group_name || '', instanceId: userInstanceId });
       }
 
       // Keep legacy fields in sync (first group)
@@ -2085,6 +2098,7 @@ ${scrapeData.content || ''}
           leadName={currentLead.lead_name || ''}
           groupJid={syncGroupData.jid}
           groupName={syncGroupData.name}
+          instanceId={syncGroupData.instanceId}
         />
       )}
     </>
