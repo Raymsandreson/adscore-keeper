@@ -1173,19 +1173,22 @@ ${scrapeData.content || ''}
                   <Label>Grupo WhatsApp</Label>
                   <div className="flex items-center gap-2">
                     <Input
-                      value={whatsappGroupId || groupLink || ''}
+                      value={groupLink || ''}
                       onChange={(e) => {
                         const val = e.target.value;
-                        setWhatsappGroupId(val);
-                        // If it looks like a full link, also set groupLink
-                        if (val.includes('chat.whatsapp.com')) {
-                          setGroupLink(val);
+                        setGroupLink(val);
+                        // If it looks like a JID, set it directly
+                        if (val.includes('@g.us')) {
+                          setWhatsappGroupId(val);
+                        } else {
+                          // Clear JID so it gets resolved on save
+                          setWhatsappGroupId('');
                         }
                       }}
                       placeholder="https://chat.whatsapp.com/... ou 120363xxx@g.us"
                     />
                     {groupLink && (
-                      <a href={groupLink} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                      <a href={groupLink.includes('chat.whatsapp.com') ? groupLink : `https://chat.whatsapp.com/${groupLink}`} target="_blank" rel="noopener noreferrer" className="shrink-0">
                         <Button type="button" variant="outline" size="sm" className="gap-1 text-green-600 border-green-200">
                           <ExternalLink className="h-3 w-3" /> Abrir
                         </Button>
@@ -1195,6 +1198,11 @@ ${scrapeData.content || ''}
                   <p className="text-xs text-muted-foreground mt-1">
                     Cole o link do grupo. O ID será extraído automaticamente ao salvar.
                   </p>
+                  {whatsappGroupId && whatsappGroupId.includes('@g.us') && (
+                    <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                      ✅ ID do grupo: <span className="font-mono">{whatsappGroupId}</span>
+                    </p>
+                  )}
                 </div>
 
                 <div>

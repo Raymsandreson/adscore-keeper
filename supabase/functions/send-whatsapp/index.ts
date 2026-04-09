@@ -77,9 +77,9 @@ async function fetchGroupInviteInfo(instance: any, groupLink: string) {
 
   // Try multiple endpoints to resolve the invite code
   const endpoints = [
-    { url: `${baseUrl}/group/inviteInfo`, body: { code: inviteCode } },
-    { url: `${baseUrl}/group/acceptInvite`, body: { code: inviteCode } },
-    { url: `${baseUrl}/group/getInviteInfo`, body: { inviteCode } },
+    { url: `${baseUrl}/group/inviteInfo`, body: { invitecode: inviteCode } },
+    { url: `${baseUrl}/group/acceptInvite`, body: { invitecode: inviteCode } },
+    { url: `${baseUrl}/group/getInviteInfo`, body: { invitecode: inviteCode } },
   ];
 
   let groupData: any = null;
