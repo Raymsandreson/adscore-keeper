@@ -149,20 +149,15 @@ export function AgentMonitorDashboard() {
     // Filter operational details by instance_name, acolhedor, or lead_id cross-reference
     const filterOp = (detail: { acolhedor: string | null; instance_name: string | null; lead_id: string | null }) => {
       if (!hasActiveFilter) return true;
-      // Filter by instance if the detail has instance info
       if (effectiveInstanceFilter !== 'all' && detail.instance_name && detail.instance_name !== effectiveInstanceFilter) return false;
-      // Filter by user (acolhedor name match)
       if (effectiveAcolhedorFromUser && detail.acolhedor && detail.acolhedor !== effectiveAcolhedorFromUser) return false;
-      // Filter by acolhedor if available on the detail
       if (!effectiveAcolhedorFromUser && filters.acolhedorFilter !== 'all' && detail.acolhedor) {
         if (filters.acolhedorFilter === '__none__' && detail.acolhedor) return false;
         if (filters.acolhedorFilter !== '__none__' && detail.acolhedor !== filters.acolhedorFilter) return false;
       }
-      // If no direct field match is possible, cross-reference via lead_id
       if (detail.lead_id && filteredLeadIds.size > 0) {
         return filteredLeadIds.has(detail.lead_id);
       }
-      // If we have active filters but no way to match, include only if no restrictive filter applies
       if (hasActiveFilter && !detail.acolhedor && !detail.instance_name && !detail.lead_id) return true;
       return true;
     };
@@ -173,6 +168,29 @@ export function AgentMonitorDashboard() {
     const filteredCases = metrics.casesDetails.filter(filterOp);
     const filteredProcesses = metrics.processesDetails.filter(filterOp);
 
+    // Filter closed leads breakdown by acolhedor/user filter
+    let filteredClosedByAgentDetailed = metrics.closedByAgentDetailed;
+    if (hasActiveFilter) {
+      // Determine the target acolhedor name for filtering
+      const targetAcolhedor = effectiveAcolhedorFromUser || (filters.acolhedorFilter !== 'all' ? filters.acolhedorFilter : null);
+      if (targetAcolhedor && targetAcolhedor !== '__none__') {
+        filteredClosedByAgentDetailed = metrics.closedByAgentDetailed.filter(
+          d => d.agent.toLowerCase() === targetAcolhedor.toLowerCase()
+        );
+      } else if (targetAcolhedor === '__none__' || filters.acolhedorFilter === '__none__') {
+        filteredClosedByAgentDetailed = metrics.closedByAgentDetailed.filter(
+          d => d.agent === 'Sem acolhedor'
+        );
+      }
+    }
+
+    // Recompute closed totals from filtered detailed data
+    const closedByAI = filteredClosedByAgentDetailed.reduce((s, d) => s + d.ai, 0);
+    const closedAssisted = filteredClosedByAgentDetailed.reduce((s, d) => s + d.assisted, 0);
+    const closedWithHuman = filteredClosedByAgentDetailed.reduce((s, d) => s + d.human, 0);
+    const closedNoInteraction = filteredClosedByAgentDetailed.reduce((s, d) => s + d.noInteraction, 0);
+    const closedTotal = closedByAI + closedAssisted + closedWithHuman + closedNoInteraction;
+
     return {
       ...metrics,
       newConversations: filtered.length,
@@ -182,6 +200,8 @@ export function AgentMonitorDashboard() {
       totalInbound: filtered.length,
       newConvDetails: filtered,
       closedByAgent: filteredClosedByAgent,
+      closedByAgentDetailed: filteredClosedByAgentDetailed,
+      closedByAI, closedAssisted, closedWithHuman, closedNoInteraction, closedTotal,
       signedDocuments: filteredSignedDocs.length,
       pendingDocuments: filteredPendingDocs.length,
       groupsCreated: filteredGroups.length,
@@ -193,11 +213,15 @@ export function AgentMonitorDashboard() {
       casesDetails: filteredCases,
       processesDetails: filteredProcesses,
     };
-  }, [metrics, filteredNewConvDetails, filteredClosedByAgent, operationalFilteredLeadIds, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter, filters.userFilter]);
+  }, [metrics, filteredNewConvDetails, filteredClosedByAgent, operationalFilteredLeadIds, effectiveAcolhedorFromUser, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter, filters.userFilter]);
 
   // Filter gaps by acolhedor
   const filteredGaps = useMemo(() => {
     const filterByAcolhedor = (items: typeof gaps.closedWithoutGroup) => {
+      // User filter takes priority (maps user to acolhedor name)
+      if (effectiveAcolhedorFromUser) {
+        return items.filter(i => i.acolhedor === effectiveAcolhedorFromUser);
+      }
       if (filters.acolhedorFilter === 'all') return items;
       if (filters.acolhedorFilter === '__none__') return items.filter(i => !i.acolhedor);
       return items.filter(i => i.acolhedor === filters.acolhedorFilter);
@@ -208,7 +232,7 @@ export function AgentMonitorDashboard() {
       casesWithoutProcess: filterByAcolhedor(gaps.casesWithoutProcess),
       processesWithoutActivity: filterByAcolhedor(gaps.processesWithoutActivity),
     };
-  }, [gaps, filters.acolhedorFilter]);
+  }, [gaps, filters.acolhedorFilter, effectiveAcolhedorFromUser]);
 
   const batch = useBatchActions(conversations, fetchData);
 
