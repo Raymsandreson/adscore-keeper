@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { TrendingDown, TrendingUp, Filter, AlertTriangle, CheckCircle2, XCircle, Ban, Loader2 } from 'lucide-react';
+import { TrendingDown, TrendingUp, Filter, AlertTriangle, CheckCircle2, XCircle, Ban, Loader2, ShieldOff, PlayCircle } from 'lucide-react';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -23,7 +23,7 @@ interface StageFunnelChartProps {
   conversionAlerts?: ConversionAlert[];
 }
 
-type StatusFilter = 'closed' | 'refused' | 'inviavel' | 'stage';
+type StatusFilter = 'closed' | 'refused' | 'inviavel' | 'blocked' | 'active' | 'stage';
 
 export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }: StageFunnelChartProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -37,15 +37,16 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
     queryFn: async () => {
       const { data, error } = await supabase
         .from('leads')
-        .select('lead_status')
-        .eq('board_id', board.id)
-        .in('lead_status', ['closed', 'refused', 'inviavel']);
+        .select('lead_status, is_blocked')
+        .eq('board_id', board.id);
       if (error) throw error;
-      const counts = { closed: 0, refused: 0, inviavel: 0 };
+      const counts = { closed: 0, refused: 0, inviavel: 0, blocked: 0, active: 0 };
       for (const l of data || []) {
+        if ((l as any).is_blocked) { counts.blocked++; continue; }
         if (l.lead_status === 'closed') counts.closed++;
         else if (l.lead_status === 'refused') counts.refused++;
         else if (l.lead_status === 'inviavel') counts.inviavel++;
+        else if (l.lead_status === 'active' || !l.lead_status) counts.active++;
       }
       return counts;
     },
@@ -63,6 +64,10 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
 
       if (activeFilter === 'stage' && activeStageId) {
         query = query.eq('status', activeStageId);
+      } else if (activeFilter === 'blocked') {
+        query = query.eq('is_blocked' as any, true);
+      } else if (activeFilter === 'active') {
+        query = query.or('lead_status.eq.active,lead_status.is.null').eq('is_blocked' as any, false);
       } else if (activeFilter) {
         query = query.eq('lead_status', activeFilter);
       }
