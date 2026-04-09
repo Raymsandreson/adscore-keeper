@@ -104,7 +104,7 @@ const SalesFunnelsPage = () => {
         let completedItems = 0;
 
         for (const inst of relatedInstances) {
-          const items = (inst.items as ChecklistItem[]) || [];
+          const items = (inst.items as unknown as ChecklistItem[]) || [];
           totalItems += items.length;
           completedItems += items.filter(item => item.checked).length;
         }
