@@ -100,7 +100,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       inviavel: base.filter(c => getCaseStatus(c) === 'inviavel').length,
       bloqueado: base.filter(c => getCaseStatus(c) === 'bloqueado').length,
     };
-  }, [conversations, agentFilter, effectiveInstanceFilter, boardFilter, campaignFilter, acolhedorFilter]);
+  }, [conversations, agentFilter, effectiveInstanceFilter, boardFilter, campaignFilter, acolhedorFilter, effectiveAcolhedorFromUser]);
 
   const referralStats = (referrals: { status: string }[]) => ({
     total: referrals.length,
