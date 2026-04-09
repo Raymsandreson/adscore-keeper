@@ -1194,13 +1194,32 @@ const ActivitiesPage = () => {
 
   const weekDays = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
 
+  // Strip HTML tags from Lexical editor content, preserving line breaks
+  const stripHtml = (html: string): string => {
+    if (!html) return '';
+    return html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<\/div>/gi, '\n')
+      .replace(/<\/li>/gi, '\n')
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  };
+
   const buildMsg = () => {
     const notifDate = formNotificationDate ? (() => {
       const d = parseISO(formNotificationDate);
       const dias = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
       return `${format(d, 'dd/MM/yyyy')} ${dias[d.getDay()]}`;
     })() : '';
-    const valueMap: Record<string, string> = { what_was_done: formWhatWasDone, current_status: formCurrentStatus, next_steps: formNextSteps, notes: formNotes };
+    const valueMap: Record<string, string> = { what_was_done: stripHtml(formWhatWasDone), current_status: stripHtml(formCurrentStatus), next_steps: stripHtml(formNextSteps), notes: stripHtml(formNotes) };
     const fieldLines = fieldSettings.filter(f => f.include_in_message).map(f => `*${f.label}:* ${valueMap[f.field_key] || '—'}`).join('\n\n');
     const createdByName = selectedActivity ? resolveUserName(selectedActivity.created_by) : resolveUserName(user?.id || null);
     const createdAtFmt = selectedActivity ? format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm") : format(new Date(), "dd/MM/yyyy 'às' HH:mm");
