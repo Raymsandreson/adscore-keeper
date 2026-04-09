@@ -110,6 +110,7 @@ const ActivitiesPage = () => {
   }, [_fetchActivities]);
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
+  const { getTemplateForContext } = useActivityMessageTemplates();
 
   const [filterStatus, setFilterStatus] = usePageState<string[]>('activities_filterStatus', []);
   const [filterType, setFilterType] = usePageState<string[]>('activities_filterType', []);
