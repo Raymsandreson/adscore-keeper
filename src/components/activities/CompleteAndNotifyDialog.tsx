@@ -289,6 +289,3 @@ export function CompleteAndNotifyDialog({ open, onClose, onConfirm, leadId, buil
     </Dialog>
   );
 }
-
-// Need to import CheckCircle2
-import { CheckCircle2 } from 'lucide-react';
