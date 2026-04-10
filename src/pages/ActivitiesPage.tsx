@@ -1230,23 +1230,47 @@ const ActivitiesPage = () => {
 
     // Check if template has mustache-style variables
     if (template && template.includes('{{')) {
-      return template
-        .replace(/\{\{titulo\}\}/g, formTitle.toUpperCase())
-        .replace(/\{\{lead_name\}\}/g, formLeadName || '')
-        .replace(/\{\{campos_dinamicos\}\}/g, fieldLines)
-        .replace(/\{\{responsavel\}\}/g, formAssignedToName || '')
-        .replace(/\{\{data_retorno\}\}/g, notifDate || '—')
-        .replace(/\{\{criado_por\}\}/g, createdByName || '—')
-        .replace(/\{\{criado_em\}\}/g, createdAtFmt)
-        .replace(/\{\{atualizado_info\}\}/g, updatedInfo)
-        .replace(/\{\{tempo_dedicado\}\}/g, tempoStr)
-        .replace(/\{\{link_atividade\}\}/g, activityLink)
-        .replace(/\{\{what_was_done\}\}/g, valueMap.what_was_done || '—')
-        .replace(/\{\{current_status\}\}/g, valueMap.current_status || '—')
-        .replace(/\{\{next_steps\}\}/g, valueMap.next_steps || '—')
-        .replace(/\{\{notes\}\}/g, valueMap.notes || '—')
-        .replace(/\{\{case_number\}\}/g, formCaseTitle || '—')
-        .replace(/\{\{process_number\}\}/g, formProcessTitle || '—')
+      // Build a context object for evaluating conditional expressions
+      const tplVars: Record<string, string> = {
+        titulo: formTitle.toUpperCase(),
+        lead_name: formLeadName || '',
+        campos_dinamicos: fieldLines,
+        responsavel: formAssignedToName || '',
+        data_retorno: notifDate || '—',
+        criado_por: createdByName || '—',
+        criado_em: createdAtFmt,
+        atualizado_info: updatedInfo,
+        tempo_dedicado: tempoStr,
+        link_atividade: activityLink,
+        what_was_done: valueMap.what_was_done || '—',
+        current_status: valueMap.current_status || '—',
+        next_steps: valueMap.next_steps || '—',
+        notes: valueMap.notes || '—',
+        case_number: formCaseTitle || '—',
+        process_number: formProcessTitle || '—',
+      };
+
+      // Replace simple {{var}} first
+      let result = template;
+      for (const [key, val] of Object.entries(tplVars)) {
+        result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val);
+      }
+
+      // Evaluate conditional expressions like {{var ? 'text' + var : ''}}
+      result = result.replace(/\{\{(.+?)\}\}/g, (_match, expr: string) => {
+        try {
+          // Create a function with template variables in scope
+          const keys = Object.keys(tplVars);
+          const values = Object.values(tplVars);
+          const fn = new Function(...keys, `return (${expr});`);
+          const evaluated = fn(...values);
+          return evaluated != null ? String(evaluated) : '';
+        } catch {
+          return '';
+        }
+      });
+
+      return result
         .replace(/\n{3,}/g, '\n\n')
         .trim();
     }
