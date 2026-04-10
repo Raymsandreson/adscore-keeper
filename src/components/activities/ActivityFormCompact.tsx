@@ -338,31 +338,31 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                     </Badge>
                   </PopoverTrigger>
                   <PopoverContent className="w-72 p-3 text-xs space-y-2" side="bottom" align="start">
-                    <div className="font-semibold text-sm">Detalhes do Processo</div>
+                    <div className="font-semibold text-sm">Detalhes do Processo <span className="text-[10px] text-muted-foreground font-normal">(clique para copiar)</span></div>
                     {selectedProc?.process_number && (
-                      <div><span className="text-muted-foreground">Número:</span> {selectedProc.process_number}</div>
+                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.process_number)}><span className="text-muted-foreground">Número:</span> {selectedProc.process_number}</div>
                     )}
                     {selectedProc?.title && (
-                      <div><span className="text-muted-foreground">Título:</span> {selectedProc.title}</div>
+                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.title)}><span className="text-muted-foreground">Título:</span> {selectedProc.title}</div>
                     )}
                     {selectedProc?.assuntos && selectedProc.assuntos.length > 0 && (
-                      <div><span className="text-muted-foreground">Assuntos:</span> {selectedProc.assuntos.join(', ')}</div>
+                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.assuntos!.join(', '))}><span className="text-muted-foreground">Assuntos:</span> {selectedProc.assuntos.join(', ')}</div>
                     )}
                     {selectedProc?.polo_passivo && (
-                      <div><span className="text-muted-foreground">Polo Passivo:</span> {selectedProc.polo_passivo}</div>
+                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.polo_passivo)}><span className="text-muted-foreground">Polo Passivo:</span> {selectedProc.polo_passivo}</div>
                     )}
                     {selectedProc?.tribunal && (
-                      <div><span className="text-muted-foreground">Tribunal/Vara:</span> {selectedProc.tribunal}</div>
+                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.tribunal)}><span className="text-muted-foreground">Tribunal/Vara:</span> {selectedProc.tribunal}</div>
                     )}
                     {selectedProc?.area && (
-                      <div><span className="text-muted-foreground">Área:</span> {selectedProc.area}</div>
+                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.area)}><span className="text-muted-foreground">Área:</span> {selectedProc.area}</div>
                     )}
                     {selectedProc?.envolvidos && selectedProc.envolvidos.length > 0 && (
                       <div>
                         <span className="text-muted-foreground">Partes:</span>
                         <ul className="ml-2 mt-0.5 space-y-0.5">
                           {selectedProc.envolvidos.map((e: any, i: number) => (
-                            <li key={i}>👤 {e.nome || e.name}{e.tipo_participacao ? ` (${e.tipo_participacao})` : ''}</li>
+                            <li key={i} className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(e.nome || e.name)}>👤 {e.nome || e.name}{e.tipo_participacao ? ` (${e.tipo_participacao})` : ''}</li>
                           ))}
                         </ul>
                       </div>
