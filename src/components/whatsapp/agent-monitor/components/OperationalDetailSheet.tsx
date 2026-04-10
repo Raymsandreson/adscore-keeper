@@ -349,7 +349,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>{item.signer_name || '—'}</span>
-                    <span>{format(parseISO(item.created_at), 'HH:mm')}</span>
+                    <span>{format(parseISO(item.created_at), 'dd/MM HH:mm')}</span>
                   </div>
                   {item.instance_name && (
                     <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
