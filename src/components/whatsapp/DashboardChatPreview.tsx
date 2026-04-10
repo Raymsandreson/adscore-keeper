@@ -143,6 +143,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     setCallRecords([]);
     setLinkedLead(null);
     setLinkedContact(null);
+    setGroupName(null);
     const normalizedPhone = phone.replace(/\D/g, '');
     const fetchMessages = async () => {
       const { data } = await supabase
