@@ -25,6 +25,8 @@ export function TeamChatNotifications() {
   useEffect(() => {
     if (!user) return;
 
+    console.log('[TeamChatNotifications] Subscribing for user:', user.id);
+
     // Listen for new mentions directed at this user
     const mentionsChannel = supabase
       .channel('notification-mentions-' + user.id)
@@ -34,6 +36,7 @@ export function TeamChatNotifications() {
         table: 'team_chat_mentions',
         filter: `mentioned_user_id=eq.${user.id}`,
       }, async (payload) => {
+        console.log('[TeamChatNotifications] Mention received:', payload);
         if (isMuted()) return;
         const mention = payload.new as any;
 
@@ -72,7 +75,9 @@ export function TeamChatNotifications() {
           { duration: 8000 }
         );
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('[TeamChatNotifications] Mentions channel status:', status);
+      });
 
     // Listen for ALL new chat messages (any entity_type)
     const chatChannel = supabase
@@ -82,6 +87,7 @@ export function TeamChatNotifications() {
         schema: 'public',
         table: 'team_chat_messages',
       }, (payload) => {
+        console.log('[TeamChatNotifications] Message received:', payload);
         if (isMuted()) return;
         const msg = payload.new as any;
         // Don't notify for own messages
@@ -117,7 +123,9 @@ export function TeamChatNotifications() {
           { duration: 6000 }
         );
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('[TeamChatNotifications] Chat channel status:', status);
+      });
 
     return () => {
       supabase.removeChannel(mentionsChannel);
