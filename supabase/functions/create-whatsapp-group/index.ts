@@ -902,6 +902,33 @@ Deno.serve(async (req) => {
           .eq('id', groupContactId)
         console.log(`[save] Existing contact ${groupContactId} linked to lead ${leadData.id}`)
       }
+
+      // Also save to lead_whatsapp_groups table for proper tracking
+      const { error: lwgError } = await supabase
+        .from('lead_whatsapp_groups')
+        .upsert({
+          lead_id: leadData.id,
+          group_jid: groupJid,
+          group_link: groupInviteLink || null,
+          group_name: groupName || null,
+          label: null,
+        }, { onConflict: 'lead_id,group_jid', ignoreDuplicates: true })
+      if (lwgError) {
+        console.warn('[save] Error saving to lead_whatsapp_groups:', lwgError)
+        // Fallback: try insert without upsert
+        await supabase.from('lead_whatsapp_groups').insert({
+          lead_id: leadData.id,
+          group_jid: groupJid,
+          group_link: groupInviteLink || null,
+          group_name: groupName || null,
+        }).then(r => {
+          if (r.error && !r.error.message?.includes('duplicate')) {
+            console.error('[save] Fallback insert also failed:', r.error)
+          }
+        })
+      } else {
+        console.log(`[save] Group saved to lead_whatsapp_groups: ${groupJid}`)
+      }
     }))
 
     // STEP 6: Send private message to client with group link
