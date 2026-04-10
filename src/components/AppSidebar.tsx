@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, CalendarDays, TrendingUp, Trophy, UsersRound,
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
-  LogOut, MessagesSquare, Settings, ChevronRight, User,
+  LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome,
   MessageSquare as MessageSquareIcon,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -331,6 +331,18 @@ export function AppSidebar() {
                   <span className="truncate text-sm font-medium">{profile?.full_name || 'Usuário'}</span>
                   <span className="truncate text-[10px] text-muted-foreground">{user?.email}</span>
                 </div>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            {/* Extension */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => handleNavigate('/extension')}
+                isActive={isActive('/extension')}
+                tooltip="Extensão Chrome"
+              >
+                <Chrome className="h-4 w-4" />
+                <span>Extensão Chrome</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
 
