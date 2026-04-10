@@ -25,6 +25,7 @@ import { RedirectionsTab } from './agent-monitor/components/RedirectionsTab';
 import { AIActivitiesPanel } from './AIActivitiesPanel';
 import { AIActivityPromptDialog } from './AIActivityPromptDialog';
 import { DashboardChatPreview } from './DashboardChatPreview';
+import { GroupQueuePanel } from './agent-monitor/components/GroupQueuePanel';
 
 export function AgentMonitorDashboard() {
   const { toast } = useToast();
@@ -374,7 +375,7 @@ export function AgentMonitorDashboard() {
       )}
 
       <Tabs defaultValue="monitor" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 max-w-md">
+        <TabsList className="grid w-full grid-cols-4 max-w-lg">
           <TabsTrigger value="monitor" className="text-xs flex items-center gap-1.5"><LayoutDashboard className="h-3.5 w-3.5" /> Monitor</TabsTrigger>
           <TabsTrigger value="ai-activities" className="text-xs flex items-center gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Atividades IA</TabsTrigger>
           <TabsTrigger value="referrals" className="text-xs flex items-center gap-1.5"><Heart className="h-3.5 w-3.5" /> Indicações</TabsTrigger>
@@ -401,7 +402,10 @@ export function AgentMonitorDashboard() {
           />
         </TabsContent>
 
-        <TabsContent value="ai-activities" className="space-y-4"><AIActivitiesPanel /></TabsContent>
+        <TabsContent value="ai-activities" className="space-y-4">
+          <GroupQueuePanel />
+          <AIActivitiesPanel />
+        </TabsContent>
         <TabsContent value="referrals" className="space-y-4"><ReferralsTab referrals={referrals} loading={isLoading} /></TabsContent>
         <TabsContent value="redirections" className="space-y-4"><RedirectionsTab redirections={redirections} loading={isLoading} /></TabsContent>
       </Tabs>
