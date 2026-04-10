@@ -234,11 +234,23 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
       return;
     }
 
+    // Resolve instance IDs from instance names
+    const instanceNames = [...new Set(phonesToSend.map(i => i.instance_name))];
+    const { data: instances } = await supabase
+      .from('whatsapp_instances')
+      .select('id, instance_name')
+      .in('instance_name', instanceNames);
+    
+    const instanceMap = new Map((instances || []).map(i => [i.instance_name, i.id]));
+
     setSendingFollowup(new Set(phonesToSend.map(i => i.id)));
     let successCount = 0;
     let errorCount = 0;
 
     for (const item of phonesToSend) {
+      const instanceId = instanceMap.get(item.instance_name);
+      if (!instanceId) { errorCount++; continue; }
+
       try {
         const signerName = item.signer_name || item._lead?.lead_name || '';
         const docName = item.document_name || 'documento';
@@ -246,7 +258,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
 
         const { error } = await supabase.functions.invoke('send-whatsapp', {
           body: {
-            instance_name: item.instance_name,
+            instance_id: instanceId,
             phone: item.whatsapp_phone,
             message,
           },
