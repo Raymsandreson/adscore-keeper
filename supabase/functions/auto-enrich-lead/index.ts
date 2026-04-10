@@ -24,74 +24,99 @@ Deno.serve(async (req) => {
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    const { phone, instance_name, lead_id, contact_id } = await req.json()
+    const { phone, instance_name, lead_id, contact_id, group_jid, force } = await req.json()
 
-    if (!phone || !instance_name) {
-      return new Response(JSON.stringify({ error: 'phone and instance_name required' }), {
+    const isGroupEnrich = !!group_jid && !!lead_id
+
+    if (!isGroupEnrich && (!phone || !instance_name)) {
+      return new Response(JSON.stringify({ error: 'phone and instance_name required (or group_jid + lead_id)' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    console.log(`[auto-enrich] phone=${phone} instance=${instance_name} lead=${lead_id} contact=${contact_id}`)
+    console.log(`[auto-enrich] phone=${phone} instance=${instance_name} lead=${lead_id} contact=${contact_id} group_jid=${group_jid} force=${force}`)
 
-    // Read configurable threshold from system_settings
-    let INBOUND_THRESHOLD = DEFAULT_INBOUND_THRESHOLD
-    const { data: thresholdSetting } = await supabase
-      .from('system_settings')
-      .select('value')
-      .eq('key', 'enrich_message_threshold')
-      .single()
-    
-    if (thresholdSetting?.value) {
-      INBOUND_THRESHOLD = parseInt(thresholdSetting.value, 10) || DEFAULT_INBOUND_THRESHOLD
-    }
+    let messages: any[] | null = null
 
-    // Check if we already enriched recently (within 2 hours)
-    const phoneSuffix = phone.replace(/\D/g, '').slice(-8)
-    
-    const { data: recentEnrich } = await supabase
-      .from('lead_enrichment_log')
-      .select('id')
-      .ilike('phone', `%${phoneSuffix}`)
-      .eq('instance_name', instance_name)
-      .gte('created_at', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
-      .limit(1)
+    if (isGroupEnrich) {
+      // Fetch messages from the group conversation
+      const { data: groupMsgs } = await supabase
+        .from('whatsapp_messages')
+        .select('direction, message_text, created_at, phone')
+        .eq('phone', group_jid)
+        .order('created_at', { ascending: true })
+        .limit(200)
 
-    if (recentEnrich && recentEnrich.length > 0) {
-      console.log('[auto-enrich] Already enriched recently, skipping')
-      return new Response(JSON.stringify({ ok: true, skipped: 'recent_enrich' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+      if (!groupMsgs || groupMsgs.length === 0) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'no_messages' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      messages = groupMsgs
+    } else {
+      // Original flow: private conversation enrichment
+      // Read configurable threshold from system_settings
+      let INBOUND_THRESHOLD = DEFAULT_INBOUND_THRESHOLD
+      const { data: thresholdSetting } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'enrich_message_threshold')
+        .single()
+      
+      if (thresholdSetting?.value) {
+        INBOUND_THRESHOLD = parseInt(thresholdSetting.value, 10) || DEFAULT_INBOUND_THRESHOLD
+      }
 
-    // Count inbound messages from this contact
-    const { count } = await supabase
-      .from('whatsapp_messages')
-      .select('id', { count: 'exact', head: true })
-      .eq('instance_name', instance_name)
-      .ilike('phone', `%${phoneSuffix}`)
-      .eq('direction', 'inbound')
+      const phoneSuffix = phone.replace(/\D/g, '').slice(-8)
 
-    if (!count || count < INBOUND_THRESHOLD) {
-      console.log(`[auto-enrich] Only ${count} inbound messages, need ${INBOUND_THRESHOLD}`)
-      return new Response(JSON.stringify({ ok: true, skipped: 'not_enough_messages', count }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+      if (!force) {
+        // Check if we already enriched recently (within 2 hours)
+        const { data: recentEnrich } = await supabase
+          .from('lead_enrichment_log')
+          .select('id')
+          .ilike('phone', `%${phoneSuffix}`)
+          .eq('instance_name', instance_name)
+          .gte('created_at', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
+          .limit(1)
 
-    // Fetch conversation messages
-    const { data: messages } = await supabase
-      .from('whatsapp_messages')
-      .select('direction, message_text, created_at')
-      .eq('instance_name', instance_name)
-      .ilike('phone', `%${phoneSuffix}`)
-      .order('created_at', { ascending: true })
-      .limit(100)
+        if (recentEnrich && recentEnrich.length > 0) {
+          console.log('[auto-enrich] Already enriched recently, skipping')
+          return new Response(JSON.stringify({ ok: true, skipped: 'recent_enrich' }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
 
-    if (!messages || messages.length === 0) {
-      return new Response(JSON.stringify({ ok: true, skipped: 'no_messages' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+        // Count inbound messages from this contact
+        const { count } = await supabase
+          .from('whatsapp_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('instance_name', instance_name)
+          .ilike('phone', `%${phoneSuffix}`)
+          .eq('direction', 'inbound')
+
+        if (!count || count < INBOUND_THRESHOLD) {
+          console.log(`[auto-enrich] Only ${count} inbound messages, need ${INBOUND_THRESHOLD}`)
+          return new Response(JSON.stringify({ ok: true, skipped: 'not_enough_messages', count }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
+      }
+
+      // Fetch conversation messages
+      const { data: privateMsgs } = await supabase
+        .from('whatsapp_messages')
+        .select('direction, message_text, created_at')
+        .eq('instance_name', instance_name)
+        .ilike('phone', `%${phoneSuffix}`)
+        .order('created_at', { ascending: true })
+        .limit(100)
+
+      if (!privateMsgs || privateMsgs.length === 0) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'no_messages' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      messages = privateMsgs
     }
 
     // Build conversation text
