@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { AtSign, MessageCircle } from 'lucide-react';
+import { TeamNotificationToast } from './TeamNotificationToast';
+import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
 
 const MUTE_KEY = 'team-chat-notifications-muted';
 
@@ -37,29 +39,29 @@ function showNotificationToast({
   title,
   context,
   preview,
-  duration,
+  onOpen,
+  onReply,
 }: {
   icon: ReactNode;
   title: string;
   context?: string;
   preview: string;
-  duration: number;
+  onOpen: () => void | Promise<void>;
+  onReply?: (reply: string) => Promise<void>;
 }) {
-  toast(title, {
-    icon,
-    duration,
-    description: (
-      <div className="flex flex-col gap-1">
-        {context && (
-          <span className="text-xs text-muted-foreground">{context}</span>
-        )}
-        <p className="text-sm text-foreground/80 line-clamp-2">{preview}</p>
-      </div>
-    ),
-    action: {
-      label: 'Silenciar',
-      onClick: toggleMute,
-    },
+  toast.custom((toastId) => (
+    <TeamNotificationToast
+      toastId={toastId}
+      icon={icon}
+      title={title}
+      context={context}
+      preview={preview}
+      onOpen={onOpen}
+      onReply={onReply}
+      onMute={toggleMute}
+    />
+  ), {
+    duration: Infinity,
   });
 }
 
@@ -67,11 +69,22 @@ export function TeamChatNotifications() {
   const { user } = useAuthContext();
   const teamConversationIdsRef = useRef<Set<string>>(new Set());
   const teamConversationLabelsRef = useRef<Map<string, string>>(new Map());
+  const currentUserNameRef = useRef('');
 
   useEffect(() => {
     if (!user) return;
 
     console.log('[TeamChatNotifications] Subscribing for user:', user.id);
+
+    const loadCurrentUserName = async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      currentUserNameRef.current = data?.full_name || user.email || 'Usuário';
+    };
 
     const loadTeamConversationContext = async () => {
       const { data: memberships, error: membershipsError } = await supabase
@@ -143,7 +156,100 @@ export function TeamChatNotifications() {
       return false;
     };
 
-    void loadTeamConversationContext();
+    const getCurrentUserName = () => currentUserNameRef.current || user.email || 'Usuário';
+
+    const replyToEntityChat = async ({
+      entityType,
+      entityId,
+      entityName,
+      content,
+    }: {
+      entityType: string;
+      entityId: string;
+      entityName?: string | null;
+      content: string;
+    }) => {
+      const { error } = await supabase
+        .from('team_chat_messages')
+        .insert({
+          entity_type: entityType,
+          entity_id: entityId,
+          entity_name: entityName || null,
+          content,
+          sender_id: user.id,
+          sender_name: getCurrentUserName(),
+        });
+
+      if (error) throw error;
+    };
+
+    const replyToConversation = async (conversationId: string, content: string) => {
+      const { error } = await supabase
+        .from('team_messages')
+        .insert({
+          conversation_id: conversationId,
+          content,
+          sender_id: user.id,
+          sender_name: getCurrentUserName(),
+          message_type: 'text',
+        });
+
+      if (error) throw error;
+
+      const { error: updateError } = await supabase
+        .from('team_conversations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', conversationId);
+
+      if (updateError) throw updateError;
+    };
+
+    const getEntityChatUrl = async ({
+      entityType,
+      entityId,
+      messageId,
+    }: {
+      entityType: string;
+      entityId: string;
+      messageId?: string;
+    }) => {
+      const messageParam = messageId ? `&highlightMsg=${messageId}` : '';
+
+      switch (entityType) {
+        case 'lead': {
+          let boardParam = '';
+          const { data } = await supabase
+            .from('leads')
+            .select('board_id')
+            .eq('id', entityId)
+            .maybeSingle();
+
+          if (data?.board_id) {
+            boardParam = `board=${data.board_id}&`;
+          }
+
+          return `/leads?${boardParam}openLead=${entityId}${messageParam}`;
+        }
+        case 'activity':
+          return `/?openActivity=${entityId}${messageParam}`;
+        case 'contact':
+          return `/leads?openContact=${entityId}${messageParam}`;
+        case 'workflow':
+          return `/workflow?openBoard=${entityId}${messageParam}`;
+        case 'whatsapp':
+          return `/whatsapp?openChat=${encodeURIComponent(entityId)}`;
+        default:
+          return null;
+      }
+    };
+
+    const openEntityChat = async (options: { entityType: string; entityId: string; messageId?: string }) => {
+      const url = await getEntityChatUrl(options);
+      if (!url) return;
+      window.location.assign(url);
+    };
+
+    void Promise.all([loadTeamConversationContext(), loadCurrentUserName()]);
 
     // Listen for new mentions directed at this user
     const mentionsChannel = supabase
@@ -175,7 +281,17 @@ export function TeamChatNotifications() {
           title: `${senderName} te mencionou`,
           context: context ? `em ${context}` : undefined,
           preview,
-          duration: 8000,
+          onOpen: () => openEntityChat({
+            entityType: msg.entity_type,
+            entityId: mention.entity_id,
+            messageId: mention.message_id,
+          }),
+          onReply: (reply) => replyToEntityChat({
+            entityType: mention.entity_type,
+            entityId: mention.entity_id,
+            entityName: mention.entity_name,
+            content: reply,
+          }),
         });
       })
       .subscribe((status) => {
@@ -206,7 +322,17 @@ export function TeamChatNotifications() {
           title: senderName,
           context: (context || entityLabel) ? `${entityLabel}${context ? `: ${context}` : ''}` : undefined,
           preview,
-          duration: 6000,
+          onOpen: () => openEntityChat({
+            entityType: msg.entity_type,
+            entityId: msg.entity_id,
+            messageId: msg.id,
+          }),
+          onReply: (reply) => replyToEntityChat({
+            entityType: msg.entity_type,
+            entityId: msg.entity_id,
+            entityName: msg.entity_name,
+            content: reply,
+          }),
         });
       })
       .subscribe((status) => {
@@ -237,7 +363,13 @@ export function TeamChatNotifications() {
           title: senderName,
           context,
           preview,
-          duration: 6000,
+          onOpen: () => {
+            openTeamChatConversation({
+              conversationId: msg.conversation_id,
+              focusComposer: true,
+            });
+          },
+          onReply: (reply) => replyToConversation(msg.conversation_id, reply),
         });
       })
       .subscribe((status) => {
