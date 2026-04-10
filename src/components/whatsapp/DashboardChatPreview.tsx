@@ -206,24 +206,77 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     fetchAvailableAgents();
 
     // Fetch linked lead & contact
+    const isGroup = phone.includes('@g.us');
     const fetchLinkedData = async () => {
       const last8 = normalizedPhone.slice(-8);
-      const { data: leadData } = await supabase
-        .from('leads')
-        .select('*')
-        .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${last8}%`)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (leadData) setLinkedLead(leadData as any);
+      let leadData: any = null;
 
-      const { data: contactData } = await supabase
-        .from('contacts')
-        .select('*')
-        .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
-        .limit(1)
-        .maybeSingle();
-      if (contactData) setLinkedContact(contactData as any);
+      if (isGroup) {
+        // For group conversations, find lead via lead_whatsapp_groups or leads.whatsapp_group_id
+        const { data: groupLink } = await supabase
+          .from('lead_whatsapp_groups')
+          .select('lead_id, group_name')
+          .eq('group_jid', phone)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (groupLink) {
+          if (groupLink.group_name) setGroupName(groupLink.group_name);
+          const { data: ld } = await supabase.from('leads').select('*').eq('id', groupLink.lead_id).maybeSingle();
+          if (ld) leadData = ld;
+        }
+
+        if (!leadData) {
+          const { data: ld } = await supabase
+            .from('leads')
+            .select('*')
+            .eq('whatsapp_group_id', phone)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (ld) leadData = ld;
+        }
+      } else {
+        const { data: ld } = await supabase
+          .from('leads')
+          .select('*')
+          .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${last8}%`)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (ld) leadData = ld;
+      }
+
+      if (leadData) {
+        setLinkedLead(leadData as any);
+        // If group and no group name yet, try from lead name
+        if (isGroup && !groupName) {
+          setGroupName(leadData.lead_name || null);
+        }
+      }
+
+      // Fetch contact: for groups, use linked lead's contacts; for individual, use phone
+      if (isGroup && leadData) {
+        const { data: contactLink } = await supabase
+          .from('contact_leads')
+          .select('contact_id')
+          .eq('lead_id', leadData.id)
+          .limit(1)
+          .maybeSingle();
+        if (contactLink) {
+          const { data: cd } = await supabase.from('contacts').select('*').eq('id', contactLink.contact_id).maybeSingle();
+          if (cd) setLinkedContact(cd as any);
+        }
+      } else {
+        const { data: contactData } = await supabase
+          .from('contacts')
+          .select('*')
+          .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
+          .limit(1)
+          .maybeSingle();
+        if (contactData) setLinkedContact(contactData as any);
+      }
     };
     fetchLinkedData();
 
