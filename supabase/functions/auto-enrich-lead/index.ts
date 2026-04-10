@@ -128,6 +128,19 @@ Deno.serve(async (req) => {
       .join('\n')
 
     // Extract data using AI
+    const groupEnrichFields = isGroupEnrich ? `
+  "case_notes": "observações e atualizações relevantes sobre o caso jurídico mencionadas na conversa do grupo",
+  "case_outcome": "resultado/desfecho do caso se mencionado (deferido, indeferido, acordo, etc)",
+  "process_notes": "informações sobre andamento processual, audiências, perícias, prazos mencionados",
+  "process_number": "número de processo judicial mencionado (CNJ)",
+  "next_steps": "próximos passos ou pendências mencionadas na conversa",
+  "documents_mentioned": "documentos mencionados ou solicitados na conversa",` : ''
+
+    const groupEnrichRules = isGroupEnrich ? `
+- Esta é uma conversa de GRUPO de trabalho. Extraia informações sobre o caso, processo e cliente mencionados.
+- case_notes, process_notes e next_steps devem conter resumos úteis das discussões do grupo.
+- Não confunda mensagens de diferentes participantes do grupo.` : ''
+
     const systemPrompt = `Você é um assistente especializado em extrair informações de conversas de WhatsApp.
 
 Analise a conversa e extraia TODAS as informações pessoais e profissionais do CLIENTE. Retorne APENAS um JSON válido:
@@ -156,7 +169,7 @@ Analise a conversa e extraia TODAS as informações pessoais e profissionais do 
   "visit_city": "cidade da visita/residência da família",
   "visit_state": "estado da visita/residência (sigla UF)",
   "visit_region": "região da visita (ex: norte, sul, centro-oeste, sudeste, nordeste)",
-  "visit_address": "endereço completo para visita",
+  "visit_address": "endereço completo para visita",${groupEnrichFields}
   "lead_status": "status do lead baseado na conversa: use null na maioria dos casos. Só preencha com 'closed' se houve assinatura/contrato EXPLÍCITO, 'refused' APENAS se o cliente disse CLARAMENTE que NÃO quer prosseguir (ex: 'não quero', 'desisto', 'não tenho interesse'), 'unviable' se: (1) o atendente determinou que o caso é inviável, OU (2) o cliente claramente NÃO é o público-alvo (ex: confundiu com outra pessoa, ligação engano, homem em campanha de maternidade, pessoa sem nenhuma relação com o serviço oferecido), OU (3) o cliente demonstra total desinteresse/irrelevância com o assunto. Em caso de QUALQUER dúvida, use null. Conversas em andamento, triagem, identificação = null (NÃO é refused).",
   "lead_status_reason": "motivo resumido em 1-2 frases para o status identificado. OBRIGATÓRIO se lead_status não for null. Use null se status for null.",
   "referrals": [
@@ -175,7 +188,7 @@ REGRAS:
 - IMPORTANTE: lead_status deve ser null na grande maioria dos casos. Só marque como 'refused' se o cliente EXPLICITAMENTE recusou. Marque como 'unviable' se a pessoa claramente não tem relação com o serviço (engano, confusão, perfil incompatível). Conversas sem resposta, em triagem, ou em fase inicial NÃO são 'refused' nem 'unviable'. Na dúvida, use null.
 - lead_status_reason é OBRIGATÓRIO quando lead_status não for null
 - INDICAÇÕES: Se o cliente mencionou alguém que pode ter direito a algum benefício (gestante, mãe de autista, acidentado nos últimos 5 anos com carteira assinada), extraia na lista "referrals". Use [] se não houver indicações.
-- product_type DEVE ser um dos valores: auxilio_maternidade, auxilio_acidente, bpc_loas_autista, indenizacao_acidente_trabalho
+- product_type DEVE ser um dos valores: auxilio_maternidade, auxilio_acidente, bpc_loas_autista, indenizacao_acidente_trabalho${groupEnrichRules}
 - Retorne APENAS o JSON`
 
     const result = await geminiChat({
