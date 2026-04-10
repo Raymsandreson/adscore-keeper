@@ -1,7 +1,6 @@
 const SUPABASE_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38';
 
-// Listen for messages from popup and content scripts
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'GET_SESSION') {
     chrome.storage.local.get(['session'], (result) => {
@@ -31,6 +30,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
+async function parseJsonResponse(res) {
+  const text = await res.text();
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return { raw: text };
+  }
+}
+
+function buildErrorMessage(res, data, fallbackMessage) {
+  return data?.error_description || data?.error || data?.message || data?.msg || `${fallbackMessage} (${res.status})`;
+}
+
 async function loginUser(email, password) {
   try {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
@@ -41,24 +55,29 @@ async function loginUser(email, password) {
       },
       body: JSON.stringify({ email, password }),
     });
-    const data = await res.json();
-    if (data.error) return { error: data.error_description || data.error || 'Login failed' };
-    
+
+    const data = await parseJsonResponse(res);
+    if (!res.ok || data?.error) {
+      return { error: buildErrorMessage(res, data, 'Falha ao fazer login') };
+    }
+
     const session = {
       access_token: data.access_token,
       refresh_token: data.refresh_token,
       user: data.user,
       expires_at: Date.now() + (data.expires_in * 1000),
     };
+
     await chrome.storage.local.set({ session });
     return { success: true, session };
   } catch (e) {
-    return { error: e.message };
+    return { error: e.message || 'Falha ao conectar no login' };
   }
 }
 
 async function logoutUser() {
   const { session } = await chrome.storage.local.get(['session']);
+
   if (session?.access_token) {
     try {
       await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
@@ -70,6 +89,7 @@ async function logoutUser() {
       });
     } catch (_) {}
   }
+
   await chrome.storage.local.remove(['session']);
   return { success: true };
 }
@@ -77,8 +97,7 @@ async function logoutUser() {
 async function refreshTokenIfNeeded() {
   const { session } = await chrome.storage.local.get(['session']);
   if (!session) return null;
-  
-  // Refresh if expiring in less than 5 minutes
+
   if (session.expires_at && Date.now() > session.expires_at - 300000) {
     try {
       const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
@@ -89,28 +108,34 @@ async function refreshTokenIfNeeded() {
         },
         body: JSON.stringify({ refresh_token: session.refresh_token }),
       });
-      const data = await res.json();
-      if (data.access_token) {
-        const newSession = {
-          access_token: data.access_token,
-          refresh_token: data.refresh_token,
-          user: data.user,
-          expires_at: Date.now() + (data.expires_in * 1000),
-        };
-        await chrome.storage.local.set({ session: newSession });
-        return newSession;
+
+      const data = await parseJsonResponse(res);
+      if (!res.ok || !data?.access_token) {
+        await chrome.storage.local.remove(['session']);
+        return null;
       }
-    } catch (_) {}
-    // If refresh failed, clear session
-    await chrome.storage.local.remove(['session']);
-    return null;
+
+      const newSession = {
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+        user: data.user,
+        expires_at: Date.now() + (data.expires_in * 1000),
+      };
+
+      await chrome.storage.local.set({ session: newSession });
+      return newSession;
+    } catch (_) {
+      await chrome.storage.local.remove(['session']);
+      return null;
+    }
   }
+
   return session;
 }
 
 async function makeApiCall(endpoint, method = 'GET', body = null) {
   const session = await refreshTokenIfNeeded();
-  if (!session) return { error: 'Not authenticated' };
+  if (!session) return { error: 'Não autenticado' };
 
   const headers = {
     'Content-Type': 'application/json',
@@ -123,16 +148,21 @@ async function makeApiCall(endpoint, method = 'GET', body = null) {
 
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${endpoint}`, options);
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
+
+    if (!res.ok) {
+      return { error: buildErrorMessage(res, data, 'Falha na API'), data };
+    }
+
     return { data };
   } catch (e) {
-    return { error: e.message };
+    return { error: e.message || 'Falha ao chamar a API' };
   }
 }
 
 async function invokeFunction(functionName, body = {}) {
   const session = await refreshTokenIfNeeded();
-  if (!session) return { error: 'Not authenticated' };
+  if (!session) return { error: 'Não autenticado' };
 
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
@@ -144,9 +174,14 @@ async function invokeFunction(functionName, body = {}) {
       },
       body: JSON.stringify(body),
     });
-    const data = await res.json();
+
+    const data = await parseJsonResponse(res);
+    if (!res.ok) {
+      return { error: buildErrorMessage(res, data, 'Falha ao executar função'), data };
+    }
+
     return { data };
   } catch (e) {
-    return { error: e.message };
+    return { error: e.message || 'Falha ao executar função' };
   }
 }
