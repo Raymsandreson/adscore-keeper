@@ -8,96 +8,115 @@
   let currentLeadData = null;
   let currentInstanceName = null;
   let isLoggedIn = false;
+  let panelOpen = false;
 
   // ===================== DOM INJECTION =====================
 
   function injectUI() {
-    if (document.getElementById('adscore-crm-fab')) return;
+    if (document.getElementById('adscore-crm-sidebar')) return;
 
-    // FAB Button
-    const fab = document.createElement('button');
-    fab.id = 'adscore-crm-fab';
-    fab.innerHTML = '⚖️';
-    fab.title = 'AdScore CRM';
-    fab.addEventListener('click', togglePanel);
-    document.body.appendChild(fab);
-
-    // Overlay
-    const overlay = document.createElement('div');
-    overlay.id = 'adscore-crm-overlay';
-    overlay.addEventListener('click', closePanel);
-    document.body.appendChild(overlay);
+    // Right sidebar icon strip
+    const sidebar = document.createElement('div');
+    sidebar.id = 'adscore-crm-sidebar';
+    sidebar.innerHTML = `
+      <button class="sidebar-icon active" id="adscore-btn-crm" title="AdScore CRM">⚖️</button>
+      <div class="sidebar-divider"></div>
+      <button class="sidebar-icon" id="adscore-btn-lead" title="Leads & Contatos">👤</button>
+      <button class="sidebar-icon" id="adscore-btn-agent" title="Agente IA">🤖</button>
+      <button class="sidebar-icon" id="adscore-btn-case" title="Jurídico">📋</button>
+      <div class="sidebar-divider"></div>
+      <button class="sidebar-icon" id="adscore-btn-lock" title="Trancar">🔒</button>
+      <button class="sidebar-icon" id="adscore-btn-mute" title="Silenciar">🔇</button>
+    `;
+    document.body.appendChild(sidebar);
 
     // Panel
     const panel = document.createElement('div');
     panel.id = 'adscore-crm-panel';
     panel.innerHTML = `
       <div class="panel-header">
-        <h2>⚖️ AdScore CRM</h2>
-        <button class="panel-close" id="adscore-panel-close">✕</button>
+        <button class="panel-header-back" id="adscore-panel-close">←</button>
+        <h2>AdScore CRM</h2>
       </div>
       <div class="panel-body" id="adscore-panel-body">
         <div class="login-prompt" id="adscore-login-prompt">
           <div class="icon">🔒</div>
-          <p>Faça login na extensão para usar as funcionalidades do CRM.</p>
+          <p>Faça login na extensão para usar o CRM.</p>
           <p style="margin-top:8px; font-size:11px;">Clique no ícone da extensão na barra do Chrome.</p>
         </div>
         <div id="adscore-actions" style="display:none;">
           <div class="contact-info" id="adscore-contact-info">
-            <div class="phone" id="adscore-phone">Selecione uma conversa</div>
-            <div class="name" id="adscore-contact-name"></div>
-            <div id="adscore-lead-info"></div>
+            <div class="contact-avatar" id="adscore-avatar">👤</div>
+            <div class="contact-details">
+              <div class="phone" id="adscore-phone">Selecione uma conversa</div>
+              <div class="name" id="adscore-contact-name"></div>
+              <div id="adscore-lead-info"></div>
+            </div>
           </div>
 
-          <div class="section-title">Leads & Contatos</div>
-          <button class="action-btn" data-action="vincular-lead">
-            <span class="icon">🔗</span>
-            <div><div class="label">Vincular Lead</div><div class="desc">Buscar e vincular lead existente</div></div>
-          </button>
-          <button class="action-btn" data-action="criar-lead-contato">
-            <span class="icon">➕</span>
-            <div><div class="label">Criar Lead + Contato</div><div class="desc">Novo lead e contato a partir da conversa</div></div>
-          </button>
-          <button class="action-btn" data-action="criar-contato">
-            <span class="icon">👤</span>
-            <div><div class="label">Criar Contato</div><div class="desc">Apenas criar contato sem lead</div></div>
-          </button>
+          <div class="section-group">
+            <div class="section-title">Leads & Contatos</div>
+            <button class="action-btn" data-action="vincular-lead">
+              <span class="icon">🔗</span>
+              <div><div class="label">Vincular Lead</div><div class="desc">Buscar e vincular lead existente</div></div>
+            </button>
+            <button class="action-btn" data-action="criar-lead-contato">
+              <span class="icon">➕</span>
+              <div><div class="label">Criar Lead + Contato</div><div class="desc">Novo lead e contato com IA</div></div>
+            </button>
+            <button class="action-btn" data-action="criar-contato">
+              <span class="icon">👤</span>
+              <div><div class="label">Criar Contato</div><div class="desc">Apenas criar contato</div></div>
+            </button>
+          </div>
 
-          <div class="section-title">Jurídico</div>
-          <button class="action-btn" data-action="criar-caso">
-            <span class="icon">⚖️</span>
-            <div><div class="label">Criar Caso Jurídico</div><div class="desc">Abrir caso vinculado ao lead</div></div>
-          </button>
-          <button class="action-btn" data-action="gerar-documento">
-            <span class="icon">📄</span>
-            <div><div class="label">Gerar Documento para Assinatura</div><div class="desc">ZapSign via WhatsApp</div></div>
-          </button>
+          <div class="section-group">
+            <div class="section-title">Jurídico</div>
+            <button class="action-btn" data-action="criar-caso">
+              <span class="icon">⚖️</span>
+              <div><div class="label">Criar Caso Jurídico</div><div class="desc">Abrir caso vinculado ao lead</div></div>
+            </button>
+            <button class="action-btn" data-action="gerar-documento">
+              <span class="icon">📄</span>
+              <div><div class="label">Gerar Documento</div><div class="desc">ZapSign via WhatsApp</div></div>
+            </button>
+          </div>
 
-          <div class="section-title">Agente IA</div>
-          <button class="action-btn" data-action="ativar-agente">
-            <span class="icon">🤖</span>
-            <div><div class="label">Ativar Agente IA</div><div class="desc">Ativar ou trocar agente na conversa</div></div>
-          </button>
+          <div class="section-group">
+            <div class="section-title">Agente IA</div>
+            <button class="action-btn" data-action="ativar-agente">
+              <span class="icon">🤖</span>
+              <div><div class="label">Ativar Agente IA</div><div class="desc">Ativar ou trocar agente</div></div>
+            </button>
+          </div>
 
-          <div class="section-title">Conversa</div>
-          <button class="action-btn" data-action="trancar-conversa">
-            <span class="icon">🔒</span>
-            <div><div class="label">Trancar Conversa</div><div class="desc">Marcar como privada</div></div>
-          </button>
-          <button class="action-btn" data-action="silenciar">
-            <span class="icon">🔇</span>
-            <div><div class="label">Silenciar Conversa</div><div class="desc">Pausar agente temporariamente</div></div>
-          </button>
-          <button class="action-btn" data-action="limpar-conversa">
-            <span class="icon">🧹</span>
-            <div><div class="label">Limpar Conversa</div><div class="desc">Hard reset do histórico e sessões</div></div>
-          </button>
+          <div class="section-group">
+            <div class="section-title">Conversa</div>
+            <button class="action-btn" data-action="trancar-conversa">
+              <span class="icon">🔒</span>
+              <div><div class="label">Trancar Conversa</div><div class="desc">Marcar como privada</div></div>
+            </button>
+            <button class="action-btn" data-action="silenciar">
+              <span class="icon">🔇</span>
+              <div><div class="label">Silenciar Conversa</div><div class="desc">Pausar agente temporariamente</div></div>
+            </button>
+            <button class="action-btn" data-action="limpar-conversa">
+              <span class="icon">🧹</span>
+              <div><div class="label">Limpar Conversa</div><div class="desc">Reset do histórico</div></div>
+            </button>
+          </div>
 
-          <div id="adscore-status"></div>
+          <div id="adscore-status" style="padding: 0 8px;"></div>
         </div>
       </div>
     `;
     document.body.appendChild(panel);
+
+    // Modal overlay
+    const modalOverlay = document.createElement('div');
+    modalOverlay.id = 'adscore-crm-modal-overlay';
+    modalOverlay.addEventListener('click', closeModal);
+    document.body.appendChild(modalOverlay);
 
     // Modal
     const modal = document.createElement('div');
@@ -106,6 +125,28 @@
 
     // Event listeners
     document.getElementById('adscore-panel-close').addEventListener('click', closePanel);
+    document.getElementById('adscore-btn-crm').addEventListener('click', togglePanel);
+    
+    // Quick action buttons on sidebar
+    document.getElementById('adscore-btn-lead').addEventListener('click', () => {
+      ensurePanelOpen();
+      if (isLoggedIn) criarLeadContato();
+    });
+    document.getElementById('adscore-btn-agent').addEventListener('click', () => {
+      ensurePanelOpen();
+      if (isLoggedIn) ativarAgente();
+    });
+    document.getElementById('adscore-btn-case').addEventListener('click', () => {
+      ensurePanelOpen();
+      if (isLoggedIn) criarCaso();
+    });
+    document.getElementById('adscore-btn-lock').addEventListener('click', () => {
+      if (isLoggedIn) trancarConversa();
+    });
+    document.getElementById('adscore-btn-mute').addEventListener('click', () => {
+      if (isLoggedIn) silenciarConversa();
+    });
+
     panel.querySelectorAll('.action-btn').forEach(btn => {
       btn.addEventListener('click', () => handleAction(btn.dataset.action));
     });
@@ -113,24 +154,32 @@
     checkSession();
   }
 
+  function ensurePanelOpen() {
+    if (!panelOpen) togglePanel();
+  }
+
   // ===================== PANEL TOGGLE =====================
 
   function togglePanel() {
     const panel = document.getElementById('adscore-crm-panel');
-    const overlay = document.getElementById('adscore-crm-overlay');
-    const isOpen = panel.classList.contains('open');
-    if (isOpen) {
-      closePanel();
-    } else {
+    const crmBtn = document.getElementById('adscore-btn-crm');
+    panelOpen = !panelOpen;
+    
+    if (panelOpen) {
       panel.classList.add('open');
-      overlay.classList.add('visible');
+      crmBtn.classList.add('active');
       detectCurrentConversation();
+    } else {
+      closePanel();
     }
   }
 
   function closePanel() {
-    document.getElementById('adscore-crm-panel')?.classList.remove('open');
-    document.getElementById('adscore-crm-overlay')?.classList.remove('visible');
+    const panel = document.getElementById('adscore-crm-panel');
+    const crmBtn = document.getElementById('adscore-btn-crm');
+    panel?.classList.remove('open');
+    crmBtn?.classList.remove('active');
+    panelOpen = false;
     closeModal();
   }
 
@@ -158,29 +207,23 @@
     currentContactName = null;
     currentLeadData = null;
 
-    // Try to find the conversation header
     const header = document.querySelector('header') || document.querySelector('[data-testid="conversation-header"]');
     if (!header) {
       updateContactInfo();
       return;
     }
 
-    // Try to get contact name from header
     const nameEl = header.querySelector('span[title]') || header.querySelector('[data-testid="conversation-info-header-chat-title"]');
     if (nameEl) {
       const title = nameEl.getAttribute('title') || nameEl.textContent || '';
       currentContactName = title.trim();
-
-      // Check if it's a phone number
       const cleaned = title.replace(/[\s\-\(\)\+]/g, '');
       if (/^\d{10,15}$/.test(cleaned)) {
         currentPhone = cleaned;
       }
     }
 
-    // Try to find phone in contact info or profile panel
     if (!currentPhone) {
-      // Check the about/profile section
       const phoneEls = document.querySelectorAll('span[title]');
       for (const el of phoneEls) {
         const text = (el.getAttribute('title') || '').replace(/[\s\-\(\)\+]/g, '');
@@ -191,7 +234,6 @@
       }
     }
 
-    // If we found a phone, look up the lead
     if (currentPhone) {
       lookupLead(currentPhone);
     }
@@ -203,22 +245,26 @@
     const phoneEl = document.getElementById('adscore-phone');
     const nameEl = document.getElementById('adscore-contact-name');
     const leadInfoEl = document.getElementById('adscore-lead-info');
+    const avatarEl = document.getElementById('adscore-avatar');
 
     if (currentPhone) {
       phoneEl.textContent = formatPhone(currentPhone);
       nameEl.textContent = currentContactName || '';
+      avatarEl.textContent = (currentContactName || '?')[0].toUpperCase();
       if (currentLeadData) {
         leadInfoEl.innerHTML = `<span class="lead-badge">Lead: ${currentLeadData.lead_name}</span>`;
       } else {
-        leadInfoEl.innerHTML = '<span style="font-size:11px; color:#6b7280;">Sem lead vinculado</span>';
+        leadInfoEl.innerHTML = '<span class="no-lead-badge">Sem lead vinculado</span>';
       }
     } else if (currentContactName) {
       phoneEl.textContent = currentContactName;
       nameEl.textContent = 'Telefone não detectado';
+      avatarEl.textContent = currentContactName[0].toUpperCase();
       leadInfoEl.innerHTML = '';
     } else {
       phoneEl.textContent = 'Selecione uma conversa';
       nameEl.textContent = '';
+      avatarEl.textContent = '👤';
       leadInfoEl.innerHTML = '';
     }
   }
@@ -290,7 +336,7 @@
   function searchLeads(query) {
     const container = document.getElementById('modal-results');
     if (!container) return;
-    container.innerHTML = '<p style="color:#6b7280; text-align:center;">Buscando...</p>';
+    container.innerHTML = '<p style="color:#667781; text-align:center;">Buscando...</p>';
 
     const suffix = query.replace(/\D/g, '').slice(-8);
     const searchEndpoint = suffix.length >= 6
@@ -304,15 +350,15 @@
     }, (res) => {
       if (!document.getElementById('modal-results')) return;
       if (!res?.data?.length) {
-        container.innerHTML = '<p style="color:#6b7280; text-align:center;">Nenhum lead encontrado</p>';
+        container.innerHTML = '<p style="color:#667781; text-align:center;">Nenhum lead encontrado</p>';
         return;
       }
       container.innerHTML = res.data.map(lead => `
-        <div style="padding:8px; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:4px; cursor:pointer; transition:background .1s;"
-             onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='#fff'"
+        <div style="padding:10px 12px; border-bottom:1px solid #f0f2f5; cursor:pointer; transition:background .1s;"
+             onmouseover="this.style.background='#f0f2f5'" onmouseout="this.style.background='#fff'"
              onclick="document.dispatchEvent(new CustomEvent('adscore-link-lead', {detail: '${lead.id}'}))">
-          <strong>${lead.lead_name}</strong>
-          <br><span style="color:#6b7280;">${lead.lead_phone || 'Sem telefone'}</span>
+          <strong style="color:#111b21;">${lead.lead_name}</strong>
+          <br><span style="color:#667781; font-size:12px;">${lead.lead_phone || 'Sem telefone'}</span>
         </div>
       `).join('');
     });
@@ -359,7 +405,6 @@
       const email = document.getElementById('modal-email').value.trim();
       if (!name) { showStatus('Nome é obrigatório', 'error'); return; }
 
-      // Create contact first
       chrome.runtime.sendMessage({
         type: 'API_CALL',
         endpoint: 'contacts',
@@ -371,7 +416,6 @@
           return;
         }
         const contactId = contactRes.data?.[0]?.id;
-        // Create lead
         chrome.runtime.sendMessage({
           type: 'API_CALL',
           endpoint: 'leads',
@@ -386,7 +430,7 @@
           if (leadRes?.error) {
             showStatus('Contato criado, mas erro ao criar lead', 'error');
           } else {
-            showStatus('Lead + Contato criados com sucesso!', 'success');
+            showStatus('Lead + Contato criados!', 'success');
             closeModal();
             if (phone) lookupLead(phone);
           }
@@ -424,7 +468,7 @@
         if (res?.error) {
           showStatus('Erro ao criar contato', 'error');
         } else {
-          showStatus('Contato criado com sucesso!', 'success');
+          showStatus('Contato criado!', 'success');
           closeModal();
         }
       });
@@ -434,11 +478,10 @@
   // --- Criar Caso Jurídico ---
   function criarCaso() {
     if (!currentLeadData) {
-      showStatus('Vincule um lead primeiro para criar um caso', 'error');
+      showStatus('Vincule um lead primeiro', 'error');
       return;
     }
 
-    // Fetch nuclei for the select
     chrome.runtime.sendMessage({
       type: 'API_CALL',
       endpoint: 'specialized_nuclei?is_active=eq.true&select=id,name,prefix&order=name',
@@ -450,7 +493,7 @@
       showModal('Criar Caso Jurídico', `
         <div class="form-group">
           <label>Lead</label>
-          <input type="text" value="${currentLeadData.lead_name}" disabled>
+          <input type="text" value="${currentLeadData.lead_name}" disabled style="background:#f0f2f5;">
         </div>
         <div class="form-group">
           <label>Núcleo</label>
@@ -487,7 +530,7 @@
           if (res?.error) {
             showStatus('Erro ao criar caso', 'error');
           } else {
-            showStatus('Caso jurídico criado com sucesso!', 'success');
+            showStatus('Caso jurídico criado!', 'success');
             closeModal();
           }
         });
@@ -499,18 +542,17 @@
   function gerarDocumento() {
     if (!currentPhone) { showStatus('Abra uma conversa primeiro', 'error'); return; }
     
-    // Send the #gerar command via the system
     chrome.runtime.sendMessage({
       type: 'INVOKE_FUNCTION',
       functionName: 'send-whatsapp',
       body: {
         phone: currentPhone,
         message: '#gerar',
-        instance_id: null, // Will use default
+        instance_id: null,
       },
     }, (res) => {
       if (res?.data?.success || res?.data) {
-        showStatus('Comando #gerar enviado! O agente IA vai iniciar a coleta.', 'success');
+        showStatus('Comando #gerar enviado!', 'success');
       } else {
         showStatus('Erro ao enviar comando', 'error');
       }
@@ -521,7 +563,6 @@
   function ativarAgente() {
     if (!currentPhone) { showStatus('Abra uma conversa primeiro', 'error'); return; }
 
-    // Fetch available agents
     chrome.runtime.sendMessage({
       type: 'API_CALL',
       endpoint: 'whatsapp_ai_agents?is_active=eq.true&select=id,name,shortcut_name&order=name',
@@ -529,12 +570,12 @@
     }, (res) => {
       const agents = res?.data || [];
       if (agents.length === 0) {
-        showStatus('Nenhum agente IA ativo encontrado', 'error');
+        showStatus('Nenhum agente IA ativo', 'error');
         return;
       }
 
       const agentButtons = agents.map(a => `
-        <button class="action-btn" style="margin-bottom:4px;" 
+        <button class="action-btn" style="margin-bottom:0; border-top: 1px solid #f0f2f5;"
                 onclick="document.dispatchEvent(new CustomEvent('adscore-activate-agent', {detail: '${a.shortcut_name || a.name}'}))">
           <span class="icon">🤖</span>
           <div><div class="label">${a.name}</div><div class="desc">${a.shortcut_name ? '#' + a.shortcut_name : ''}</div></div>
@@ -542,7 +583,7 @@
       `).join('');
 
       showModal('Ativar Agente IA', `
-        <p style="font-size:12px; color:#6b7280; margin-bottom:10px;">Selecione o agente para ativar nesta conversa:</p>
+        <p style="font-size:13px; color:#667781; margin-bottom:8px;">Selecione o agente:</p>
         ${agentButtons}
       `, null);
     });
@@ -560,7 +601,7 @@
         message: `#${shortcutName}`,
         instance_id: null,
       },
-    }, (res) => {
+    }, () => {
       showStatus(`Agente ativado: ${shortcutName}`, 'success');
       closeModal();
     });
@@ -588,7 +629,7 @@
           showStatus(newLocked ? '🔒 Conversa trancada' : '🔓 Conversa destrancada', 'success');
         });
       } else {
-        showStatus('Conversa não encontrada no sistema', 'error');
+        showStatus('Conversa não encontrada', 'error');
       }
     });
   }
@@ -618,7 +659,7 @@
         method: 'PATCH',
         body: { human_paused_until: pausedUntil },
       }, () => {
-        showStatus(`🔇 Conversa silenciada por ${minutes} minutos`, 'success');
+        showStatus(`🔇 Silenciado por ${minutes}min`, 'success');
         closeModal();
       });
     });
@@ -629,8 +670,8 @@
     if (!currentPhone) { showStatus('Abra uma conversa primeiro', 'error'); return; }
 
     showModal('Limpar Conversa', `
-      <p style="font-size:13px; color:#374151;">Tem certeza que deseja limpar o histórico desta conversa?</p>
-      <p style="font-size:11px; color:#6b7280; margin-top:6px;">Isso irá resetar sessões de coleta e histórico do agente IA.</p>
+      <p style="font-size:13px; color:#111b21;">Tem certeza que deseja limpar o histórico?</p>
+      <p style="font-size:12px; color:#667781; margin-top:6px;">Isso irá resetar sessões e histórico do agente IA.</p>
     `, () => {
       chrome.runtime.sendMessage({
         type: 'INVOKE_FUNCTION',
@@ -641,7 +682,7 @@
           instance_id: null,
         },
       }, () => {
-        showStatus('🧹 Conversa limpa com sucesso!', 'success');
+        showStatus('🧹 Conversa limpa!', 'success');
         closeModal();
       });
     });
@@ -651,20 +692,22 @@
 
   function showModal(title, bodyHtml, onConfirm, onOpen = null) {
     const modal = document.getElementById('adscore-crm-modal');
+    const overlay = document.getElementById('adscore-crm-modal-overlay');
     modal.innerHTML = `
       <div class="modal-header">
         <h3>${title}</h3>
-        <button class="modal-close" onclick="document.getElementById('adscore-crm-modal').classList.remove('visible')">✕</button>
+        <button class="modal-close" onclick="document.getElementById('adscore-crm-modal').classList.remove('visible'); document.getElementById('adscore-crm-modal-overlay').classList.remove('visible');">✕</button>
       </div>
       <div class="modal-body">${bodyHtml}</div>
       ${onConfirm ? `
         <div class="modal-actions">
-          <button class="btn btn-secondary" onclick="document.getElementById('adscore-crm-modal').classList.remove('visible')">Cancelar</button>
+          <button class="btn btn-secondary" onclick="document.getElementById('adscore-crm-modal').classList.remove('visible'); document.getElementById('adscore-crm-modal-overlay').classList.remove('visible');">Cancelar</button>
           <button class="btn btn-primary" id="modal-confirm-btn">Confirmar</button>
         </div>
       ` : ''}
     `;
     modal.classList.add('visible');
+    overlay.classList.add('visible');
 
     if (onConfirm) {
       document.getElementById('modal-confirm-btn').addEventListener('click', onConfirm);
@@ -674,6 +717,7 @@
 
   function closeModal() {
     document.getElementById('adscore-crm-modal')?.classList.remove('visible');
+    document.getElementById('adscore-crm-modal-overlay')?.classList.remove('visible');
   }
 
   function showStatus(message, type = 'info') {
@@ -685,14 +729,12 @@
 
   // ===================== OBSERVERS =====================
 
-  // Watch for conversation changes
   const observer = new MutationObserver(() => {
     if (document.getElementById('adscore-crm-panel')?.classList.contains('open')) {
       detectCurrentConversation();
     }
   });
 
-  // Listen for storage changes (login/logout from popup)
   chrome.storage.onChanged.addListener((changes) => {
     if (changes.session) {
       checkSession();
@@ -702,13 +744,11 @@
   // ===================== INIT =====================
 
   function init() {
-    // Wait for WhatsApp to load
     const checkReady = setInterval(() => {
       if (document.querySelector('#app') || document.querySelector('[data-testid="chat-list"]') || document.querySelector('header')) {
         clearInterval(checkReady);
         injectUI();
 
-        // Start observing DOM changes for conversation switches
         const appEl = document.querySelector('#app') || document.body;
         observer.observe(appEl, { childList: true, subtree: true, characterData: true });
       }
