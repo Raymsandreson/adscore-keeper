@@ -382,7 +382,25 @@ Deno.serve(async (req) => {
     }
 
     if (!creatorInstance) {
-      return new Response(JSON.stringify({ success: false, error: 'Nenhuma instância WhatsApp ativa encontrada' }), {
+      // All instances offline — queue for later processing
+      console.log('[create-group] All instances offline. Queuing group creation for later.')
+      const { error: queueError } = await supabase
+        .from('group_creation_queue')
+        .insert({
+          lead_id: lead_id || null,
+          lead_name,
+          phone: phone || null,
+          contact_phone: contact_phone || null,
+          board_id: board_id || null,
+          creator_instance_id: creator_instance_id || null,
+          status: 'pending',
+        })
+      if (queueError) console.error('[create-group] Failed to queue:', queueError)
+      return new Response(JSON.stringify({ 
+        success: false, 
+        queued: true,
+        error: 'Todas as instâncias estão offline. A criação do grupo foi adicionada à fila e será processada automaticamente quando uma instância reconectar.' 
+      }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
