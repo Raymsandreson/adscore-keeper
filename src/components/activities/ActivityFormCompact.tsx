@@ -708,9 +708,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                         }
                         const { data: procs } = await props.supabase
                           .from('lead_processes')
-                          .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id')
+                          .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, envolvidos')
                           .eq('case_id', c.id);
-                        const processItems = (procs || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id }));
+                        const processItems = (procs || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, envolvidos: p.envolvidos }));
                         props.setCaseProcesses(processItems);
                         // Only close sheet if no processes to select
                         if (processItems.length === 0) {
