@@ -489,14 +489,14 @@ REGRAS:
 
     // Log the enrichment
     await supabase.from('lead_enrichment_log').insert({
-      phone,
-      instance_name,
+      phone: phone || group_jid || 'group_enrich',
+      instance_name: instance_name || 'group',
       lead_id: lead_id || null,
       contact_id: contact_id || null,
       fields_updated: cleaned,
     })
 
-    console.log(`[auto-enrich] Enrichment complete for phone=${phone}`)
+    console.log(`[auto-enrich] Enrichment complete for ${isGroupEnrich ? 'group=' + group_jid : 'phone=' + phone}`)
 
     // Process referrals if any
     const referrals = Array.isArray(cleaned.referrals) ? cleaned.referrals : []
