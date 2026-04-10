@@ -500,7 +500,70 @@ REGRAS:
       }
     }
 
-    // Log the enrichment
+    // Enrich case and process if group enrichment
+    if (isGroupEnrich && lead_id) {
+      try {
+        // Find cases linked to this lead
+        const { data: cases } = await supabase
+          .from('legal_cases')
+          .select('id, notes, description')
+          .eq('lead_id', lead_id)
+          .limit(5)
+
+        if (cases && cases.length > 0) {
+          for (const legalCase of cases) {
+            const caseUpdate: Record<string, any> = {}
+            
+            if (cleaned.case_notes) {
+              const existingNotes = legalCase.notes || ''
+              const newNote = `[IA ${new Date().toLocaleDateString('pt-BR')}] ${cleaned.case_notes}`
+              caseUpdate.notes = existingNotes ? `${existingNotes}\n\n${newNote}` : newNote
+            }
+            if (cleaned.case_outcome) {
+              caseUpdate.outcome = cleaned.case_outcome
+            }
+            if (cleaned.damage_description && !legalCase.description) {
+              caseUpdate.description = cleaned.damage_description
+            }
+
+            if (Object.keys(caseUpdate).length > 0) {
+              const { error } = await supabase
+                .from('legal_cases')
+                .update(caseUpdate)
+                .eq('id', legalCase.id)
+              if (error) console.error('[auto-enrich] Case update error:', error)
+              else console.log(`[auto-enrich] Case ${legalCase.id} updated with ${Object.keys(caseUpdate).length} fields`)
+            }
+
+            // Find processes linked to this case
+            const { data: tracking } = await supabase
+              .from('case_process_tracking')
+              .select('id, observacao')
+              .eq('case_id', legalCase.id)
+              .limit(10)
+
+            if (tracking && tracking.length > 0) {
+              const processNotes = cleaned.process_notes || cleaned.next_steps
+              if (processNotes) {
+                for (const proc of tracking) {
+                  const existingObs = proc.observacao || ''
+                  const newObs = `[IA ${new Date().toLocaleDateString('pt-BR')}] ${processNotes}`
+                  await supabase
+                    .from('case_process_tracking')
+                    .update({ observacao: existingObs ? `${existingObs}\n\n${newObs}` : newObs })
+                    .eq('id', proc.id)
+                }
+                console.log(`[auto-enrich] Updated ${tracking.length} process(es) with notes`)
+              }
+            }
+          }
+        }
+      } catch (caseErr: any) {
+        console.error('[auto-enrich] Case/process enrichment error:', caseErr)
+      }
+    }
+
+
     await supabase.from('lead_enrichment_log').insert({
       phone: phone || group_jid || 'group_enrich',
       instance_name: instance_name || 'group',
