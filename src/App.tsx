@@ -146,6 +146,7 @@ const App = () => (
               <Toaster />
               <Sonner />
               <OfflineBanner />
+              <TeamChatNotifications />
               <BrowserRouter>
                 <AppRoutes />
               </BrowserRouter>
