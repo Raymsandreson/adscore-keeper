@@ -251,8 +251,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       if (leadData) {
         setLinkedLead(leadData as any);
         // If group and no group name yet, try from lead name
-        if (isGroup && !groupName) {
-          setGroupName(leadData.lead_name || null);
+        if (isGroup) {
+          setGroupName(prev => prev || leadData.lead_name || null);
         }
       }
 
