@@ -189,9 +189,15 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
 
   // Then apply doc status filter on top of dashboard-filtered items
   const filteredItems = useMemo(() => {
-    if (metricType === 'signed_docs' && docStatusFilter !== 'all') {
-      return dashboardFilteredItems.filter(item => item.signer_status === docStatusFilter);
+    if (metricType === 'signed_docs') {
+      if (docStatusFilter === 'signed') {
+        return dashboardFilteredItems.filter(item => item.signer_status === 'signed');
+      }
+      if (docStatusFilter === 'pending') {
+        return dashboardFilteredItems.filter(item => item.signer_status !== 'signed');
+      }
     }
+
     return dashboardFilteredItems;
   }, [dashboardFilteredItems, metricType, docStatusFilter]);
 
