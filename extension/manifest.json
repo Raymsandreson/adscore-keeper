@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "AdScore CRM - WhatsApp Integration",
+  "version": "1.0.0",
+  "description": "Integre seu CRM jurídico diretamente no WhatsApp Web. Vincule leads, crie casos, ative agentes IA e mais.",
+  "permissions": ["storage", "activeTab"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://web.whatsapp.com/*",
+        "https://business.whatsapp.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "host_permissions": [
+    "https://gliigkupoebmlbwyvijp.supabase.co/*"
+  ]
+}
