@@ -347,7 +347,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
                 <div key={item.id} className="border rounded-lg p-3 space-y-1.5">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium truncate flex-1">{item.document_name || 'Documento'}</p>
-                    {statusBadge(item.status)}
+                    {statusBadge(item.signer_status)}
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>{item.signer_name || '—'}</span>
@@ -375,7 +375,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
                         <UsersRound className="h-3 w-3" /> Chat Grupo
                       </Button>
                     )}
-                    {item.status === 'pending' && item.whatsapp_phone && item.instance_name && (
+                    {item.signer_status !== 'signed' && item.whatsapp_phone && item.instance_name && (
                       <Button
                         variant="outline"
                         size="sm"
