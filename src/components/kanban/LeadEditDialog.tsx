@@ -1267,6 +1267,7 @@ ${scrapeData.content || ''}
                                 ...item,
                                 group_link: val.includes('@g.us') ? '' : val,
                                 group_jid: val.includes('@g.us') ? val : item.group_jid,
+                                group_name: val.includes('@g.us') || val.includes('chat.whatsapp.com') ? item.group_name : '',
                               } : item));
                             }}
                             placeholder="https://chat.whatsapp.com/... ou JID"
