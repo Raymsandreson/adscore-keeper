@@ -291,12 +291,22 @@ Deno.serve(async (req) => {
         if (!res.ok) return false
         const data = await res.json()
         console.log(`[create-group] Instance ${inst.instance_name} raw status response:`, JSON.stringify(data).substring(0, 300))
-        // UazAPI returns connected/open status in various formats
-        const rawStatus = data?.status || data?.state || data?.connection || ''
-        // Handle case where status is an object (e.g. {status: "connected"} nested)
-        const status = typeof rawStatus === 'object' && rawStatus !== null
-          ? (rawStatus?.status || rawStatus?.state || rawStatus?.connection || JSON.stringify(rawStatus))
-          : String(rawStatus)
+        
+        // UazAPI returns nested structure: { status: { checked_instance: { connection_status: "connected" } } }
+        const statusObj = data?.status
+        
+        // Check nested checked_instance.connection_status first (new UazAPI format)
+        if (typeof statusObj === 'object' && statusObj !== null) {
+          const checkedInstance = statusObj?.checked_instance
+          if (checkedInstance?.connection_status === 'connected' || checkedInstance?.is_healthy === true) {
+            console.log(`[create-group] Instance ${inst.instance_name} -> connected (checked_instance)`)
+            return true
+          }
+        }
+        
+        // Fallback: flat status string
+        const rawStatus = statusObj || data?.state || data?.connection || ''
+        const status = typeof rawStatus === 'object' ? JSON.stringify(rawStatus) : String(rawStatus)
         const connected = ['connected', 'open', 'CONNECTED'].includes(status) 
           || data?.connected === true
           || data?.status === true
