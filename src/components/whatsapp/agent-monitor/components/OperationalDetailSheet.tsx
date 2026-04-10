@@ -227,6 +227,54 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
     }
   };
 
+  const handleBulkFollowup = async (pendingItems: any[]) => {
+    const phonesToSend = pendingItems.filter(item => item.whatsapp_phone && item.instance_name);
+    if (phonesToSend.length === 0) {
+      toast.warning('Nenhum documento pendente com telefone e instância disponível');
+      return;
+    }
+
+    setSendingFollowup(new Set(phonesToSend.map(i => i.id)));
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const item of phonesToSend) {
+      try {
+        const signerName = item.signer_name || item._lead?.lead_name || '';
+        const docName = item.document_name || 'documento';
+        const message = `Olá${signerName ? ` ${signerName.split(' ')[0]}` : ''}, tudo bem? 😊\n\nNotamos que o *${docName}* ainda está pendente de assinatura. Poderia assinar para darmos andamento? 🙏\n\nSe tiver alguma dúvida, estamos à disposição!`;
+
+        const { error } = await supabase.functions.invoke('send-whatsapp-message', {
+          body: {
+            instance_name: item.instance_name,
+            phone: item.whatsapp_phone,
+            message,
+          },
+        });
+
+        if (error) throw error;
+        successCount++;
+      } catch (err) {
+        console.error('Error sending followup to', item.whatsapp_phone, err);
+        errorCount++;
+      }
+    }
+
+    setSendingFollowup(new Set());
+
+    if (successCount > 0) {
+      toast.success(`Follow-up enviado para ${successCount} contato${successCount > 1 ? 's' : ''}`);
+    }
+    if (errorCount > 0) {
+      toast.error(`Falha ao enviar para ${errorCount} contato${errorCount > 1 ? 's' : ''}`);
+    }
+  };
+
+  const handleSingleFollowup = async (item: any) => {
+    setSendingFollowup(prev => new Set(prev).add(item.id));
+    await handleBulkFollowup([item]);
+  };
+
   return (
     <>
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
