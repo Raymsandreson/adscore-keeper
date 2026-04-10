@@ -4,10 +4,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Loader2, FileSignature, Users, Briefcase, Scale, ExternalLink, MessageSquare, UsersRound, Radio, UserPlus } from 'lucide-react';
+import { Loader2, FileSignature, Users, Briefcase, Scale, ExternalLink, MessageSquare, UsersRound, Radio, UserPlus, Send } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfDay, endOfDay, format, parseISO } from 'date-fns';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import { toast } from 'sonner';
 import type { Lead } from '@/hooks/useLeads';
 
 export type OperationalMetricType = 'signed_docs' | 'groups' | 'cases' | 'processes' | 'contacts';
@@ -43,6 +44,8 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
   const [items, setItems] = useState<any[]>([]);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
+  const [docStatusFilter, setDocStatusFilter] = useState<'all' | 'signed' | 'pending'>('all');
+  const [sendingFollowup, setSendingFollowup] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -152,9 +155,16 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
   );
 
   const filteredItems = useMemo(() => {
-    if (!hasActiveFilter) return items;
+    let result = items;
     
-    return items.filter(item => {
+    // Apply doc status filter for signed_docs
+    if (metricType === 'signed_docs' && docStatusFilter !== 'all') {
+      result = result.filter(item => item.status === docStatusFilter);
+    }
+    
+    if (!hasActiveFilter) return result;
+    
+    return result.filter(item => {
       if (metricType === 'signed_docs') {
         if (filters!.instanceFilter !== 'all' && item.instance_name && item.instance_name !== filters!.instanceFilter) return false;
         if (filters!.acolhedorFilter !== 'all' && item._lead?.acolhedor) {
@@ -181,7 +191,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
       
       return true;
     });
-  }, [items, filters, filteredLeadIds, hasActiveFilter, metricType]);
+  }, [items, filters, filteredLeadIds, hasActiveFilter, metricType, docStatusFilter]);
 
   const { title, icon: Icon, color } = config[metricType];
 
@@ -217,6 +227,66 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
     }
   };
 
+  const handleBulkFollowup = async (pendingItems: any[]) => {
+    const phonesToSend = pendingItems.filter(item => item.whatsapp_phone && item.instance_name);
+    if (phonesToSend.length === 0) {
+      toast.warning('Nenhum documento pendente com telefone e instância disponível');
+      return;
+    }
+
+    // Resolve instance IDs from instance names
+    const instanceNames = [...new Set(phonesToSend.map(i => i.instance_name))];
+    const { data: instances } = await supabase
+      .from('whatsapp_instances')
+      .select('id, instance_name')
+      .in('instance_name', instanceNames);
+    
+    const instanceMap = new Map((instances || []).map(i => [i.instance_name, i.id]));
+
+    setSendingFollowup(new Set(phonesToSend.map(i => i.id)));
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const item of phonesToSend) {
+      const instanceId = instanceMap.get(item.instance_name);
+      if (!instanceId) { errorCount++; continue; }
+
+      try {
+        const signerName = item.signer_name || item._lead?.lead_name || '';
+        const docName = item.document_name || 'documento';
+        const message = `Olá${signerName ? ` ${signerName.split(' ')[0]}` : ''}, tudo bem? 😊\n\nNotamos que o *${docName}* ainda está pendente de assinatura. Poderia assinar para darmos andamento? 🙏\n\nSe tiver alguma dúvida, estamos à disposição!`;
+
+        const { error } = await supabase.functions.invoke('send-whatsapp', {
+          body: {
+            instance_id: instanceId,
+            phone: item.whatsapp_phone,
+            message,
+          },
+        });
+
+        if (error) throw error;
+        successCount++;
+      } catch (err) {
+        console.error('Error sending followup to', item.whatsapp_phone, err);
+        errorCount++;
+      }
+    }
+
+    setSendingFollowup(new Set());
+
+    if (successCount > 0) {
+      toast.success(`Follow-up enviado para ${successCount} contato${successCount > 1 ? 's' : ''}`);
+    }
+    if (errorCount > 0) {
+      toast.error(`Falha ao enviar para ${errorCount} contato${errorCount > 1 ? 's' : ''}`);
+    }
+  };
+
+  const handleSingleFollowup = async (item: any) => {
+    setSendingFollowup(prev => new Set(prev).add(item.id));
+    await handleBulkFollowup([item]);
+  };
+
   return (
     <>
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -229,6 +299,39 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
           </SheetTitle>
         </SheetHeader>
 
+        {/* Doc status filter tabs */}
+        {metricType === 'signed_docs' && !loading && items.length > 0 && (
+          <div className="flex items-center gap-2 mt-3">
+            {([
+              { key: 'all' as const, label: 'Todos', count: items.length },
+              { key: 'signed' as const, label: 'Assinados', count: items.filter(i => i.status === 'signed').length },
+              { key: 'pending' as const, label: 'Pendentes', count: items.filter(i => i.status === 'pending').length },
+            ]).map(tab => (
+              <Button
+                key={tab.key}
+                variant={docStatusFilter === tab.key ? 'default' : 'outline'}
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={() => setDocStatusFilter(tab.key)}
+              >
+                {tab.label} <Badge variant="secondary" className="ml-1 h-4 px-1 text-[9px]">{tab.count}</Badge>
+              </Button>
+            ))}
+            {docStatusFilter === 'pending' && filteredItems.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1 ml-auto border-amber-300 text-amber-700 hover:bg-amber-50"
+                disabled={sendingFollowup.size > 0}
+                onClick={() => handleBulkFollowup(filteredItems)}
+              >
+                <Send className="h-3 w-3" />
+                Cobrar {filteredItems.length} pendente{filteredItems.length > 1 ? 's' : ''}
+              </Button>
+            )}
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -236,7 +339,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
         ) : filteredItems.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground text-sm">Nenhum registro no período</div>
         ) : (
-          <ScrollArea className="h-[calc(100vh-120px)] mt-4">
+          <ScrollArea className="h-[calc(100vh-170px)] mt-4">
             <div className="space-y-2 pr-2">
               {metricType === 'signed_docs' && filteredItems.map(item => (
                 <div key={item.id} className="border rounded-lg p-3 space-y-1.5">
@@ -246,7 +349,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>{item.signer_name || '—'}</span>
-                    <span>{format(parseISO(item.created_at), 'HH:mm')}</span>
+                    <span>{format(parseISO(item.created_at), 'dd/MM HH:mm')}</span>
                   </div>
                   {item.instance_name && (
                     <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -268,6 +371,18 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
                     {item._lead?.whatsapp_group_id && (
                       <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1 border-cyan-200 text-cyan-700" onClick={() => handleOpenChat(item._lead.whatsapp_group_id, item.instance_name, item._lead?.lead_name || item.signer_name)}>
                         <UsersRound className="h-3 w-3" /> Chat Grupo
+                      </Button>
+                    )}
+                    {item.status === 'pending' && item.whatsapp_phone && item.instance_name && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[10px] px-2 gap-1 border-amber-300 text-amber-700 hover:bg-amber-50"
+                        disabled={sendingFollowup.has(item.id)}
+                        onClick={() => handleSingleFollowup(item)}
+                      >
+                        {sendingFollowup.has(item.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                        Cobrar
                       </Button>
                     )}
                   </div>
