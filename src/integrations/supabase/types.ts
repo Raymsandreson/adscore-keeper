@@ -3939,6 +3939,54 @@ export type Database = {
         }
         Relationships: []
       }
+      group_creation_queue: {
+        Row: {
+          attempts: number
+          board_id: string | null
+          contact_phone: string | null
+          created_at: string
+          creator_instance_id: string | null
+          id: string
+          last_error: string | null
+          lead_id: string | null
+          lead_name: string
+          phone: string | null
+          processed_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          board_id?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          creator_instance_id?: string | null
+          id?: string
+          last_error?: string | null
+          lead_id?: string | null
+          lead_name: string
+          phone?: string | null
+          processed_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          board_id?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          creator_instance_id?: string | null
+          id?: string
+          last_error?: string | null
+          lead_id?: string | null
+          lead_name?: string
+          phone?: string | null
+          processed_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       instagram_accounts: {
         Row: {
           access_token: string
