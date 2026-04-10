@@ -155,9 +155,16 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
   );
 
   const filteredItems = useMemo(() => {
-    if (!hasActiveFilter) return items;
+    let result = items;
     
-    return items.filter(item => {
+    // Apply doc status filter for signed_docs
+    if (metricType === 'signed_docs' && docStatusFilter !== 'all') {
+      result = result.filter(item => item.status === docStatusFilter);
+    }
+    
+    if (!hasActiveFilter) return result;
+    
+    return result.filter(item => {
       if (metricType === 'signed_docs') {
         if (filters!.instanceFilter !== 'all' && item.instance_name && item.instance_name !== filters!.instanceFilter) return false;
         if (filters!.acolhedorFilter !== 'all' && item._lead?.acolhedor) {
@@ -184,7 +191,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
       
       return true;
     });
-  }, [items, filters, filteredLeadIds, hasActiveFilter, metricType]);
+  }, [items, filters, filteredLeadIds, hasActiveFilter, metricType, docStatusFilter]);
 
   const { title, icon: Icon, color } = config[metricType];
 
