@@ -244,7 +244,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
         const docName = item.document_name || 'documento';
         const message = `Olá${signerName ? ` ${signerName.split(' ')[0]}` : ''}, tudo bem? 😊\n\nNotamos que o *${docName}* ainda está pendente de assinatura. Poderia assinar para darmos andamento? 🙏\n\nSe tiver alguma dúvida, estamos à disposição!`;
 
-        const { error } = await supabase.functions.invoke('send-whatsapp-message', {
+        const { error } = await supabase.functions.invoke('send-whatsapp', {
           body: {
             instance_name: item.instance_name,
             phone: item.whatsapp_phone,
