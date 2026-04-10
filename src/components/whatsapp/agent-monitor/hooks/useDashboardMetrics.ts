@@ -79,16 +79,18 @@ export function useDashboardMetrics() {
       const startDate = format(dateRange.from, 'yyyy-MM-dd');
       const endDate = format(dateRange.to, 'yyyy-MM-dd');
       const isSingleDay = startDate === endDate;
+      const startISO = new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate()).toISOString();
+      const endISO = new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate(), 23, 59, 59, 999).toISOString();
 
+      // Fetch snapshots for conversation/closed metrics
       let snapshots: any[] = [];
-
       if (isSingleDay) {
         const { data, error } = await supabase
           .from('monitor_kpi_snapshots')
           .select('*')
           .eq('snapshot_date', startDate)
           .maybeSingle();
-        if (error) { console.error('Error fetching snapshot:', error); setMetrics(EMPTY_METRICS); return; }
+        if (error) { console.error('Error fetching snapshot:', error); }
         if (data) snapshots = [data];
       } else {
         const { data, error } = await supabase
@@ -97,29 +99,86 @@ export function useDashboardMetrics() {
           .gte('snapshot_date', startDate)
           .lte('snapshot_date', endDate)
           .order('snapshot_date', { ascending: false });
-        if (error) { console.error('Error fetching snapshots:', error); setMetrics(EMPTY_METRICS); return; }
+        if (error) { console.error('Error fetching snapshots:', error); }
         snapshots = data || [];
       }
 
-      setMetricsProgress(80);
+      setMetricsProgress(50);
 
-      if (snapshots.length === 0) {
-        console.warn(`No snapshots found for ${startDate} - ${endDate}`);
-        setMetrics(EMPTY_METRICS);
-        return;
+      // Fetch operational metrics DIRECTLY from source tables (not snapshots)
+      const [docsResult, groupsResult, casesResult, processesResult, contactsResult] = await Promise.all([
+        supabase
+          .from('zapsign_documents')
+          .select('id, document_name, signer_name, signer_status, lead_id, instance_name, created_at')
+          .gte('created_at', startISO).lte('created_at', endISO),
+        supabase
+          .from('leads')
+          .select('id, lead_name, acolhedor, lead_phone, created_at')
+          .not('whatsapp_group_id', 'is', null)
+          .gte('created_at', startISO).lte('created_at', endISO),
+        supabase
+          .from('legal_cases')
+          .select('id, title, acolhedor, lead_id, created_at')
+          .gte('created_at', startISO).lte('created_at', endISO),
+        supabase
+          .from('case_process_tracking')
+          .select('id, cliente, acolhedor, created_at')
+          .gte('created_at', startISO).lte('created_at', endISO),
+        supabase
+          .from('contacts')
+          .select('id, full_name, created_by, created_at')
+          .gte('created_at', startISO).lte('created_at', endISO),
+      ]);
+
+      const docs = docsResult.data || [];
+      const signedDocsDetails: OperationalDetail[] = docs
+        .filter(d => d.signer_status === 'signed')
+        .map(d => ({ id: d.id, name: d.signer_name || d.document_name || '', acolhedor: null, instance_name: d.instance_name, lead_id: d.lead_id, created_at: d.created_at }));
+      const pendingDocsDetails: OperationalDetail[] = docs
+        .filter(d => d.signer_status !== 'signed')
+        .map(d => ({ id: d.id, name: d.signer_name || d.document_name || '', acolhedor: null, instance_name: d.instance_name, lead_id: d.lead_id, created_at: d.created_at }));
+
+      // Enrich docs with lead acolhedor
+      const docLeadIds = docs.map(d => d.lead_id).filter(Boolean) as string[];
+      if (docLeadIds.length > 0) {
+        const { data: leads } = await supabase.from('leads').select('id, acolhedor').in('id', [...new Set(docLeadIds)]);
+        const acolhedorMap = Object.fromEntries((leads || []).map(l => [l.id, l.acolhedor]));
+        for (const d of [...signedDocsDetails, ...pendingDocsDetails]) {
+          if (d.lead_id) d.acolhedor = acolhedorMap[d.lead_id] || null;
+        }
       }
 
-      // For single day, use the snapshot directly. For multi-day, aggregate.
-      if (isSingleDay || snapshots.length === 1) {
+      const groupsData = groupsResult.data || [];
+      const groupsDetails: OperationalDetail[] = groupsData.map(g => ({ id: g.id, name: g.lead_name || '', acolhedor: g.acolhedor, instance_name: null, lead_id: g.id, created_at: g.created_at }));
+
+      const casesData = casesResult.data || [];
+      const casesDetails: OperationalDetail[] = casesData.map(c => ({ id: c.id, name: c.title || '', acolhedor: c.acolhedor, instance_name: null, lead_id: c.lead_id, created_at: c.created_at }));
+
+      const processesData = processesResult.data || [];
+      const processesDetails: OperationalDetail[] = processesData.map(p => ({ id: p.id, name: p.cliente || '', acolhedor: p.acolhedor, instance_name: null, lead_id: null, created_at: p.created_at }));
+
+      const contactsData = contactsResult.data || [];
+      const contactsDetails: OperationalDetail[] = contactsData.map(c => ({ id: c.id, name: c.full_name || '', acolhedor: null, instance_name: null, lead_id: null, created_at: c.created_at }));
+
+      setMetricsProgress(80);
+
+      // Build conversation/closed metrics from snapshots
+      let convAndClosedMetrics: Partial<DashboardMetrics> = {
+        newConversations: 0, responseRate: 0, avgResponseTimeMin: 0,
+        respondedCount: 0, totalInbound: 0,
+        closedByAgent: [], closedByAgentDetailed: [], closedByCampaign: [],
+        closedByAI: 0, closedAssisted: 0, closedWithHuman: 0, closedNoInteraction: 0, closedTotal: 0,
+        closedLeadDetails: [], newConvDetails: [],
+      };
+
+      if (snapshots.length === 1) {
         const snapshot = snapshots[0];
         const closedAgg = (snapshot.closed_aggregates || {}) as Record<string, any>;
         const convMetrics = (snapshot.conversation_metrics || {}) as Record<string, any>;
-        const opMetrics = (snapshot.operational_metrics || {}) as Record<string, any>;
-        const opDetails = (snapshot.operational_details || {}) as Record<string, any>;
         const closedLeadDetails = (snapshot.closed_lead_details || []) as unknown as DashboardMetrics['closedLeadDetails'];
         const newConvDetails = (snapshot.new_conv_details || []) as unknown as NewConvDetail[];
 
-        setMetrics({
+        convAndClosedMetrics = {
           newConversations: convMetrics.newConversations || 0,
           responseRate: convMetrics.responseRate || 0,
           avgResponseTimeMin: convMetrics.avgResponseTimeMin || 0,
@@ -135,41 +194,19 @@ export function useDashboardMetrics() {
           closedTotal: closedAgg.closedTotal || 0,
           closedLeadDetails,
           newConvDetails,
-          signedDocuments: opMetrics.signedDocuments || 0,
-          pendingDocuments: opMetrics.pendingDocuments || 0,
-          groupsCreated: opMetrics.groupsCreated || 0,
-          casesCreated: opMetrics.casesCreated || 0,
-          processesCreated: opMetrics.processesCreated || 0,
-          contactsCreated: opMetrics.contactsCreated || 0,
-          signedDocsDetails: opDetails.signedDocsDetails || [],
-          pendingDocsDetails: opDetails.pendingDocsDetails || [],
-          groupsDetails: opDetails.groupsDetails || [],
-          casesDetails: opDetails.casesDetails || [],
-          processesDetails: opDetails.processesDetails || [],
-          contactsDetails: opDetails.contactsDetails || [],
-        });
-      } else {
-        // Aggregate across multiple snapshots
+        };
+      } else if (snapshots.length > 1) {
         let totalNewConvs = 0, totalRespondedCount = 0, totalInbound = 0;
         let totalResponseTimeSum = 0, responseTimeEntries = 0;
         let totalClosedByAI = 0, totalClosedAssisted = 0, totalClosedWithHuman = 0, totalClosedNoInteraction = 0, totalClosed = 0;
-        let totalSignedDocs = 0, totalPendingDocs = 0, totalGroups = 0, totalCases = 0, totalProcesses = 0, totalContacts = 0;
         const allClosedLeadDetails: DashboardMetrics['closedLeadDetails'] = [];
         const allNewConvDetails: NewConvDetail[] = [];
-        const allSignedDocsDetails: OperationalDetail[] = [];
-        const allPendingDocsDetails: OperationalDetail[] = [];
-        const allGroupsDetails: OperationalDetail[] = [];
-        const allCasesDetails: OperationalDetail[] = [];
-        const allProcessesDetails: OperationalDetail[] = [];
-        const allContactsDetails: OperationalDetail[] = [];
         const agentDetailAgg = new Map<string, { ai: number; assisted: number; human: number; noInteraction: number; total: number }>();
         const campaignAgg = new Map<string, number>();
 
         for (const snapshot of snapshots) {
           const closedAgg = (snapshot.closed_aggregates || {}) as Record<string, any>;
           const convMetrics = (snapshot.conversation_metrics || {}) as Record<string, any>;
-          const opMetrics = (snapshot.operational_metrics || {}) as Record<string, any>;
-          const opDetails = (snapshot.operational_details || {}) as Record<string, any>;
 
           totalNewConvs += convMetrics.newConversations || 0;
           totalRespondedCount += convMetrics.respondedCount || 0;
@@ -188,10 +225,8 @@ export function useDashboardMetrics() {
           (closedAgg.closedByAgentDetailed || []).forEach((d: any) => {
             const existing = agentDetailAgg.get(d.agent);
             if (existing) {
-              existing.ai += d.ai || 0;
-              existing.assisted += d.assisted || 0;
-              existing.human += d.human || 0;
-              existing.noInteraction += d.noInteraction || 0;
+              existing.ai += d.ai || 0; existing.assisted += d.assisted || 0;
+              existing.human += d.human || 0; existing.noInteraction += d.noInteraction || 0;
               existing.total += d.total || 0;
             } else {
               agentDetailAgg.set(d.agent, { ai: d.ai || 0, assisted: d.assisted || 0, human: d.human || 0, noInteraction: d.noInteraction || 0, total: d.total || 0 });
@@ -202,19 +237,6 @@ export function useDashboardMetrics() {
             campaignAgg.set(c.campaign, (campaignAgg.get(c.campaign) || 0) + c.count);
           });
 
-          totalSignedDocs += opMetrics.signedDocuments || 0;
-          totalPendingDocs += opMetrics.pendingDocuments || 0;
-          totalGroups += opMetrics.groupsCreated || 0;
-          totalCases += opMetrics.casesCreated || 0;
-          totalProcesses += opMetrics.processesCreated || 0;
-          totalContacts += opMetrics.contactsCreated || 0;
-
-          allSignedDocsDetails.push(...(opDetails.signedDocsDetails || []));
-          allPendingDocsDetails.push(...(opDetails.pendingDocsDetails || []));
-          allGroupsDetails.push(...(opDetails.groupsDetails || []));
-          allCasesDetails.push(...(opDetails.casesDetails || []));
-          allProcessesDetails.push(...(opDetails.processesDetails || []));
-          allContactsDetails.push(...(opDetails.contactsDetails || []));
           allClosedLeadDetails.push(...((snapshot.closed_lead_details || []) as DashboardMetrics['closedLeadDetails']));
           allNewConvDetails.push(...((snapshot.new_conv_details || []) as NewConvDetail[]));
         }
@@ -222,7 +244,7 @@ export function useDashboardMetrics() {
         const avgResponseTime = responseTimeEntries > 0 ? Math.round(totalResponseTimeSum / responseTimeEntries) : 0;
         const responseRate = totalInbound > 0 ? Math.round((totalRespondedCount / totalInbound) * 100) : 0;
 
-        setMetrics({
+        convAndClosedMetrics = {
           newConversations: totalNewConvs,
           responseRate,
           avgResponseTimeMin: avgResponseTime,
@@ -238,20 +260,24 @@ export function useDashboardMetrics() {
           closedTotal: totalClosed,
           closedLeadDetails: allClosedLeadDetails,
           newConvDetails: allNewConvDetails,
-          signedDocuments: totalSignedDocs,
-          pendingDocuments: totalPendingDocs,
-          groupsCreated: totalGroups,
-          casesCreated: totalCases,
-          processesCreated: totalProcesses,
-          contactsCreated: totalContacts,
-          signedDocsDetails: allSignedDocsDetails,
-          pendingDocsDetails: allPendingDocsDetails,
-          groupsDetails: allGroupsDetails,
-          casesDetails: allCasesDetails,
-          processesDetails: allProcessesDetails,
-          contactsDetails: allContactsDetails,
-        });
+        };
       }
+
+      setMetrics({
+        ...(convAndClosedMetrics as DashboardMetrics),
+        signedDocuments: signedDocsDetails.length,
+        pendingDocuments: pendingDocsDetails.length,
+        groupsCreated: groupsDetails.length,
+        casesCreated: casesDetails.length,
+        processesCreated: processesDetails.length,
+        contactsCreated: contactsDetails.length,
+        signedDocsDetails,
+        pendingDocsDetails,
+        groupsDetails,
+        casesDetails,
+        processesDetails,
+        contactsDetails,
+      });
     } catch (err) {
       console.error('Error fetching dashboard metrics:', err);
       setMetrics(EMPTY_METRICS);
