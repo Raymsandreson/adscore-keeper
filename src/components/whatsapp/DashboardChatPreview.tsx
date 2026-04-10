@@ -96,6 +96,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [linkedLead, setLinkedLead] = useState<Lead | null>(null);
   const [linkedContact, setLinkedContact] = useState<Contact | null>(null);
+  const [groupName, setGroupName] = useState<string | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
   const [showContactEdit, setShowContactEdit] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
