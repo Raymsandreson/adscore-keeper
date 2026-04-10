@@ -154,17 +154,11 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
     filters.agentFilter !== 'all' || filters.boardFilter !== 'all' || filters.campaignFilter !== 'all'
   );
 
-  const filteredItems = useMemo(() => {
-    let result = items;
+  // First apply dashboard filters (acolhedor, instance, etc.)
+  const dashboardFilteredItems = useMemo(() => {
+    if (!hasActiveFilter) return items;
     
-    // Apply doc status filter for signed_docs
-    if (metricType === 'signed_docs' && docStatusFilter !== 'all') {
-      result = result.filter(item => item.status === docStatusFilter);
-    }
-    
-    if (!hasActiveFilter) return result;
-    
-    return result.filter(item => {
+    return items.filter(item => {
       if (metricType === 'signed_docs') {
         if (filters!.instanceFilter !== 'all' && item.instance_name && item.instance_name !== filters!.instanceFilter) return false;
         if (filters!.acolhedorFilter !== 'all' && item._lead?.acolhedor) {
@@ -191,7 +185,15 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
       
       return true;
     });
-  }, [items, filters, filteredLeadIds, hasActiveFilter, metricType, docStatusFilter]);
+  }, [items, filters, filteredLeadIds, hasActiveFilter, metricType]);
+
+  // Then apply doc status filter on top of dashboard-filtered items
+  const filteredItems = useMemo(() => {
+    if (metricType === 'signed_docs' && docStatusFilter !== 'all') {
+      return dashboardFilteredItems.filter(item => item.signer_status === docStatusFilter);
+    }
+    return dashboardFilteredItems;
+  }, [dashboardFilteredItems, metricType, docStatusFilter]);
 
   const { title, icon: Icon, color } = config[metricType];
 
