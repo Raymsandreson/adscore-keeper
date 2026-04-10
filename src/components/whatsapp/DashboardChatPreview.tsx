@@ -1055,11 +1055,12 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           <div className="flex items-center justify-between">
             <div className="min-w-0 flex-1">
               <DrawerTitle className="text-base truncate flex items-center gap-2">
-                <User className="h-4 w-4 text-muted-foreground shrink-0" />
-                {contactName || phone}
+                {phone?.includes('@g.us') ? <Users className="h-4 w-4 text-muted-foreground shrink-0" /> : <User className="h-4 w-4 text-muted-foreground shrink-0" />}
+                {contactName || groupName || linkedLead?.lead_name || phone}
               </DrawerTitle>
               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                {phone && contactName && <span className="text-xs text-muted-foreground">{phone}</span>}
+                {phone?.includes('@g.us') && groupName && <span className="text-xs text-muted-foreground">Grupo WhatsApp</span>}
+                {phone && !phone.includes('@g.us') && contactName && <span className="text-xs text-muted-foreground">{phone}</span>}
                 {instanceName && <span className="text-[10px] text-muted-foreground">• {instanceName}</span>}
               </div>
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
