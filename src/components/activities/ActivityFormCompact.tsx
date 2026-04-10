@@ -273,8 +273,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <div className="flex items-center gap-0.5">
             <Badge
               variant="secondary"
-              className="text-[10px] h-6 max-w-[160px] truncate cursor-pointer hover:opacity-80 gap-1"
-              onClick={() => setLinkLeadOpen(true)}
+              className="text-[10px] h-6 max-w-[160px] truncate cursor-copy hover:opacity-80 gap-1"
+              onClick={() => copyField(props.formLeadName)}
+              title="Clique para copiar"
             >
               <Building2 className="h-3 w-3 shrink-0" />
               {props.formLeadName}
