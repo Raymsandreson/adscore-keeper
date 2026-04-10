@@ -384,8 +384,29 @@ Deno.serve(async (req) => {
 
     if (!creatorInstance) {
       // All instances offline — queue for later processing
-      console.log('[create-group] All instances offline. Queuing group creation for later.')
       const creation_origin = body.creation_origin || 'manual'
+      
+      // DEDUP: Check if there's already a pending item for same lead/phone
+      const dedup_phone = normalizePhone(contact_phone || phone || '')
+      const { data: existingQueue } = await supabase
+        .from('group_creation_queue')
+        .select('id')
+        .eq('status', 'pending')
+        .eq('lead_name', lead_name)
+        .limit(1)
+      
+      if (existingQueue && existingQueue.length > 0) {
+        console.log(`[create-group] DEDUP: Already queued for "${lead_name}". Skipping duplicate.`)
+        return new Response(JSON.stringify({ 
+          success: false, 
+          queued: true,
+          deduplicated: true,
+          error: 'Este grupo já está na fila de criação.' 
+        }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      
       const { error: queueError } = await supabase
         .from('group_creation_queue')
         .insert({
