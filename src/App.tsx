@@ -125,6 +125,7 @@ const ReferralSearchPage = lazyRetry(() => import("./pages/ReferralSearchPage"),
 const AgentMonitorPage = lazyRetry(() => import("./pages/AgentMonitorPage"), "AgentMonitorPage");
 const LandingPage = lazyRetry(() => import("./pages/LandingPage"), "LandingPage");
 const BookingPage = lazyRetry(() => import("./pages/BookingPage"), "BookingPage");
+const ExtensionPage = lazyRetry(() => import("./pages/ExtensionPage"), "ExtensionPage");
 
 const queryClient = new QueryClient();
 
@@ -211,6 +212,7 @@ function SidebarLayout() {
                 <Route path="/referrals" element={<ProtectedRoute><ReferralSearchPage /></ProtectedRoute>} />
                 <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
                 <Route path="/agent-monitor" element={<ProtectedRoute><AgentMonitorPage /></ProtectedRoute>} />
+                <Route path="/extension" element={<ProtectedRoute><ExtensionPage /></ProtectedRoute>} />
                 <Route path="/cases" element={<ProtectedRoute><CasesPage /></ProtectedRoute>} />
                 <Route path="/processes" element={<ProtectedRoute><ProcessesPage /></ProtectedRoute>} />
                 <Route path="/nuclei" element={<ProtectedRoute><NucleiPage /></ProtectedRoute>} />
