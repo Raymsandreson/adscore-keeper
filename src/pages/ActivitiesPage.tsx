@@ -161,7 +161,7 @@ const ActivitiesPage = () => {
   const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string; lead_id: string | null}[]>([]);
   const [caseSearch, setCaseSearch] = useState('');
   const [leadCases, setLeadCases] = useState<{id: string; case_number: string; title: string}[]>([]);
-  const [caseProcesses, setCaseProcesses] = useState<{id: string; title: string; process_number: string | null}[]>([]);
+  const [caseProcesses, setCaseProcesses] = useState<{id: string; title: string; process_number: string | null; polo_passivo: string | null; tribunal: string | null; area: string | null; assuntos: string[] | null; workflow_id: string | null}[]>([]);
   const [availableContacts, setAvailableContacts] = useState<{id: string; full_name: string}[]>([]);
   const [contactSearch, setContactSearch] = useState('');
 
@@ -214,6 +214,7 @@ const ActivitiesPage = () => {
     updated_at?: string | null;
     board_id?: string | null;
     board_name?: string | null;
+    lead_status?: string | null;
   } | null>(null);
 
   const getFilterParams = () => ({
@@ -507,7 +508,7 @@ const ActivitiesPage = () => {
         Promise.all([
           supabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id),
           supabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
-          supabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id').eq('id', activity.lead_id).maybeSingle(),
+          supabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status').eq('id', activity.lead_id).maybeSingle(),
         ]).then(async ([casesRes, linkedRes, leadPreviewRes]) => {
           setLeadCases(casesRes.data || []);
 
@@ -536,8 +537,8 @@ const ActivitiesPage = () => {
 
     if ((activity as any).case_id) {
       promises.push(
-        Promise.resolve(supabase.from('lead_processes').select('id, title, process_number').eq('case_id', (activity as any).case_id)).then(({ data }) => {
-          setCaseProcesses((data || []).map(p => ({ id: p.id, title: p.title, process_number: p.process_number })));
+        Promise.resolve(supabase.from('lead_processes').select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id').eq('case_id', (activity as any).case_id)).then(({ data }) => {
+          setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id })));
         })
       );
     }
@@ -813,7 +814,7 @@ const ActivitiesPage = () => {
       try {
         const [linkedData, leadPreviewRes] = await Promise.all([
           supabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
-          supabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id').eq('id', activity.lead_id).maybeSingle(),
+          supabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status').eq('id', activity.lead_id).maybeSingle(),
         ]);
         let boardName: string | null = null;
         if (leadPreviewRes.data?.board_id) {
@@ -2780,10 +2781,21 @@ const ActivitiesPage = () => {
                   Para marcar pessoas com @, use o botão 👥 Chat da Equipe no topo desta atividade.
                 </p>
               )}
-              {/* Funnel progress bar */}
-              {formLeadId && leadPreview?.board_id && (
-                <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />
-              )}
+              {/* Funnel or Process Workflow progress bar */}
+              {formLeadId && (() => {
+                const isLeadClosed = leadPreview?.lead_status === 'closed';
+                const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
+                const processWorkflowId = linkedProcess?.workflow_id;
+                
+                if (isLeadClosed && processWorkflowId) {
+                  // Show process workflow progress instead of sales funnel
+                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} />;
+                }
+                if (leadPreview?.board_id) {
+                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />;
+                }
+                return null;
+              })()}
             </div>
 
             {/* Form body - scrollable */}
