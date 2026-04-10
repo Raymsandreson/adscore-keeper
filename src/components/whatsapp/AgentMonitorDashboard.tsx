@@ -25,10 +25,11 @@ import { RedirectionsTab } from './agent-monitor/components/RedirectionsTab';
 import { AIActivitiesPanel } from './AIActivitiesPanel';
 import { AIActivityPromptDialog } from './AIActivityPromptDialog';
 import { DashboardChatPreview } from './DashboardChatPreview';
-import { GroupQueuePanel } from './agent-monitor/components/GroupQueuePanel';
+import { GroupQueuePanel, useGroupQueueCount } from './agent-monitor/components/GroupQueuePanel';
 
 export function AgentMonitorDashboard() {
   const { toast } = useToast();
+  const queueCount = useGroupQueueCount();
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({ from: new Date(), to: new Date() });
   const [sheetStatusFilter, setSheetStatusFilter] = useState<CaseStatus | null>(null);
   const [newConvsSheetOpen, setNewConvsSheetOpen] = useState(false);
@@ -377,7 +378,10 @@ export function AgentMonitorDashboard() {
       <Tabs defaultValue="monitor" className="space-y-4">
         <TabsList className="grid w-full grid-cols-4 max-w-lg">
           <TabsTrigger value="monitor" className="text-xs flex items-center gap-1.5"><LayoutDashboard className="h-3.5 w-3.5" /> Monitor</TabsTrigger>
-          <TabsTrigger value="ai-activities" className="text-xs flex items-center gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Atividades IA</TabsTrigger>
+          <TabsTrigger value="ai-activities" className="text-xs flex items-center gap-1.5">
+            <ClipboardList className="h-3.5 w-3.5" /> Atividades IA
+            {queueCount > 0 && <span className="ml-1 bg-destructive text-destructive-foreground text-[10px] rounded-full px-1.5 py-0.5 font-bold leading-none">{queueCount}</span>}
+          </TabsTrigger>
           <TabsTrigger value="referrals" className="text-xs flex items-center gap-1.5"><Heart className="h-3.5 w-3.5" /> Indicações</TabsTrigger>
           <TabsTrigger value="redirections" className="text-xs flex items-center gap-1.5"><ArrowRightLeft className="h-3.5 w-3.5" /> Redirecionamentos</TabsTrigger>
         </TabsList>

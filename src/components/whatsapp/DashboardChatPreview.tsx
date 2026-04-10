@@ -695,6 +695,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           board_id: boardId,
           contact_phone: normalizedPhone,
           creator_instance_id: instanceId,
+          creation_origin: 'manual',
         },
       });
 

@@ -897,6 +897,7 @@ Deno.serve(async (req) => {
                   contact_phone: leadPhone,
                   creator_instance_id: creatorInstanceId,
                   lead_id: localDoc.lead_id,
+                  creation_origin: 'auto_sign',
                 }),
               })
 

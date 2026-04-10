@@ -506,6 +506,7 @@ Deno.serve(async (req) => {
                 contact_phone: normalizedMainPhone,
                 creator_instance_id: creatorInstanceId,
                 lead_id: createdLeadId,
+                creation_origin: 'automation',
               }),
             });
 
