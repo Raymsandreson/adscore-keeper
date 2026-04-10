@@ -733,16 +733,33 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                     <button
                       key={p.id}
                       className={cn(
-                        "w-full text-left px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors",
+                        "w-full text-left px-3 py-2.5 text-sm rounded-md hover:bg-accent transition-colors",
                         props.formProcessId === p.id && "bg-accent font-medium"
                       )}
                       onClick={() => {
                         props.setFormProcessId(p.id);
-                        props.setFormProcessTitle(p.process_number ? `${p.process_number} - ${p.title}` : p.title);
+                        const label = [p.process_number, p.title].filter(Boolean).join(' - ');
+                        props.setFormProcessTitle(label);
                       }}
                     >
-                      {p.process_number && <span className="font-medium">{p.process_number}</span>}
-                      {p.process_number ? ' — ' : ''}{p.title}
+                      <div className="flex flex-col gap-0.5">
+                        <div>
+                          {p.process_number && <span className="font-semibold">{p.process_number}</span>}
+                          {p.process_number ? ' — ' : ''}<span className="font-medium">{p.title}</span>
+                        </div>
+                        {(p.polo_passivo || p.tribunal || p.area) && (
+                          <div className="text-[11px] text-muted-foreground flex flex-wrap gap-x-2">
+                            {p.polo_passivo && <span>vs {p.polo_passivo}</span>}
+                            {p.tribunal && <span>📍 {p.tribunal}</span>}
+                            {p.area && <span>📂 {p.area}</span>}
+                          </div>
+                        )}
+                        {p.assuntos && p.assuntos.length > 0 && (
+                          <div className="text-[10px] text-muted-foreground truncate">
+                            {p.assuntos.join(', ')}
+                          </div>
+                        )}
+                      </div>
                     </button>
                   ))}
                 </div>
