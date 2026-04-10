@@ -361,6 +361,18 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
                         <UsersRound className="h-3 w-3" /> Chat Grupo
                       </Button>
                     )}
+                    {item.status === 'pending' && item.whatsapp_phone && item.instance_name && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[10px] px-2 gap-1 border-amber-300 text-amber-700 hover:bg-amber-50"
+                        disabled={sendingFollowup.has(item.id)}
+                        onClick={() => handleSingleFollowup(item)}
+                      >
+                        {sendingFollowup.has(item.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                        Cobrar
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
