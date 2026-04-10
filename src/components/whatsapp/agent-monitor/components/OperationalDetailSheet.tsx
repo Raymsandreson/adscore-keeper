@@ -239,6 +239,39 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
           </SheetTitle>
         </SheetHeader>
 
+        {/* Doc status filter tabs */}
+        {metricType === 'signed_docs' && !loading && items.length > 0 && (
+          <div className="flex items-center gap-2 mt-3">
+            {([
+              { key: 'all' as const, label: 'Todos', count: items.length },
+              { key: 'signed' as const, label: 'Assinados', count: items.filter(i => i.status === 'signed').length },
+              { key: 'pending' as const, label: 'Pendentes', count: items.filter(i => i.status === 'pending').length },
+            ]).map(tab => (
+              <Button
+                key={tab.key}
+                variant={docStatusFilter === tab.key ? 'default' : 'outline'}
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={() => setDocStatusFilter(tab.key)}
+              >
+                {tab.label} <Badge variant="secondary" className="ml-1 h-4 px-1 text-[9px]">{tab.count}</Badge>
+              </Button>
+            ))}
+            {docStatusFilter === 'pending' && filteredItems.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1 ml-auto border-amber-300 text-amber-700 hover:bg-amber-50"
+                disabled={sendingFollowup.size > 0}
+                onClick={() => handleBulkFollowup(filteredItems)}
+              >
+                <Send className="h-3 w-3" />
+                Cobrar {filteredItems.length} pendente{filteredItems.length > 1 ? 's' : ''}
+              </Button>
+            )}
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -246,7 +279,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
         ) : filteredItems.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground text-sm">Nenhum registro no período</div>
         ) : (
-          <ScrollArea className="h-[calc(100vh-120px)] mt-4">
+          <ScrollArea className="h-[calc(100vh-170px)] mt-4">
             <div className="space-y-2 pr-2">
               {metricType === 'signed_docs' && filteredItems.map(item => (
                 <div key={item.id} className="border rounded-lg p-3 space-y-1.5">
