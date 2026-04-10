@@ -18,7 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
 
-function copyField(text: string | null | undefined, label?: string) {
+function copyField(text: string | null | undefined) {
   if (!text) return;
   navigator.clipboard.writeText(text).then(() => {
     toast.success(`"${text.length > 40 ? text.slice(0, 37) + '...' : text}" copiado!`, { duration: 1500 });
