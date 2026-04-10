@@ -46,7 +46,7 @@ interface ActivityFormCompactProps {
   availableContacts: { id: string; full_name: string }[];
   availableCases: { id: string; case_number: string; title: string; lead_id: string | null }[];
   leadCases: { id: string; case_number: string; title: string }[];
-  caseProcesses: { id: string; title: string; process_number: string | null }[];
+  caseProcesses: { id: string; title: string; process_number: string | null; polo_passivo?: string | null; tribunal?: string | null; area?: string | null; assuntos?: string[] | null; workflow_id?: string | null }[];
   // Counts
   deadlineDateCount: number | null;
   notifDateCount: number | null;
@@ -708,9 +708,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                         }
                         const { data: procs } = await props.supabase
                           .from('lead_processes')
-                          .select('id, title, process_number')
+                          .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id')
                           .eq('case_id', c.id);
-                        const processItems = (procs || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number }));
+                        const processItems = (procs || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id }));
                         props.setCaseProcesses(processItems);
                         // Only close sheet if no processes to select
                         if (processItems.length === 0) {
