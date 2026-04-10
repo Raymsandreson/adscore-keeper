@@ -25,7 +25,7 @@ import { RedirectionsTab } from './agent-monitor/components/RedirectionsTab';
 import { AIActivitiesPanel } from './AIActivitiesPanel';
 import { AIActivityPromptDialog } from './AIActivityPromptDialog';
 import { DashboardChatPreview } from './DashboardChatPreview';
-import { GroupQueuePanel } from './agent-monitor/components/GroupQueuePanel';
+import { GroupQueuePanel, useGroupQueueCount } from './agent-monitor/components/GroupQueuePanel';
 
 export function AgentMonitorDashboard() {
   const { toast } = useToast();
