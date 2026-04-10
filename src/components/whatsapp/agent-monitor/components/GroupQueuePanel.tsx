@@ -4,7 +4,7 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Play, RefreshCw, Trash2, Clock, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { Loader2, Play, RefreshCw, Trash2, Clock, CheckCircle2, XCircle, AlertTriangle, FileSignature, MousePointerClick, Bot } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -21,7 +21,14 @@ interface QueueItem {
   last_error: string | null;
   created_at: string;
   processed_at: string | null;
+  creation_origin: string;
 }
+
+const originConfig: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+  auto_sign: { label: 'Assinatura', icon: <FileSignature className="h-3 w-3" />, color: 'bg-purple-100 text-purple-700' },
+  manual: { label: 'Manual', icon: <MousePointerClick className="h-3 w-3" />, color: 'bg-blue-100 text-blue-700' },
+  automation: { label: 'Automação IA', icon: <Bot className="h-3 w-3" />, color: 'bg-amber-100 text-amber-700' },
+};
 
 export function GroupQueuePanel() {
   const [items, setItems] = useState<QueueItem[]>([]);
@@ -90,6 +97,8 @@ export function GroupQueuePanel() {
     failed: 'Falhou',
   };
 
+  const getOrigin = (origin: string) => originConfig[origin] || { label: origin, icon: null, color: 'bg-muted text-muted-foreground' };
+
   if (loading) {
     return (
       <Card>
@@ -131,41 +140,79 @@ export function GroupQueuePanel() {
             )}
           </div>
         </div>
+
+        {/* Legend */}
+        <div className="flex items-center gap-3 mt-2 text-[10px]">
+          <span className="text-muted-foreground font-medium">Origem:</span>
+          {Object.entries(originConfig).map(([key, cfg]) => (
+            <span key={key} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded ${cfg.color}`}>
+              {cfg.icon} {cfg.label}
+            </span>
+          ))}
+        </div>
       </CardHeader>
       <CardContent className="space-y-2">
-        {items.map(item => (
-          <div key={item.id} className="flex items-center justify-between p-2 rounded-md border text-xs">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              {statusIcon(item.status)}
-              <div className="min-w-0">
-                <p className="font-medium truncate">{item.lead_name}</p>
-                <p className="text-muted-foreground">
-                  {formatDistanceToNow(new Date(item.created_at), { addSuffix: true, locale: ptBR })}
-                  {item.attempts > 0 && ` · ${item.attempts} tentativas`}
-                </p>
-                {item.last_error && item.status === 'failed' && (
-                  <p className="text-red-500 truncate mt-0.5">{item.last_error}</p>
+        {items.map(item => {
+          const origin = getOrigin(item.creation_origin);
+          return (
+            <div key={item.id} className="flex items-center justify-between p-2 rounded-md border text-xs">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                {statusIcon(item.status)}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="font-medium truncate">{item.lead_name}</p>
+                    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${origin.color}`}>
+                      {origin.icon} {origin.label}
+                    </span>
+                  </div>
+                  <p className="text-muted-foreground">
+                    {formatDistanceToNow(new Date(item.created_at), { addSuffix: true, locale: ptBR })}
+                    {item.attempts > 0 && ` · ${item.attempts} tentativas`}
+                  </p>
+                  {item.last_error && item.status === 'failed' && (
+                    <p className="text-red-500 truncate mt-0.5">{item.last_error}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <Badge variant={item.status === 'failed' ? 'destructive' : 'secondary'} className="text-[10px]">
+                  {statusLabel[item.status] || item.status}
+                </Badge>
+                {item.status === 'failed' && (
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => retryItem(item.id)}>
+                    <RefreshCw className="h-3 w-3" />
+                  </Button>
+                )}
+                {['completed', 'failed'].includes(item.status) && (
+                  <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground" onClick={() => removeItem(item.id)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <Badge variant={item.status === 'failed' ? 'destructive' : 'secondary'} className="text-[10px]">
-                {statusLabel[item.status] || item.status}
-              </Badge>
-              {item.status === 'failed' && (
-                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => retryItem(item.id)}>
-                  <RefreshCw className="h-3 w-3" />
-                </Button>
-              )}
-              {['completed', 'failed'].includes(item.status) && (
-                <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground" onClick={() => removeItem(item.id)}>
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );
+}
+
+// Export pending count hook for badge in tab
+export function useGroupQueueCount() {
+  const [count, setCount] = useState(0);
+  
+  useEffect(() => {
+    const fetch = async () => {
+      const { count: c } = await supabase
+        .from('group_creation_queue')
+        .select('*', { count: 'exact', head: true })
+        .in('status', ['pending', 'failed']);
+      setCount(c || 0);
+    };
+    fetch();
+    const interval = setInterval(fetch, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return count;
 }
