@@ -3945,6 +3945,7 @@ export type Database = {
           board_id: string | null
           contact_phone: string | null
           created_at: string
+          creation_origin: string
           creator_instance_id: string | null
           id: string
           last_error: string | null
@@ -3960,6 +3961,7 @@ export type Database = {
           board_id?: string | null
           contact_phone?: string | null
           created_at?: string
+          creation_origin?: string
           creator_instance_id?: string | null
           id?: string
           last_error?: string | null
@@ -3975,6 +3977,7 @@ export type Database = {
           board_id?: string | null
           contact_phone?: string | null
           created_at?: string
+          creation_origin?: string
           creator_instance_id?: string | null
           id?: string
           last_error?: string | null
