@@ -46,7 +46,7 @@ interface ActivityFormCompactProps {
   availableContacts: { id: string; full_name: string }[];
   availableCases: { id: string; case_number: string; title: string; lead_id: string | null }[];
   leadCases: { id: string; case_number: string; title: string }[];
-  caseProcesses: { id: string; title: string; process_number: string | null; polo_passivo?: string | null; tribunal?: string | null; area?: string | null; assuntos?: string[] | null; workflow_id?: string | null }[];
+  caseProcesses: { id: string; title: string; process_number: string | null; polo_passivo?: string | null; tribunal?: string | null; area?: string | null; assuntos?: string[] | null; workflow_id?: string | null; envolvidos?: any[] | null }[];
   // Counts
   deadlineDateCount: number | null;
   notifDateCount: number | null;

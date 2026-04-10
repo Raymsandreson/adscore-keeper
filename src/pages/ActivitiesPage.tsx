@@ -161,7 +161,7 @@ const ActivitiesPage = () => {
   const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string; lead_id: string | null}[]>([]);
   const [caseSearch, setCaseSearch] = useState('');
   const [leadCases, setLeadCases] = useState<{id: string; case_number: string; title: string}[]>([]);
-  const [caseProcesses, setCaseProcesses] = useState<{id: string; title: string; process_number: string | null; polo_passivo: string | null; tribunal: string | null; area: string | null; assuntos: string[] | null; workflow_id: string | null}[]>([]);
+  const [caseProcesses, setCaseProcesses] = useState<{id: string; title: string; process_number: string | null; polo_passivo: string | null; tribunal: string | null; area: string | null; assuntos: string[] | null; workflow_id: string | null; envolvidos: any[] | null}[]>([]);
   const [availableContacts, setAvailableContacts] = useState<{id: string; full_name: string}[]>([]);
   const [contactSearch, setContactSearch] = useState('');
 
