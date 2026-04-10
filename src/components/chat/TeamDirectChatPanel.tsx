@@ -19,8 +19,14 @@ import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { TeamChatEntityMention, renderMessageWithMentions, EntityMention, EntityMentionType } from './TeamChatEntityMention';
+import type { TeamChatOpenIntent } from '@/lib/teamChatPanelEvents';
 
-export function TeamDirectChatPanel() {
+interface TeamDirectChatPanelProps {
+  intent?: TeamChatOpenIntent | null;
+  onIntentHandled?: () => void;
+}
+
+export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatPanelProps) {
   const { user } = useAuthContext();
   const navigate = useNavigate();
   const {
@@ -37,6 +43,7 @@ export function TeamDirectChatPanel() {
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -47,6 +54,24 @@ export function TeamDirectChatPanel() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  useEffect(() => {
+    if (!intent?.nonce) return;
+
+    setActiveConversationId(intent.conversationId);
+
+    if (typeof intent.draft === 'string') {
+      setMessageText(intent.draft);
+    }
+
+    if (intent.focusComposer) {
+      requestAnimationFrame(() => {
+        messageInputRef.current?.focus();
+      });
+    }
+
+    onIntentHandled?.();
+  }, [intent, onIntentHandled, setActiveConversationId]);
 
   const handleSend = async () => {
     if (!messageText.trim()) return;
@@ -384,6 +409,7 @@ export function TeamDirectChatPanel() {
               />
 
               <Input
+                ref={messageInputRef}
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 onKeyDown={handleKeyDown}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMyMentions } from '@/hooks/useTeamChat';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { TeamDirectChatPanel } from './TeamDirectChatPanel';
+import { subscribeToTeamChatConversation, type TeamChatOpenIntent } from '@/lib/teamChatPanelEvents';
 
 interface MentionsPanelProps {
   open: boolean;
@@ -46,6 +47,15 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   const { mentions, loading, markAsRead, markAllAsRead } = useMyMentions();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'mentions' | 'chat'>('mentions');
+  const [chatIntent, setChatIntent] = useState<TeamChatOpenIntent | null>(null);
+
+  useEffect(() => {
+    return subscribeToTeamChatConversation((intent) => {
+      setChatIntent(intent);
+      setActiveTab('chat');
+      onOpenChange(true);
+    });
+  }, [onOpenChange]);
 
   const handleMentionClick = async (mention: typeof mentions[0]) => {
     if (!mention.is_read) {
@@ -182,7 +192,10 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
         {/* Content */}
         {activeTab === 'chat' ? (
           <div className="flex-1 min-h-0">
-            <TeamDirectChatPanel />
+            <TeamDirectChatPanel
+              intent={chatIntent}
+              onIntentHandled={() => setChatIntent(null)}
+            />
           </div>
         ) : (
           <ScrollArea className="flex-1">
