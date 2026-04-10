@@ -46,7 +46,7 @@ interface ActivityFormCompactProps {
   availableContacts: { id: string; full_name: string }[];
   availableCases: { id: string; case_number: string; title: string; lead_id: string | null }[];
   leadCases: { id: string; case_number: string; title: string }[];
-  caseProcesses: { id: string; title: string; process_number: string | null; polo_passivo?: string | null; tribunal?: string | null; area?: string | null; assuntos?: string[] | null; workflow_id?: string | null }[];
+  caseProcesses: { id: string; title: string; process_number: string | null; polo_passivo?: string | null; tribunal?: string | null; area?: string | null; assuntos?: string[] | null; workflow_id?: string | null; envolvidos?: any[] | null }[];
   // Counts
   deadlineDateCount: number | null;
   notifDateCount: number | null;
@@ -708,9 +708,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                         }
                         const { data: procs } = await props.supabase
                           .from('lead_processes')
-                          .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id')
+                          .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, envolvidos')
                           .eq('case_id', c.id);
-                        const processItems = (procs || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id }));
+                        const processItems = (procs || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, envolvidos: p.envolvidos }));
                         props.setCaseProcesses(processItems);
                         // Only close sheet if no processes to select
                         if (processItems.length === 0) {
@@ -729,39 +729,76 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               <div className="border-t pt-3">
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Processos do caso</span>
                 <div className="mt-2 space-y-0.5">
-                  {props.caseProcesses.map(p => (
-                    <button
-                      key={p.id}
-                      className={cn(
-                        "w-full text-left px-3 py-2.5 text-sm rounded-md hover:bg-accent transition-colors",
-                        props.formProcessId === p.id && "bg-accent font-medium"
-                      )}
-                      onClick={() => {
-                        props.setFormProcessId(p.id);
-                        const label = [p.process_number, p.title].filter(Boolean).join(' - ');
-                        props.setFormProcessTitle(label);
-                      }}
-                    >
-                      <div className="flex flex-col gap-0.5">
-                        <div>
-                          {p.process_number && <span className="font-semibold">{p.process_number}</span>}
-                          {p.process_number ? ' — ' : ''}<span className="font-medium">{p.title}</span>
+                  {props.caseProcesses.map(p => {
+                    const parties = Array.isArray(p.envolvidos) ? p.envolvidos : [];
+                    const firstParty = parties[0];
+                    const remainingParties = parties.slice(1);
+                    const firstAssunto = p.assuntos?.[0];
+
+                    return (
+                      <button
+                        key={p.id}
+                        className={cn(
+                          "w-full text-left px-3 py-2.5 text-sm rounded-md hover:bg-accent transition-colors",
+                          props.formProcessId === p.id && "bg-accent font-medium"
+                        )}
+                        onClick={() => {
+                          props.setFormProcessId(p.id);
+                          const label = [p.process_number, p.title].filter(Boolean).join(' - ');
+                          props.setFormProcessTitle(label);
+                        }}
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <div>
+                            {p.process_number && <span className="font-semibold">{p.process_number}</span>}
+                            {p.process_number ? ' — ' : ''}<span className="font-medium">{p.title}</span>
+                          </div>
+                          {firstAssunto && (
+                            <div className="text-[11px] text-muted-foreground">
+                              📋 {firstAssunto}
+                            </div>
+                          )}
+                          {(p.polo_passivo || p.tribunal) && (
+                            <div className="text-[11px] text-muted-foreground flex flex-wrap gap-x-2">
+                              {p.polo_passivo && <span>⚔️ vs {p.polo_passivo}</span>}
+                              {p.tribunal && <span>📍 {p.tribunal}</span>}
+                            </div>
+                          )}
+                          {firstParty && (
+                            <div className="text-[11px] text-muted-foreground mt-0.5">
+                              👤 {firstParty.nome || firstParty.name || '—'}
+                              {(firstParty.tipo_participacao || firstParty.role) && (
+                                <span className="opacity-70"> ({firstParty.tipo_participacao || firstParty.role})</span>
+                              )}
+                              {remainingParties.length > 0 && (
+                                <Collapsible>
+                                  <CollapsibleTrigger
+                                    className="text-[10px] text-primary hover:underline ml-1 inline-flex items-center gap-0.5"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    +{remainingParties.length} parte{remainingParties.length > 1 ? 's' : ''}
+                                    <ChevronDown className="h-2.5 w-2.5" />
+                                  </CollapsibleTrigger>
+                                  <CollapsibleContent>
+                                    <div className="mt-1 space-y-0.5 pl-4 border-l border-border/50">
+                                      {remainingParties.map((party: any, idx: number) => (
+                                        <div key={idx} className="text-[10px] text-muted-foreground">
+                                          👤 {party.nome || party.name || '—'}
+                                          {(party.tipo_participacao || party.role) && (
+                                            <span className="opacity-70"> ({party.tipo_participacao || party.role})</span>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </CollapsibleContent>
+                                </Collapsible>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        {(p.polo_passivo || p.tribunal || p.area) && (
-                          <div className="text-[11px] text-muted-foreground flex flex-wrap gap-x-2">
-                            {p.polo_passivo && <span>vs {p.polo_passivo}</span>}
-                            {p.tribunal && <span>📍 {p.tribunal}</span>}
-                            {p.area && <span>📂 {p.area}</span>}
-                          </div>
-                        )}
-                        {p.assuntos && p.assuntos.length > 0 && (
-                          <div className="text-[10px] text-muted-foreground truncate">
-                            {p.assuntos.join(', ')}
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
                 {props.formProcessTitle && (
                   <div className="flex items-center gap-1 mt-2">

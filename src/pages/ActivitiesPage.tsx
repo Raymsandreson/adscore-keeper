@@ -161,7 +161,7 @@ const ActivitiesPage = () => {
   const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string; lead_id: string | null}[]>([]);
   const [caseSearch, setCaseSearch] = useState('');
   const [leadCases, setLeadCases] = useState<{id: string; case_number: string; title: string}[]>([]);
-  const [caseProcesses, setCaseProcesses] = useState<{id: string; title: string; process_number: string | null; polo_passivo: string | null; tribunal: string | null; area: string | null; assuntos: string[] | null; workflow_id: string | null}[]>([]);
+  const [caseProcesses, setCaseProcesses] = useState<{id: string; title: string; process_number: string | null; polo_passivo: string | null; tribunal: string | null; area: string | null; assuntos: string[] | null; workflow_id: string | null; envolvidos: any[] | null}[]>([]);
   const [availableContacts, setAvailableContacts] = useState<{id: string; full_name: string}[]>([]);
   const [contactSearch, setContactSearch] = useState('');
 
@@ -537,8 +537,8 @@ const ActivitiesPage = () => {
 
     if ((activity as any).case_id) {
       promises.push(
-        Promise.resolve(supabase.from('lead_processes').select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id').eq('case_id', (activity as any).case_id)).then(({ data }) => {
-          setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id })));
+        Promise.resolve(supabase.from('lead_processes').select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, envolvidos').eq('case_id', (activity as any).case_id)).then(({ data }) => {
+          setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, envolvidos: p.envolvidos })));
         })
       );
     }
