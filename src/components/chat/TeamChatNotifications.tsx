@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -40,7 +40,7 @@ function showNotificationToast({
   preview,
   duration,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   title: string;
   context?: string;
   preview: string;
@@ -135,6 +135,24 @@ export function TeamChatNotifications() {
       return label;
     };
 
+    const isUserConversationMember = async (conversationId: string) => {
+      if (teamConversationIdsRef.current.has(conversationId)) return true;
+
+      const { data } = await supabase
+        .from('team_conversation_members')
+        .select('conversation_id')
+        .eq('conversation_id', conversationId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (data?.conversation_id) {
+        teamConversationIdsRef.current.add(conversationId);
+        return true;
+      }
+
+      return false;
+    };
+
     void loadTeamConversationContext();
 
     // Listen for new mentions directed at this user
@@ -218,7 +236,7 @@ export function TeamChatNotifications() {
 
         const msg = payload.new as any;
         if (msg.sender_id === user.id) return;
-        if (!teamConversationIdsRef.current.has(msg.conversation_id)) return;
+        if (!(await isUserConversationMember(msg.conversation_id))) return;
 
         const senderName = msg.sender_name || 'Alguém';
         const context = await resolveConversationLabel(msg.conversation_id);
