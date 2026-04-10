@@ -289,11 +289,17 @@ Deno.serve(async (req) => {
         })
         if (!res.ok) return false
         const data = await res.json()
+        console.log(`[create-group] Instance ${inst.instance_name} raw status response:`, JSON.stringify(data).substring(0, 300))
         // UazAPI returns connected/open status in various formats
-        const status = data?.status || data?.state || data?.connection || ''
-        const connected = typeof status === 'string' 
-          ? ['connected', 'open', 'CONNECTED'].includes(status)
-          : !!data?.connected
+        const rawStatus = data?.status || data?.state || data?.connection || ''
+        // Handle case where status is an object (e.g. {status: "connected"} nested)
+        const status = typeof rawStatus === 'object' && rawStatus !== null
+          ? (rawStatus?.status || rawStatus?.state || rawStatus?.connection || JSON.stringify(rawStatus))
+          : String(rawStatus)
+        const connected = ['connected', 'open', 'CONNECTED'].includes(status) 
+          || data?.connected === true
+          || data?.status === true
+          || rawStatus === true
         console.log(`[create-group] Instance ${inst.instance_name} connection status: ${status} -> ${connected}`)
         return connected
       } catch (e) {
