@@ -2781,10 +2781,21 @@ const ActivitiesPage = () => {
                   Para marcar pessoas com @, use o botão 👥 Chat da Equipe no topo desta atividade.
                 </p>
               )}
-              {/* Funnel progress bar */}
-              {formLeadId && leadPreview?.board_id && (
-                <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />
-              )}
+              {/* Funnel or Process Workflow progress bar */}
+              {formLeadId && (() => {
+                const isLeadClosed = leadPreview?.lead_status === 'closed';
+                const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
+                const processWorkflowId = linkedProcess?.workflow_id;
+                
+                if (isLeadClosed && processWorkflowId) {
+                  // Show process workflow progress instead of sales funnel
+                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} />;
+                }
+                if (leadPreview?.board_id) {
+                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />;
+                }
+                return null;
+              })()}
             </div>
 
             {/* Form body - scrollable */}
