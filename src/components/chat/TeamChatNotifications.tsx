@@ -2,8 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { AtSign, MessageCircle, BellOff } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { AtSign, MessageCircle } from 'lucide-react';
 
 const MUTE_KEY = 'team-chat-notifications-muted';
 
@@ -46,31 +45,22 @@ function showNotificationToast({
   preview: string;
   duration: number;
 }) {
-  toast(
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2">
-        {icon}
-        <span className="font-semibold text-sm">{title}</span>
+  toast(title, {
+    icon,
+    duration,
+    description: (
+      <div className="flex flex-col gap-1">
+        {context && (
+          <span className="text-xs text-muted-foreground">{context}</span>
+        )}
+        <p className="text-sm text-foreground/80 line-clamp-2">{preview}</p>
       </div>
-      {context && (
-        <span className="text-xs text-muted-foreground">{context}</span>
-      )}
-      <p className="text-sm text-foreground/80 line-clamp-2">{preview}</p>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="self-end mt-1 h-6 text-xs text-muted-foreground"
-        onClick={(e) => {
-          e.stopPropagation();
-          toggleMute();
-        }}
-      >
-        <BellOff className="h-3 w-3 mr-1" />
-        Silenciar
-      </Button>
-    </div>,
-    { duration }
-  );
+    ),
+    action: {
+      label: 'Silenciar',
+      onClick: toggleMute,
+    },
+  });
 }
 
 export function TeamChatNotifications() {
