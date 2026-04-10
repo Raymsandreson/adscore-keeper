@@ -10,6 +10,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
+
+function copyField(text: string | null | undefined) {
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    toast.success(`"${text.length > 40 ? text.slice(0, 37) + '...' : text}" copiado!`, { duration: 1500 });
+  }).catch(() => {});
+}
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Save, Loader2, ChevronDown, CheckCircle2, Trash2, ExternalLink } from 'lucide-react';
@@ -197,13 +204,13 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
           {activity && (
             <div className="flex flex-wrap gap-1.5 mt-1">
               {activity.lead_name && (
-                <Badge variant="outline" className="text-[10px]">Lead: {activity.lead_name}</Badge>
+                <Badge variant="outline" className="text-[10px] cursor-copy hover:bg-muted/50" onClick={() => copyField(activity.lead_name)} title="Copiar">Lead: {activity.lead_name}</Badge>
               )}
               {activity.contact_name && (
-                <Badge variant="outline" className="text-[10px]">Contato: {activity.contact_name}</Badge>
+                <Badge variant="outline" className="text-[10px] cursor-copy hover:bg-muted/50" onClick={() => copyField(activity.contact_name)} title="Copiar">Contato: {activity.contact_name}</Badge>
               )}
               {activity.case_title && (
-                <Badge variant="outline" className="text-[10px]">Caso: {activity.case_title}</Badge>
+                <Badge variant="outline" className="text-[10px] cursor-copy hover:bg-muted/50" onClick={() => copyField(activity.case_title)} title="Copiar">Caso: {activity.case_title}</Badge>
               )}
             </div>
           )}
