@@ -44,6 +44,8 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
   const [items, setItems] = useState<any[]>([]);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
+  const [docStatusFilter, setDocStatusFilter] = useState<'all' | 'signed' | 'pending'>('all');
+  const [sendingFollowup, setSendingFollowup] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
 
   useEffect(() => {
