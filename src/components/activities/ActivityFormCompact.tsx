@@ -297,8 +297,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <div className="flex items-center gap-0.5">
             <Badge
               variant="secondary"
-              className="text-[10px] h-6 max-w-[160px] truncate cursor-pointer hover:opacity-80 gap-1 bg-orange-100 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400"
-              onClick={() => setLinkCaseOpen(true)}
+              className="text-[10px] h-6 max-w-[160px] truncate cursor-copy hover:opacity-80 gap-1 bg-orange-100 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400"
+              onClick={() => copyField(props.formCaseTitle)}
+              title="Clique para copiar"
             >
               <Briefcase className="h-3 w-3 shrink-0" />
               {props.formCaseTitle}
@@ -388,8 +389,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <div className="flex items-center gap-0.5">
             <Badge
               variant="outline"
-              className="text-[10px] h-6 max-w-[160px] truncate cursor-pointer hover:opacity-80 gap-1"
-              onClick={() => setLinkContactOpen(true)}
+              className="text-[10px] h-6 max-w-[160px] truncate cursor-copy hover:opacity-80 gap-1"
+              onClick={() => copyField(props.formContactName)}
+              title="Clique para copiar"
             >
               <UserPlus className="h-3 w-3 shrink-0" />
               {props.formContactName}
