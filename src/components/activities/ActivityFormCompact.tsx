@@ -309,20 +309,64 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
 
         {/* Process (only show if case is selected) */}
         {props.formCaseId && (
-          props.formProcessTitle ? (
-            <div className="flex items-center gap-0.5">
-              <Badge
-                variant="secondary"
-                className="text-[10px] h-6 max-w-[160px] truncate cursor-pointer hover:opacity-80 gap-1 bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400"
-                onClick={() => setLinkCaseOpen(true)}
-              >
-                {props.formProcessTitle}
-              </Badge>
-              <button type="button" onClick={() => { props.setFormProcessId(''); props.setFormProcessTitle(''); }} className="text-muted-foreground hover:text-foreground">
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ) : props.caseProcesses.length > 0 ? (
+          props.formProcessTitle ? (() => {
+            const selectedProc = props.caseProcesses.find(p => p.id === props.formProcessId);
+            const firstAssunto = selectedProc?.assuntos?.[0];
+            return (
+              <div className="flex items-center gap-0.5">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Badge
+                      variant="secondary"
+                      className="text-[10px] h-auto max-w-[180px] cursor-pointer hover:opacity-80 gap-1 bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 flex flex-col items-start py-0.5 px-2"
+                    >
+                      <span className="truncate w-full">{props.formProcessTitle}</span>
+                      {firstAssunto && (
+                        <span className="text-[9px] opacity-70 truncate w-full">({firstAssunto})</span>
+                      )}
+                    </Badge>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-72 p-3 text-xs space-y-2" side="bottom" align="start">
+                    <div className="font-semibold text-sm">Detalhes do Processo</div>
+                    {selectedProc?.process_number && (
+                      <div><span className="text-muted-foreground">Número:</span> {selectedProc.process_number}</div>
+                    )}
+                    {selectedProc?.title && (
+                      <div><span className="text-muted-foreground">Título:</span> {selectedProc.title}</div>
+                    )}
+                    {selectedProc?.assuntos && selectedProc.assuntos.length > 0 && (
+                      <div><span className="text-muted-foreground">Assuntos:</span> {selectedProc.assuntos.join(', ')}</div>
+                    )}
+                    {selectedProc?.polo_passivo && (
+                      <div><span className="text-muted-foreground">Polo Passivo:</span> {selectedProc.polo_passivo}</div>
+                    )}
+                    {selectedProc?.tribunal && (
+                      <div><span className="text-muted-foreground">Tribunal/Vara:</span> {selectedProc.tribunal}</div>
+                    )}
+                    {selectedProc?.area && (
+                      <div><span className="text-muted-foreground">Área:</span> {selectedProc.area}</div>
+                    )}
+                    {selectedProc?.envolvidos && selectedProc.envolvidos.length > 0 && (
+                      <div>
+                        <span className="text-muted-foreground">Partes:</span>
+                        <ul className="ml-2 mt-0.5 space-y-0.5">
+                          {selectedProc.envolvidos.map((e: any, i: number) => (
+                            <li key={i}>👤 {e.nome || e.name}{e.tipo_participacao ? ` (${e.tipo_participacao})` : ''}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <Button type="button" variant="outline" size="sm" className="w-full mt-1 text-[10px] h-6" onClick={() => setLinkCaseOpen(true)}>
+                      Trocar processo
+                    </Button>
+                  </PopoverContent>
+                </Popover>
+                <button type="button" onClick={() => { props.setFormProcessId(''); props.setFormProcessTitle(''); }} className="text-muted-foreground hover:text-foreground">
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            );
+          })() : props.caseProcesses.length > 0 ? (
             <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkCaseOpen(true)}>
               Processo
             </Button>
