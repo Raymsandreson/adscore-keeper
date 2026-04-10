@@ -305,9 +305,9 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
         {metricType === 'signed_docs' && !loading && items.length > 0 && (
           <div className="flex items-center gap-2 mt-3">
             {([
-              { key: 'all' as const, label: 'Todos', count: items.length },
-              { key: 'signed' as const, label: 'Assinados', count: items.filter(i => i.status === 'signed').length },
-              { key: 'pending' as const, label: 'Pendentes', count: items.filter(i => i.status === 'pending').length },
+              { key: 'all' as const, label: 'Todos', count: dashboardFilteredItems.length },
+              { key: 'signed' as const, label: 'Assinados', count: dashboardFilteredItems.filter(i => i.signer_status === 'signed').length },
+              { key: 'pending' as const, label: 'Pendentes', count: dashboardFilteredItems.filter(i => i.signer_status !== 'signed').length },
             ]).map(tab => (
               <Button
                 key={tab.key}
