@@ -384,6 +384,7 @@ Deno.serve(async (req) => {
     if (!creatorInstance) {
       // All instances offline — queue for later processing
       console.log('[create-group] All instances offline. Queuing group creation for later.')
+      const creation_origin = body.creation_origin || 'manual'
       const { error: queueError } = await supabase
         .from('group_creation_queue')
         .insert({
@@ -394,6 +395,7 @@ Deno.serve(async (req) => {
           board_id: board_id || null,
           creator_instance_id: creator_instance_id || null,
           status: 'pending',
+          creation_origin,
         })
       if (queueError) console.error('[create-group] Failed to queue:', queueError)
       return new Response(JSON.stringify({ 

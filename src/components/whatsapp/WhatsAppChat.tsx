@@ -562,6 +562,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           board_id: boardId,
           contact_phone: normalizedPhone,
           creator_instance_id: instanceId,
+          creation_origin: 'manual',
         },
       });
 
