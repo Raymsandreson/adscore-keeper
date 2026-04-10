@@ -250,7 +250,8 @@ Deno.serve(async (req) => {
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    const { phone, lead_name, board_id, contact_phone, creator_instance_id, lead_id } = await req.json()
+    const body = await req.json()
+    const { phone, lead_name, board_id, contact_phone, creator_instance_id, lead_id } = body
 
     if (!lead_name) {
       return new Response(JSON.stringify({ success: false, error: 'lead_name is required' }), {
