@@ -1389,6 +1389,31 @@ ${scrapeData.content || ''}
                                 }}>
                                   <Send className="h-4 w-4 mr-2" /> Reenviar mensagem inicial
                                 </DropdownMenuItem>
+
+                                <DropdownMenuSeparator />
+
+                                <DropdownMenuItem onClick={async () => {
+                                  try {
+                                    toast.info('Enriquecendo lead, caso e processo a partir da conversa do grupo...');
+                                    const { data, error } = await supabase.functions.invoke('auto-enrich-lead', {
+                                      body: {
+                                        lead_id: currentLead.id,
+                                        group_jid: g.group_jid,
+                                        force: true,
+                                      },
+                                    });
+                                    if (error) throw error;
+                                    if (data?.skipped) {
+                                      toast.warning('Enriquecimento ignorado: ' + (data.skipped === 'no_messages' ? 'sem mensagens no grupo' : data.skipped));
+                                    } else {
+                                      toast.success(data?.message || 'Lead, caso e processo enriquecidos com sucesso!');
+                                    }
+                                  } catch (err: any) {
+                                    toast.error('Erro ao enriquecer: ' + (err.message || 'Erro'));
+                                  }
+                                }}>
+                                  <Sparkles className="h-4 w-4 mr-2" /> Enriquecer lead, caso e processo
+                                </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           )}
