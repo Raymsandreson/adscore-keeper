@@ -904,30 +904,35 @@ Deno.serve(async (req) => {
       }
 
       // Also save to lead_whatsapp_groups table for proper tracking
-      const { error: lwgError } = await supabase
+      // Check if group already exists in lead_whatsapp_groups
+      const { data: existingLwg } = await supabase
         .from('lead_whatsapp_groups')
-        .upsert({
-          lead_id: leadData.id,
-          group_jid: groupJid,
-          group_link: groupInviteLink || null,
-          group_name: groupName || null,
-          label: null,
-        }, { onConflict: 'lead_id,group_jid', ignoreDuplicates: true })
-      if (lwgError) {
-        console.warn('[save] Error saving to lead_whatsapp_groups:', lwgError)
-        // Fallback: try insert without upsert
-        await supabase.from('lead_whatsapp_groups').insert({
-          lead_id: leadData.id,
-          group_jid: groupJid,
-          group_link: groupInviteLink || null,
-          group_name: groupName || null,
-        }).then(r => {
-          if (r.error && !r.error.message?.includes('duplicate')) {
-            console.error('[save] Fallback insert also failed:', r.error)
-          }
-        })
+        .select('id')
+        .eq('lead_id', leadData.id)
+        .eq('group_jid', groupJid)
+        .maybeSingle()
+
+      if (!existingLwg) {
+        const { error: lwgError } = await supabase
+          .from('lead_whatsapp_groups')
+          .insert({
+            lead_id: leadData.id,
+            group_jid: groupJid,
+            group_link: groupInviteLink || null,
+            group_name: groupName || null,
+          })
+        if (lwgError) {
+          console.warn('[save] Error saving to lead_whatsapp_groups:', lwgError)
+        } else {
+          console.log(`[save] Group saved to lead_whatsapp_groups: ${groupJid}`)
+        }
       } else {
-        console.log(`[save] Group saved to lead_whatsapp_groups: ${groupJid}`)
+        // Update group_name if it changed
+        await supabase
+          .from('lead_whatsapp_groups')
+          .update({ group_name: groupName, group_link: groupInviteLink || null })
+          .eq('id', existingLwg.id)
+        console.log(`[save] Updated existing lead_whatsapp_groups entry: ${existingLwg.id}`)
       }
     }))
 
