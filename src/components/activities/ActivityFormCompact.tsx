@@ -18,6 +18,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
 
+function copyField(text: string | null | undefined) {
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    toast.success(`"${text.length > 40 ? text.slice(0, 37) + '...' : text}" copiado!`, { duration: 1500 });
+  }).catch(() => {
+    toast.error('Falha ao copiar');
+  });
+}
+
 interface TeamMember { user_id: string; full_name: string | null; }
 interface LeadOption { id: string; lead_name: string | null; }
 
@@ -264,8 +273,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <div className="flex items-center gap-0.5">
             <Badge
               variant="secondary"
-              className="text-[10px] h-6 max-w-[160px] truncate cursor-pointer hover:opacity-80 gap-1"
-              onClick={() => setLinkLeadOpen(true)}
+              className="text-[10px] h-6 max-w-[160px] truncate cursor-copy hover:opacity-80 gap-1"
+              onClick={() => copyField(props.formLeadName)}
+              title="Clique para copiar"
             >
               <Building2 className="h-3 w-3 shrink-0" />
               {props.formLeadName}
@@ -288,8 +298,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <div className="flex items-center gap-0.5">
             <Badge
               variant="secondary"
-              className="text-[10px] h-6 max-w-[160px] truncate cursor-pointer hover:opacity-80 gap-1 bg-orange-100 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400"
-              onClick={() => setLinkCaseOpen(true)}
+              className="text-[10px] h-6 max-w-[160px] truncate cursor-copy hover:opacity-80 gap-1 bg-orange-100 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400"
+              onClick={() => copyField(props.formCaseTitle)}
+              title="Clique para copiar"
             >
               <Briefcase className="h-3 w-3 shrink-0" />
               {props.formCaseTitle}
@@ -327,31 +338,31 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                     </Badge>
                   </PopoverTrigger>
                   <PopoverContent className="w-72 p-3 text-xs space-y-2" side="bottom" align="start">
-                    <div className="font-semibold text-sm">Detalhes do Processo</div>
+                    <div className="font-semibold text-sm">Detalhes do Processo <span className="text-[10px] text-muted-foreground font-normal">(clique para copiar)</span></div>
                     {selectedProc?.process_number && (
-                      <div><span className="text-muted-foreground">Número:</span> {selectedProc.process_number}</div>
+                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.process_number)}><span className="text-muted-foreground">Número:</span> {selectedProc.process_number}</div>
                     )}
                     {selectedProc?.title && (
-                      <div><span className="text-muted-foreground">Título:</span> {selectedProc.title}</div>
+                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.title)}><span className="text-muted-foreground">Título:</span> {selectedProc.title}</div>
                     )}
                     {selectedProc?.assuntos && selectedProc.assuntos.length > 0 && (
-                      <div><span className="text-muted-foreground">Assuntos:</span> {selectedProc.assuntos.join(', ')}</div>
+                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.assuntos!.join(', '))}><span className="text-muted-foreground">Assuntos:</span> {selectedProc.assuntos.join(', ')}</div>
                     )}
                     {selectedProc?.polo_passivo && (
-                      <div><span className="text-muted-foreground">Polo Passivo:</span> {selectedProc.polo_passivo}</div>
+                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.polo_passivo)}><span className="text-muted-foreground">Polo Passivo:</span> {selectedProc.polo_passivo}</div>
                     )}
                     {selectedProc?.tribunal && (
-                      <div><span className="text-muted-foreground">Tribunal/Vara:</span> {selectedProc.tribunal}</div>
+                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.tribunal)}><span className="text-muted-foreground">Tribunal/Vara:</span> {selectedProc.tribunal}</div>
                     )}
                     {selectedProc?.area && (
-                      <div><span className="text-muted-foreground">Área:</span> {selectedProc.area}</div>
+                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.area)}><span className="text-muted-foreground">Área:</span> {selectedProc.area}</div>
                     )}
                     {selectedProc?.envolvidos && selectedProc.envolvidos.length > 0 && (
                       <div>
                         <span className="text-muted-foreground">Partes:</span>
                         <ul className="ml-2 mt-0.5 space-y-0.5">
                           {selectedProc.envolvidos.map((e: any, i: number) => (
-                            <li key={i}>👤 {e.nome || e.name}{e.tipo_participacao ? ` (${e.tipo_participacao})` : ''}</li>
+                            <li key={i} className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(e.nome || e.name)}>👤 {e.nome || e.name}{e.tipo_participacao ? ` (${e.tipo_participacao})` : ''}</li>
                           ))}
                         </ul>
                       </div>
@@ -379,8 +390,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <div className="flex items-center gap-0.5">
             <Badge
               variant="outline"
-              className="text-[10px] h-6 max-w-[160px] truncate cursor-pointer hover:opacity-80 gap-1"
-              onClick={() => setLinkContactOpen(true)}
+              className="text-[10px] h-6 max-w-[160px] truncate cursor-copy hover:opacity-80 gap-1"
+              onClick={() => copyField(props.formContactName)}
+              title="Clique para copiar"
             >
               <UserPlus className="h-3 w-3 shrink-0" />
               {props.formContactName}
