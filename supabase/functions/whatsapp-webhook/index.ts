@@ -1429,9 +1429,20 @@ Deno.serve(async (req) => {
               }
               
               if (!leadId) {
-                const { data: newLead, error: leadErr } = await supabase
-                  .from('leads')
-                  .insert({
+                // Resolve instance owner name for acolhedor assignment
+                let resolvedAcolhedor: string | null = null
+                if (autoLink.instance_id) {
+                  const { data: linkInstance } = await supabase
+                    .from('whatsapp_instances')
+                    .select('owner_name, instance_name')
+                    .eq('id', autoLink.instance_id)
+                    .maybeSingle()
+                  if (linkInstance?.owner_name) {
+                    resolvedAcolhedor = linkInstance.owner_name
+                  }
+                }
+
+                const insertPayload: Record<string, unknown> = {
                     lead_name: leadName,
                     lead_phone: phone,
                     board_id: autoLink.board_id,
@@ -1442,7 +1453,14 @@ Deno.serve(async (req) => {
                     campaign_id: detectedCampaignId,
                     action_source: 'system',
                     action_source_detail: `CTWA Auto-create (campanha: ${detectedCampaignName || 'desconhecida'})`,
-                  })
+                }
+                if (resolvedAcolhedor) {
+                  insertPayload.acolhedor = resolvedAcolhedor
+                }
+
+                const { data: newLead, error: leadErr } = await supabase
+                  .from('leads')
+                  .insert(insertPayload)
                   .select('id')
                   .single()
 
@@ -1450,7 +1468,7 @@ Deno.serve(async (req) => {
                   console.error('Error auto-creating lead from CTWA:', leadErr)
                 } else if (newLead) {
                   leadId = (newLead as any).id
-                  console.log('Auto-created lead from CTWA:', leadId, 'board:', autoLink.board_id, 'campaign:', detectedCampaignId)
+                  console.log('Auto-created lead from CTWA:', leadId, 'board:', autoLink.board_id, 'campaign:', detectedCampaignId, 'acolhedor:', resolvedAcolhedor)
                 }
               }
 
