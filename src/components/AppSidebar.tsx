@@ -334,6 +334,18 @@ export function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
 
+            {/* Extension */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => handleNavigate('/extension')}
+                isActive={isActive('/extension')}
+                tooltip="Extensão Chrome"
+              >
+                <Chrome className="h-4 w-4" />
+                <span>Extensão Chrome</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
             {/* Settings */}
             <SidebarMenuItem>
               <SidebarMenuButton
