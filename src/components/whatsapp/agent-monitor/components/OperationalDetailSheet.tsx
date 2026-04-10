@@ -154,17 +154,11 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
     filters.agentFilter !== 'all' || filters.boardFilter !== 'all' || filters.campaignFilter !== 'all'
   );
 
-  const filteredItems = useMemo(() => {
-    let result = items;
+  // First apply dashboard filters (acolhedor, instance, etc.)
+  const dashboardFilteredItems = useMemo(() => {
+    if (!hasActiveFilter) return items;
     
-    // Apply doc status filter for signed_docs
-    if (metricType === 'signed_docs' && docStatusFilter !== 'all') {
-      result = result.filter(item => item.status === docStatusFilter);
-    }
-    
-    if (!hasActiveFilter) return result;
-    
-    return result.filter(item => {
+    return items.filter(item => {
       if (metricType === 'signed_docs') {
         if (filters!.instanceFilter !== 'all' && item.instance_name && item.instance_name !== filters!.instanceFilter) return false;
         if (filters!.acolhedorFilter !== 'all' && item._lead?.acolhedor) {
@@ -191,7 +185,15 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
       
       return true;
     });
-  }, [items, filters, filteredLeadIds, hasActiveFilter, metricType, docStatusFilter]);
+  }, [items, filters, filteredLeadIds, hasActiveFilter, metricType]);
+
+  // Then apply doc status filter on top of dashboard-filtered items
+  const filteredItems = useMemo(() => {
+    if (metricType === 'signed_docs' && docStatusFilter !== 'all') {
+      return dashboardFilteredItems.filter(item => item.signer_status === docStatusFilter);
+    }
+    return dashboardFilteredItems;
+  }, [dashboardFilteredItems, metricType, docStatusFilter]);
 
   const { title, icon: Icon, color } = config[metricType];
 
@@ -303,9 +305,9 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
         {metricType === 'signed_docs' && !loading && items.length > 0 && (
           <div className="flex items-center gap-2 mt-3">
             {([
-              { key: 'all' as const, label: 'Todos', count: items.length },
-              { key: 'signed' as const, label: 'Assinados', count: items.filter(i => i.status === 'signed').length },
-              { key: 'pending' as const, label: 'Pendentes', count: items.filter(i => i.status === 'pending').length },
+              { key: 'all' as const, label: 'Todos', count: dashboardFilteredItems.length },
+              { key: 'signed' as const, label: 'Assinados', count: dashboardFilteredItems.filter(i => i.signer_status === 'signed').length },
+              { key: 'pending' as const, label: 'Pendentes', count: dashboardFilteredItems.filter(i => i.signer_status !== 'signed').length },
             ]).map(tab => (
               <Button
                 key={tab.key}
@@ -345,7 +347,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
                 <div key={item.id} className="border rounded-lg p-3 space-y-1.5">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium truncate flex-1">{item.document_name || 'Documento'}</p>
-                    {statusBadge(item.status)}
+                    {statusBadge(item.signer_status)}
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>{item.signer_name || '—'}</span>
@@ -373,7 +375,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
                         <UsersRound className="h-3 w-3" /> Chat Grupo
                       </Button>
                     )}
-                    {item.status === 'pending' && item.whatsapp_phone && item.instance_name && (
+                    {item.signer_status !== 'signed' && item.whatsapp_phone && item.instance_name && (
                       <Button
                         variant="outline"
                         size="sm"
