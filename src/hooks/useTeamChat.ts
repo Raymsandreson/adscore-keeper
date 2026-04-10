@@ -155,26 +155,76 @@ export function useUnreadMentionsCount() {
     if (!user) return;
 
     const load = async () => {
-      const { count: c } = await supabase
-        .from('team_chat_mentions')
-        .select('*', { count: 'exact', head: true })
-        .eq('mentioned_user_id', user.id)
-        .eq('is_read', false);
-      setCount(c || 0);
+      const [{ count: mentionsCount }, { data: memberships, error: membershipsError }] = await Promise.all([
+        supabase
+          .from('team_chat_mentions')
+          .select('*', { count: 'exact', head: true })
+          .eq('mentioned_user_id', user.id)
+          .eq('is_read', false),
+        supabase
+          .from('team_conversation_members')
+          .select('conversation_id, last_read_at')
+          .eq('user_id', user.id),
+      ]);
+
+      let unreadTeamMessages = 0;
+
+      if (membershipsError) {
+        console.error('Erro ao carregar conversas para contagem de não lidas:', membershipsError);
+      } else if (memberships?.length) {
+        const unreadResults = await Promise.all(
+          memberships.map((membership) =>
+            supabase
+              .from('team_messages')
+              .select('id', { count: 'exact', head: true })
+              .eq('conversation_id', membership.conversation_id)
+              .neq('sender_id', user.id)
+              .gt('created_at', membership.last_read_at || '1970-01-01T00:00:00.000Z')
+          )
+        );
+
+        unreadTeamMessages = unreadResults.reduce((sum, result) => sum + (result.count || 0), 0);
+      }
+
+      setCount((mentionsCount || 0) + unreadTeamMessages);
     };
 
     load();
 
-    const channel = supabase
-      .channel('mentions-count')
+    const mentionsChannel = supabase
+      .channel(`mentions-count-${user.id}`)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'team_chat_mentions',
+        filter: `mentioned_user_id=eq.${user.id}`,
       }, () => { load(); })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    const teamMessagesChannel = supabase
+      .channel(`team-messages-count-${user.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'team_messages',
+      }, () => { load(); })
+      .subscribe();
+
+    const membershipsChannel = supabase
+      .channel(`team-memberships-count-${user.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'team_conversation_members',
+        filter: `user_id=eq.${user.id}`,
+      }, () => { load(); })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(mentionsChannel);
+      supabase.removeChannel(teamMessagesChannel);
+      supabase.removeChannel(membershipsChannel);
+    };
   }, [user]);
 
   return count;
