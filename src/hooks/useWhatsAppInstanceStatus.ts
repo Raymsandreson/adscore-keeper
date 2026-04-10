@@ -132,6 +132,10 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
       // Notify reconnected instances
       if (reconnected.length > 0) {
         notifyReconnectedViaWhatsApp(reconnected);
+        // Auto-process queued group creations when instances come back online
+        cloudFunctions.invoke('process-group-queue').catch(err => 
+          console.warn('Auto-process queue failed:', err)
+        );
       }
     } catch (err) {
       console.error('Error checking WhatsApp status:', err);
