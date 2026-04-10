@@ -646,7 +646,14 @@ REGRAS:
       console.log(`[auto-enrich] Created ${createdReferrals.length} referral leads`)
     }
 
-    return new Response(JSON.stringify({ ok: true, enriched: cleaned, referrals_created: createdReferrals }), {
+    return new Response(JSON.stringify({ 
+      ok: true, 
+      enriched: cleaned, 
+      referrals_created: createdReferrals,
+      message: isGroupEnrich 
+        ? `Lead, caso e processo enriquecidos com ${Object.keys(cleaned).length} campos extraídos da conversa do grupo.`
+        : undefined,
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error: any) {
