@@ -24,74 +24,99 @@ Deno.serve(async (req) => {
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    const { phone, instance_name, lead_id, contact_id } = await req.json()
+    const { phone, instance_name, lead_id, contact_id, group_jid, force } = await req.json()
 
-    if (!phone || !instance_name) {
-      return new Response(JSON.stringify({ error: 'phone and instance_name required' }), {
+    const isGroupEnrich = !!group_jid && !!lead_id
+
+    if (!isGroupEnrich && (!phone || !instance_name)) {
+      return new Response(JSON.stringify({ error: 'phone and instance_name required (or group_jid + lead_id)' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    console.log(`[auto-enrich] phone=${phone} instance=${instance_name} lead=${lead_id} contact=${contact_id}`)
+    console.log(`[auto-enrich] phone=${phone} instance=${instance_name} lead=${lead_id} contact=${contact_id} group_jid=${group_jid} force=${force}`)
 
-    // Read configurable threshold from system_settings
-    let INBOUND_THRESHOLD = DEFAULT_INBOUND_THRESHOLD
-    const { data: thresholdSetting } = await supabase
-      .from('system_settings')
-      .select('value')
-      .eq('key', 'enrich_message_threshold')
-      .single()
-    
-    if (thresholdSetting?.value) {
-      INBOUND_THRESHOLD = parseInt(thresholdSetting.value, 10) || DEFAULT_INBOUND_THRESHOLD
-    }
+    let messages: any[] | null = null
 
-    // Check if we already enriched recently (within 2 hours)
-    const phoneSuffix = phone.replace(/\D/g, '').slice(-8)
-    
-    const { data: recentEnrich } = await supabase
-      .from('lead_enrichment_log')
-      .select('id')
-      .ilike('phone', `%${phoneSuffix}`)
-      .eq('instance_name', instance_name)
-      .gte('created_at', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
-      .limit(1)
+    if (isGroupEnrich) {
+      // Fetch messages from the group conversation
+      const { data: groupMsgs } = await supabase
+        .from('whatsapp_messages')
+        .select('direction, message_text, created_at, phone')
+        .eq('phone', group_jid)
+        .order('created_at', { ascending: true })
+        .limit(200)
 
-    if (recentEnrich && recentEnrich.length > 0) {
-      console.log('[auto-enrich] Already enriched recently, skipping')
-      return new Response(JSON.stringify({ ok: true, skipped: 'recent_enrich' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+      if (!groupMsgs || groupMsgs.length === 0) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'no_messages' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      messages = groupMsgs
+    } else {
+      // Original flow: private conversation enrichment
+      // Read configurable threshold from system_settings
+      let INBOUND_THRESHOLD = DEFAULT_INBOUND_THRESHOLD
+      const { data: thresholdSetting } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'enrich_message_threshold')
+        .single()
+      
+      if (thresholdSetting?.value) {
+        INBOUND_THRESHOLD = parseInt(thresholdSetting.value, 10) || DEFAULT_INBOUND_THRESHOLD
+      }
 
-    // Count inbound messages from this contact
-    const { count } = await supabase
-      .from('whatsapp_messages')
-      .select('id', { count: 'exact', head: true })
-      .eq('instance_name', instance_name)
-      .ilike('phone', `%${phoneSuffix}`)
-      .eq('direction', 'inbound')
+      const phoneSuffix = phone.replace(/\D/g, '').slice(-8)
 
-    if (!count || count < INBOUND_THRESHOLD) {
-      console.log(`[auto-enrich] Only ${count} inbound messages, need ${INBOUND_THRESHOLD}`)
-      return new Response(JSON.stringify({ ok: true, skipped: 'not_enough_messages', count }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+      if (!force) {
+        // Check if we already enriched recently (within 2 hours)
+        const { data: recentEnrich } = await supabase
+          .from('lead_enrichment_log')
+          .select('id')
+          .ilike('phone', `%${phoneSuffix}`)
+          .eq('instance_name', instance_name)
+          .gte('created_at', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
+          .limit(1)
 
-    // Fetch conversation messages
-    const { data: messages } = await supabase
-      .from('whatsapp_messages')
-      .select('direction, message_text, created_at')
-      .eq('instance_name', instance_name)
-      .ilike('phone', `%${phoneSuffix}`)
-      .order('created_at', { ascending: true })
-      .limit(100)
+        if (recentEnrich && recentEnrich.length > 0) {
+          console.log('[auto-enrich] Already enriched recently, skipping')
+          return new Response(JSON.stringify({ ok: true, skipped: 'recent_enrich' }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
 
-    if (!messages || messages.length === 0) {
-      return new Response(JSON.stringify({ ok: true, skipped: 'no_messages' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+        // Count inbound messages from this contact
+        const { count } = await supabase
+          .from('whatsapp_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('instance_name', instance_name)
+          .ilike('phone', `%${phoneSuffix}`)
+          .eq('direction', 'inbound')
+
+        if (!count || count < INBOUND_THRESHOLD) {
+          console.log(`[auto-enrich] Only ${count} inbound messages, need ${INBOUND_THRESHOLD}`)
+          return new Response(JSON.stringify({ ok: true, skipped: 'not_enough_messages', count }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
+      }
+
+      // Fetch conversation messages
+      const { data: privateMsgs } = await supabase
+        .from('whatsapp_messages')
+        .select('direction, message_text, created_at')
+        .eq('instance_name', instance_name)
+        .ilike('phone', `%${phoneSuffix}`)
+        .order('created_at', { ascending: true })
+        .limit(100)
+
+      if (!privateMsgs || privateMsgs.length === 0) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'no_messages' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      messages = privateMsgs
     }
 
     // Build conversation text
@@ -103,6 +128,19 @@ Deno.serve(async (req) => {
       .join('\n')
 
     // Extract data using AI
+    const groupEnrichFields = isGroupEnrich ? `
+  "case_notes": "observações e atualizações relevantes sobre o caso jurídico mencionadas na conversa do grupo",
+  "case_outcome": "resultado/desfecho do caso se mencionado (deferido, indeferido, acordo, etc)",
+  "process_notes": "informações sobre andamento processual, audiências, perícias, prazos mencionados",
+  "process_number": "número de processo judicial mencionado (CNJ)",
+  "next_steps": "próximos passos ou pendências mencionadas na conversa",
+  "documents_mentioned": "documentos mencionados ou solicitados na conversa",` : ''
+
+    const groupEnrichRules = isGroupEnrich ? `
+- Esta é uma conversa de GRUPO de trabalho. Extraia informações sobre o caso, processo e cliente mencionados.
+- case_notes, process_notes e next_steps devem conter resumos úteis das discussões do grupo.
+- Não confunda mensagens de diferentes participantes do grupo.` : ''
+
     const systemPrompt = `Você é um assistente especializado em extrair informações de conversas de WhatsApp.
 
 Analise a conversa e extraia TODAS as informações pessoais e profissionais do CLIENTE. Retorne APENAS um JSON válido:
@@ -131,7 +169,7 @@ Analise a conversa e extraia TODAS as informações pessoais e profissionais do 
   "visit_city": "cidade da visita/residência da família",
   "visit_state": "estado da visita/residência (sigla UF)",
   "visit_region": "região da visita (ex: norte, sul, centro-oeste, sudeste, nordeste)",
-  "visit_address": "endereço completo para visita",
+  "visit_address": "endereço completo para visita",${groupEnrichFields}
   "lead_status": "status do lead baseado na conversa: use null na maioria dos casos. Só preencha com 'closed' se houve assinatura/contrato EXPLÍCITO, 'refused' APENAS se o cliente disse CLARAMENTE que NÃO quer prosseguir (ex: 'não quero', 'desisto', 'não tenho interesse'), 'unviable' se: (1) o atendente determinou que o caso é inviável, OU (2) o cliente claramente NÃO é o público-alvo (ex: confundiu com outra pessoa, ligação engano, homem em campanha de maternidade, pessoa sem nenhuma relação com o serviço oferecido), OU (3) o cliente demonstra total desinteresse/irrelevância com o assunto. Em caso de QUALQUER dúvida, use null. Conversas em andamento, triagem, identificação = null (NÃO é refused).",
   "lead_status_reason": "motivo resumido em 1-2 frases para o status identificado. OBRIGATÓRIO se lead_status não for null. Use null se status for null.",
   "referrals": [
@@ -150,7 +188,7 @@ REGRAS:
 - IMPORTANTE: lead_status deve ser null na grande maioria dos casos. Só marque como 'refused' se o cliente EXPLICITAMENTE recusou. Marque como 'unviable' se a pessoa claramente não tem relação com o serviço (engano, confusão, perfil incompatível). Conversas sem resposta, em triagem, ou em fase inicial NÃO são 'refused' nem 'unviable'. Na dúvida, use null.
 - lead_status_reason é OBRIGATÓRIO quando lead_status não for null
 - INDICAÇÕES: Se o cliente mencionou alguém que pode ter direito a algum benefício (gestante, mãe de autista, acidentado nos últimos 5 anos com carteira assinada), extraia na lista "referrals". Use [] se não houver indicações.
-- product_type DEVE ser um dos valores: auxilio_maternidade, auxilio_acidente, bpc_loas_autista, indenizacao_acidente_trabalho
+- product_type DEVE ser um dos valores: auxilio_maternidade, auxilio_acidente, bpc_loas_autista, indenizacao_acidente_trabalho${groupEnrichRules}
 - Retorne APENAS o JSON`
 
     const result = await geminiChat({
@@ -462,16 +500,79 @@ REGRAS:
       }
     }
 
-    // Log the enrichment
+    // Enrich case and process if group enrichment
+    if (isGroupEnrich && lead_id) {
+      try {
+        // Find cases linked to this lead
+        const { data: cases } = await supabase
+          .from('legal_cases')
+          .select('id, notes, description')
+          .eq('lead_id', lead_id)
+          .limit(5)
+
+        if (cases && cases.length > 0) {
+          for (const legalCase of cases) {
+            const caseUpdate: Record<string, any> = {}
+            
+            if (cleaned.case_notes) {
+              const existingNotes = legalCase.notes || ''
+              const newNote = `[IA ${new Date().toLocaleDateString('pt-BR')}] ${cleaned.case_notes}`
+              caseUpdate.notes = existingNotes ? `${existingNotes}\n\n${newNote}` : newNote
+            }
+            if (cleaned.case_outcome) {
+              caseUpdate.outcome = cleaned.case_outcome
+            }
+            if (cleaned.damage_description && !legalCase.description) {
+              caseUpdate.description = cleaned.damage_description
+            }
+
+            if (Object.keys(caseUpdate).length > 0) {
+              const { error } = await supabase
+                .from('legal_cases')
+                .update(caseUpdate)
+                .eq('id', legalCase.id)
+              if (error) console.error('[auto-enrich] Case update error:', error)
+              else console.log(`[auto-enrich] Case ${legalCase.id} updated with ${Object.keys(caseUpdate).length} fields`)
+            }
+
+            // Find processes linked to this case
+            const { data: tracking } = await supabase
+              .from('case_process_tracking')
+              .select('id, observacao')
+              .eq('case_id', legalCase.id)
+              .limit(10)
+
+            if (tracking && tracking.length > 0) {
+              const processNotes = cleaned.process_notes || cleaned.next_steps
+              if (processNotes) {
+                for (const proc of tracking) {
+                  const existingObs = proc.observacao || ''
+                  const newObs = `[IA ${new Date().toLocaleDateString('pt-BR')}] ${processNotes}`
+                  await supabase
+                    .from('case_process_tracking')
+                    .update({ observacao: existingObs ? `${existingObs}\n\n${newObs}` : newObs })
+                    .eq('id', proc.id)
+                }
+                console.log(`[auto-enrich] Updated ${tracking.length} process(es) with notes`)
+              }
+            }
+          }
+        }
+      } catch (caseErr: any) {
+        console.error('[auto-enrich] Case/process enrichment error:', caseErr)
+      }
+    }
+
+
     await supabase.from('lead_enrichment_log').insert({
-      phone,
-      instance_name,
+      phone: phone || group_jid || 'group_enrich',
+      instance_name: instance_name || 'group',
       lead_id: lead_id || null,
       contact_id: contact_id || null,
       fields_updated: cleaned,
     })
 
-    console.log(`[auto-enrich] Enrichment complete for phone=${phone}`)
+    console.log(`[auto-enrich] Enrichment complete for ${isGroupEnrich ? 'group=' + group_jid : 'phone=' + phone}`)
 
     // Process referrals if any
     const referrals = Array.isArray(cleaned.referrals) ? cleaned.referrals : []
@@ -545,7 +646,14 @@ REGRAS:
       console.log(`[auto-enrich] Created ${createdReferrals.length} referral leads`)
     }
 
-    return new Response(JSON.stringify({ ok: true, enriched: cleaned, referrals_created: createdReferrals }), {
+    return new Response(JSON.stringify({ 
+      ok: true, 
+      enriched: cleaned, 
+      referrals_created: createdReferrals,
+      message: isGroupEnrich 
+        ? `Lead, caso e processo enriquecidos com ${Object.keys(cleaned).length} campos extraídos da conversa do grupo.`
+        : undefined,
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error: any) {
