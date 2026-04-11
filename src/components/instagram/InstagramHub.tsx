@@ -149,7 +149,18 @@ export function InstagramHub() {
           <Instagram className="h-5 w-5 text-pink-500" />
           <h1 className="text-lg font-semibold">Instagram</h1>
         </div>
+        <div className="ml-auto">
+          <Button variant="outline" size="sm" onClick={() => setShowImportDialog(true)} className="gap-1.5">
+            <Link2 className="h-4 w-4" />
+            <span className="hidden sm:inline">Importar Link</span>
+          </Button>
+        </div>
       </div>
+
+      <ImportFromSocialLinkDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+      />
 
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
         {/* Sidebar - desktop */}
