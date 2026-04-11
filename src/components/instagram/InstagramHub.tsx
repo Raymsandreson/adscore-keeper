@@ -6,8 +6,9 @@ import {
   ArrowLeft, ChevronRight, Zap, Instagram,
   MessageCircle, MessagesSquare, Filter, Trophy,
   BarChart3, History, Target, Bot, Webhook,
-  TrendingUp, ScrollText
+  TrendingUp, ScrollText, Link2
 } from 'lucide-react';
+import { ImportFromSocialLinkDialog } from './ImportFromSocialLinkDialog';
 import { useNavigate } from 'react-router-dom';
 
 // Lazy-load tab content
