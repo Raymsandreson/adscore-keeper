@@ -132,6 +132,7 @@ const tabs: Tab[] = [
 
 export function InstagramHub() {
   const [activeTab, setActiveTab] = useState('funnel');
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const navigate = useNavigate();
 
   const activeTabData = tabs.find(t => t.id === activeTab);
