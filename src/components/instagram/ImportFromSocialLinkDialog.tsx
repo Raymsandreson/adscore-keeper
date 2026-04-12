@@ -499,6 +499,94 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
               </div>
             )}
 
+            {/* Fetch Comments Button */}
+            {url.trim() && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleFetchComments}
+                disabled={isFetchingComments}
+                className="w-full gap-2 border-dashed"
+              >
+                {isFetchingComments ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MessageSquare className="h-4 w-4" />
+                )}
+                {isFetchingComments ? 'Buscando comentários via Apify...' : '🔍 Buscar comentários do post (Apify)'}
+              </Button>
+            )}
+
+            {/* Comments Analysis Display */}
+            {commentsAnalysis && (
+              <Accordion type="single" collapsible defaultValue="comments">
+                <AccordionItem value="comments" className="border rounded-lg">
+                  <AccordionTrigger className="px-3 py-2 text-sm">
+                    <span className="flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4 text-primary" />
+                      Análise de {commentsCount} comentários
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-3 pb-3 space-y-3">
+                    {/* Victim info from comments */}
+                    {commentsAnalysis.victim_info && Object.values(commentsAnalysis.victim_info).some(Boolean) && (
+                      <div className="p-2 rounded bg-muted/50 space-y-1">
+                        <p className="text-xs font-medium flex items-center gap-1">
+                          <Users className="h-3 w-3" /> Info da vítima (comentários)
+                        </p>
+                        {commentsAnalysis.victim_info.name && <p className="text-xs">Nome: {commentsAnalysis.victim_info.name}</p>}
+                        {commentsAnalysis.victim_info.age && <p className="text-xs">Idade: {commentsAnalysis.victim_info.age}</p>}
+                        {commentsAnalysis.victim_info.profession && <p className="text-xs">Profissão: {commentsAnalysis.victim_info.profession}</p>}
+                        {commentsAnalysis.victim_info.condition && <p className="text-xs">Estado: {commentsAnalysis.victim_info.condition}</p>}
+                      </div>
+                    )}
+
+                    {/* Accident info from comments */}
+                    {commentsAnalysis.accident_info && Object.values(commentsAnalysis.accident_info).some(Boolean) && (
+                      <div className="p-2 rounded bg-muted/50 space-y-1">
+                        <p className="text-xs font-medium flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" /> Info do acidente (comentários)
+                        </p>
+                        {commentsAnalysis.accident_info.location && <p className="text-xs">Local: {commentsAnalysis.accident_info.location}</p>}
+                        {commentsAnalysis.accident_info.date && <p className="text-xs">Data: {commentsAnalysis.accident_info.date}</p>}
+                        {commentsAnalysis.accident_info.company && <p className="text-xs">Empresa: {commentsAnalysis.accident_info.company}</p>}
+                        {commentsAnalysis.accident_info.description && <p className="text-xs">Detalhes: {commentsAnalysis.accident_info.description}</p>}
+                      </div>
+                    )}
+
+                    {/* Potential contacts */}
+                    {commentsAnalysis.potential_contacts?.length > 0 && (
+                      <div className="p-2 rounded bg-muted/50 space-y-1">
+                        <p className="text-xs font-medium flex items-center gap-1">
+                          <Users className="h-3 w-3" /> Contatos identificados
+                        </p>
+                        {commentsAnalysis.potential_contacts.map((c: any, i: number) => (
+                          <div key={i} className="text-xs flex items-start gap-1">
+                            <Badge variant="outline" className="text-[10px] shrink-0">{c.type || 'contato'}</Badge>
+                            <span>{c.username}: {c.info || c.relationship || ''}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Key comments */}
+                    {commentsAnalysis.key_comments?.length > 0 && (
+                      <div className="p-2 rounded bg-muted/50 space-y-1">
+                        <p className="text-xs font-medium">💬 Comentários relevantes</p>
+                        {commentsAnalysis.key_comments.map((c: string, i: number) => (
+                          <p key={i} className="text-xs text-muted-foreground italic">"{c}"</p>
+                        ))}
+                      </div>
+                    )}
+
+                    {commentsAnalysis.additional_details && (
+                      <p className="text-xs text-muted-foreground">{commentsAnalysis.additional_details}</p>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            )}
+
             {/* AccidentLeadForm - same as CreateLeadFromSearchDialog */}
             <AccidentLeadForm
               formData={formData}
