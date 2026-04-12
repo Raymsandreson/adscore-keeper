@@ -127,6 +127,7 @@ const AgentMonitorPage = lazyRetry(() => import("./pages/AgentMonitorPage"), "Ag
 const LandingPage = lazyRetry(() => import("./pages/LandingPage"), "LandingPage");
 const BookingPage = lazyRetry(() => import("./pages/BookingPage"), "BookingPage");
 const ExtensionPage = lazyRetry(() => import("./pages/ExtensionPage"), "ExtensionPage");
+const ShareTargetPage = lazyRetry(() => import("./pages/ShareTargetPage"), "ShareTargetPage");
 
 const queryClient = new QueryClient();
 
@@ -168,6 +169,7 @@ function AppRoutes() {
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/install" element={<InstallPage />} />
+        <Route path="/share" element={<ShareTargetPage />} />
         <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
         <Route path="/booking/:configId" element={<BookingPage />} />
         <Route path="/booking/:configId/:token" element={<BookingPage />} />
