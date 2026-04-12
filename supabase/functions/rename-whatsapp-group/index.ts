@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
 
     const { data: settings } = await supabase
       .from('board_group_settings')
-      .select('closed_group_name_prefix, group_name_prefix, lead_fields')
+      .select('closed_group_name_prefix, group_name_prefix, lead_fields, closed_sequence_start, closed_current_sequence')
       .eq('board_id', lead.board_id)
       .maybeSingle()
 
@@ -54,6 +54,12 @@ Deno.serve(async (req) => {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
+
+    // Calculate next closed sequence number
+    const closedSeq = Math.max(
+      (settings.closed_current_sequence || 0) + 1,
+      settings.closed_sequence_start || 1
+    )
 
     // Find a connected instance to rename the group
     const { data: boardInstances } = await supabase
