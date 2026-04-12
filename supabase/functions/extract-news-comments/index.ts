@@ -88,6 +88,12 @@ serve(async (req) => {
    - date: data/hora se disponível
    - likes: número de likes/curtidas se disponível
    - is_reply: se é resposta a outro comentário
+   - contact_info: objeto com dados de contato encontrados NO TEXTO do comentário ou no perfil do autor:
+     - full_name: nome completo real (se diferente do username)
+     - phone: telefone ou WhatsApp mencionado
+     - email: email mencionado
+     - instagram: perfil Instagram mencionado (com @)
+     - other_social: outras redes sociais mencionadas
 
 2. **Detalhes adicionais da notícia** que podem complementar um caso jurídico:
    - additional_victims: nomes de outras vítimas mencionadas
