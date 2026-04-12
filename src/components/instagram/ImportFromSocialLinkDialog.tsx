@@ -372,6 +372,35 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     }
   };
 
+  const handleSaveCommentContact = async (contact: any) => {
+    const username = contact.username?.replace('@', '') || '';
+    if (!username) return;
+    setSavingContact(username);
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const { error } = await supabase.from('contacts').insert({
+        full_name: username,
+        instagram_username: username,
+        instagram_url: `https://instagram.com/${username}`,
+        notes: [
+          contact.relationship ? `Relação: ${contact.relationship}` : null,
+          contact.info ? `Info: ${contact.info}` : null,
+          contact.type ? `Tipo: ${contact.type}` : null,
+          `Identificado nos comentários do post: ${url}`,
+        ].filter(Boolean).join('\n'),
+        classifications: [contact.type === 'familiar' ? 'Familiar' : contact.type === 'testemunha' ? 'Testemunha' : 'Indicação'],
+        created_by: currentUser?.id || null,
+      });
+      if (error) throw error;
+      setSavedContacts(prev => new Set([...prev, username]));
+      toast.success(`Contato @${username} cadastrado!`);
+    } catch (err: any) {
+      toast.error(`Erro ao cadastrar @${username}: ${err.message}`);
+    } finally {
+      setSavingContact(null);
+    }
+  };
+
   const handleClose = () => {
     setUrl('');
     setCaption('');
@@ -381,6 +410,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     setTargetType('lead');
     setCommentsAnalysis(null);
     setCommentsCount(0);
+    setSavedContacts(new Set());
     onOpenChange(false);
   };
 
