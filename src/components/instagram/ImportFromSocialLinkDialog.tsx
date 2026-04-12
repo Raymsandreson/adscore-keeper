@@ -669,6 +669,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   const platform = detectPlatform(url);
 
   return (
+    <>
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className={step === 'review' ? "max-w-2xl max-h-[90vh] overflow-y-auto" : "max-w-lg max-h-[85vh] overflow-y-auto"}>
         <DialogHeader>
