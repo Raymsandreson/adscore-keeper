@@ -306,6 +306,14 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           main_company: extracted.main_company || '',
           sector: extracted.sector || '',
         });
+        // Store additional victims if detected
+        if (extracted.additional_victims?.length) {
+          setAdditionalVictims(extracted.additional_victims.filter(v => v.victim_name).map(v => ({
+            victim_name: v.victim_name || '',
+            victim_age: v.victim_age,
+            damage_description: v.damage_description,
+          })));
+        }
         // Check for duplicate based on victim_name + accident_date + city + state
         const victimName = extracted.victim_name || extracted.nome || '';
         const accidentDate = convertDateToISO(extracted.accident_date || '');
