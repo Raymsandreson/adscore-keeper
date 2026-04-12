@@ -296,6 +296,7 @@ export function BoardGroupInstancesConfig() {
 
       const payload = {
         group_name_prefix: settings.group_name_prefix,
+        closed_group_name_prefix: settings.closed_group_name_prefix || null,
         sequence_start: settings.sequence_start,
         lead_fields: settings.lead_fields,
         initial_message_template: settings.initial_message_template || null,
