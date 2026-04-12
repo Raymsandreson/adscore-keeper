@@ -193,6 +193,24 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           main_company: extracted.main_company || '',
           sector: extracted.sector || '',
         });
+        // Check for duplicate based on victim_name + accident_date + city + state
+        const victimName = extracted.victim_name || extracted.nome || '';
+        const accidentDate = extracted.accident_date || '';
+        const city = extracted.cidade || '';
+        const state = extracted.estado || '';
+        if (victimName.trim() && (accidentDate.trim() || city.trim())) {
+          let query = supabase.from('leads').select('id, lead_name').limit(5);
+          if (victimName.trim()) query = query.ilike('victim_name', `%${victimName.trim()}%`);
+          if (accidentDate.trim()) query = query.eq('accident_date', accidentDate.trim());
+          if (city.trim()) query = query.ilike('visit_city', `%${city.trim()}%`);
+          if (state.trim()) query = query.eq('visit_state', state.trim().toUpperCase());
+          const { data: duplicates } = await query;
+          if (duplicates && duplicates.length > 0) {
+            const names = duplicates.map(d => d.lead_name || 'Sem nome').join(', ');
+            toast.warning(`⚠️ Possível duplicata encontrada! Leads similares: ${names}. Verifique antes de salvar.`, { duration: 8000 });
+          }
+        }
+
         setStep('review');
         toast.success('Dados extraídos pela IA!');
       } else {
