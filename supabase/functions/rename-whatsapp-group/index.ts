@@ -116,20 +116,21 @@ Deno.serve(async (req) => {
       console.warn('Could not fetch group info:', e)
     }
 
-    // Build new name: replace old prefix with closed prefix
-    let newName = currentName
-    const oldPrefix = settings.group_name_prefix || ''
+    // Build new name using closed prefix + closed sequence + lead fields
     const closedPrefix = settings.closed_group_name_prefix
-
-    if (oldPrefix && currentName.startsWith(oldPrefix)) {
-      newName = closedPrefix + currentName.slice(oldPrefix.length)
-    } else if (!oldPrefix) {
-      // No old prefix, just prepend closed prefix
-      newName = closedPrefix + ' ' + currentName
-    } else {
-      // Old prefix not found in name, just replace the beginning
-      newName = closedPrefix + ' ' + currentName
+    const leadFields = settings.lead_fields || ['lead_name']
+    
+    const parts: string[] = []
+    if (closedPrefix) parts.push(closedPrefix)
+    parts.push(String(closedSeq).padStart(4, '0'))
+    
+    for (const field of leadFields) {
+      if (lead[field]) {
+        parts.push(String(lead[field]))
+      }
     }
+    
+    let newName = parts.join(' ')
 
     // Truncate to WhatsApp limit
     if (newName.length > 100) {
