@@ -157,17 +157,6 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     }
     setIsExtracting(true);
     try {
-      // Check for duplicate news_link
-      if (url.trim()) {
-        const { data: existing } = await supabase
-          .from('leads')
-          .select('id, lead_name')
-          .eq('news_link', url.trim())
-          .limit(1);
-        if (existing && existing.length > 0) {
-          toast.warning(`⚠️ Essa notícia já está cadastrada no lead "${existing[0].lead_name || 'Sem nome'}". Você pode continuar se desejar criar outro.`, { duration: 6000 });
-        }
-      }
       const { data, error } = await cloudFunctions.invoke('extract-social-post-data', {
         body: { postUrl: url.trim(), caption: caption.trim(), targetType },
       });
