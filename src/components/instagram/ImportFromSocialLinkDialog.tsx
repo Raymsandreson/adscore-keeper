@@ -52,6 +52,59 @@ interface ExtractedData {
   sector?: string | null;
 }
 
+// Convert date from DD/MM/YYYY to YYYY-MM-DD (ISO)
+const convertDateToISO = (dateStr: string): string => {
+  if (!dateStr) return '';
+  // Already ISO format
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+  // DD/MM/YYYY format
+  const match = dateStr.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (match) {
+    const [, d, m, y] = match;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  return '';
+};
+
+// Map AI tipo_caso to exact caseType values
+const caseTypeMap: Record<string, string> = {
+  'acidente_trabalho': 'Outro',
+  'trabalhista': 'Outro',
+  'previdenciário': 'Outro',
+  'queda': 'Queda de Altura',
+  'queda_altura': 'Queda de Altura',
+  'soterramento': 'Soterramento',
+  'choque_eletrico': 'Choque Elétrico',
+  'choque elétrico': 'Choque Elétrico',
+  'eletrico': 'Choque Elétrico',
+  'maquinas': 'Acidente com Máquinas',
+  'acidente_maquinas': 'Acidente com Máquinas',
+  'intoxicacao': 'Intoxicação',
+  'explosao': 'Explosão',
+  'incendio': 'Incêndio',
+  'acidente_transito': 'Acidente de Trânsito',
+  'transito': 'Acidente de Trânsito',
+  'esmagamento': 'Esmagamento',
+  'corte': 'Corte/Amputação',
+  'amputacao': 'Corte/Amputação',
+  'afogamento': 'Afogamento',
+};
+
+const mapCaseType = (aiValue: string): string => {
+  if (!aiValue) return '';
+  // Direct match with existing values
+  const validTypes = ['Queda de Altura', 'Soterramento', 'Choque Elétrico', 'Acidente com Máquinas', 'Intoxicação', 'Explosão', 'Incêndio', 'Acidente de Trânsito', 'Esmagamento', 'Corte/Amputação', 'Afogamento', 'Outro'];
+  if (validTypes.includes(aiValue)) return aiValue;
+  // Normalize and map
+  const normalized = aiValue.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_');
+  if (caseTypeMap[normalized]) return caseTypeMap[normalized];
+  // Partial match
+  for (const [key, value] of Object.entries(caseTypeMap)) {
+    if (normalized.includes(key) || key.includes(normalized)) return value;
+  }
+  return 'Outro';
+};
+
 const initialFormData: AccidentLeadFormData = {
   lead_name: '',
   lead_phone: '',
