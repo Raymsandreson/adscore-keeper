@@ -90,6 +90,9 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   const [isExtracting, setIsExtracting] = useState(false);
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFetchingComments, setIsFetchingComments] = useState(false);
+  const [commentsAnalysis, setCommentsAnalysis] = useState<any>(null);
+  const [commentsCount, setCommentsCount] = useState<number>(0);
   const { fetchMetadata } = usePostMetadata();
 
   // Lead form data (used in review step)
