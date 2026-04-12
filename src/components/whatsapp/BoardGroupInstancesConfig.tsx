@@ -489,13 +489,22 @@ export function BoardGroupInstancesConfig() {
               <h4 className="font-medium text-xs">Nome do Grupo</h4>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Prefixo</Label>
+                <Label className="text-[11px] text-muted-foreground">Prefixo (antes de fechar)</Label>
                 <Input
                   value={settings.group_name_prefix}
                   onChange={e => setSettings(prev => ({ ...prev, group_name_prefix: e.target.value }))}
-                  placeholder="Ex: CASO, GRP"
+                  placeholder="Ex: LEAD, GRP"
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] text-muted-foreground">Prefixo (após fechar)</Label>
+                <Input
+                  value={settings.closed_group_name_prefix}
+                  onChange={e => setSettings(prev => ({ ...prev, closed_group_name_prefix: e.target.value }))}
+                  placeholder="Ex: CASO, CLIENTE"
                   className="h-8 text-xs"
                 />
               </div>
@@ -531,9 +540,19 @@ export function BoardGroupInstancesConfig() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
-              <Eye className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="text-[10px] text-muted-foreground">Preview:</span>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
+                <Eye className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-[10px] text-muted-foreground">Antes:</span>
+                <span className="text-[11px] font-medium truncate">{getPreviewName(false)}</span>
+              </div>
+              {settings.closed_group_name_prefix && (
+                <div className="flex items-center gap-2 p-2 rounded bg-primary/10 border border-primary/20">
+                  <Eye className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="text-[10px] text-primary">Após fechar:</span>
+                  <span className="text-[11px] font-medium truncate">{getPreviewName(true)}</span>
+                </div>
+              )}
               <span className="text-[11px] font-medium truncate">{getPreviewName()}</span>
             </div>
           </div>
