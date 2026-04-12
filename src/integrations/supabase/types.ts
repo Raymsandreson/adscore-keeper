@@ -1159,6 +1159,7 @@ export type Database = {
           auto_create_group_on_sign: boolean | null
           auto_create_process: boolean
           board_id: string
+          closed_group_name_prefix: string | null
           created_at: string
           current_sequence: number | null
           forward_document_types: string[] | null
@@ -1182,6 +1183,7 @@ export type Database = {
           auto_create_group_on_sign?: boolean | null
           auto_create_process?: boolean
           board_id: string
+          closed_group_name_prefix?: string | null
           created_at?: string
           current_sequence?: number | null
           forward_document_types?: string[] | null
@@ -1205,6 +1207,7 @@ export type Database = {
           auto_create_group_on_sign?: boolean | null
           auto_create_process?: boolean
           board_id?: string
+          closed_group_name_prefix?: string | null
           created_at?: string
           current_sequence?: number | null
           forward_document_types?: string[] | null
