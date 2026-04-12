@@ -2082,11 +2082,16 @@ ${scrapeData.content || ''}
 
                 <div>
                   <Label>Link da Notícia</Label>
-                  <Input
-                    value={newsLink}
-                    onChange={(e) => setNewsLink(e.target.value)}
-                    placeholder="https://..."
-                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Gerencie os links na aba "Dados do Caso" acima
+                  </p>
+                  {newsLinks.length > 0 && (
+                    <div className="mt-1 space-y-1">
+                      {newsLinks.map((l, i) => (
+                        <a key={i} href={l} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline block truncate">{l}</a>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="col-span-2">
