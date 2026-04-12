@@ -425,7 +425,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
               formData={formData}
               onChange={handleFormChange}
               onOpenExtractor={() => {}}
-              teamMembers={teamProfiles}
+              teamMembers={teamMembers}
             />
           </div>
         )}
