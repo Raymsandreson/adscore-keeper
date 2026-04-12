@@ -67,6 +67,14 @@ const convertDateToISO = (dateStr: string): string => {
   return '';
 };
 
+const stateToRegionMap: Record<string, string> = {
+  'AC': 'Norte', 'AP': 'Norte', 'AM': 'Norte', 'PA': 'Norte', 'RO': 'Norte', 'RR': 'Norte', 'TO': 'Norte',
+  'AL': 'Nordeste', 'BA': 'Nordeste', 'CE': 'Nordeste', 'MA': 'Nordeste', 'PB': 'Nordeste', 'PE': 'Nordeste', 'PI': 'Nordeste', 'RN': 'Nordeste', 'SE': 'Nordeste',
+  'DF': 'Centro-Oeste', 'GO': 'Centro-Oeste', 'MT': 'Centro-Oeste', 'MS': 'Centro-Oeste',
+  'ES': 'Sudeste', 'MG': 'Sudeste', 'RJ': 'Sudeste', 'SP': 'Sudeste',
+  'PR': 'Sul', 'RS': 'Sul', 'SC': 'Sul',
+};
+
 // Map AI tipo_caso to exact caseType values
 const caseTypeMap: Record<string, string> = {
   'acidente_trabalho': 'Outro',
@@ -240,16 +248,17 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           lead_email: extracted.email || '',
           source: detectPlatform(url).toLowerCase(),
           visit_city: extracted.cidade || '',
-          visit_state: extracted.estado || '',
-          visit_region: extracted.regiao || '',
+          visit_state: extracted.estado?.toUpperCase() || '',
+          visit_region: stateToRegionMap[extracted.estado?.toUpperCase() || ''] || '',
           case_type: mapCaseType(extracted.tipo_caso || ''),
           notes: noteParts,
           news_link: url.trim() || '',
           victim_name: extracted.victim_name || extracted.nome || '',
           victim_age: extracted.victim_age || '',
           accident_date: convertDateToISO(extracted.accident_date || ''),
-          accident_address: extracted.accident_address || '',
+          accident_address: extracted.accident_address || extracted.regiao || '',
           damage_description: extracted.damage_description || extracted.interesse || '',
+          visit_address: extracted.regiao || '',
           contractor_company: extracted.contractor_company || '',
           main_company: extracted.main_company || '',
           sector: extracted.sector || '',

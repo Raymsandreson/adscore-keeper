@@ -429,20 +429,28 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
 
             <div>
               <Label>Cidade da Visita</Label>
-              <Select 
-                value={formData.visit_city} 
-                onValueChange={(v) => updateField('visit_city', v)}
-                disabled={!formData.visit_state || loadingCities}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={loadingCities ? 'Carregando...' : 'Selecione o estado primeiro'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {cities.map((city) => (
-                    <SelectItem key={city.id} value={city.nome}>{city.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {formData.visit_state && cities.length > 0 ? (
+                <Select 
+                  value={cities.some(c => c.nome === formData.visit_city) ? formData.visit_city : ''} 
+                  onValueChange={(v) => updateField('visit_city', v)}
+                  disabled={loadingCities}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={loadingCities ? 'Carregando...' : (formData.visit_city || 'Selecione...')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cities.map((city) => (
+                      <SelectItem key={city.id} value={city.nome}>{city.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={formData.visit_city}
+                  onChange={(e) => updateField('visit_city', e.target.value)}
+                  placeholder={formData.visit_state ? 'Carregando cidades...' : 'Selecione o estado primeiro'}
+                />
+              )}
             </div>
 
             <div>
