@@ -305,6 +305,7 @@ export function BoardGroupInstancesConfig() {
         group_name_prefix: settings.group_name_prefix,
         closed_group_name_prefix: settings.closed_group_name_prefix || null,
         sequence_start: settings.sequence_start,
+        closed_sequence_start: settings.closed_sequence_start,
         lead_fields: settings.lead_fields,
         initial_message_template: settings.initial_message_template || null,
         use_ai_message: settings.use_ai_message,
@@ -384,7 +385,12 @@ export function BoardGroupInstancesConfig() {
       ? settings.closed_group_name_prefix 
       : settings.group_name_prefix;
     if (prefix) parts.push(prefix);
-    const seq = settings.current_sequence > 0 ? settings.current_sequence + 1 : settings.sequence_start;
+    let seq: number;
+    if (useClosed && settings.closed_group_name_prefix) {
+      seq = settings.closed_current_sequence > 0 ? settings.closed_current_sequence + 1 : settings.closed_sequence_start;
+    } else {
+      seq = settings.current_sequence > 0 ? settings.current_sequence + 1 : settings.sequence_start;
+    }
     parts.push(String(seq).padStart(4, '0'));
     const fieldLabels = settings.lead_fields.map(f => {
       const opt = LEAD_FIELD_OPTIONS.find(o => o.value === f);
