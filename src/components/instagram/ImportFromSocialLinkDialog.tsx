@@ -897,6 +897,36 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
               </Accordion>
             )}
 
+            {/* Additional Victims Alert */}
+            {additionalVictims.length > 0 && (
+              <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 space-y-2">
+                <p className="text-sm font-medium flex items-center gap-2">
+                  <Users className="h-4 w-4 text-amber-600" />
+                  {additionalVictims.length + 1} vítimas detectadas — será criado 1 lead para cada
+                </p>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    <strong>Principal:</strong> {formData.victim_name || '(sem nome)'}
+                  </p>
+                  {additionalVictims.map((v, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <Badge variant="outline" className="text-[10px] shrink-0">Vítima {i + 2}</Badge>
+                      <span>{v.victim_name}</span>
+                      {v.damage_description && <span className="text-muted-foreground truncate">— {v.damage_description}</span>}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-1 text-[10px] text-destructive ml-auto"
+                        onClick={() => setAdditionalVictims(prev => prev.filter((_, idx) => idx !== i))}
+                      >
+                        ✕
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* AccidentLeadForm - same as CreateLeadFromSearchDialog */}
             <AccidentLeadForm
               formData={formData}
