@@ -277,84 +277,101 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
         )}
 
         {step === 'review' && extractedData && (
-          <div className="space-y-3 py-2">
+          <div className="space-y-4 py-2">
             <div className="flex items-center gap-2 text-sm text-emerald-600">
               <CheckCircle2 className="h-4 w-4" />
-              <span className="font-medium">Dados extraídos pela IA</span>
+              <span className="font-medium">Dados extraídos pela IA — edite antes de salvar</span>
             </div>
 
-            <div className="grid gap-2 text-sm">
-              {extractedData.nome && (
-                <div className="flex justify-between p-2 bg-muted/50 rounded">
-                  <span className="text-muted-foreground">Nome</span>
-                  <span className="font-medium">{extractedData.nome}</span>
-                </div>
-              )}
-              {extractedData.telefone && (
-                <div className="flex justify-between p-2 bg-muted/50 rounded">
-                  <span className="text-muted-foreground">Telefone</span>
-                  <span className="font-medium">{extractedData.telefone}</span>
-                </div>
-              )}
-              {extractedData.email && (
-                <div className="flex justify-between p-2 bg-muted/50 rounded">
-                  <span className="text-muted-foreground">Email</span>
-                  <span className="font-medium">{extractedData.email}</span>
-                </div>
-              )}
-              {extractedData.cpf && (
-                <div className="flex justify-between p-2 bg-muted/50 rounded">
-                  <span className="text-muted-foreground">CPF</span>
-                  <span className="font-medium">{extractedData.cpf}</span>
-                </div>
-              )}
-              {extractedData.cidade && (
-                <div className="flex justify-between p-2 bg-muted/50 rounded">
-                  <span className="text-muted-foreground">Cidade</span>
-                  <span className="font-medium">{extractedData.cidade}{extractedData.estado ? ` - ${extractedData.estado}` : ''}</span>
-                </div>
-              )}
-              {extractedData.profissao && (
-                <div className="flex justify-between p-2 bg-muted/50 rounded">
-                  <span className="text-muted-foreground">Profissão</span>
-                  <span className="font-medium">{extractedData.profissao}</span>
-                </div>
-              )}
-              {extractedData.interesse && (
-                <div className="flex justify-between p-2 bg-muted/50 rounded">
-                  <span className="text-muted-foreground">Interesse</span>
-                  <span className="font-medium">{extractedData.interesse}</span>
-                </div>
-              )}
-              {extractedData.tipo_caso && (
-                <div className="flex justify-between p-2 bg-muted/50 rounded">
-                  <span className="text-muted-foreground">Tipo de Caso</span>
-                  <Badge variant="outline">{extractedData.tipo_caso}</Badge>
-                </div>
-              )}
-              {extractedData.contexto && (
-                <div className="p-2 bg-muted/50 rounded">
-                  <span className="text-muted-foreground text-xs">Contexto</span>
-                  <p className="text-sm mt-1">{extractedData.contexto}</p>
-                </div>
-              )}
-              {extractedData.tags && extractedData.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 p-2">
-                  {extractedData.tags.map((tag, i) => (
-                    <Badge key={i} variant="secondary" className="text-xs">{tag}</Badge>
-                  ))}
-                </div>
-              )}
-              {!extractedData.nome && !extractedData.telefone && !extractedData.contexto && (
-                <div className="flex items-center gap-2 text-amber-600 p-3 bg-amber-50 rounded">
-                  <AlertCircle className="h-4 w-4" />
-                  <span className="text-sm">Poucos dados encontrados na legenda</span>
-                </div>
-              )}
-            </div>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label>Nome do Lead *</Label>
+                <Input
+                  value={extractedData.nome || ''}
+                  onChange={(e) => setExtractedData({ ...extractedData, nome: e.target.value })}
+                  placeholder="Nome completo"
+                />
+              </div>
 
-            <div className="p-2 bg-primary/5 rounded text-xs text-muted-foreground">
-              Criando: <strong>{targetType === 'lead' ? 'Lead' : targetType === 'contact' ? 'Contato' : 'Atividade'}</strong>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Telefone</Label>
+                  <Input
+                    value={extractedData.telefone || ''}
+                    onChange={(e) => setExtractedData({ ...extractedData, telefone: e.target.value })}
+                    placeholder="(00) 00000-0000"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Email</Label>
+                  <Input
+                    value={extractedData.email || ''}
+                    onChange={(e) => setExtractedData({ ...extractedData, email: e.target.value })}
+                    placeholder="email@exemplo.com"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Cidade</Label>
+                  <Input
+                    value={extractedData.cidade || ''}
+                    onChange={(e) => setExtractedData({ ...extractedData, cidade: e.target.value })}
+                    placeholder="Cidade"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Estado</Label>
+                  <Input
+                    value={extractedData.estado || ''}
+                    onChange={(e) => setExtractedData({ ...extractedData, estado: e.target.value })}
+                    placeholder="UF"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Profissão</Label>
+                  <Input
+                    value={extractedData.profissao || ''}
+                    onChange={(e) => setExtractedData({ ...extractedData, profissao: e.target.value })}
+                    placeholder="Profissão"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Tipo de Caso</Label>
+                  <Input
+                    value={extractedData.tipo_caso || ''}
+                    onChange={(e) => setExtractedData({ ...extractedData, tipo_caso: e.target.value })}
+                    placeholder="Ex: trabalhista"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Origem</Label>
+                <Input
+                  value={detectPlatform(url).toLowerCase()}
+                  disabled
+                  className="bg-muted"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label>Observações / Contexto</Label>
+                <Textarea
+                  value={[
+                    extractedData.interesse ? `Interesse: ${extractedData.interesse}` : null,
+                    extractedData.contexto,
+                    extractedData.observacoes,
+                    extractedData.tags?.length ? `Tags: ${extractedData.tags.join(', ')}` : null,
+                  ].filter(Boolean).join('\n')}
+                  onChange={(e) => setExtractedData({ ...extractedData, contexto: e.target.value, observacoes: null, interesse: null, tags: null })}
+                  rows={3}
+                />
+              </div>
             </div>
           </div>
         )}
