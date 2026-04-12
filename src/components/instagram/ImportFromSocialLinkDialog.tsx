@@ -604,7 +604,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
             {targetType === 'lead' && (
               <div className="space-y-2">
                 <Label>Funil de Vendas</Label>
-                <Select value={selectedBoardId} onValueChange={setSelectedBoardId}>
+                <Select value={selectedBoardId} onValueChange={handleBoardChange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o funil..." />
                   </SelectTrigger>
