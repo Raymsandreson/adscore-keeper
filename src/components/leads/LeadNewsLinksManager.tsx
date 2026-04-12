@@ -9,7 +9,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import {
-  ExternalLink,
   Plus,
   Trash2,
   Sparkles,
@@ -17,8 +16,13 @@ import {
   Newspaper,
   MessageSquare,
   Check,
-  X,
   ArrowRight,
+  User,
+  ThumbsUp,
+  Clock,
+  Building,
+  Users,
+  FileText,
 } from 'lucide-react';
 
 interface ExtractedField {
@@ -28,10 +32,26 @@ interface ExtractedField {
   newValue: string;
 }
 
+interface NewsComment {
+  author: string;
+  text: string;
+  date?: string;
+  likes?: number;
+  is_reply?: boolean;
+}
+
+interface NewsDetails {
+  additional_victims?: string[];
+  witnesses?: string[];
+  companies_mentioned?: string[];
+  authorities_mentioned?: string[];
+  timeline?: string;
+  summary?: string;
+}
+
 interface LeadNewsLinksManagerProps {
   newsLinks: string[];
   onChange: (links: string[]) => void;
-  // Current lead data for side-by-side comparison
   currentData: {
     victim_name?: string;
     victim_age?: string;
@@ -49,7 +69,6 @@ interface LeadNewsLinksManagerProps {
     notes?: string;
   };
   onApplyUpdates: (updates: Record<string, string>) => void;
-  onFetchComments?: (url: string) => void;
 }
 
 export function LeadNewsLinksManager({
@@ -57,7 +76,6 @@ export function LeadNewsLinksManager({
   onChange,
   currentData,
   onApplyUpdates,
-  onFetchComments,
 }: LeadNewsLinksManagerProps) {
   const [newLink, setNewLink] = useState('');
   const [isEnriching, setIsEnriching] = useState(false);
@@ -65,6 +83,14 @@ export function LeadNewsLinksManager({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [extractedFields, setExtractedFields] = useState<ExtractedField[]>([]);
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
+
+  // Comments state
+  const [isFetchingComments, setIsFetchingComments] = useState(false);
+  const [fetchingCommentsUrl, setFetchingCommentsUrl] = useState('');
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [comments, setComments] = useState<NewsComment[]>([]);
+  const [newsDetails, setNewsDetails] = useState<NewsDetails | null>(null);
+  const [commentsPageTitle, setCommentsPageTitle] = useState('');
 
   const handleAddLink = () => {
     const url = newLink.trim();
@@ -87,7 +113,6 @@ export function LeadNewsLinksManager({
     setEnrichingUrl(url);
 
     try {
-      // Scrape the news content
       const { data: scrapeData, error: scrapeError } = await cloudFunctions.invoke('scrape-news', {
         body: { url },
       });
@@ -102,7 +127,6 @@ export function LeadNewsLinksManager({
         return;
       }
 
-      // Use AI to extract structured data
       const { data: aiData, error: aiError } = await cloudFunctions.invoke('extract-social-post-data', {
         body: {
           postUrl: url,
@@ -117,7 +141,6 @@ export function LeadNewsLinksManager({
 
       const extracted = aiData.extracted;
 
-      // Build side-by-side comparison
       const fieldMap: { field: string; label: string; extractedKey: string }[] = [
         { field: 'victim_name', label: 'Nome da Vítima', extractedKey: 'victim_name' },
         { field: 'victim_age', label: 'Idade da Vítima', extractedKey: 'victim_age' },
@@ -145,13 +168,11 @@ export function LeadNewsLinksManager({
           currentValue: currentVal,
           newValue: String(newVal),
         });
-        // Auto-select fields that are empty in current data
         if (!currentVal) {
           autoSelect.add(fm.field);
         }
       }
 
-      // Add notes/context
       const noteParts = [
         extracted.contexto,
         extracted.observacoes,
@@ -187,6 +208,65 @@ export function LeadNewsLinksManager({
     }
   };
 
+  const handleFetchComments = async (url: string) => {
+    setIsFetchingComments(true);
+    setFetchingCommentsUrl(url);
+
+    try {
+      const { data, error } = await cloudFunctions.invoke('extract-news-comments', {
+        body: { url },
+      });
+
+      if (error || !data?.success) {
+        throw new Error(data?.error || 'Erro ao buscar comentários');
+      }
+
+      setComments(data.comments || []);
+      setNewsDetails(data.details || null);
+      setCommentsPageTitle(data.page_title || '');
+      setCommentsOpen(true);
+
+      if (data.comments?.length > 0) {
+        toast.success(`${data.comments.length} comentários encontrados!`);
+      } else {
+        toast.info('Nenhum comentário encontrado nesta página');
+      }
+    } catch (err: any) {
+      console.error('Comments fetch error:', err);
+      toast.error(err.message || 'Erro ao buscar comentários');
+    } finally {
+      setIsFetchingComments(false);
+      setFetchingCommentsUrl('');
+    }
+  };
+
+  const handleAddDetailsToNotes = () => {
+    if (!newsDetails) return;
+
+    const parts: string[] = [];
+    if (newsDetails.summary) parts.push(`📰 Resumo: ${newsDetails.summary}`);
+    if (newsDetails.additional_victims?.length) parts.push(`👥 Outras vítimas: ${newsDetails.additional_victims.join(', ')}`);
+    if (newsDetails.witnesses?.length) parts.push(`👁 Testemunhas: ${newsDetails.witnesses.join(', ')}`);
+    if (newsDetails.companies_mentioned?.length) parts.push(`🏢 Empresas: ${newsDetails.companies_mentioned.join(', ')}`);
+    if (newsDetails.authorities_mentioned?.length) parts.push(`⚖️ Autoridades: ${newsDetails.authorities_mentioned.join(', ')}`);
+    if (newsDetails.timeline) parts.push(`📅 Cronologia: ${newsDetails.timeline}`);
+
+    if (comments.length > 0) {
+      parts.push(`\n💬 Comentários relevantes (${comments.length}):`);
+      comments.slice(0, 10).forEach(c => {
+        parts.push(`- ${c.author}: "${c.text.substring(0, 150)}${c.text.length > 150 ? '...' : ''}"`);
+      });
+    }
+
+    if (parts.length > 0) {
+      const current = currentData.notes || '';
+      const newNotes = current ? `${current}\n\n---\n${parts.join('\n')}` : parts.join('\n');
+      onApplyUpdates({ notes: newNotes });
+      toast.success('Detalhes e comentários adicionados às notas!');
+      setCommentsOpen(false);
+    }
+  };
+
   const toggleField = (field: string) => {
     setSelectedFields(prev => {
       const next = new Set(prev);
@@ -201,7 +281,6 @@ export function LeadNewsLinksManager({
     for (const f of extractedFields) {
       if (!selectedFields.has(f.field)) continue;
       if (f.field === 'notes') {
-        // Append to existing notes
         const current = currentData.notes || '';
         updates.notes = current ? `${current}\n\n---\n${f.newValue}` : f.newValue;
       } else {
@@ -251,18 +330,21 @@ export function LeadNewsLinksManager({
                     <Sparkles className="h-3.5 w-3.5" />
                   )}
                 </Button>
-                {onFetchComments && (
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7"
-                    title="Buscar comentários"
-                    onClick={() => onFetchComments(link)}
-                  >
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  title="Buscar comentários e detalhes"
+                  onClick={() => handleFetchComments(link)}
+                  disabled={isFetchingComments}
+                >
+                  {isFetchingComments && fetchingCommentsUrl === link ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
                     <MessageSquare className="h-3.5 w-3.5" />
-                  </Button>
-                )}
+                  )}
+                </Button>
                 <Button
                   type="button"
                   size="icon"
@@ -346,7 +428,6 @@ export function LeadNewsLinksManager({
                         </div>
 
                         <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-start">
-                          {/* Current value */}
                           <div className="min-w-0">
                             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Atual</span>
                             <p className={`text-xs mt-0.5 break-words ${
@@ -362,7 +443,6 @@ export function LeadNewsLinksManager({
 
                           <ArrowRight className="h-4 w-4 text-muted-foreground mt-4 shrink-0" />
 
-                          {/* New value */}
                           <div className="min-w-0">
                             <span className="text-[10px] text-primary uppercase tracking-wider font-medium">Novo</span>
                             <p className="text-xs mt-0.5 font-medium break-words">
@@ -382,33 +462,178 @@ export function LeadNewsLinksManager({
 
           <DialogFooter className="gap-2">
             <div className="flex items-center gap-2 mr-auto">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedFields(new Set(extractedFields.map(f => f.field)))}
-              >
+              <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedFields(new Set(extractedFields.map(f => f.field)))}>
                 Selecionar Tudo
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedFields(new Set())}
-              >
+              <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedFields(new Set())}>
                 Limpar
               </Button>
             </div>
-            <Button variant="outline" onClick={() => setReviewOpen(false)}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleApplySelected}
-              disabled={selectedFields.size === 0}
-            >
+            <Button variant="outline" onClick={() => setReviewOpen(false)}>Cancelar</Button>
+            <Button onClick={handleApplySelected} disabled={selectedFields.size === 0}>
               <Check className="h-4 w-4 mr-1" />
               Aplicar {selectedFields.size} campo(s)
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Comments & Details Dialog */}
+      <Dialog open={commentsOpen} onOpenChange={setCommentsOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-primary" />
+              Comentários & Detalhes
+            </DialogTitle>
+            {commentsPageTitle && (
+              <p className="text-sm text-muted-foreground truncate">{commentsPageTitle}</p>
+            )}
+          </DialogHeader>
+
+          <ScrollArea className="flex-1 pr-4">
+            <div className="space-y-4">
+              {/* News Details */}
+              {newsDetails && (
+                <div className="space-y-3">
+                  {newsDetails.summary && (
+                    <Card className="p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <FileText className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">Resumo</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{newsDetails.summary}</p>
+                    </Card>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {newsDetails.additional_victims && newsDetails.additional_victims.length > 0 && (
+                      <Card className="p-3">
+                        <div className="flex items-center gap-1 mb-1">
+                          <Users className="h-3.5 w-3.5 text-destructive" />
+                          <span className="text-xs font-medium">Outras Vítimas</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {newsDetails.additional_victims.map((v, i) => (
+                            <Badge key={i} variant="secondary" className="text-[10px]">{v}</Badge>
+                          ))}
+                        </div>
+                      </Card>
+                    )}
+
+                    {newsDetails.witnesses && newsDetails.witnesses.length > 0 && (
+                      <Card className="p-3">
+                        <div className="flex items-center gap-1 mb-1">
+                          <User className="h-3.5 w-3.5 text-amber-500" />
+                          <span className="text-xs font-medium">Testemunhas</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {newsDetails.witnesses.map((w, i) => (
+                            <Badge key={i} variant="secondary" className="text-[10px]">{w}</Badge>
+                          ))}
+                        </div>
+                      </Card>
+                    )}
+
+                    {newsDetails.companies_mentioned && newsDetails.companies_mentioned.length > 0 && (
+                      <Card className="p-3">
+                        <div className="flex items-center gap-1 mb-1">
+                          <Building className="h-3.5 w-3.5 text-blue-500" />
+                          <span className="text-xs font-medium">Empresas</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {newsDetails.companies_mentioned.map((c, i) => (
+                            <Badge key={i} variant="secondary" className="text-[10px]">{c}</Badge>
+                          ))}
+                        </div>
+                      </Card>
+                    )}
+
+                    {newsDetails.authorities_mentioned && newsDetails.authorities_mentioned.length > 0 && (
+                      <Card className="p-3">
+                        <div className="flex items-center gap-1 mb-1">
+                          <Building className="h-3.5 w-3.5 text-green-500" />
+                          <span className="text-xs font-medium">Autoridades</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {newsDetails.authorities_mentioned.map((a, i) => (
+                            <Badge key={i} variant="secondary" className="text-[10px]">{a}</Badge>
+                          ))}
+                        </div>
+                      </Card>
+                    )}
+                  </div>
+
+                  {newsDetails.timeline && (
+                    <Card className="p-3">
+                      <div className="flex items-center gap-1 mb-1">
+                        <Clock className="h-3.5 w-3.5 text-primary" />
+                        <span className="text-xs font-medium">Cronologia</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground whitespace-pre-wrap">{newsDetails.timeline}</p>
+                    </Card>
+                  )}
+                </div>
+              )}
+
+              {/* Comments */}
+              {comments.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    {comments.length} Comentário(s)
+                  </h4>
+                  <div className="space-y-2">
+                    {comments.map((comment, idx) => (
+                      <Card key={idx} className={`p-3 ${comment.is_reply ? 'ml-4 border-l-2 border-primary/30' : ''}`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <User className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-xs font-medium">{comment.author}</span>
+                            {comment.is_reply && (
+                              <Badge variant="outline" className="text-[9px] py-0">Resposta</Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                            {comment.date && (
+                              <span className="flex items-center gap-0.5">
+                                <Clock className="h-2.5 w-2.5" />
+                                {comment.date}
+                              </span>
+                            )}
+                            {comment.likes != null && comment.likes > 0 && (
+                              <span className="flex items-center gap-0.5">
+                                <ThumbsUp className="h-2.5 w-2.5" />
+                                {comment.likes}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{comment.text}</p>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {comments.length === 0 && !newsDetails && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Nenhum comentário ou detalhe adicional encontrado
+                </p>
+              )}
+            </div>
+          </ScrollArea>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCommentsOpen(false)}>
+              Fechar
+            </Button>
+            {(comments.length > 0 || newsDetails) && (
+              <Button onClick={handleAddDetailsToNotes}>
+                <FileText className="h-4 w-4 mr-1" />
+                Adicionar às Notas
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
