@@ -980,5 +980,30 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+      {/* Confirmation dialog for saving contact */}
+      <AlertDialog open={!!pendingContact} onOpenChange={(open) => { if (!open) setPendingContact(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cadastrar contato?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deseja salvar <strong className="text-foreground">@{pendingContact?.username?.replace('@', '') || ''}</strong> como contato?
+              {pendingContact?.relationship && (
+                <span className="block mt-1">Relação: {pendingContact.relationship}</span>
+              )}
+              {pendingContact?.type && (
+                <span className="block mt-1">Tipo: {pendingContact.type}</span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmSaveContact}>
+              Salvar Contato
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
