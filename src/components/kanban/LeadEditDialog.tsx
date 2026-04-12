@@ -6,6 +6,7 @@ import { useProfilesList } from '@/hooks/useProfilesList';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { LeadLinkedContacts } from '@/components/leads/LeadLinkedContacts';
 import { LeadLinkedComments } from '@/components/leads/LeadLinkedComments';
+import { LeadNewsLinksManager } from '@/components/leads/LeadNewsLinksManager';
 import { EntityAIChat } from '@/components/activities/EntityAIChat';
 import {
   Dialog,
@@ -224,6 +225,7 @@ export function LeadEditDialog({
   // Legal fields
   const [liabilityType, setLiabilityType] = useState('');
   const [newsLink, setNewsLink] = useState('');
+  const [newsLinks, setNewsLinks] = useState<string[]>([]);
   const [legalViability, setLegalViability] = useState('');
   
   // Custom fields
@@ -378,6 +380,7 @@ export function LeadEditDialog({
       // Legal fields
       setLiabilityType(leadAny.liability_type || '');
       setNewsLink(currentLead.news_link || '');
+      setNewsLinks(leadAny.news_links || (currentLead.news_link ? [currentLead.news_link] : []));
       setLegalViability(leadAny.legal_viability || '');
       
       // Load custom field values
@@ -743,7 +746,8 @@ ${scrapeData.content || ''}
         company_size_justification: companySizeJustification || null,
         // Legal fields
         liability_type: liabilityType || null,
-        news_link: newsLink || null,
+        news_link: newsLinks.length > 0 ? newsLinks[0] : (newsLink || null),
+        news_links: newsLinks.length > 0 ? newsLinks : (newsLink ? [newsLink] : []),
         legal_viability: legalViability || null,
         board_id: selectedBoardId || null,
         ...(selectedBoardId && selectedBoardId !== (currentLead as any).board_id ? (() => {
@@ -1688,14 +1692,44 @@ ${scrapeData.content || ''}
                 </div>
 
                 <div className="col-span-2">
-                  <Label className="flex items-center gap-1">
-                    <ExternalLink className="h-3 w-3" />
-                    Link da Notícia
-                  </Label>
-                  <Input
-                    value={newsLink}
-                    onChange={(e) => setNewsLink(e.target.value)}
-                    placeholder="https://..."
+                  <LeadNewsLinksManager
+                    newsLinks={newsLinks}
+                    onChange={(links) => {
+                      setNewsLinks(links);
+                      setNewsLink(links[0] || '');
+                    }}
+                    currentData={{
+                      victim_name: victimName,
+                      victim_age: victimAge,
+                      accident_date: accidentDate,
+                      accident_address: accidentAddress,
+                      damage_description: damageDescription,
+                      case_type: caseType,
+                      contractor_company: contractorCompany,
+                      main_company: mainCompany,
+                      sector,
+                      liability_type: liabilityType,
+                      legal_viability: legalViability,
+                      visit_city: visitCity,
+                      visit_state: visitState,
+                      notes,
+                    }}
+                    onApplyUpdates={(updates) => {
+                      const u = updates as any;
+                      if (u.victim_name) setVictimName(u.victim_name);
+                      if (u.victim_age) setVictimAge(u.victim_age);
+                      if (u.accident_date) setAccidentDate(u.accident_date);
+                      if (u.accident_address) setAccidentAddress(u.accident_address);
+                      if (u.damage_description) setDamageDescription(u.damage_description);
+                      if (u.case_type) setCaseType(u.case_type);
+                      if (u.contractor_company) setContractorCompany(u.contractor_company);
+                      if (u.main_company) setMainCompany(u.main_company);
+                      if (u.sector) setSector(u.sector);
+                      if (u.liability_type) setLiabilityType(u.liability_type);
+                      if (u.visit_city) setVisitCity(u.visit_city);
+                      if (u.visit_state) setVisitState(u.visit_state);
+                      if (u.notes) setNotes(u.notes);
+                    }}
                   />
                 </div>
 
