@@ -249,7 +249,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           source: detectPlatform(url).toLowerCase(),
           visit_city: extracted.cidade || '',
           visit_state: extracted.estado?.toUpperCase() || '',
-          visit_region: stateToRegion[extracted.estado?.toUpperCase() || ''] || '',
+          visit_region: stateToRegionMap[extracted.estado?.toUpperCase() || ''] || '',
           case_type: mapCaseType(extracted.tipo_caso || ''),
           notes: noteParts,
           news_link: url.trim() || '',
