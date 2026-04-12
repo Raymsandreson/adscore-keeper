@@ -93,6 +93,8 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   const [isFetchingComments, setIsFetchingComments] = useState(false);
   const [commentsAnalysis, setCommentsAnalysis] = useState<any>(null);
   const [commentsCount, setCommentsCount] = useState<number>(0);
+  const [savedContacts, setSavedContacts] = useState<Set<string>>(new Set());
+  const [savingContact, setSavingContact] = useState<string | null>(null);
   const { fetchMetadata } = usePostMetadata();
 
   // Lead form data (used in review step)
