@@ -184,7 +184,19 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
         const nextSeq = (groupSettings.current_sequence || 0) > 0 
           ? groupSettings.current_sequence + 1 
           : (groupSettings.sequence_start || 1);
-        const generatedName = `${groupSettings.group_name_prefix} ${nextSeq} ${formData.victim_name || ''}`.trim();
+        
+        // Generate name using the standard pattern: Prefix SEQ | Cidade/Estado | Vítima x Empresa | (Data) - Lesão
+        const nameSuffix = generateLeadName({
+          city: formData.visit_city,
+          state: formData.visit_state,
+          victim_name: formData.victim_name,
+          main_company: formData.main_company,
+          contractor_company: formData.contractor_company,
+          accident_date: formData.accident_date,
+          damage_description: formData.damage_description,
+          case_type: formData.case_type,
+        });
+        const generatedName = `${groupSettings.group_name_prefix} ${nextSeq}${nameSuffix ? ` ${nameSuffix}` : ''}`.trim();
         setFormData(prev => ({ ...prev, lead_name: generatedName }));
       }
     } catch (err) {
