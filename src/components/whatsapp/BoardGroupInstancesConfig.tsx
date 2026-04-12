@@ -553,7 +553,6 @@ export function BoardGroupInstancesConfig() {
                   <span className="text-[11px] font-medium truncate">{getPreviewName(true)}</span>
                 </div>
               )}
-              <span className="text-[11px] font-medium truncate">{getPreviewName()}</span>
             </div>
           </div>
 
