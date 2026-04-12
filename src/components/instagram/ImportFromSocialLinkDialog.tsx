@@ -41,8 +41,8 @@ interface ExtractedData {
   observacoes?: string | null;
 }
 
-export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess }: ImportFromSocialLinkDialogProps) {
-  const [url, setUrl] = useState('');
+export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, initialUrl }: ImportFromSocialLinkDialogProps) {
+  const [url, setUrl] = useState(initialUrl || '');
   const [caption, setCaption] = useState('');
   const [targetType, setTargetType] = useState<TargetType>('lead');
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
@@ -50,6 +50,13 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess }: Im
   const [isExtracting, setIsExtracting] = useState(false);
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
   const { fetchMetadata } = usePostMetadata();
+
+  // Auto-fetch caption when initialUrl is provided
+  useState(() => {
+    if (initialUrl && initialUrl.trim()) {
+      setUrl(initialUrl);
+    }
+  });
 
   const detectPlatform = (u: string) => {
     if (u.includes('instagram.com')) return 'Instagram';
