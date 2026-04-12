@@ -20,6 +20,7 @@ interface ImportFromSocialLinkDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
+  initialUrl?: string;
 }
 
 type TargetType = 'lead' | 'contact' | 'activity';
@@ -40,8 +41,8 @@ interface ExtractedData {
   observacoes?: string | null;
 }
 
-export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess }: ImportFromSocialLinkDialogProps) {
-  const [url, setUrl] = useState('');
+export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, initialUrl }: ImportFromSocialLinkDialogProps) {
+  const [url, setUrl] = useState(initialUrl || '');
   const [caption, setCaption] = useState('');
   const [targetType, setTargetType] = useState<TargetType>('lead');
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
