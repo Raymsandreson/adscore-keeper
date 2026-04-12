@@ -51,13 +51,6 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
   const { fetchMetadata } = usePostMetadata();
 
-  // Auto-fetch caption when initialUrl is provided
-  useState(() => {
-    if (initialUrl && initialUrl.trim()) {
-      setUrl(initialUrl);
-    }
-  });
-
   const detectPlatform = (u: string) => {
     if (u.includes('instagram.com')) return 'Instagram';
     if (u.includes('facebook.com') || u.includes('fb.com')) return 'Facebook';
