@@ -168,7 +168,14 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           case_type: extracted.tipo_caso || '',
           notes: noteParts,
           news_link: url || '',
-          damage_description: extracted.interesse || '',
+          victim_name: extracted.victim_name || extracted.nome || '',
+          victim_age: extracted.victim_age || '',
+          accident_date: extracted.accident_date || '',
+          accident_address: extracted.accident_address || '',
+          damage_description: extracted.damage_description || extracted.interesse || '',
+          contractor_company: extracted.contractor_company || '',
+          main_company: extracted.main_company || '',
+          sector: extracted.sector || '',
         });
         setStep('review');
         toast.success('Dados extraídos pela IA!');

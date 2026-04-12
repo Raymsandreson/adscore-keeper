@@ -28,30 +28,39 @@ serve(async (req) => {
       );
     }
 
-    const systemPrompt = `Você é um assistente especializado em extrair informações de legendas de posts de redes sociais (Instagram, Facebook, TikTok).
+    const systemPrompt = `Você é um assistente especializado em extrair informações de legendas de posts de redes sociais (Instagram, Facebook, TikTok) para um CRM jurídico de acidentes de trabalho.
 Analise a legenda fornecida e extraia todas as informações relevantes para criar um registro no CRM.
 
 Retorne APENAS um JSON válido com os campos abaixo. Se não encontrar a informação, use null.
 
 {
-  "nome": "Nome completo da pessoa (se mencionado)",
+  "nome": "Nome completo da pessoa / lead (se mencionado)",
   "telefone": "Telefone (com DDD se disponível)",
   "email": "Email se mencionado",
   "cpf": "CPF se mencionado",
   "cidade": "Cidade mencionada",
-  "estado": "Estado/UF",
+  "estado": "Estado/UF (sigla de 2 letras)",
   "profissao": "Profissão ou área de atuação",
   "interesse": "O que a pessoa busca ou precisa (produto/serviço)",
   "contexto": "Resumo breve do contexto da postagem",
   "tags": ["palavras-chave relevantes"],
   "urgencia": "alta/media/baixa baseado no tom da mensagem",
-  "tipo_caso": "Se parecer um caso jurídico, qual tipo (trabalhista, previdenciário, etc)",
-  "observacoes": "Qualquer informação adicional relevante"
+  "tipo_caso": "Se parecer um caso jurídico, qual tipo (trabalhista, previdenciário, acidente_trabalho, acidente_transito, etc)",
+  "observacoes": "Qualquer informação adicional relevante",
+  "victim_name": "Nome da vítima do acidente (pode ser o mesmo do lead)",
+  "victim_age": "Idade da vítima (apenas número)",
+  "accident_date": "Data do acidente no formato DD/MM/AAAA",
+  "accident_address": "Local/endereço onde ocorreu o acidente",
+  "damage_description": "Descrição das lesões ou danos sofridos pela vítima",
+  "contractor_company": "Empresa terceirizada (se mencionada)",
+  "main_company": "Empresa principal / tomadora de serviços (se mencionada)",
+  "sector": "Setor/área de trabalho"
 }
 
 IMPORTANTE:
 - Extraia TUDO que for relevante, mesmo informações parciais
-- Se a legenda mencionar acidentes de trabalho, doenças ocupacionais, benefícios do INSS, etc., identifique como caso jurídico
+- Se a legenda mencionar acidentes de trabalho, doenças ocupacionais, benefícios do INSS, extraia dados da vítima, local, data e descrição do dano
+- victim_name geralmente é a mesma pessoa do nome do lead
 - Identifique menções a localidades, profissões e situações
 - Se houver hashtags relevantes, inclua nos tags`;
 
