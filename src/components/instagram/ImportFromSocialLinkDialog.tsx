@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Link2, Loader2, Sparkles, UserPlus, FileText, ClipboardList, CheckCircle2 } from 'lucide-react';
+import { Link2, Loader2, Sparkles, UserPlus, FileText, ClipboardList, CheckCircle2, MessageSquare, Users, AlertTriangle } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { usePostMetadata } from '@/hooks/usePostMetadata';
 import { supabase } from '@/integrations/supabase/client';
@@ -89,6 +90,9 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   const [isExtracting, setIsExtracting] = useState(false);
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFetchingComments, setIsFetchingComments] = useState(false);
+  const [commentsAnalysis, setCommentsAnalysis] = useState<any>(null);
+  const [commentsCount, setCommentsCount] = useState<number>(0);
   const { fetchMetadata } = usePostMetadata();
 
   // Lead form data (used in review step)
@@ -310,6 +314,62 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     }
   };
 
+  const handleFetchComments = async () => {
+    if (!url.trim()) {
+      toast.error('URL do post é necessária para buscar comentários');
+      return;
+    }
+    setIsFetchingComments(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke('fetch-post-comments', {
+        body: { postUrl: url.trim(), maxComments: 50, analyzeWithAI: true },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        setCommentsCount(data.total || 0);
+        setCommentsAnalysis(data.analysis);
+        
+        // Merge AI analysis into form if we have useful data
+        if (data.analysis) {
+          const a = data.analysis;
+          setFormData(prev => {
+            const updates: Partial<AccidentLeadFormData> = {};
+            if (a.victim_info?.name && !prev.victim_name) updates.victim_name = a.victim_info.name;
+            if (a.victim_info?.age && !prev.victim_age) updates.victim_age = a.victim_info.age;
+            if (a.accident_info?.date && !prev.accident_date) updates.accident_date = a.accident_info.date;
+            if (a.accident_info?.location && !prev.visit_city) updates.visit_city = a.accident_info.location;
+            if (a.accident_info?.state && !prev.visit_state) updates.visit_state = a.accident_info.state;
+            if (a.accident_info?.company && !prev.main_company) updates.main_company = a.accident_info.company;
+            if (a.accident_info?.description) {
+              updates.damage_description = prev.damage_description 
+                ? `${prev.damage_description}\n\n📝 Dos comentários: ${a.accident_info.description}`
+                : a.accident_info.description;
+            }
+            // Add contacts info to notes
+            const contactNotes = a.potential_contacts?.filter((c: any) => c.username)
+              .map((c: any) => `${c.username} (${c.type || 'contato'}): ${c.info || c.relationship || ''}`)
+              .join('\n');
+            if (contactNotes) {
+              updates.notes = prev.notes 
+                ? `${prev.notes}\n\n👥 Contatos dos comentários:\n${contactNotes}`
+                : `👥 Contatos dos comentários:\n${contactNotes}`;
+            }
+            return { ...prev, ...updates };
+          });
+          toast.success(`${data.total} comentários analisados! Dados complementados.`);
+        } else {
+          toast.info(`${data.total} comentários encontrados, mas sem informações relevantes.`);
+        }
+      } else {
+        toast.error(data?.error || 'Erro ao buscar comentários');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao buscar comentários');
+    } finally {
+      setIsFetchingComments(false);
+    }
+  };
+
   const handleClose = () => {
     setUrl('');
     setCaption('');
@@ -317,6 +377,8 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     setSelectedBoardId('');
     setStep('input');
     setTargetType('lead');
+    setCommentsAnalysis(null);
+    setCommentsCount(0);
     onOpenChange(false);
   };
 
@@ -435,6 +497,94 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
                   </SelectContent>
                 </Select>
               </div>
+            )}
+
+            {/* Fetch Comments Button */}
+            {url.trim() && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleFetchComments}
+                disabled={isFetchingComments}
+                className="w-full gap-2 border-dashed"
+              >
+                {isFetchingComments ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MessageSquare className="h-4 w-4" />
+                )}
+                {isFetchingComments ? 'Buscando comentários via Apify...' : '🔍 Buscar comentários do post (Apify)'}
+              </Button>
+            )}
+
+            {/* Comments Analysis Display */}
+            {commentsAnalysis && (
+              <Accordion type="single" collapsible defaultValue="comments">
+                <AccordionItem value="comments" className="border rounded-lg">
+                  <AccordionTrigger className="px-3 py-2 text-sm">
+                    <span className="flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4 text-primary" />
+                      Análise de {commentsCount} comentários
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-3 pb-3 space-y-3">
+                    {/* Victim info from comments */}
+                    {commentsAnalysis.victim_info && Object.values(commentsAnalysis.victim_info).some(Boolean) && (
+                      <div className="p-2 rounded bg-muted/50 space-y-1">
+                        <p className="text-xs font-medium flex items-center gap-1">
+                          <Users className="h-3 w-3" /> Info da vítima (comentários)
+                        </p>
+                        {commentsAnalysis.victim_info.name && <p className="text-xs">Nome: {commentsAnalysis.victim_info.name}</p>}
+                        {commentsAnalysis.victim_info.age && <p className="text-xs">Idade: {commentsAnalysis.victim_info.age}</p>}
+                        {commentsAnalysis.victim_info.profession && <p className="text-xs">Profissão: {commentsAnalysis.victim_info.profession}</p>}
+                        {commentsAnalysis.victim_info.condition && <p className="text-xs">Estado: {commentsAnalysis.victim_info.condition}</p>}
+                      </div>
+                    )}
+
+                    {/* Accident info from comments */}
+                    {commentsAnalysis.accident_info && Object.values(commentsAnalysis.accident_info).some(Boolean) && (
+                      <div className="p-2 rounded bg-muted/50 space-y-1">
+                        <p className="text-xs font-medium flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" /> Info do acidente (comentários)
+                        </p>
+                        {commentsAnalysis.accident_info.location && <p className="text-xs">Local: {commentsAnalysis.accident_info.location}</p>}
+                        {commentsAnalysis.accident_info.date && <p className="text-xs">Data: {commentsAnalysis.accident_info.date}</p>}
+                        {commentsAnalysis.accident_info.company && <p className="text-xs">Empresa: {commentsAnalysis.accident_info.company}</p>}
+                        {commentsAnalysis.accident_info.description && <p className="text-xs">Detalhes: {commentsAnalysis.accident_info.description}</p>}
+                      </div>
+                    )}
+
+                    {/* Potential contacts */}
+                    {commentsAnalysis.potential_contacts?.length > 0 && (
+                      <div className="p-2 rounded bg-muted/50 space-y-1">
+                        <p className="text-xs font-medium flex items-center gap-1">
+                          <Users className="h-3 w-3" /> Contatos identificados
+                        </p>
+                        {commentsAnalysis.potential_contacts.map((c: any, i: number) => (
+                          <div key={i} className="text-xs flex items-start gap-1">
+                            <Badge variant="outline" className="text-[10px] shrink-0">{c.type || 'contato'}</Badge>
+                            <span>{c.username}: {c.info || c.relationship || ''}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Key comments */}
+                    {commentsAnalysis.key_comments?.length > 0 && (
+                      <div className="p-2 rounded bg-muted/50 space-y-1">
+                        <p className="text-xs font-medium">💬 Comentários relevantes</p>
+                        {commentsAnalysis.key_comments.map((c: string, i: number) => (
+                          <p key={i} className="text-xs text-muted-foreground italic">"{c}"</p>
+                        ))}
+                      </div>
+                    )}
+
+                    {commentsAnalysis.additional_details && (
+                      <p className="text-xs text-muted-foreground">{commentsAnalysis.additional_details}</p>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             )}
 
             {/* AccidentLeadForm - same as CreateLeadFromSearchDialog */}
