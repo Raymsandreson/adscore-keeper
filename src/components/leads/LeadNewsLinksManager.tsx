@@ -23,6 +23,9 @@ import {
   Building,
   Users,
   FileText,
+  Phone,
+  Mail,
+  AtSign,
 } from 'lucide-react';
 
 interface ExtractedField {
