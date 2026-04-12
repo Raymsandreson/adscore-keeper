@@ -18,6 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { generateLeadName } from '@/utils/generateLeadName';
 
 interface ImportFromSocialLinkDialogProps {
   open: boolean;
