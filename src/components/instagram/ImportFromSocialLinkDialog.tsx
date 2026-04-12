@@ -454,6 +454,76 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           }
         }
 
+        // Create additional leads for extra victims
+        if (additionalVictims.length > 0 && selectedBoardId) {
+          let extraCreated = 0;
+          for (const victim of additionalVictims) {
+            try {
+              const { data: groupSettings2 } = await supabase
+                .from('board_group_settings')
+                .select('group_name_prefix, current_sequence')
+                .eq('board_id', selectedBoardId)
+                .maybeSingle();
+
+              const nextSeq2 = (groupSettings2?.current_sequence || 0) + 1;
+              const victimLeadName = groupSettings2?.group_name_prefix
+                ? `${groupSettings2.group_name_prefix} ${nextSeq2} ${generateLeadName({
+                    city: formData.visit_city, state: formData.visit_state,
+                    victim_name: victim.victim_name, main_company: formData.main_company,
+                    contractor_company: formData.contractor_company, accident_date: formData.accident_date,
+                    damage_description: victim.damage_description || formData.damage_description,
+                    case_type: formData.case_type,
+                  })}`.trim()
+                : victim.victim_name;
+
+              const { data: extraLead } = await supabase.from('leads').insert({
+                lead_name: victimLeadName,
+                source: formData.source || detectPlatform(url).toLowerCase(),
+                notes: formData.notes || null,
+                acolhedor: formData.acolhedor || null,
+                case_type: formData.case_type || null,
+                city: formData.visit_city || null,
+                state: formData.visit_state || null,
+                visit_city: formData.visit_city || null,
+                visit_state: formData.visit_state || null,
+                visit_region: formData.visit_region || null,
+                visit_address: formData.visit_address || null,
+                accident_date: formData.accident_date || null,
+                damage_description: victim.damage_description || formData.damage_description || null,
+                victim_name: victim.victim_name || null,
+                victim_age: victim.victim_age ? parseInt(victim.victim_age) : null,
+                accident_address: formData.accident_address || null,
+                contractor_company: formData.contractor_company || null,
+                main_company: formData.main_company || null,
+                sector: formData.sector || null,
+                news_link: formData.news_link || null,
+                board_id: selectedBoardId,
+                created_by: user?.id || null,
+                updated_by: user?.id || null,
+              }).select('id').single();
+
+              if (extraLead?.id && groupSettings2) {
+                await supabase.from('board_group_settings')
+                  .update({ current_sequence: nextSeq2 })
+                  .eq('board_id', selectedBoardId);
+                await supabase.from('group_creation_queue').insert({
+                  lead_id: extraLead.id,
+                  lead_name: victimLeadName,
+                  board_id: selectedBoardId,
+                  creation_origin: 'instagram_import',
+                  status: 'pending',
+                } as any);
+              }
+              extraCreated++;
+            } catch (err) {
+              console.error('Error creating extra victim lead:', err);
+            }
+          }
+          if (extraCreated > 0) {
+            toast.success(`+ ${extraCreated} lead(s) adicional(is) criado(s) para outras vítimas`);
+          }
+        }
+
         toast.success('Lead criado com sucesso!');
       } else if (targetType === 'contact') {
         const { error } = await supabase.from('contacts').insert({
