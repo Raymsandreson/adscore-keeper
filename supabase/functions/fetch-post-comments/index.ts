@@ -19,7 +19,7 @@ serve(async (req) => {
       );
     }
 
-    const { postUrl, maxComments = 50, analyzeWithAI = true } = await req.json();
+    const { postUrl, maxComments, analyzeWithAI = true } = await req.json();
 
     if (!postUrl) {
       return new Response(
@@ -34,13 +34,17 @@ serve(async (req) => {
     const actorId = 'apify~instagram-comment-scraper';
     const syncUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${APIFY_API_KEY}&timeout=120`;
 
+    const input: any = {
+      directUrls: [postUrl],
+    };
+    if (maxComments) {
+      input.resultsLimit = maxComments;
+    }
+
     const runResponse = await fetch(syncUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        directUrls: [postUrl],
-        resultsLimit: maxComments,
-      }),
+      body: JSON.stringify(input),
     });
 
     if (!runResponse.ok) {
