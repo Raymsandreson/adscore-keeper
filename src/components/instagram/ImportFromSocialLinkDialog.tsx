@@ -187,8 +187,17 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   };
 
   const handleSave = async () => {
+    // Validate required fields
     if (!formData.lead_name.trim()) {
       toast.error('O nome do lead é obrigatório');
+      return;
+    }
+    if (!selectedBoardId) {
+      toast.error('O funil de vendas é obrigatório');
+      return;
+    }
+    if (!formData.acolhedor?.trim()) {
+      toast.error('O acolhedor é obrigatório');
       return;
     }
     setIsSubmitting(true);
