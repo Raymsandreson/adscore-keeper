@@ -322,7 +322,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     setIsFetchingComments(true);
     try {
       const { data, error } = await cloudFunctions.invoke('fetch-post-comments', {
-        body: { postUrl: url.trim(), maxComments: 50, analyzeWithAI: true },
+        body: { postUrl: url.trim(), analyzeWithAI: true },
       });
       if (error) throw error;
       if (data?.success) {
