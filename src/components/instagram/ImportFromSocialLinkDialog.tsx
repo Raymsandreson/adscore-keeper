@@ -314,6 +314,62 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     }
   };
 
+  const handleFetchComments = async () => {
+    if (!url.trim()) {
+      toast.error('URL do post é necessária para buscar comentários');
+      return;
+    }
+    setIsFetchingComments(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke('fetch-post-comments', {
+        body: { postUrl: url.trim(), maxComments: 50, analyzeWithAI: true },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        setCommentsCount(data.total || 0);
+        setCommentsAnalysis(data.analysis);
+        
+        // Merge AI analysis into form if we have useful data
+        if (data.analysis) {
+          const a = data.analysis;
+          setFormData(prev => {
+            const updates: Partial<AccidentLeadFormData> = {};
+            if (a.victim_info?.name && !prev.victim_name) updates.victim_name = a.victim_info.name;
+            if (a.victim_info?.age && !prev.victim_age) updates.victim_age = a.victim_info.age;
+            if (a.accident_info?.date && !prev.accident_date) updates.accident_date = a.accident_info.date;
+            if (a.accident_info?.location && !prev.visit_city) updates.visit_city = a.accident_info.location;
+            if (a.accident_info?.state && !prev.visit_state) updates.visit_state = a.accident_info.state;
+            if (a.accident_info?.company && !prev.main_company) updates.main_company = a.accident_info.company;
+            if (a.accident_info?.description) {
+              updates.damage_description = prev.damage_description 
+                ? `${prev.damage_description}\n\n📝 Dos comentários: ${a.accident_info.description}`
+                : a.accident_info.description;
+            }
+            // Add contacts info to notes
+            const contactNotes = a.potential_contacts?.filter((c: any) => c.username)
+              .map((c: any) => `${c.username} (${c.type || 'contato'}): ${c.info || c.relationship || ''}`)
+              .join('\n');
+            if (contactNotes) {
+              updates.notes = prev.notes 
+                ? `${prev.notes}\n\n👥 Contatos dos comentários:\n${contactNotes}`
+                : `👥 Contatos dos comentários:\n${contactNotes}`;
+            }
+            return { ...prev, ...updates };
+          });
+          toast.success(`${data.total} comentários analisados! Dados complementados.`);
+        } else {
+          toast.info(`${data.total} comentários encontrados, mas sem informações relevantes.`);
+        }
+      } else {
+        toast.error(data?.error || 'Erro ao buscar comentários');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao buscar comentários');
+    } finally {
+      setIsFetchingComments(false);
+    }
+  };
+
   const handleClose = () => {
     setUrl('');
     setCaption('');
@@ -321,6 +377,8 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     setSelectedBoardId('');
     setStep('input');
     setTargetType('lead');
+    setCommentsAnalysis(null);
+    setCommentsCount(0);
     onOpenChange(false);
   };
 
