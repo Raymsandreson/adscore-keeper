@@ -5392,6 +5392,7 @@ export type Database = {
           main_company: string | null
           neighborhood: string | null
           news_link: string | null
+          news_links: string[] | null
           notes: string | null
           product_service_id: string | null
           qualified_at: string | null
@@ -5469,6 +5470,7 @@ export type Database = {
           main_company?: string | null
           neighborhood?: string | null
           news_link?: string | null
+          news_links?: string[] | null
           notes?: string | null
           product_service_id?: string | null
           qualified_at?: string | null
@@ -5546,6 +5548,7 @@ export type Database = {
           main_company?: string | null
           neighborhood?: string | null
           news_link?: string | null
+          news_links?: string[] | null
           notes?: string | null
           product_service_id?: string | null
           qualified_at?: string | null
