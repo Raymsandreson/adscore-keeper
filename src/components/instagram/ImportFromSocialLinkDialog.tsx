@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -614,7 +618,16 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     }
   };
 
-  const handleSaveCommentContact = async (contact: any) => {
+  const [pendingContact, setPendingContact] = useState<any>(null);
+
+  const handleSaveCommentContact = (contact: any) => {
+    setPendingContact(contact);
+  };
+
+  const confirmSaveContact = async () => {
+    if (!pendingContact) return;
+    const contact = pendingContact;
+    setPendingContact(null);
     const username = contact.username?.replace('@', '') || '';
     if (!username) return;
     setSavingContact(username);
@@ -660,6 +673,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   const platform = detectPlatform(url);
 
   return (
+    <>
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className={step === 'review' ? "max-w-2xl max-h-[90vh] overflow-y-auto" : "max-w-lg max-h-[85vh] overflow-y-auto"}>
         <DialogHeader>
@@ -971,5 +985,30 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+      {/* Confirmation dialog for saving contact */}
+      <AlertDialog open={!!pendingContact} onOpenChange={(open) => { if (!open) setPendingContact(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cadastrar contato?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deseja salvar <strong className="text-foreground">@{pendingContact?.username?.replace('@', '') || ''}</strong> como contato?
+              {pendingContact?.relationship && (
+                <span className="block mt-1">Relação: {pendingContact.relationship}</span>
+              )}
+              {pendingContact?.type && (
+                <span className="block mt-1">Tipo: {pendingContact.type}</span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmSaveContact}>
+              Salvar Contato
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
