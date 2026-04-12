@@ -18,6 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { generateLeadName } from '@/utils/generateLeadName';
 
 interface ImportFromSocialLinkDialogProps {
   open: boolean;
@@ -51,6 +52,11 @@ interface ExtractedData {
   contractor_company?: string | null;
   main_company?: string | null;
   sector?: string | null;
+  additional_victims?: Array<{
+    victim_name?: string;
+    victim_age?: string;
+    damage_description?: string;
+  }> | null;
 }
 
 // Convert date from DD/MM/YYYY to YYYY-MM-DD (ISO)
@@ -158,6 +164,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   const [savedContacts, setSavedContacts] = useState<Set<string>>(new Set());
   const [savingContact, setSavingContact] = useState<string | null>(null);
   const { fetchMetadata } = usePostMetadata();
+  const [additionalVictims, setAdditionalVictims] = useState<Array<{ victim_name: string; victim_age?: string; damage_description?: string }>>([]);
 
   // Lead form data (used in review step)
   const [formData, setFormData] = useState<AccidentLeadFormData>({ ...initialFormData });
@@ -183,7 +190,19 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
         const nextSeq = (groupSettings.current_sequence || 0) > 0 
           ? groupSettings.current_sequence + 1 
           : (groupSettings.sequence_start || 1);
-        const generatedName = `${groupSettings.group_name_prefix} ${nextSeq} ${formData.victim_name || ''}`.trim();
+        
+        // Generate name using the standard pattern: Prefix SEQ | Cidade/Estado | Vítima x Empresa | (Data) - Lesão
+        const nameSuffix = generateLeadName({
+          city: formData.visit_city,
+          state: formData.visit_state,
+          victim_name: formData.victim_name,
+          main_company: formData.main_company,
+          contractor_company: formData.contractor_company,
+          accident_date: formData.accident_date,
+          damage_description: formData.damage_description,
+          case_type: formData.case_type,
+        });
+        const generatedName = `${groupSettings.group_name_prefix} ${nextSeq}${nameSuffix ? ` ${nameSuffix}` : ''}`.trim();
         setFormData(prev => ({ ...prev, lead_name: generatedName }));
       }
     } catch (err) {
@@ -287,6 +306,14 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           main_company: extracted.main_company || '',
           sector: extracted.sector || '',
         });
+        // Store additional victims if detected
+        if (extracted.additional_victims?.length) {
+          setAdditionalVictims(extracted.additional_victims.filter(v => v.victim_name).map(v => ({
+            victim_name: v.victim_name || '',
+            victim_age: v.victim_age,
+            damage_description: v.damage_description,
+          })));
+        }
         // Check for duplicate based on victim_name + accident_date + city + state
         const victimName = extracted.victim_name || extracted.nome || '';
         const accidentDate = convertDateToISO(extracted.accident_date || '');
@@ -340,7 +367,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
 
     try {
       if (targetType === 'lead') {
-        const { error } = await supabase.from('leads').insert({
+        const { data: newLead, error } = await supabase.from('leads').insert({
           lead_name: formData.lead_name,
           lead_phone: formData.lead_phone || null,
           lead_email: formData.lead_email || null,
@@ -351,6 +378,8 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           group_link: formData.group_link || null,
           city: formData.visit_city || null,
           state: formData.visit_state || null,
+          visit_city: formData.visit_city || null,
+          visit_state: formData.visit_state || null,
           visit_region: formData.visit_region || null,
           visit_address: formData.visit_address || null,
           accident_date: formData.accident_date || null,
@@ -368,8 +397,133 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           board_id: selectedBoardId || null,
           created_by: user?.id || null,
           updated_by: user?.id || null,
-        });
+        }).select('id').single();
         if (error) throw error;
+
+        const createdLeadId = newLead?.id;
+
+        // Enqueue WhatsApp group creation
+        if (createdLeadId && selectedBoardId) {
+          try {
+            const { data: groupSettings } = await supabase
+              .from('board_group_settings')
+              .select('group_name_prefix, current_sequence')
+              .eq('board_id', selectedBoardId)
+              .maybeSingle();
+
+            if (groupSettings) {
+              // Update sequence counter
+              await supabase
+                .from('board_group_settings')
+                .update({ current_sequence: (groupSettings.current_sequence || 0) + 1 })
+                .eq('board_id', selectedBoardId);
+
+              // Enqueue group creation
+              await supabase.from('group_creation_queue').insert({
+                lead_id: createdLeadId,
+                lead_name: formData.lead_name,
+                board_id: selectedBoardId,
+                phone: formData.lead_phone || null,
+                creation_origin: 'instagram_import',
+                status: 'pending',
+              } as any);
+            }
+          } catch (groupErr) {
+            console.error('Error enqueuing group creation:', groupErr);
+            // Non-blocking: lead was already created
+          }
+        }
+
+        // Link saved bridge contacts to the lead
+        if (createdLeadId && savedContacts.size > 0) {
+          try {
+            for (const username of savedContacts) {
+              const { data: contact } = await supabase
+                .from('contacts')
+                .select('id')
+                .eq('instagram_username', username)
+                .maybeSingle();
+              if (contact) {
+                await (supabase as any)
+                  .from('contact_leads')
+                  .insert({ contact_id: contact.id, lead_id: createdLeadId });
+              }
+            }
+          } catch (linkErr) {
+            console.error('Error linking contacts:', linkErr);
+          }
+        }
+
+        // Create additional leads for extra victims
+        if (additionalVictims.length > 0 && selectedBoardId) {
+          let extraCreated = 0;
+          for (const victim of additionalVictims) {
+            try {
+              const { data: groupSettings2 } = await supabase
+                .from('board_group_settings')
+                .select('group_name_prefix, current_sequence')
+                .eq('board_id', selectedBoardId)
+                .maybeSingle();
+
+              const nextSeq2 = (groupSettings2?.current_sequence || 0) + 1;
+              const victimLeadName = groupSettings2?.group_name_prefix
+                ? `${groupSettings2.group_name_prefix} ${nextSeq2} ${generateLeadName({
+                    city: formData.visit_city, state: formData.visit_state,
+                    victim_name: victim.victim_name, main_company: formData.main_company,
+                    contractor_company: formData.contractor_company, accident_date: formData.accident_date,
+                    damage_description: victim.damage_description || formData.damage_description,
+                    case_type: formData.case_type,
+                  })}`.trim()
+                : victim.victim_name;
+
+              const { data: extraLead } = await supabase.from('leads').insert({
+                lead_name: victimLeadName,
+                source: formData.source || detectPlatform(url).toLowerCase(),
+                notes: formData.notes || null,
+                acolhedor: formData.acolhedor || null,
+                case_type: formData.case_type || null,
+                city: formData.visit_city || null,
+                state: formData.visit_state || null,
+                visit_city: formData.visit_city || null,
+                visit_state: formData.visit_state || null,
+                visit_region: formData.visit_region || null,
+                visit_address: formData.visit_address || null,
+                accident_date: formData.accident_date || null,
+                damage_description: victim.damage_description || formData.damage_description || null,
+                victim_name: victim.victim_name || null,
+                victim_age: victim.victim_age ? parseInt(victim.victim_age) : null,
+                accident_address: formData.accident_address || null,
+                contractor_company: formData.contractor_company || null,
+                main_company: formData.main_company || null,
+                sector: formData.sector || null,
+                news_link: formData.news_link || null,
+                board_id: selectedBoardId,
+                created_by: user?.id || null,
+                updated_by: user?.id || null,
+              }).select('id').single();
+
+              if (extraLead?.id && groupSettings2) {
+                await supabase.from('board_group_settings')
+                  .update({ current_sequence: nextSeq2 })
+                  .eq('board_id', selectedBoardId);
+                await supabase.from('group_creation_queue').insert({
+                  lead_id: extraLead.id,
+                  lead_name: victimLeadName,
+                  board_id: selectedBoardId,
+                  creation_origin: 'instagram_import',
+                  status: 'pending',
+                } as any);
+              }
+              extraCreated++;
+            } catch (err) {
+              console.error('Error creating extra victim lead:', err);
+            }
+          }
+          if (extraCreated > 0) {
+            toast.success(`+ ${extraCreated} lead(s) adicional(is) criado(s) para outras vítimas`);
+          }
+        }
+
         toast.success('Lead criado com sucesso!');
       } else if (targetType === 'contact') {
         const { error } = await supabase.from('contacts').insert({
@@ -499,6 +653,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     setCommentsAnalysis(null);
     setCommentsCount(0);
     setSavedContacts(new Set());
+    setAdditionalVictims([]);
     onOpenChange(false);
   };
 
@@ -741,6 +896,36 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
+            )}
+
+            {/* Additional Victims Alert */}
+            {additionalVictims.length > 0 && (
+              <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 space-y-2">
+                <p className="text-sm font-medium flex items-center gap-2">
+                  <Users className="h-4 w-4 text-amber-600" />
+                  {additionalVictims.length + 1} vítimas detectadas — será criado 1 lead para cada
+                </p>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    <strong>Principal:</strong> {formData.victim_name || '(sem nome)'}
+                  </p>
+                  {additionalVictims.map((v, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <Badge variant="outline" className="text-[10px] shrink-0">Vítima {i + 2}</Badge>
+                      <span>{v.victim_name}</span>
+                      {v.damage_description && <span className="text-muted-foreground truncate">— {v.damage_description}</span>}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-1 text-[10px] text-destructive ml-auto"
+                        onClick={() => setAdditionalVictims(prev => prev.filter((_, idx) => idx !== i))}
+                      >
+                        ✕
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
 
             {/* AccidentLeadForm - same as CreateLeadFromSearchDialog */}

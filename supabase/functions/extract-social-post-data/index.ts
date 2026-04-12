@@ -48,20 +48,28 @@ Retorne APENAS um JSON válido com os campos abaixo. Se não encontrar a informa
   "urgencia": "alta/media/baixa baseado no tom da mensagem",
   "tipo_caso": "OBRIGATÓRIO: deve ser exatamente um destes valores: Queda de Altura, Soterramento, Choque Elétrico, Acidente com Máquinas, Intoxicação, Explosão, Incêndio, Acidente de Trânsito, Esmagamento, Corte/Amputação, Afogamento, Outro",
   "observacoes": "Qualquer informação adicional relevante",
-  "victim_name": "Nome da vítima do acidente (pode ser o mesmo do lead)",
+  "victim_name": "Nome da vítima PRINCIPAL do acidente",
   "victim_age": "Idade da vítima (apenas número)",
   "accident_date": "Data do acidente no formato DD/MM/AAAA",
   "accident_address": "Local/endereço onde ocorreu o acidente",
   "damage_description": "Descrição das lesões ou danos sofridos pela vítima",
   "contractor_company": "Empresa terceirizada (se mencionada)",
   "main_company": "Empresa principal / tomadora de serviços (se mencionada)",
-  "sector": "Setor/área de trabalho"
+  "sector": "Setor/área de trabalho",
+  "additional_victims": [
+    {
+      "victim_name": "Nome de outra vítima",
+      "victim_age": "Idade",
+      "damage_description": "Lesões específicas desta vítima"
+    }
+  ]
 }
 
 IMPORTANTE:
 - Extraia TUDO que for relevante, mesmo informações parciais
 - Se a legenda mencionar acidentes de trabalho, doenças ocupacionais, benefícios do INSS, extraia dados da vítima, local, data e descrição do dano
 - victim_name geralmente é a mesma pessoa do nome do lead
+- Se houver MAIS DE UMA vítima mencionada, coloque a principal em victim_name e as demais no array additional_victims
 - Identifique menções a localidades, profissões e situações
 - Se houver hashtags relevantes, inclua nos tags`;
 
