@@ -16,7 +16,6 @@ import { usePostMetadata } from '@/hooks/usePostMetadata';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
-import { useProfilesList } from '@/hooks/useProfilesList';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 interface ImportFromSocialLinkDialogProps {
@@ -91,13 +90,14 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { fetchMetadata } = usePostMetadata();
-  const teamProfiles = useProfilesList();
 
   // Lead form data (used in review step)
   const [formData, setFormData] = useState<AccidentLeadFormData>({ ...initialFormData });
   // Board selection
   const [boards, setBoards] = useState<{ id: string; name: string }[]>([]);
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
+  // Team profiles for acolhedor selector
+  const [teamMembers, setTeamMembers] = useState<{ id: string; full_name: string | null; email: string | null }[]>([]);
 
   // Update URL when initialUrl changes
   useEffect(() => {
@@ -106,12 +106,20 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     }
   }, [initialUrl]);
 
-  // Load boards when entering review step
+  // Load boards and team members when entering review step
   useEffect(() => {
-    if (step === 'review' && boards.length === 0) {
-      supabase.from('kanban_boards').select('id, name, board_type').order('display_order').then(({ data }) => {
+    if (step === 'review') {
+      if (boards.length === 0) {
+        supabase.from('kanban_boards').select('id, name, board_type').order('display_order').then(({ data }) => {
+          if (data) {
+            setBoards(data.filter(b => b.board_type === 'funnel' || !b.board_type).map(b => ({ id: b.id, name: b.name })));
+          }
+        });
+      }
+      // Always reload team members to ensure fresh data
+      supabase.from('profiles').select('id, user_id, full_name, email').order('full_name').then(({ data }) => {
         if (data) {
-          setBoards(data.filter(b => b.board_type === 'funnel' || !b.board_type).map(b => ({ id: b.id, name: b.name })));
+          setTeamMembers(data.map(p => ({ id: p.id, full_name: p.full_name, email: p.email })));
         }
       });
     }
@@ -416,7 +424,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
               formData={formData}
               onChange={handleFormChange}
               onOpenExtractor={() => {}}
-              teamMembers={teamProfiles}
+              teamMembers={teamMembers}
             />
           </div>
         )}
