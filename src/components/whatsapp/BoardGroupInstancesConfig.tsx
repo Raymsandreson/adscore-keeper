@@ -543,6 +543,7 @@ export function BoardGroupInstancesConfig() {
                   onChange={e => setSettings(prev => ({ ...prev, closed_sequence_start: parseInt(e.target.value) || 1 }))}
                   className="h-8 text-xs"
                 />
+              </div>
             </div>
 
             <div className="space-y-1.5">
