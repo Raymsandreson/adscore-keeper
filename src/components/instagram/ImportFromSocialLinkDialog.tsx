@@ -91,13 +91,14 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { fetchMetadata } = usePostMetadata();
-  const teamProfiles = useProfilesList();
 
   // Lead form data (used in review step)
   const [formData, setFormData] = useState<AccidentLeadFormData>({ ...initialFormData });
   // Board selection
   const [boards, setBoards] = useState<{ id: string; name: string }[]>([]);
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
+  // Team profiles for acolhedor selector
+  const [teamMembers, setTeamMembers] = useState<{ id: string; full_name: string | null; email: string | null }[]>([]);
 
   // Update URL when initialUrl changes
   useEffect(() => {
