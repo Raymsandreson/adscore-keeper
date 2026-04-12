@@ -20,6 +20,7 @@ interface ImportFromSocialLinkDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
+  initialUrl?: string;
 }
 
 type TargetType = 'lead' | 'contact' | 'activity';
