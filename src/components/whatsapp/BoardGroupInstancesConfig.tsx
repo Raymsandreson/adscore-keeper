@@ -502,7 +502,7 @@ export function BoardGroupInstancesConfig() {
               <h4 className="font-medium text-xs">Nome do Grupo</h4>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <Label className="text-[11px] text-muted-foreground">Prefixo (antes de fechar)</Label>
                 <Input
@@ -513,6 +513,19 @@ export function BoardGroupInstancesConfig() {
                 />
               </div>
               <div className="space-y-1">
+                <Label className="text-[11px] text-muted-foreground">Seq. inicia em</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={settings.sequence_start}
+                  onChange={e => setSettings(prev => ({ ...prev, sequence_start: parseInt(e.target.value) || 1 }))}
+                  className="h-8 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
                 <Label className="text-[11px] text-muted-foreground">Prefixo (após fechar)</Label>
                 <Input
                   value={settings.closed_group_name_prefix}
@@ -522,12 +535,15 @@ export function BoardGroupInstancesConfig() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Sequência inicia em</Label>
+                <Label className="text-[11px] text-muted-foreground">Seq. fechados inicia em</Label>
                 <Input
                   type="number"
                   min={1}
-                  value={settings.sequence_start}
-                  onChange={e => setSettings(prev => ({ ...prev, sequence_start: parseInt(e.target.value) || 1 }))}
+                  value={settings.closed_sequence_start}
+                  onChange={e => setSettings(prev => ({ ...prev, closed_sequence_start: parseInt(e.target.value) || 1 }))}
+                  className="h-8 text-xs"
+                />
+              </div>
                   className="h-8 text-xs"
                 />
               </div>
