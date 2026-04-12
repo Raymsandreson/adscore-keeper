@@ -160,8 +160,15 @@ Deno.serve(async (req) => {
       console.error('Rename error:', e)
     }
 
-    // Also update the group_links table if it exists
+    // Update sequence and group name in DB
     if (renamed) {
+      // Increment closed sequence
+      await supabase
+        .from('board_group_settings')
+        .update({ closed_current_sequence: closedSeq })
+        .eq('board_id', lead.board_id)
+
+      // Update group_links table
       await supabase
         .from('whatsapp_group_links')
         .update({ group_name: newName })
