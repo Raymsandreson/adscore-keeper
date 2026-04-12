@@ -622,6 +622,39 @@ export function LeadNewsLinksManager({
                           </div>
                         </div>
                         <p className="text-xs text-muted-foreground">{comment.text}</p>
+                        {comment.contact_info && (comment.contact_info.phone || comment.contact_info.email || comment.contact_info.instagram || comment.contact_info.full_name || comment.contact_info.other_social) && (
+                          <div className="mt-1.5 pt-1.5 border-t border-dashed flex flex-wrap gap-2">
+                            {comment.contact_info.full_name && (
+                              <span className="inline-flex items-center gap-1 text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                                <User className="h-2.5 w-2.5" />
+                                {comment.contact_info.full_name}
+                              </span>
+                            )}
+                            {comment.contact_info.phone && (
+                              <span className="inline-flex items-center gap-1 text-[10px] bg-green-500/10 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded">
+                                <Phone className="h-2.5 w-2.5" />
+                                {comment.contact_info.phone}
+                              </span>
+                            )}
+                            {comment.contact_info.email && (
+                              <span className="inline-flex items-center gap-1 text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded">
+                                <Mail className="h-2.5 w-2.5" />
+                                {comment.contact_info.email}
+                              </span>
+                            )}
+                            {comment.contact_info.instagram && (
+                              <span className="inline-flex items-center gap-1 text-[10px] bg-pink-500/10 text-pink-700 dark:text-pink-400 px-1.5 py-0.5 rounded">
+                                <AtSign className="h-2.5 w-2.5" />
+                                {comment.contact_info.instagram}
+                              </span>
+                            )}
+                            {comment.contact_info.other_social && (
+                              <span className="inline-flex items-center gap-1 text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                                {comment.contact_info.other_social}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </Card>
                     ))}
                   </div>
