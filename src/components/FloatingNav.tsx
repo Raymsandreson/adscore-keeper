@@ -590,10 +590,16 @@ export function FloatingNav() {
       <UpdateNotesDialog
         open={updateNotesOpen}
         onOpenChange={setUpdateNotesOpen}
-        onApplyUpdate={() => {
+        onApplyUpdate={async () => {
           setUpdating(true);
-          applyUpdate();
-          setTimeout(() => window.location.reload(), 3000);
+          await acknowledgeAll();
+          if (hasPwaUpdate) {
+            applyUpdate();
+            setTimeout(() => window.location.reload(), 3000);
+          } else {
+            setUpdating(false);
+            setUpdateNotesOpen(false);
+          }
         }}
         updating={updating}
         isFeatureAcked={isFeatureAcked}

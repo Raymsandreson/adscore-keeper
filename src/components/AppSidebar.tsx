@@ -56,7 +56,7 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const unreadMentions = useUnreadMentionsCount();
-  const { unseenCount, isFeatureAcked, acknowledgeFeature } = useChangelogAcknowledgments();
+  const { unseenCount, isFeatureAcked, acknowledgeFeature, acknowledgeAll } = useChangelogAcknowledgments();
 
   const [mentionsOpen, setMentionsOpen] = useState(false);
   const [hasPwaUpdate, setHasPwaUpdate] = useState(false);
@@ -378,10 +378,16 @@ export function AppSidebar() {
       <UpdateNotesDialog
         open={updateNotesOpen}
         onOpenChange={setUpdateNotesOpen}
-        onApplyUpdate={() => {
+        onApplyUpdate={async () => {
           setUpdating(true);
-          applyUpdate();
-          setTimeout(() => window.location.reload(), 3000);
+          await acknowledgeAll();
+          if (hasPwaUpdate) {
+            applyUpdate();
+            setTimeout(() => window.location.reload(), 3000);
+          } else {
+            setUpdating(false);
+            setUpdateNotesOpen(false);
+          }
         }}
         updating={updating}
         isFeatureAcked={isFeatureAcked}
