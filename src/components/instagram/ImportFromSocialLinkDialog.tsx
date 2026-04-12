@@ -391,7 +391,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
             const updates: Partial<AccidentLeadFormData> = {};
             if (a.victim_info?.name && !prev.victim_name) updates.victim_name = a.victim_info.name;
             if (a.victim_info?.age && !prev.victim_age) updates.victim_age = a.victim_info.age;
-            if (a.accident_info?.date && !prev.accident_date) updates.accident_date = a.accident_info.date;
+            if (a.accident_info?.date && !prev.accident_date) updates.accident_date = convertDateToISO(a.accident_info.date);
             if (a.accident_info?.location && !prev.visit_city) updates.visit_city = a.accident_info.location;
             if (a.accident_info?.state && !prev.visit_state) updates.visit_state = a.accident_info.state;
             if (a.accident_info?.company && !prev.main_company) updates.main_company = a.accident_info.company;
