@@ -614,7 +614,16 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     }
   };
 
-  const handleSaveCommentContact = async (contact: any) => {
+  const [pendingContact, setPendingContact] = useState<any>(null);
+
+  const handleSaveCommentContact = (contact: any) => {
+    setPendingContact(contact);
+  };
+
+  const confirmSaveContact = async () => {
+    if (!pendingContact) return;
+    const contact = pendingContact;
+    setPendingContact(null);
     const username = contact.username?.replace('@', '') || '';
     if (!username) return;
     setSavingContact(username);
