@@ -210,18 +210,19 @@ export const useAuth = () => {
   };
 
   const signOut = async () => {
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error && !error.message?.includes('session_not_found') && !error.message?.includes('Auth session missing')) {
-        return { error };
-      }
-    } catch {
-      // Network errors during signout are fine - clear local state anyway
-    }
-    await clearLocalAuthState();
+    // Clear local state FIRST to prevent race conditions with onAuthStateChange
     setUser(null);
     setSession(null);
     setProfile(null);
+    setIsOfflineMode(false);
+    setConnectionError(null);
+    await clearLocalAuthState();
+
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Network errors during signout are fine - local state already cleared
+    }
     return { error: null };
   };
 
