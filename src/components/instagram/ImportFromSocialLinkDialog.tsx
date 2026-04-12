@@ -353,7 +353,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
 
     try {
       if (targetType === 'lead') {
-        const { error } = await supabase.from('leads').insert({
+        const { data: newLead, error } = await supabase.from('leads').insert({
           lead_name: formData.lead_name,
           lead_phone: formData.lead_phone || null,
           lead_email: formData.lead_email || null,
@@ -364,6 +364,8 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           group_link: formData.group_link || null,
           city: formData.visit_city || null,
           state: formData.visit_state || null,
+          visit_city: formData.visit_city || null,
+          visit_state: formData.visit_state || null,
           visit_region: formData.visit_region || null,
           visit_address: formData.visit_address || null,
           accident_date: formData.accident_date || null,
@@ -381,8 +383,63 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           board_id: selectedBoardId || null,
           created_by: user?.id || null,
           updated_by: user?.id || null,
-        });
+        }).select('id').single();
         if (error) throw error;
+
+        const createdLeadId = newLead?.id;
+
+        // Enqueue WhatsApp group creation
+        if (createdLeadId && selectedBoardId) {
+          try {
+            const { data: groupSettings } = await supabase
+              .from('board_group_settings')
+              .select('group_name_prefix, current_sequence')
+              .eq('board_id', selectedBoardId)
+              .maybeSingle();
+
+            if (groupSettings) {
+              // Update sequence counter
+              await supabase
+                .from('board_group_settings')
+                .update({ current_sequence: (groupSettings.current_sequence || 0) + 1 })
+                .eq('board_id', selectedBoardId);
+
+              // Enqueue group creation
+              await supabase.from('group_creation_queue').insert({
+                lead_id: createdLeadId,
+                lead_name: formData.lead_name,
+                board_id: selectedBoardId,
+                phone: formData.lead_phone || null,
+                creation_origin: 'instagram_import',
+                status: 'pending',
+              } as any);
+            }
+          } catch (groupErr) {
+            console.error('Error enqueuing group creation:', groupErr);
+            // Non-blocking: lead was already created
+          }
+        }
+
+        // Link saved bridge contacts to the lead
+        if (createdLeadId && savedContacts.size > 0) {
+          try {
+            for (const username of savedContacts) {
+              const { data: contact } = await supabase
+                .from('contacts')
+                .select('id')
+                .eq('instagram_username', username)
+                .maybeSingle();
+              if (contact) {
+                await (supabase as any)
+                  .from('contact_leads')
+                  .insert({ contact_id: contact.id, lead_id: createdLeadId });
+              }
+            }
+          } catch (linkErr) {
+            console.error('Error linking contacts:', linkErr);
+          }
+        }
+
         toast.success('Lead criado com sucesso!');
       } else if (targetType === 'contact') {
         const { error } = await supabase.from('contacts').insert({
