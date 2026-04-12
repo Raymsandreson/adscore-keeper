@@ -52,6 +52,11 @@ interface ExtractedData {
   contractor_company?: string | null;
   main_company?: string | null;
   sector?: string | null;
+  additional_victims?: Array<{
+    victim_name?: string;
+    victim_age?: string;
+    damage_description?: string;
+  }> | null;
 }
 
 // Convert date from DD/MM/YYYY to YYYY-MM-DD (ISO)
