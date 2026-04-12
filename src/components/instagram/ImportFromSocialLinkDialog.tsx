@@ -35,6 +35,7 @@ interface ExtractedData {
   cpf?: string | null;
   cidade?: string | null;
   estado?: string | null;
+  regiao?: string | null;
   profissao?: string | null;
   interesse?: string | null;
   contexto?: string | null;
