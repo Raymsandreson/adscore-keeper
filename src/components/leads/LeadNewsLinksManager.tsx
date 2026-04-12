@@ -26,6 +26,10 @@ import {
   Phone,
   Mail,
   AtSign,
+  Copy,
+  UserPlus,
+  Reply,
+  Send,
 } from 'lucide-react';
 
 interface ExtractedField {
@@ -50,6 +54,8 @@ interface NewsComment {
   likes?: number;
   is_reply?: boolean;
   contact_info?: CommentContactInfo;
+  suggested_reply?: string;
+  suggested_dm?: string;
 }
 
 interface NewsDetails {
@@ -79,8 +85,10 @@ interface LeadNewsLinksManagerProps {
     visit_city?: string;
     visit_state?: string;
     notes?: string;
+    lead_name?: string;
   };
   onApplyUpdates: (updates: Record<string, string>) => void;
+  onCreateContact?: (contactData: { full_name: string; phone?: string; email?: string; instagram?: string; notes?: string }) => void;
 }
 
 export function LeadNewsLinksManager({
@@ -88,6 +96,7 @@ export function LeadNewsLinksManager({
   onChange,
   currentData,
   onApplyUpdates,
+  onCreateContact,
 }: LeadNewsLinksManagerProps) {
   const [newLink, setNewLink] = useState('');
   const [isEnriching, setIsEnriching] = useState(false);
@@ -226,7 +235,17 @@ export function LeadNewsLinksManager({
 
     try {
       const { data, error } = await cloudFunctions.invoke('extract-news-comments', {
-        body: { url },
+        body: {
+          url,
+          leadContext: {
+            victim_name: currentData.victim_name,
+            case_type: currentData.case_type,
+            accident_date: currentData.accident_date,
+            main_company: currentData.main_company,
+            contractor_company: currentData.contractor_company,
+            damage_description: currentData.damage_description,
+          },
+        },
       });
 
       if (error || !data?.success) {
@@ -250,6 +269,34 @@ export function LeadNewsLinksManager({
       setIsFetchingComments(false);
       setFetchingCommentsUrl('');
     }
+  };
+
+  const handleCopyText = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copiada!`);
+  };
+
+  const handleCreateContact = (comment: NewsComment) => {
+    if (!onCreateContact) {
+      toast.error('Função de criar contato não disponível');
+      return;
+    }
+    const ci = comment.contact_info;
+    const name = ci?.full_name || comment.author;
+    const notes = `Comentarista encontrado em notícia: "${commentsPageTitle}"\nComentário: "${comment.text.substring(0, 200)}"`;
+    onCreateContact({
+      full_name: name,
+      phone: ci?.phone || undefined,
+      email: ci?.email || undefined,
+      instagram: ci?.instagram || undefined,
+      notes,
+    });
+    toast.success(`Contato "${name}" sugerido para criação!`);
+  };
+
+  const hasContactInfo = (comment: NewsComment) => {
+    const ci = comment.contact_info;
+    return ci && (ci.phone || ci.email || ci.instagram || ci.full_name || ci.other_social);
   };
 
   const handleAddDetailsToNotes = () => {
@@ -393,7 +440,7 @@ export function LeadNewsLinksManager({
         </Button>
       </div>
 
-      {/* Review Dialog - Side by Side Comparison */}
+      {/* Review Dialog */}
       <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
         <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
           <DialogHeader>
@@ -595,9 +642,10 @@ export function LeadNewsLinksManager({
                     <MessageSquare className="h-4 w-4" />
                     {comments.length} Comentário(s)
                   </h4>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {comments.map((comment, idx) => (
                       <Card key={idx} className={`p-3 ${comment.is_reply ? 'ml-4 border-l-2 border-primary/30' : ''}`}>
+                        {/* Comment header */}
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-2">
                             <User className="h-3 w-3 text-muted-foreground" />
@@ -621,37 +669,103 @@ export function LeadNewsLinksManager({
                             )}
                           </div>
                         </div>
+
+                        {/* Comment text */}
                         <p className="text-xs text-muted-foreground">{comment.text}</p>
-                        {comment.contact_info && (comment.contact_info.phone || comment.contact_info.email || comment.contact_info.instagram || comment.contact_info.full_name || comment.contact_info.other_social) && (
-                          <div className="mt-1.5 pt-1.5 border-t border-dashed flex flex-wrap gap-2">
-                            {comment.contact_info.full_name && (
+
+                        {/* Contact info badges */}
+                        {hasContactInfo(comment) && (
+                          <div className="mt-1.5 pt-1.5 border-t border-dashed flex flex-wrap gap-2 items-center">
+                            {comment.contact_info?.full_name && (
                               <span className="inline-flex items-center gap-1 text-[10px] bg-muted px-1.5 py-0.5 rounded">
                                 <User className="h-2.5 w-2.5" />
                                 {comment.contact_info.full_name}
                               </span>
                             )}
-                            {comment.contact_info.phone && (
+                            {comment.contact_info?.phone && (
                               <span className="inline-flex items-center gap-1 text-[10px] bg-green-500/10 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded">
                                 <Phone className="h-2.5 w-2.5" />
                                 {comment.contact_info.phone}
                               </span>
                             )}
-                            {comment.contact_info.email && (
+                            {comment.contact_info?.email && (
                               <span className="inline-flex items-center gap-1 text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded">
                                 <Mail className="h-2.5 w-2.5" />
                                 {comment.contact_info.email}
                               </span>
                             )}
-                            {comment.contact_info.instagram && (
+                            {comment.contact_info?.instagram && (
                               <span className="inline-flex items-center gap-1 text-[10px] bg-pink-500/10 text-pink-700 dark:text-pink-400 px-1.5 py-0.5 rounded">
                                 <AtSign className="h-2.5 w-2.5" />
                                 {comment.contact_info.instagram}
                               </span>
                             )}
-                            {comment.contact_info.other_social && (
+                            {comment.contact_info?.other_social && (
                               <span className="inline-flex items-center gap-1 text-[10px] bg-muted px-1.5 py-0.5 rounded">
                                 {comment.contact_info.other_social}
                               </span>
+                            )}
+                            {/* Create contact button */}
+                            {onCreateContact && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-5 text-[10px] px-1.5 gap-1"
+                                onClick={() => handleCreateContact(comment)}
+                              >
+                                <UserPlus className="h-2.5 w-2.5" />
+                                Criar Contato
+                              </Button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* AI Suggested messages */}
+                        {(comment.suggested_reply || comment.suggested_dm) && (
+                          <div className="mt-2 pt-2 border-t space-y-2">
+                            {comment.suggested_reply && (
+                              <div className="bg-amber-500/5 border border-amber-500/20 rounded-md p-2">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                                    <Reply className="h-2.5 w-2.5" />
+                                    Resposta pública sugerida
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-5 text-[10px] px-1.5 gap-1 text-amber-700 dark:text-amber-400"
+                                    onClick={() => handleCopyText(comment.suggested_reply!, 'Resposta pública')}
+                                  >
+                                    <Copy className="h-2.5 w-2.5" />
+                                    Copiar
+                                  </Button>
+                                </div>
+                                <p className="text-[11px] text-muted-foreground italic">{comment.suggested_reply}</p>
+                              </div>
+                            )}
+
+                            {comment.suggested_dm && (
+                              <div className="bg-blue-500/5 border border-blue-500/20 rounded-md p-2">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-[10px] font-medium text-blue-700 dark:text-blue-400 flex items-center gap-1">
+                                    <Send className="h-2.5 w-2.5" />
+                                    Mensagem direta sugerida
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-5 text-[10px] px-1.5 gap-1 text-blue-700 dark:text-blue-400"
+                                    onClick={() => handleCopyText(comment.suggested_dm!, 'Mensagem direta')}
+                                  >
+                                    <Copy className="h-2.5 w-2.5" />
+                                    Copiar
+                                  </Button>
+                                </div>
+                                <p className="text-[11px] text-muted-foreground italic">{comment.suggested_dm}</p>
+                              </div>
                             )}
                           </div>
                         )}
