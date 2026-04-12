@@ -42,6 +42,14 @@ interface ExtractedData {
   urgencia?: string | null;
   tipo_caso?: string | null;
   observacoes?: string | null;
+  victim_name?: string | null;
+  victim_age?: string | null;
+  accident_date?: string | null;
+  accident_address?: string | null;
+  damage_description?: string | null;
+  contractor_company?: string | null;
+  main_company?: string | null;
+  sector?: string | null;
 }
 
 const initialFormData: AccidentLeadFormData = {
@@ -168,7 +176,14 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           case_type: extracted.tipo_caso || '',
           notes: noteParts,
           news_link: url || '',
-          damage_description: extracted.interesse || '',
+          victim_name: extracted.victim_name || extracted.nome || '',
+          victim_age: extracted.victim_age || '',
+          accident_date: extracted.accident_date || '',
+          accident_address: extracted.accident_address || '',
+          damage_description: extracted.damage_description || extracted.interesse || '',
+          contractor_company: extracted.contractor_company || '',
+          main_company: extracted.main_company || '',
+          sector: extracted.sector || '',
         });
         setStep('review');
         toast.success('Dados extraídos pela IA!');
