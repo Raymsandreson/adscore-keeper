@@ -653,6 +653,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     setCommentsAnalysis(null);
     setCommentsCount(0);
     setSavedContacts(new Set());
+    setAdditionalVictims([]);
     onOpenChange(false);
   };
 
