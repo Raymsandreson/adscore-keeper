@@ -39,6 +39,7 @@ interface ProcessWorkflow {
 
 interface GroupSettings {
   group_name_prefix: string;
+  closed_group_name_prefix: string;
   sequence_start: number;
   current_sequence: number;
   lead_fields: string[];
@@ -124,6 +125,7 @@ export function BoardGroupInstancesConfig() {
   const [customVoices, setCustomVoices] = useState<{id: string; name: string}[]>([]);
   const [settings, setSettings] = useState<GroupSettings>({
     group_name_prefix: '',
+    closed_group_name_prefix: '',
     sequence_start: 1,
     current_sequence: 0,
     lead_fields: ['lead_name'],
