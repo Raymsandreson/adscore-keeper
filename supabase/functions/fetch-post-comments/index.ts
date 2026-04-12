@@ -5,11 +5,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface FetchCommentsRequest {
-  postUrl: string;
-  maxComments?: number;
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -18,90 +13,131 @@ serve(async (req) => {
   try {
     const APIFY_API_KEY = Deno.env.get('APIFY_API_KEY');
     if (!APIFY_API_KEY) {
-      throw new Error('APIFY_API_KEY não configurada');
+      return new Response(
+        JSON.stringify({ success: false, error: 'APIFY_API_KEY não configurada', comments: [], total: 0 }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const body: FetchCommentsRequest = await req.json();
-    const { postUrl, maxComments = 100 } = body;
+    const { postUrl, maxComments = 50, analyzeWithAI = true } = await req.json();
 
     if (!postUrl) {
-      throw new Error('URL do post é obrigatória');
+      return new Response(
+        JSON.stringify({ success: false, error: 'URL do post é obrigatória', comments: [], total: 0 }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    console.log(`🔍 Buscando comentários do post: ${postUrl}`);
+    console.log(`🔍 Buscando comentários: ${postUrl}`);
 
-    // Use existing Instagram Comment Scraper actor
+    // Use run-sync-get-dataset-items for simpler flow (waits and returns items directly)
     const actorId = 'apify~instagram-comment-scraper';
-    const runUrl = `https://api.apify.com/v2/acts/${actorId}/runs?token=${APIFY_API_KEY}`;
+    const syncUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${APIFY_API_KEY}&timeout=120`;
 
-    const actorInput = {
-      directUrls: [postUrl],
-      resultsLimit: maxComments,
-      commentsPerPost: maxComments,
-    };
-
-    const runResponse = await fetch(runUrl, {
+    const runResponse = await fetch(syncUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(actorInput),
+      body: JSON.stringify({
+        directUrls: [postUrl],
+        resultsLimit: maxComments,
+      }),
     });
 
     if (!runResponse.ok) {
       const errorText = await runResponse.text();
-      console.error('Apify run error:', errorText);
-      throw new Error(`Erro ao buscar comentários: ${runResponse.status}`);
+      console.error('Apify error:', runResponse.status, errorText);
+      return new Response(
+        JSON.stringify({ success: false, error: `Erro Apify: ${runResponse.status}`, comments: [], total: 0 }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const runData = await runResponse.json();
-    const runId = runData.data?.id;
+    const comments = await runResponse.json();
+    console.log(`✅ ${comments.length} comentários extraídos`);
 
-    if (!runId) {
-      throw new Error('Não foi possível iniciar busca de comentários');
+    // Analyze with AI if requested and comments exist
+    let analysis = null;
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    
+    if (analyzeWithAI && LOVABLE_API_KEY && comments.length > 0) {
+      const commentsText = comments
+        .slice(0, 50)
+        .map((c: any, i: number) => `[${i + 1}] @${c.ownerUsername || c.username || 'anon'}: ${c.text || ''}`)
+        .join("\n");
+
+      try {
+        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              {
+                role: "system",
+                content: `Você analisa comentários de posts sobre acidentes (trabalho, trânsito, etc). Extraia informações úteis.
+
+Retorne APENAS um JSON válido:
+{
+  "victim_info": {
+    "name": "Nome da vítima se mencionado nos comentários",
+    "age": "Idade se mencionada",
+    "profession": "Profissão se mencionada",
+    "condition": "Estado de saúde / tipo de lesão mencionado"
+  },
+  "accident_info": {
+    "date": "Data do acidente se mencionada (DD/MM/AAAA)",
+    "location": "Local/cidade do acidente",
+    "state": "Estado/UF se mencionado",
+    "description": "Descrição adicional do acidente",
+    "company": "Empresa mencionada"
+  },
+  "potential_contacts": [
+    {
+      "username": "@usuario",
+      "type": "familiar|testemunha|conhecido|advogado|outro",
+      "relationship": "Relação com a vítima",
+      "info": "Informação relevante que mencionou",
+      "phone": "Telefone se mencionado"
     }
+  ],
+  "additional_details": "Qualquer detalhe extra relevante",
+  "sentiment": "solidariedade|revolta|informativo|misto",
+  "key_comments": ["Até 5 comentários mais relevantes com informações úteis"]
+}
 
-    console.log(`⏳ Run iniciado: ${runId}`);
+Se não encontrar informação para um campo, use null.
+Foque em identificar pessoas que conhecem a vítima (possíveis pontes/indicações).`
+              },
+              {
+                role: "user",
+                content: `Analise estes ${comments.length} comentários:\n\n${commentsText}`,
+              },
+            ],
+            temperature: 0.2,
+            response_format: { type: "json_object" },
+          }),
+        });
 
-    // Wait for run to complete (max 3 minutes)
-    const maxWaitTime = 180000;
-    const pollInterval = 3000;
-    const startTime = Date.now();
-    let runStatus = 'RUNNING';
-
-    while (runStatus === 'RUNNING' || runStatus === 'READY') {
-      if (Date.now() - startTime > maxWaitTime) {
-        throw new Error('Timeout: busca de comentários demorou muito');
+        if (aiResponse.ok) {
+          const aiData = await aiResponse.json();
+          const content = aiData.choices?.[0]?.message?.content || "{}";
+          try {
+            analysis = JSON.parse(content);
+          } catch {
+            analysis = { additional_details: content };
+          }
+          console.log("✅ Análise de comentários concluída");
+        }
+      } catch (aiErr) {
+        console.error("AI analysis error:", aiErr);
       }
-
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-      const statusUrl = `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_API_KEY}`;
-      const statusResponse = await fetch(statusUrl);
-      const statusData = await statusResponse.json();
-      runStatus = statusData.data?.status;
-
-      if (runStatus === 'FAILED' || runStatus === 'ABORTED' || runStatus === 'TIMED-OUT') {
-        throw new Error(`Busca de comentários falhou: ${runStatus}`);
-      }
     }
-
-    // Fetch results
-    const datasetId = runData.data?.defaultDatasetId;
-    if (!datasetId) {
-      throw new Error('Dataset não encontrado');
-    }
-
-    const datasetUrl = `https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_API_KEY}`;
-    const datasetResponse = await fetch(datasetUrl);
-    const results = await datasetResponse.json();
-
-    console.log(`✅ Encontrados ${results.length} comentários`);
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        comments: results,
-        total: results.length,
-      }),
+      JSON.stringify({ success: true, comments, analysis, total: comments.length }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
@@ -114,7 +150,7 @@ serve(async (req) => {
         comments: [],
         total: 0,
       }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
