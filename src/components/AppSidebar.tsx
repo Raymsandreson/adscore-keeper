@@ -56,7 +56,7 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const unreadMentions = useUnreadMentionsCount();
-  const { unseenCount, isFeatureAcked, acknowledgeFeature } = useChangelogAcknowledgments();
+  const { unseenCount, isFeatureAcked, acknowledgeFeature, acknowledgeAll } = useChangelogAcknowledgments();
 
   const [mentionsOpen, setMentionsOpen] = useState(false);
   const [hasPwaUpdate, setHasPwaUpdate] = useState(false);
