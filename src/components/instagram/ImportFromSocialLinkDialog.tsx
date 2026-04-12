@@ -118,7 +118,6 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           lead_name: extractedData.nome || `Lead ${detectPlatform(url)}`,
           lead_phone: extractedData.telefone || null,
           lead_email: extractedData.email || null,
-          cpf: extractedData.cpf || null,
           city: extractedData.cidade || null,
           state: extractedData.estado || null,
           profession: extractedData.profissao || null,
