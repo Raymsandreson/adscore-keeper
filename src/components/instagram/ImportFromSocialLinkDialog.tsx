@@ -120,9 +120,11 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           lead_email: extractedData.email || null,
           city: extractedData.cidade || null,
           state: extractedData.estado || null,
-          profession: extractedData.profissao || null,
-          lead_source: detectPlatform(url).toLowerCase(),
+          source: detectPlatform(url).toLowerCase(),
+          case_type: extractedData.tipo_caso || null,
           notes: [
+            extractedData.profissao ? `Profissão: ${extractedData.profissao}` : null,
+            extractedData.interesse ? `Interesse: ${extractedData.interesse}` : null,
             extractedData.contexto,
             extractedData.observacoes,
             url ? `Fonte: ${url}` : null,
