@@ -35,6 +35,7 @@ interface ExtractedData {
   cpf?: string | null;
   cidade?: string | null;
   estado?: string | null;
+  regiao?: string | null;
   profissao?: string | null;
   interesse?: string | null;
   contexto?: string | null;
@@ -240,9 +241,10 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           source: detectPlatform(url).toLowerCase(),
           visit_city: extracted.cidade || '',
           visit_state: extracted.estado || '',
+          visit_region: extracted.regiao || '',
           case_type: mapCaseType(extracted.tipo_caso || ''),
           notes: noteParts,
-          news_link: url || '',
+          news_link: url.trim() || '',
           victim_name: extracted.victim_name || extracted.nome || '',
           victim_age: extracted.victim_age || '',
           accident_date: convertDateToISO(extracted.accident_date || ''),
