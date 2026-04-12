@@ -218,6 +218,8 @@ export function BoardGroupInstancesConfig() {
         closed_group_name_prefix: data.closed_group_name_prefix || '',
         sequence_start: data.sequence_start || 1,
         current_sequence: data.current_sequence || 0,
+        closed_sequence_start: data.closed_sequence_start || 1,
+        closed_current_sequence: data.closed_current_sequence || 0,
         lead_fields: data.lead_fields || ['lead_name'],
         initial_message_template: data.initial_message_template || '',
         use_ai_message: data.use_ai_message || false,
@@ -240,7 +242,8 @@ export function BoardGroupInstancesConfig() {
       }
     } else {
       setSettings({
-        group_name_prefix: '', closed_group_name_prefix: '', sequence_start: 1, current_sequence: 0, lead_fields: ['lead_name'],
+        group_name_prefix: '', closed_group_name_prefix: '', sequence_start: 1, current_sequence: 0,
+        closed_sequence_start: 1, closed_current_sequence: 0, lead_fields: ['lead_name'],
         initial_message_template: '', use_ai_message: false, ai_generated_message: '',
         forward_document_types: [],
         send_audio_message: false, audio_voice_id: '',
