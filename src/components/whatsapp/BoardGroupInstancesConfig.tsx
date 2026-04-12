@@ -42,6 +42,8 @@ interface GroupSettings {
   closed_group_name_prefix: string;
   sequence_start: number;
   current_sequence: number;
+  closed_sequence_start: number;
+  closed_current_sequence: number;
   lead_fields: string[];
   initial_message_template: string;
   use_ai_message: boolean;
@@ -128,6 +130,8 @@ export function BoardGroupInstancesConfig() {
     closed_group_name_prefix: '',
     sequence_start: 1,
     current_sequence: 0,
+    closed_sequence_start: 1,
+    closed_current_sequence: 0,
     lead_fields: ['lead_name'],
     initial_message_template: '',
     use_ai_message: false,
@@ -214,6 +218,8 @@ export function BoardGroupInstancesConfig() {
         closed_group_name_prefix: data.closed_group_name_prefix || '',
         sequence_start: data.sequence_start || 1,
         current_sequence: data.current_sequence || 0,
+        closed_sequence_start: data.closed_sequence_start || 1,
+        closed_current_sequence: data.closed_current_sequence || 0,
         lead_fields: data.lead_fields || ['lead_name'],
         initial_message_template: data.initial_message_template || '',
         use_ai_message: data.use_ai_message || false,
@@ -236,7 +242,8 @@ export function BoardGroupInstancesConfig() {
       }
     } else {
       setSettings({
-        group_name_prefix: '', closed_group_name_prefix: '', sequence_start: 1, current_sequence: 0, lead_fields: ['lead_name'],
+        group_name_prefix: '', closed_group_name_prefix: '', sequence_start: 1, current_sequence: 0,
+        closed_sequence_start: 1, closed_current_sequence: 0, lead_fields: ['lead_name'],
         initial_message_template: '', use_ai_message: false, ai_generated_message: '',
         forward_document_types: [],
         send_audio_message: false, audio_voice_id: '',
@@ -298,6 +305,7 @@ export function BoardGroupInstancesConfig() {
         group_name_prefix: settings.group_name_prefix,
         closed_group_name_prefix: settings.closed_group_name_prefix || null,
         sequence_start: settings.sequence_start,
+        closed_sequence_start: settings.closed_sequence_start,
         lead_fields: settings.lead_fields,
         initial_message_template: settings.initial_message_template || null,
         use_ai_message: settings.use_ai_message,
@@ -377,7 +385,12 @@ export function BoardGroupInstancesConfig() {
       ? settings.closed_group_name_prefix 
       : settings.group_name_prefix;
     if (prefix) parts.push(prefix);
-    const seq = settings.current_sequence > 0 ? settings.current_sequence + 1 : settings.sequence_start;
+    let seq: number;
+    if (useClosed && settings.closed_group_name_prefix) {
+      seq = settings.closed_current_sequence > 0 ? settings.closed_current_sequence + 1 : settings.closed_sequence_start;
+    } else {
+      seq = settings.current_sequence > 0 ? settings.current_sequence + 1 : settings.sequence_start;
+    }
     parts.push(String(seq).padStart(4, '0'));
     const fieldLabels = settings.lead_fields.map(f => {
       const opt = LEAD_FIELD_OPTIONS.find(o => o.value === f);
@@ -489,7 +502,7 @@ export function BoardGroupInstancesConfig() {
               <h4 className="font-medium text-xs">Nome do Grupo</h4>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <Label className="text-[11px] text-muted-foreground">Prefixo (antes de fechar)</Label>
                 <Input
@@ -500,6 +513,19 @@ export function BoardGroupInstancesConfig() {
                 />
               </div>
               <div className="space-y-1">
+                <Label className="text-[11px] text-muted-foreground">Seq. inicia em</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={settings.sequence_start}
+                  onChange={e => setSettings(prev => ({ ...prev, sequence_start: parseInt(e.target.value) || 1 }))}
+                  className="h-8 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
                 <Label className="text-[11px] text-muted-foreground">Prefixo (após fechar)</Label>
                 <Input
                   value={settings.closed_group_name_prefix}
@@ -509,12 +535,12 @@ export function BoardGroupInstancesConfig() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Sequência inicia em</Label>
+                <Label className="text-[11px] text-muted-foreground">Seq. fechados inicia em</Label>
                 <Input
                   type="number"
                   min={1}
-                  value={settings.sequence_start}
-                  onChange={e => setSettings(prev => ({ ...prev, sequence_start: parseInt(e.target.value) || 1 }))}
+                  value={settings.closed_sequence_start}
+                  onChange={e => setSettings(prev => ({ ...prev, closed_sequence_start: parseInt(e.target.value) || 1 }))}
                   className="h-8 text-xs"
                 />
               </div>

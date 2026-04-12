@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
 
     const { data: settings } = await supabase
       .from('board_group_settings')
-      .select('closed_group_name_prefix, group_name_prefix, lead_fields')
+      .select('closed_group_name_prefix, group_name_prefix, lead_fields, closed_sequence_start, closed_current_sequence')
       .eq('board_id', lead.board_id)
       .maybeSingle()
 
@@ -54,6 +54,12 @@ Deno.serve(async (req) => {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
+
+    // Calculate next closed sequence number
+    const closedSeq = Math.max(
+      (settings.closed_current_sequence || 0) + 1,
+      settings.closed_sequence_start || 1
+    )
 
     // Find a connected instance to rename the group
     const { data: boardInstances } = await supabase
@@ -110,20 +116,21 @@ Deno.serve(async (req) => {
       console.warn('Could not fetch group info:', e)
     }
 
-    // Build new name: replace old prefix with closed prefix
-    let newName = currentName
-    const oldPrefix = settings.group_name_prefix || ''
+    // Build new name using closed prefix + closed sequence + lead fields
     const closedPrefix = settings.closed_group_name_prefix
-
-    if (oldPrefix && currentName.startsWith(oldPrefix)) {
-      newName = closedPrefix + currentName.slice(oldPrefix.length)
-    } else if (!oldPrefix) {
-      // No old prefix, just prepend closed prefix
-      newName = closedPrefix + ' ' + currentName
-    } else {
-      // Old prefix not found in name, just replace the beginning
-      newName = closedPrefix + ' ' + currentName
+    const leadFields = settings.lead_fields || ['lead_name']
+    
+    const parts: string[] = []
+    if (closedPrefix) parts.push(closedPrefix)
+    parts.push(String(closedSeq).padStart(4, '0'))
+    
+    for (const field of leadFields) {
+      if (lead[field]) {
+        parts.push(String(lead[field]))
+      }
     }
+    
+    let newName = parts.join(' ')
 
     // Truncate to WhatsApp limit
     if (newName.length > 100) {
@@ -153,8 +160,15 @@ Deno.serve(async (req) => {
       console.error('Rename error:', e)
     }
 
-    // Also update the group_links table if it exists
+    // Update sequence and group name in DB
     if (renamed) {
+      // Increment closed sequence
+      await supabase
+        .from('board_group_settings')
+        .update({ closed_current_sequence: closedSeq })
+        .eq('board_id', lead.board_id)
+
+      // Update group_links table
       await supabase
         .from('whatsapp_group_links')
         .update({ group_name: newName })
