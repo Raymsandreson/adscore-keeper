@@ -45,7 +45,7 @@ Retorne APENAS um JSON válido com os campos abaixo. Se não encontrar a informa
   "contexto": "Resumo breve do contexto da postagem",
   "tags": ["palavras-chave relevantes"],
   "urgencia": "alta/media/baixa baseado no tom da mensagem",
-  "tipo_caso": "Se parecer um caso jurídico, qual tipo (trabalhista, previdenciário, acidente_trabalho, acidente_transito, etc)",
+  "tipo_caso": "OBRIGATÓRIO: deve ser exatamente um destes valores: Queda de Altura, Soterramento, Choque Elétrico, Acidente com Máquinas, Intoxicação, Explosão, Incêndio, Acidente de Trânsito, Esmagamento, Corte/Amputação, Afogamento, Outro",
   "observacoes": "Qualquer informação adicional relevante",
   "victim_name": "Nome da vítima do acidente (pode ser o mesmo do lead)",
   "victim_age": "Idade da vítima (apenas número)",
