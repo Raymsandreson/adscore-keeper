@@ -16,7 +16,7 @@ import { usePostMetadata } from '@/hooks/usePostMetadata';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
-import { useProfilesList } from '@/hooks/useProfilesList';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 interface ImportFromSocialLinkDialogProps {
