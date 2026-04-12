@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Link2, Loader2, Sparkles, UserPlus, FileText, ClipboardList, CheckCircle2 } from 'lucide-react';
+import { Link2, Loader2, Sparkles, UserPlus, FileText, ClipboardList, CheckCircle2, MessageSquare, Users, AlertTriangle } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { usePostMetadata } from '@/hooks/usePostMetadata';
 import { supabase } from '@/integrations/supabase/client';
