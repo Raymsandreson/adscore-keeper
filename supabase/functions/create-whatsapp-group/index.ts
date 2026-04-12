@@ -1046,7 +1046,92 @@ Deno.serve(async (req) => {
       await sendInitialMessage(supabase, settings, leadData, lead_name, groupName, groupId, baseUrl, creatorInstance, board_id, boardInstances)
     }))
 
-    // STEP 11: Auto-create legal processes
+    // STEP 11: Notify acolhedor privately
+    diagnostics.push(await runStep('notify_acolhedor', async () => {
+      if (!leadData?.acolhedor) return
+      
+      // Find acolhedor's phone from profiles
+      const { data: acolhedorProfile } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, phone')
+        .ilike('full_name', leadData.acolhedor)
+        .not('phone', 'is', null)
+        .limit(1)
+        .maybeSingle()
+      
+      if (!acolhedorProfile?.phone) {
+        console.log(`[notify-acolhedor] No phone found for acolhedor "${leadData.acolhedor}"`)
+        return
+      }
+      
+      const acolhedorPhone = normalizePhone(acolhedorProfile.phone)
+      if (!acolhedorPhone) return
+      
+      // Build comprehensive summary
+      const summaryParts: string[] = [
+        `🔔 *Novo caso atribuído a você!*`,
+        ``,
+        `📋 *Resumo do Lead:*`,
+      ]
+      
+      if (leadData.lead_name) summaryParts.push(`• *Nome:* ${leadData.lead_name}`)
+      if (leadData.victim_name) summaryParts.push(`• *Vítima:* ${leadData.victim_name}`)
+      if (leadData.victim_age) summaryParts.push(`• *Idade:* ${leadData.victim_age}`)
+      if (leadData.case_type) summaryParts.push(`• *Tipo:* ${leadData.case_type}`)
+      if (leadData.accident_date) summaryParts.push(`• *Data do Acidente:* ${leadData.accident_date}`)
+      if (leadData.damage_description) summaryParts.push(`• *Descrição:* ${leadData.damage_description}`)
+      if (leadData.accident_address) summaryParts.push(`• *Local:* ${leadData.accident_address}`)
+      if (leadData.visit_city || leadData.visit_state) {
+        summaryParts.push(`• *Cidade/UF:* ${[leadData.visit_city, leadData.visit_state].filter(Boolean).join(' - ')}`)
+      }
+      if (leadData.visit_region) summaryParts.push(`• *Região:* ${leadData.visit_region}`)
+      if (leadData.visit_address) summaryParts.push(`• *Endereço Visita:* ${leadData.visit_address}`)
+      if (leadData.contractor_company) summaryParts.push(`• *Empreiteira:* ${leadData.contractor_company}`)
+      if (leadData.main_company) summaryParts.push(`• *Empresa Principal:* ${leadData.main_company}`)
+      if (leadData.sector) summaryParts.push(`• *Setor:* ${leadData.sector}`)
+      if (leadData.liability_type) summaryParts.push(`• *Responsabilidade:* ${leadData.liability_type}`)
+      if (leadData.legal_viability) summaryParts.push(`• *Viabilidade:* ${leadData.legal_viability}`)
+      if (leadData.company_size_justification) summaryParts.push(`• *Porte empresa:* ${leadData.company_size_justification}`)
+      if (leadData.lead_phone) summaryParts.push(`• *Telefone:* ${leadData.lead_phone}`)
+      if (leadData.lead_email) summaryParts.push(`• *Email:* ${leadData.lead_email}`)
+      if (leadData.source) summaryParts.push(`• *Origem:* ${leadData.source}`)
+      if (leadData.notes) summaryParts.push(`• *Obs:* ${leadData.notes}`)
+      if (leadData.news_link) {
+        summaryParts.push(``)
+        summaryParts.push(`🔗 *Link da notícia:* ${leadData.news_link}`)
+      }
+      if (groupInviteLink) {
+        summaryParts.push(``)
+        summaryParts.push(`💬 *Grupo WhatsApp:* ${groupInviteLink}`)
+      }
+      
+      const summaryMessage = summaryParts.join('\n')
+      
+      // Send private message to acolhedor
+      const sendRes = await fetch(`${baseUrl}/send/text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+        body: JSON.stringify({ number: acolhedorPhone, text: summaryMessage }),
+      })
+      
+      if (sendRes.ok) {
+        console.log(`[notify-acolhedor] Private notification sent to ${acolhedorPhone}`)
+        // Save to messages
+        await supabase.from('whatsapp_messages').insert({
+          instance_name: creatorInstance.instance_name,
+          phone: acolhedorPhone,
+          message_text: summaryMessage,
+          message_type: 'text',
+          direction: 'outbound',
+          sender_name: 'Sistema',
+          lead_id: leadData?.id || null,
+        } as any)
+      } else {
+        console.warn('[notify-acolhedor] Failed to send:', sendRes.status, await sendRes.text())
+      }
+    }))
+
+    // STEP 12: Auto-create legal processes
     diagnostics.push(await runStep('auto_create_processes', async () => {
       if (!leadData?.id || !settings?.auto_create_process) return
 

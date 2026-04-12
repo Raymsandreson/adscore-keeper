@@ -319,6 +319,38 @@ export const useLeads = (adAccountId?: string) => {
         lead_state: (newLead as any).lead_state,
       }).catch(e => console.warn('[GeoRule] Background error:', e));
 
+      // Auto-create WhatsApp group when acolhedor is assigned
+      if ((newLead as any).acolhedor && newLead.board_id) {
+        const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+        const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+        if (projectId && anonKey) {
+          fetch(`https://${projectId}.supabase.co/functions/v1/create-whatsapp-group`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${anonKey}`,
+            },
+            body: JSON.stringify({
+              lead_id: newLead.id,
+              lead_name: newLead.lead_name,
+              board_id: newLead.board_id,
+              phone: newLead.lead_phone || null,
+              contact_phone: newLead.lead_phone || null,
+              creation_origin: 'acolhedor_assignment',
+            }),
+          }).then(async (res) => {
+            const data = await res.json();
+            if (data.success) {
+              toast.success('Grupo WhatsApp criado automaticamente');
+            } else if (data.queued) {
+              toast.info('Grupo na fila - será criado quando uma instância estiver online');
+            } else {
+              console.warn('[AutoGroup] Error:', data.error);
+            }
+          }).catch(e => console.warn('[AutoGroup] Background error:', e));
+        }
+      }
+
       return newLead;
     } catch (error) {
       console.error('Error adding lead:', error);
