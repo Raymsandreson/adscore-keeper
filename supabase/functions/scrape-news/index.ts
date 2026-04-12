@@ -54,9 +54,12 @@ serve(async (req) => {
 
     if (!response.ok) {
       console.error('Firecrawl API error:', data);
+      const errorMsg = typeof data.error === 'string' && data.error.includes('do not support this site')
+        ? 'Este site não é suportado para scraping (ex: Instagram, Facebook). Tente um portal de notícias.'
+        : (data.error || `Erro ao buscar página: ${response.status}`);
       return new Response(
-        JSON.stringify({ success: false, error: data.error || `Erro ao buscar página: ${response.status}` }),
-        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: errorMsg }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -82,7 +85,7 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Erro ao buscar página';
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
