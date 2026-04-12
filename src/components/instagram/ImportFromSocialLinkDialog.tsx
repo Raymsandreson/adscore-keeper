@@ -167,6 +167,30 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   // Team profiles for acolhedor selector
   const [teamMembers, setTeamMembers] = useState<{ id: string; full_name: string | null; email: string | null }[]>([]);
 
+  // When board is selected, fetch group settings and auto-set lead_name
+  const handleBoardChange = async (boardId: string) => {
+    setSelectedBoardId(boardId);
+    if (!boardId) return;
+    
+    try {
+      const { data: groupSettings } = await supabase
+        .from('board_group_settings')
+        .select('group_name_prefix, current_sequence, sequence_start')
+        .eq('board_id', boardId)
+        .maybeSingle();
+      
+      if (groupSettings?.group_name_prefix) {
+        const nextSeq = (groupSettings.current_sequence || 0) > 0 
+          ? groupSettings.current_sequence + 1 
+          : (groupSettings.sequence_start || 1);
+        const generatedName = `${groupSettings.group_name_prefix} ${nextSeq} ${formData.victim_name || ''}`.trim();
+        setFormData(prev => ({ ...prev, lead_name: generatedName }));
+      }
+    } catch (err) {
+      console.error('Error fetching board group settings:', err);
+    }
+  };
+
   // Update URL when initialUrl changes
   useEffect(() => {
     if (initialUrl && initialUrl !== url) {
