@@ -119,7 +119,7 @@ export const useAuth = () => {
 
     const timeout = setTimeout(() => {
       settle('Tempo limite excedido ao conectar com o servidor.');
-    }, 8000);
+    }, 15000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
