@@ -586,18 +586,54 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
                       </div>
                     )}
 
-                    {/* Potential contacts */}
+                    {/* Potential contacts with register buttons */}
                     {commentsAnalysis.potential_contacts?.length > 0 && (
-                      <div className="p-2 rounded bg-muted/50 space-y-1">
-                        <p className="text-xs font-medium flex items-center gap-1">
-                          <Users className="h-3 w-3" /> Contatos identificados
-                        </p>
-                        {commentsAnalysis.potential_contacts.map((c: any, i: number) => (
-                          <div key={i} className="text-xs flex items-start gap-1">
-                            <Badge variant="outline" className="text-[10px] shrink-0">{c.type || 'contato'}</Badge>
-                            <span>{c.username}: {c.info || c.relationship || ''}</span>
-                          </div>
-                        ))}
+                      <div className="p-2 rounded bg-muted/50 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium flex items-center gap-1">
+                            <Users className="h-3 w-3" /> Pontes identificadas ({commentsAnalysis.potential_contacts.length})
+                          </p>
+                        </div>
+                        {commentsAnalysis.potential_contacts.map((c: any, i: number) => {
+                          const username = c.username?.replace('@', '') || '';
+                          const isSaved = savedContacts.has(username);
+                          const isSaving = savingContact === username;
+                          return (
+                            <div key={i} className="flex items-center gap-2 p-1.5 rounded border bg-background">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1">
+                                  <Badge variant="outline" className="text-[10px] shrink-0">{c.type || 'contato'}</Badge>
+                                  <span className="text-xs font-medium truncate">{c.username}</span>
+                                </div>
+                                {(c.relationship || c.info) && (
+                                  <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                                    {c.relationship || c.info}
+                                  </p>
+                                )}
+                              </div>
+                              {isSaved ? (
+                                <Badge variant="secondary" className="shrink-0 gap-1 text-[10px]">
+                                  <CheckCircle2 className="h-3 w-3" /> Salvo
+                                </Badge>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="shrink-0 h-7 text-xs gap-1"
+                                  disabled={isSaving}
+                                  onClick={() => handleSaveCommentContact(c)}
+                                >
+                                  {isSaving ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <UserPlus className="h-3 w-3" />
+                                  )}
+                                  Cadastrar
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
 
