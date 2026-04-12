@@ -10,11 +10,14 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Link2, Loader2, Sparkles, UserPlus, FileText, ClipboardList, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Link2, Loader2, Sparkles, UserPlus, FileText, ClipboardList, CheckCircle2 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { usePostMetadata } from '@/hooks/usePostMetadata';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
+import { useProfilesList } from '@/hooks/useProfilesList';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 interface ImportFromSocialLinkDialogProps {
   open: boolean;
@@ -41,22 +44,70 @@ interface ExtractedData {
   observacoes?: string | null;
 }
 
+const initialFormData: AccidentLeadFormData = {
+  lead_name: '',
+  lead_phone: '',
+  lead_email: '',
+  source: 'instagram',
+  notes: '',
+  acolhedor: '',
+  case_type: '',
+  group_link: '',
+  client_classification: '',
+  expected_birth_date: '',
+  visit_city: '',
+  visit_state: '',
+  visit_region: '',
+  visit_address: '',
+  accident_date: '',
+  damage_description: '',
+  victim_name: '',
+  victim_age: '',
+  accident_address: '',
+  contractor_company: '',
+  main_company: '',
+  sector: '',
+  news_link: '',
+  company_size_justification: '',
+  liability_type: '',
+  legal_viability: '',
+};
+
 export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, initialUrl }: ImportFromSocialLinkDialogProps) {
+  const { user } = useAuthContext();
   const [url, setUrl] = useState(initialUrl || '');
   const [caption, setCaption] = useState('');
   const [targetType, setTargetType] = useState<TargetType>('lead');
-  const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
   const [step, setStep] = useState<'input' | 'review' | 'saving'>('input');
   const [isExtracting, setIsExtracting] = useState(false);
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { fetchMetadata } = usePostMetadata();
+  const teamProfiles = useProfilesList();
 
-  // Update URL when initialUrl changes (e.g. from share target)
+  // Lead form data (used in review step)
+  const [formData, setFormData] = useState<AccidentLeadFormData>({ ...initialFormData });
+  // Board selection
+  const [boards, setBoards] = useState<{ id: string; name: string }[]>([]);
+  const [selectedBoardId, setSelectedBoardId] = useState<string>('');
+
+  // Update URL when initialUrl changes
   useEffect(() => {
     if (initialUrl && initialUrl !== url) {
       setUrl(initialUrl);
     }
   }, [initialUrl]);
+
+  // Load boards when entering review step
+  useEffect(() => {
+    if (step === 'review' && boards.length === 0) {
+      supabase.from('kanban_boards').select('id, name, board_type').order('display_order').then(({ data }) => {
+        if (data) {
+          setBoards(data.filter(b => b.board_type === 'funnel' || !b.board_type).map(b => ({ id: b.id, name: b.name })));
+        }
+      });
+    }
+  }, [step]);
 
   const detectPlatform = (u: string) => {
     if (u.includes('instagram.com')) return 'Instagram';
@@ -95,7 +146,30 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
       });
       if (error) throw error;
       if (data?.success && data?.extracted) {
-        setExtractedData(data.extracted);
+        const extracted: ExtractedData = data.extracted;
+        // Map extracted data to AccidentLeadFormData
+        const noteParts = [
+          extracted.profissao ? `Profissão: ${extracted.profissao}` : null,
+          extracted.interesse ? `Interesse: ${extracted.interesse}` : null,
+          extracted.contexto,
+          extracted.observacoes,
+          url ? `Fonte: ${url}` : null,
+          extracted.tags?.length ? `Tags: ${extracted.tags.join(', ')}` : null,
+        ].filter(Boolean).join('\n');
+
+        setFormData({
+          ...initialFormData,
+          lead_name: extracted.nome || `Lead ${detectPlatform(url)}`,
+          lead_phone: extracted.telefone || '',
+          lead_email: extracted.email || '',
+          source: detectPlatform(url).toLowerCase(),
+          visit_city: extracted.cidade || '',
+          visit_state: extracted.estado || '',
+          case_type: extracted.tipo_caso || '',
+          notes: noteParts,
+          news_link: url || '',
+          damage_description: extracted.interesse || '',
+        });
         setStep('review');
         toast.success('Dados extraídos pela IA!');
       } else {
@@ -108,61 +182,69 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     }
   };
 
+  const handleFormChange = (data: Partial<AccidentLeadFormData>) => {
+    setFormData(prev => ({ ...prev, ...data }));
+  };
+
   const handleSave = async () => {
-    if (!extractedData) return;
+    if (!formData.lead_name.trim()) {
+      toast.error('O nome do lead é obrigatório');
+      return;
+    }
+    setIsSubmitting(true);
     setStep('saving');
 
     try {
       if (targetType === 'lead') {
         const { error } = await supabase.from('leads').insert({
-          lead_name: extractedData.nome || `Lead ${detectPlatform(url)}`,
-          lead_phone: extractedData.telefone || null,
-          lead_email: extractedData.email || null,
-          city: extractedData.cidade || null,
-          state: extractedData.estado || null,
-          source: detectPlatform(url).toLowerCase(),
-          case_type: extractedData.tipo_caso || null,
-          notes: [
-            extractedData.profissao ? `Profissão: ${extractedData.profissao}` : null,
-            extractedData.interesse ? `Interesse: ${extractedData.interesse}` : null,
-            extractedData.contexto,
-            extractedData.observacoes,
-            url ? `Fonte: ${url}` : null,
-            extractedData.tags?.length ? `Tags: ${extractedData.tags.join(', ')}` : null,
-          ].filter(Boolean).join('\n'),
+          lead_name: formData.lead_name,
+          lead_phone: formData.lead_phone || null,
+          lead_email: formData.lead_email || null,
+          source: formData.source || detectPlatform(url).toLowerCase(),
+          notes: formData.notes || null,
+          acolhedor: formData.acolhedor || null,
+          case_type: formData.case_type || null,
+          group_link: formData.group_link || null,
+          city: formData.visit_city || null,
+          state: formData.visit_state || null,
+          visit_region: formData.visit_region || null,
+          visit_address: formData.visit_address || null,
+          accident_date: formData.accident_date || null,
+          damage_description: formData.damage_description || null,
+          victim_name: formData.victim_name || null,
+          victim_age: formData.victim_age ? parseInt(formData.victim_age) : null,
+          accident_address: formData.accident_address || null,
+          contractor_company: formData.contractor_company || null,
+          main_company: formData.main_company || null,
+          sector: formData.sector || null,
+          news_link: formData.news_link || null,
+          company_size_justification: formData.company_size_justification || null,
+          liability_type: formData.liability_type || null,
+          legal_viability: formData.legal_viability || null,
+          board_id: selectedBoardId || null,
+          created_by: user?.id || null,
+          updated_by: user?.id || null,
         });
         if (error) throw error;
         toast.success('Lead criado com sucesso!');
       } else if (targetType === 'contact') {
         const { error } = await supabase.from('contacts').insert({
-          full_name: extractedData.nome || `Contato ${detectPlatform(url)}`,
-          phone: extractedData.telefone || null,
-          email: extractedData.email || null,
-          cpf: extractedData.cpf || null,
-          city: extractedData.cidade || null,
-          state: extractedData.estado || null,
-          profession: extractedData.profissao || null,
-          notes: [
-            extractedData.contexto,
-            extractedData.observacoes,
-            url ? `Fonte: ${url}` : null,
-          ].filter(Boolean).join('\n'),
+          full_name: formData.lead_name || `Contato ${detectPlatform(url)}`,
+          phone: formData.lead_phone || null,
+          email: formData.lead_email || null,
+          city: formData.visit_city || null,
+          state: formData.visit_state || null,
+          notes: formData.notes || null,
         });
         if (error) throw error;
         toast.success('Contato criado com sucesso!');
       } else if (targetType === 'activity') {
         const { error } = await supabase.from('lead_activities').insert({
-          title: extractedData.interesse || extractedData.contexto || `Atividade via ${detectPlatform(url)}`,
-          description: [
-            extractedData.contexto,
-            extractedData.observacoes,
-            extractedData.nome ? `Pessoa: ${extractedData.nome}` : null,
-            extractedData.telefone ? `Tel: ${extractedData.telefone}` : null,
-            url ? `Fonte: ${url}` : null,
-          ].filter(Boolean).join('\n'),
+          title: formData.lead_name || `Atividade via ${detectPlatform(url)}`,
+          description: formData.notes || null,
           activity_type: 'tarefa',
           status: 'pendente',
-          priority: extractedData.urgencia === 'alta' ? 'alta' : 'normal',
+          priority: 'normal',
         });
         if (error) throw error;
         toast.success('Atividade criada com sucesso!');
@@ -173,13 +255,16 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     } catch (err: any) {
       toast.error(err.message || 'Erro ao salvar');
       setStep('review');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleClose = () => {
     setUrl('');
     setCaption('');
-    setExtractedData(null);
+    setFormData({ ...initialFormData });
+    setSelectedBoardId('');
     setStep('input');
     setTargetType('lead');
     onOpenChange(false);
@@ -189,7 +274,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className={step === 'review' ? "max-w-2xl max-h-[90vh] overflow-y-auto" : "max-w-lg max-h-[85vh] overflow-y-auto"}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Link2 className="h-5 w-5 text-primary" />
@@ -276,103 +361,39 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           </div>
         )}
 
-        {step === 'review' && extractedData && (
+        {step === 'review' && (
           <div className="space-y-4 py-2">
             <div className="flex items-center gap-2 text-sm text-emerald-600">
               <CheckCircle2 className="h-4 w-4" />
               <span className="font-medium">Dados extraídos pela IA — edite antes de salvar</span>
             </div>
 
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <Label>Nome do Lead *</Label>
-                <Input
-                  value={extractedData.nome || ''}
-                  onChange={(e) => setExtractedData({ ...extractedData, nome: e.target.value })}
-                  placeholder="Nome completo"
-                />
+            {/* Board (Funil) selector */}
+            {targetType === 'lead' && (
+              <div className="space-y-2">
+                <Label>Funil de Vendas</Label>
+                <Select value={selectedBoardId} onValueChange={setSelectedBoardId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o funil..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {boards.map(board => (
+                      <SelectItem key={board.id} value={board.id}>
+                        {board.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+            )}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label>Telefone</Label>
-                  <Input
-                    value={extractedData.telefone || ''}
-                    onChange={(e) => setExtractedData({ ...extractedData, telefone: e.target.value })}
-                    placeholder="(00) 00000-0000"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Email</Label>
-                  <Input
-                    value={extractedData.email || ''}
-                    onChange={(e) => setExtractedData({ ...extractedData, email: e.target.value })}
-                    placeholder="email@exemplo.com"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label>Cidade</Label>
-                  <Input
-                    value={extractedData.cidade || ''}
-                    onChange={(e) => setExtractedData({ ...extractedData, cidade: e.target.value })}
-                    placeholder="Cidade"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Estado</Label>
-                  <Input
-                    value={extractedData.estado || ''}
-                    onChange={(e) => setExtractedData({ ...extractedData, estado: e.target.value })}
-                    placeholder="UF"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label>Profissão</Label>
-                  <Input
-                    value={extractedData.profissao || ''}
-                    onChange={(e) => setExtractedData({ ...extractedData, profissao: e.target.value })}
-                    placeholder="Profissão"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Tipo de Caso</Label>
-                  <Input
-                    value={extractedData.tipo_caso || ''}
-                    onChange={(e) => setExtractedData({ ...extractedData, tipo_caso: e.target.value })}
-                    placeholder="Ex: trabalhista"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <Label>Origem</Label>
-                <Input
-                  value={detectPlatform(url).toLowerCase()}
-                  disabled
-                  className="bg-muted"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label>Observações / Contexto</Label>
-                <Textarea
-                  value={[
-                    extractedData.interesse ? `Interesse: ${extractedData.interesse}` : null,
-                    extractedData.contexto,
-                    extractedData.observacoes,
-                    extractedData.tags?.length ? `Tags: ${extractedData.tags.join(', ')}` : null,
-                  ].filter(Boolean).join('\n')}
-                  onChange={(e) => setExtractedData({ ...extractedData, contexto: e.target.value, observacoes: null, interesse: null, tags: null })}
-                  rows={3}
-                />
-              </div>
-            </div>
+            {/* AccidentLeadForm - same as CreateLeadFromSearchDialog */}
+            <AccidentLeadForm
+              formData={formData}
+              onChange={handleFormChange}
+              onOpenExtractor={() => {}}
+              teamMembers={teamProfiles}
+            />
           </div>
         )}
 
@@ -393,7 +414,8 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           {step === 'review' && (
             <>
               <Button variant="outline" onClick={() => setStep('input')}>Voltar</Button>
-              <Button onClick={handleSave}>
+              <Button onClick={handleSave} disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 <UserPlus className="h-4 w-4 mr-2" />
                 Criar {targetType === 'lead' ? 'Lead' : targetType === 'contact' ? 'Contato' : 'Atividade'}
               </Button>
