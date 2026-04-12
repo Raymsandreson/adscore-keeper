@@ -803,6 +803,16 @@ ${scrapeData.content || ''}
              campaign_id: (currentLead as any).campaign_id,
              contract_value: (currentLead as any).contract_value,
            }, 'closed');
+           // Rename WhatsApp group with closed prefix
+           if ((currentLead as any).whatsapp_group_id) {
+             cloudFunctions.invoke('rename-whatsapp-group', {
+               body: { lead_id: currentLead.id },
+             }).then((res: any) => {
+               if (res?.data?.success) {
+                 console.log('Group renamed:', res.data.old_name, '→', res.data.new_name);
+               }
+             }).catch((e: any) => console.warn('Group rename failed:', e));
+           }
          }
 
         try {

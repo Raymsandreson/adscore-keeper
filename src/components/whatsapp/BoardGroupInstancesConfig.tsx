@@ -39,6 +39,7 @@ interface ProcessWorkflow {
 
 interface GroupSettings {
   group_name_prefix: string;
+  closed_group_name_prefix: string;
   sequence_start: number;
   current_sequence: number;
   lead_fields: string[];
@@ -124,6 +125,7 @@ export function BoardGroupInstancesConfig() {
   const [customVoices, setCustomVoices] = useState<{id: string; name: string}[]>([]);
   const [settings, setSettings] = useState<GroupSettings>({
     group_name_prefix: '',
+    closed_group_name_prefix: '',
     sequence_start: 1,
     current_sequence: 0,
     lead_fields: ['lead_name'],
@@ -209,6 +211,7 @@ export function BoardGroupInstancesConfig() {
     if (data) {
       setSettings({
         group_name_prefix: data.group_name_prefix || '',
+        closed_group_name_prefix: data.closed_group_name_prefix || '',
         sequence_start: data.sequence_start || 1,
         current_sequence: data.current_sequence || 0,
         lead_fields: data.lead_fields || ['lead_name'],
@@ -233,7 +236,7 @@ export function BoardGroupInstancesConfig() {
       }
     } else {
       setSettings({
-        group_name_prefix: '', sequence_start: 1, current_sequence: 0, lead_fields: ['lead_name'],
+        group_name_prefix: '', closed_group_name_prefix: '', sequence_start: 1, current_sequence: 0, lead_fields: ['lead_name'],
         initial_message_template: '', use_ai_message: false, ai_generated_message: '',
         forward_document_types: [],
         send_audio_message: false, audio_voice_id: '',
@@ -293,6 +296,7 @@ export function BoardGroupInstancesConfig() {
 
       const payload = {
         group_name_prefix: settings.group_name_prefix,
+        closed_group_name_prefix: settings.closed_group_name_prefix || null,
         sequence_start: settings.sequence_start,
         lead_fields: settings.lead_fields,
         initial_message_template: settings.initial_message_template || null,
@@ -367,9 +371,12 @@ export function BoardGroupInstancesConfig() {
     });
   };
 
-  const getPreviewName = () => {
+  const getPreviewName = (useClosed = false) => {
     const parts: string[] = [];
-    if (settings.group_name_prefix) parts.push(settings.group_name_prefix);
+    const prefix = useClosed && settings.closed_group_name_prefix 
+      ? settings.closed_group_name_prefix 
+      : settings.group_name_prefix;
+    if (prefix) parts.push(prefix);
     const seq = settings.current_sequence > 0 ? settings.current_sequence + 1 : settings.sequence_start;
     parts.push(String(seq).padStart(4, '0'));
     const fieldLabels = settings.lead_fields.map(f => {
@@ -482,13 +489,22 @@ export function BoardGroupInstancesConfig() {
               <h4 className="font-medium text-xs">Nome do Grupo</h4>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Prefixo</Label>
+                <Label className="text-[11px] text-muted-foreground">Prefixo (antes de fechar)</Label>
                 <Input
                   value={settings.group_name_prefix}
                   onChange={e => setSettings(prev => ({ ...prev, group_name_prefix: e.target.value }))}
-                  placeholder="Ex: CASO, GRP"
+                  placeholder="Ex: LEAD, GRP"
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] text-muted-foreground">Prefixo (após fechar)</Label>
+                <Input
+                  value={settings.closed_group_name_prefix}
+                  onChange={e => setSettings(prev => ({ ...prev, closed_group_name_prefix: e.target.value }))}
+                  placeholder="Ex: CASO, CLIENTE"
                   className="h-8 text-xs"
                 />
               </div>
@@ -524,10 +540,19 @@ export function BoardGroupInstancesConfig() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
-              <Eye className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="text-[10px] text-muted-foreground">Preview:</span>
-              <span className="text-[11px] font-medium truncate">{getPreviewName()}</span>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
+                <Eye className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-[10px] text-muted-foreground">Antes:</span>
+                <span className="text-[11px] font-medium truncate">{getPreviewName(false)}</span>
+              </div>
+              {settings.closed_group_name_prefix && (
+                <div className="flex items-center gap-2 p-2 rounded bg-primary/10 border border-primary/20">
+                  <Eye className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="text-[10px] text-primary">Após fechar:</span>
+                  <span className="text-[11px] font-medium truncate">{getPreviewName(true)}</span>
+                </div>
+              )}
             </div>
           </div>
 
