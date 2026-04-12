@@ -51,6 +51,13 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
   const { fetchMetadata } = usePostMetadata();
 
+  // Update URL when initialUrl changes (e.g. from share target)
+  useEffect(() => {
+    if (initialUrl && initialUrl !== url) {
+      setUrl(initialUrl);
+    }
+  }, [initialUrl]);
+
   const detectPlatform = (u: string) => {
     if (u.includes('instagram.com')) return 'Instagram';
     if (u.includes('facebook.com') || u.includes('fb.com')) return 'Facebook';
