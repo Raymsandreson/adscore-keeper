@@ -143,8 +143,16 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
   // Format date for display (YYYY-MM-DD → DD/MM/YYYY)
   const formatDateBR = (dateStr: string) => {
     if (!dateStr) return '';
-    const [y, m, d] = dateStr.split('-');
-    return `${d}/${m}/${y}`;
+    // Handle ISO format YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const [y, m, d] = dateStr.split('-');
+      return `${d}/${m}/${y}`;
+    }
+    // If already in DD/MM/YYYY format, return as-is
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+      return dateStr;
+    }
+    return dateStr;
   };
 
   // Parse BR date input (DD/MM/YYYY → YYYY-MM-DD)
