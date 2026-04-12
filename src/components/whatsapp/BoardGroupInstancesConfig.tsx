@@ -371,9 +371,12 @@ export function BoardGroupInstancesConfig() {
     });
   };
 
-  const getPreviewName = () => {
+  const getPreviewName = (useClosed = false) => {
     const parts: string[] = [];
-    if (settings.group_name_prefix) parts.push(settings.group_name_prefix);
+    const prefix = useClosed && settings.closed_group_name_prefix 
+      ? settings.closed_group_name_prefix 
+      : settings.group_name_prefix;
+    if (prefix) parts.push(prefix);
     const seq = settings.current_sequence > 0 ? settings.current_sequence + 1 : settings.sequence_start;
     parts.push(String(seq).padStart(4, '0'));
     const fieldLabels = settings.lead_fields.map(f => {
