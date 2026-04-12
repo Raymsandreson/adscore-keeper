@@ -32,12 +32,21 @@ interface ExtractedField {
   newValue: string;
 }
 
+interface CommentContactInfo {
+  full_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  instagram?: string | null;
+  other_social?: string | null;
+}
+
 interface NewsComment {
   author: string;
   text: string;
   date?: string;
   likes?: number;
   is_reply?: boolean;
+  contact_info?: CommentContactInfo;
 }
 
 interface NewsDetails {

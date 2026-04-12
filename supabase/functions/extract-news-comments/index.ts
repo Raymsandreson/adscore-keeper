@@ -106,7 +106,7 @@ serve(async (req) => {
 Retorne SOMENTE um JSON válido no formato:
 {
   "comments": [
-    {"author": "...", "text": "...", "date": "...", "likes": 0, "is_reply": false}
+    {"author": "...", "text": "...", "date": "...", "likes": 0, "is_reply": false, "contact_info": {"full_name": null, "phone": null, "email": null, "instagram": null, "other_social": null}}
   ],
   "details": {
     "additional_victims": ["..."],
