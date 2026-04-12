@@ -42,6 +42,14 @@ interface ExtractedData {
   urgencia?: string | null;
   tipo_caso?: string | null;
   observacoes?: string | null;
+  victim_name?: string | null;
+  victim_age?: string | null;
+  accident_date?: string | null;
+  accident_address?: string | null;
+  damage_description?: string | null;
+  contractor_company?: string | null;
+  main_company?: string | null;
+  sector?: string | null;
 }
 
 const initialFormData: AccidentLeadFormData = {
