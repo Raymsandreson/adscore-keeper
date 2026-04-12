@@ -254,7 +254,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
         });
         // Check for duplicate based on victim_name + accident_date + city + state
         const victimName = extracted.victim_name || extracted.nome || '';
-        const accidentDate = extracted.accident_date || '';
+        const accidentDate = convertDateToISO(extracted.accident_date || '');
         const city = extracted.cidade || '';
         const state = extracted.estado || '';
         if (victimName.trim() && (accidentDate.trim() || city.trim())) {
