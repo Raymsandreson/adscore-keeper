@@ -117,7 +117,22 @@ export const useAuth = () => {
       setIsOfflineMode(false);
     };
 
-    const timeout = setTimeout(() => {
+    // Primeiro tenta um health-check rápido ao banco antes do timeout
+    // Isso evita falsos "Servidor indisponível" quando o auth demora mas o DB está OK
+    const timeout = setTimeout(async () => {
+      if (settled) return;
+      try {
+        // Testa conectividade real com o banco
+        const { error } = await supabase.from('profiles').select('id').limit(1).maybeSingle();
+        if (!error) {
+          // Banco acessível — auth está lento, mas servidor está online
+          // Espera mais 15s antes de desistir
+          setTimeout(() => {
+            settle('Tempo limite excedido ao conectar com o servidor.');
+          }, 15000);
+          return;
+        }
+      } catch {}
       settle('Tempo limite excedido ao conectar com o servidor.');
     }, 15000);
 
