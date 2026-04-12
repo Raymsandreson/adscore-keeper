@@ -42,6 +42,8 @@ interface GroupSettings {
   closed_group_name_prefix: string;
   sequence_start: number;
   current_sequence: number;
+  closed_sequence_start: number;
+  closed_current_sequence: number;
   lead_fields: string[];
   initial_message_template: string;
   use_ai_message: boolean;
@@ -128,6 +130,8 @@ export function BoardGroupInstancesConfig() {
     closed_group_name_prefix: '',
     sequence_start: 1,
     current_sequence: 0,
+    closed_sequence_start: 1,
+    closed_current_sequence: 0,
     lead_fields: ['lead_name'],
     initial_message_template: '',
     use_ai_message: false,
