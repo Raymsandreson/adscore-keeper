@@ -393,7 +393,7 @@ export function ContactsListPage() {
               </Select>
 
               <Select value={classificationFilter} onValueChange={setClassificationFilter}>
-                <SelectTrigger className="w-[170px] h-8 text-xs"><SelectValue placeholder="Relacionamento" /></SelectTrigger>
+                <SelectTrigger className="w-[170px] h-8 text-xs"><SelectValue placeholder="Relacionamento Conosco" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos Relacionamentos</SelectItem>
                   <SelectItem value="client">Cliente</SelectItem>
