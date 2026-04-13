@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useContacts, Contact } from '@/hooks/useContacts';
 import { useBroadcastLists, BroadcastList, BroadcastListMember } from '@/hooks/useBroadcastLists';
 import { supabase } from '@/integrations/supabase/client';
@@ -118,27 +118,24 @@ export function ContactsListPage() {
       ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
       ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
     });
+  }, [stateFilter, cityFilter, sourceFilter, createdByFilter]);
+
+  // Load filter options and instances on mount
+  useEffect(() => {
     const loadExtras = async () => {
-      const [instancesRes, statesRes, citiesRes, creatorsRes] = await Promise.all([
+      const [instancesRes, creatorsRes] = await Promise.all([
         supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true),
-        supabase.rpc('get_distinct_contact_states' as any) as any,
-        supabase.rpc('get_distinct_contact_cities' as any) as any,
         supabase.from('profiles').select('user_id, full_name').order('full_name'),
       ]);
       setInstances(instancesRes.data || []);
       if (instancesRes.data?.length) setSendInstanceId(instancesRes.data[0].id);
-      
-      // Build filter options from contacts data  
-      const uniqueStates = [...new Set(contacts.map(c => c.state).filter(Boolean))] as string[];
-      const uniqueCities = [...new Set(contacts.map(c => c.city).filter(Boolean))] as string[];
-      setFilterOptions({
-        states: uniqueStates.sort(),
-        cities: uniqueCities.sort(),
+      setFilterOptions(prev => ({
+        ...prev,
         creators: (creatorsRes.data || []).map((p: any) => ({ id: p.user_id, name: p.full_name })),
-      });
+      }));
     };
     loadExtras();
-  }, [stateFilter, cityFilter, sourceFilter, createdByFilter]);
+  }, []);
 
   // Rebuild filter options when contacts change
   useEffect(() => {
