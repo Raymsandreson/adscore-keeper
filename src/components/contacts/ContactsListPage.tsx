@@ -341,6 +341,15 @@ export function ContactsListPage() {
                 className="pl-9"
               />
             </div>
+            <Button variant="outline" size="sm" onClick={() => setShowFilters(v => !v)}>
+              <Filter className="h-3.5 w-3.5 mr-1" />
+              Filtros
+              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all') && (
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                  {[stateFilter, cityFilter, sourceFilter, createdByFilter].filter(v => v !== 'all').length}
+                </Badge>
+              )}
+            </Button>
             <Button variant="outline" size="sm" onClick={toggleAll}>
               {selectedContacts.size === withPhone.length ? 'Desmarcar' : 'Selecionar'} todos
             </Button>
