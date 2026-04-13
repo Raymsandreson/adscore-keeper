@@ -80,7 +80,117 @@ export function ContactsListPage() {
 
   useEffect(() => {
     fetchAgentsAndAssignments();
+    fetchGroups();
   }, []);
+
+  const fetchGroups = async () => {
+    setGroupsLoading(true);
+    try {
+      const { data } = await supabase
+        .from('lead_whatsapp_groups')
+        .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status)')
+        .order('created_at', { ascending: false });
+
+      if (data) {
+        // Deduplicate by group_jid and count contacts
+        const groupMap = new Map<string, any>();
+        for (const g of data) {
+          if (!groupMap.has(g.group_jid)) {
+            const lead = g.leads as any;
+            groupMap.set(g.group_jid, {
+              group_jid: g.group_jid,
+              group_name: g.group_name || g.group_jid,
+              lead_name: lead?.lead_name || '',
+              lead_status: lead?.lead_status || '',
+              contact_count: 0,
+            });
+          }
+        }
+        // Count contacts per group
+        const { data: contactCounts } = await supabase
+          .from('contacts')
+          .select('whatsapp_group_id')
+          .not('whatsapp_group_id', 'is', null)
+          .is('deleted_at', null);
+
+        if (contactCounts) {
+          for (const c of contactCounts) {
+            const g = groupMap.get(c.whatsapp_group_id as string);
+            if (g) g.contact_count++;
+          }
+        }
+        setGroups(Array.from(groupMap.values()));
+      }
+    } catch (err) {
+      console.error('Error fetching groups:', err);
+    } finally {
+      setGroupsLoading(false);
+    }
+  };
+
+  const handleSelectGroup = async (groupJid: string) => {
+    setSelectedGroup(groupJid);
+    setGroupContactsLoading(true);
+    try {
+      const { data } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('whatsapp_group_id', groupJid)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
+      setGroupContacts((data || []) as Contact[]);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setGroupContactsLoading(false);
+    }
+  };
+
+  const handleClassifyClosedAsClients = async () => {
+    setClassifyingClients(true);
+    try {
+      // Get group JIDs from closed leads
+      const { data: closedGroups } = await supabase
+        .from('lead_whatsapp_groups')
+        .select('group_jid, leads!lead_whatsapp_groups_lead_id_fkey(lead_status)')
+        .not('group_jid', 'is', null);
+
+      if (!closedGroups) { setClassifyingClients(false); return; }
+
+      const closedJids = closedGroups
+        .filter((g: any) => g.leads?.lead_status === 'closed')
+        .map(g => g.group_jid);
+
+      if (closedJids.length === 0) {
+        toast.info('Nenhum grupo de lead fechado encontrado');
+        setClassifyingClients(false);
+        return;
+      }
+
+      const { count } = await supabase
+        .from('contacts')
+        .update({ classification: 'client', updated_at: new Date().toISOString() } as any)
+        .in('whatsapp_group_id', closedJids)
+        .neq('classification', 'client')
+        .is('deleted_at', null)
+        .select('*', { count: 'exact', head: true });
+
+      toast.success(`${count || 0} contatos atualizados para 'Cliente'`);
+      fetchContacts(1, 5000, {
+        ...(stateFilter !== 'all' ? { state: stateFilter } : {}),
+        ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
+        ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
+        ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
+        ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
+        ...(groupFilter !== 'all' ? { groupFilter } : {}),
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error('Erro ao classificar contatos');
+    } finally {
+      setClassifyingClients(false);
+    }
+  };
 
   const fetchAgentsAndAssignments = async () => {
     const [{ data: agentsData }, { data: assignmentsData }] = await Promise.all([
