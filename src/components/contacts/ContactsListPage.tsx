@@ -16,7 +16,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import {
   Search, Users, Send, Plus, Trash2, Radio, UserPlus,
-  Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter
+  Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter, UsersRound, Wand2
 } from 'lucide-react';
 
 export function ContactsListPage() {
@@ -37,6 +37,7 @@ export function ContactsListPage() {
   const [sourceFilter, setSourceFilter] = useState('all');
   const [createdByFilter, setCreatedByFilter] = useState('all');
   const [classificationFilter, setClassificationFilter] = useState('all');
+  const [groupFilter, setGroupFilter] = useState<'all' | 'with_group' | 'without_group'>('all');
   const [showFilters, setShowFilters] = useState(true);
   
   // Filter options loaded from DB
@@ -67,10 +68,129 @@ export function ContactsListPage() {
   // Agent assignment state
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [listAgentMap, setListAgentMap] = useState<Record<string, { agent_id: string; agent_name: string; is_active: boolean }>>({});
+  const [classifyingClients, setClassifyingClients] = useState(false);
+
+  // Groups data
+  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; contact_count: number }[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupSearch, setGroupSearch] = useState('');
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
+  const [groupContactsLoading, setGroupContactsLoading] = useState(false);
 
   useEffect(() => {
     fetchAgentsAndAssignments();
+    fetchGroups();
   }, []);
+
+  const fetchGroups = async () => {
+    setGroupsLoading(true);
+    try {
+      const { data } = await supabase
+        .from('lead_whatsapp_groups')
+        .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status)')
+        .order('created_at', { ascending: false });
+
+      if (data) {
+        // Deduplicate by group_jid and count contacts
+        const groupMap = new Map<string, any>();
+        for (const g of data) {
+          if (!groupMap.has(g.group_jid)) {
+            const lead = g.leads as any;
+            groupMap.set(g.group_jid, {
+              group_jid: g.group_jid,
+              group_name: g.group_name || g.group_jid,
+              lead_name: lead?.lead_name || '',
+              lead_status: lead?.lead_status || '',
+              contact_count: 0,
+            });
+          }
+        }
+        // Count contacts per group
+        const { data: contactCounts } = await supabase
+          .from('contacts')
+          .select('whatsapp_group_id')
+          .not('whatsapp_group_id', 'is', null)
+          .is('deleted_at', null);
+
+        if (contactCounts) {
+          for (const c of contactCounts) {
+            const g = groupMap.get(c.whatsapp_group_id as string);
+            if (g) g.contact_count++;
+          }
+        }
+        setGroups(Array.from(groupMap.values()));
+      }
+    } catch (err) {
+      console.error('Error fetching groups:', err);
+    } finally {
+      setGroupsLoading(false);
+    }
+  };
+
+  const handleSelectGroup = async (groupJid: string) => {
+    setSelectedGroup(groupJid);
+    setGroupContactsLoading(true);
+    try {
+      const { data } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('whatsapp_group_id', groupJid)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
+      setGroupContacts((data || []) as Contact[]);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setGroupContactsLoading(false);
+    }
+  };
+
+  const handleClassifyClosedAsClients = async () => {
+    setClassifyingClients(true);
+    try {
+      // Get group JIDs from closed leads
+      const { data: closedGroups } = await supabase
+        .from('lead_whatsapp_groups')
+        .select('group_jid, leads!lead_whatsapp_groups_lead_id_fkey(lead_status)')
+        .not('group_jid', 'is', null);
+
+      if (!closedGroups) { setClassifyingClients(false); return; }
+
+      const closedJids = closedGroups
+        .filter((g: any) => g.leads?.lead_status === 'closed')
+        .map(g => g.group_jid);
+
+      if (closedJids.length === 0) {
+        toast.info('Nenhum grupo de lead fechado encontrado');
+        setClassifyingClients(false);
+        return;
+      }
+
+      const { data: updated, error } = await supabase
+        .from('contacts')
+        .update({ classification: 'client', updated_at: new Date().toISOString() } as any)
+        .in('whatsapp_group_id', closedJids)
+        .neq('classification', 'client')
+        .is('deleted_at', null)
+        .select('id');
+
+      toast.success(`${updated?.length || 0} contatos atualizados para 'Cliente'`);
+      fetchContacts(1, 5000, {
+        ...(stateFilter !== 'all' ? { state: stateFilter } : {}),
+        ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
+        ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
+        ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
+        ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
+        ...(groupFilter !== 'all' ? { groupFilter } : {}),
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error('Erro ao classificar contatos');
+    } finally {
+      setClassifyingClients(false);
+    }
+  };
 
   const fetchAgentsAndAssignments = async () => {
     const [{ data: agentsData }, { data: assignmentsData }] = await Promise.all([
@@ -120,8 +240,9 @@ export function ContactsListPage() {
       ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
       ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
       ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
+      groupFilter: groupFilter !== 'all' ? groupFilter : 'without_group',
     });
-  }, [fetchContacts, stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter]);
+  }, [fetchContacts, stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter]);
 
   // Load filter options and instances on mount
   useEffect(() => {
@@ -298,7 +419,11 @@ export function ContactsListPage() {
       <div className="flex items-center gap-3 p-4 border-b bg-card shrink-0">
         <Users className="h-6 w-6 text-primary" />
         <h1 className="text-lg font-semibold">Contatos & Transmissão</h1>
-        <Badge variant="secondary" className="text-xs">{stats.total || totalCount}</Badge>
+        <Badge variant="secondary" className="text-xs">{totalCount}</Badge>
+        <Button variant="outline" size="sm" onClick={handleClassifyClosedAsClients} disabled={classifyingClients} title="Classificar contatos em grupos fechados como Cliente">
+          {classifyingClients ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Wand2 className="h-3.5 w-3.5 mr-1" />}
+          Classificar Clientes
+        </Button>
         <div className="ml-auto flex gap-2">
           {selectedContacts.size > 0 && (
             <>
@@ -318,10 +443,14 @@ export function ContactsListPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
         <div className="px-4 pt-3 shrink-0">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="contacts">
               <Users className="h-4 w-4 mr-1.5" />
-              Contatos ({totalCount || filteredContacts.length})
+              Contatos ({totalCount})
+            </TabsTrigger>
+            <TabsTrigger value="groups">
+              <UsersRound className="h-4 w-4 mr-1.5" />
+              Grupos ({groups.length})
             </TabsTrigger>
             <TabsTrigger value="lists">
               <Radio className="h-4 w-4 mr-1.5" />
@@ -344,9 +473,9 @@ export function ContactsListPage() {
             <Button variant="outline" size="sm" onClick={() => setShowFilters(v => !v)}>
               <Filter className="h-3.5 w-3.5 mr-1" />
               Filtros
-              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all') && (
+              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all' || groupFilter !== 'all') && (
                 <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
-                  {[stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter].filter(v => v !== 'all').length}
+                  {[stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter].filter(v => v !== 'all').length}
                 </Badge>
               )}
             </Button>
@@ -409,13 +538,23 @@ export function ContactsListPage() {
                 </SelectContent>
               </Select>
 
-              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all') && (
+              <Select value={groupFilter} onValueChange={(v) => setGroupFilter(v as any)}>
+                <SelectTrigger className="w-[140px] h-8 text-xs"><SelectValue placeholder="Grupo" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="with_group">Com Grupo</SelectItem>
+                  <SelectItem value="without_group">Sem Grupo</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all' || groupFilter !== 'all') && (
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => {
                   setStateFilter('all');
                   setCityFilter('all');
                   setSourceFilter('all');
                   setCreatedByFilter('all');
                   setClassificationFilter('all');
+                  setGroupFilter('all');
                 }}>
                   <X className="h-3 w-3 mr-1" />
                   Limpar
@@ -463,6 +602,96 @@ export function ContactsListPage() {
                 ))
               )}
             </div>
+          </ScrollArea>
+        </TabsContent>
+
+        {/* Groups Tab */}
+        <TabsContent value="groups" className="flex-1 flex flex-col overflow-hidden mt-0 px-4 pb-4">
+          <div className="flex items-center gap-2 py-3 shrink-0">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar grupo por nome..."
+                value={groupSearch}
+                onChange={e => setGroupSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            {selectedGroup && (
+              <Button variant="outline" size="sm" onClick={() => { setSelectedGroup(null); setGroupContacts([]); }}>
+                <X className="h-3.5 w-3.5 mr-1" />
+                Voltar à lista
+              </Button>
+            )}
+          </div>
+
+          <ScrollArea className="flex-1">
+            {selectedGroup ? (
+              <div className="space-y-1">
+                <div className="p-3 mb-2 rounded-lg bg-muted/50 border">
+                  <p className="text-sm font-medium">{groups.find(g => g.group_jid === selectedGroup)?.group_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Lead: {groups.find(g => g.group_jid === selectedGroup)?.lead_name} •
+                    Status: <Badge variant="outline" className="text-[10px] ml-1">{groups.find(g => g.group_jid === selectedGroup)?.lead_status || 'N/A'}</Badge>
+                  </p>
+                </div>
+                {groupContactsLoading ? (
+                  <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                ) : groupContacts.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">Nenhum contato neste grupo</p>
+                ) : (
+                  groupContacts.map(contact => (
+                    <div
+                      key={contact.id}
+                      className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
+                      onClick={() => setDetailContact(contact)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{contact.full_name}</p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {contact.phone || 'Sem telefone'}
+                        </p>
+                      </div>
+                      {contact.classification && (
+                        <Badge variant="outline" className="text-[10px] shrink-0">
+                          {contact.classification}
+                        </Badge>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {groupsLoading ? (
+                  <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                ) : groups.filter(g => !groupSearch || g.group_name.toLowerCase().includes(groupSearch.toLowerCase()) || g.lead_name.toLowerCase().includes(groupSearch.toLowerCase())).length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">Nenhum grupo encontrado</p>
+                ) : (
+                  groups
+                    .filter(g => !groupSearch || g.group_name.toLowerCase().includes(groupSearch.toLowerCase()) || g.lead_name.toLowerCase().includes(groupSearch.toLowerCase()))
+                    .map(group => (
+                      <div
+                        key={group.group_jid}
+                        className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors border"
+                        onClick={() => handleSelectGroup(group.group_jid)}
+                      >
+                        <UsersRound className="h-5 w-5 text-primary shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{group.group_name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Lead: {group.lead_name} • {group.contact_count} contato(s)
+                          </p>
+                        </div>
+                        <Badge variant={group.lead_status === 'closed' ? 'default' : 'outline'} className="text-[10px] shrink-0">
+                          {group.lead_status || 'N/A'}
+                        </Badge>
+                      </div>
+                    ))
+                )}
+              </div>
+            )}
           </ScrollArea>
         </TabsContent>
 
@@ -725,6 +954,8 @@ export function ContactsListPage() {
             ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
             ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
             ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
+            ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
+            groupFilter: groupFilter !== 'all' ? groupFilter : 'without_group',
           });
         }}
       />
