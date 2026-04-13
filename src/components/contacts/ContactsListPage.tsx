@@ -112,17 +112,46 @@ export function ContactsListPage() {
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
 
   useEffect(() => {
-    fetchContacts(1, 1000);
-    const loadInstances = async () => {
-      const { data } = await supabase
-        .from('whatsapp_instances')
-        .select('id, instance_name')
-        .eq('is_active', true);
-      setInstances(data || []);
-      if (data && data.length > 0) setSendInstanceId(data[0].id);
+    fetchContacts(1, 5000, {
+      ...(stateFilter !== 'all' ? { state: stateFilter } : {}),
+      ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
+      ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
+      ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
+    });
+    const loadExtras = async () => {
+      const [instancesRes, statesRes, citiesRes, creatorsRes] = await Promise.all([
+        supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true),
+        supabase.rpc('get_distinct_contact_states' as any) as any,
+        supabase.rpc('get_distinct_contact_cities' as any) as any,
+        supabase.from('profiles').select('user_id, full_name').order('full_name'),
+      ]);
+      setInstances(instancesRes.data || []);
+      if (instancesRes.data?.length) setSendInstanceId(instancesRes.data[0].id);
+      
+      // Build filter options from contacts data  
+      const uniqueStates = [...new Set(contacts.map(c => c.state).filter(Boolean))] as string[];
+      const uniqueCities = [...new Set(contacts.map(c => c.city).filter(Boolean))] as string[];
+      setFilterOptions({
+        states: uniqueStates.sort(),
+        cities: uniqueCities.sort(),
+        creators: (creatorsRes.data || []).map((p: any) => ({ id: p.user_id, name: p.full_name })),
+      });
     };
-    loadInstances();
-  }, []);
+    loadExtras();
+  }, [stateFilter, cityFilter, sourceFilter, createdByFilter]);
+
+  // Rebuild filter options when contacts change
+  useEffect(() => {
+    if (contacts.length > 0) {
+      const uniqueStates = [...new Set(contacts.map(c => c.state).filter(Boolean))] as string[];
+      const uniqueCities = [...new Set(contacts.map(c => c.city).filter(Boolean))] as string[];
+      setFilterOptions(prev => ({
+        ...prev,
+        states: uniqueStates.sort(),
+        cities: uniqueCities.sort(),
+      }));
+    }
+  }, [contacts]);
 
   const filteredContacts = contacts.filter(c => {
     if (!search) return true;
