@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AIPromptGenerator } from './AIPromptGenerator';
+import { PromptBuilderChat } from './PromptBuilderChat';
 import { PromptVariableSelector } from './PromptVariableSelector';
 import { AgentAutomationRules } from './AgentAutomationRules';
 import { AgentStageConfig } from './AgentStageConfig';
@@ -533,7 +533,7 @@ export function WhatsAppAIAgents() {
                   </div>
                   {showAIPrompt && (
                     <div className="mb-2">
-                      <AIPromptGenerator
+                      <PromptBuilderChat
                         currentPrompt={editingAgent.base_prompt || ''}
                         onApply={(prompt) => { setEditingAgent({ ...editingAgent, base_prompt: prompt }); setShowAIPrompt(false); }}
                         onClose={() => setShowAIPrompt(false)}
