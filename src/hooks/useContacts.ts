@@ -146,31 +146,34 @@ export const useContacts = () => {
       let allContacts: Contact[] = [];
       let totalExact = 0;
       let offset = 0;
-      let hasMore = true;
 
-      while (hasMore) {
+      // First batch: get exact count
+      {
         let query = buildQuery();
         if (linkedIds) query = query.in('id', linkedIds);
         if (notLinkedIds) {
-          for (const id of notLinkedIds) {
-            query = query.neq('id', id);
-          }
+          for (const id of notLinkedIds) query = query.neq('id', id);
         }
-        query = query.range(offset, offset + BATCH_SIZE - 1);
-
-        const { data, error, count } = await query;
+        const { data, error, count } = await query.range(0, BATCH_SIZE - 1);
         if (error) throw error;
+        totalExact = count || 0;
+        allContacts = (data || []) as Contact[];
+        offset = BATCH_SIZE;
+      }
 
-        if (offset === 0) totalExact = count || 0;
-
+      // Fetch remaining batches based on exact count
+      while (offset < totalExact && offset < 10000) {
+        let query = buildQuery();
+        if (linkedIds) query = query.in('id', linkedIds);
+        if (notLinkedIds) {
+          for (const id of notLinkedIds) query = query.neq('id', id);
+        }
+        const { data, error } = await query.range(offset, offset + BATCH_SIZE - 1);
+        if (error) throw error;
         const batch = (data || []) as Contact[];
+        if (batch.length === 0) break;
         allContacts = [...allContacts, ...batch];
-        
-        hasMore = batch.length === BATCH_SIZE;
         offset += BATCH_SIZE;
-        
-        // Safety limit: max 10 batches (10,000 contacts)
-        if (offset >= 10000) break;
       }
 
       setContacts(allContacts);
