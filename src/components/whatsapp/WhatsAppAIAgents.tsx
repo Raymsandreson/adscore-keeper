@@ -429,9 +429,13 @@ export function WhatsAppAIAgents() {
           </DialogHeader>
           {editingAgent && (
             <Tabs defaultValue="general" className="w-full">
-              <TabsList className="w-full grid grid-cols-6">
+              <TabsList className="w-full grid grid-cols-7">
                 <TabsTrigger value="general" className="text-xs">⚙️ Geral</TabsTrigger>
                 <TabsTrigger value="ia" className="text-xs">🧠 IA</TabsTrigger>
+                <TabsTrigger value="ai_assistant" className="text-xs gap-1">
+                  <Sparkles className="h-3 w-3" />
+                  Assistente
+                </TabsTrigger>
                 <TabsTrigger value="automations" className="text-xs">⚡ Automações</TabsTrigger>
                 <TabsTrigger value="timing" className="text-xs">⏱️ Tempos</TabsTrigger>
                 <TabsTrigger value="calls" className="text-xs">📞 Chamadas</TabsTrigger>
