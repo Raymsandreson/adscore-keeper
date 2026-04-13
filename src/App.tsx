@@ -173,7 +173,6 @@ const App = () => (
         </ThemeProvider>
       </QueryClientProvider>
     </ErrorBoundary>
-  </Sentry.ErrorBoundary>
 );
 
 // Separate component to use hooks inside BrowserRouter
