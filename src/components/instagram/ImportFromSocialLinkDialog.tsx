@@ -735,6 +735,8 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     setCommentsCount(0);
     setSavedContacts(new Set());
     setAdditionalVictims([]);
+    setBridgeReplies({});
+    setIsGeneratingReplies(false);
     onOpenChange(false);
   };
 
