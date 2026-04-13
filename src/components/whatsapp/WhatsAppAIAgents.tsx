@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AIPromptGenerator } from './AIPromptGenerator';
+import { PromptBuilderChat } from './PromptBuilderChat';
 import { PromptVariableSelector } from './PromptVariableSelector';
 import { AgentAutomationRules } from './AgentAutomationRules';
 import { AgentStageConfig } from './AgentStageConfig';
