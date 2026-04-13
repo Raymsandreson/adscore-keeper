@@ -137,6 +137,10 @@ export function useLeadActivities() {
           current_status_notes: activity.current_status_notes || null,
           next_steps: activity.next_steps || null,
           matrix_quadrant: activity.matrix_quadrant || null,
+          case_id: activity.case_id || null,
+          case_title: activity.case_title || null,
+          process_id: activity.process_id || null,
+          process_title: activity.process_title || null,
         } as any)
         .select()
         .single();
