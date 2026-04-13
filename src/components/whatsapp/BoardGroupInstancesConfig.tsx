@@ -147,6 +147,7 @@ export function BoardGroupInstancesConfig() {
     process_workflow_board_id: '',
     process_auto_activities: [],
     process_workflows: [],
+    bridge_approach_prompt: '',
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -235,6 +236,7 @@ export function BoardGroupInstancesConfig() {
         process_workflow_board_id: data.process_workflow_board_id || '',
         process_auto_activities: data.process_auto_activities || [],
         process_workflows: data.process_workflows || [],
+        bridge_approach_prompt: data.bridge_approach_prompt || '',
       });
       if (data.ai_generated_message) {
         setPreviewMessage(data.ai_generated_message);
@@ -251,6 +253,7 @@ export function BoardGroupInstancesConfig() {
         auto_close_lead_on_sign: false, auto_create_group_on_sign: false,
         auto_create_process: false, process_nucleus_id: '', process_workflow_board_id: '',
         process_auto_activities: [], process_workflows: [],
+        bridge_approach_prompt: '',
       });
       setPreviewMessage(null);
     }
