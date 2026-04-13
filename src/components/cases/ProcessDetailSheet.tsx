@@ -190,19 +190,23 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   }, [process]);
 
   // Fetch activities when the tab is activated
-  useEffect(() => {
-    if (activeTab !== 'atividades' || !process?.id) return;
+  const fetchActivities = useCallback(async () => {
+    if (!process?.id) return;
     setLoadingActivities(true);
-    supabase
+    const { data } = await supabase
       .from('lead_activities')
       .select('id, title, description, activity_type, status, priority, deadline, assigned_to_name, completed_at, created_at')
       .eq('process_id', process.id)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        setActivities((data || []) as ProcessActivity[]);
-        setLoadingActivities(false);
-      });
-  }, [activeTab, process?.id]);
+      .order('created_at', { ascending: false });
+    setActivities((data || []) as ProcessActivity[]);
+    setLoadingActivities(false);
+  }, [process?.id]);
+
+  useEffect(() => {
+    if (activeTab === 'atividades') {
+      fetchActivities();
+    }
+  }, [activeTab, fetchActivities]);
 
   // Fetch documents when tab is activated
   useEffect(() => {
