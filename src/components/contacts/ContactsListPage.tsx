@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useContacts } from '@/hooks/useContacts';
+import { useContacts, Contact } from '@/hooks/useContacts';
+import { ContactDetailSheet } from './ContactDetailSheet';
 import { useBroadcastLists, BroadcastList, BroadcastListMember } from '@/hooks/useBroadcastLists';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
