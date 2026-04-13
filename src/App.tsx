@@ -1,5 +1,4 @@
 import React, { lazy, Suspense, type ComponentType } from "react";
-import { Sentry } from "@/lib/sentry";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -138,24 +137,10 @@ const PageLoading = () => (
   </div>
 );
 
-const SentryErrorFallback: Sentry.FallbackRender = () => (
-  <div className="flex flex-col items-center justify-center h-screen gap-4 p-8 text-center">
-    <h1 className="text-2xl font-bold text-destructive">Algo deu errado</h1>
-    <p className="text-muted-foreground max-w-md">
-      Um erro inesperado ocorreu. Nossa equipe foi notificada automaticamente.
-    </p>
-    <button
-      onClick={() => window.location.reload()}
-      className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90"
-    >
-      Recarregar página
-    </button>
-  </div>
-);
+
 
 const App = () => (
-  <Sentry.ErrorBoundary fallback={SentryErrorFallback} showDialog>
-    <ErrorBoundary>
+  <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <AuthProvider>
@@ -174,7 +159,6 @@ const App = () => (
         </ThemeProvider>
       </QueryClientProvider>
     </ErrorBoundary>
-  </Sentry.ErrorBoundary>
 );
 
 // Separate component to use hooks inside BrowserRouter
@@ -250,4 +234,4 @@ function SidebarLayout() {
   );
 }
 
-export default Sentry.withProfiler(App);
+export default App;
