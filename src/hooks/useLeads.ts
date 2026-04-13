@@ -198,6 +198,7 @@ export const useLeads = (adAccountId?: string) => {
         let query = supabase
           .from('leads')
           .select(LEAD_SELECT_COLUMNS)
+          .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .range(from, to);
 
