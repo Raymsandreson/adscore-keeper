@@ -154,8 +154,7 @@ const SentryErrorFallback: Sentry.FallbackRender = () => (
 );
 
 const App = () => (
-  <Sentry.ErrorBoundary fallback={SentryErrorFallback} showDialog>
-    <ErrorBoundary>
+  <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <AuthProvider>
