@@ -358,6 +358,18 @@ export function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
 
+            {/* Archived Items */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => handleNavigate('/archived')}
+                isActive={isActive('/archived')}
+                tooltip="Arquivados"
+              >
+                <Archive className="h-4 w-4" />
+                <span>Arquivados</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
             {/* Logout */}
             <SidebarMenuItem>
               <SidebarMenuButton
