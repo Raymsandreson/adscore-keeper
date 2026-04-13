@@ -163,6 +163,7 @@ export function useDashboardMetrics() {
       const processesDetails: OperationalDetail[] = processesData.map(p => ({ id: p.id, name: p.cliente || '', acolhedor: p.acolhedor, instance_name: null, lead_id: null, created_at: p.created_at }));
 
       const contactsData = contactsResult.data || [];
+      const contactsTotalCount = contactsCountResult.count ?? contactsData.length;
       const contactsDetails: OperationalDetail[] = contactsData.map(c => ({ id: c.id, name: c.full_name || '', acolhedor: null, instance_name: null, lead_id: null, created_at: c.created_at }));
 
       setMetricsProgress(80);
