@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useContacts } from '@/hooks/useContacts';
+import { useContacts, Contact } from '@/hooks/useContacts';
+import { ContactDetailSheet } from './ContactDetailSheet';
 import { useBroadcastLists, BroadcastList, BroadcastListMember } from '@/hooks/useBroadcastLists';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
@@ -27,6 +28,7 @@ export function ContactsListPage() {
 
   const [search, setSearch] = useState('');
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
+  const [detailContact, setDetailContact] = useState<Contact | null>(null);
   const [activeTab, setActiveTab] = useState('contacts');
   
   // Filter states
@@ -413,11 +415,12 @@ export function ContactsListPage() {
                   <div
                     key={contact.id}
                     className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
-                    onClick={() => toggleContact(contact.id)}
+                    onClick={() => setDetailContact(contact)}
                   >
                     <Checkbox
                       checked={selectedContacts.has(contact.id)}
                       onCheckedChange={() => toggleContact(contact.id)}
+                      onClick={(e) => e.stopPropagation()}
                     />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm truncate">{contact.full_name}</p>
@@ -691,6 +694,20 @@ export function ContactsListPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ContactDetailSheet
+        contact={detailContact}
+        open={!!detailContact}
+        onOpenChange={(open) => { if (!open) setDetailContact(null); }}
+        onContactUpdated={() => {
+          fetchContacts(1, 5000, {
+            ...(stateFilter !== 'all' ? { state: stateFilter } : {}),
+            ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
+            ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
+            ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
+          });
+        }}
+      />
     </div>
   );
 }
