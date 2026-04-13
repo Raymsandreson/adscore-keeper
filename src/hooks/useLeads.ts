@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { logAudit } from '@/hooks/useAuditLog';
 import { facebookCAPI } from '@/services/facebookCAPI';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -197,6 +198,7 @@ export const useLeads = (adAccountId?: string) => {
         let query = supabase
           .from('leads')
           .select(LEAD_SELECT_COLUMNS)
+          .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .range(from, to);
 
@@ -436,18 +438,37 @@ export const useLeads = (adAccountId?: string) => {
 
   const deleteLead = async (id: string) => {
     try {
+      // Fetch full snapshot before archiving
+      const { data: snapshot } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      // Save snapshot to audit log
+      if (snapshot) {
+        await logAudit({
+          action: 'delete',
+          entityType: 'lead',
+          entityId: id,
+          entityName: snapshot.lead_name || 'Lead',
+          details: { snapshot, soft_delete: true },
+        });
+      }
+
+      // Soft delete
       const { error } = await supabase
         .from('leads')
-        .delete()
+        .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', id);
 
       if (error) throw error;
 
-      toast.success('Lead removido com sucesso');
+      toast.success('Lead arquivado com sucesso');
       fetchLeads();
     } catch (error) {
-      console.error('Error deleting lead:', error);
-      toast.error('Erro ao remover lead');
+      console.error('Error archiving lead:', error);
+      toast.error('Erro ao arquivar lead');
       throw error;
     }
   };

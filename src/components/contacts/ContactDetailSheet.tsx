@@ -1161,9 +1161,9 @@ export function ContactDetailSheet({
                               // Remove link first
                               await unlinkLead(contactLead.lead_id);
                               // Delete the lead itself
-                              const { error } = await supabase.from('leads').delete().eq('id', contactLead.lead_id);
+                              const { error } = await supabase.from('leads').update({ deleted_at: new Date().toISOString() } as any).eq('id', contactLead.lead_id);
                               if (error) throw error;
-                              toast.success('Lead excluído');
+                              toast.success('Lead arquivado');
                               refetchLeads();
                             } catch (err) {
                               console.error(err);

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { logAudit } from '@/hooks/useAuditLog';
 import { Lead } from '@/hooks/useLeads';
 
 export interface LeadContact {
@@ -200,18 +201,37 @@ export const useLeadContacts = (leadId?: string) => {
 
   const deleteContact = async (contactId: string) => {
     try {
+      // Fetch full snapshot before archiving
+      const { data: snapshot } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('id', contactId)
+        .single();
+
+      // Save snapshot to audit log
+      if (snapshot) {
+        await logAudit({
+          action: 'delete',
+          entityType: 'contact',
+          entityId: contactId,
+          entityName: snapshot.full_name || 'Contato',
+          details: { snapshot, soft_delete: true },
+        });
+      }
+
+      // Soft delete
       const { error } = await supabase
         .from('contacts')
-        .delete()
+        .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', contactId);
 
       if (error) throw error;
       
-      toast.success('Contato removido');
+      toast.success('Contato arquivado');
       fetchContacts();
     } catch (error) {
-      console.error('Error deleting contact:', error);
-      toast.error('Erro ao remover contato');
+      console.error('Error archiving contact:', error);
+      toast.error('Erro ao arquivar contato');
       throw error;
     }
   };
