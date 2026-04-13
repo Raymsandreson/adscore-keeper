@@ -505,34 +505,37 @@ export function WhatsAppAIAgents() {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <Label>🧠 Prompt do Agente *</Label>
-                    <div className="flex gap-1">
-                      <PromptVariableSelector onInsert={(variable) => {
-                        const textarea = document.querySelector<HTMLTextAreaElement>('#agent-prompt-textarea');
-                        if (textarea) {
-                          const start = textarea.selectionStart;
-                          const end = textarea.selectionEnd;
-                          const currentVal = editingAgent.base_prompt || '';
-                          const newVal = currentVal.substring(0, start) + variable + currentVal.substring(end);
-                          setEditingAgent({ ...editingAgent, base_prompt: newVal });
-                          setTimeout(() => { textarea.focus(); textarea.setSelectionRange(start + variable.length, start + variable.length); }, 50);
-                        } else {
-                          setEditingAgent({ ...editingAgent, base_prompt: (editingAgent.base_prompt || '') + ' ' + variable });
-                        }
-                      }} />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs gap-1"
-                        onClick={() => setShowAIPrompt(!showAIPrompt)}
-                      >
-                        <Sparkles className="h-3 w-3" />
-                        Gerar com IA
-                      </Button>
-                    </div>
+                    <PromptVariableSelector onInsert={(variable) => {
+                      const textarea = document.querySelector<HTMLTextAreaElement>('#agent-prompt-textarea');
+                      if (textarea) {
+                        const start = textarea.selectionStart;
+                        const end = textarea.selectionEnd;
+                        const currentVal = editingAgent.base_prompt || '';
+                        const newVal = currentVal.substring(0, start) + variable + currentVal.substring(end);
+                        setEditingAgent({ ...editingAgent, base_prompt: newVal });
+                        setTimeout(() => { textarea.focus(); textarea.setSelectionRange(start + variable.length, start + variable.length); }, 50);
+                      } else {
+                        setEditingAgent({ ...editingAgent, base_prompt: (editingAgent.base_prompt || '') + ' ' + variable });
+                      }
+                    }} />
                   </div>
+                  <Textarea id="agent-prompt-textarea" value={editingAgent.base_prompt || ''} onChange={e => setEditingAgent({ ...editingAgent, base_prompt: e.target.value })} placeholder="Instruções do agente... Use {lead.nome}, {contato.telefone}, {grupo.link_convite} etc." rows={6} />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Use o botão "Inserir campo" para adicionar dados dinâmicos do lead, contato, processo ou grupo diretamente no prompt.
+                  </p>
+                  
+                  <Button
+                    type="button"
+                    variant={showAIPrompt ? "default" : "outline"}
+                    className="w-full mt-2 gap-2"
+                    onClick={() => setShowAIPrompt(!showAIPrompt)}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    {showAIPrompt ? 'Fechar Assistente de Prompt' : '✨ Assistente de Prompt IA — Construa ou Gere seu prompt'}
+                  </Button>
+
                   {showAIPrompt && (
-                    <div className="mb-2">
+                    <div className="mt-2">
                       <PromptBuilderChat
                         currentPrompt={editingAgent.base_prompt || ''}
                         onApply={(prompt) => { setEditingAgent({ ...editingAgent, base_prompt: prompt }); setShowAIPrompt(false); }}
@@ -540,10 +543,6 @@ export function WhatsAppAIAgents() {
                       />
                     </div>
                   )}
-                  <Textarea id="agent-prompt-textarea" value={editingAgent.base_prompt || ''} onChange={e => setEditingAgent({ ...editingAgent, base_prompt: e.target.value })} placeholder="Instruções do agente... Use {lead.nome}, {contato.telefone}, {grupo.link_convite} etc." rows={6} />
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Use o botão "Inserir campo" para adicionar dados dinâmicos do lead, contato, processo ou grupo diretamente no prompt.
-                  </p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
