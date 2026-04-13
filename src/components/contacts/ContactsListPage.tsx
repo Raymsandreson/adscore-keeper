@@ -68,6 +68,15 @@ export function ContactsListPage() {
   // Agent assignment state
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [listAgentMap, setListAgentMap] = useState<Record<string, { agent_id: string; agent_name: string; is_active: boolean }>>({});
+  const [classifyingClients, setClassifyingClients] = useState(false);
+
+  // Groups data
+  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; contact_count: number }[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupSearch, setGroupSearch] = useState('');
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
+  const [groupContactsLoading, setGroupContactsLoading] = useState(false);
 
   useEffect(() => {
     fetchAgentsAndAssignments();
