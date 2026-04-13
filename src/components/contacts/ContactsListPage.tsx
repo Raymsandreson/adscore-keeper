@@ -419,7 +419,11 @@ export function ContactsListPage() {
       <div className="flex items-center gap-3 p-4 border-b bg-card shrink-0">
         <Users className="h-6 w-6 text-primary" />
         <h1 className="text-lg font-semibold">Contatos & Transmissão</h1>
-        <Badge variant="secondary" className="text-xs">{stats.total || totalCount}</Badge>
+        <Badge variant="secondary" className="text-xs">{totalCount}</Badge>
+        <Button variant="outline" size="sm" onClick={handleClassifyClosedAsClients} disabled={classifyingClients} title="Classificar contatos em grupos fechados como Cliente">
+          {classifyingClients ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Wand2 className="h-3.5 w-3.5 mr-1" />}
+          Classificar Clientes
+        </Button>
         <div className="ml-auto flex gap-2">
           {selectedContacts.size > 0 && (
             <>
