@@ -392,12 +392,30 @@ export function ContactsListPage() {
                 </SelectContent>
               </Select>
 
-              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all') && (
+              <Select value={classificationFilter} onValueChange={setClassificationFilter}>
+                <SelectTrigger className="w-[170px] h-8 text-xs"><SelectValue placeholder="Relacionamento" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos Relacionamentos</SelectItem>
+                  <SelectItem value="client">Cliente</SelectItem>
+                  <SelectItem value="prospect">Prospect</SelectItem>
+                  <SelectItem value="non_client">Não-Cliente</SelectItem>
+                  <SelectItem value="partner">Parceiro</SelectItem>
+                  <SelectItem value="supplier">Fornecedor</SelectItem>
+                  <SelectItem value="ponte">Ponte</SelectItem>
+                  <SelectItem value="ex_cliente">Ex-cliente</SelectItem>
+                  <SelectItem value="acolhedor">Acolhedor</SelectItem>
+                  <SelectItem value="Embaixador">Embaixador</SelectItem>
+                  <SelectItem value="none">Sem classificação</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all') && (
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => {
                   setStateFilter('all');
                   setCityFilter('all');
                   setSourceFilter('all');
                   setCreatedByFilter('all');
+                  setClassificationFilter('all');
                 }}>
                   <X className="h-3 w-3 mr-1" />
                   Limpar
