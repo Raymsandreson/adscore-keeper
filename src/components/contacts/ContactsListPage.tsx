@@ -28,6 +28,7 @@ export function ContactsListPage() {
 
   const [search, setSearch] = useState('');
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
+  const [detailContact, setDetailContact] = useState<Contact | null>(null);
   const [activeTab, setActiveTab] = useState('contacts');
   
   // Filter states
