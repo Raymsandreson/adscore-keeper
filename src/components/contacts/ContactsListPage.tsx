@@ -695,6 +695,7 @@ export function ContactsListPage() {
           </ScrollArea>
         </TabsContent>
 
+        <TabsContent value="lists" className="flex-1 flex flex-col overflow-hidden mt-0 px-4 pb-4">
           <div className="flex items-center gap-2 py-3 shrink-0">
             <Button size="sm" onClick={() => setShowCreateList(true)}>
               <Plus className="h-3.5 w-3.5 mr-1" />
