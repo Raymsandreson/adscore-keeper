@@ -167,15 +167,15 @@ export function ContactsListPage() {
         return;
       }
 
-      const { count } = await supabase
+      const { data: updated, error } = await supabase
         .from('contacts')
         .update({ classification: 'client', updated_at: new Date().toISOString() } as any)
         .in('whatsapp_group_id', closedJids)
         .neq('classification', 'client')
         .is('deleted_at', null)
-        .select('*', { count: 'exact', head: true });
+        .select('id');
 
-      toast.success(`${count || 0} contatos atualizados para 'Cliente'`);
+      toast.success(`${updated?.length || 0} contatos atualizados para 'Cliente'`);
       fetchContacts(1, 5000, {
         ...(stateFilter !== 'all' ? { state: stateFilter } : {}),
         ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
