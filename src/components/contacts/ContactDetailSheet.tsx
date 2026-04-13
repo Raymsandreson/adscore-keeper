@@ -64,7 +64,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Briefcase, Scale } from 'lucide-react';
+import { Briefcase, Scale, UsersRound } from 'lucide-react';
 import { ShareMenu } from '@/components/ShareMenu';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
@@ -580,7 +580,7 @@ export function ContactDetailSheet({
         </Header>
 
         <Tabs defaultValue="info" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="info" className="text-xs px-1">
               <User className="h-3 w-3 mr-1" />
               Info
@@ -596,6 +596,10 @@ export function ContactDetailSheet({
             <TabsTrigger value="location" className="text-xs px-1">
               <MapPin className="h-3 w-3 mr-1" />
               Local
+            </TabsTrigger>
+            <TabsTrigger value="groups" className="text-xs px-1">
+              <UsersRound className="h-3 w-3 mr-1" />
+              Grupos
             </TabsTrigger>
             <TabsTrigger value="relationships" className="text-xs px-1">
               <Users className="h-3 w-3 mr-1" />
@@ -1044,6 +1048,11 @@ export function ContactDetailSheet({
                   )}
                 </div>
               )}
+            </TabsContent>
+
+            {/* Groups Tab */}
+            <TabsContent value="groups" className="space-y-4 mt-0">
+              <ContactGroupsList contactId={contact.id} contactPhone={contact.phone} />
             </TabsContent>
 
             {/* Relationships Tab */}
