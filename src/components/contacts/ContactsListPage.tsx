@@ -29,6 +29,20 @@ export function ContactsListPage() {
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState('contacts');
   
+  // Filter states
+  const [cityFilter, setCityFilter] = useState('all');
+  const [stateFilter, setStateFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [createdByFilter, setCreatedByFilter] = useState('all');
+  const [showFilters, setShowFilters] = useState(false);
+  
+  // Filter options loaded from DB
+  const [filterOptions, setFilterOptions] = useState<{
+    states: string[];
+    cities: string[];
+    creators: { id: string; name: string }[];
+  }>({ states: [], cities: [], creators: [] });
+  
   // Broadcast list dialogs
   const [showCreateList, setShowCreateList] = useState(false);
   const [newListName, setNewListName] = useState('');
