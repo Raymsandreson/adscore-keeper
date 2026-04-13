@@ -2670,6 +2670,7 @@ export type Database = {
           converted_to_lead_at: string | null
           created_at: string
           created_by: string | null
+          deleted_at: string | null
           email: string | null
           follow_requested_at: string | null
           follower_status: string | null
@@ -2700,6 +2701,7 @@ export type Database = {
           converted_to_lead_at?: string | null
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
           email?: string | null
           follow_requested_at?: string | null
           follower_status?: string | null
@@ -2730,6 +2732,7 @@ export type Database = {
           converted_to_lead_at?: string | null
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
           email?: string | null
           follow_requested_at?: string | null
           follower_status?: string | null
@@ -4562,6 +4565,7 @@ export type Database = {
           created_by_ai: boolean | null
           current_status_notes: string | null
           deadline: string | null
+          deleted_at: string | null
           description: string | null
           id: string
           lead_id: string | null
@@ -4598,6 +4602,7 @@ export type Database = {
           created_by_ai?: boolean | null
           current_status_notes?: string | null
           deadline?: string | null
+          deleted_at?: string | null
           description?: string | null
           id?: string
           lead_id?: string | null
@@ -4634,6 +4639,7 @@ export type Database = {
           created_by_ai?: boolean | null
           current_status_notes?: string | null
           deadline?: string | null
+          deleted_at?: string | null
           description?: string | null
           id?: string
           lead_id?: string | null
@@ -5368,6 +5374,7 @@ export type Database = {
           creative_name: string | null
           ctwa_context: Json | null
           damage_description: string | null
+          deleted_at: string | null
           expected_birth_date: string | null
           facebook_lead_id: string | null
           first_meeting_at: string | null
@@ -5446,6 +5453,7 @@ export type Database = {
           creative_name?: string | null
           ctwa_context?: Json | null
           damage_description?: string | null
+          deleted_at?: string | null
           expected_birth_date?: string | null
           facebook_lead_id?: string | null
           first_meeting_at?: string | null
@@ -5524,6 +5532,7 @@ export type Database = {
           creative_name?: string | null
           ctwa_context?: Json | null
           damage_description?: string | null
+          deleted_at?: string | null
           expected_birth_date?: string | null
           facebook_lead_id?: string | null
           first_meeting_at?: string | null
