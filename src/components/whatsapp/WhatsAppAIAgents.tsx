@@ -668,7 +668,23 @@ export function WhatsAppAIAgents() {
                 )}
               </TabsContent>
 
-
+              {/* TAB: AI Assistant - dedicated prompt builder */}
+              <TabsContent value="ai_assistant" className="mt-4">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <span>Use a IA para criar ou melhorar o prompt do seu agente. Ela conhece todos os campos, ações e comandos disponíveis no sistema.</span>
+                  </div>
+                  <PromptBuilderChat
+                    currentPrompt={editingAgent.base_prompt || ''}
+                    onApply={(prompt) => {
+                      setEditingAgent({ ...editingAgent, base_prompt: prompt });
+                      toast.success('Prompt aplicado! Vá para a aba IA para revisar.');
+                    }}
+                    onClose={() => {}}
+                  />
+                </div>
+              </TabsContent>
 
 
               {/* TAB: Automations */}
