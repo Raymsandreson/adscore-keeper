@@ -694,6 +694,20 @@ export function ContactsListPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ContactDetailSheet
+        contact={detailContact}
+        open={!!detailContact}
+        onOpenChange={(open) => { if (!open) setDetailContact(null); }}
+        onContactUpdated={() => {
+          fetchContacts(1, 5000, {
+            ...(stateFilter !== 'all' ? { state: stateFilter } : {}),
+            ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
+            ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
+            ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
+          });
+        }}
+      />
     </div>
   );
 }
