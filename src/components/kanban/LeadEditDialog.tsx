@@ -261,6 +261,7 @@ export function LeadEditDialog({
     const hydrateLead = async () => {
       if (!open || !lead?.id) {
         setHydratedLead(lead);
+        prevLeadIdRef.current = null;
         return;
       }
 
