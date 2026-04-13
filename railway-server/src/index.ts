@@ -37,12 +37,11 @@ app.get('/health', (_req, res) => {
 // REGISTRO DE HANDLERS — Adicione funções migradas aqui
 // ============================================================
 
-const functionHandlers: Record<string, express.RequestHandler> = {};
+import { handler as whatsappWebhook } from './functions/whatsapp-webhook';
 
-// Importar handlers conforme migrados
-// Exemplo: 
-// import { handler as whatsappWebhook } from './functions/whatsapp-webhook';
-// functionHandlers['whatsapp-webhook'] = whatsappWebhook;
+const functionHandlers: Record<string, express.RequestHandler> = {
+  'whatsapp-webhook': whatsappWebhook,
+};
 
 // Rota dinâmica para funções
 app.post('/functions/:name', async (req, res) => {
