@@ -12,7 +12,7 @@ import ReactMarkdown from 'react-markdown';
 interface Props {
   currentPrompt: string;
   onApply: (prompt: string) => void;
-  onClose: () => void;
+  onClose?: () => void;
   hideHeader?: boolean;
 }
 

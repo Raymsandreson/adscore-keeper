@@ -510,16 +510,6 @@ export function WhatsAppAIAgents() {
                   <div className="flex items-center justify-between mb-1">
                     <Label>🧠 Prompt do Agente *</Label>
                     <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={showAIPrompt ? "default" : "outline"}
-                        className="gap-1.5 h-8"
-                        onClick={() => setShowAIPrompt(!showAIPrompt)}
-                      >
-                        <Sparkles className="h-3.5 w-3.5" />
-                        {showAIPrompt ? 'Fechar IA' : 'Gerar com IA'}
-                      </Button>
                       <PromptVariableSelector onInsert={(variable) => {
                         const textarea = document.querySelector<HTMLTextAreaElement>('#agent-prompt-textarea');
                         if (textarea) {
@@ -540,15 +530,12 @@ export function WhatsAppAIAgents() {
                     Use o botão "Inserir campo" para adicionar dados dinâmicos do lead, contato, processo ou grupo diretamente no prompt.
                   </p>
 
-                  {showAIPrompt && (
-                    <div className="mt-2">
-                      <PromptBuilderChat
-                        currentPrompt={editingAgent.base_prompt || ''}
-                        onApply={(prompt) => { setEditingAgent({ ...editingAgent, base_prompt: prompt }); setShowAIPrompt(false); }}
-                        onClose={() => setShowAIPrompt(false)}
-                      />
-                    </div>
-                  )}
+                  <div className="mt-3">
+                    <PromptBuilderChat
+                      currentPrompt={editingAgent.base_prompt || ''}
+                      onApply={(prompt) => { setEditingAgent({ ...editingAgent, base_prompt: prompt }); }}
+                    />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
