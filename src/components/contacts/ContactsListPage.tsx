@@ -15,11 +15,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import {
   Search, Users, Send, Plus, Trash2, Edit2, Radio, UserPlus,
-  Phone, Loader2, ChevronRight, X, List, ImagePlus, Bot, BotOff
+  Phone, Loader2, ChevronRight, X, List, ImagePlus, Bot, BotOff, Filter
 } from 'lucide-react';
 
 export function ContactsListPage() {
-  const { contacts, loading: contactsLoading, fetchContacts } = useContacts();
+  const { contacts, loading: contactsLoading, fetchContacts, totalCount } = useContacts();
   const {
     lists, loading: listsLoading, createList, updateList, deleteList,
     fetchMembers, addMembers, removeMember, sendBroadcast,
@@ -28,6 +28,20 @@ export function ContactsListPage() {
   const [search, setSearch] = useState('');
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState('contacts');
+  
+  // Filter states
+  const [cityFilter, setCityFilter] = useState('all');
+  const [stateFilter, setStateFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [createdByFilter, setCreatedByFilter] = useState('all');
+  const [showFilters, setShowFilters] = useState(false);
+  
+  // Filter options loaded from DB
+  const [filterOptions, setFilterOptions] = useState<{
+    states: string[];
+    cities: string[];
+    creators: { id: string; name: string }[];
+  }>({ states: [], cities: [], creators: [] });
   
   // Broadcast list dialogs
   const [showCreateList, setShowCreateList] = useState(false);
@@ -98,17 +112,43 @@ export function ContactsListPage() {
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
 
   useEffect(() => {
-    fetchContacts(1, 1000);
-    const loadInstances = async () => {
-      const { data } = await supabase
-        .from('whatsapp_instances')
-        .select('id, instance_name')
-        .eq('is_active', true);
-      setInstances(data || []);
-      if (data && data.length > 0) setSendInstanceId(data[0].id);
+    fetchContacts(1, 5000, {
+      ...(stateFilter !== 'all' ? { state: stateFilter } : {}),
+      ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
+      ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
+      ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
+    });
+  }, [stateFilter, cityFilter, sourceFilter, createdByFilter]);
+
+  // Load filter options and instances on mount
+  useEffect(() => {
+    const loadExtras = async () => {
+      const [instancesRes, creatorsRes] = await Promise.all([
+        supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true),
+        supabase.from('profiles').select('user_id, full_name').order('full_name'),
+      ]);
+      setInstances(instancesRes.data || []);
+      if (instancesRes.data?.length) setSendInstanceId(instancesRes.data[0].id);
+      setFilterOptions(prev => ({
+        ...prev,
+        creators: (creatorsRes.data || []).map((p: any) => ({ id: p.user_id, name: p.full_name })),
+      }));
     };
-    loadInstances();
+    loadExtras();
   }, []);
+
+  // Rebuild filter options when contacts change
+  useEffect(() => {
+    if (contacts.length > 0) {
+      const uniqueStates = [...new Set(contacts.map(c => c.state).filter(Boolean))] as string[];
+      const uniqueCities = [...new Set(contacts.map(c => c.city).filter(Boolean))] as string[];
+      setFilterOptions(prev => ({
+        ...prev,
+        states: uniqueStates.sort(),
+        cities: uniqueCities.sort(),
+      }));
+    }
+  }, [contacts]);
 
   const filteredContacts = contacts.filter(c => {
     if (!search) return true;
@@ -255,7 +295,7 @@ export function ContactsListPage() {
       <div className="flex items-center gap-3 p-4 border-b bg-card shrink-0">
         <Users className="h-6 w-6 text-primary" />
         <h1 className="text-lg font-semibold">Contatos & Transmissão</h1>
-        <Badge variant="secondary" className="text-xs">{contacts.length}</Badge>
+        <Badge variant="secondary" className="text-xs">{totalCount}</Badge>
         <div className="ml-auto flex gap-2">
           {selectedContacts.size > 0 && (
             <>
@@ -298,10 +338,70 @@ export function ContactsListPage() {
                 className="pl-9"
               />
             </div>
+            <Button variant="outline" size="sm" onClick={() => setShowFilters(v => !v)}>
+              <Filter className="h-3.5 w-3.5 mr-1" />
+              Filtros
+              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all') && (
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                  {[stateFilter, cityFilter, sourceFilter, createdByFilter].filter(v => v !== 'all').length}
+                </Badge>
+              )}
+            </Button>
             <Button variant="outline" size="sm" onClick={toggleAll}>
               {selectedContacts.size === withPhone.length ? 'Desmarcar' : 'Selecionar'} todos
             </Button>
           </div>
+
+          {showFilters && (
+            <div className="flex flex-wrap gap-2 pb-3 shrink-0">
+              <Select value={stateFilter} onValueChange={setStateFilter}>
+                <SelectTrigger className="w-[130px] h-8 text-xs"><SelectValue placeholder="Estado" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos Estados</SelectItem>
+                  {filterOptions.states.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
+              <Select value={cityFilter} onValueChange={setCityFilter}>
+                <SelectTrigger className="w-[160px] h-8 text-xs"><SelectValue placeholder="Cidade" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas Cidades</SelectItem>
+                  {filterOptions.cities.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                <SelectTrigger className="w-[150px] h-8 text-xs"><SelectValue placeholder="Origem" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas Origens</SelectItem>
+                  <SelectItem value="manual">Manual</SelectItem>
+                  <SelectItem value="system">Automático (IA)</SelectItem>
+                  <SelectItem value="group_creation">Criação de Grupo</SelectItem>
+                  <SelectItem value="whatsapp_group">Grupo WhatsApp</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={createdByFilter} onValueChange={setCreatedByFilter}>
+                <SelectTrigger className="w-[170px] h-8 text-xs"><SelectValue placeholder="Criado por" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos Membros</SelectItem>
+                  {filterOptions.creators.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
+              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all') && (
+                <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => {
+                  setStateFilter('all');
+                  setCityFilter('all');
+                  setSourceFilter('all');
+                  setCreatedByFilter('all');
+                }}>
+                  <X className="h-3 w-3 mr-1" />
+                  Limpar
+                </Button>
+              )}
+            </div>
+          )}
 
           <ScrollArea className="flex-1">
             <div className="space-y-1">

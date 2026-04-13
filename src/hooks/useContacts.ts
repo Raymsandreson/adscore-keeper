@@ -66,6 +66,10 @@ export const useContacts = () => {
     dateFrom?: string;
     dateTo?: string;
     leadLinked?: 'all' | 'linked' | 'not_linked';
+    city?: string;
+    state?: string;
+    actionSource?: string;
+    createdBy?: string;
   }) => {
     setLoading(true);
     try {
@@ -142,6 +146,26 @@ export const useContacts = () => {
             query = query.neq('id', id);
           }
         }
+      }
+
+      // Filter by city
+      if (filters?.city && filters.city !== 'all') {
+        query = query.eq('city', filters.city);
+      }
+
+      // Filter by state
+      if (filters?.state && filters.state !== 'all') {
+        query = query.eq('state', filters.state);
+      }
+
+      // Filter by action source (manual, system, group_creation, whatsapp_group)
+      if (filters?.actionSource && filters.actionSource !== 'all') {
+        query = query.eq('action_source', filters.actionSource);
+      }
+
+      // Filter by created_by (user who created the contact)
+      if (filters?.createdBy && filters.createdBy !== 'all') {
+        query = query.eq('created_by', filters.createdBy);
       }
 
       // Apply pagination
