@@ -317,9 +317,30 @@ export function WhatsAppAIAgents() {
 
   const confirmDeleteAgent = async () => {
     if (!deleteTarget) return;
-    await supabase.from('whatsapp_ai_agents').delete().eq('id', deleteTarget.id);
-    toast.success('Agente excluído');
-    logAudit({ action: 'delete', entityType: 'agent', entityId: deleteTarget.id, entityName: deleteTarget.name });
+    
+    // Fetch full agent data for backup snapshot before archiving
+    const { data: fullAgent } = await supabase
+      .from('wjia_command_shortcuts')
+      .select('*')
+      .eq('id', deleteTarget.id)
+      .single();
+
+    // Save snapshot in audit log for recovery
+    logAudit({ 
+      action: 'delete', 
+      entityType: 'agent', 
+      entityId: deleteTarget.id, 
+      entityName: deleteTarget.name,
+      details: { snapshot: fullAgent, soft_delete: true }
+    });
+
+    // Soft delete: set deleted_at instead of hard delete
+    await supabase
+      .from('wjia_command_shortcuts')
+      .update({ deleted_at: new Date().toISOString() } as any)
+      .eq('id', deleteTarget.id);
+
+    toast.success('Agente arquivado (pode ser restaurado)');
     setDeleteTarget(null);
     fetchAgents();
   };
@@ -995,15 +1016,15 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir agente "{deleteTarget?.name}"?</AlertDialogTitle>
+          <AlertDialogTitle>Arquivar agente "{deleteTarget?.name}"?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação é irreversível. O agente, suas configurações, automações e histórico de follow-up serão permanentemente removidos.
+              O agente será arquivado e poderá ser restaurado posteriormente. Suas configurações, automações e histórico serão preservados.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDeleteAgent} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Sim, excluir agente
+              Sim, arquivar agente
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
