@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, CalendarDays, TrendingUp, Trophy, UsersRound,
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
-  LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome, Archive,
+  LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome, Archive, Bug,
   MessageSquare as MessageSquareIcon,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -135,6 +135,7 @@ export function AppSidebar() {
       items: [
         { id: "team-main", label: "Equipe", icon: <UsersRound className="h-3.5 w-3.5" />, path: "/team", color: "text-emerald-500" },
         { id: "analytics", label: "Analytics", icon: <TrendingUp className="h-3.5 w-3.5" />, path: "/analytics" },
+        { id: "bug-monitor", label: "Monitor de Bugs", icon: <Bug className="h-3.5 w-3.5" />, path: "/bug-monitor", color: "text-destructive" },
       ],
     },
   ];
