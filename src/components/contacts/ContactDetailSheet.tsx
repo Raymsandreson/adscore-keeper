@@ -536,6 +536,17 @@ export function ContactDetailSheet({
               </CopyableText>
             </Title>
             <div className="flex items-center gap-1">
+              {contact.phone && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => window.open(`https://wa.me/${contact.phone?.replace(/\D/g, '')}`, '_blank')}
+                  title="Abrir chat no WhatsApp"
+                >
+                  <MessageSquare className="h-4 w-4 text-green-600" />
+                </Button>
+              )}
               <ShareMenu entityType="contact" entityId={contact.id} entityName={contact.full_name} />
               <TeamChatButton entityType="contact" entityId={contact.id} entityName={contact.full_name} variant="icon" className="h-8 w-8" />
               <Button

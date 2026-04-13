@@ -88,7 +88,7 @@ export const useContacts = () => {
           if (filters.classification === 'none') {
             query = query.is('classification', null);
           } else {
-            query = query.eq('classification', filters.classification);
+            query = query.or(`classification.eq.${filters.classification},classifications.cs.{"${filters.classification}"}`);
           }
         }
         if (filters?.followerStatus && filters.followerStatus !== 'all') {
