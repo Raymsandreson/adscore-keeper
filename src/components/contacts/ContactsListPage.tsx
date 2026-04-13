@@ -34,7 +34,7 @@ export function ContactsListPage() {
   const [stateFilter, setStateFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [createdByFilter, setCreatedByFilter] = useState('all');
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
   
   // Filter options loaded from DB
   const [filterOptions, setFilterOptions] = useState<{
