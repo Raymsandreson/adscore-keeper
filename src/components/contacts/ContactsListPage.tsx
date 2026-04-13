@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 export function ContactsListPage() {
-  const { contacts, loading: contactsLoading, fetchContacts, totalCount } = useContacts();
+  const { contacts, loading: contactsLoading, fetchContacts, totalCount, stats } = useContacts();
   const {
     lists, loading: listsLoading, createList, deleteList,
     fetchMembers, addMembers, removeMember, sendBroadcast,
@@ -36,6 +36,7 @@ export function ContactsListPage() {
   const [stateFilter, setStateFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [createdByFilter, setCreatedByFilter] = useState('all');
+  const [classificationFilter, setClassificationFilter] = useState('all');
   const [showFilters, setShowFilters] = useState(true);
   
   // Filter options loaded from DB
@@ -118,8 +119,9 @@ export function ContactsListPage() {
       ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
       ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
       ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
+      ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
     });
-  }, [fetchContacts, stateFilter, cityFilter, sourceFilter, createdByFilter]);
+  }, [fetchContacts, stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter]);
 
   // Load filter options and instances on mount
   useEffect(() => {
@@ -296,7 +298,7 @@ export function ContactsListPage() {
       <div className="flex items-center gap-3 p-4 border-b bg-card shrink-0">
         <Users className="h-6 w-6 text-primary" />
         <h1 className="text-lg font-semibold">Contatos & Transmissão</h1>
-        <Badge variant="secondary" className="text-xs">{activeTab === 'contacts' ? filteredContacts.length : totalCount}</Badge>
+        <Badge variant="secondary" className="text-xs">{stats.total || totalCount}</Badge>
         <div className="ml-auto flex gap-2">
           {selectedContacts.size > 0 && (
             <>
@@ -319,7 +321,7 @@ export function ContactsListPage() {
           <TabsList className="grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="contacts">
               <Users className="h-4 w-4 mr-1.5" />
-              Contatos ({filteredContacts.length})
+              Contatos ({totalCount || filteredContacts.length})
             </TabsTrigger>
             <TabsTrigger value="lists">
               <Radio className="h-4 w-4 mr-1.5" />
