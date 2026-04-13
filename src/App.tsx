@@ -124,6 +124,7 @@ const InstagramPage = lazyRetry(() => import("./pages/InstagramPage"), "Instagra
 const SettingsPage = lazyRetry(() => import("./pages/SettingsPage"), "SettingsPage");
 const ReferralSearchPage = lazyRetry(() => import("./pages/ReferralSearchPage"), "ReferralSearchPage");
 const AgentMonitorPage = lazyRetry(() => import("./pages/AgentMonitorPage"), "AgentMonitorPage");
+const BugMonitorPage = lazyRetry(() => import("./pages/BugMonitorPage"), "BugMonitorPage");
 const LandingPage = lazyRetry(() => import("./pages/LandingPage"), "LandingPage");
 const BookingPage = lazyRetry(() => import("./pages/BookingPage"), "BookingPage");
 const ExtensionPage = lazyRetry(() => import("./pages/ExtensionPage"), "ExtensionPage");

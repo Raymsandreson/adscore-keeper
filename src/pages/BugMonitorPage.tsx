@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Bug, RefreshCw, AlertTriangle, Clock, CheckCircle2, XCircle, ExternalLink } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
