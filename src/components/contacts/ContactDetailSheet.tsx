@@ -76,6 +76,7 @@ import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import type { Lead } from '@/hooks/useLeads';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
+import { ContactGroupsList } from './ContactGroupsList';
 
 interface ContactDetailSheetProps {
   contact: Contact | null;
