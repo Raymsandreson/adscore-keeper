@@ -75,6 +75,7 @@ import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes'
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import type { Lead } from '@/hooks/useLeads';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 
 interface ContactDetailSheetProps {
   contact: Contact | null;
