@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useContacts, Contact } from '@/hooks/useContacts';
+import { useContacts } from '@/hooks/useContacts';
 import { useBroadcastLists, BroadcastList, BroadcastListMember } from '@/hooks/useBroadcastLists';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
@@ -14,14 +14,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import {
-  Search, Users, Send, Plus, Trash2, Edit2, Radio, UserPlus,
-  Phone, Loader2, ChevronRight, X, List, ImagePlus, Bot, BotOff, Filter
+  Search, Users, Send, Plus, Trash2, Radio, UserPlus,
+  Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter
 } from 'lucide-react';
 
 export function ContactsListPage() {
   const { contacts, loading: contactsLoading, fetchContacts, totalCount } = useContacts();
   const {
-    lists, loading: listsLoading, createList, updateList, deleteList,
+    lists, loading: listsLoading, createList, deleteList,
     fetchMembers, addMembers, removeMember, sendBroadcast,
   } = useBroadcastLists();
 
@@ -47,7 +47,6 @@ export function ContactsListPage() {
   const [showCreateList, setShowCreateList] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [newListDesc, setNewListDesc] = useState('');
-  const [editingList, setEditingList] = useState<BroadcastList | null>(null);
   const [viewingList, setViewingList] = useState<BroadcastList | null>(null);
   const [listMembers, setListMembers] = useState<BroadcastListMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -118,7 +117,7 @@ export function ContactsListPage() {
       ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
       ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
     });
-  }, [stateFilter, cityFilter, sourceFilter, createdByFilter]);
+  }, [fetchContacts, stateFilter, cityFilter, sourceFilter, createdByFilter]);
 
   // Load filter options and instances on mount
   useEffect(() => {
