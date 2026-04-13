@@ -9123,6 +9123,7 @@ export type Database = {
           command_scope: string
           created_at: string | null
           custom_document_names: string[] | null
+          deleted_at: string | null
           description: string | null
           display_order: number | null
           document_type_modes: Json | null
@@ -9174,6 +9175,7 @@ export type Database = {
           command_scope?: string
           created_at?: string | null
           custom_document_names?: string[] | null
+          deleted_at?: string | null
           description?: string | null
           display_order?: number | null
           document_type_modes?: Json | null
@@ -9225,6 +9227,7 @@ export type Database = {
           command_scope?: string
           created_at?: string | null
           custom_document_names?: string[] | null
+          deleted_at?: string | null
           description?: string | null
           display_order?: number | null
           document_type_modes?: Json | null
