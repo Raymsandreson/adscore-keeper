@@ -682,6 +682,7 @@ export function WhatsAppAIAgents() {
                       toast.success('Prompt aplicado! Vá para a aba IA para revisar.');
                     }}
                     onClose={() => {}}
+                    hideHeader
                   />
                 </div>
               </TabsContent>
