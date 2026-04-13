@@ -543,8 +543,8 @@ export function ContactDetailSheet({
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => window.open(`https://wa.me/${contact.phone?.replace(/\D/g, '')}`, '_blank')}
-                  title="Abrir chat no WhatsApp"
+                  onClick={() => setChatPreviewPhone(contact.phone?.replace(/\D/g, '') || null)}
+                  title="Abrir chat do WhatsApp"
                 >
                   <MessageSquare className="h-4 w-4 text-green-600" />
                 </Button>
@@ -841,7 +841,7 @@ export function ContactDetailSheet({
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={() => window.open(`https://wa.me/${contact.phone?.replace(/\D/g, '')}`, '_blank')}
+                          onClick={() => setChatPreviewPhone(contact.phone?.replace(/\D/g, '') || null)}
                         >
                           <MessageSquare className="h-4 w-4 text-green-600" />
                         </Button>
@@ -1144,7 +1144,7 @@ export function ContactDetailSheet({
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
-                              onClick={(e) => { e.stopPropagation(); window.open(`https://wa.me/${contactLead.lead?.lead_phone?.replace(/\D/g, '')}`, '_blank'); }}
+                              onClick={(e) => { e.stopPropagation(); setChatPreviewPhone(contactLead.lead?.lead_phone?.replace(/\D/g, '') || null); }}
                             >
                               <MessageSquare className="h-4 w-4 text-green-600" />
                             </Button>
