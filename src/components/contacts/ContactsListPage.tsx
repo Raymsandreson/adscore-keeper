@@ -355,6 +355,57 @@ export function ContactsListPage() {
             </Button>
           </div>
 
+          {showFilters && (
+            <div className="flex flex-wrap gap-2 pb-3 shrink-0">
+              <Select value={stateFilter} onValueChange={setStateFilter}>
+                <SelectTrigger className="w-[130px] h-8 text-xs"><SelectValue placeholder="Estado" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos Estados</SelectItem>
+                  {filterOptions.states.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
+              <Select value={cityFilter} onValueChange={setCityFilter}>
+                <SelectTrigger className="w-[160px] h-8 text-xs"><SelectValue placeholder="Cidade" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas Cidades</SelectItem>
+                  {filterOptions.cities.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                <SelectTrigger className="w-[150px] h-8 text-xs"><SelectValue placeholder="Origem" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas Origens</SelectItem>
+                  <SelectItem value="manual">Manual</SelectItem>
+                  <SelectItem value="system">Automático (IA)</SelectItem>
+                  <SelectItem value="group_creation">Criação de Grupo</SelectItem>
+                  <SelectItem value="whatsapp_group">Grupo WhatsApp</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={createdByFilter} onValueChange={setCreatedByFilter}>
+                <SelectTrigger className="w-[170px] h-8 text-xs"><SelectValue placeholder="Criado por" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos Membros</SelectItem>
+                  {filterOptions.creators.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
+              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all') && (
+                <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => {
+                  setStateFilter('all');
+                  setCityFilter('all');
+                  setSourceFilter('all');
+                  setCreatedByFilter('all');
+                }}>
+                  <X className="h-3 w-3 mr-1" />
+                  Limpar
+                </Button>
+              )}
+            </div>
+          )}
+
           <ScrollArea className="flex-1">
             <div className="space-y-1">
               {contactsLoading ? (
