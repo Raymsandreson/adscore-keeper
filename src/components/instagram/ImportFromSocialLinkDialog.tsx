@@ -609,6 +609,10 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
             return { ...prev, ...updates };
           });
           toast.success(`${data.total} comentários analisados! Dados complementados.`);
+          // Auto-generate bridge replies
+          if (data.analysis?.potential_contacts?.length > 0) {
+            setTimeout(() => generateBridgeReplies(data.analysis.potential_contacts), 500);
+          }
         } else {
           toast.info(`${data.total} comentários encontrados, mas sem informações relevantes.`);
         }
