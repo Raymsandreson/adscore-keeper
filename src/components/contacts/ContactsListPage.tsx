@@ -538,13 +538,23 @@ export function ContactsListPage() {
                 </SelectContent>
               </Select>
 
-              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all') && (
+              <Select value={groupFilter} onValueChange={(v) => setGroupFilter(v as any)}>
+                <SelectTrigger className="w-[140px] h-8 text-xs"><SelectValue placeholder="Grupo" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="with_group">Com Grupo</SelectItem>
+                  <SelectItem value="without_group">Sem Grupo</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all' || groupFilter !== 'all') && (
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => {
                   setStateFilter('all');
                   setCityFilter('all');
                   setSourceFilter('all');
                   setCreatedByFilter('all');
                   setClassificationFilter('all');
+                  setGroupFilter('all');
                 }}>
                   <X className="h-3 w-3 mr-1" />
                   Limpar
