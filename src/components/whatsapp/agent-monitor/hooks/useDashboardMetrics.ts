@@ -106,7 +106,7 @@ export function useDashboardMetrics() {
       setMetricsProgress(50);
 
       // Fetch operational metrics DIRECTLY from source tables (not snapshots)
-      const [docsResult, groupsResult, casesResult, processesResult, contactsResult] = await Promise.all([
+      const [docsResult, groupsResult, casesResult, processesResult, contactsResult, contactsCountResult] = await Promise.all([
         supabase
           .from('zapsign_documents')
           .select('id, document_name, signer_name, signer_status, lead_id, instance_name, created_at')
@@ -127,6 +127,11 @@ export function useDashboardMetrics() {
         supabase
           .from('contacts')
           .select('id, full_name, created_by, created_at')
+          .gte('created_at', startISO).lte('created_at', endISO)
+          .limit(5000),
+        supabase
+          .from('contacts')
+          .select('*', { count: 'exact', head: true })
           .gte('created_at', startISO).lte('created_at', endISO),
       ]);
 
@@ -158,6 +163,7 @@ export function useDashboardMetrics() {
       const processesDetails: OperationalDetail[] = processesData.map(p => ({ id: p.id, name: p.cliente || '', acolhedor: p.acolhedor, instance_name: null, lead_id: null, created_at: p.created_at }));
 
       const contactsData = contactsResult.data || [];
+      const contactsTotalCount = contactsCountResult.count ?? contactsData.length;
       const contactsDetails: OperationalDetail[] = contactsData.map(c => ({ id: c.id, name: c.full_name || '', acolhedor: null, instance_name: null, lead_id: null, created_at: c.created_at }));
 
       setMetricsProgress(80);
@@ -270,7 +276,7 @@ export function useDashboardMetrics() {
         groupsCreated: groupsDetails.length,
         casesCreated: casesDetails.length,
         processesCreated: processesDetails.length,
-        contactsCreated: contactsDetails.length,
+        contactsCreated: contactsTotalCount,
         signedDocsDetails,
         pendingDocsDetails,
         groupsDetails,
