@@ -1,14 +1,42 @@
 
 
-## Plano: Atualizar SENTRY_AUTH_TOKEN
+## Plano: Corrigir resumo de caso não sendo enviado no grupo WhatsApp
 
-O token que você enviou será usado para atualizar o secret `SENTRY_AUTH_TOKEN` já existente no projeto.
+### Problema identificado
 
-### Passos:
-1. Usar a ferramenta de secrets para sobrescrever o `SENTRY_AUTH_TOKEN` com o novo valor.
-2. Testar a Edge Function `sentry-issues` para confirmar que o token funciona (sem erro 403).
+Quando você envia um comando de texto livre (como "Crie um resumo do caso...") dentro de um grupo WhatsApp, o sistema:
+
+1. Reconhece o remetente como autorizado e encaminha para o **command processor**
+2. O command processor entra em **modo de coleta** ("Recebido! Tem mais alguma coisa?") e envia essa resposta no **chat privado**, não no grupo
+3. O grupo nunca recebe o resumo solicitado
+
+### Solução
+
+Modificar o `whatsapp-command-processor` para tratar comandos vindos de grupos de forma diferente:
+
+1. **Quando `is_group` é true, processar imediatamente** em vez de entrar no modo de coleta. Mensagens de grupo são auto-contidas (o contexto do grupo já está disponível via `group_id`).
+
+2. **Enviar a resposta no grupo** (usando `group_id`) em vez de enviar no chat privado do remetente. Quando a mensagem vem de um grupo, o `sendWhatsAppText` deve usar o `group_id` como destinatário.
+
+3. **Pular o modo de coleta para grupos**: Quando `is_group` é true, ir direto para o CASE 3 (processar com IA) usando o `groupConversationContext` como contexto completo.
+
+### Arquivos a alterar
+
+- `supabase/functions/whatsapp-command-processor/index.ts`
+  - CASE 1 (linha ~441): Quando `is_group`, pular a coleta e processar imediatamente
+  - Linha ~1582: Quando `is_group && group_id`, enviar resposta para `group_id` em vez de `normalizedPhone`
+  - Garantir que o `groupConversationContext` seja carregado mesmo no processamento imediato
 
 ### Detalhes técnicos
-- Nenhuma alteração de código necessária — a Edge Function já usa `Deno.env.get("SENTRY_AUTH_TOKEN")`.
-- Após atualizar o secret, a função será testada automaticamente chamando o endpoint de issues.
+
+```text
+Fluxo atual (grupo):
+  Mensagem no grupo → command processor → modo coleta → resposta no privado
+
+Fluxo corrigido (grupo):
+  Mensagem no grupo → command processor → processa com IA + contexto do grupo → resposta no grupo
+```
+
+- A lógica do `sendWhatsAppText` final usará `is_group && group_id ? group_id : normalizedPhone` como número de destino
+- O anti-loop existente (`🤖 *WhatsJUD IA*`) já protege contra re-processamento da própria resposta
 
