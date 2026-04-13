@@ -240,8 +240,9 @@ export function ContactsListPage() {
       ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
       ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
       ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
+      groupFilter: groupFilter !== 'all' ? groupFilter : 'without_group',
     });
-  }, [fetchContacts, stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter]);
+  }, [fetchContacts, stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter]);
 
   // Load filter options and instances on mount
   useEffect(() => {
