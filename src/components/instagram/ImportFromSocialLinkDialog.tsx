@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Link2, Loader2, Sparkles, UserPlus, FileText, ClipboardList, CheckCircle2, MessageSquare, Users, AlertTriangle } from 'lucide-react';
+import { Link2, Loader2, Sparkles, UserPlus, FileText, ClipboardList, CheckCircle2, MessageSquare, Users, AlertTriangle, Wand2 } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { usePostMetadata } from '@/hooks/usePostMetadata';
@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { generateLeadName } from '@/utils/generateLeadName';
+import { BridgeContactCard } from './BridgeContactCard';
 
 interface ImportFromSocialLinkDialogProps {
   open: boolean;
@@ -169,6 +170,9 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   const [savingContact, setSavingContact] = useState<string | null>(null);
   const { fetchMetadata } = usePostMetadata();
   const [additionalVictims, setAdditionalVictims] = useState<Array<{ victim_name: string; victim_age?: string; damage_description?: string }>>([]);
+  const [bridgeReplies, setBridgeReplies] = useState<Record<string, any>>({});
+  const [isGeneratingReplies, setIsGeneratingReplies] = useState(false);
+  const [regeneratingContact, setRegeneratingContact] = useState<string | null>(null);
 
   // Lead form data (used in review step)
   const [formData, setFormData] = useState<AccidentLeadFormData>({ ...initialFormData });
@@ -605,6 +609,10 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
             return { ...prev, ...updates };
           });
           toast.success(`${data.total} comentários analisados! Dados complementados.`);
+          // Auto-generate bridge replies
+          if (data.analysis?.potential_contacts?.length > 0) {
+            setTimeout(() => generateBridgeReplies(data.analysis.potential_contacts), 500);
+          }
         } else {
           toast.info(`${data.total} comentários encontrados, mas sem informações relevantes.`);
         }
@@ -656,6 +664,70 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     }
   };
 
+  const generateBridgeReplies = async (contacts: any[]) => {
+    if (!contacts?.length) return;
+    setIsGeneratingReplies(true);
+    try {
+      // Fetch board's bridge prompt
+      let customPrompt = '';
+      if (selectedBoardId) {
+        const { data: boardSettings } = await supabase
+          .from('board_group_settings')
+          .select('bridge_approach_prompt')
+          .eq('board_id', selectedBoardId)
+          .maybeSingle();
+        customPrompt = (boardSettings as any)?.bridge_approach_prompt || '';
+      }
+
+      const { data, error } = await cloudFunctions.invoke('generate-bridge-reply', {
+        body: {
+          contacts,
+          postUrl: url.trim(),
+          postCaption: caption.substring(0, 500),
+          leadContext: {
+            victim_name: formData.victim_name,
+            case_type: formData.case_type,
+            accident_date: formData.accident_date,
+            main_company: formData.main_company,
+            contractor_company: formData.contractor_company,
+            city: formData.visit_city,
+            state: formData.visit_state,
+            damage_description: formData.damage_description,
+          },
+          customPrompt,
+        },
+      });
+      if (error) throw error;
+      if (data?.success && data.replies?.length) {
+        const repliesMap: Record<string, any> = {};
+        data.replies.forEach((r: any) => {
+          const uname = r.username?.replace('@', '') || '';
+          if (uname) repliesMap[uname] = r;
+        });
+        setBridgeReplies(prev => ({ ...prev, ...repliesMap }));
+        toast.success(`Respostas geradas para ${data.replies.length} ponte(s)!`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao gerar respostas');
+    } finally {
+      setIsGeneratingReplies(false);
+    }
+  };
+
+  const handleRegenerateReply = async (username: string) => {
+    const contact = commentsAnalysis?.potential_contacts?.find(
+      (c: any) => c.username?.replace('@', '') === username
+    );
+    if (!contact) return;
+    setRegeneratingContact(username);
+    try {
+      await generateBridgeReplies([contact]);
+    } finally {
+      setRegeneratingContact(null);
+    }
+  };
+
+
   const handleClose = () => {
     setUrl('');
     setCaption('');
@@ -667,6 +739,8 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     setCommentsCount(0);
     setSavedContacts(new Set());
     setAdditionalVictims([]);
+    setBridgeReplies({});
+    setIsGeneratingReplies(false);
     onOpenChange(false);
   };
 
@@ -843,52 +917,36 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
                       </div>
                     )}
 
-                    {/* Potential contacts with register buttons */}
+                    {/* Potential contacts / bridges with AI replies */}
                     {commentsAnalysis.potential_contacts?.length > 0 && (
                       <div className="p-2 rounded bg-muted/50 space-y-2">
                         <div className="flex items-center justify-between">
                           <p className="text-xs font-medium flex items-center gap-1">
                             <Users className="h-3 w-3" /> Pontes identificadas ({commentsAnalysis.potential_contacts.length})
                           </p>
+                          <Button
+                            size="sm" variant="outline" className="h-6 text-[10px] gap-1"
+                            disabled={isGeneratingReplies}
+                            onClick={() => generateBridgeReplies(commentsAnalysis.potential_contacts)}
+                          >
+                            {isGeneratingReplies ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+                            {isGeneratingReplies ? 'Gerando...' : Object.keys(bridgeReplies).length > 0 ? 'Regenerar Todas' : 'Gerar Respostas IA'}
+                          </Button>
                         </div>
                         {commentsAnalysis.potential_contacts.map((c: any, i: number) => {
                           const username = c.username?.replace('@', '') || '';
-                          const isSaved = savedContacts.has(username);
-                          const isSaving = savingContact === username;
                           return (
-                            <div key={i} className="flex items-center gap-2 p-1.5 rounded border bg-background">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1">
-                                  <Badge variant="outline" className="text-[10px] shrink-0">{c.type || 'contato'}</Badge>
-                                  <span className="text-xs font-medium truncate">{c.username}</span>
-                                </div>
-                                {(c.relationship || c.info) && (
-                                  <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                                    {c.relationship || c.info}
-                                  </p>
-                                )}
-                              </div>
-                              {isSaved ? (
-                                <Badge variant="secondary" className="shrink-0 gap-1 text-[10px]">
-                                  <CheckCircle2 className="h-3 w-3" /> Salvo
-                                </Badge>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="shrink-0 h-7 text-xs gap-1"
-                                  disabled={isSaving}
-                                  onClick={() => handleSaveCommentContact(c)}
-                                >
-                                  {isSaving ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  ) : (
-                                    <UserPlus className="h-3 w-3" />
-                                  )}
-                                  Cadastrar
-                                </Button>
-                              )}
-                            </div>
+                            <BridgeContactCard
+                              key={i}
+                              contact={c}
+                              reply={bridgeReplies[username]}
+                              postUrl={url.trim()}
+                              isSaved={savedContacts.has(username)}
+                              isSaving={savingContact === username}
+                              onSave={() => handleSaveCommentContact(c)}
+                              onRegenerate={handleRegenerateReply}
+                              isRegenerating={regeneratingContact === username}
+                            />
                           );
                         })}
                       </div>

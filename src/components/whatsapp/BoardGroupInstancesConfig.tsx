@@ -58,6 +58,7 @@ interface GroupSettings {
   process_workflow_board_id: string;
   process_auto_activities: ProcessActivity[];
   process_workflows: ProcessWorkflow[];
+  bridge_approach_prompt: string;
 }
 
 interface ProcessActivity {
@@ -146,6 +147,7 @@ export function BoardGroupInstancesConfig() {
     process_workflow_board_id: '',
     process_auto_activities: [],
     process_workflows: [],
+    bridge_approach_prompt: '',
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -234,6 +236,7 @@ export function BoardGroupInstancesConfig() {
         process_workflow_board_id: data.process_workflow_board_id || '',
         process_auto_activities: data.process_auto_activities || [],
         process_workflows: data.process_workflows || [],
+        bridge_approach_prompt: data.bridge_approach_prompt || '',
       });
       if (data.ai_generated_message) {
         setPreviewMessage(data.ai_generated_message);
@@ -250,6 +253,7 @@ export function BoardGroupInstancesConfig() {
         auto_close_lead_on_sign: false, auto_create_group_on_sign: false,
         auto_create_process: false, process_nucleus_id: '', process_workflow_board_id: '',
         process_auto_activities: [], process_workflows: [],
+        bridge_approach_prompt: '',
       });
       setPreviewMessage(null);
     }
@@ -320,6 +324,7 @@ export function BoardGroupInstancesConfig() {
         process_workflow_board_id: settings.process_workflow_board_id || null,
         process_auto_activities: settings.process_auto_activities,
         process_workflows: settings.process_workflows,
+        bridge_approach_prompt: settings.bridge_approach_prompt || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -763,6 +768,27 @@ export function BoardGroupInstancesConfig() {
                 ⚠️ Usará as configurações de grupo deste funil (instâncias, nome, mensagem, documentos).
               </p>
             )}
+          </div>
+
+          {/* Bridge Approach Prompt */}
+          <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-primary" />
+              <h4 className="font-medium text-xs">Prompt de Abordagem de Pontes</h4>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Configure o prompt que a IA usará para gerar comentários e DMs de abordagem para pontes (familiares, amigos, testemunhas) identificadas nos comentários de posts do Instagram.
+            </p>
+            <Textarea
+              value={settings.bridge_approach_prompt}
+              onChange={(e) => setSettings(prev => ({ ...prev, bridge_approach_prompt: e.target.value }))}
+              rows={5}
+              placeholder="Ex: Você é um assistente que gera mensagens para se conectar com pessoas que podem ser pontes para chegar até famílias de vítimas..."
+              className="text-xs"
+            />
+            <p className="text-[10px] text-muted-foreground italic">
+              💡 Deixe vazio para usar o prompt padrão. Inclua instruções sobre tom, estratégia de abordagem e o que NÃO fazer.
+            </p>
           </div>
 
           {/* Onboarding Meeting */}
