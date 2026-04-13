@@ -71,6 +71,7 @@ export const useContacts = () => {
     state?: string;
     actionSource?: string;
     createdBy?: string;
+    groupFilter?: 'all' | 'with_group' | 'without_group';
   }) => {
     setLoading(true);
     try {
@@ -122,6 +123,11 @@ export const useContacts = () => {
         }
         if (filters?.createdBy && filters.createdBy !== 'all') {
           query = query.eq('created_by', filters.createdBy);
+        }
+        if (filters?.groupFilter === 'with_group') {
+          query = query.not('whatsapp_group_id', 'is', null);
+        } else if (filters?.groupFilter === 'without_group') {
+          query = query.is('whatsapp_group_id', null);
         }
         return query;
       };
