@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, CalendarDays, TrendingUp, Trophy, UsersRound,
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
-  LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome,
+  LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome, Archive,
   MessageSquare as MessageSquareIcon,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -355,6 +355,18 @@ export function AppSidebar() {
               >
                 <Settings className="h-4 w-4" />
                 <span>Configurações</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            {/* Archived Items */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => handleNavigate('/archived')}
+                isActive={isActive('/archived')}
+                tooltip="Arquivados"
+              >
+                <Archive className="h-4 w-4" />
+                <span>Arquivados</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
 

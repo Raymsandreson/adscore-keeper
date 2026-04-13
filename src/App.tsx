@@ -128,6 +128,7 @@ const LandingPage = lazyRetry(() => import("./pages/LandingPage"), "LandingPage"
 const BookingPage = lazyRetry(() => import("./pages/BookingPage"), "BookingPage");
 const ExtensionPage = lazyRetry(() => import("./pages/ExtensionPage"), "ExtensionPage");
 const ShareTargetPage = lazyRetry(() => import("./pages/ShareTargetPage"), "ShareTargetPage");
+const ArchivedItemsPage = lazyRetry(() => import("./pages/ArchivedItemsPage"), "ArchivedItemsPage");
 
 const queryClient = new QueryClient();
 
@@ -224,6 +225,7 @@ function SidebarLayout() {
                 <Route path="/nuclei" element={<ProtectedRoute><NucleiPage /></ProtectedRoute>} />
                 <Route path="/cost-organization" element={<ProtectedRoute><CostOrganizationPage /></ProtectedRoute>} />
                 <Route path="/process-tracking" element={<ProtectedRoute><ProcessTrackingPage /></ProtectedRoute>} />
+                <Route path="/archived" element={<ProtectedRoute><ArchivedItemsPage /></ProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
