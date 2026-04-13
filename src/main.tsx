@@ -3,6 +3,10 @@ import App from "./App.tsx";
 import "./index.css";
 import { logAppInit } from "./utils/debugLogger";
 import { initPWAUpdater } from "./lib/pwaUpdater";
+import { initSentry } from "./lib/sentry";
+
+// Initialize Sentry before anything else
+initSentry();
 
 const PRELOAD_RELOAD_KEY = "vite-preload-reload";
 const PREVIEW_CACHE_BUST_KEY = "preview-cache-busted-once";
