@@ -79,6 +79,7 @@ export const useContacts = () => {
         let query = supabase
           .from('contacts')
           .select('*', { count: 'exact' })
+          .is('deleted_at', null)
           .order('created_at', { ascending: false });
 
         if (filters?.search) {
