@@ -1414,6 +1414,18 @@ export function ContactDetailSheet({
       boards={kanbanBoards}
       mode="dialog"
     />
+
+    <DashboardChatPreview
+      open={!!chatPreviewPhone}
+      onOpenChange={(open) => { if (!open) setChatPreviewPhone(null); }}
+      phone={chatPreviewPhone}
+      contactName={contact?.full_name || null}
+      instanceName={null}
+      hasLead={false}
+      hasContact={true}
+      wasResponded={false}
+      responseTimeMinutes={null}
+    />
     </>
   );
 }
