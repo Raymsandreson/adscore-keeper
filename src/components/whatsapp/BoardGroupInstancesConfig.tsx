@@ -324,6 +324,7 @@ export function BoardGroupInstancesConfig() {
         process_workflow_board_id: settings.process_workflow_board_id || null,
         process_auto_activities: settings.process_auto_activities,
         process_workflows: settings.process_workflows,
+        bridge_approach_prompt: settings.bridge_approach_prompt || null,
         updated_at: new Date().toISOString(),
       };
 
