@@ -127,6 +127,11 @@ export function useDashboardMetrics() {
         supabase
           .from('contacts')
           .select('id, full_name, created_by, created_at')
+          .gte('created_at', startISO).lte('created_at', endISO)
+          .limit(5000),
+        supabase
+          .from('contacts')
+          .select('*', { count: 'exact', head: true })
           .gte('created_at', startISO).lte('created_at', endISO),
       ]);
 
