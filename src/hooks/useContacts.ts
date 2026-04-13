@@ -73,111 +73,108 @@ export const useContacts = () => {
   }) => {
     setLoading(true);
     try {
-      const from = (page - 1) * pageSize;
-      const to = from + pageSize - 1;
+      // Helper to build a query with filters (without pagination)
+      const buildQuery = () => {
+        let query = supabase
+          .from('contacts')
+          .select('*', { count: 'exact' })
+          .order('created_at', { ascending: false });
 
-      let query = supabase
-        .from('contacts')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false });
-
-      // Apply filters if provided
-      if (filters?.search) {
-        const search = `%${filters.search}%`;
-        query = query.or(`full_name.ilike.${search},phone.ilike.${search},email.ilike.${search},instagram_username.ilike.${search}`);
-      }
-
-      if (filters?.classification && filters.classification !== 'all') {
-        if (filters.classification === 'none') {
-          query = query.is('classification', null);
-        } else {
-          query = query.eq('classification', filters.classification);
+        if (filters?.search) {
+          const search = `%${filters.search}%`;
+          query = query.or(`full_name.ilike.${search},phone.ilike.${search},email.ilike.${search},instagram_username.ilike.${search}`);
         }
-      }
-
-      if (filters?.followerStatus && filters.followerStatus !== 'all') {
-        if (filters.followerStatus === 'mutual') {
-          query = query.eq('follower_status', 'mutual');
-        } else if (filters.followerStatus === 'seguidor') {
-          query = query.in('follower_status', ['follower', 'mutual']);
-        } else if (filters.followerStatus === 'seguindo') {
-          query = query.in('follower_status', ['following', 'mutual']);
+        if (filters?.classification && filters.classification !== 'all') {
+          if (filters.classification === 'none') {
+            query = query.is('classification', null);
+          } else {
+            query = query.eq('classification', filters.classification);
+          }
         }
-      }
+        if (filters?.followerStatus && filters.followerStatus !== 'all') {
+          if (filters.followerStatus === 'mutual') {
+            query = query.eq('follower_status', 'mutual');
+          } else if (filters.followerStatus === 'seguidor') {
+            query = query.in('follower_status', ['follower', 'mutual']);
+          } else if (filters.followerStatus === 'seguindo') {
+            query = query.in('follower_status', ['following', 'mutual']);
+          }
+        }
+        if (filters?.professions && filters.professions.length > 0) {
+          query = query.in('profession', filters.professions);
+        }
+        if (filters?.dateFrom) {
+          query = query.gte('created_at', filters.dateFrom);
+        }
+        if (filters?.dateTo) {
+          query = query.lte('created_at', `${filters.dateTo}T23:59:59.999Z`);
+        }
+        if (filters?.city && filters.city !== 'all') {
+          query = query.eq('city', filters.city);
+        }
+        if (filters?.state && filters.state !== 'all') {
+          query = query.eq('state', filters.state);
+        }
+        if (filters?.actionSource && filters.actionSource !== 'all') {
+          query = query.eq('action_source', filters.actionSource);
+        }
+        if (filters?.createdBy && filters.createdBy !== 'all') {
+          query = query.eq('created_by', filters.createdBy);
+        }
+        return query;
+      };
 
-      // Filter by professions (multi-select)
-      if (filters?.professions && filters.professions.length > 0) {
-        query = query.in('profession', filters.professions);
-      }
-
-      // Filter by created_at date range
-      if (filters?.dateFrom) {
-        query = query.gte('created_at', filters.dateFrom);
-      }
-      if (filters?.dateTo) {
-        // Add end of day to include the full day
-        query = query.lte('created_at', `${filters.dateTo}T23:59:59.999Z`);
-      }
-
-      // Filter by lead linkage via contact_leads table
+      // Handle lead linkage filters separately (needs pre-query)
+      let linkedIds: string[] | null = null;
+      let notLinkedIds: string[] | null = null;
       if (filters?.leadLinked === 'linked') {
-        // Get contact IDs that have entries in contact_leads
-        const { data: linkedData } = await supabase
-          .from('contact_leads')
-          .select('contact_id');
-        const linkedIds = [...new Set((linkedData || []).map((d: any) => d.contact_id))];
-        if (linkedIds.length > 0) {
-          query = query.in('id', linkedIds);
-        } else {
-          // No contacts linked, return empty
+        const { data: linkedData } = await supabase.from('contact_leads').select('contact_id');
+        linkedIds = [...new Set((linkedData || []).map((d: any) => d.contact_id))];
+        if (linkedIds.length === 0) {
           setContacts([]);
           setTotalCount(0);
           setLoading(false);
           return;
         }
       } else if (filters?.leadLinked === 'not_linked') {
-        const { data: linkedData } = await supabase
-          .from('contact_leads')
-          .select('contact_id');
-        const linkedIds = [...new Set((linkedData || []).map((d: any) => d.contact_id))];
-        if (linkedIds.length > 0) {
-          // Supabase doesn't have "not in" easily, use filter
-          for (const id of linkedIds) {
+        const { data: linkedData } = await supabase.from('contact_leads').select('contact_id');
+        notLinkedIds = [...new Set((linkedData || []).map((d: any) => d.contact_id))];
+      }
+
+      // Fetch ALL contacts in batches of 1000 to bypass Supabase limit
+      const BATCH_SIZE = 1000;
+      let allContacts: Contact[] = [];
+      let totalExact = 0;
+      let offset = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        let query = buildQuery();
+        if (linkedIds) query = query.in('id', linkedIds);
+        if (notLinkedIds) {
+          for (const id of notLinkedIds) {
             query = query.neq('id', id);
           }
         }
+        query = query.range(offset, offset + BATCH_SIZE - 1);
+
+        const { data, error, count } = await query;
+        if (error) throw error;
+
+        if (offset === 0) totalExact = count || 0;
+
+        const batch = (data || []) as Contact[];
+        allContacts = [...allContacts, ...batch];
+        
+        hasMore = batch.length === BATCH_SIZE;
+        offset += BATCH_SIZE;
+        
+        // Safety limit: max 10 batches (10,000 contacts)
+        if (offset >= 10000) break;
       }
 
-      // Filter by city
-      if (filters?.city && filters.city !== 'all') {
-        query = query.eq('city', filters.city);
-      }
-
-      // Filter by state
-      if (filters?.state && filters.state !== 'all') {
-        query = query.eq('state', filters.state);
-      }
-
-      // Filter by action source (manual, system, group_creation, whatsapp_group)
-      if (filters?.actionSource && filters.actionSource !== 'all') {
-        query = query.eq('action_source', filters.actionSource);
-      }
-
-      // Filter by created_by (user who created the contact)
-      if (filters?.createdBy && filters.createdBy !== 'all') {
-        query = query.eq('created_by', filters.createdBy);
-      }
-
-      // Apply pagination
-      query = query.range(from, to);
-
-      const { data, error, count } = await query;
-
-      if (error) throw error;
-
-      const typedContacts = (data || []) as Contact[];
-      setContacts(typedContacts);
-      setTotalCount(count || 0);
+      setContacts(allContacts);
+      setTotalCount(totalExact);
 
       // Fetch stats separately (without pagination)
       await fetchStats();
