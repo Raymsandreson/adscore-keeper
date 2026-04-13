@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useContacts, Contact } from '@/hooks/useContacts';
 import { useBroadcastLists, BroadcastList, BroadcastListMember } from '@/hooks/useBroadcastLists';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,7 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import {
   Search, Users, Send, Plus, Trash2, Edit2, Radio, UserPlus,
-  Phone, Loader2, ChevronRight, X, List, ImagePlus, Bot, BotOff
+  Phone, Loader2, ChevronRight, X, List, ImagePlus, Bot, BotOff, Filter
 } from 'lucide-react';
 
 export function ContactsListPage() {
