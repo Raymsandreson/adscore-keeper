@@ -43,11 +43,6 @@ export default function BugMonitorPage() {
   const fetchIssues = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('sentry-issues', {
-        body: null,
-        method: 'GET',
-      });
-
       // Use fetch directly since we need query params
       const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sentry-issues?endpoint=issues&query=${encodeURIComponent(query)}&statsPeriod=${period}`;
       const response = await fetch(url, {
