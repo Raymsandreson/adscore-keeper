@@ -163,7 +163,7 @@ export function ContactsListPage() {
     );
   });
 
-  const withPhone = filteredContacts.filter(c => c.phone);
+  const selectableContacts = filteredContacts.filter(c => c.phone);
 
   const toggleContact = (id: string) => {
     setSelectedContacts(prev => {
@@ -174,10 +174,10 @@ export function ContactsListPage() {
   };
 
   const toggleAll = () => {
-    if (selectedContacts.size === withPhone.length) {
+    if (selectedContacts.size === selectableContacts.length && selectableContacts.length > 0) {
       setSelectedContacts(new Set());
     } else {
-      setSelectedContacts(new Set(withPhone.map(c => c.id)));
+      setSelectedContacts(new Set(selectableContacts.map(c => c.id)));
     }
   };
 
@@ -295,7 +295,7 @@ export function ContactsListPage() {
       <div className="flex items-center gap-3 p-4 border-b bg-card shrink-0">
         <Users className="h-6 w-6 text-primary" />
         <h1 className="text-lg font-semibold">Contatos & Transmissão</h1>
-        <Badge variant="secondary" className="text-xs">{totalCount}</Badge>
+        <Badge variant="secondary" className="text-xs">{activeTab === 'contacts' ? filteredContacts.length : totalCount}</Badge>
         <div className="ml-auto flex gap-2">
           {selectedContacts.size > 0 && (
             <>
@@ -318,7 +318,7 @@ export function ContactsListPage() {
           <TabsList className="grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="contacts">
               <Users className="h-4 w-4 mr-1.5" />
-              Contatos ({withPhone.length})
+              Contatos ({filteredContacts.length})
             </TabsTrigger>
             <TabsTrigger value="lists">
               <Radio className="h-4 w-4 mr-1.5" />
@@ -348,7 +348,7 @@ export function ContactsListPage() {
               )}
             </Button>
             <Button variant="outline" size="sm" onClick={toggleAll}>
-              {selectedContacts.size === withPhone.length ? 'Desmarcar' : 'Selecionar'} todos
+              {selectedContacts.size === selectableContacts.length && selectableContacts.length > 0 ? 'Desmarcar' : 'Selecionar'} todos
             </Button>
           </div>
 
@@ -407,10 +407,10 @@ export function ContactsListPage() {
             <div className="space-y-1">
               {contactsLoading ? (
                 <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-              ) : withPhone.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">Nenhum contato com telefone encontrado</p>
+              ) : filteredContacts.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">Nenhum contato encontrado</p>
               ) : (
-                withPhone.map(contact => (
+                filteredContacts.map(contact => (
                   <div
                     key={contact.id}
                     className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
@@ -424,7 +424,7 @@ export function ContactsListPage() {
                       <p className="font-medium text-sm truncate">{contact.full_name}</p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <Phone className="h-3 w-3" />
-                        {contact.phone}
+                        {contact.phone || 'Sem telefone'}
                         {(contact.city || contact.state) && (
                           <span className="ml-2 text-muted-foreground/70">
                             📍 {[contact.city, contact.state].filter(Boolean).join(', ')}
