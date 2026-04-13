@@ -13,6 +13,7 @@ interface Props {
   currentPrompt: string;
   onApply: (prompt: string) => void;
   onClose: () => void;
+  hideHeader?: boolean;
 }
 
 const GENERATE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-agent-prompt`;
@@ -22,7 +23,7 @@ interface ChatMsg {
   content: string;
 }
 
-export function PromptBuilderChat({ currentPrompt, onApply, onClose }: Props) {
+export function PromptBuilderChat({ currentPrompt, onApply, onClose, hideHeader }: Props) {
   const [mode, setMode] = useState<'generate' | 'build'>('build');
   
   // Generate mode state
@@ -194,15 +195,17 @@ Ou se preferir, descreva livremente o que precisa e eu vou guiando! 🚀`
   return (
     <Card className="border-primary/30">
       <CardContent className="p-3 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">Assistente de Prompt IA</span>
+        {!hideHeader && (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium">Assistente de Prompt IA</span>
+            </div>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
           </div>
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+        )}
 
         <Tabs value={mode} onValueChange={(v) => setMode(v as 'generate' | 'build')}>
           <TabsList className="grid w-full grid-cols-2 h-8">

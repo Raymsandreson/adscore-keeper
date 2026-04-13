@@ -429,9 +429,13 @@ export function WhatsAppAIAgents() {
           </DialogHeader>
           {editingAgent && (
             <Tabs defaultValue="general" className="w-full">
-              <TabsList className="w-full grid grid-cols-6">
+              <TabsList className="w-full grid grid-cols-7">
                 <TabsTrigger value="general" className="text-xs">⚙️ Geral</TabsTrigger>
                 <TabsTrigger value="ia" className="text-xs">🧠 IA</TabsTrigger>
+                <TabsTrigger value="ai_assistant" className="text-xs gap-1">
+                  <Sparkles className="h-3 w-3" />
+                  Assistente
+                </TabsTrigger>
                 <TabsTrigger value="automations" className="text-xs">⚡ Automações</TabsTrigger>
                 <TabsTrigger value="timing" className="text-xs">⏱️ Tempos</TabsTrigger>
                 <TabsTrigger value="calls" className="text-xs">📞 Chamadas</TabsTrigger>
@@ -664,7 +668,24 @@ export function WhatsAppAIAgents() {
                 )}
               </TabsContent>
 
-
+              {/* TAB: AI Assistant - dedicated prompt builder */}
+              <TabsContent value="ai_assistant" className="mt-4">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <span>Use a IA para criar ou melhorar o prompt do seu agente. Ela conhece todos os campos, ações e comandos disponíveis no sistema.</span>
+                  </div>
+                  <PromptBuilderChat
+                    currentPrompt={editingAgent.base_prompt || ''}
+                    onApply={(prompt) => {
+                      setEditingAgent({ ...editingAgent, base_prompt: prompt });
+                      toast.success('Prompt aplicado! Vá para a aba IA para revisar.');
+                    }}
+                    onClose={() => {}}
+                    hideHeader
+                  />
+                </div>
+              </TabsContent>
 
 
               {/* TAB: Automations */}
