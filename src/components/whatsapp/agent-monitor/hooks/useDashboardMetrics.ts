@@ -106,7 +106,7 @@ export function useDashboardMetrics() {
       setMetricsProgress(50);
 
       // Fetch operational metrics DIRECTLY from source tables (not snapshots)
-      const [docsResult, groupsResult, casesResult, processesResult, contactsResult] = await Promise.all([
+      const [docsResult, groupsResult, casesResult, processesResult, contactsResult, contactsCountResult] = await Promise.all([
         supabase
           .from('zapsign_documents')
           .select('id, document_name, signer_name, signer_status, lead_id, instance_name, created_at')
