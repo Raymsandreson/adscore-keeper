@@ -954,6 +954,8 @@ export function ContactsListPage() {
             ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
             ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
             ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
+            ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
+            groupFilter: groupFilter !== 'all' ? groupFilter : 'without_group',
           });
         }}
       />
