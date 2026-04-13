@@ -349,7 +349,6 @@ export function ContactsListPage() {
                   {[stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter].filter(v => v !== 'all').length}
                 </Badge>
               )}
-              )}
             </Button>
             <Button variant="outline" size="sm" onClick={toggleAll}>
               {selectedContacts.size === selectableContacts.length && selectableContacts.length > 0 ? 'Desmarcar' : 'Selecionar'} todos
