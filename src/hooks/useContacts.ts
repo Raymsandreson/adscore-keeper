@@ -180,7 +180,7 @@ export const useContacts = () => {
     try {
       // Use individual count queries to bypass the 1000 row limit
       const [totalRes, clientsRes, nonClientsRes, prospectsRes, partnersRes, suppliersRes, withInstagramRes, leadsRes] = await Promise.all([
-        supabase.from('contacts').select('*', { count: 'exact', head: true }),
+        supabase.from('contacts').select('*', { count: 'exact', head: true }).is('deleted_at', null).is('whatsapp_group_id', null),
         supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'client'),
         supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'non_client'),
         supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'prospect'),
