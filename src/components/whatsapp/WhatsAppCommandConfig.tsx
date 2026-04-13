@@ -572,10 +572,17 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
 
   const handleDelete = async (id: string) => {
     const shortcut = shortcuts.find(s => s.id === id);
-    await (supabase.from('wjia_command_shortcuts') as any).delete().eq('id', id);
+    
+    // Fetch full data for backup snapshot
+    const { data: fullData } = await (supabase.from('wjia_command_shortcuts') as any).select('*').eq('id', id).single();
+    
+    // Save snapshot in audit log for recovery
+    logAudit({ action: 'delete', entityType: 'agent', entityId: id, entityName: shortcut?.shortcut_name, details: { snapshot: fullData, soft_delete: true } });
+    
+    // Soft delete instead of hard delete
+    await (supabase.from('wjia_command_shortcuts') as any).update({ deleted_at: new Date().toISOString() }).eq('id', id);
     onReload();
-    toast.success('Agente removido');
-    logAudit({ action: 'delete', entityType: 'agent', entityId: id, entityName: shortcut?.shortcut_name });
+    toast.success('Agente arquivado (pode ser restaurado)');
   };
 
   const handleToggle = async (id: string, isActive: boolean) => {

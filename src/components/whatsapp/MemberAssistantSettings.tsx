@@ -206,9 +206,10 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
   };
 
   const handleDeleteCommand = async (id: string) => {
-    await (supabase.from('wjia_command_shortcuts') as any).delete().eq('id', id);
+    // Soft delete instead of hard delete
+    await (supabase.from('wjia_command_shortcuts') as any).update({ deleted_at: new Date().toISOString() }).eq('id', id);
     onReload?.();
-    toast.success('Comando removido');
+    toast.success('Comando arquivado (pode ser restaurado)');
   };
 
   const handleToggleCommand = async (id: string, isActive: boolean) => {
