@@ -415,11 +415,12 @@ export function ContactsListPage() {
                   <div
                     key={contact.id}
                     className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
-                    onClick={() => toggleContact(contact.id)}
+                    onClick={() => setDetailContact(contact)}
                   >
                     <Checkbox
                       checked={selectedContacts.has(contact.id)}
                       onCheckedChange={() => toggleContact(contact.id)}
+                      onClick={(e) => e.stopPropagation()}
                     />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm truncate">{contact.full_name}</p>
