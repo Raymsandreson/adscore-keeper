@@ -141,46 +141,24 @@ export const useContacts = () => {
         notLinkedIds = [...new Set((linkedData || []).map((d: any) => d.contact_id))];
       }
 
-      // Fetch ALL contacts in batches of 1000 to bypass Supabase limit
-      const BATCH_SIZE = 1000;
-      let allContacts: Contact[] = [];
-      let totalExact = 0;
-      let offset = 0;
+      // Server-side pagination: only fetch the current page
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
 
-      // First batch: get exact count
-      {
-        let query = buildQuery();
-        if (linkedIds) query = query.in('id', linkedIds);
-        if (notLinkedIds) {
-          for (const id of notLinkedIds) query = query.neq('id', id);
-        }
-        const { data, error, count } = await query.range(0, BATCH_SIZE - 1);
-        if (error) throw error;
-        totalExact = count || 0;
-        allContacts = (data || []) as Contact[];
-        offset = BATCH_SIZE;
+      let query = buildQuery();
+      if (linkedIds) query = query.in('id', linkedIds);
+      if (notLinkedIds) {
+        // Limit neq filters to avoid query explosion - use NOT IN via filter
+        query = query.not('id', 'in', `(${notLinkedIds.join(',')})`);
       }
+      const { data, error, count } = await query.range(from, to);
+      if (error) throw error;
 
-      // Fetch remaining batches based on exact count
-      while (offset < totalExact && offset < 10000) {
-        let query = buildQuery();
-        if (linkedIds) query = query.in('id', linkedIds);
-        if (notLinkedIds) {
-          for (const id of notLinkedIds) query = query.neq('id', id);
-        }
-        const { data, error } = await query.range(offset, offset + BATCH_SIZE - 1);
-        if (error) throw error;
-        const batch = (data || []) as Contact[];
-        if (batch.length === 0) break;
-        allContacts = [...allContacts, ...batch];
-        offset += BATCH_SIZE;
-      }
+      setContacts((data || []) as Contact[]);
+      setTotalCount(count || 0);
 
-      setContacts(allContacts);
-      setTotalCount(totalExact);
-
-      // Fetch stats separately (without pagination)
-      await fetchStats();
+      // Fetch stats in parallel (non-blocking)
+      fetchStats();
     } catch (error) {
       console.error('Error fetching contacts:', error);
       toast.error('Erro ao carregar contatos');
