@@ -138,7 +138,7 @@ const PageLoading = () => (
   </div>
 );
 
-const SentryErrorFallback = ({ error }: { error: Error }) => (
+const SentryErrorFallback = ({ _error }: { _error: unknown }) => (
   <div className="flex flex-col items-center justify-center h-screen gap-4 p-8 text-center">
     <h1 className="text-2xl font-bold text-destructive">Algo deu errado</h1>
     <p className="text-muted-foreground max-w-md">
