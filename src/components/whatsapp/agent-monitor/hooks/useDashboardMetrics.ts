@@ -276,7 +276,7 @@ export function useDashboardMetrics() {
         groupsCreated: groupsDetails.length,
         casesCreated: casesDetails.length,
         processesCreated: processesDetails.length,
-        contactsCreated: contactsDetails.length,
+        contactsCreated: contactsTotalCount,
         signedDocsDetails,
         pendingDocsDetails,
         groupsDetails,
