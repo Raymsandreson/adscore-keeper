@@ -163,6 +163,7 @@ export function ContactDetailSheet({
   const [selectedExistingLeadId, setSelectedExistingLeadId] = useState('');
   const previousClassificationsRef = useRef<string[]>([]);
   const [linkedProcesses, setLinkedProcesses] = useState<any[]>([]);
+  const [chatPreviewPhone, setChatPreviewPhone] = useState<string | null>(null);
   
   // State for full LeadEditDialog when creating new lead
   const [showLeadEditDialog, setShowLeadEditDialog] = useState(false);
