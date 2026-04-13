@@ -135,6 +135,7 @@ export function AppSidebar() {
       items: [
         { id: "team-main", label: "Equipe", icon: <UsersRound className="h-3.5 w-3.5" />, path: "/team", color: "text-emerald-500" },
         { id: "analytics", label: "Analytics", icon: <TrendingUp className="h-3.5 w-3.5" />, path: "/analytics" },
+        { id: "bug-monitor", label: "Monitor de Bugs", icon: <Bug className="h-3.5 w-3.5" />, path: "/bug-monitor", color: "text-destructive" },
       ],
     },
   ];
