@@ -251,16 +251,35 @@ export function useLeadActivities() {
 
   const deleteActivity = async (id: string) => {
     try {
+      // Fetch full snapshot before archiving
+      const { data: snapshot } = await supabase
+        .from('lead_activities')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      // Save snapshot to audit log
+      if (snapshot) {
+        await logAudit({
+          action: 'delete',
+          entityType: 'lead_activity',
+          entityId: id,
+          entityName: snapshot.title || 'Atividade',
+          details: { snapshot, soft_delete: true },
+        });
+      }
+
+      // Soft delete
       const { error } = await supabase
         .from('lead_activities')
-        .delete()
+        .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', id);
 
       if (error) throw error;
-      toast.success('Atividade excluída!');
+      toast.success('Atividade arquivada!');
     } catch (error) {
-      console.error('Error deleting activity:', error);
-      toast.error('Erro ao excluir atividade');
+      console.error('Error archiving activity:', error);
+      toast.error('Erro ao arquivar atividade');
     }
   };
 

@@ -436,18 +436,37 @@ export const useLeads = (adAccountId?: string) => {
 
   const deleteLead = async (id: string) => {
     try {
+      // Fetch full snapshot before archiving
+      const { data: snapshot } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      // Save snapshot to audit log
+      if (snapshot) {
+        await logAudit({
+          action: 'delete',
+          entityType: 'lead',
+          entityId: id,
+          entityName: snapshot.lead_name || 'Lead',
+          details: { snapshot, soft_delete: true },
+        });
+      }
+
+      // Soft delete
       const { error } = await supabase
         .from('leads')
-        .delete()
+        .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', id);
 
       if (error) throw error;
 
-      toast.success('Lead removido com sucesso');
+      toast.success('Lead arquivado com sucesso');
       fetchLeads();
     } catch (error) {
-      console.error('Error deleting lead:', error);
-      toast.error('Erro ao remover lead');
+      console.error('Error archiving lead:', error);
+      toast.error('Erro ao arquivar lead');
       throw error;
     }
   };
