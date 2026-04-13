@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Link2, Loader2, Sparkles, UserPlus, FileText, ClipboardList, CheckCircle2, MessageSquare, Users, AlertTriangle } from 'lucide-react';
+import { Link2, Loader2, Sparkles, UserPlus, FileText, ClipboardList, CheckCircle2, MessageSquare, Users, AlertTriangle, Wand2 } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { usePostMetadata } from '@/hooks/usePostMetadata';
@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { generateLeadName } from '@/utils/generateLeadName';
+import { BridgeContactCard } from './BridgeContactCard';
 
 interface ImportFromSocialLinkDialogProps {
   open: boolean;
