@@ -533,7 +533,7 @@ export function WhatsAppAIAgents() {
                   </div>
                   {showAIPrompt && (
                     <div className="mb-2">
-                      <AIPromptGenerator
+                      <PromptBuilderChat
                         currentPrompt={editingAgent.base_prompt || ''}
                         onApply={(prompt) => { setEditingAgent({ ...editingAgent, base_prompt: prompt }); setShowAIPrompt(false); }}
                         onClose={() => setShowAIPrompt(false)}
