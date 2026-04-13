@@ -38,6 +38,7 @@ export function ContactsListPage() {
   const [createdByFilter, setCreatedByFilter] = useState('all');
   const [classificationFilter, setClassificationFilter] = useState('all');
   const [groupFilter, setGroupFilter] = useState<'all' | 'with_group' | 'without_group'>('all');
+  const [leadLinkedFilter, setLeadLinkedFilter] = useState<'all' | 'linked' | 'not_linked'>('all');
   const [showFilters, setShowFilters] = useState(true);
   
   // Filter options loaded from DB
@@ -241,8 +242,9 @@ export function ContactsListPage() {
       ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
       ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
       groupFilter: groupFilter !== 'all' ? groupFilter : 'without_group',
+      ...(leadLinkedFilter !== 'all' ? { leadLinked: leadLinkedFilter } : {}),
     });
-  }, [fetchContacts, stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter]);
+  }, [fetchContacts, stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter, leadLinkedFilter]);
 
   // Load filter options and instances on mount
   useEffect(() => {
@@ -547,7 +549,16 @@ export function ContactsListPage() {
                 </SelectContent>
               </Select>
 
-              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all' || groupFilter !== 'all') && (
+              <Select value={leadLinkedFilter} onValueChange={(v) => setLeadLinkedFilter(v as any)}>
+                <SelectTrigger className="w-[150px] h-8 text-xs"><SelectValue placeholder="Lead" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos (Lead)</SelectItem>
+                  <SelectItem value="linked">Com Lead</SelectItem>
+                  <SelectItem value="not_linked">Sem Lead</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all' || groupFilter !== 'all' || leadLinkedFilter !== 'all') && (
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => {
                   setStateFilter('all');
                   setCityFilter('all');
@@ -555,6 +566,7 @@ export function ContactsListPage() {
                   setCreatedByFilter('all');
                   setClassificationFilter('all');
                   setGroupFilter('all');
+                  setLeadLinkedFilter('all');
                 }}>
                   <X className="h-3 w-3 mr-1" />
                   Limpar
