@@ -170,6 +170,9 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   const [savingContact, setSavingContact] = useState<string | null>(null);
   const { fetchMetadata } = usePostMetadata();
   const [additionalVictims, setAdditionalVictims] = useState<Array<{ victim_name: string; victim_age?: string; damage_description?: string }>>([]);
+  const [bridgeReplies, setBridgeReplies] = useState<Record<string, any>>({});
+  const [isGeneratingReplies, setIsGeneratingReplies] = useState(false);
+  const [regeneratingContact, setRegeneratingContact] = useState<string | null>(null);
 
   // Lead form data (used in review step)
   const [formData, setFormData] = useState<AccidentLeadFormData>({ ...initialFormData });
