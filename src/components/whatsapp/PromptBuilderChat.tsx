@@ -13,6 +13,7 @@ interface Props {
   currentPrompt: string;
   onApply: (prompt: string) => void;
   onClose: () => void;
+  hideHeader?: boolean;
 }
 
 const GENERATE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-agent-prompt`;
@@ -22,7 +23,7 @@ interface ChatMsg {
   content: string;
 }
 
-export function PromptBuilderChat({ currentPrompt, onApply, onClose }: Props) {
+export function PromptBuilderChat({ currentPrompt, onApply, onClose, hideHeader }: Props) {
   const [mode, setMode] = useState<'generate' | 'build'>('build');
   
   // Generate mode state
