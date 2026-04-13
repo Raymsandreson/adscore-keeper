@@ -1,27 +1,14 @@
 
-# Plano de Refatoração: Sistema de Agentes WhatsApp
 
-## Status
+## Plano: Atualizar SENTRY_AUTH_TOKEN
 
-### ✅ Fase 1: Decompor `_shared/wjia-utils.ts` em módulos — CONCLUÍDA
-- `field-utils.ts`, `autofill-utils.ts`, `zapsign-utils.ts`, `whatsapp-utils.ts`, `document-processing.ts`
-- `wjia-utils.ts` agora é hub de re-exportação
+O token que você enviou será usado para atualizar o secret `SENTRY_AUTH_TOKEN` já existente no projeto.
 
-### ✅ Fase 2: Decompor `wjia-agent/index.ts` em handlers — CONCLUÍDA
-- `index.ts` (88 linhas) → router slim que delega para handlers
-- `handlers/shared.ts` → corsHeaders, errorResponse, jsonResponse, createSupabaseClient
-- `handlers/regenerate.ts` → MODE 0: regenerar/forçar geração de sessão
-- `handlers/new-command.ts` → MODE 1: processar #comando novo
-- `handlers/follow-up.ts` → MODE 2: mensagens de follow-up durante sessão ativa
-- `handlers/document-upload.ts` → Upload e extração OCR de documentos
+### Passos:
+1. Usar a ferramenta de secrets para sobrescrever o `SENTRY_AUTH_TOKEN` com o novo valor.
+2. Testar a Edge Function `sentry-issues` para confirmar que o token funciona (sem erro 403).
 
-**Antes:** 1 arquivo com 2.702 linhas
-**Depois:** 6 arquivos especializados, cada um com responsabilidade clara
+### Detalhes técnicos
+- Nenhuma alteração de código necessária — a Edge Function já usa `Deno.env.get("SENTRY_AUTH_TOKEN")`.
+- Após atualizar o secret, a função será testada automaticamente chamando o endpoint de issues.
 
-### 🔲 Fase 3: Organizar `whatsapp-webhook/index.ts`
-Separar handlers por tipo de evento em sub-módulos.
-
-### 🔲 Fase 4: Limpeza geral
-- Tipos TypeScript fortes
-- Remover código morto
-- Documentação JSDoc
