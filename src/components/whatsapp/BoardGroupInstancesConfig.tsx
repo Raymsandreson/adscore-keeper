@@ -58,6 +58,7 @@ interface GroupSettings {
   process_workflow_board_id: string;
   process_auto_activities: ProcessActivity[];
   process_workflows: ProcessWorkflow[];
+  bridge_approach_prompt: string;
 }
 
 interface ProcessActivity {
