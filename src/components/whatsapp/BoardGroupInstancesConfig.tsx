@@ -770,6 +770,27 @@ export function BoardGroupInstancesConfig() {
             )}
           </div>
 
+          {/* Bridge Approach Prompt */}
+          <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-primary" />
+              <h4 className="font-medium text-xs">Prompt de Abordagem de Pontes</h4>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Configure o prompt que a IA usará para gerar comentários e DMs de abordagem para pontes (familiares, amigos, testemunhas) identificadas nos comentários de posts do Instagram.
+            </p>
+            <Textarea
+              value={settings.bridge_approach_prompt}
+              onChange={(e) => setSettings(prev => ({ ...prev, bridge_approach_prompt: e.target.value }))}
+              rows={5}
+              placeholder="Ex: Você é um assistente que gera mensagens para se conectar com pessoas que podem ser pontes para chegar até famílias de vítimas..."
+              className="text-xs"
+            />
+            <p className="text-[10px] text-muted-foreground italic">
+              💡 Deixe vazio para usar o prompt padrão. Inclua instruções sobre tom, estratégia de abordagem e o que NÃO fazer.
+            </p>
+          </div>
+
           {/* Onboarding Meeting */}
           {selectedBoard && <OnboardingMeetingConfig boardId={selectedBoard} />}
 
