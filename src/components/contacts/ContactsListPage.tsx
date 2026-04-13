@@ -605,7 +605,96 @@ export function ContactsListPage() {
           </ScrollArea>
         </TabsContent>
 
-        <TabsContent value="lists" className="flex-1 flex flex-col overflow-hidden mt-0 px-4 pb-4">
+        {/* Groups Tab */}
+        <TabsContent value="groups" className="flex-1 flex flex-col overflow-hidden mt-0 px-4 pb-4">
+          <div className="flex items-center gap-2 py-3 shrink-0">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar grupo por nome..."
+                value={groupSearch}
+                onChange={e => setGroupSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            {selectedGroup && (
+              <Button variant="outline" size="sm" onClick={() => { setSelectedGroup(null); setGroupContacts([]); }}>
+                <X className="h-3.5 w-3.5 mr-1" />
+                Voltar à lista
+              </Button>
+            )}
+          </div>
+
+          <ScrollArea className="flex-1">
+            {selectedGroup ? (
+              <div className="space-y-1">
+                <div className="p-3 mb-2 rounded-lg bg-muted/50 border">
+                  <p className="text-sm font-medium">{groups.find(g => g.group_jid === selectedGroup)?.group_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Lead: {groups.find(g => g.group_jid === selectedGroup)?.lead_name} •
+                    Status: <Badge variant="outline" className="text-[10px] ml-1">{groups.find(g => g.group_jid === selectedGroup)?.lead_status || 'N/A'}</Badge>
+                  </p>
+                </div>
+                {groupContactsLoading ? (
+                  <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                ) : groupContacts.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">Nenhum contato neste grupo</p>
+                ) : (
+                  groupContacts.map(contact => (
+                    <div
+                      key={contact.id}
+                      className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
+                      onClick={() => setDetailContact(contact)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{contact.full_name}</p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {contact.phone || 'Sem telefone'}
+                        </p>
+                      </div>
+                      {contact.classification && (
+                        <Badge variant="outline" className="text-[10px] shrink-0">
+                          {contact.classification}
+                        </Badge>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {groupsLoading ? (
+                  <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                ) : groups.filter(g => !groupSearch || g.group_name.toLowerCase().includes(groupSearch.toLowerCase()) || g.lead_name.toLowerCase().includes(groupSearch.toLowerCase())).length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">Nenhum grupo encontrado</p>
+                ) : (
+                  groups
+                    .filter(g => !groupSearch || g.group_name.toLowerCase().includes(groupSearch.toLowerCase()) || g.lead_name.toLowerCase().includes(groupSearch.toLowerCase()))
+                    .map(group => (
+                      <div
+                        key={group.group_jid}
+                        className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors border"
+                        onClick={() => handleSelectGroup(group.group_jid)}
+                      >
+                        <UsersRound className="h-5 w-5 text-primary shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{group.group_name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Lead: {group.lead_name} • {group.contact_count} contato(s)
+                          </p>
+                        </div>
+                        <Badge variant={group.lead_status === 'closed' ? 'default' : 'outline'} className="text-[10px] shrink-0">
+                          {group.lead_status || 'N/A'}
+                        </Badge>
+                      </div>
+                    ))
+                )}
+              </div>
+            )}
+          </ScrollArea>
+        </TabsContent>
+
           <div className="flex items-center gap-2 py-3 shrink-0">
             <Button size="sm" onClick={() => setShowCreateList(true)}>
               <Plus className="h-3.5 w-3.5 mr-1" />
