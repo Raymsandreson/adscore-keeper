@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 export function ContactsListPage() {
-  const { contacts, loading: contactsLoading, fetchContacts } = useContacts();
+  const { contacts, loading: contactsLoading, fetchContacts, totalCount } = useContacts();
   const {
     lists, loading: listsLoading, createList, updateList, deleteList,
     fetchMembers, addMembers, removeMember, sendBroadcast,
