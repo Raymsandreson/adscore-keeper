@@ -724,6 +724,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   };
 
 
+  const handleClose = () => {
     setUrl('');
     setCaption('');
     setFormData({ ...initialFormData });
