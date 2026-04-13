@@ -660,7 +660,70 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     }
   };
 
-  const handleClose = () => {
+  const generateBridgeReplies = async (contacts: any[]) => {
+    if (!contacts?.length) return;
+    setIsGeneratingReplies(true);
+    try {
+      // Fetch board's bridge prompt
+      let customPrompt = '';
+      if (selectedBoardId) {
+        const { data: boardSettings } = await supabase
+          .from('board_group_settings')
+          .select('bridge_approach_prompt')
+          .eq('board_id', selectedBoardId)
+          .maybeSingle();
+        customPrompt = (boardSettings as any)?.bridge_approach_prompt || '';
+      }
+
+      const { data, error } = await cloudFunctions.invoke('generate-bridge-reply', {
+        body: {
+          contacts,
+          postUrl: url.trim(),
+          postCaption: caption.substring(0, 500),
+          leadContext: {
+            victim_name: formData.victim_name,
+            case_type: formData.case_type,
+            accident_date: formData.accident_date,
+            main_company: formData.main_company,
+            contractor_company: formData.contractor_company,
+            city: formData.visit_city,
+            state: formData.visit_state,
+            damage_description: formData.damage_description,
+          },
+          customPrompt,
+        },
+      });
+      if (error) throw error;
+      if (data?.success && data.replies?.length) {
+        const repliesMap: Record<string, any> = {};
+        data.replies.forEach((r: any) => {
+          const uname = r.username?.replace('@', '') || '';
+          if (uname) repliesMap[uname] = r;
+        });
+        setBridgeReplies(prev => ({ ...prev, ...repliesMap }));
+        toast.success(`Respostas geradas para ${data.replies.length} ponte(s)!`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao gerar respostas');
+    } finally {
+      setIsGeneratingReplies(false);
+    }
+  };
+
+  const handleRegenerateReply = async (username: string) => {
+    const contact = commentsAnalysis?.potential_contacts?.find(
+      (c: any) => c.username?.replace('@', '') === username
+    );
+    if (!contact) return;
+    setRegeneratingContact(username);
+    try {
+      await generateBridgeReplies([contact]);
+    } finally {
+      setRegeneratingContact(null);
+    }
+  };
+
+
     setUrl('');
     setCaption('');
     setFormData({ ...initialFormData });
