@@ -438,7 +438,8 @@ serve(async (req) => {
 
 
     // ── CASE 1: First message (not in collecting mode) → Start collecting ──
-    if (!isInCollectingMode && !isFinish) {
+    // For GROUP messages, skip collecting mode and process immediately
+    if (!isInCollectingMode && !isFinish && !is_group) {
       // Save the message
       await supabase.from("whatsapp_command_history").insert({
         phone: normalizedPhone, instance_name, role: "user", content: contentToSave,
@@ -463,6 +464,16 @@ serve(async (req) => {
       return new Response(JSON.stringify({ success: true, status: "collecting", message: "Waiting for more content" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // ── GROUP SHORTCUT: Skip collecting, process immediately ──
+    if (is_group && !isInCollectingMode && !isFinish) {
+      // Save the message to history
+      await supabase.from("whatsapp_command_history").insert({
+        phone: normalizedPhone, instance_name, role: "user", content: contentToSave,
+        tool_data: hasMedia ? { media_url, message_type } : null,
+      });
+      // Fall through to CASE 3 processing with the message as-is
     }
 
     // ── CASE 2: In collecting mode, user sends more content (not "pronto") ──
@@ -1579,8 +1590,9 @@ Retorne APENAS o JSON, sem markdown.` },
         if (pendingAudioConfirm) {
           fullMsg += `\n\n🔊 Quer que eu envie um *áudio* explicando essa mensagem?\n_Responda *SIM* ou *NÃO*_`;
         }
-        await sendWhatsAppText(baseUrl, instToken, normalizedPhone, fullMsg);
-        console.log("Response sent to WhatsApp:", normalizedPhone);
+        const sendTo = is_group && group_id ? group_id : normalizedPhone;
+        await sendWhatsAppText(baseUrl, instToken, sendTo, fullMsg);
+        console.log("Response sent to WhatsApp:", sendTo, is_group ? "(group)" : "(private)");
       } catch (e) {
         console.error("Error sending response:", e);
       }
