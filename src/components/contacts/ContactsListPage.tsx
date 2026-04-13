@@ -443,10 +443,14 @@ export function ContactsListPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
         <div className="px-4 pt-3 shrink-0">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="contacts">
               <Users className="h-4 w-4 mr-1.5" />
-              Contatos ({totalCount || filteredContacts.length})
+              Contatos ({totalCount})
+            </TabsTrigger>
+            <TabsTrigger value="groups">
+              <UsersRound className="h-4 w-4 mr-1.5" />
+              Grupos ({groups.length})
             </TabsTrigger>
             <TabsTrigger value="lists">
               <Radio className="h-4 w-4 mr-1.5" />
