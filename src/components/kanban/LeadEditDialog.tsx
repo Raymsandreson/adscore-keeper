@@ -284,13 +284,20 @@ export function LeadEditDialog({
 
   const currentLead = hydratedLead ?? lead;
 
+  // Track previous lead id to only reset tab on lead change, not hydration
+  const prevLeadIdRef = useRef<string | null>(null);
+
   // Load lead data when dialog opens
   useEffect(() => {
     if (currentLead && open) {
       const leadAny = currentLead as any;
       
-      // Reset tab (use initialTab if provided, e.g. from deep link)
-      setActiveTab(initialTab || 'basic');
+      // Only reset tab when opening a different lead (not on hydration updates)
+      const isNewLead = prevLeadIdRef.current !== currentLead.id;
+      if (isNewLead) {
+        setActiveTab(initialTab || 'basic');
+        prevLeadIdRef.current = currentLead.id;
+      }
       // Basic fields
       setLeadName(currentLead.lead_name || '');
       setLeadPhone(currentLead.lead_phone || '');
