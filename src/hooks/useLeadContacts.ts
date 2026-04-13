@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { logAudit } from '@/hooks/useAuditLog';
 import { Lead } from '@/hooks/useLeads';
 
 export interface LeadContact {
