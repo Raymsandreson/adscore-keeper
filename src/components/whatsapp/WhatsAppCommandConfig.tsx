@@ -740,6 +740,13 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     🔍 Diagnóstico do Agente
                   </Button>
                 </div>
+                
+                <div className="mt-3">
+                  <PromptBuilderChat
+                    currentPrompt={form.prompt_instructions || ''}
+                    onApply={(prompt) => setForm(f => ({ ...f, prompt_instructions: prompt }))}
+                  />
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Modelo de IA</Label>
