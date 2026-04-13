@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { PromptVariableSelector } from './PromptVariableSelector';
+import { PromptBuilderChat } from './PromptBuilderChat';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { logAudit } from '@/hooks/useAuditLog';
@@ -738,6 +739,13 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     <Eye className="h-3.5 w-3.5" />
                     🔍 Diagnóstico do Agente
                   </Button>
+                </div>
+                
+                <div className="mt-3">
+                  <PromptBuilderChat
+                    currentPrompt={form.prompt_instructions || ''}
+                    onApply={(prompt) => setForm(f => ({ ...f, prompt_instructions: prompt }))}
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
