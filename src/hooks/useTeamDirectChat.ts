@@ -375,5 +375,6 @@ export function useTeamDirectChat() {
     ensureGeneralChat,
     fetchConversations,
     fetchMessages,
+    otherMembersReadAt,
   };
 }
