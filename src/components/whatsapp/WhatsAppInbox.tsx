@@ -13,6 +13,7 @@ import { GoogleIntegrationPanel } from '@/components/GoogleIntegrationPanel';
 import { useGoogleIntegration } from '@/hooks/useGoogleIntegration';
 import { CreateContactDialog } from '@/components/contacts/CreateContactDialog';
 import { CreateCaseFromWhatsAppDialog } from './CreateCaseFromWhatsAppDialog';
+import { ZapSignLeadCreationListener } from './ZapSignLeadCreationListener';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -1238,6 +1239,7 @@ export function WhatsAppInbox() {
           </DialogContent>
         </Dialog>
       )}
+      <ZapSignLeadCreationListener />
     </div>
   );
 }
