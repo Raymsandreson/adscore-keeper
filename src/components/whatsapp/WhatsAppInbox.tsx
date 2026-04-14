@@ -1239,6 +1239,7 @@ export function WhatsAppInbox() {
           </DialogContent>
         </Dialog>
       )}
+      <ZapSignLeadCreationListener />
     </div>
   );
 }
