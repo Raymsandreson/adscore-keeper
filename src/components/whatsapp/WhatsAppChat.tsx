@@ -634,8 +634,19 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     return items;
   })();
 
+  const prevItemsCountRef = useRef(0);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (timelineItems.length === 0) return;
+    const isInitialLoad = prevItemsCountRef.current === 0 || prevItemsCountRef.current === 1;
+    prevItemsCountRef.current = timelineItems.length;
+    // Use 'auto' (instant) on initial load, 'smooth' for new messages
+    const behavior = isInitialLoad ? 'auto' as const : 'smooth' as const;
+    // Use rAF + setTimeout to ensure DOM has rendered
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior });
+      }, isInitialLoad ? 50 : 0);
+    });
   }, [timelineItems.length]);
 
   const handleToggleIdentifySender = (checked: boolean) => {
