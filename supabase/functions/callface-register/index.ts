@@ -29,10 +29,10 @@ serve(async (req) => {
     const webhookUrl = `${SUPABASE_URL}/functions/v1/callface-webhook`;
 
     const registerPayload = {
-      name: "ABRACI.IA",
-      description: "CRM de gestão inteligente de leads e marketing - ABRACI.IA",
-      webhook_url: webhookUrl,
-      needed_credentials: ["user_email"],
+      name: "WhatsJUD",
+      description: "CRM jurídico do Abraci - registra ligações telefônicas com gravação e insights de IA",
+      webhook_url: "https://kmedldlepwiityjsdahz.supabase.co/functions/v1/callface-webhook",
+      needed_credentials: ["user_id"],
       register_token: CALLFACE_REGISTER_TOKEN,
     };
 
