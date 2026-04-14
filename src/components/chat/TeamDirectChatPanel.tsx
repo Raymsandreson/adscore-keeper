@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Send, Users, MessageCircle, ArrowLeft, Loader2, Plus, Hash,
   Mic, Square, Paperclip, Image, FileText, Briefcase, ClipboardList,
-  Play, Pause,
+  Play, Pause, Check, CheckCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
