@@ -388,8 +388,18 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                       </div>
                     )}
                     {renderMsgContent(msg, isMe)}
-                    <div className={cn('text-[9px] mt-0.5', isMe ? 'text-primary-foreground/60' : 'text-muted-foreground')}>
-                      {format(new Date(msg.created_at), 'HH:mm', { locale: ptBR })}
+                    <div className={cn('flex items-center gap-0.5 mt-0.5 justify-end', isMe ? 'text-primary-foreground/60' : 'text-muted-foreground')}>
+                      <span className="text-[9px]">
+                        {format(new Date(msg.created_at), 'HH:mm', { locale: ptBR })}
+                      </span>
+                      {isMe && (() => {
+                        const allRead = otherMembersReadAt.length > 0 && otherMembersReadAt.every(
+                          readAt => new Date(readAt) >= new Date(msg.created_at)
+                        );
+                        return allRead
+                          ? <CheckCheck className="h-3 w-3 text-blue-400" />
+                          : <Check className="h-3 w-3" />;
+                      })()}
                     </div>
                   </div>
                 </div>
