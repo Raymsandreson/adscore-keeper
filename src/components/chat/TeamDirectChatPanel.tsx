@@ -32,6 +32,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const {
     conversations, messages, activeConversationId, setActiveConversationId,
     loading, sendingMessage, sendMessage, startDirectChat, ensureGeneralChat,
+    otherMembersReadAt,
   } = useTeamDirectChat();
   const profiles = useProfilesList();
   const [messageText, setMessageText] = useState('');
