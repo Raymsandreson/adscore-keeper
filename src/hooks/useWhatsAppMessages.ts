@@ -314,31 +314,36 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
       const instanceNames = targetInstances.map(i => i.instance_name);
 
-      // Paginate RPC to bypass the 1000-row default limit
+      // Paginate RPC in parallel to bypass the 1000-row default limit
       const PAGE_SIZE = 1000;
-      let allSummaries: any[] = [];
-      let page = 0;
-      let hasMore = true;
       let sumError: any = null;
 
-      while (hasMore) {
-        const from = page * PAGE_SIZE;
-        const to = from + PAGE_SIZE - 1;
-        const { data: batch, error } = await supabase
-          .rpc('get_conversation_summaries', { p_instance_names: instanceNames })
-          .range(from, to);
+      // First page sequentially to know if there's more
+      const { data: firstBatch, error: firstError } = await supabase
+        .rpc('get_conversation_summaries', { p_instance_names: instanceNames })
+        .range(0, PAGE_SIZE - 1);
 
-        if (error) {
-          sumError = error;
-          break;
+      if (firstError) {
+        sumError = firstError;
+      }
+
+      let allSummaries: any[] = firstBatch || [];
+
+      // If first page is full, fetch remaining pages in parallel
+      if (!sumError && allSummaries.length === PAGE_SIZE) {
+        const parallelPages = [1, 2, 3, 4]; // up to 5000 total
+        const results = await Promise.all(
+          parallelPages.map(p =>
+            supabase
+              .rpc('get_conversation_summaries', { p_instance_names: instanceNames })
+              .range(p * PAGE_SIZE, (p + 1) * PAGE_SIZE - 1)
+          )
+        );
+        for (const { data, error } of results) {
+          if (error) { sumError = error; break; }
+          if (data && data.length > 0) allSummaries = allSummaries.concat(data);
+          if (!data || data.length < PAGE_SIZE) break;
         }
-
-        if (batch && batch.length > 0) {
-          allSummaries = allSummaries.concat(batch);
-        }
-
-        hasMore = (batch?.length || 0) === PAGE_SIZE;
-        page++;
       }
 
       const summaries = allSummaries;
@@ -934,11 +939,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   }, [hasLoaded, fetchMessages]);
 
   // Load all messages for a specific conversation (when selected)
-  // Also refreshes the conversation list for up-to-date sidebar
   const fetchFullConversation = useCallback(async (phone: string, instanceName?: string | null) => {
     activePhoneRef.current = phone;
-    // Refresh conversation list in background when opening/switching chats
-    fetchMessages(true);
+    // NOTE: removed background fetchMessages(true) call here to avoid double-loading
     try {
       // Paginate to get ALL messages for this phone/instance (up to 3000)
       const allMsgs: WhatsAppMessage[] = [];
