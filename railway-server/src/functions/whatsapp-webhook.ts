@@ -600,7 +600,8 @@ export const handler: RequestHandler = async (req, res) => {
       instanceToken = body.token || body.chat?.token || null;
       baseUrl = body.BaseUrl || null;
 
-      // Canonicalize instance by token
+      // Canonicalize instance by token, then fallback by name (case-insensitive)
+      let canonicalized = false;
       if (instanceToken) {
         const { data: canonicalInstance } = await supabase
           .from('whatsapp_instances').select('instance_name, base_url')
@@ -611,6 +612,20 @@ export const handler: RequestHandler = async (req, res) => {
           }
           instanceName = canonicalInstance.instance_name;
           baseUrl = baseUrl || canonicalInstance.base_url;
+          canonicalized = true;
+        }
+      }
+      // Fallback: canonicalize by name (case-insensitive) when token lookup fails
+      if (!canonicalized && instanceName) {
+        const { data: nameMatch } = await supabase
+          .from('whatsapp_instances').select('instance_name, base_url')
+          .ilike('instance_name', instanceName).eq('is_active', true).limit(1).maybeSingle();
+        if (nameMatch) {
+          if (nameMatch.instance_name !== instanceName) {
+            console.log('Instance name case mismatch. Payload:', instanceName, 'Canonical:', nameMatch.instance_name);
+          }
+          instanceName = nameMatch.instance_name;
+          baseUrl = baseUrl || nameMatch.base_url;
         }
       }
 
