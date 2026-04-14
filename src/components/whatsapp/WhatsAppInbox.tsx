@@ -82,16 +82,28 @@ export function WhatsAppInbox() {
     setDismissedAlert(false);
   }, [disconnectedSignature]);
 
-  // Auto-select default instance on mount
+  // Auto-select default instance on mount (localStorage > profile default > first available)
   const [defaultInstanceApplied, setDefaultInstanceApplied] = useState(false);
   useEffect(() => {
     if (defaultInstanceApplied || !user || instances.length === 0) return;
     const applyDefault = async () => {
+      // 1. Try localStorage last used
+      const lastUsed = localStorage.getItem('whatsapp_last_instance_id');
+      if (lastUsed && instances.some(i => i.id === lastUsed)) {
+        setSelectedInstanceId(lastUsed);
+        setDefaultInstanceApplied(true);
+        return;
+      }
+      // 2. Try profile default
       const { data } = await supabase.from('profiles').select('default_instance_id').eq('user_id', user.id).single();
       const defaultId = (data as any)?.default_instance_id;
       if (defaultId && instances.some(i => i.id === defaultId)) {
         setSelectedInstanceId(defaultId);
+        setDefaultInstanceApplied(true);
+        return;
       }
+      // 3. Fallback to first instance
+      setSelectedInstanceId(instances[0].id);
       setDefaultInstanceApplied(true);
     };
     applyDefault();
