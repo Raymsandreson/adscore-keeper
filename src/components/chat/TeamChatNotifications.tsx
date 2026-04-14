@@ -7,15 +7,34 @@ import { TeamNotificationToast } from './TeamNotificationToast';
 import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
 
 const MUTE_KEY = 'team-chat-notifications-muted';
+const MUTE_UNTIL_KEY = 'team-chat-notifications-muted-until';
 
 function isMuted() {
+  // Check timed mute first
+  const mutedUntil = localStorage.getItem(MUTE_UNTIL_KEY);
+  if (mutedUntil) {
+    if (Date.now() < Number(mutedUntil)) return true;
+    // Expired – clean up
+    localStorage.removeItem(MUTE_UNTIL_KEY);
+    localStorage.removeItem(MUTE_KEY);
+    return false;
+  }
   return localStorage.getItem(MUTE_KEY) === 'true';
 }
 
-function toggleMute() {
-  const next = !isMuted();
-  localStorage.setItem(MUTE_KEY, String(next));
-  toast.info(next ? 'Notificações silenciadas' : 'Notificações ativadas');
+function muteForMinutes(minutes: number | null) {
+  if (minutes === null) {
+    // Indefinite mute
+    localStorage.setItem(MUTE_KEY, 'true');
+    localStorage.removeItem(MUTE_UNTIL_KEY);
+    toast.info('Notificações silenciadas até você reativar');
+  } else {
+    const until = Date.now() + minutes * 60 * 1000;
+    localStorage.setItem(MUTE_UNTIL_KEY, String(until));
+    localStorage.setItem(MUTE_KEY, 'true');
+    const label = minutes >= 60 ? `${minutes / 60} hora${minutes > 60 ? 's' : ''}` : `${minutes} minutos`;
+    toast.info(`Notificações silenciadas por ${label}`);
+  }
 }
 
 function buildPreview(message: { content?: string | null; message_type?: string | null; file_name?: string | null }) {
@@ -58,10 +77,11 @@ function showNotificationToast({
       preview={preview}
       onOpen={onOpen}
       onReply={onReply}
-      onMute={toggleMute}
+      onMuteForMinutes={muteForMinutes}
     />
   ), {
     duration: Infinity,
+    position: 'top-center',
   });
 }
 
