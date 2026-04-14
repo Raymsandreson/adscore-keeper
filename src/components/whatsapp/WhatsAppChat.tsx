@@ -1609,7 +1609,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                         action: {
                           label: 'Criar contato',
                           onClick: () => {
-                            onCreateContact?.(sender.name || normalizedPhone, normalizedPhone);
+                            onCreateContact?.();
                           },
                         },
                       });
