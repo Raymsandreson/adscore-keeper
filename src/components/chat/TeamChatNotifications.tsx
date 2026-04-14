@@ -318,46 +318,8 @@ export function TeamChatNotifications() {
         console.log('[TeamChatNotifications] Mentions channel status:', status);
       });
 
-    // Listen for contextual team chat messages
-    const chatChannel = supabase
-      .channel('notification-chat-messages-' + user.id)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'team_chat_messages',
-      }, (payload) => {
-        console.log('[TeamChatNotifications] Message received:', payload);
-        if (isMuted()) return;
-        const msg = payload.new as any;
-        // Don't notify for own messages
-        if (msg.sender_id === user.id) return;
-
-        const senderName = msg.sender_name || 'Alguém';
-        const preview = buildPreview(msg).substring(0, 120);
-        const context = msg.entity_name || '';
-        const entityLabel = getEntityLabel(msg.entity_type);
-
-        showNotificationToast({
-          icon: <MessageCircle className="h-4 w-4 text-primary shrink-0" />,
-          title: senderName,
-          context: (context || entityLabel) ? `${entityLabel}${context ? `: ${context}` : ''}` : undefined,
-          preview,
-          onOpen: () => openEntityChat({
-            entityType: msg.entity_type,
-            entityId: msg.entity_id,
-            messageId: msg.id,
-          }),
-          onReply: (reply) => replyToEntityChat({
-            entityType: msg.entity_type,
-            entityId: msg.entity_id,
-            entityName: msg.entity_name,
-            content: reply,
-          }),
-        });
-      })
-      .subscribe((status) => {
-        console.log('[TeamChatNotifications] Chat channel status:', status);
-      });
+    // Contextual team chat messages channel REMOVED — was broadcasting to ALL users.
+    // Mentions are already handled by mentionsChannel above.
 
     // Listen for team direct/group chat messages used by the Chat da Equipe panel
     const teamMessagesChannel = supabase
