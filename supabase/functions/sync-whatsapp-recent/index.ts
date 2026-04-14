@@ -346,6 +346,38 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Backfill contact_name on existing messages that have null contact_name
+    const nameUpdates = snapshots
+      .filter((s) => s.contactName && s.contactName.trim().length > 0)
+      .map((s) => ({ phone: s.phone, contactName: s.contactName! }));
+
+    const uniqueNameUpdates = new Map<string, string>();
+    for (const u of nameUpdates) {
+      if (!uniqueNameUpdates.has(u.phone)) {
+        uniqueNameUpdates.set(u.phone, u.contactName);
+      }
+    }
+
+    let namesUpdated = 0;
+    for (const [phone, contactName] of uniqueNameUpdates) {
+      const updatePromises = [
+        internalClient
+          .from('whatsapp_messages')
+          .update({ contact_name: contactName })
+          .eq('phone', phone)
+          .eq('instance_name', instance.instance_name)
+          .is('contact_name', null),
+        dataClient
+          .from('whatsapp_messages')
+          .update({ contact_name: contactName })
+          .eq('phone', phone)
+          .eq('instance_name', instance.instance_name)
+          .is('contact_name', null),
+      ];
+      await Promise.all(updatePromises);
+      namesUpdated++;
+    }
+
     return new Response(JSON.stringify({
       success: true,
       instance: instance.instance_name,
