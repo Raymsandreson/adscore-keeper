@@ -44,6 +44,10 @@ type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
 
 export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones }: Props) {
   const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    setSearch('');
+  }, [selectedInstanceId]);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [selectedBoardId, setSelectedBoardId] = useState<string>('all');
   const [selectedStageId, setSelectedStageId] = useState<string>('all');
