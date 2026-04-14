@@ -384,6 +384,7 @@ Deno.serve(async (req) => {
       scanned: snapshots.length,
       inserted: inserts.length,
       skipped: snapshots.length - inserts.length,
+      names_updated: namesUpdated,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
