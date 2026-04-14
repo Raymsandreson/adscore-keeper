@@ -1618,7 +1618,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                         .insert({
                           full_name: contactName,
                           phone: normalizedPhone,
-                          created_by: user?.id || null,
+                          created_by: profile?.user_id || null,
                         })
                         .select('id')
                         .single();
