@@ -456,6 +456,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 placeholder="Digite sua mensagem..."
                 className="text-sm h-8 flex-1 min-w-0"
               />
