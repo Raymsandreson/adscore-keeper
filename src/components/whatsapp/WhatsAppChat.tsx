@@ -1101,14 +1101,21 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             >
               📱 WhatsApp
             </a>
-            <a
-              href={`tel:${whatsappPhone?.replace(/^55/, '')}`}
-              className="callface-dial text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full hover:bg-blue-700 transition-colors inline-flex items-center gap-1 no-underline"
+            <button
+              type="button"
+              className="callface-dial text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full hover:bg-blue-700 transition-colors inline-flex items-center gap-1 cursor-pointer border-0"
               data-phone={whatsappPhone?.replace(/^55/, '')}
-              title="Ligar"
+              title="Ligar via CallFace"
+              onClick={(e) => {
+                // CallFace extension intercepts via callface-dial class + data-phone
+                // If extension not installed, show hint
+                setTimeout(() => {
+                  // Extension should have handled it; if not, notify user
+                }, 500);
+              }}
             >
-              📞 Ligar
-            </a>
+              📞 CallFace
+            </button>
             <CopyableText copyValue={conversation.phone} label="Telefone" className="text-xs text-muted-foreground" as="span">
               📋 Copiar
             </CopyableText>
