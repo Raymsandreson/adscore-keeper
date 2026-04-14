@@ -154,10 +154,9 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     }
   }, []);
 
-  // File upload
-  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user?.id) return;
+  // File upload (shared logic)
+  const uploadAndSendFile = useCallback(async (file: File) => {
+    if (!user?.id) return;
 
     if (file.size > 20 * 1024 * 1024) {
       toast.error('Arquivo muito grande (máx. 20MB)');
@@ -188,8 +187,47 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     });
 
     setUploading(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   }, [user?.id, sendMessage]);
+
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await uploadAndSendFile(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [uploadAndSendFile]);
+
+  // Paste image (Ctrl+V)
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) void uploadAndSendFile(file);
+        return;
+      }
+    }
+  }, [uploadAndSendFile]);
+
+  // Drag & drop
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) void uploadAndSendFile(file);
+  }, [uploadAndSendFile]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOver(false);
+  }, []);
 
   // Entity mention
   const handleEntitySelect = useCallback((entity: EntityMention) => {
@@ -360,7 +398,12 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
         </div>
 
         {/* Input area */}
-        <div className="shrink-0 border-t relative">
+        <div
+          className={cn('shrink-0 border-t relative', dragOver && 'ring-2 ring-primary ring-inset bg-primary/5')}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+        >
           <TeamChatEntityMention
             open={showEntityMention}
             onClose={() => setShowEntityMention(false)}
@@ -413,6 +456,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 placeholder="Digite sua mensagem..."
                 className="text-sm h-8 flex-1 min-w-0"
               />
