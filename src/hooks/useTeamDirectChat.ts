@@ -230,6 +230,23 @@ export function useTeamDirectChat() {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'team_conversation_members',
+        },
+        (payload) => {
+          const updated = payload.new as { user_id: string; last_read_at: string | null; conversation_id: string };
+          if (updated.conversation_id === activeConversationId && updated.user_id !== user?.id && updated.last_read_at) {
+            setOtherMembersReadAt(prev => {
+              const next = [...prev, updated.last_read_at!];
+              return next;
+            });
+          }
+        }
+      )
       .subscribe();
 
     return () => {
