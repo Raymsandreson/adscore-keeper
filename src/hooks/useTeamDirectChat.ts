@@ -183,6 +183,17 @@ export function useTeamDirectChat() {
         .update({ last_read_at: new Date().toISOString() })
         .eq('conversation_id', conversationId)
         .eq('user_id', user.id);
+
+      // Fetch other members' last_read_at
+      const { data: members } = await supabase
+        .from('team_conversation_members')
+        .select('last_read_at')
+        .eq('conversation_id', conversationId)
+        .neq('user_id', user.id);
+
+      setOtherMembersReadAt(
+        (members || []).map(m => m.last_read_at).filter(Boolean) as string[]
+      );
     }
   }, [user?.id]);
 
