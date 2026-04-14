@@ -40,6 +40,7 @@ export function useTeamDirectChat() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [otherMembersReadAt, setOtherMembersReadAt] = useState<string[]>([]);
 
   const fetchConversations = useCallback(async () => {
     if (!user?.id) return;
@@ -182,6 +183,17 @@ export function useTeamDirectChat() {
         .update({ last_read_at: new Date().toISOString() })
         .eq('conversation_id', conversationId)
         .eq('user_id', user.id);
+
+      // Fetch other members' last_read_at
+      const { data: members } = await supabase
+        .from('team_conversation_members')
+        .select('last_read_at')
+        .eq('conversation_id', conversationId)
+        .neq('user_id', user.id);
+
+      setOtherMembersReadAt(
+        (members || []).map(m => m.last_read_at).filter(Boolean) as string[]
+      );
     }
   }, [user?.id]);
 
@@ -215,6 +227,23 @@ export function useTeamDirectChat() {
               .eq('conversation_id', activeConversationId)
               .eq('user_id', user.id)
               .then(() => {});
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'team_conversation_members',
+        },
+        (payload) => {
+          const updated = payload.new as { user_id: string; last_read_at: string | null; conversation_id: string };
+          if (updated.conversation_id === activeConversationId && updated.user_id !== user?.id && updated.last_read_at) {
+            setOtherMembersReadAt(prev => {
+              const next = [...prev, updated.last_read_at!];
+              return next;
+            });
           }
         }
       )
@@ -346,5 +375,6 @@ export function useTeamDirectChat() {
     ensureGeneralChat,
     fetchConversations,
     fetchMessages,
+    otherMembersReadAt,
   };
 }
