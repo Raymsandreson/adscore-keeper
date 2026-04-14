@@ -398,7 +398,12 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
         </div>
 
         {/* Input area */}
-        <div className="shrink-0 border-t relative">
+        <div
+          className={cn('shrink-0 border-t relative', dragOver && 'ring-2 ring-primary ring-inset bg-primary/5')}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+        >
           <TeamChatEntityMention
             open={showEntityMention}
             onClose={() => setShowEntityMention(false)}
