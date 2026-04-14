@@ -1592,8 +1592,34 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 {isGroup && msg.direction === 'inbound' && (() => {
                   const sender = getGroupSenderInfo(msg);
                   if (!sender.phone && !sender.name) return null;
+                  const handleSenderClick = async () => {
+                    if (!sender.phone) return;
+                    const normalizedPhone = sender.phone.replace(/\D/g, '');
+                    const last8 = normalizedPhone.slice(-8);
+                    const { data: contact } = await supabase
+                      .from('contacts')
+                      .select('id')
+                      .or(`phone.like.%${last8}`)
+                      .limit(1)
+                      .maybeSingle();
+                    if (contact) {
+                      onViewContact?.(contact.id);
+                    } else {
+                      toast.info('Contato não encontrado. Deseja criar?', {
+                        action: {
+                          label: 'Criar contato',
+                          onClick: () => {
+                            onCreateContact?.();
+                          },
+                        },
+                      });
+                    }
+                  };
                   return (
-                    <p className={cn("text-[11px] font-semibold mb-0.5", sender.phone ? getSenderColor(sender.phone) : 'text-primary')}>
+                    <p
+                      className={cn("text-[11px] font-semibold mb-0.5 cursor-pointer hover:underline", sender.phone ? getSenderColor(sender.phone) : 'text-primary')}
+                      onClick={handleSenderClick}
+                    >
                       {sender.name || formatPhone(sender.phone || '')}
                       {sender.name && sender.phone && (
                         <span className="font-normal text-muted-foreground ml-1">~{formatPhone(sender.phone)}</span>
