@@ -13,7 +13,7 @@ export interface ActivityMessageTemplate {
   updated_at: string;
 }
 
-const DEFAULT_TEMPLATE = `*Boa tarde Sr(a). *
+const DEFAULT_TEMPLATE = `*Boa tarde Sr(a). {{lead_name}}*
 
 *Assunto da atividade:* {{titulo}}
 
@@ -21,13 +21,8 @@ const DEFAULT_TEMPLATE = `*Boa tarde Sr(a). *
 
 {{campos_dinamicos}}
 
-{{responsavel ? responsavel + ' voltará com mais informações no dia ' + data_retorno + ', até o final do dia.' : ''}}
+{{responsavel_dr ? responsavel_dr + ' voltará com mais informações no dia ' + data_retorno + ', até o final do dia.' : ''}}
 {{tempo_dedicado}}
-
-*Registrado por:* {{criado_por}} em {{criado_em}}{{atualizado_info}}
-{{link_atividade}}
-
-Atenciosamente, {{criado_por}}
 
 Estamos à disposição para quaisquer dúvidas.
 
