@@ -214,8 +214,8 @@ All colors MUST be HSL.
 [id*="callface"],
 div[style*="callface"],
 img[src*="callface"],
-a[class*="callface"],
-span[class*="callface"] {
+a[class*="callface"]:not(.callface-dial),
+span[class*="callface"]:not(.callface-dial) {
   max-height: 16px !important;
   max-width: 16px !important;
   font-size: 0 !important;
