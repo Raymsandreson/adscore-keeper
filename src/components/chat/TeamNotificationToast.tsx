@@ -1,8 +1,14 @@
 import { useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Loader2, Send } from 'lucide-react';
+import { Loader2, Send, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface TeamNotificationToastProps {
   toastId: string | number;
@@ -11,9 +17,17 @@ interface TeamNotificationToastProps {
   context?: string;
   preview: string;
   onOpen: () => void | Promise<void>;
-  onMute: () => void;
+  onMuteForMinutes: (minutes: number | null) => void;
   onReply?: (reply: string) => Promise<void>;
 }
+
+const MUTE_OPTIONS = [
+  { label: '15 minutos', minutes: 15 },
+  { label: '30 minutos', minutes: 30 },
+  { label: '1 hora', minutes: 60 },
+  { label: '2 horas', minutes: 120 },
+  { label: 'Até eu reativar', minutes: null as number | null },
+];
 
 export function TeamNotificationToast({
   toastId,
@@ -22,7 +36,7 @@ export function TeamNotificationToast({
   context,
   preview,
   onOpen,
-  onMute,
+  onMuteForMinutes,
   onReply,
 }: TeamNotificationToastProps) {
   const [reply, setReply] = useState('');
@@ -94,18 +108,27 @@ export function TeamNotificationToast({
       )}
 
       <div className="mt-3 flex items-center justify-end gap-2" onClick={(event) => event.stopPropagation()}>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8"
-          onClick={() => {
-            onMute();
-            toast.dismiss(toastId);
-          }}
-        >
-          Silenciar
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="sm" className="h-8 gap-1">
+              <Clock className="h-3.5 w-3.5" />
+              Silenciar
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="z-[200]">
+            {MUTE_OPTIONS.map((opt) => (
+              <DropdownMenuItem
+                key={opt.label}
+                onClick={() => {
+                  onMuteForMinutes(opt.minutes);
+                  toast.dismiss(toastId);
+                }}
+              >
+                {opt.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => void handleOpen()}>
           Abrir chat
         </Button>
