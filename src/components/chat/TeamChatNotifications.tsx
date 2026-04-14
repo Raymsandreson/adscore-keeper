@@ -375,7 +375,6 @@ export function TeamChatNotifications() {
 
     return () => {
       supabase.removeChannel(mentionsChannel);
-      supabase.removeChannel(chatChannel);
       supabase.removeChannel(teamMessagesChannel);
       supabase.removeChannel(teamMembershipsChannel);
     };
