@@ -1592,28 +1592,10 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 {isGroup && msg.direction === 'inbound' && (() => {
                   const sender = getGroupSenderInfo(msg);
                   if (!sender.phone && !sender.name) return null;
-                  const handleSenderClick = async () => {
+                  const handleSenderClick = () => {
                     if (!sender.phone) return;
                     const normalizedPhone = sender.phone.replace(/\D/g, '');
-                    const last8 = normalizedPhone.slice(-8);
-                    const { data: contact } = await supabase
-                      .from('contacts')
-                      .select('id')
-                      .or(`phone.like.%${last8}`)
-                      .limit(1)
-                      .maybeSingle();
-                    if (contact) {
-                      onViewContact?.(contact.id);
-                    } else {
-                      toast.info('Contato não encontrado. Deseja criar?', {
-                        action: {
-                          label: 'Criar contato',
-                          onClick: () => {
-                            onCreateContact?.();
-                          },
-                        },
-                      });
-                    }
+                    onOpenChat?.(normalizedPhone);
                   };
                   return (
                     <p
