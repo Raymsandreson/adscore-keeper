@@ -42,6 +42,50 @@ export function TeamNotificationToast({
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
 
+  // Swipe-to-dismiss state
+  const touchStartX = useRef<number | null>(null);
+  const swipeOffset = useRef(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleTouchStart = (e: TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    if (containerRef.current) {
+      containerRef.current.style.transition = 'none';
+    }
+  };
+
+  const handleTouchMove = (e: TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const dx = e.touches[0].clientX - touchStartX.current;
+    swipeOffset.current = dx;
+    if (containerRef.current) {
+      containerRef.current.style.transform = `translateX(${dx}px)`;
+      containerRef.current.style.opacity = `${Math.max(0, 1 - Math.abs(dx) / 250)}`;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (Math.abs(swipeOffset.current) > 100) {
+      // Dismiss
+      if (containerRef.current) {
+        const dir = swipeOffset.current > 0 ? '100%' : '-100%';
+        containerRef.current.style.transition = 'transform 200ms ease, opacity 200ms ease';
+        containerRef.current.style.transform = `translateX(${dir})`;
+        containerRef.current.style.opacity = '0';
+      }
+      setTimeout(() => toast.dismiss(toastId), 200);
+    } else {
+      // Snap back
+      if (containerRef.current) {
+        containerRef.current.style.transition = 'transform 200ms ease, opacity 200ms ease';
+        containerRef.current.style.transform = 'translateX(0)';
+        containerRef.current.style.opacity = '1';
+      }
+    }
+    touchStartX.current = null;
+    swipeOffset.current = 0;
+  };
+
   const handleOpen = async () => {
     await onOpen();
     toast.dismiss(toastId);
@@ -71,7 +115,13 @@ export function TeamNotificationToast({
   };
 
   return (
-    <div className="w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-border bg-background p-3 shadow-xl">
+    <div
+      ref={containerRef}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      className="w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-border bg-background p-3 shadow-xl"
+    >
       <button
         type="button"
         onClick={() => void handleOpen()}
