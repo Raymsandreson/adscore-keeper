@@ -906,7 +906,12 @@ const ActivitiesPage = () => {
   };
 
   const handleSelectLead = async (leadId: string) => {
-    const lead = leads.find(l => l.id === leadId);
+    // Check both arrays to find the lead name (searchedLeads may have it when leads doesn't)
+    let lead = leads.find(l => l.id === leadId);
+    if (!lead) {
+      lead = searchedLeads.find(l => l.id === leadId);
+    }
+    
     setFormLeadId(leadId);
     setFormLeadName(lead?.lead_name || '');
     setFormContactId('');
