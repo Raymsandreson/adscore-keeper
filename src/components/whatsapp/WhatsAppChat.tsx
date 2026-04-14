@@ -1592,10 +1592,45 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 {isGroup && msg.direction === 'inbound' && (() => {
                   const sender = getGroupSenderInfo(msg);
                   if (!sender.phone && !sender.name) return null;
-                  const handleSenderClick = () => {
+                  const handleSenderClick = async () => {
                     if (!sender.phone) return;
                     const normalizedPhone = sender.phone.replace(/\D/g, '');
-                    onOpenChat?.(normalizedPhone);
+                    const last8 = normalizedPhone.slice(-8);
+                    
+                    // Try to find existing contact
+                    const { data: contact } = await supabase
+                      .from('contacts')
+                      .select('id')
+                      .or(`phone.like.%${last8}`)
+                      .limit(1)
+                      .maybeSingle();
+                    
+                    if (contact) {
+                      onViewContact?.(contact.id);
+                    } else {
+                      // Auto-create contact from group participant data
+                      const contactName = sender.name && sender.name !== normalizedPhone
+                        ? sender.name
+                        : `Contato ${normalizedPhone}`;
+                      
+                      const { data: newContact, error } = await supabase
+                        .from('contacts')
+                        .insert({
+                          full_name: contactName,
+                          phone: normalizedPhone,
+                          created_by: profile?.user_id || null,
+                        })
+                        .select('id')
+                        .single();
+                      
+                      if (error) {
+                        toast.error('Erro ao criar contato.');
+                        return;
+                      }
+                      
+                      toast.success(`Contato "${contactName}" criado!`);
+                      onViewContact?.(newContact.id);
+                    }
                   };
                   return (
                     <p
