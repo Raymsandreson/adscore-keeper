@@ -13,7 +13,7 @@ export interface ActivityMessageTemplate {
   updated_at: string;
 }
 
-const DEFAULT_TEMPLATE = `*Boa tarde Sr(a). *
+const DEFAULT_TEMPLATE = `*Boa tarde Sr(a). {{lead_name}}*
 
 *Assunto da atividade:* {{titulo}}
 
@@ -21,13 +21,8 @@ const DEFAULT_TEMPLATE = `*Boa tarde Sr(a). *
 
 {{campos_dinamicos}}
 
-{{responsavel ? responsavel + ' voltará com mais informações no dia ' + data_retorno + ', até o final do dia.' : ''}}
+{{responsavel_dr ? responsavel_dr + ' voltará com mais informações no dia ' + data_retorno + ', até o final do dia.' : ''}}
 {{tempo_dedicado}}
-
-*Registrado por:* {{criado_por}} em {{criado_em}}{{atualizado_info}}
-{{link_atividade}}
-
-Atenciosamente, {{criado_por}}
 
 Estamos à disposição para quaisquer dúvidas.
 
@@ -39,7 +34,8 @@ export const TEMPLATE_VARIABLES = [
   { var: '{{titulo}}', label: 'Título da atividade' },
   { var: '{{lead_name}}', label: 'Nome do lead' },
   { var: '{{campos_dinamicos}}', label: 'Campos configurados (O que foi feito, etc.)' },
-  { var: '{{responsavel}}', label: 'Nome do responsável' },
+  { var: '{{responsavel}}', label: 'Nome completo do responsável' },
+  { var: '{{responsavel_dr}}', label: 'Nome do responsável com Dr. (ex: Dr. Martin Rafael)' },
   { var: '{{data_retorno}}', label: 'Data de retorno/notificação' },
   { var: '{{criado_por}}', label: 'Nome de quem criou' },
   { var: '{{criado_em}}', label: 'Data/hora de criação' },

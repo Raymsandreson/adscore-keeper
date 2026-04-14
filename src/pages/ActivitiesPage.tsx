@@ -1231,11 +1231,15 @@ const ActivitiesPage = () => {
     // Check if template has mustache-style variables
     if (template && template.includes('{{')) {
       // Build a context object for evaluating conditional expressions
+      const responsavelDr = formAssignedToName
+        ? `Dr. ${formAssignedToName.split(' ').slice(0, 2).join(' ')}`
+        : '';
       const tplVars: Record<string, string> = {
         titulo: formTitle.toUpperCase(),
         lead_name: formLeadName || '',
         campos_dinamicos: fieldLines,
         responsavel: formAssignedToName || '',
+        responsavel_dr: responsavelDr,
         data_retorno: notifDate || '—',
         criado_por: createdByName || '—',
         criado_em: createdAtFmt,
@@ -1276,7 +1280,8 @@ const ActivitiesPage = () => {
     }
 
     // Fallback: hardcoded default
-    return `*Boa tarde Sr(a). *\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${formLeadName ? `Referente ao caso de ${formLeadName}` : ''}\n\n${fieldLines}\n\n${formAssignedToName ? `*${formAssignedToName}* voltará com mais informações no dia *${notifDate || '—'}*, até o final do dia.` : ''}\n${tempoStr}\n\n*Registrado por:* ${createdByName || '—'} em ${createdAtFmt}${updatedInfo}\n${activityLink}\n\nAtenciosamente, ${createdByName || 'Equipe'}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    const responsavelDrFb = formAssignedToName ? `Dr. ${formAssignedToName.split(' ').slice(0, 2).join(' ')}` : '';
+    return `*Boa tarde Sr(a). ${formLeadName || ''}*\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${formLeadName ? `Referente ao caso de ${formLeadName}` : ''}\n\n${fieldLines}\n\n${responsavelDrFb ? `*${responsavelDrFb}* voltará com mais informações no dia *${notifDate || '—'}*, até o final do dia.` : ''}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
   const activityFormContent = (
