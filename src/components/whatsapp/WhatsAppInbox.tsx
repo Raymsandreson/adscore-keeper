@@ -689,7 +689,7 @@ export function WhatsAppInbox() {
         )}
 
         {instances.length > 0 && (
-          <Select value={selectedInstanceId} onValueChange={(val) => { setSelectedInstanceId(val); setSelectedPhone(null); setSelectedInstance(null); }}>
+          <Select value={selectedInstanceId} onValueChange={(val) => { setSelectedInstanceId(val); setSelectedPhone(null); setSelectedInstance(null); if (val !== 'all') localStorage.setItem('whatsapp_last_instance_id', val); }}>
             <SelectTrigger className="w-52 h-8 text-xs ml-0 md:ml-2">
               <Smartphone className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
               <SelectValue placeholder="Todas instâncias" />
