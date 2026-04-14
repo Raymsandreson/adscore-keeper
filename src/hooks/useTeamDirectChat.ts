@@ -40,6 +40,7 @@ export function useTeamDirectChat() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [otherMembersReadAt, setOtherMembersReadAt] = useState<string[]>([]);
 
   const fetchConversations = useCallback(async () => {
     if (!user?.id) return;
