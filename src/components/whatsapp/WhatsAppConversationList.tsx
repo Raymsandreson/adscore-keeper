@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDownUp, ArrowDown, Lock, ArrowUpFromLine, ArrowDownToLine, Users, UserCheck, FileText } from 'lucide-react';
+import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDown, Lock, ArrowUpFromLine, ArrowDownToLine, Users, UserCheck, FileText } from 'lucide-react';
 import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -38,7 +38,7 @@ interface Props {
 }
 
 type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups';
-type SortMode = 'alpha' | 'last_received' | 'last_sent';
+type SortMode = 'alpha' | 'last_activity';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
 
@@ -54,7 +54,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   // Multi-select passos (individual item IDs now)
   const [selectedChecklistItemIds, setSelectedChecklistItemIds] = useState<string[]>([]);
   const [checklistPopoverOpen, setChecklistPopoverOpen] = useState(false);
-  const [sortMode, setSortMode] = useState<SortMode>('last_received');
+  const [sortMode, setSortMode] = useState<SortMode>('last_activity');
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all');
   const [docFilter, setDocFilter] = useState<DocFilter>('all');
 
@@ -241,17 +241,10 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
 
   // Sort conversations based on mode
   const sortedFiltered = useMemo(() => {
-    if (sortMode === 'last_received') {
-      // Sort by most recent message (any direction) — like WhatsApp
+    if (sortMode === 'last_activity') {
+      // Sort by most recent message (any direction) — MAX(created_at)
       return [...filtered].sort((a, b) => {
         return new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime();
-      });
-    }
-    if (sortMode === 'last_sent') {
-      return [...filtered].sort((a, b) => {
-        const aTime = a.messages.filter(m => m.direction === 'outbound').sort((x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime())[0]?.created_at || '0';
-        const bTime = b.messages.filter(m => m.direction === 'outbound').sort((x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime())[0]?.created_at || '0';
-        return new Date(bTime).getTime() - new Date(aTime).getTime();
       });
     }
     return filtered; // alpha uses groupedByLetter
@@ -558,25 +551,18 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
         {!bulkMode && (
           <div className="ml-auto flex items-center gap-0.5">
             <button
-              onClick={() => setSortMode('alpha')}
-              className={cn("p-1 rounded", sortMode === 'alpha' ? "bg-primary text-primary-foreground" : "hover:bg-accent")}
-              title="Ordenar por nome (A-Z)"
-            >
-              <ArrowDownAZ className="h-3 w-3" />
-            </button>
-            <button
-              onClick={() => setSortMode('last_received')}
-              className={cn("p-1 rounded", sortMode === 'last_received' ? "bg-primary text-primary-foreground" : "hover:bg-accent")}
-              title="Ordenar por última mensagem recebida"
+              onClick={() => setSortMode('last_activity')}
+              className={cn("p-1 rounded", sortMode === 'last_activity' ? "bg-primary text-primary-foreground" : "hover:bg-accent")}
+              title="Última atividade"
             >
               <ArrowDown className="h-3 w-3" />
             </button>
             <button
-              onClick={() => setSortMode('last_sent')}
-              className={cn("p-1 rounded", sortMode === 'last_sent' ? "bg-primary text-primary-foreground" : "hover:bg-accent")}
-              title="Ordenar por última mensagem enviada"
+              onClick={() => setSortMode('alpha')}
+              className={cn("p-1 rounded", sortMode === 'alpha' ? "bg-primary text-primary-foreground" : "hover:bg-accent")}
+              title="A-Z"
             >
-              <ArrowDownUp className="h-3 w-3" />
+              <ArrowDownAZ className="h-3 w-3" />
             </button>
           </div>
         )}
