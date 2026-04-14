@@ -139,7 +139,7 @@ export function ZapSignLeadCreationListener() {
           board_id: selectedBoardId,
           status: lastStage?.id || null,
           lead_status: 'closed',
-          assigned_to: user.id,
+          acolhedor: user.id,
           created_by: user.id,
           action_source: 'manual',
         })
