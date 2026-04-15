@@ -5,12 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter, Maximize2, Minimize2, Target, CheckCircle2 } from "lucide-react";
+import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter, Maximize2, Minimize2, Target, CheckCircle2, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
+import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 
 interface ChecklistItem {
   id: string;
@@ -20,9 +21,11 @@ interface ChecklistItem {
 
 const SalesFunnelsPage = () => {
   const navigate = useNavigate();
-  const { boards } = useKanbanBoards();
+  const { boards, fetchBoards } = useKanbanBoards();
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [editBoardId, setEditBoardId] = useState<string | null>(null);
 
   const salesFunnels = useMemo(
     () => boards.filter(b => b.board_type === 'funnel'),
@@ -141,10 +144,16 @@ const SalesFunnelsPage = () => {
             Gerencie seus funis e acompanhe a conversão de leads
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => navigate('/settings')}>
-          <Settings className="h-4 w-4 mr-2" />
-          Configurar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => { setEditBoardId(null); setShowBuilder(true); }}>
+            <Plus className="h-4 w-4 mr-2" />
+            Criar Funil
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate('/settings')}>
+            <Settings className="h-4 w-4 mr-2" />
+            Configurar
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
