@@ -106,7 +106,7 @@ export function useMonitorData() {
 
       const statsMap = new Map<string, AgentStats>();
       agentsData.forEach((a: any) => {
-        const edgeAgent = edgeAgentMap.get(a.id);
+        const edgeAgent = edgeAgentMap.get(a.id) as any;
         statsMap.set(a.id, {
           agent_id: a.id, agent_name: a.shortcut_name,
           total_conversations: edgeAgent?.conversas_ativas || 0,
