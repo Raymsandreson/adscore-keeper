@@ -107,7 +107,9 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
   }, [open, canExtract]);
 
   const handleExtractWithAI = async () => {
-    const phone = contactPhone?.replace(/\D/g, '');
+    // Don't strip non-digits for group identifiers (contain @g.us)
+    const isGroup = contactPhone?.includes('@g.us');
+    const phone = isGroup ? contactPhone : contactPhone?.replace(/\D/g, '');
     if (!phone || !instanceName) {
       if (!messages?.length) {
         toast.error('Sem mensagens para analisar');
@@ -126,6 +128,12 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       if (error) throw error;
 
       const extracted = data?.data || {};
+
+      // Handle no_messages response
+      if (!data?.data && data?.reason === 'no_messages') {
+        toast.warning('Nenhuma mensagem encontrada para análise. Preencha manualmente.');
+        return;
+      }
 
       if (extracted.title) setTitle(extracted.title);
       else if (extracted.lead_name && title === (leadName || contactName || '')) setTitle(extracted.lead_name);
@@ -167,7 +175,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       toast.success('Dados extraídos da conversa!');
     } catch (err) {
       console.error('Extract error:', err);
-      toast.error('Erro ao extrair dados da conversa');
+      toast.error('Erro ao extrair dados da conversa. Preencha manualmente.');
     } finally {
       setExtracting(false);
     }
