@@ -26,6 +26,31 @@ interface ExtractedProcess {
   description?: string;
 }
 
+function parseProcessesFromNotes(notes: string, caseType?: string): ExtractedProcess[] {
+  const processes: ExtractedProcess[] = [];
+  // Match patterns like "nº 0802498-08.2022.8.18.0028" or "processo nº ..."
+  const regex = /(?:n[ºo°]\s*|processo\s+)([\d][\d.-]+[\d])/gi;
+  let match;
+  const seen = new Set<string>();
+  while ((match = regex.exec(notes)) !== null) {
+    const num = match[1].trim();
+    if (!seen.has(num)) {
+      seen.add(num);
+      // Try to extract type from context after the number (e.g. ", de INDENIZAÇÃO")
+      const afterMatch = notes.substring(match.index + match[0].length, match.index + match[0].length + 100);
+      const typeMatch = afterMatch.match(/,?\s*de\s+([^).,]+)/i);
+      const typeName = typeMatch ? typeMatch[1].trim() : (caseType || 'Processo');
+      processes.push({
+        title: typeName,
+        process_number: num,
+        process_type: 'judicial',
+        description: `Processo extraído automaticamente da conversa`,
+      });
+    }
+  }
+  return processes;
+}
+
 interface DuplicateCase {
   id: string;
   case_number: string;
