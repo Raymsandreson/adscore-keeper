@@ -1051,7 +1051,10 @@ Deno.serve(async (req) => {
       instanceToken = body.instance_token || null
     }
 
-    const phone = rawPhone.replace(/\D/g, '').replace(/^0+/, '')
+    // Preservar traço em grupos antigos (ex: "559188395050-1579923779")
+    const phone = /^\d+-\d+$/.test(rawPhone)
+      ? rawPhone
+      : rawPhone.replace(/\D/g, '').replace(/^0+/, '')
 
     // Sanitize contact_name: remove patterns like "WhatsApp 551234567890 | Instance"
     // or names that are just phone numbers
