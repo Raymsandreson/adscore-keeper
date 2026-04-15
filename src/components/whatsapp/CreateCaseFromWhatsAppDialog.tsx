@@ -42,11 +42,12 @@ interface Props {
   contactName?: string | null;
   contactPhone?: string | null;
   contactId?: string | null;
+  instanceName?: string | null;
   messages?: any[];
   onCaseCreated?: (caseData: any) => void;
 }
 
-export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadName, contactName, contactPhone, contactId, messages, onCaseCreated }: Props) {
+export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadName, contactName, contactPhone, contactId, instanceName, messages, onCaseCreated }: Props) {
   const { nuclei, loading: nucleiLoading } = useSpecializedNuclei();
   const { createCase } = useLegalCases();
   const { boards } = useKanbanBoards();
@@ -105,18 +106,19 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
   }, [open, messages]);
 
   const handleExtractWithAI = async () => {
-    if (!messages?.length) {
-      toast.error('Sem mensagens para analisar');
-      return;
+    const phone = contactPhone?.replace(/\D/g, '');
+    if (!phone || !instanceName) {
+      if (!messages?.length) {
+        toast.error('Sem mensagens para analisar');
+        return;
+      }
     }
     setExtracting(true);
     try {
       const { data, error } = await cloudFunctions.invoke('extract-conversation-data', {
         body: {
-          messages: messages.map(m => ({
-            direction: m.direction,
-            message_text: m.message_text,
-          })),
+          phone,
+          instance_name: instanceName,
           targetType: 'case',
         },
       });

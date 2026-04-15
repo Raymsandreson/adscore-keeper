@@ -331,16 +331,14 @@ export function WhatsAppInbox() {
   const [contactDefaults, setContactDefaults] = useState<Record<string, string>>({});
 
   const extractConversationData = async (targetType: 'lead' | 'contact') => {
-    if (!selectedConversation?.messages?.length) return {};
+    if (!selectedConversation?.phone || !selectedInstance) return {};
     try {
       setExtracting(true);
       setExtractionStep(targetType === 'lead' ? 'Extraindo dados do lead...' : 'Extraindo dados do contato...');
       const { data, error } = await cloudFunctions.invoke('extract-conversation-data', {
         body: {
-          messages: selectedConversation.messages.slice(-50).map(m => ({
-            direction: m.direction,
-            message_text: m.message_text,
-          })),
+          phone: selectedConversation.phone,
+          instance_name: selectedInstance,
           targetType,
         },
       });
@@ -1131,6 +1129,7 @@ export function WhatsAppInbox() {
         contactName={selectedConversation?.contact_name}
         contactPhone={selectedConversation?.phone}
         contactId={selectedConversation?.contact_id}
+        instanceName={selectedInstance}
         messages={selectedConversation?.messages}
         onCaseCreated={() => { toast.success('Caso criado com sucesso!'); refetch(); }}
       />
