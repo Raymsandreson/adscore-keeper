@@ -154,8 +154,15 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       if (descParts.length > 0) setDescription(descParts.join('\n'));
       if (extracted.notes) setNotes(extracted.notes);
 
+      // Use structured processes if available, otherwise parse from notes
       if (extracted.processes && Array.isArray(extracted.processes) && extracted.processes.length > 0) {
         setExtractedProcesses(extracted.processes);
+      } else if (extracted.notes) {
+        // Parse process numbers from notes text (e.g. "nº 0802498-08.2022.8.18.0028, de INDENIZAÇÃO")
+        const parsed = parseProcessesFromNotes(extracted.notes, extracted.case_type);
+        if (parsed.length > 0) {
+          setExtractedProcesses(parsed);
+        }
       }
 
       if (extracted.case_type) {
