@@ -54,6 +54,7 @@ interface WorkflowBuilderProps {
   onWorkflowSaved?: () => void;
   initialEditBoardId?: string | null;
   initialCreateNew?: boolean;
+  boardType?: 'workflow' | 'funnel';
 }
 
 interface PhaseObjective {
@@ -76,9 +77,12 @@ interface PhaseConfig {
 
 type ViewMode = 'list' | 'edit';
 
-export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEditBoardId, initialCreateNew }: WorkflowBuilderProps) {
+export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEditBoardId, initialCreateNew, boardType = 'workflow' }: WorkflowBuilderProps) {
   const { boards: allBoards, fetchBoards, createBoard, updateBoard, deleteBoard } = useKanbanBoards();
-  const boards = allBoards.filter(b => b.board_type === 'workflow');
+  const boards = allBoards.filter(b => b.board_type === boardType);
+  const isFunnel = boardType === 'funnel';
+  const typeLabel = isFunnel ? 'Funil de Vendas' : 'Fluxo de Trabalho';
+  const typeLabelLower = isFunnel ? 'funil' : 'fluxo de trabalho';
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const {
     templates,
@@ -316,8 +320,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
   const handleDeleteWorkflow = (board: KanbanBoard) => {
     confirmDelete(
-      'Excluir Fluxo de Trabalho',
-      `Excluir o fluxo "${board.name}"? Leads serão desvinculados. Esta ação não pode ser desfeita.`,
+      `Excluir ${typeLabel}`,
+      `Excluir o ${typeLabelLower} "${board.name}"? Leads serão desvinculados. Esta ação não pode ser desfeita.`,
       async () => { await deleteBoard(board.id); fetchBoards(); }
     );
   };
@@ -506,7 +510,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           description: formDescription.trim() || null,
           color: '#3b82f6',
           stages,
-          board_type: 'workflow',
+          board_type: boardType,
         } as any);
         boardId = created.id;
       }
@@ -582,7 +586,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         <SheetHeader className="px-6 py-4 border-b">
           <SheetTitle className="flex items-center gap-2">
             <Workflow className="h-5 w-5" />
-            {viewMode === 'list' ? 'Fluxos de Trabalho' : (editingBoardId ? 'Editar fluxo de trabalho' : 'Novo fluxo de trabalho')}
+            {viewMode === 'list' ? (isFunnel ? 'Funis de Vendas' : 'Fluxos de Trabalho') : (editingBoardId ? `Editar ${typeLabelLower}` : `Novo ${typeLabelLower}`)}
           </SheetTitle>
         </SheetHeader>
 

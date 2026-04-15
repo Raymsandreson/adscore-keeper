@@ -5,12 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter, Maximize2, Minimize2, Target, CheckCircle2 } from "lucide-react";
+import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter, Maximize2, Minimize2, Target, CheckCircle2, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
+import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 
 interface ChecklistItem {
   id: string;
@@ -20,9 +21,11 @@ interface ChecklistItem {
 
 const SalesFunnelsPage = () => {
   const navigate = useNavigate();
-  const { boards } = useKanbanBoards();
+  const { boards, fetchBoards } = useKanbanBoards();
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [editBoardId, setEditBoardId] = useState<string | null>(null);
 
   const salesFunnels = useMemo(
     () => boards.filter(b => b.board_type === 'funnel'),
@@ -141,10 +144,16 @@ const SalesFunnelsPage = () => {
             Gerencie seus funis e acompanhe a conversão de leads
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => navigate('/settings')}>
-          <Settings className="h-4 w-4 mr-2" />
-          Configurar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => { setEditBoardId(null); setShowBuilder(true); }}>
+            <Plus className="h-4 w-4 mr-2" />
+            Criar Funil
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate('/settings')}>
+            <Settings className="h-4 w-4 mr-2" />
+            Configurar
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -194,8 +203,14 @@ const SalesFunnelsPage = () => {
 
       {/* Funnel list */}
       {filtered.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          {search ? "Nenhum funil encontrado." : "Nenhum funil de vendas configurado."}
+        <div className="text-center py-12 text-muted-foreground space-y-3">
+          <p>{search ? "Nenhum funil encontrado." : "Nenhum funil de vendas configurado."}</p>
+          {!search && (
+            <Button onClick={() => { setEditBoardId(null); setShowBuilder(true); }}>
+              <Plus className="h-4 w-4 mr-2" />
+              Criar Primeiro Funil
+            </Button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -319,7 +334,16 @@ const SalesFunnelsPage = () => {
                   )}
 
                   {/* Action buttons */}
-                  <div className="flex justify-end pt-1">
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                      onClick={() => { setEditBoardId(board.id); setShowBuilder(true); }}
+                    >
+                      <Settings className="h-3.5 w-3.5 mr-1.5" />
+                      Editar
+                    </Button>
                     <Button
                       variant="default"
                       size="sm"
@@ -337,6 +361,15 @@ const SalesFunnelsPage = () => {
           })}
         </div>
       )}
+
+      <WorkflowBuilder
+        open={showBuilder}
+        onOpenChange={setShowBuilder}
+        onWorkflowSaved={() => fetchBoards()}
+        initialEditBoardId={editBoardId}
+        initialCreateNew={!editBoardId}
+        boardType="funnel"
+      />
     </div>
   );
 };
