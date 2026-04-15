@@ -1,23 +1,20 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-const FUNCTIONS_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
+const EXT = "https://kmedldlepwiityjsdahz.supabase.co/functions/v1";
+const PROJECT_FUNCTIONS_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
 
 const callExt = async (fn: string, body: any) => {
-  const r = await fetch(`${FUNCTIONS_BASE}/${fn}`, {
+  const r = await fetch(`${EXT}/${fn}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   return r.json();
 };
 
 const callSentryExt = async (params: string) => {
-  const r = await fetch(`${FUNCTIONS_BASE}/sentry-issues${params}`, {
+  const r = await fetch(`${PROJECT_FUNCTIONS_BASE}/sentry-issues${params}`, {
     headers: {
       apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
       Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
