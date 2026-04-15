@@ -328,7 +328,16 @@ const SalesFunnelsPage = () => {
                   )}
 
                   {/* Action buttons */}
-                  <div className="flex justify-end pt-1">
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                      onClick={() => { setEditBoardId(board.id); setShowBuilder(true); }}
+                    >
+                      <Settings className="h-3.5 w-3.5 mr-1.5" />
+                      Editar
+                    </Button>
                     <Button
                       variant="default"
                       size="sm"
@@ -346,6 +355,15 @@ const SalesFunnelsPage = () => {
           })}
         </div>
       )}
+
+      <WorkflowBuilder
+        open={showBuilder}
+        onOpenChange={setShowBuilder}
+        onWorkflowSaved={() => fetchBoards()}
+        initialEditBoardId={editBoardId}
+        initialCreateNew={!editBoardId}
+        boardType="funnel"
+      />
     </div>
   );
 };
