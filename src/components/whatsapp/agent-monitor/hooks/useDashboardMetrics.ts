@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { monitorData } from '@/utils/monitorData';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 
@@ -72,41 +73,17 @@ export function useDashboardMetrics() {
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsProgress, setMetricsProgress] = useState(0);
 
-  const fetchMetrics = useCallback(async (dateRange: { from: Date; to: Date }) => {
+  const fetchMetrics = useCallback(async (dateRange: { from: Date; to: Date }, selectedPeriod?: string) => {
     setMetricsLoading(true);
     setMetricsProgress(30);
     try {
-      const startDate = format(dateRange.from, 'yyyy-MM-dd');
-      const endDate = format(dateRange.to, 'yyyy-MM-dd');
-      const isSingleDay = startDate === endDate;
       const startISO = new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate()).toISOString();
       const endISO = new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate(), 23, 59, 59, 999).toISOString();
 
-      // Fetch snapshots for conversation/closed metrics
-      let snapshots: any[] = [];
-      if (isSingleDay) {
-        const { data, error } = await supabase
-          .from('monitor_kpi_snapshots')
-          .select('*')
-          .eq('snapshot_date', startDate)
-          .maybeSingle();
-        if (error) { console.error('Error fetching snapshot:', error); }
-        if (data) snapshots = [data];
-      } else {
-        const { data, error } = await supabase
-          .from('monitor_kpi_snapshots')
-          .select('*')
-          .gte('snapshot_date', startDate)
-          .lte('snapshot_date', endDate)
-          .order('snapshot_date', { ascending: false });
-        if (error) { console.error('Error fetching snapshots:', error); }
-        snapshots = data || [];
-      }
-
-      setMetricsProgress(50);
-
-      // Fetch operational metrics DIRECTLY from source tables (not snapshots)
-      const [docsResult, groupsResult, casesResult, processesResult, contactsResult, contactsCountResult] = await Promise.all([
+      // Fetch KPIs from edge function
+      const period = selectedPeriod || 'today';
+      const [kpiRes, docsResult, groupsResult, casesResult, processesResult, contactsResult, contactsCountResult] = await Promise.all([
+        monitorData('kpis', { period }),
         supabase
           .from('zapsign_documents')
           .select('id, document_name, signer_name, signer_status, lead_id, instance_name, created_at')
@@ -135,6 +112,58 @@ export function useDashboardMetrics() {
           .gte('created_at', startISO).lte('created_at', endISO),
       ]);
 
+      setMetricsProgress(50);
+
+      // Parse KPI response
+      const kpiData = kpiRes?.data || {};
+
+      // Build conversation/closed metrics from KPI snapshot data
+      const convAndClosedMetrics: Partial<DashboardMetrics> = {
+        newConversations: kpiData.contatos_criados || 0,
+        responseRate: 0,
+        avgResponseTimeMin: 0,
+        respondedCount: 0,
+        totalInbound: kpiData.msgs_inbound || 0,
+        closedByAgent: [],
+        closedByAgentDetailed: [],
+        closedByCampaign: [],
+        closedByAI: 0,
+        closedAssisted: 0,
+        closedWithHuman: 0,
+        closedNoInteraction: 0,
+        closedTotal: 0,
+        closedLeadDetails: [],
+        newConvDetails: [],
+      };
+
+      // If KPI response contains snapshot-level aggregates, use them
+      if (kpiRes?.conversation_metrics) {
+        const cm = kpiRes.conversation_metrics;
+        convAndClosedMetrics.newConversations = cm.newConversations || convAndClosedMetrics.newConversations;
+        convAndClosedMetrics.responseRate = cm.responseRate || 0;
+        convAndClosedMetrics.avgResponseTimeMin = cm.avgResponseTimeMin || 0;
+        convAndClosedMetrics.respondedCount = cm.respondedCount || 0;
+        convAndClosedMetrics.totalInbound = cm.totalInbound || convAndClosedMetrics.totalInbound;
+      }
+      if (kpiRes?.closed_aggregates) {
+        const ca = kpiRes.closed_aggregates;
+        convAndClosedMetrics.closedByAI = ca.closedByAI || 0;
+        convAndClosedMetrics.closedAssisted = ca.closedAssisted || 0;
+        convAndClosedMetrics.closedWithHuman = ca.closedWithHuman || 0;
+        convAndClosedMetrics.closedNoInteraction = ca.closedNoInteraction || 0;
+        convAndClosedMetrics.closedTotal = ca.closedTotal || 0;
+        convAndClosedMetrics.closedByAgentDetailed = ca.closedByAgentDetailed || [];
+        convAndClosedMetrics.closedByAgent = (ca.closedByAgentDetailed || []).map((d: any) => ({ agent: d.agent, count: d.total }));
+        convAndClosedMetrics.closedByCampaign = ca.closedByCampaign || [];
+      }
+      if (kpiRes?.closed_lead_details) {
+        convAndClosedMetrics.closedLeadDetails = kpiRes.closed_lead_details;
+      }
+      if (kpiRes?.new_conv_details) {
+        convAndClosedMetrics.newConvDetails = kpiRes.new_conv_details;
+      }
+
+      // Operational metrics from direct queries
       const docs = docsResult.data || [];
       const signedDocsDetails: OperationalDetail[] = docs
         .filter(d => d.signer_status === 'signed')
@@ -168,115 +197,15 @@ export function useDashboardMetrics() {
 
       setMetricsProgress(80);
 
-      // Build conversation/closed metrics from snapshots
-      let convAndClosedMetrics: Partial<DashboardMetrics> = {
-        newConversations: 0, responseRate: 0, avgResponseTimeMin: 0,
-        respondedCount: 0, totalInbound: 0,
-        closedByAgent: [], closedByAgentDetailed: [], closedByCampaign: [],
-        closedByAI: 0, closedAssisted: 0, closedWithHuman: 0, closedNoInteraction: 0, closedTotal: 0,
-        closedLeadDetails: [], newConvDetails: [],
-      };
-
-      if (snapshots.length === 1) {
-        const snapshot = snapshots[0];
-        const closedAgg = (snapshot.closed_aggregates || {}) as Record<string, any>;
-        const convMetrics = (snapshot.conversation_metrics || {}) as Record<string, any>;
-        const closedLeadDetails = (snapshot.closed_lead_details || []) as unknown as DashboardMetrics['closedLeadDetails'];
-        const newConvDetails = (snapshot.new_conv_details || []) as unknown as NewConvDetail[];
-
-        convAndClosedMetrics = {
-          newConversations: convMetrics.newConversations || 0,
-          responseRate: convMetrics.responseRate || 0,
-          avgResponseTimeMin: convMetrics.avgResponseTimeMin || 0,
-          respondedCount: convMetrics.respondedCount || 0,
-          totalInbound: convMetrics.totalInbound || 0,
-          closedByAgent: (closedAgg.closedByAgentDetailed || []).map((d: any) => ({ agent: d.agent, count: d.total })),
-          closedByAgentDetailed: closedAgg.closedByAgentDetailed || [],
-          closedByCampaign: closedAgg.closedByCampaign || [],
-          closedByAI: closedAgg.closedByAI || 0,
-          closedAssisted: closedAgg.closedAssisted || 0,
-          closedWithHuman: closedAgg.closedWithHuman || 0,
-          closedNoInteraction: closedAgg.closedNoInteraction || 0,
-          closedTotal: closedAgg.closedTotal || 0,
-          closedLeadDetails,
-          newConvDetails,
-        };
-      } else if (snapshots.length > 1) {
-        let totalNewConvs = 0, totalRespondedCount = 0, totalInbound = 0;
-        let totalResponseTimeSum = 0, responseTimeEntries = 0;
-        let totalClosedByAI = 0, totalClosedAssisted = 0, totalClosedWithHuman = 0, totalClosedNoInteraction = 0, totalClosed = 0;
-        const allClosedLeadDetails: DashboardMetrics['closedLeadDetails'] = [];
-        const allNewConvDetails: NewConvDetail[] = [];
-        const agentDetailAgg = new Map<string, { ai: number; assisted: number; human: number; noInteraction: number; total: number }>();
-        const campaignAgg = new Map<string, number>();
-
-        for (const snapshot of snapshots) {
-          const closedAgg = (snapshot.closed_aggregates || {}) as Record<string, any>;
-          const convMetrics = (snapshot.conversation_metrics || {}) as Record<string, any>;
-
-          totalNewConvs += convMetrics.newConversations || 0;
-          totalRespondedCount += convMetrics.respondedCount || 0;
-          totalInbound += convMetrics.totalInbound || 0;
-          if (convMetrics.avgResponseTimeMin && convMetrics.respondedCount) {
-            totalResponseTimeSum += (convMetrics.avgResponseTimeMin || 0) * (convMetrics.respondedCount || 0);
-            responseTimeEntries += convMetrics.respondedCount || 0;
-          }
-
-          totalClosedByAI += closedAgg.closedByAI || 0;
-          totalClosedAssisted += closedAgg.closedAssisted || 0;
-          totalClosedWithHuman += closedAgg.closedWithHuman || 0;
-          totalClosedNoInteraction += closedAgg.closedNoInteraction || 0;
-          totalClosed += closedAgg.closedTotal || 0;
-
-          (closedAgg.closedByAgentDetailed || []).forEach((d: any) => {
-            const existing = agentDetailAgg.get(d.agent);
-            if (existing) {
-              existing.ai += d.ai || 0; existing.assisted += d.assisted || 0;
-              existing.human += d.human || 0; existing.noInteraction += d.noInteraction || 0;
-              existing.total += d.total || 0;
-            } else {
-              agentDetailAgg.set(d.agent, { ai: d.ai || 0, assisted: d.assisted || 0, human: d.human || 0, noInteraction: d.noInteraction || 0, total: d.total || 0 });
-            }
-          });
-
-          (closedAgg.closedByCampaign || []).forEach((c: any) => {
-            campaignAgg.set(c.campaign, (campaignAgg.get(c.campaign) || 0) + c.count);
-          });
-
-          allClosedLeadDetails.push(...((snapshot.closed_lead_details || []) as DashboardMetrics['closedLeadDetails']));
-          allNewConvDetails.push(...((snapshot.new_conv_details || []) as NewConvDetail[]));
-        }
-
-        const avgResponseTime = responseTimeEntries > 0 ? Math.round(totalResponseTimeSum / responseTimeEntries) : 0;
-        const responseRate = totalInbound > 0 ? Math.round((totalRespondedCount / totalInbound) * 100) : 0;
-
-        convAndClosedMetrics = {
-          newConversations: totalNewConvs,
-          responseRate,
-          avgResponseTimeMin: avgResponseTime,
-          respondedCount: totalRespondedCount,
-          totalInbound,
-          closedByAgent: Array.from(agentDetailAgg.entries()).map(([agent, d]) => ({ agent, count: d.total })).sort((a, b) => b.count - a.count),
-          closedByAgentDetailed: Array.from(agentDetailAgg.entries()).map(([agent, d]) => ({ agent, ...d })).sort((a, b) => b.total - a.total),
-          closedByCampaign: Array.from(campaignAgg.entries()).map(([campaign, count]) => ({ campaign, count })).sort((a, b) => b.count - a.count),
-          closedByAI: totalClosedByAI,
-          closedAssisted: totalClosedAssisted,
-          closedWithHuman: totalClosedWithHuman,
-          closedNoInteraction: totalClosedNoInteraction,
-          closedTotal: totalClosed,
-          closedLeadDetails: allClosedLeadDetails,
-          newConvDetails: allNewConvDetails,
-        };
-      }
-
+      // Use KPI data for operational counts when available
       setMetrics({
         ...(convAndClosedMetrics as DashboardMetrics),
-        signedDocuments: signedDocsDetails.length,
+        signedDocuments: kpiData.docs_assinados ?? signedDocsDetails.length,
         pendingDocuments: pendingDocsDetails.length,
         groupsCreated: groupsDetails.length,
-        casesCreated: casesDetails.length,
-        processesCreated: processesDetails.length,
-        contactsCreated: contactsTotalCount,
+        casesCreated: kpiData.casos_criados ?? casesDetails.length,
+        processesCreated: kpiData.processos_criados ?? processesDetails.length,
+        contactsCreated: kpiData.contatos_criados ?? contactsTotalCount,
         signedDocsDetails,
         pendingDocsDetails,
         groupsDetails,
