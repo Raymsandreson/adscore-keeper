@@ -78,7 +78,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const realtimeRetryTimerRef = useRef<number | null>(null);
   const syncInFlightRef = useRef(false);
   const lastSyncAtRef = useRef<Record<string, number>>({});
-  const activePhoneRef = useRef<string | null>(null);
+  const activeConversationKeyRef = useRef<string | null>(null);
   const fullConvCacheRef = useRef<Record<string, WhatsAppMessage[]>>({});
 
   
@@ -393,10 +393,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       }));
 
       // Preserve full message history for the active conversation
-      const activePhone = activePhoneRef.current;
-      if (activePhone && fullConvCacheRef.current[activePhone]) {
-        const cachedMsgs = fullConvCacheRef.current[activePhone];
-        const activeConvIdx = convList.findIndex(c => c.phone === activePhone);
+      const activeConversationKey = activeConversationKeyRef.current;
+      if (activeConversationKey && fullConvCacheRef.current[activeConversationKey]) {
+        const cachedMsgs = fullConvCacheRef.current[activeConversationKey];
+        const activeConvIdx = convList.findIndex(c => getConversationKey(c.phone, c.instance_name) === activeConversationKey);
         if (activeConvIdx >= 0) {
           const cachedIds = new Set(cachedMsgs.map(m => m.id));
           const newMsgs = convList[activeConvIdx].messages.filter(m => !cachedIds.has(m.id) && !m.id.startsWith('summary-'));
@@ -404,7 +404,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
             ...convList[activeConvIdx],
             messages: [...cachedMsgs, ...newMsgs],
           };
-          fullConvCacheRef.current[activePhone] = convList[activeConvIdx].messages;
+          fullConvCacheRef.current[activeConversationKey] = convList[activeConvIdx].messages;
         }
       }
 
@@ -530,8 +530,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         instance_token: null,
       };
       setMessages(prev => [optimisticMsg, ...prev]);
+      const targetConversationKey = getConversationKey(phone, optimisticMsg.instance_name);
       setConversations(prev => prev.map(c =>
-        c.phone === phone
+        getConversationKey(c.phone, c.instance_name) === targetConversationKey
           ? { ...c, last_message: finalMessage, last_message_at: optimisticMsg.created_at, messages: [...c.messages, optimisticMsg] }
           : c
       ));
@@ -602,8 +603,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         instance_name: data.instance_name || conversationInstanceName || null, instance_token: null,
       };
       setMessages(prev => [optimisticMsg, ...prev]);
+      const targetConversationKey = getConversationKey(phone, optimisticMsg.instance_name);
       setConversations(prev => prev.map(c =>
-        c.phone === phone ? { ...c, last_message: caption || `📎 ${msgType}`, last_message_at: optimisticMsg.created_at, messages: [...c.messages, optimisticMsg] } : c
+        getConversationKey(c.phone, c.instance_name) === targetConversationKey
+          ? { ...c, last_message: caption || `📎 ${msgType}`, last_message_at: optimisticMsg.created_at, messages: [...c.messages, optimisticMsg] }
+          : c
       ));
       return true;
     } catch (error: any) {
@@ -664,8 +668,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         instance_name: data.instance_name || conversationInstanceName || null, instance_token: null,
       };
       setMessages(prev => [optimisticMsg, ...prev]);
+      const targetConversationKey = getConversationKey(phone, optimisticMsg.instance_name);
       setConversations(prev => prev.map(c =>
-        c.phone === phone ? { ...c, last_message: locationText, last_message_at: optimisticMsg.created_at, messages: [...c.messages, optimisticMsg] } : c
+        getConversationKey(c.phone, c.instance_name) === targetConversationKey
+          ? { ...c, last_message: locationText, last_message_at: optimisticMsg.created_at, messages: [...c.messages, optimisticMsg] }
+          : c
       ));
       return true;
     } catch (error: any) {
@@ -709,39 +716,80 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     }
   };
 
-  const markAsRead = async (phone: string) => {
+  const markAsRead = async (phone: string, instanceName?: string | null) => {
     try {
-      const { error } = await supabase
+      let query = supabase
         .from('whatsapp_messages')
         .update({ read_at: new Date().toISOString() } as any)
-        .eq('phone', phone).eq('direction', 'inbound').is('read_at', null);
+        .eq('phone', phone)
+        .eq('direction', 'inbound')
+        .is('read_at', null);
+
+      if (instanceName) {
+        query = query.eq('instance_name', instanceName);
+      }
+
+      const { error } = await query;
       if (error) throw error;
-      // Update local state without refetching
+
+      const targetConversationKey = getConversationKey(phone, instanceName);
       setConversations(prev => prev.map(c => 
-        c.phone === phone ? { ...c, unread_count: 0 } : c
+        instanceName
+          ? getConversationKey(c.phone, c.instance_name) === targetConversationKey ? { ...c, unread_count: 0 } : c
+          : c.phone === phone ? { ...c, unread_count: 0 } : c
       ));
     } catch (error) { console.error('Error marking as read:', error); }
   };
 
-  const linkToLead = async (phone: string, leadId: string) => {
+  const linkToLead = async (phone: string, leadId: string, instanceName?: string | null) => {
     try {
-      const { error } = await supabase.from('whatsapp_messages')
-        .update({ lead_id: leadId } as any).eq('phone', phone);
+      let query = supabase
+        .from('whatsapp_messages')
+        .update({ lead_id: leadId } as any)
+        .eq('phone', phone);
+
+      if (instanceName) {
+        query = query.eq('instance_name', instanceName);
+      }
+
+      const { error } = await query;
       if (error) throw error;
       toast.success('Conversa vinculada ao lead!');
-      setConversations(prev => prev.map(c => c.phone === phone ? { ...c, lead_id: leadId } : c));
+      const targetConversationKey = getConversationKey(phone, instanceName);
+      setConversations(prev => prev.map(c =>
+        instanceName
+          ? getConversationKey(c.phone, c.instance_name) === targetConversationKey ? { ...c, lead_id: leadId } : c
+          : c.phone === phone ? { ...c, lead_id: leadId } : c
+      ));
     } catch (error) { console.error(error); toast.error('Erro ao vincular ao lead'); }
   };
 
-  const linkToContact = async (phone: string, contactId: string) => {
+  const linkToContact = async (phone: string, contactId: string, instanceName?: string | null) => {
     try {
       // Fetch contact name
       const { data: contactData } = await supabase.from('contacts').select('full_name').eq('id', contactId).single();
-      const { error } = await supabase.from('whatsapp_messages')
-        .update({ contact_id: contactId } as any).eq('phone', phone);
+      let query = supabase
+        .from('whatsapp_messages')
+        .update({ contact_id: contactId } as any)
+        .eq('phone', phone);
+
+      if (instanceName) {
+        query = query.eq('instance_name', instanceName);
+      }
+
+      const { error } = await query;
       if (error) throw error;
       toast.success('Conversa vinculada ao contato!');
-      setConversations(prev => prev.map(c => c.phone === phone ? { ...c, contact_id: contactId, contact_name: contactData?.full_name || c.contact_name } : c));
+      const targetConversationKey = getConversationKey(phone, instanceName);
+      setConversations(prev => prev.map(c =>
+        instanceName
+          ? getConversationKey(c.phone, c.instance_name) === targetConversationKey
+            ? { ...c, contact_id: contactId, contact_name: contactData?.full_name || c.contact_name }
+            : c
+          : c.phone === phone
+            ? { ...c, contact_id: contactId, contact_name: contactData?.full_name || c.contact_name }
+            : c
+      ));
     } catch (error) { console.error(error); toast.error('Erro ao vincular ao contato'); }
   };
 
@@ -766,7 +814,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     if (!hasLoaded) return;
     // Clear caches so stale data from previous instance doesn't leak
     fullConvCacheRef.current = {};
-    activePhoneRef.current = null;
+    activeConversationKeyRef.current = null;
     // Reset fetching guard so instance switch always triggers a fresh load
     isFetchingRef.current = false;
     
@@ -838,7 +886,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
             return [newMsg, ...prev];
           });
           setConversations(prev => {
-            const existing = prev.find(c => c.phone === newMsg.phone);
+            const targetConversationKey = getConversationKey(newMsg.phone, newMsg.instance_name);
+            const existing = prev.find(c => getConversationKey(c.phone, c.instance_name) === targetConversationKey);
             if (existing) {
               // Deduplicate
               const msgId = newMsg.external_message_id?.split(':').pop();
@@ -851,12 +900,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
               if (existing.messages.some(m => m.id === newMsg.id)) return prev;
 
               // Update cache if this is the active conversation
-              if (activePhoneRef.current === newMsg.phone && fullConvCacheRef.current[newMsg.phone]) {
-                fullConvCacheRef.current[newMsg.phone] = [...fullConvCacheRef.current[newMsg.phone], newMsg];
+              if (activeConversationKeyRef.current === targetConversationKey && fullConvCacheRef.current[targetConversationKey]) {
+                fullConvCacheRef.current[targetConversationKey] = [...fullConvCacheRef.current[targetConversationKey], newMsg];
               }
 
               return prev.map(c => {
-                if (c.phone !== newMsg.phone) return c;
+                if (getConversationKey(c.phone, c.instance_name) !== targetConversationKey) return c;
                 return {
                   ...c,
                   last_message: newMsg.message_text || c.last_message,
@@ -940,7 +989,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
   // Load all messages for a specific conversation (when selected)
   const fetchFullConversation = useCallback(async (phone: string, instanceName?: string | null) => {
-    activePhoneRef.current = phone;
+    activeConversationKeyRef.current = getConversationKey(phone, instanceName);
     // NOTE: removed background fetchMessages(true) call here to avoid double-loading
     try {
       // Paginate to get ALL messages for this phone/instance (up to 3000)
@@ -982,20 +1031,21 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         }
       }
 
-      // Cache the full conversation
-      fullConvCacheRef.current[phone] = deduped;
-
       const firstNamedMessage = deduped.find(m => m.contact_name || m.contact_id || m.lead_id) || deduped[0] || null;
       const lastMessage = deduped[0] || null;
       const unreadCount = deduped.filter(m => !m.read_at && m.direction === 'inbound').length;
       const targetInstanceName = instanceName || lastMessage?.instance_name || null;
+      const targetConversationKey = getConversationKey(phone, targetInstanceName);
+
+      activeConversationKeyRef.current = targetConversationKey;
+      fullConvCacheRef.current[targetConversationKey] = deduped;
 
       setConversations(prev => {
-        const existingIndex = prev.findIndex(c => c.phone === phone && (!targetInstanceName || c.instance_name === targetInstanceName));
+        const existingIndex = prev.findIndex(c => getConversationKey(c.phone, c.instance_name) === targetConversationKey);
 
         if (existingIndex >= 0) {
           return prev.map(c => {
-            const isTargetConversation = c.phone === phone && (!targetInstanceName || c.instance_name === targetInstanceName);
+            const isTargetConversation = getConversationKey(c.phone, c.instance_name) === targetConversationKey;
             if (!isTargetConversation) return c;
             return {
               ...c,
@@ -1033,7 +1083,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   }, []);
 
   const clearActivePhone = useCallback(() => {
-    activePhoneRef.current = null;
+    activeConversationKeyRef.current = null;
   }, []);
 
   const clearConversation = async (phone: string, instanceName?: string) => {
@@ -1049,8 +1099,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       if (!data.success) throw new Error(data.error);
 
       // Remove from local state
-      setMessages(prev => prev.filter(m => m.phone !== phone));
-      setConversations(prev => prev.filter(c => c.phone !== phone));
+      const targetConversationKey = getConversationKey(phone, instanceName);
+      setMessages(prev => prev.filter(m => instanceName ? getConversationKey(m.phone, m.instance_name) !== targetConversationKey : m.phone !== phone));
+      setConversations(prev => prev.filter(c => instanceName ? getConversationKey(c.phone, c.instance_name) !== targetConversationKey : c.phone !== phone));
       toast.success('Conversa limpa com sucesso!');
       return true;
     } catch (error: any) {
