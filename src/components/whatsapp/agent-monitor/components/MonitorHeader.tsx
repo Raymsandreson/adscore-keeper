@@ -5,15 +5,18 @@ import { Calendar } from '@/components/ui/calendar';
 import { format, subDays, startOfWeek, startOfMonth, startOfYear } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useState } from 'react';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 interface MonitorHeaderProps {
   dateRange: { from: Date; to: Date };
   setDateRange: (range: { from: Date; to: Date }) => void;
   loading: boolean;
   onRefresh: () => void;
+  selectedPeriod: string;
+  setSelectedPeriod: (period: string) => void;
 }
 
-export function MonitorHeader({ dateRange, setDateRange, loading, onRefresh }: MonitorHeaderProps) {
+export function MonitorHeader({ dateRange, setDateRange, loading, onRefresh, selectedPeriod, setSelectedPeriod }: MonitorHeaderProps) {
   const [datePickerOpen, setDatePickerOpen] = useState(false);
 
   return (
@@ -26,6 +29,11 @@ export function MonitorHeader({ dateRange, setDateRange, loading, onRefresh }: M
         <p className="text-sm text-muted-foreground mt-0.5">Monitore agentes, fila de casos e indicações em tempo real</p>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
+        <ToggleGroup type="single" value={selectedPeriod} onValueChange={(v) => { if (v) setSelectedPeriod(v); }} className="border rounded-md">
+          <ToggleGroupItem value="today" className="text-xs h-8 px-3">Hoje</ToggleGroupItem>
+          <ToggleGroupItem value="7d" className="text-xs h-8 px-3">7 dias</ToggleGroupItem>
+          <ToggleGroupItem value="30d" className="text-xs h-8 px-3">30 dias</ToggleGroupItem>
+        </ToggleGroup>
         <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 min-w-[180px] justify-start">

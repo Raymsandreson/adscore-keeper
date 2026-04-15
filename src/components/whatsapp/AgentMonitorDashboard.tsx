@@ -31,6 +31,7 @@ export function AgentMonitorDashboard() {
   const { toast } = useToast();
   const queueCount = useGroupQueueCount();
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({ from: new Date(), to: new Date() });
+  const [selectedPeriod, setSelectedPeriod] = useState('today');
   const [sheetStatusFilter, setSheetStatusFilter] = useState<CaseStatus | null>(null);
   const [newConvsSheetOpen, setNewConvsSheetOpen] = useState(false);
   const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
@@ -68,10 +69,10 @@ export function AgentMonitorDashboard() {
   }, [isLoading, monitorLoading, metricsLoading]);
 
   const fetchData = useCallback(() => {
-    fetchDataRaw(dateRange);
-    fetchMetrics(dateRange);
+    fetchDataRaw(dateRange, selectedPeriod);
+    fetchMetrics(dateRange, selectedPeriod);
     fetchGaps(dateRange);
-  }, [fetchDataRaw, fetchMetrics, fetchGaps, dateRange]);
+  }, [fetchDataRaw, fetchMetrics, fetchGaps, dateRange, selectedPeriod]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -365,7 +366,7 @@ export function AgentMonitorDashboard() {
 
   return (
     <div className="min-h-screen p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
-      <MonitorHeader dateRange={dateRange} setDateRange={setDateRange} loading={isLoading} onRefresh={fetchData} />
+      <MonitorHeader dateRange={dateRange} setDateRange={setDateRange} loading={isLoading} onRefresh={fetchData} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} />
 
       {isLoading && (
         <div className="flex items-center gap-3 px-1">
