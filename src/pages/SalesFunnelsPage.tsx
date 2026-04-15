@@ -203,8 +203,14 @@ const SalesFunnelsPage = () => {
 
       {/* Funnel list */}
       {filtered.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          {search ? "Nenhum funil encontrado." : "Nenhum funil de vendas configurado."}
+        <div className="text-center py-12 text-muted-foreground space-y-3">
+          <p>{search ? "Nenhum funil encontrado." : "Nenhum funil de vendas configurado."}</p>
+          {!search && (
+            <Button onClick={() => { setEditBoardId(null); setShowBuilder(true); }}>
+              <Plus className="h-4 w-4 mr-2" />
+              Criar Primeiro Funil
+            </Button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
