@@ -97,13 +97,14 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
     }
   }, [open, leadName, contactName, boards]);
 
-  // Auto-trigger AI extraction when dialog opens with messages
+  // Auto-trigger AI extraction when dialog opens with phone+instance or messages
+  const canExtract = !!(contactPhone && instanceName) || !!(messages?.length);
   useEffect(() => {
-    if (open && messages?.length && !hasAutoExtracted.current && !extracting) {
+    if (open && canExtract && !hasAutoExtracted.current && !extracting) {
       hasAutoExtracted.current = true;
       handleExtractWithAI();
     }
-  }, [open, messages]);
+  }, [open, canExtract]);
 
   const handleExtractWithAI = async () => {
     const phone = contactPhone?.replace(/\D/g, '');
@@ -363,7 +364,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
           </DialogTitle>
         </DialogHeader>
 
-        {messages?.length ? (
+        {(contactPhone && instanceName) || messages?.length ? (
           <Button
             variant="outline"
             size="sm"
