@@ -27,6 +27,16 @@ interface ExtractedProcess {
   description?: string;
 }
 
+type ConversationMessage = {
+  created_at?: string;
+  direction?: string | null;
+  message_text?: string | null;
+  content?: string | null;
+  media_type?: string | null;
+  contact_name?: string | null;
+  metadata?: any;
+};
+
 // Predefined processes matching LegalCasesTab
 const PREDEFINED_PROCESSES = [
   'Indenização',
@@ -113,6 +123,115 @@ function parseProcessesFromText(text: string, caseType?: string): ExtractedProce
   return processes;
 }
 
+function stringifyExtractionValue(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number') return String(value);
+  if (Array.isArray(value)) return value.map(stringifyExtractionValue).filter(Boolean).join('\n');
+  if (value && typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).map(stringifyExtractionValue).filter(Boolean).join('\n');
+  }
+  return '';
+}
+
+function getMessageText(message: ConversationMessage): string {
+  const directText = stringifyExtractionValue(
+    message.message_text ||
+    message.content ||
+    message.metadata?.caption ||
+    message.metadata?.text ||
+    message.metadata?.conversation ||
+    message.metadata?.extendedTextMessage?.text ||
+    message.metadata?.imageMessage?.caption ||
+    message.metadata?.videoMessage?.caption ||
+    message.metadata?.documentMessage?.caption
+  );
+
+  if (directText) return directText;
+  if (message.media_type?.startsWith('audio')) return '[Áudio enviado]';
+  if (message.media_type?.startsWith('image')) return '[Imagem enviada]';
+  if (message.media_type?.startsWith('video')) return '[Vídeo enviado]';
+  if (message.media_type) return `[Arquivo ${message.media_type}]`;
+  return '';
+}
+
+function buildConversationTranscript(messages: ConversationMessage[], fallbackContactName?: string | null) {
+  return [...messages]
+    .sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime())
+    .slice(-200)
+    .map((message) => {
+      const body = getMessageText(message);
+      if (!body) return '';
+      const sender = message.direction === 'outbound'
+        ? 'Atendente'
+        : message.contact_name || fallbackContactName || 'Cliente';
+      return `${sender}: ${body}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function mergeProcesses(...groups: ExtractedProcess[][]): ExtractedProcess[] {
+  const merged: ExtractedProcess[] = [];
+  const seen = new Set<string>();
+
+  for (const group of groups) {
+    for (const process of group) {
+      const title = stringifyExtractionValue(process.title) || 'Processo';
+      const processNumber = stringifyExtractionValue(process.process_number);
+      const key = `${title.toLowerCase()}::${processNumber.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push({
+        title,
+        process_number: processNumber || undefined,
+        process_type: process.process_type || (processNumber.includes('-') ? 'judicial' : 'administrativo'),
+        description: stringifyExtractionValue(process.description) || 'Processo extraído automaticamente da conversa',
+      });
+    }
+  }
+
+  return merged;
+}
+
+function parseProcessesFromExtractionPayload(extracted: Record<string, any>, transcript: string) {
+  const structuredProcesses = Array.isArray(extracted.processes)
+    ? extracted.processes.map((process: any) => ({
+        title: stringifyExtractionValue(process.title || process.type || process.nome || extracted.case_type || 'Processo'),
+        process_number: stringifyExtractionValue(process.process_number || process.number || process.numero),
+        process_type: process.process_type || (stringifyExtractionValue(process.process_number || process.number || process.numero).includes('-') ? 'judicial' : 'administrativo'),
+        description: stringifyExtractionValue(process.description) || 'Processo extraído pela IA',
+      }))
+    : [];
+
+  const notesProcesses = parseProcessesFromText(stringifyExtractionValue(extracted.notes), extracted.case_type);
+  const descriptionProcesses = parseProcessesFromText(stringifyExtractionValue(extracted.description), extracted.case_type);
+  const detailProcesses = parseProcessesFromText(
+    [
+      stringifyExtractionValue(extracted.case_number),
+      stringifyExtractionValue(extracted.damage_description),
+      stringifyExtractionValue(extracted.observations),
+      stringifyExtractionValue(extracted.summary),
+      stringifyExtractionValue(extracted.raw_text),
+      stringifyExtractionValue(extracted),
+      transcript,
+    ].filter(Boolean).join('\n'),
+    extracted.case_type,
+  );
+
+  return mergeProcesses(structuredProcesses, notesProcesses, descriptionProcesses, detailProcesses);
+}
+
+function hasMeaningfulExtraction(extracted: Record<string, any>, descriptionParts: string[], processes: ExtractedProcess[]) {
+  return Boolean(
+    stringifyExtractionValue(extracted.title) ||
+    stringifyExtractionValue(extracted.lead_name) ||
+    stringifyExtractionValue(extracted.notes) ||
+    stringifyExtractionValue(extracted.description) ||
+    descriptionParts.length > 0 ||
+    processes.length > 0
+  );
+}
+
 interface DuplicateCase {
   id: string;
   case_number: string;
@@ -155,9 +274,33 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
 
   // Auto-extract on open when messages are available
   const hasAutoExtracted = useRef(false);
+  const previousOpenRef = useRef(false);
+
+  const resolveConversationMessages = async () => {
+    if (messages && messages.length > 1) return messages as ConversationMessage[];
+
+    const isGroup = contactPhone?.includes('@g.us');
+    const normalizedPhone = isGroup ? contactPhone : contactPhone?.replace(/\D/g, '');
+    if (!normalizedPhone || !instanceName) return (messages || []) as ConversationMessage[];
+
+    const { data, error } = await supabase
+      .from('whatsapp_messages')
+      .select('created_at, direction, message_text, media_type, contact_name, metadata, instance_name')
+      .eq('phone', normalizedPhone)
+      .eq('instance_name', instanceName)
+      .order('created_at', { ascending: false })
+      .range(0, 199);
+
+    if (error) {
+      console.warn('Error loading conversation messages for extraction:', error);
+      return (messages || []) as ConversationMessage[];
+    }
+
+    return ((data && data.length > 0 ? data : messages) || []) as ConversationMessage[];
+  };
 
   useEffect(() => {
-    if (open) {
+    if (open && !previousOpenRef.current) {
       setTitle(leadName || contactName || '');
       setCaseNumber('');
       setNucleusId('none');
@@ -184,7 +327,14 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         }).catch(() => {});
       }
     }
-  }, [open, leadName, contactName, boards]);
+    previousOpenRef.current = open;
+  }, [open, leadId, leadName, contactName, boards]);
+
+  useEffect(() => {
+    if (!open || selectedBoardId || boards.length === 0) return;
+    const defaultBoard = boards.find(b => b.is_default) || boards[0];
+    if (defaultBoard) setSelectedBoardId(defaultBoard.id);
+  }, [open, boards, selectedBoardId]);
 
   // Auto-trigger AI extraction when dialog opens with phone+instance or messages
   const canExtract = !!(contactPhone && instanceName) || !!(messages?.length);
@@ -207,23 +357,28 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
     }
     setExtracting(true);
     try {
-      const { data, error } = await cloudFunctions.invoke('extract-conversation-data', {
-        body: {
-          phone,
-          instance_name: instanceName,
-          targetType: 'case',
-        },
-      });
-      if (error) throw error;
+      const conversationMessages = await resolveConversationMessages();
+      const transcript = buildConversationTranscript(conversationMessages, contactName);
 
-      // Robust response parsing: handle multiple response shapes
-      const extracted = data?.data || data?.result || {};
+      let data: any = null;
+      if (phone && instanceName) {
+        const response = await cloudFunctions.invoke('extract-conversation-data', {
+          body: {
+            phone,
+            instance_name: instanceName,
+            targetType: 'case',
+          },
+        });
 
-      // Handle no_messages response
-      if ((!data?.data && !data?.result) && (data?.reason === 'no_messages' || data?.status === 'no_messages')) {
-        toast.warning('Nenhuma mensagem encontrada para análise. Preencha manualmente.');
-        return;
+        if (response.error) throw response.error;
+        data = response.data;
       }
+
+      if (data?.success === false && !data?.data && !data?.result) {
+        console.warn('[CreateCase] extract-conversation-data returned success=false:', data);
+      }
+
+      const extracted = data?.data || data?.result || {};
 
       // Log for debugging
       console.log('[CreateCase] AI extraction response:', JSON.stringify(data).substring(0, 500));
@@ -245,40 +400,16 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       if (extracted.news_link) descParts.push(`Notícia: ${extracted.news_link}`);
 
       if (descParts.length > 0) setDescription(descParts.join('\n'));
-      if (extracted.notes) setNotes(extracted.notes);
+      const extractedNotes = stringifyExtractionValue(extracted.notes);
+      if (extractedNotes) setNotes(extractedNotes);
 
-      // === PROCESS DETECTION (3 strategies) ===
-      let detectedProcesses: ExtractedProcess[] = [];
-
-      // Strategy 1: Structured processes array from AI
-      if (extracted.processes && Array.isArray(extracted.processes) && extracted.processes.length > 0) {
-        detectedProcesses = extracted.processes.map((p: any) => ({
-          title: p.title || p.type || 'Processo',
-          process_number: p.process_number || p.number || p.numero || null,
-          process_type: p.process_type || (p.process_number?.includes('-') ? 'judicial' : 'administrativo'),
-          description: p.description || 'Processo extraído pela IA',
-        }));
-      }
-
-      // Strategy 2: Parse from notes text
-      if (detectedProcesses.length === 0 && extracted.notes) {
-        detectedProcesses = parseProcessesFromText(extracted.notes, extracted.case_type);
-      }
-
-      // Strategy 3: Parse from description text
-      if (detectedProcesses.length === 0 && descParts.length > 0) {
-        detectedProcesses = parseProcessesFromText(descParts.join('\n'), extracted.case_type);
-      }
-
-      // Strategy 4: Parse from case_number field itself
-      if (detectedProcesses.length === 0 && extracted.case_number) {
-        const fromCaseNumber = parseProcessesFromText(`processo nº ${extracted.case_number}`, extracted.case_type);
-        if (fromCaseNumber.length > 0) detectedProcesses = fromCaseNumber;
-      }
+      const detectedProcesses = parseProcessesFromExtractionPayload(extracted, transcript);
 
       if (detectedProcesses.length > 0) {
         setExtractedProcesses(detectedProcesses);
         console.log('[CreateCase] Detected processes:', detectedProcesses);
+      } else {
+        setExtractedProcesses([]);
       }
 
       if (extracted.case_type) {
@@ -296,13 +427,15 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       }
 
       // Only show success if we actually extracted meaningful data
-      const hasData = !!(extracted.title || extracted.lead_name || descParts.length > 0 || extracted.notes || detectedProcesses.length > 0);
+      const hasData = hasMeaningfulExtraction(extracted, descParts, detectedProcesses);
       if (hasData) {
         const parts: string[] = [];
         if (descParts.length > 0) parts.push('dados do caso');
         if (detectedProcesses.length > 0) parts.push(`${detectedProcesses.length} processo(s)`);
-        if (extracted.notes) parts.push('observações');
+        if (extractedNotes) parts.push('observações');
         toast.success(`Dados extraídos: ${parts.join(', ') || 'título'}`);
+      } else if (!conversationMessages.length || data?.reason === 'no_messages' || data?.status === 'no_messages') {
+        toast.warning('Nenhuma mensagem encontrada para análise. Preencha manualmente.');
       } else {
         toast.warning('IA não conseguiu extrair dados relevantes. Preencha manualmente.');
       }
@@ -371,6 +504,8 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      const conversationMessages = await resolveConversationMessages();
+      const transcript = buildConversationTranscript(conversationMessages, contactName);
 
       // Auto-create contact if none exists
       let finalContactId = contactId;
@@ -456,10 +591,17 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
 
       // Create extracted processes
       const allProcessesToCreate: { title: string; process_number?: string | null; process_type: string; description?: string | null; assignedTo?: string; assignedToName?: string }[] = [];
+      const detectedAtSave = mergeProcesses(
+        extractedProcesses,
+        parseProcessesFromText(notes, undefined),
+        parseProcessesFromText(description, undefined),
+        parseProcessesFromText(caseNumber ? `processo nº ${caseNumber}` : '', undefined),
+        parseProcessesFromText(transcript, undefined),
+      );
 
       // Add AI-extracted processes
-      if (extractedProcesses.length > 0) {
-        for (const proc of extractedProcesses) {
+      if (detectedAtSave.length > 0) {
+        for (const proc of detectedAtSave) {
           allProcessesToCreate.push({
             title: proc.title,
             process_number: proc.process_number,
@@ -483,9 +625,11 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       // Insert all processes
       if (allProcessesToCreate.length > 0 && result?.id) {
         const isCaso = !result.case_number || result.case_number.startsWith('CASO');
+        let createdProcesses = 0;
+        let failedProcesses = 0;
         for (const proc of allProcessesToCreate) {
           try {
-            const { data: savedProcess } = await supabase.from('lead_processes').insert({
+            const { data: savedProcess, error: processError } = await supabase.from('lead_processes').insert({
               case_id: result.id,
               lead_id: finalLeadId || null,
               title: proc.title,
@@ -496,6 +640,9 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
               started_at: new Date().toISOString().slice(0, 10),
               created_by: user?.id || null,
             } as any).select('id').single();
+
+            if (processError) throw processError;
+            createdProcesses += 1;
 
             // Auto-create activity for CASO-type cases with predefined process assignments
             if (isCaso && proc.assignedTo && savedProcess?.id) {
@@ -519,11 +666,17 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
               }
             }
           } catch (procErr) {
+            failedProcesses += 1;
             console.warn(`Error creating process "${proc.title}":`, procErr);
           }
         }
-        toast.success(`${allProcessesToCreate.length} processo(s) criado(s) automaticamente`);
-        if (isCaso && selectedPredefinedProcesses.size > 0) {
+        if (createdProcesses > 0) {
+          toast.success(`${createdProcesses} processo(s) criado(s) automaticamente`);
+        }
+        if (failedProcesses > 0) {
+          toast.warning(`${failedProcesses} processo(s) não puderam ser criados automaticamente`);
+        }
+        if (createdProcesses > 0 && isCaso && selectedPredefinedProcesses.size > 0) {
           toast.success('Atividades atribuídas automaticamente');
         }
       }

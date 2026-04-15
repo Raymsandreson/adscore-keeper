@@ -322,7 +322,7 @@ export function WhatsAppInbox() {
     setSelectedInstance(conv.instance_name);
     fetchFullConversation(conv.phone, conv.instance_name);
     if (conv.unread_count > 0) {
-      markAsRead(conv.phone);
+      markAsRead(conv.phone, conv.instance_name);
     }
   };
 
@@ -344,7 +344,7 @@ export function WhatsAppInbox() {
       });
       if (error) throw error;
       setExtractionStep('Dados extraídos!');
-      return data?.data || {};
+      return data?.data || data?.result || {};
     } catch (e) {
       console.error('Extraction error:', e);
       setExtractionStep('');
@@ -410,7 +410,7 @@ export function WhatsAppInbox() {
 
       if (error) throw error;
 
-      linkToLead(selectedConversation.phone, data.id);
+      linkToLead(selectedConversation.phone, data.id, selectedConversation.instance_name);
 
       // Use already-extracted contact data
       const contactName = contactExtracted.full_name || selectedConversation.contact_name || 'Contato WhatsApp';
@@ -456,7 +456,7 @@ export function WhatsAppInbox() {
       });
 
       // Link contact to conversation
-      await linkToContact(selectedConversation.phone, contactId);
+      await linkToContact(selectedConversation.phone, contactId, selectedConversation.instance_name);
 
       setEditingLead(data as Lead);
       setShowLeadPanel(true);
@@ -553,7 +553,7 @@ export function WhatsAppInbox() {
 
   const handleContactCreated = async (contact: { id: string; full_name: string; phone: string | null; lead_id?: string | null }) => {
     if (selectedConversation) {
-      await linkToContact(selectedConversation.phone, contact.id);
+      await linkToContact(selectedConversation.phone, contact.id, selectedConversation.instance_name);
     }
     await refetch();
   };
