@@ -6,10 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { useLegalCases } from '@/hooks/useLegalCases';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
-import { Loader2, Scale, Sparkles, CalendarIcon, AlertTriangle } from 'lucide-react';
+import { Loader2, Scale, Sparkles, CalendarIcon, AlertTriangle, CheckSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -26,28 +27,89 @@ interface ExtractedProcess {
   description?: string;
 }
 
-function parseProcessesFromNotes(notes: string, caseType?: string): ExtractedProcess[] {
+// Predefined processes matching LegalCasesTab
+const PREDEFINED_PROCESSES = [
+  'Indenização',
+  'Relatório de Acidente',
+  'TRCT + Verbas',
+  'Seguro de Vida',
+  'Benefício INSS',
+  'Inquérito Policial',
+  'Organizar docs',
+  'Onboarding',
+];
+
+const CASO_PROCESS_ASSIGNMENTS: Record<string, { userId: string; userName: string }> = {
+  'Seguro de Vida': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
+  'Benefício INSS': { userId: '4dba2de0-5357-49ab-8bf9-4c248a1440de', userName: 'Gisele' },
+  'Inquérito Policial': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
+  'Organizar docs': { userId: '7f41a35e-7d98-4ade-8270-52d727433e6a', userName: 'Abderaman' },
+  'Onboarding': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
+  'Indenização': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
+  'Relatório de Acidente': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
+  'TRCT + Verbas': { userId: '44fd2301-47c6-4912-a583-0213b1c368eb', userName: 'João Vitor' },
+};
+
+/**
+ * Parse process numbers from free text (notes, description, etc.)
+ * Handles formats: nº 0802498-08.2022.8.18.0028, (n° 123...), processo 123..., plain CNJ numbers
+ */
+function parseProcessesFromText(text: string, caseType?: string): ExtractedProcess[] {
   const processes: ExtractedProcess[] = [];
-  // Match patterns like "nº 0802498-08.2022.8.18.0028" or "processo nº ..."
-  const regex = /(?:n[ºo°]\s*|processo\s+)([\d][\d.-]+[\d])/gi;
-  let match;
   const seen = new Set<string>();
-  while ((match = regex.exec(notes)) !== null) {
+
+  // Pattern 1: Explicit prefixed — nº, n°, processo nº, processo
+  const prefixedRegex = /(?:n[ºo°\.]\s*|processo\s+n?[ºo°]?\s*)([\d][\d.\-\/]+[\d])/gi;
+  let match;
+  while ((match = prefixedRegex.exec(text)) !== null) {
     const num = match[1].trim();
-    if (!seen.has(num)) {
+    if (num.length >= 5 && !seen.has(num)) {
       seen.add(num);
-      // Try to extract type from context after the number (e.g. ", de INDENIZAÇÃO")
-      const afterMatch = notes.substring(match.index + match[0].length, match.index + match[0].length + 100);
-      const typeMatch = afterMatch.match(/,?\s*de\s+([^).,]+)/i);
+      const afterMatch = text.substring(match.index + match[0].length, match.index + match[0].length + 150);
+      const typeMatch = afterMatch.match(/[,)\s]*(?:de\s+)?([A-ZÀ-Ú][A-ZÀ-Ú\s\-]{2,40})/);
       const typeName = typeMatch ? typeMatch[1].trim() : (caseType || 'Processo');
       processes.push({
         title: typeName,
         process_number: num,
         process_type: 'judicial',
-        description: `Processo extraído automaticamente da conversa`,
+        description: 'Processo extraído automaticamente da conversa',
       });
     }
   }
+
+  // Pattern 2: CNJ format standalone — 0000319-90.2021.5.22.0002
+  const cnjRegex = /\b(\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4})\b/g;
+  while ((match = cnjRegex.exec(text)) !== null) {
+    const num = match[1].trim();
+    if (!seen.has(num)) {
+      seen.add(num);
+      const afterMatch = text.substring(match.index + match[0].length, match.index + match[0].length + 150);
+      const typeMatch = afterMatch.match(/[,)\s]*(?:de\s+)?([A-ZÀ-Ú][A-ZÀ-Ú\s\-]{2,40})/);
+      const typeName = typeMatch ? typeMatch[1].trim() : (caseType || 'Processo');
+      processes.push({
+        title: typeName,
+        process_number: num,
+        process_type: 'judicial',
+        description: 'Processo extraído automaticamente da conversa',
+      });
+    }
+  }
+
+  // Pattern 3: INSS/administrative numbers — pure digits 9-15 chars (e.g., 453639857, 1682674283)
+  const adminRegex = /(?:benefício|protocolo|requerimento|NB|NIT|processo)\s*(?:n[ºo°]?\s*)?(\d{9,15})/gi;
+  while ((match = adminRegex.exec(text)) !== null) {
+    const num = match[1].trim();
+    if (!seen.has(num)) {
+      seen.add(num);
+      processes.push({
+        title: caseType || 'Benefício/Processo Administrativo',
+        process_number: num,
+        process_type: 'administrativo',
+        description: 'Processo administrativo extraído automaticamente da conversa',
+      });
+    }
+  }
+
   return processes;
 }
 
@@ -89,6 +151,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
   const [extractedProcesses, setExtractedProcesses] = useState<ExtractedProcess[]>([]);
   const [closingDate, setClosingDate] = useState<Date>(new Date());
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
+  const [selectedPredefinedProcesses, setSelectedPredefinedProcesses] = useState<Set<string>>(new Set());
 
   // Auto-extract on open when messages are available
   const hasAutoExtracted = useRef(false);
@@ -104,6 +167,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       setClosingDate(new Date());
       setDuplicates([]);
       setShowDuplicateWarning(false);
+      setSelectedPredefinedProcesses(new Set());
       const defaultBoard = boards.find(b => b.is_default) || boards[0];
       setSelectedBoardId(defaultBoard?.id || '');
       hasAutoExtracted.current = false;
@@ -152,13 +216,17 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       });
       if (error) throw error;
 
-      const extracted = data?.data || {};
+      // Robust response parsing: handle multiple response shapes
+      const extracted = data?.data || data?.result || {};
 
       // Handle no_messages response
-      if (!data?.data && data?.reason === 'no_messages') {
+      if ((!data?.data && !data?.result) && (data?.reason === 'no_messages' || data?.status === 'no_messages')) {
         toast.warning('Nenhuma mensagem encontrada para análise. Preencha manualmente.');
         return;
       }
+
+      // Log for debugging
+      console.log('[CreateCase] AI extraction response:', JSON.stringify(data).substring(0, 500));
 
       if (extracted.title) setTitle(extracted.title);
       else if (extracted.lead_name && title === (leadName || contactName || '')) setTitle(extracted.lead_name);
@@ -179,15 +247,38 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       if (descParts.length > 0) setDescription(descParts.join('\n'));
       if (extracted.notes) setNotes(extracted.notes);
 
-      // Use structured processes if available, otherwise parse from notes
+      // === PROCESS DETECTION (3 strategies) ===
+      let detectedProcesses: ExtractedProcess[] = [];
+
+      // Strategy 1: Structured processes array from AI
       if (extracted.processes && Array.isArray(extracted.processes) && extracted.processes.length > 0) {
-        setExtractedProcesses(extracted.processes);
-      } else if (extracted.notes) {
-        // Parse process numbers from notes text (e.g. "nº 0802498-08.2022.8.18.0028, de INDENIZAÇÃO")
-        const parsed = parseProcessesFromNotes(extracted.notes, extracted.case_type);
-        if (parsed.length > 0) {
-          setExtractedProcesses(parsed);
-        }
+        detectedProcesses = extracted.processes.map((p: any) => ({
+          title: p.title || p.type || 'Processo',
+          process_number: p.process_number || p.number || p.numero || null,
+          process_type: p.process_type || (p.process_number?.includes('-') ? 'judicial' : 'administrativo'),
+          description: p.description || 'Processo extraído pela IA',
+        }));
+      }
+
+      // Strategy 2: Parse from notes text
+      if (detectedProcesses.length === 0 && extracted.notes) {
+        detectedProcesses = parseProcessesFromText(extracted.notes, extracted.case_type);
+      }
+
+      // Strategy 3: Parse from description text
+      if (detectedProcesses.length === 0 && descParts.length > 0) {
+        detectedProcesses = parseProcessesFromText(descParts.join('\n'), extracted.case_type);
+      }
+
+      // Strategy 4: Parse from case_number field itself
+      if (detectedProcesses.length === 0 && extracted.case_number) {
+        const fromCaseNumber = parseProcessesFromText(`processo nº ${extracted.case_number}`, extracted.case_type);
+        if (fromCaseNumber.length > 0) detectedProcesses = fromCaseNumber;
+      }
+
+      if (detectedProcesses.length > 0) {
+        setExtractedProcesses(detectedProcesses);
+        console.log('[CreateCase] Detected processes:', detectedProcesses);
       }
 
       if (extracted.case_type) {
@@ -204,7 +295,17 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         }
       }
 
-      toast.success('Dados extraídos da conversa!');
+      // Only show success if we actually extracted meaningful data
+      const hasData = !!(extracted.title || extracted.lead_name || descParts.length > 0 || extracted.notes || detectedProcesses.length > 0);
+      if (hasData) {
+        const parts: string[] = [];
+        if (descParts.length > 0) parts.push('dados do caso');
+        if (detectedProcesses.length > 0) parts.push(`${detectedProcesses.length} processo(s)`);
+        if (extracted.notes) parts.push('observações');
+        toast.success(`Dados extraídos: ${parts.join(', ') || 'título'}`);
+      } else {
+        toast.warning('IA não conseguiu extrair dados relevantes. Preencha manualmente.');
+      }
     } catch (err) {
       console.error('Extract error:', err);
       toast.error('Erro ao extrair dados da conversa. Preencha manualmente.');
@@ -354,20 +455,77 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       });
 
       // Create extracted processes
-      if (extractedProcesses.length > 0 && result?.id) {
+      const allProcessesToCreate: { title: string; process_number?: string | null; process_type: string; description?: string | null; assignedTo?: string; assignedToName?: string }[] = [];
+
+      // Add AI-extracted processes
+      if (extractedProcesses.length > 0) {
         for (const proc of extractedProcesses) {
-          await supabase.from('lead_processes').insert({
-            case_id: result.id,
-            lead_id: finalLeadId || null,
+          allProcessesToCreate.push({
             title: proc.title,
-            process_number: proc.process_number || null,
+            process_number: proc.process_number,
             process_type: proc.process_type || 'judicial',
-            description: proc.description || null,
-            status: 'em_andamento',
-            created_by: user?.id || null,
-          } as any);
+            description: proc.description,
+          });
         }
-        toast.success(`${extractedProcesses.length} processo(s) criado(s) automaticamente`);
+      }
+
+      // Add predefined processes (like LegalCasesTab)
+      for (const procName of selectedPredefinedProcesses) {
+        const assignment = CASO_PROCESS_ASSIGNMENTS[procName];
+        allProcessesToCreate.push({
+          title: procName,
+          process_type: 'administrativo',
+          assignedTo: assignment?.userId,
+          assignedToName: assignment?.userName,
+        });
+      }
+
+      // Insert all processes
+      if (allProcessesToCreate.length > 0 && result?.id) {
+        const isCaso = !result.case_number || result.case_number.startsWith('CASO');
+        for (const proc of allProcessesToCreate) {
+          try {
+            const { data: savedProcess } = await supabase.from('lead_processes').insert({
+              case_id: result.id,
+              lead_id: finalLeadId || null,
+              title: proc.title,
+              process_number: proc.process_number || null,
+              process_type: proc.process_type || 'judicial',
+              description: proc.description || null,
+              status: 'em_andamento',
+              started_at: new Date().toISOString().slice(0, 10),
+              created_by: user?.id || null,
+            } as any).select('id').single();
+
+            // Auto-create activity for CASO-type cases with predefined process assignments
+            if (isCaso && proc.assignedTo && savedProcess?.id) {
+              try {
+                await supabase.from('lead_activities').insert({
+                  lead_id: finalLeadId || null,
+                  lead_name: title.trim(),
+                  title: `Dar andamento - ${proc.title}`,
+                  description: `Atividade criada automaticamente para o processo: ${proc.title}`,
+                  activity_type: 'tarefa',
+                  status: 'pendente',
+                  priority: 'normal',
+                  assigned_to: proc.assignedTo,
+                  assigned_to_name: proc.assignedToName,
+                  created_by: user?.id,
+                  deadline: new Date().toISOString().slice(0, 10),
+                  process_id: savedProcess.id,
+                } as any);
+              } catch (actErr) {
+                console.warn(`Error creating activity for process "${proc.title}":`, actErr);
+              }
+            }
+          } catch (procErr) {
+            console.warn(`Error creating process "${proc.title}":`, procErr);
+          }
+        }
+        toast.success(`${allProcessesToCreate.length} processo(s) criado(s) automaticamente`);
+        if (isCaso && selectedPredefinedProcesses.size > 0) {
+          toast.success('Atividades atribuídas automaticamente');
+        }
       }
 
       // Link contact as party if not already linked
@@ -459,16 +617,47 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
 
           {extractedProcesses.length > 0 && (
             <div className="rounded-lg border p-3 space-y-2">
-              <Label className="text-xs font-semibold">Processos detectados ({extractedProcesses.length})</Label>
+              <Label className="text-xs font-semibold flex items-center gap-1">
+                <Scale className="h-3 w-3" />
+                Processos detectados pela IA ({extractedProcesses.length})
+              </Label>
               {extractedProcesses.map((proc, i) => (
                 <div key={i} className="text-xs text-muted-foreground flex items-center gap-2">
-                  <Scale className="h-3 w-3 shrink-0" />
-                  <span>{proc.title}{proc.process_number ? ` - ${proc.process_number}` : ''}</span>
+                  <CheckSquare className="h-3 w-3 shrink-0 text-green-600" />
+                  <span className="font-medium">{proc.title}</span>
+                  {proc.process_number && <span className="text-muted-foreground">nº {proc.process_number}</span>}
+                  {proc.process_type && <span className="text-[10px] px-1 rounded bg-muted">{proc.process_type}</span>}
                 </div>
               ))}
               <p className="text-xs text-muted-foreground italic">Serão criados automaticamente ao salvar</p>
             </div>
           )}
+
+          {/* Predefined processes (like LegalCasesTab) */}
+          <div className="rounded-lg border p-3 space-y-2">
+            <Label className="text-xs font-semibold">Processos padrão (opcional)</Label>
+            <div className="grid grid-cols-2 gap-1">
+              {PREDEFINED_PROCESSES.map(name => (
+                <label key={name} className="flex items-center gap-2 cursor-pointer hover:bg-accent/50 rounded px-2 py-1.5">
+                  <Checkbox
+                    checked={selectedPredefinedProcesses.has(name)}
+                    onCheckedChange={() => {
+                      setSelectedPredefinedProcesses(prev => {
+                        const next = new Set(prev);
+                        if (next.has(name)) next.delete(name);
+                        else next.add(name);
+                        return next;
+                      });
+                    }}
+                  />
+                  <span className="text-xs">{name}</span>
+                </label>
+              ))}
+            </div>
+            {selectedPredefinedProcesses.size > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">{selectedPredefinedProcesses.size} processo(s) padrão será(ão) criado(s)</p>
+            )}
+          </div>
 
           {leadId && (
             <p className="text-xs text-muted-foreground">
