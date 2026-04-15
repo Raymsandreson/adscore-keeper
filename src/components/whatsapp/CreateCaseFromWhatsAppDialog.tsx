@@ -26,6 +26,31 @@ interface ExtractedProcess {
   description?: string;
 }
 
+function parseProcessesFromNotes(notes: string, caseType?: string): ExtractedProcess[] {
+  const processes: ExtractedProcess[] = [];
+  // Match patterns like "nº 0802498-08.2022.8.18.0028" or "processo nº ..."
+  const regex = /(?:n[ºo°]\s*|processo\s+)([\d][\d.-]+[\d])/gi;
+  let match;
+  const seen = new Set<string>();
+  while ((match = regex.exec(notes)) !== null) {
+    const num = match[1].trim();
+    if (!seen.has(num)) {
+      seen.add(num);
+      // Try to extract type from context after the number (e.g. ", de INDENIZAÇÃO")
+      const afterMatch = notes.substring(match.index + match[0].length, match.index + match[0].length + 100);
+      const typeMatch = afterMatch.match(/,?\s*de\s+([^).,]+)/i);
+      const typeName = typeMatch ? typeMatch[1].trim() : (caseType || 'Processo');
+      processes.push({
+        title: typeName,
+        process_number: num,
+        process_type: 'judicial',
+        description: `Processo extraído automaticamente da conversa`,
+      });
+    }
+  }
+  return processes;
+}
+
 interface DuplicateCase {
   id: string;
   case_number: string;
@@ -154,8 +179,15 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       if (descParts.length > 0) setDescription(descParts.join('\n'));
       if (extracted.notes) setNotes(extracted.notes);
 
+      // Use structured processes if available, otherwise parse from notes
       if (extracted.processes && Array.isArray(extracted.processes) && extracted.processes.length > 0) {
         setExtractedProcesses(extracted.processes);
+      } else if (extracted.notes) {
+        // Parse process numbers from notes text (e.g. "nº 0802498-08.2022.8.18.0028, de INDENIZAÇÃO")
+        const parsed = parseProcessesFromNotes(extracted.notes, extracted.case_type);
+        if (parsed.length > 0) {
+          setExtractedProcesses(parsed);
+        }
       }
 
       if (extracted.case_type) {
