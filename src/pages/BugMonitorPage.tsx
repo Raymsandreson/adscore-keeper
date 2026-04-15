@@ -77,7 +77,7 @@ export default function BugMonitorPage() {
   const loadSentry = useCallback(async () => {
     setSentryLoading(true);
     try {
-      const data = await callSentryExt("?endpoint=issues&query=is:unresolved&statsPeriod=7d");
+      const data = await callSentryExt("?endpoint=issues&query=is:unresolved&statsPeriod=14d");
       setSentryIssues(Array.isArray(data) ? data : []);
     } catch { setSentryIssues([]); }
     setSentryLoading(false);
