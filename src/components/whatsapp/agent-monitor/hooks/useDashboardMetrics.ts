@@ -119,7 +119,7 @@ export function useDashboardMetrics() {
 
       // Build conversation/closed metrics from KPI snapshot data
       const convAndClosedMetrics: Partial<DashboardMetrics> = {
-        newConversations: kpiData.contatos_criados || 0,
+        newConversations: kpiData.conversas_ativas || 0,
         responseRate: 0,
         avgResponseTimeMin: 0,
         respondedCount: 0,
