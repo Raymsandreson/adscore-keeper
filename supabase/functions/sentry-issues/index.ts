@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const endpoint = url.searchParams.get('endpoint') || 'issues';
   const query = url.searchParams.get('query') || 'is:unresolved';
-  const statsPeriod = url.searchParams.get('statsPeriod') || '7d';
+  const statsPeriod = url.searchParams.get('statsPeriod') || '14d';
 
   let sentryUrl: string;
 
