@@ -579,13 +579,13 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       let leadExtracted: Record<string, any> = {};
       let contactExtracted: Record<string, any> = {};
 
-      if (recentMessages.length > 0) {
+      if (phone && instanceName) {
         const [leadRes, contactRes] = await Promise.all([
           cloudFunctions.invoke('extract-conversation-data', {
-            body: { messages: recentMessages, targetType: 'lead' },
+            body: { phone, instance_name: instanceName, targetType: 'lead' },
           }),
           cloudFunctions.invoke('extract-conversation-data', {
-            body: { messages: recentMessages, targetType: 'contact' },
+            body: { phone, instance_name: instanceName, targetType: 'contact' },
           }),
         ]);
         leadExtracted = leadRes.data?.data || {};

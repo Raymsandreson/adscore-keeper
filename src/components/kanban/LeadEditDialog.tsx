@@ -1646,18 +1646,22 @@ ${scrapeData.content || ''}
                                 const phone = lead.lead_phone?.replace(/\D/g, '');
                                 if (!phone) { toast.error('Lead sem telefone para análise'); return; }
                                 const last8 = phone.slice(-8);
-                                const { data: msgs } = await supabase
+                                // Find instance_name from recent messages
+                                const { data: instMsg } = await supabase
                                   .from('whatsapp_messages')
-                                  .select('message_text, direction, created_at')
+                                  .select('instance_name')
                                   .or(`phone.ilike.%${last8}%`)
-                                  .order('created_at', { ascending: true })
-                                  .limit(100);
-                                if (!msgs || msgs.length === 0) { toast.error('Nenhuma conversa encontrada'); return; }
+                                  .not('instance_name', 'is', null)
+                                  .order('created_at', { ascending: false })
+                                  .limit(1);
+                                const leadInstanceName = instMsg?.[0]?.instance_name;
+                                if (!leadInstanceName) { toast.error('Nenhuma conversa encontrada'); return; }
 
                                 const statusLabel = leadOutcome === 'inviavel' ? 'INVIÁVEL' : leadOutcome === 'refused' ? 'RECUSADO' : leadOutcome === 'closed' ? 'FECHADO' : 'EM ANDAMENTO';
                                 const { data, error } = await cloudFunctions.invoke('extract-conversation-data', {
                                   body: {
-                                    messages: msgs.map(m => ({ message_text: m.message_text, direction: m.direction })),
+                                    phone,
+                                    instance_name: leadInstanceName,
                                     targetType: 'reason',
                                     customPrompt: `Analise a conversa e determine o MOTIVO pelo qual este lead foi classificado como "${statusLabel}". Retorne APENAS um JSON: {"reason": "motivo resumido em 1-2 frases"}. Seja objetivo e direto.`
                                   }
