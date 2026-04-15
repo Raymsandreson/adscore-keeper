@@ -31,6 +31,7 @@ export function AgentMonitorDashboard() {
   const { toast } = useToast();
   const queueCount = useGroupQueueCount();
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({ from: new Date(), to: new Date() });
+  const [selectedPeriod, setSelectedPeriod] = useState('today');
   const [sheetStatusFilter, setSheetStatusFilter] = useState<CaseStatus | null>(null);
   const [newConvsSheetOpen, setNewConvsSheetOpen] = useState(false);
   const [chatPreview, setChatPreview] = useState<ConversationDetail | null>(null);
