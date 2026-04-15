@@ -87,6 +87,7 @@ export function AppSidebar() {
     { id: "calls", label: "Ligações", icon: <Phone className="h-4 w-4" />, path: "/calls", color: "text-blue-500" },
     { id: "whatsapp", label: "WhatsApp", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp", color: "text-green-500" },
     { id: "agent-monitor", label: "Monitor IA", icon: <Bot className="h-4 w-4" />, path: "/agent-monitor", color: "text-purple-500" },
+    { id: "bug-monitor", label: "Monitor de Bugs", icon: <Bug className="h-4 w-4" />, path: "/bug-monitor", color: "text-destructive" },
     { id: "instagram", label: "Instagram", icon: <AtSign className="h-4 w-4" />, path: "/instagram", color: "text-pink-500" },
     { id: "comment-workflow", label: "Fluxo de Respostas", icon: <MessageCircle className="h-4 w-4" />, path: "/workflow", color: "text-pink-500" },
     { id: "contacts", label: "Contatos", icon: <Users className="h-4 w-4" />, path: "/contacts", color: "text-primary" },
@@ -135,7 +136,6 @@ export function AppSidebar() {
       items: [
         { id: "team-main", label: "Equipe", icon: <UsersRound className="h-3.5 w-3.5" />, path: "/team", color: "text-emerald-500" },
         { id: "analytics", label: "Analytics", icon: <TrendingUp className="h-3.5 w-3.5" />, path: "/analytics" },
-        { id: "bug-monitor", label: "Monitor de Bugs", icon: <Bug className="h-3.5 w-3.5" />, path: "/bug-monitor", color: "text-destructive" },
       ],
     },
   ];
