@@ -983,26 +983,30 @@ ${scrapeData.content || ''}
         </Button>
 
         {/* AI Extraction Dialog */}
-        <AccidentDataExtractor
-          open={showExtractor}
-          onOpenChange={setShowExtractor}
-          onDataExtracted={handleExtractedData}
-          currentData={{
-            victim_name: victimName || null,
-            victim_age: victimAge ? parseInt(victimAge) : null,
-            accident_date: accidentDate || null,
-            accident_address: accidentAddress || null,
-            damage_description: damageDescription || null,
-            contractor_company: contractorCompany || null,
-            main_company: mainCompany || null,
-            sector: sector || null,
-            case_type: caseType || null,
-            liability_type: liabilityType || null,
-            legal_viability: legalViability || null,
-            visit_city: visitCity || null,
-            visit_state: visitState || null,
-          }}
-        />
+        {showExtractor && (
+          <Suspense fallback={null}>
+            <AccidentDataExtractor
+              open={showExtractor}
+              onOpenChange={setShowExtractor}
+              onDataExtracted={handleExtractedData}
+              currentData={{
+                victim_name: victimName || null,
+                victim_age: victimAge ? parseInt(victimAge) : null,
+                accident_date: accidentDate || null,
+                accident_address: accidentAddress || null,
+                damage_description: damageDescription || null,
+                contractor_company: contractorCompany || null,
+                main_company: mainCompany || null,
+                sector: sector || null,
+                case_type: caseType || null,
+                liability_type: liabilityType || null,
+                legal_viability: legalViability || null,
+                visit_city: visitCity || null,
+                visit_state: visitState || null,
+              }}
+            />
+          </Suspense>
+        )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col">
           <div className="w-full flex-shrink-0">
