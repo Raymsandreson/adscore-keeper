@@ -7,8 +7,8 @@ export const getCaseStatus = (c: ConversationDetail): CaseStatus => {
   if (c.lead_status === 'closed') return 'fechado';
   if (c.lead_status === 'refused') return 'recusado';
   if (c.lead_status === 'unviable') return 'inviavel';
-  if (c.inbound_count > 0) return 'em_andamento';
-  return 'sem_resposta';
+  if (c.inbound_count > 0 && c.outbound_count === 0) return 'sem_resposta';
+  return 'em_andamento';
 };
 
 export const formatTimeAgo = (minutes: number | null) => {

@@ -114,15 +114,31 @@ export function AgentMonitorDashboard() {
     return new Set(baseFilteredConversations.map(c => c.phone));
   }, [baseFilteredConversations, filters.agentFilter, effectiveInstanceFilter, filters.boardFilter, filters.campaignFilter, filters.acolhedorFilter, filters.userFilter]);
 
+  const baseNewConvDetails = useMemo(() => {
+    if (metrics.newConvDetails.length > 0) return metrics.newConvDetails;
+    return conversations
+      .filter(c => c.created_at)
+      .map(c => ({
+        phone: c.phone,
+        contact_name: c.contact_name,
+        instance_name: c.instance_name,
+        first_message_at: c.created_at || c.last_inbound_at || new Date().toISOString(),
+        was_responded: c.outbound_count > 0,
+        response_time_minutes: null,
+        lead_name: c.lead_name,
+        has_lead: !!c.lead_id,
+      }));
+  }, [metrics.newConvDetails, conversations]);
+
   // Filter metrics newConvDetails based on active filters
   const filteredNewConvDetails = useMemo(() => {
-    return metrics.newConvDetails.filter(c => {
+    return baseNewConvDetails.filter(c => {
       if (effectiveInstanceFilter !== 'all' && c.instance_name !== effectiveInstanceFilter) return false;
       if (agentPhoneSet && !agentPhoneSet.has(c.phone)) return false;
       if (baseFilteredPhoneSet && !baseFilteredPhoneSet.has(c.phone)) return false;
       return true;
     });
-  }, [metrics.newConvDetails, effectiveInstanceFilter, agentPhoneSet, baseFilteredPhoneSet]);
+  }, [baseNewConvDetails, effectiveInstanceFilter, agentPhoneSet, baseFilteredPhoneSet]);
 
   // Build a set of lead_ids from filtered conversations for cross-referencing operational metrics
   const operationalFilteredLeadIds = useMemo(() => new Set(
