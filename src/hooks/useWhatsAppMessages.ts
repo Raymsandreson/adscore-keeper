@@ -57,7 +57,10 @@ export interface InstanceStats {
   unread_count: number;
 }
 
-const getConversationKey = (phone: string, instanceName?: string | null) => `${phone}__${instanceName || ''}`;
+// Conversation identity = phone + instance_name. Normalize instance_name case-insensitively
+// to avoid creating phantom duplicates when the webhook saves "Cris" but the RPC returns "cris".
+const getConversationKey = (phone: string, instanceName?: string | null) =>
+  `${(phone || '').trim()}__${(instanceName || '').trim().toLowerCase()}`;
 
 export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const { user } = useAuthContext();
