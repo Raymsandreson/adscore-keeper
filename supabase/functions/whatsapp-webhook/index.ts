@@ -281,6 +281,25 @@ function normalizePhone(raw: string | null | undefined): string {
     .replace(/^0+/, '');
 }
 
+function normalizeInstanceKey(raw: string | null | undefined): string {
+  return (raw || '').trim().toLowerCase();
+}
+
+function buildScopedExternalMessageId(
+  rawExternalMessageId: string | null | undefined,
+  instanceName: string | null | undefined,
+  phone: string | null | undefined,
+): string | null {
+  const raw = String(rawExternalMessageId || '').trim();
+  const instanceKey = normalizeInstanceKey(instanceName);
+  const phoneKey = normalizePhone(phone);
+
+  if (!raw) return null;
+  if (!instanceKey || !phoneKey) return raw;
+
+  return `${raw}::${instanceKey}::${phoneKey}`;
+}
+
 function normalizeCallId(raw: unknown): string | null {
   const value = String(raw ?? '').trim();
   if (!value) return null;
@@ -1551,31 +1570,61 @@ Deno.serve(async (req) => {
     }
 
     // ========== DEDUPLICATION ==========
+    const scopedExternalMessageId = buildScopedExternalMessageId(externalMessageId, instanceName, phone)
+    let storedExternalMessageId = externalMessageId
+
     if (externalMessageId) {
-      const dedupeQuery = supabase
+      const candidateExternalIds = Array.from(new Set([
+        externalMessageId,
+        scopedExternalMessageId,
+      ].filter(Boolean))) as string[]
+
+      const { data: existingMatches, error: dedupeError } = await supabase
         .from('whatsapp_messages')
-        .select('id, instance_name')
-        .eq('external_message_id', externalMessageId)
-        .limit(1)
+        .select('id, instance_name, phone, external_message_id')
+        .in('external_message_id', candidateExternalIds)
+        .limit(10)
 
-      // Same external message ID can appear in different instances.
-      // Deduplicate per instance to avoid dropping valid commands on mirrored webhooks.
-      const scopedQuery = instanceName
-        ? dedupeQuery.eq('instance_name', instanceName)
-        : dedupeQuery
+      if (dedupeError) {
+        console.error('Deduplication lookup error:', dedupeError)
+      }
 
-      const { data: existing } = await scopedQuery.maybeSingle();
+      const currentInstanceKey = normalizeInstanceKey(instanceName)
+      const currentPhoneKey = normalizePhone(phone)
+      const matches = existingMatches || []
 
-      if (existing) {
-        console.log('Duplicate message detected, skipping insert:', externalMessageId, 'instance:', instanceName || '(unknown)');
-        
-        // DO NOT trigger AI agent here — the original insert path already handles it.
-        // Triggering again on duplicates causes multiple identical responses.
-        
+      const sameConversationExisting = matches.find((row: any) => {
+        const rowInstanceKey = normalizeInstanceKey(row.instance_name)
+        const rowPhoneKey = normalizePhone(row.phone)
+        return rowInstanceKey === currentInstanceKey && rowPhoneKey === currentPhoneKey
+      })
+
+      if (sameConversationExisting) {
+        console.log('Duplicate message detected, skipping insert:', externalMessageId, 'instance:', instanceName || '(unknown)', 'phone:', phone)
+
         return new Response(
-          JSON.stringify({ success: true, skipped: true, reason: 'duplicate', existing_id: existing.id }),
+          JSON.stringify({ success: true, skipped: true, reason: 'duplicate', existing_id: sameConversationExisting.id }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        )
+      }
+
+      const rawCollision = matches.find((row: any) => row.external_message_id === externalMessageId)
+      if (rawCollision && scopedExternalMessageId && scopedExternalMessageId !== externalMessageId) {
+        storedExternalMessageId = scopedExternalMessageId
+        console.log(
+          'Cross-conversation external_message_id collision detected. Using scoped ID:',
+          storedExternalMessageId,
+          'raw:',
+          externalMessageId,
+          'existing instance:',
+          rawCollision.instance_name,
+          'existing phone:',
+          rawCollision.phone,
+          'current instance:',
+          instanceName,
+          'current phone:',
+          phone,
+        )
       }
     }
 
@@ -1630,30 +1679,81 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { data: message, error } = await supabase
+    const messageInsertPayload = {
+      phone,
+      contact_name: contactName,
+      message_text: messageText,
+      message_type: messageType,
+      media_url: storedMediaUrl,
+      media_type: mediaType,
+      direction,
+      status: direction === 'inbound' ? 'received' : 'sent',
+      contact_id: contactId,
+      lead_id: leadId,
+      external_message_id: storedExternalMessageId,
+      metadata: body,
+      instance_name: instanceName,
+      instance_token: instanceToken,
+      campaign_id: detectedCampaignId || null,
+      campaign_name: detectedCampaignName || null,
+    }
+
+    let { data: message, error } = await supabase
       .from('whatsapp_messages')
-      .insert({
-        phone,
-        contact_name: contactName,
-        message_text: messageText,
-        message_type: messageType,
-        media_url: storedMediaUrl,
-        media_type: mediaType,
-        direction,
-        status: direction === 'inbound' ? 'received' : 'sent',
-        contact_id: contactId,
-        lead_id: leadId,
-        external_message_id: externalMessageId,
-        metadata: body,
-        instance_name: instanceName,
-        instance_token: instanceToken,
-        campaign_id: detectedCampaignId || null,
-        campaign_name: detectedCampaignName || null,
-      })
+      .insert(messageInsertPayload)
       .select()
       .single()
 
+    if (error?.code === '23505' && externalMessageId && scopedExternalMessageId && storedExternalMessageId !== scopedExternalMessageId) {
+      console.warn('Unique collision on raw external_message_id, retrying insert with scoped ID:', scopedExternalMessageId)
+
+      const retryPayload = {
+        ...messageInsertPayload,
+        external_message_id: scopedExternalMessageId,
+      }
+
+      const retryResult = await supabase
+        .from('whatsapp_messages')
+        .insert(retryPayload)
+        .select()
+        .single()
+
+      message = retryResult.data
+      error = retryResult.error
+      storedExternalMessageId = scopedExternalMessageId
+    }
+
     if (error) {
+      if (error.code === '23505' && externalMessageId) {
+        const candidateExternalIds = Array.from(new Set([
+          externalMessageId,
+          scopedExternalMessageId,
+          storedExternalMessageId,
+        ].filter(Boolean))) as string[]
+
+        const { data: conflictingMatches } = await supabase
+          .from('whatsapp_messages')
+          .select('id, instance_name, phone, external_message_id')
+          .in('external_message_id', candidateExternalIds)
+          .limit(10)
+
+        const currentInstanceKey = normalizeInstanceKey(instanceName)
+        const currentPhoneKey = normalizePhone(phone)
+        const sameConversationConflict = (conflictingMatches || []).find((row: any) => {
+          const rowInstanceKey = normalizeInstanceKey(row.instance_name)
+          const rowPhoneKey = normalizePhone(row.phone)
+          return rowInstanceKey === currentInstanceKey && rowPhoneKey === currentPhoneKey
+        })
+
+        if (sameConversationConflict) {
+          console.log('Duplicate insert race detected, treating as already saved:', sameConversationConflict.id, 'external_message_id:', sameConversationConflict.external_message_id)
+          return new Response(
+            JSON.stringify({ success: true, skipped: true, reason: 'duplicate_race', existing_id: sameConversationConflict.id }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+      }
+
       console.error('Error inserting message:', error)
       return new Response(
         JSON.stringify({ success: false, error: error.message }),
