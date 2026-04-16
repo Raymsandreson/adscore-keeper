@@ -157,3 +157,6 @@ verify_jwt = false
 
 [functions.pluggy-integration]
 verify_jwt = false
+
+[functions.send-password-reset]
+verify_jwt = false
