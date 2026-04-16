@@ -179,27 +179,26 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
     setStatsLoading(true);
     try {
-      const instanceNames = instances.map(i => i.instance_name);
-      
+      await ensureExternalSession().catch(() => {});
+      const ext = externalSupabase as any;
+
       // Use a single lightweight query with counts per instance
       const stats: InstanceStats[] = [];
-      
+
       for (const inst of instances) {
-        const [totalRes, inboundRes, outboundRes, unreadRes, phonesRes] = await Promise.all([
-          supabase.from('whatsapp_messages').select('id', { count: 'exact', head: true })
+        const [totalRes, inboundRes, outboundRes, unreadRes] = await Promise.all([
+          ext.from('whatsapp_messages').select('id', { count: 'exact', head: true })
             .eq('instance_name', inst.instance_name),
-          supabase.from('whatsapp_messages').select('id', { count: 'exact', head: true })
+          ext.from('whatsapp_messages').select('id', { count: 'exact', head: true })
             .eq('instance_name', inst.instance_name).eq('direction', 'inbound'),
-          supabase.from('whatsapp_messages').select('id', { count: 'exact', head: true })
+          ext.from('whatsapp_messages').select('id', { count: 'exact', head: true })
             .eq('instance_name', inst.instance_name).eq('direction', 'outbound'),
-          supabase.from('whatsapp_messages').select('id', { count: 'exact', head: true })
+          ext.from('whatsapp_messages').select('id', { count: 'exact', head: true })
             .eq('instance_name', inst.instance_name).eq('direction', 'inbound').is('read_at', null),
-          supabase.from('whatsapp_messages').select('phone', { count: 'exact', head: true })
-            .eq('instance_name', inst.instance_name),
         ]);
 
         // Get distinct phone count via a different approach
-        const { data: distinctPhones } = await supabase
+        const { data: distinctPhones } = await ext
           .from('whatsapp_messages')
           .select('phone')
           .eq('instance_name', inst.instance_name)
@@ -344,32 +343,14 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
       const instanceNames = targetInstances.map(i => i.instance_name);
 
-      // Single call to the typed wrapper backed by the external DB (source of truth).
-      // The RPC partitions by (phone, instance_name) so we get one row per conversation.
-      let summaries: any[] = [];
-      let sumError: any = null;
-      try {
-        await ensureExternalSession();
-        summaries = await getConversationSummaries(instanceNames);
-      } catch (err) {
-        sumError = err;
-      }
-
-      if (sumError && summaries.length === 0) {
-        console.error('Error fetching conversation summaries from external:', sumError);
-        // Fallback: raw message fetch from Cloud so the UI doesn't stay empty if
-        // external auth/realtime is degraded. May be stale but keeps the app usable.
-        const fallbackQuery = supabase
-          .from('whatsapp_messages')
-          .select('*')
-          .in('instance_name', instanceNames)
-          .order('created_at', { ascending: false })
-          .limit(2000);
-        const { data, error } = await fallbackQuery;
-        if (error) throw error;
-        processMessages((data || []) as WhatsAppMessage[], silent);
-        return;
-      }
+      // Single call to the typed wrapper backed by the external DB — this is the
+      // source of truth for whatsapp_messages. There is NO Cloud fallback: the Cloud
+      // mirror is stale (sync is batched), so falling back to it was overwriting the
+      // sidebar with old data and removing conversations that only existed in the
+      // external DB. If the external call fails, we throw and let the catch block
+      // keep the last-known-good state, and show a loading/error UI.
+      await ensureExternalSession();
+      const summaries = await getConversationSummaries(instanceNames);
 
       const canonicalInstanceNames = new Map(
         targetInstances.map((instance) => [normalizeInstanceName(instance.instance_name), instance.instance_name])
@@ -471,15 +452,17 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         toast.success(`${convList.length} conversas carregadas`);
       }
     } catch (error) {
-      console.error('Error fetching WhatsApp messages:', error);
+      console.error('Error fetching WhatsApp messages from external:', error);
+      // Do NOT overwrite the list. Keeping the last known state (even empty on first
+      // load) prevents stale Cloud data from replacing fresh external data.
       if (!silent) {
-        toast.error('Erro ao carregar conversas');
+        toast.error('Erro ao carregar conversas do servidor. Tentando novamente...');
       }
     } finally {
       isFetchingRef.current = false;
       if (!silent && !hasLoaded) setLoading(false);
     }
-  }, [instances, selectedInstanceId, processMessages, syncRecentMessages, hasLoaded]);
+  }, [instances, selectedInstanceId, syncRecentMessages, hasLoaded]);
 
   const sendMessage = async (
     phone: string,
@@ -955,33 +938,6 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       });
     };
 
-    const channelName = `whatsapp-realtime-${Date.now()}`;
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
-        (payload) => handleIncomingMessage(payload.new as WhatsAppMessage)
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          setRealtimeHealthy(true);
-          return;
-        }
-
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          setRealtimeHealthy(false);
-          const now = Date.now();
-          const lastErrorFetch = (window as any).__lastRealtimeErrorFetch || 0;
-          if (now - lastErrorFetch > 30000) {
-            (window as any).__lastRealtimeErrorFetch = now;
-            console.warn(`Realtime channel status: ${status}, refetching`);
-            fetchMessages(true);
-          }
-          scheduleRetry();
-        }
-      });
-
     // One external channel per allowed instance, with server-side
     // filter `instance_name=eq.<name>`. This guarantees the Realtime backend
     // only broadcasts events for instances the user actually owns — a message
@@ -1035,7 +991,6 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         window.clearTimeout(realtimeRetryTimerRef.current);
         realtimeRetryTimerRef.current = null;
       }
-      supabase.removeChannel(channel);
       for (const ch of externalChannels) {
         externalSupabase.removeChannel(ch);
       }
