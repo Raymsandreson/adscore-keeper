@@ -183,13 +183,13 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
   useEffect(() => {
     if (!open) return;
-    supabase
-      .from('kanban_boards')
+    (supabase
+      .from('kanban_boards' as any)
       .select('id, name, board_type, is_active')
       .eq('board_type', 'workflow')
       .eq('is_active', true)
-      .order('name')
-      .then(({ data }) => {
+      .order('name') as any)
+      .then(({ data }: { data: any[] | null }) => {
         setWorkflowBoards((data || []).map((b: any) => ({ id: b.id, name: b.name })));
       });
   }, [open]);
