@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Bot, MessageCircle, TrendingUp, Clock, Zap, PhoneCall, Sparkles, Search } from 'lucide-react';
 import type { AgentStats, ConversationDetail } from '../types';
+import type { DashboardMetrics } from '../hooks/useDashboardMetrics';
 import { convKey } from '../utils';
 import { CaseCard } from './CaseCard';
 import { BatchToolbar } from './BatchToolbar';
@@ -35,12 +36,14 @@ interface AgentsPanelTabProps {
   onOpenChat: (c: ConversationDetail) => void;
   generatingLeadId?: string | null;
   onGenerateActivity?: (c: ConversationDetail) => void;
+  metrics?: DashboardMetrics;
 }
 
 export function AgentsPanelTab({
   conversations, agentStats, filteredConversations, loading,
-  filterProps, batchProps, searchQuery, setSearchQuery, onOpenChat, generatingLeadId, onGenerateActivity,
+  filterProps, batchProps, searchQuery, setSearchQuery, onOpenChat, generatingLeadId, onGenerateActivity, metrics,
 }: AgentsPanelTabProps) {
+  const unansweredCount = conversations.filter(c => c.inbound_count === 0).length;
   return (
     <div className="space-y-4">
       {/* Global KPIs */}
@@ -48,9 +51,9 @@ export function AgentsPanelTab({
         <Card>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <MessageCircle className="h-3.5 w-3.5" /> Conversas
+              <MessageCircle className="h-3.5 w-3.5" /> Conversas Novas
             </div>
-            <p className="text-2xl font-bold">{conversations.length}</p>
+            <p className="text-2xl font-bold">{metrics?.newConversations ?? 0}</p>
             <div className="flex gap-2 mt-1">
               <Badge variant="secondary" className="text-[9px]">{conversations.length} ativas</Badge>
             </div>
@@ -78,8 +81,8 @@ export function AgentsPanelTab({
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
               <Clock className="h-3.5 w-3.5 text-amber-500" /> Sem Resposta
             </div>
-            <p className="text-2xl font-bold text-amber-600">{conversations.filter(c => c.time_without_response && c.time_without_response > 60).length}</p>
-            <p className="text-[10px] text-muted-foreground">&gt;1h sem resposta</p>
+            <p className="text-2xl font-bold text-amber-600">{unansweredCount}</p>
+            <p className="text-[10px] text-muted-foreground">sem resposta do contato</p>
           </CardContent>
         </Card>
       </div>
