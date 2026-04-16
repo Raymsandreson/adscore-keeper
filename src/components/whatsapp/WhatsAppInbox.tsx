@@ -262,7 +262,7 @@ export function WhatsAppInbox() {
         const isShared = shares.some(s => s.phone === msg.phone && s.instance_name === msg.instance_name);
         if (!isShared) continue;
 
-        const convKey = `${msg.phone}__${msg.instance_name || ''}`;
+        const convKey = `${msg.phone}__${(msg.instance_name || '').toLowerCase()}`;
         const existing = convMap.get(convKey);
         if (!existing) {
           convMap.set(convKey, {
@@ -308,9 +308,9 @@ export function WhatsAppInbox() {
     // Merge shared conversations that aren't already in the list — key by phone + instance
     // so a shared conv on instance B isn't dropped just because the user already has the
     // same phone on instance A.
-    const existingKeys = new Set(filtered.map(c => `${c.phone}__${c.instance_name || ''}`));
+    const existingKeys = new Set(filtered.map(c => `${c.phone}__${(c.instance_name || '').toLowerCase()}`));
     for (const sharedConv of sharedMessages) {
-      const key = `${sharedConv.phone}__${sharedConv.instance_name || ''}`;
+      const key = `${sharedConv.phone}__${(sharedConv.instance_name || '').toLowerCase()}`;
       if (!existingKeys.has(key)) {
         filtered.push(sharedConv);
         existingKeys.add(key);
@@ -989,7 +989,7 @@ export function WhatsAppInbox() {
             selectedPhones={bulkSelectedPhones}
             onToggleBulkPhone={handleToggleBulkPhone}
             onSelectAllFiltered={handleSelectAllFiltered}
-            privatePhones={new Set(privateConvs.map(p => `${p.phone}__${p.instance_name}`))}
+            privatePhones={new Set(privateConvs.map(p => `${p.phone}__${(p.instance_name || '').toLowerCase()}`))}
           />
         </div>
 
