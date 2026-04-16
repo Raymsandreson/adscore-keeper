@@ -101,14 +101,10 @@ export const AuthForm = () => {
     if (!forgotEmail.trim()) { toast.error('Informe seu email'); return; }
     setForgotLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('send-password-reset', {
-        body: {
-          email: forgotEmail.trim(),
-          redirectTo: `${window.location.origin}/reset-password`,
-        },
+      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
+        redirectTo: `${window.location.origin}/reset-password`,
       });
       if (error) throw error;
-      if (data?.error) throw new Error(data.error);
       toast.success('Email enviado!', { description: 'Verifique sua caixa de entrada (e spam) para redefinir a senha.' });
       setShowForgotPassword(false);
       setForgotEmail('');
