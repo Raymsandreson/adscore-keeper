@@ -1,9 +1,35 @@
 const EXT = 'https://kmedldlepwiityjsdahz.supabase.co/functions/v1/process-group-queue';
-const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: cors });
-  const body = await req.text();
-  const resp = await fetch(EXT, { method: req.method, headers: { 'Content-Type': 'application/json' }, body });
-  return new Response(await resp.text(), { status: resp.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+  const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.text();
+
+  // Forward with the EXTERNAL service role key so the proxied function has full DB access
+  const externalKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${externalKey}`,
+    'apikey': externalKey,
+  };
+
+  try {
+    const resp = await fetch(EXT, { method: req.method, headers, body });
+    const text = await resp.text();
+    return new Response(text, {
+      status: resp.status,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return new Response(JSON.stringify({ error: `Proxy failed: ${msg}` }), {
+      status: 502,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
 });
