@@ -1794,12 +1794,20 @@ ${scrapeData.content || ''}
 
             {/* Contacts Tab */}
             <TabsContent value="contacts" className="mt-0">
-              <LeadLinkedContacts leadId={lead.id} />
+              {activeTab === 'contacts' && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <LeadLinkedContacts leadId={lead.id} />
+                </Suspense>
+              )}
             </TabsContent>
 
             {/* Activities Tab */}
             <TabsContent value="activities" className="mt-0">
-              <LeadActivitiesTab leadId={lead.id} leadName={lead.lead_name || ''} />
+              {activeTab === 'activities' && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <LeadActivitiesTab leadId={lead.id} leadName={lead.lead_name || ''} />
+                </Suspense>
+              )}
             </TabsContent>
 
             {/* Accident Details Tab */}
