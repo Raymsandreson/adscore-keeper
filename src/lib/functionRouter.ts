@@ -25,6 +25,14 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
 };
 
 // ============================================================
+// FUNÇÕES COM DEPLOY DIRETO NO SUPABASE EXTERNO (bypass proxy)
+// ============================================================
+const EXTERNAL_SUPABASE_URL = 'https://kmedldlepwiityjsdahz.supabase.co';
+const EXTERNAL_FUNCTIONS: Record<string, boolean> = {
+  'extract-accident-data': true,
+};
+
+// ============================================================
 // CONFIGURAÇÃO DOS BACKENDS
 // ============================================================
 const CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
