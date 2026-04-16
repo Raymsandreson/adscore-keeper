@@ -4,10 +4,10 @@ import { sendLeadConversionEvent } from '@/utils/metaConversionTracking';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { generateLeadName } from '@/utils/generateLeadName';
-import { LeadLinkedContacts } from '@/components/leads/LeadLinkedContacts';
-import { LeadLinkedComments } from '@/components/leads/LeadLinkedComments';
-import { LeadNewsLinksManager } from '@/components/leads/LeadNewsLinksManager';
-import { EntityAIChat } from '@/components/activities/EntityAIChat';
+const LeadLinkedContacts = lazy(() => import('@/components/leads/LeadLinkedContacts').then(m => ({ default: m.LeadLinkedContacts })));
+const LeadLinkedComments = lazy(() => import('@/components/leads/LeadLinkedComments').then(m => ({ default: m.LeadLinkedComments })));
+const LeadNewsLinksManager = lazy(() => import('@/components/leads/LeadNewsLinksManager').then(m => ({ default: m.LeadNewsLinksManager })));
+const EntityAIChat = lazy(() => import('@/components/activities/EntityAIChat').then(m => ({ default: m.EntityAIChat })));
 import {
   Dialog,
   DialogContent,
