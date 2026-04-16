@@ -205,7 +205,7 @@ export function useDashboardMetrics() {
         groupsCreated: groupsDetails.length,
         casesCreated: kpiData.casos_criados ?? casesDetails.length,
         processesCreated: kpiData.processos_criados ?? processesDetails.length,
-        contactsCreated: kpiData.contatos_criados ?? contactsTotalCount,
+        contactsCreated: kpiData.contatos_criados ?? 0,
         signedDocsDetails,
         pendingDocsDetails,
         groupsDetails,
