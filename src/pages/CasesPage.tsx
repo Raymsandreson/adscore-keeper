@@ -391,7 +391,6 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       // Auto-create selected processes
       if (selectedProcesses.size > 0 && legalCase.lead_id) {
         const { data: { user } } = await supabase.auth.getUser();
-        const isCaso = !legalCase.case_number || legalCase.case_number.startsWith('CASO');
         for (const title of selectedProcesses) {
           try {
             const { data: savedProcess } = await supabase.from('lead_processes').insert({
@@ -404,8 +403,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               created_by: user?.id,
             } as any).select('id').single();
 
-            // Auto-create activity for CASO-type cases
-            if (isCaso && CASO_PROCESS_ASSIGNMENTS[title]) {
+            // Auto-create activity for all cases with predefined assignments
+            if (CASO_PROCESS_ASSIGNMENTS[title]) {
               const assignment = CASO_PROCESS_ASSIGNMENTS[title];
               try {
                 await supabase.from('lead_activities').insert({
@@ -430,7 +429,9 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
           }
         }
         toast.success(`${selectedProcesses.size} processo(s) criado(s)`);
-        if (isCaso) toast.success('Atividades atribuídas automaticamente');
+        if (Array.from(selectedProcesses).some(t => CASO_PROCESS_ASSIGNMENTS[t])) {
+          toast.success('Atividades atribuídas automaticamente');
+        }
       }
       toast.success('Caso atualizado');
       setShowEditDialog(false);

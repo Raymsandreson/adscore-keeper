@@ -138,7 +138,6 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   const autoCreateProcesses = async (caseId: string, caseLeadId: string, caseNumber?: string) => {
     if (selectedProcesses.size === 0) return;
     const { data: { user } } = await supabase.auth.getUser();
-    const isCaso = !caseNumber || caseNumber.startsWith('CASO');
     for (const title of selectedProcesses) {
       try {
         const { data: savedProcess } = await supabase.from('lead_processes').insert({
@@ -151,8 +150,8 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
           created_by: user?.id,
         } as any).select('id').single();
 
-        // Auto-create activity for CASO-type cases
-        if (isCaso && CASO_PROCESS_ASSIGNMENTS[title]) {
+        // Auto-create activity for all cases with predefined assignments
+        if (CASO_PROCESS_ASSIGNMENTS[title]) {
           const assignment = CASO_PROCESS_ASSIGNMENTS[title];
           try {
             await supabase.from('lead_activities').insert({
@@ -177,7 +176,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
       }
     }
     toast.success(`${selectedProcesses.size} processo(s) criado(s) automaticamente`);
-    if (isCaso && Array.from(selectedProcesses).some(t => CASO_PROCESS_ASSIGNMENTS[t])) {
+    if (Array.from(selectedProcesses).some(t => CASO_PROCESS_ASSIGNMENTS[t])) {
       toast.success('Atividades atribuídas automaticamente');
     }
   };

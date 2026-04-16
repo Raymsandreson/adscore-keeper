@@ -624,7 +624,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
 
       // Insert all processes
       if (allProcessesToCreate.length > 0 && result?.id) {
-        const isCaso = !result.case_number || result.case_number.startsWith('CASO');
+        // Create activities for all case types, not just CASO-prefixed
         let createdProcesses = 0;
         let failedProcesses = 0;
         for (const proc of allProcessesToCreate) {
@@ -644,8 +644,8 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
             if (processError) throw processError;
             createdProcesses += 1;
 
-            // Auto-create activity for CASO-type cases with predefined process assignments
-            if (isCaso && proc.assignedTo && savedProcess?.id) {
+            // Auto-create activity for all cases with predefined process assignments
+            if (proc.assignedTo && savedProcess?.id) {
               try {
                 await supabase.from('lead_activities').insert({
                   lead_id: finalLeadId || null,
@@ -676,7 +676,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         if (failedProcesses > 0) {
           toast.warning(`${failedProcesses} processo(s) não puderam ser criados automaticamente`);
         }
-        if (createdProcesses > 0 && isCaso && selectedPredefinedProcesses.size > 0) {
+        if (createdProcesses > 0 && selectedPredefinedProcesses.size > 0) {
           toast.success('Atividades atribuídas automaticamente');
         }
       }
