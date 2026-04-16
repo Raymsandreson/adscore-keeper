@@ -55,14 +55,16 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
     try {
       const [boardRes, historyRes, leadRes] = await Promise.all([
-        supabase.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
+        supabase.from('kanban_boards').select('stages, board_type').eq('id', boardId).maybeSingle(),
         supabase.from('lead_stage_history').select('to_stage').eq('lead_id', leadId).order('changed_at', { ascending: false }).limit(1),
-        supabase.from('leads').select('status, lead_status, became_client_date').eq('id', leadId).maybeSingle(),
+        supabase.from('leads').select('status, lead_status, became_client_date, board_id').eq('id', leadId).maybeSingle(),
       ]);
 
-      // Check if lead is closed (won)
+      // Lead is "closed" only when we're showing its sales funnel (not a process workflow)
       const leadData = leadRes.data as any;
-      const isClosed = leadData?.lead_status === 'closed' || !!leadData?.became_client_date;
+      const boardData = boardRes.data as any;
+      const isShowingSalesFunnel = boardData?.board_type !== 'workflow' && leadData?.board_id === boardId;
+      const isClosed = isShowingSalesFunnel && (leadData?.lead_status === 'closed' || !!leadData?.became_client_date);
       setIsLeadClosed(isClosed);
 
       let stageId: string | null = null;
@@ -94,8 +96,9 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
         await createLeadInstances(leadId, boardId, stageId);
       }
 
-      // Fetch all instances
-      const allInstances = await fetchLeadInstances(leadId);
+      // Fetch all instances and filter by current board (process workflow vs sales funnel)
+      const allInstancesRaw = await fetchLeadInstances(leadId);
+      const allInstances = allInstancesRaw.filter(i => i.board_id === boardId);
 
       if (allInstances.length > 0) {
         const templateIds = [...new Set(allInstances.map(i => i.checklist_template_id))];
