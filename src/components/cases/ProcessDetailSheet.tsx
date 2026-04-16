@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
@@ -178,6 +179,20 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [documents, setDocuments] = useState<ProcessDocument[]>([]);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [fetchingEscavadorDocs, setFetchingEscavadorDocs] = useState(false);
+  const [workflowBoards, setWorkflowBoards] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    (supabase
+      .from('kanban_boards' as any)
+      .select('id, name, board_type, is_active')
+      .eq('board_type', 'workflow')
+      .eq('is_active', true)
+      .order('name') as any)
+      .then(({ data }: { data: any[] | null }) => {
+        setWorkflowBoards((data || []).map((b: any) => ({ id: b.id, name: b.name })));
+      });
+  }, [open]);
 
   useEffect(() => {
     if (process) {
@@ -722,7 +737,37 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 <EditableSwitch label="Segredo de Justiça" checked={!!form.segredo_justica} onChange={v => set('segredo_justica', v)} />
                 <EditableSwitch label="Arquivado" checked={!!form.arquivado} onChange={v => set('arquivado', v)} />
                 <EditableSwitch label="Processo Físico" checked={!!form.fisico} onChange={v => set('fisico', v)} />
-                <EditableField label="Fluxo de Trabalho" value={form.workflow_name || ''} onChange={v => set('workflow_name', v)} />
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Fluxo de Trabalho</Label>
+                  <Select
+                    value={form.workflow_id || '__none__'}
+                    onValueChange={(val) => {
+                      if (val === '__none__') {
+                        set('workflow_id', null);
+                        set('workflow_name', null);
+                        set('workflow_stage_id', null);
+                      } else {
+                        const wf = workflowBoards.find(w => w.id === val);
+                        set('workflow_id', val);
+                        set('workflow_name', wf?.name || null);
+                        set('workflow_stage_id', null);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Selecione um fluxo de trabalho" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[9999]">
+                      <SelectItem value="__none__">Nenhum</SelectItem>
+                      {workflowBoards.map(wf => (
+                        <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground">
+                    O fluxo selecionado será aplicado às atividades vinculadas a este processo.
+                  </p>
+                </div>
               </>
             )}
 
