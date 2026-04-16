@@ -2243,11 +2243,15 @@ ${scrapeData.content || ''}
     </Wrapper>
 
       {/* Contact Detail Sheet for viewing parties */}
-      <ContactDetailSheet
-        contact={viewingContact}
-        open={contactSheetOpen}
-        onOpenChange={(v) => { setContactSheetOpen(v); if (!v) setViewingContact(null); }}
-      />
+      {contactSheetOpen && (
+        <Suspense fallback={null}>
+          <ContactDetailSheet
+            contact={viewingContact}
+            open={contactSheetOpen}
+            onOpenChange={(v) => { setContactSheetOpen(v); if (!v) setViewingContact(null); }}
+          />
+        </Suspense>
+      )}
 
       {/* Group Contact Sync Dialog */}
       {syncGroupData && currentLead && (
