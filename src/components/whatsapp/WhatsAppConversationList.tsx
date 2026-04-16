@@ -596,10 +596,10 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     const board = info?.board_id ? boards.find(b => b.id === info.board_id) : null;
     const stage = board?.stages.find(s => s.id === info?.current_stage);
     const isSelected = selectedPhone === conv.phone;
-    const isLocked = privatePhones?.has(`${conv.phone}__${conv.instance_name}`) || false;
+    const isLocked = privatePhones?.has(`${conv.phone}__${(conv.instance_name || '').toLowerCase()}`) || false;
 
     return (
-      <div key={`${conv.phone}__${conv.instance_name || ''}`} className="flex items-center">
+      <div key={`${conv.phone}__${(conv.instance_name || '').toLowerCase()}`} className="flex items-center">
         {bulkMode && (
           <div className="pl-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
             <Checkbox
