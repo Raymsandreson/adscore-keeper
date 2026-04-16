@@ -1,13 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { safeSelectValue } from '@/utils/selectValue';
 import { sendLeadConversionEvent } from '@/utils/metaConversionTracking';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { generateLeadName } from '@/utils/generateLeadName';
-import { LeadLinkedContacts } from '@/components/leads/LeadLinkedContacts';
-import { LeadLinkedComments } from '@/components/leads/LeadLinkedComments';
-import { LeadNewsLinksManager } from '@/components/leads/LeadNewsLinksManager';
-import { EntityAIChat } from '@/components/activities/EntityAIChat';
+const LeadLinkedContacts = lazy(() => import('@/components/leads/LeadLinkedContacts').then(m => ({ default: m.LeadLinkedContacts })));
+const LeadLinkedComments = lazy(() => import('@/components/leads/LeadLinkedComments').then(m => ({ default: m.LeadLinkedComments })));
+const LeadNewsLinksManager = lazy(() => import('@/components/leads/LeadNewsLinksManager').then(m => ({ default: m.LeadNewsLinksManager })));
+const EntityAIChat = lazy(() => import('@/components/activities/EntityAIChat').then(m => ({ default: m.EntityAIChat })));
 import {
   Dialog,
   DialogContent,
@@ -43,11 +43,13 @@ import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useProfileNames } from '@/hooks/useProfileNames';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
-import { CustomFieldsConfigPanel } from '@/components/leads/CustomFieldsConfigPanel';
-import { LeadStageHistoryPanel } from '@/components/kanban/LeadStageHistoryPanel';
-import { LeadFunnelOverview } from '@/components/kanban/LeadFunnelOverview';
-import { LeadActivitiesTab } from '@/components/leads/LeadActivitiesTab';
-import { AccidentDataExtractor, ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
+const CustomFieldsConfigPanel = lazy(() => import('@/components/leads/CustomFieldsConfigPanel').then(m => ({ default: m.CustomFieldsConfigPanel })));
+const LeadStageHistoryPanel = lazy(() => import('@/components/kanban/LeadStageHistoryPanel').then(m => ({ default: m.LeadStageHistoryPanel })));
+
+const LeadFunnelOverview = lazy(() => import('@/components/kanban/LeadFunnelOverview').then(m => ({ default: m.LeadFunnelOverview })));
+const LeadActivitiesTab = lazy(() => import('@/components/leads/LeadActivitiesTab').then(m => ({ default: m.LeadActivitiesTab })));
+const AccidentDataExtractor = lazy(() => import('@/components/leads/AccidentDataExtractor').then(m => ({ default: m.AccidentDataExtractor })));
+import { ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { 
   User, 
@@ -87,10 +89,10 @@ import {
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
-import { TeamChatPanel } from '@/components/chat/TeamChatPanel';
-import { LegalCasesTab } from '@/components/leads/LegalCasesTab';
-import { LeadFinancialsTab } from '@/components/leads/LeadFinancialsTab';
-import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+const TeamChatPanel = lazy(() => import('@/components/chat/TeamChatPanel').then(m => ({ default: m.TeamChatPanel })));
+const LegalCasesTab = lazy(() => import('@/components/leads/LegalCasesTab').then(m => ({ default: m.LegalCasesTab })));
+const LeadFinancialsTab = lazy(() => import('@/components/leads/LeadFinancialsTab').then(m => ({ default: m.LeadFinancialsTab })));
+const ContactDetailSheet = lazy(() => import('@/components/contacts/ContactDetailSheet').then(m => ({ default: m.ContactDetailSheet })));
 import { Contact as ContactType } from '@/hooks/useContacts';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -981,26 +983,30 @@ ${scrapeData.content || ''}
         </Button>
 
         {/* AI Extraction Dialog */}
-        <AccidentDataExtractor
-          open={showExtractor}
-          onOpenChange={setShowExtractor}
-          onDataExtracted={handleExtractedData}
-          currentData={{
-            victim_name: victimName || null,
-            victim_age: victimAge ? parseInt(victimAge) : null,
-            accident_date: accidentDate || null,
-            accident_address: accidentAddress || null,
-            damage_description: damageDescription || null,
-            contractor_company: contractorCompany || null,
-            main_company: mainCompany || null,
-            sector: sector || null,
-            case_type: caseType || null,
-            liability_type: liabilityType || null,
-            legal_viability: legalViability || null,
-            visit_city: visitCity || null,
-            visit_state: visitState || null,
-          }}
-        />
+        {showExtractor && (
+          <Suspense fallback={null}>
+            <AccidentDataExtractor
+              open={showExtractor}
+              onOpenChange={setShowExtractor}
+              onDataExtracted={handleExtractedData}
+              currentData={{
+                victim_name: victimName || null,
+                victim_age: victimAge ? parseInt(victimAge) : null,
+                accident_date: accidentDate || null,
+                accident_address: accidentAddress || null,
+                damage_description: damageDescription || null,
+                contractor_company: contractorCompany || null,
+                main_company: mainCompany || null,
+                sector: sector || null,
+                case_type: caseType || null,
+                liability_type: liabilityType || null,
+                legal_viability: legalViability || null,
+                visit_city: visitCity || null,
+                visit_state: visitState || null,
+              }}
+            />
+          </Suspense>
+        )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col">
           <div className="w-full flex-shrink-0">
@@ -1792,12 +1798,20 @@ ${scrapeData.content || ''}
 
             {/* Contacts Tab */}
             <TabsContent value="contacts" className="mt-0">
-              <LeadLinkedContacts leadId={lead.id} />
+              {activeTab === 'contacts' && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <LeadLinkedContacts leadId={lead.id} />
+                </Suspense>
+              )}
             </TabsContent>
 
             {/* Activities Tab */}
             <TabsContent value="activities" className="mt-0">
-              <LeadActivitiesTab leadId={lead.id} leadName={lead.lead_name || ''} />
+              {activeTab === 'activities' && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <LeadActivitiesTab leadId={lead.id} leadName={lead.lead_name || ''} />
+                </Suspense>
+              )}
             </TabsContent>
 
             {/* Accident Details Tab */}
@@ -2120,75 +2134,99 @@ ${scrapeData.content || ''}
 
             {/* Funnel/Workflow Tab */}
             <TabsContent value="checklist" className="mt-0">
-              {lead && (
-                <LeadFunnelOverview
-                  leadId={lead.id}
-                  boardId={lead.board_id || null}
-                  currentStageId={lead.status || null}
-                  boards={boards}
-                  isClosed={leadOutcome === 'closed'}
-                />
+              {activeTab === 'checklist' && lead && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <LeadFunnelOverview
+                    leadId={lead.id}
+                    boardId={lead.board_id || null}
+                    currentStageId={lead.status || null}
+                    boards={boards}
+                    isClosed={leadOutcome === 'closed'}
+                  />
+                </Suspense>
               )}
             </TabsContent>
 
             {/* Casos Tab */}
             {leadOutcome === 'closed' && (
               <TabsContent value="casos" className="mt-0">
-                <LegalCasesTab leadId={lead.id} boards={boards} onViewContact={handleViewContact} />
+                {activeTab === 'casos' && (
+                  <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                    <LegalCasesTab leadId={lead.id} boards={boards} onViewContact={handleViewContact} />
+                  </Suspense>
+                )}
               </TabsContent>
             )}
 
             {/* Financeiro Tab */}
             <TabsContent value="financeiro" className="mt-0">
-              <LeadFinancialsTab leadId={lead.id} />
+              {activeTab === 'financeiro' && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <LeadFinancialsTab leadId={lead.id} />
+                </Suspense>
+              )}
             </TabsContent>
 
             <TabsContent value="history" className="mt-0 space-y-6">
-              <LeadStageHistoryPanel leadId={lead.id} boards={boards} />
-              
-              {/* Linked Comments Section */}
-              <div className="pt-4 border-t">
-                <LeadLinkedComments leadId={lead.id} instagramUsername={instagramUsername} />
-              </div>
+              {activeTab === 'history' && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <LeadStageHistoryPanel leadId={lead.id} boards={boards} />
+                  <div className="pt-4 border-t">
+                    <LeadLinkedComments leadId={lead.id} instagramUsername={instagramUsername} />
+                  </div>
+                </Suspense>
+              )}
             </TabsContent>
 
             {/* Configurações Tab */}
             <TabsContent value="config" className="mt-0">
-              <CustomFieldsConfigPanel
-                leadId={lead.id}
-                currentBoardId={lead.board_id || selectedBoardId || null}
-                boards={boards}
-                adAccountId={adAccountId}
-              />
+              {activeTab === 'config' && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <CustomFieldsConfigPanel
+                    leadId={lead.id}
+                    currentBoardId={lead.board_id || selectedBoardId || null}
+                    boards={boards}
+                    adAccountId={adAccountId}
+                  />
+                </Suspense>
+              )}
             </TabsContent>
 
             {/* Chat IA Tab */}
             <TabsContent value="ai_chat" className="mt-0" style={{ height: 'calc(90vh - 320px)', minHeight: '300px' }}>
-              <EntityAIChat
-                leadId={lead.id}
-                entityType="lead"
-                onApplyLeadFields={(fields) => {
-                  if (fields.victim_name) setVictimName(fields.victim_name);
-                  if (fields.main_company) setMainCompany(fields.main_company);
-                  if (fields.contractor_company) setContractorCompany(fields.contractor_company);
-                  if (fields.case_type) setCaseType(fields.case_type);
-                  if (fields.damage_description) setDamageDescription(fields.damage_description);
-                  if (fields.visit_city) setVisitCity(fields.visit_city);
-                  if (fields.visit_state) setVisitState(fields.visit_state);
-                  if (fields.sector) setSector(fields.sector);
-                  if (fields.liability_type) setLiabilityType(fields.liability_type);
-                  if (fields.notes) setNotes(prev => prev ? `${prev}\n\n${fields.notes}` : fields.notes);
-                }}
-              />
+              {activeTab === 'ai_chat' && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <EntityAIChat
+                    leadId={lead.id}
+                    entityType="lead"
+                    onApplyLeadFields={(fields) => {
+                      if (fields.victim_name) setVictimName(fields.victim_name);
+                      if (fields.main_company) setMainCompany(fields.main_company);
+                      if (fields.contractor_company) setContractorCompany(fields.contractor_company);
+                      if (fields.case_type) setCaseType(fields.case_type);
+                      if (fields.damage_description) setDamageDescription(fields.damage_description);
+                      if (fields.visit_city) setVisitCity(fields.visit_city);
+                      if (fields.visit_state) setVisitState(fields.visit_state);
+                      if (fields.sector) setSector(fields.sector);
+                      if (fields.liability_type) setLiabilityType(fields.liability_type);
+                      if (fields.notes) setNotes(prev => prev ? `${prev}\n\n${fields.notes}` : fields.notes);
+                    }}
+                  />
+                </Suspense>
+              )}
             </TabsContent>
 
             {/* Chat Equipe Tab */}
             <TabsContent value="team_chat" className="mt-0" style={{ height: 'calc(90vh - 320px)', minHeight: '300px' }}>
-              <TeamChatPanel
-                entityType="lead"
-                entityId={lead.id}
-                entityName={lead.lead_name || 'Lead'}
-              />
+              {activeTab === 'team_chat' && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <TeamChatPanel
+                    entityType="lead"
+                    entityId={lead.id}
+                    entityName={lead.lead_name || 'Lead'}
+                  />
+                </Suspense>
+              )}
             </TabsContent>
           </div>
         </Tabs>
@@ -2205,11 +2243,15 @@ ${scrapeData.content || ''}
     </Wrapper>
 
       {/* Contact Detail Sheet for viewing parties */}
-      <ContactDetailSheet
-        contact={viewingContact}
-        open={contactSheetOpen}
-        onOpenChange={(v) => { setContactSheetOpen(v); if (!v) setViewingContact(null); }}
-      />
+      {contactSheetOpen && (
+        <Suspense fallback={null}>
+          <ContactDetailSheet
+            contact={viewingContact}
+            open={contactSheetOpen}
+            onOpenChange={(v) => { setContactSheetOpen(v); if (!v) setViewingContact(null); }}
+          />
+        </Suspense>
+      )}
 
       {/* Group Contact Sync Dialog */}
       {syncGroupData && currentLead && (
