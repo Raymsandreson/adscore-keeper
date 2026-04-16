@@ -254,16 +254,18 @@ export function WhatsAppInbox() {
 
       if (!msgs) { setSharedMessages([]); return; }
 
-      // Build conversations from messages
+      // Build conversations from messages — keyed by phone + instance_name to avoid
+      // collisions when the same phone exists across multiple WhatsApp instances.
       const convMap = new Map<string, WhatsAppConversation>();
       for (const msg of msgs) {
         // Only include messages from shared instances
         const isShared = shares.some(s => s.phone === msg.phone && s.instance_name === msg.instance_name);
         if (!isShared) continue;
 
-        const existing = convMap.get(msg.phone);
+        const convKey = `${msg.phone}__${msg.instance_name || ''}`;
+        const existing = convMap.get(convKey);
         if (!existing) {
-          convMap.set(msg.phone, {
+          convMap.set(convKey, {
             phone: msg.phone,
             contact_name: msg.contact_name,
             contact_id: msg.contact_id,
@@ -280,6 +282,10 @@ export function WhatsAppInbox() {
           if (!existing.contact_name && msg.contact_name) existing.contact_name = msg.contact_name;
           if (!existing.contact_id && msg.contact_id) existing.contact_id = msg.contact_id;
           if (!existing.lead_id && msg.lead_id) existing.lead_id = msg.lead_id;
+          if (new Date(msg.created_at).getTime() > new Date(existing.last_message_at).getTime()) {
+            existing.last_message = msg.message_text;
+            existing.last_message_at = msg.created_at;
+          }
         }
       }
       setSharedMessages(Array.from(convMap.values()));
@@ -299,16 +305,21 @@ export function WhatsAppInbox() {
       return false;
     });
 
-    // Merge shared conversations that aren't already in the list
-    const existingPhones = new Set(filtered.map(c => c.phone));
+    // Merge shared conversations that aren't already in the list — key by phone + instance
+    // so a shared conv on instance B isn't dropped just because the user already has the
+    // same phone on instance A.
+    const existingKeys = new Set(filtered.map(c => `${c.phone}__${c.instance_name || ''}`));
     for (const sharedConv of sharedMessages) {
-      if (!existingPhones.has(sharedConv.phone)) {
+      const key = `${sharedConv.phone}__${sharedConv.instance_name || ''}`;
+      if (!existingKeys.has(key)) {
         filtered.push(sharedConv);
-        existingPhones.add(sharedConv.phone);
+        existingKeys.add(key);
       }
     }
 
-    return filtered;
+    return filtered.sort(
+      (a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
+    );
   }, [conversations, privateConvs, sharedMessages, user, canViewPrivate]);
 
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);

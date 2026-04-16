@@ -946,29 +946,52 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         }
       });
 
-    let externalChannel: ReturnType<typeof externalSupabase.channel> | null = null;
-    const setupExternalChannel = async () => {
+    // One external channel per allowed instance, with server-side
+    // filter `instance_name=eq.<name>`. This guarantees the Realtime backend
+    // only broadcasts events for instances the user actually owns — a message
+    // arriving on instance B for a phone the user also has on instance A
+    // never reaches this client and can't accidentally disturb the list.
+    const externalChannels: Array<ReturnType<typeof externalSupabase.channel>> = [];
+
+    const targetInstanceNames = (() => {
+      if (selectedInstanceId && selectedInstanceId !== 'all') {
+        const inst = instances.find(i => i.id === selectedInstanceId);
+        return inst?.instance_name ? [inst.instance_name] : [];
+      }
+      return instances.map(i => i.instance_name).filter(Boolean) as string[];
+    })();
+
+    const setupExternalChannels = async () => {
       try {
         await ensureExternalSession();
       } catch {
         // continues without external realtime; Cloud subscription still works
       }
       if (disposed) return;
-      const extChannelName = `whatsapp-realtime-external-${Date.now()}`;
-      externalChannel = externalSupabase
-        .channel(extChannelName)
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
-          (payload) => handleIncomingMessage(payload.new as WhatsAppMessage)
-        )
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            setRealtimeHealthy(true);
-          }
-        });
+      for (const instanceName of targetInstanceNames) {
+        const safeName = instanceName.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const extChannelName = `whatsapp-realtime-external-${safeName}-${Date.now()}`;
+        const ch = externalSupabase
+          .channel(extChannelName)
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'whatsapp_messages',
+              filter: `instance_name=eq.${instanceName}`,
+            },
+            (payload) => handleIncomingMessage(payload.new as WhatsAppMessage)
+          )
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+              setRealtimeHealthy(true);
+            }
+          });
+        externalChannels.push(ch);
+      }
     };
-    setupExternalChannel();
+    setupExternalChannels();
 
     return () => {
       disposed = true;
@@ -977,7 +1000,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         realtimeRetryTimerRef.current = null;
       }
       supabase.removeChannel(channel);
-      if (externalChannel) externalSupabase.removeChannel(externalChannel);
+      for (const ch of externalChannels) {
+        externalSupabase.removeChannel(ch);
+      }
     };
   }, [hasLoaded, selectedInstanceId, instances, fetchMessages, realtimeRetryNonce]);
 
