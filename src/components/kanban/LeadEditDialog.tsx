@@ -2130,75 +2130,99 @@ ${scrapeData.content || ''}
 
             {/* Funnel/Workflow Tab */}
             <TabsContent value="checklist" className="mt-0">
-              {lead && (
-                <LeadFunnelOverview
-                  leadId={lead.id}
-                  boardId={lead.board_id || null}
-                  currentStageId={lead.status || null}
-                  boards={boards}
-                  isClosed={leadOutcome === 'closed'}
-                />
+              {activeTab === 'checklist' && lead && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <LeadFunnelOverview
+                    leadId={lead.id}
+                    boardId={lead.board_id || null}
+                    currentStageId={lead.status || null}
+                    boards={boards}
+                    isClosed={leadOutcome === 'closed'}
+                  />
+                </Suspense>
               )}
             </TabsContent>
 
             {/* Casos Tab */}
             {leadOutcome === 'closed' && (
               <TabsContent value="casos" className="mt-0">
-                <LegalCasesTab leadId={lead.id} boards={boards} onViewContact={handleViewContact} />
+                {activeTab === 'casos' && (
+                  <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                    <LegalCasesTab leadId={lead.id} boards={boards} onViewContact={handleViewContact} />
+                  </Suspense>
+                )}
               </TabsContent>
             )}
 
             {/* Financeiro Tab */}
             <TabsContent value="financeiro" className="mt-0">
-              <LeadFinancialsTab leadId={lead.id} />
+              {activeTab === 'financeiro' && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <LeadFinancialsTab leadId={lead.id} />
+                </Suspense>
+              )}
             </TabsContent>
 
             <TabsContent value="history" className="mt-0 space-y-6">
-              <LeadStageHistoryPanel leadId={lead.id} boards={boards} />
-              
-              {/* Linked Comments Section */}
-              <div className="pt-4 border-t">
-                <LeadLinkedComments leadId={lead.id} instagramUsername={instagramUsername} />
-              </div>
+              {activeTab === 'history' && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <LeadStageHistoryPanel leadId={lead.id} boards={boards} />
+                  <div className="pt-4 border-t">
+                    <LeadLinkedComments leadId={lead.id} instagramUsername={instagramUsername} />
+                  </div>
+                </Suspense>
+              )}
             </TabsContent>
 
             {/* Configurações Tab */}
             <TabsContent value="config" className="mt-0">
-              <CustomFieldsConfigPanel
-                leadId={lead.id}
-                currentBoardId={lead.board_id || selectedBoardId || null}
-                boards={boards}
-                adAccountId={adAccountId}
-              />
+              {activeTab === 'config' && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <CustomFieldsConfigPanel
+                    leadId={lead.id}
+                    currentBoardId={lead.board_id || selectedBoardId || null}
+                    boards={boards}
+                    adAccountId={adAccountId}
+                  />
+                </Suspense>
+              )}
             </TabsContent>
 
             {/* Chat IA Tab */}
             <TabsContent value="ai_chat" className="mt-0" style={{ height: 'calc(90vh - 320px)', minHeight: '300px' }}>
-              <EntityAIChat
-                leadId={lead.id}
-                entityType="lead"
-                onApplyLeadFields={(fields) => {
-                  if (fields.victim_name) setVictimName(fields.victim_name);
-                  if (fields.main_company) setMainCompany(fields.main_company);
-                  if (fields.contractor_company) setContractorCompany(fields.contractor_company);
-                  if (fields.case_type) setCaseType(fields.case_type);
-                  if (fields.damage_description) setDamageDescription(fields.damage_description);
-                  if (fields.visit_city) setVisitCity(fields.visit_city);
-                  if (fields.visit_state) setVisitState(fields.visit_state);
-                  if (fields.sector) setSector(fields.sector);
-                  if (fields.liability_type) setLiabilityType(fields.liability_type);
-                  if (fields.notes) setNotes(prev => prev ? `${prev}\n\n${fields.notes}` : fields.notes);
-                }}
-              />
+              {activeTab === 'ai_chat' && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <EntityAIChat
+                    leadId={lead.id}
+                    entityType="lead"
+                    onApplyLeadFields={(fields) => {
+                      if (fields.victim_name) setVictimName(fields.victim_name);
+                      if (fields.main_company) setMainCompany(fields.main_company);
+                      if (fields.contractor_company) setContractorCompany(fields.contractor_company);
+                      if (fields.case_type) setCaseType(fields.case_type);
+                      if (fields.damage_description) setDamageDescription(fields.damage_description);
+                      if (fields.visit_city) setVisitCity(fields.visit_city);
+                      if (fields.visit_state) setVisitState(fields.visit_state);
+                      if (fields.sector) setSector(fields.sector);
+                      if (fields.liability_type) setLiabilityType(fields.liability_type);
+                      if (fields.notes) setNotes(prev => prev ? `${prev}\n\n${fields.notes}` : fields.notes);
+                    }}
+                  />
+                </Suspense>
+              )}
             </TabsContent>
 
             {/* Chat Equipe Tab */}
             <TabsContent value="team_chat" className="mt-0" style={{ height: 'calc(90vh - 320px)', minHeight: '300px' }}>
-              <TeamChatPanel
-                entityType="lead"
-                entityId={lead.id}
-                entityName={lead.lead_name || 'Lead'}
-              />
+              {activeTab === 'team_chat' && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <TeamChatPanel
+                    entityType="lead"
+                    entityId={lead.id}
+                    entityName={lead.lead_name || 'Lead'}
+                  />
+                </Suspense>
+              )}
             </TabsContent>
           </div>
         </Tabs>
