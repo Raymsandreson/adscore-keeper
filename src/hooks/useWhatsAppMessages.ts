@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
@@ -859,79 +860,72 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       }, 2500);
     };
 
+    const handleIncomingMessage = (newMsg: WhatsAppMessage) => {
+      const allowedNames = new Set(instances.map(i => i.instance_name?.trim().toLowerCase()));
+      const incomingName = (newMsg.instance_name || '').trim().toLowerCase();
+      if (allowedNames.size > 0 && !allowedNames.has(incomingName)) return;
+
+      if (selectedInstanceId && selectedInstanceId !== 'all') {
+        const inst = instances.find(i => i.id === selectedInstanceId);
+        const selectedName = inst?.instance_name?.trim().toLowerCase();
+        if (selectedName && incomingName !== selectedName) return;
+      }
+
+      setMessages(prev => {
+        if (prev.some(m => m.id === newMsg.id)) return prev;
+        return [newMsg, ...prev];
+      });
+      setConversations(prev => {
+        const targetConversationKey = getConversationKey(newMsg.phone, newMsg.instance_name);
+        const existing = prev.find(c => getConversationKey(c.phone, c.instance_name) === targetConversationKey);
+        if (existing) {
+          const msgId = newMsg.external_message_id?.split(':').pop();
+          const isDuplicate = msgId && existing.messages.some(m => {
+            const existingMsgId = m.external_message_id?.split(':').pop();
+            return existingMsgId === msgId && m.created_at === newMsg.created_at;
+          });
+          if (isDuplicate) return prev;
+          if (existing.messages.some(m => m.id === newMsg.id)) return prev;
+
+          if (activeConversationKeyRef.current === targetConversationKey && fullConvCacheRef.current[targetConversationKey]) {
+            fullConvCacheRef.current[targetConversationKey] = [...fullConvCacheRef.current[targetConversationKey], newMsg];
+          }
+
+          return prev.map(c => {
+            if (getConversationKey(c.phone, c.instance_name) !== targetConversationKey) return c;
+            return {
+              ...c,
+              last_message: newMsg.message_text || c.last_message,
+              last_message_at: newMsg.created_at,
+              unread_count: !newMsg.read_at && newMsg.direction === 'inbound' ? c.unread_count + 1 : c.unread_count,
+              messages: [...c.messages, newMsg],
+              contact_name: newMsg.contact_name || c.contact_name,
+            };
+          }).sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
+        } else {
+          const newConv: WhatsAppConversation = {
+            phone: newMsg.phone,
+            contact_name: newMsg.contact_name,
+            contact_id: newMsg.contact_id,
+            lead_id: newMsg.lead_id,
+            last_message: newMsg.message_text,
+            last_message_at: newMsg.created_at,
+            unread_count: !newMsg.read_at && newMsg.direction === 'inbound' ? 1 : 0,
+            messages: [newMsg],
+            instance_name: newMsg.instance_name,
+          };
+          return [newConv, ...prev];
+        }
+      });
+    };
+
     const channelName = `whatsapp-realtime-${Date.now()}`;
     const channel = supabase
       .channel(channelName)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
-        (payload) => {
-          const newMsg = payload.new as WhatsAppMessage;
-
-          // Skip messages from instances the user doesn't have access to
-          const allowedNames = new Set(instances.map(i => i.instance_name?.trim().toLowerCase()));
-          const incomingName = (newMsg.instance_name || '').trim().toLowerCase();
-          if (allowedNames.size > 0 && !allowedNames.has(incomingName)) return;
-
-          // If filtering by specific instance, skip irrelevant messages
-          if (selectedInstanceId && selectedInstanceId !== 'all') {
-            const inst = instances.find(i => i.id === selectedInstanceId);
-            const selectedName = inst?.instance_name?.trim().toLowerCase();
-            if (selectedName && incomingName !== selectedName) return;
-          }
-
-          setMessages(prev => {
-            // Avoid duplicates from optimistic updates
-            if (prev.some(m => m.id === newMsg.id)) return prev;
-            return [newMsg, ...prev];
-          });
-          setConversations(prev => {
-            const targetConversationKey = getConversationKey(newMsg.phone, newMsg.instance_name);
-            const existing = prev.find(c => getConversationKey(c.phone, c.instance_name) === targetConversationKey);
-            if (existing) {
-              // Deduplicate
-              const msgId = newMsg.external_message_id?.split(':').pop();
-              const isDuplicate = msgId && existing.messages.some(m => {
-                const existingMsgId = m.external_message_id?.split(':').pop();
-                return existingMsgId === msgId && m.created_at === newMsg.created_at;
-              });
-              if (isDuplicate) return prev;
-              // Also check by id
-              if (existing.messages.some(m => m.id === newMsg.id)) return prev;
-
-              // Update cache if this is the active conversation
-              if (activeConversationKeyRef.current === targetConversationKey && fullConvCacheRef.current[targetConversationKey]) {
-                fullConvCacheRef.current[targetConversationKey] = [...fullConvCacheRef.current[targetConversationKey], newMsg];
-              }
-
-              return prev.map(c => {
-                if (getConversationKey(c.phone, c.instance_name) !== targetConversationKey) return c;
-                return {
-                  ...c,
-                  last_message: newMsg.message_text || c.last_message,
-                  last_message_at: newMsg.created_at,
-                  unread_count: !newMsg.read_at && newMsg.direction === 'inbound' ? c.unread_count + 1 : c.unread_count,
-                  messages: [...c.messages, newMsg],
-                  contact_name: newMsg.contact_name || c.contact_name,
-                };
-              }).sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
-            } else {
-              // New conversation
-              const newConv: WhatsAppConversation = {
-                phone: newMsg.phone,
-                contact_name: newMsg.contact_name,
-                contact_id: newMsg.contact_id,
-                lead_id: newMsg.lead_id,
-                last_message: newMsg.message_text,
-                last_message_at: newMsg.created_at,
-                unread_count: !newMsg.read_at && newMsg.direction === 'inbound' ? 1 : 0,
-                messages: [newMsg],
-                instance_name: newMsg.instance_name,
-              };
-              return [newConv, ...prev];
-            }
-          });
-        }
+        (payload) => handleIncomingMessage(payload.new as WhatsAppMessage)
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -941,7 +935,6 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           setRealtimeHealthy(false);
-          // Throttle: only refetch if last error-driven fetch was > 30s ago
           const now = Date.now();
           const lastErrorFetch = (window as any).__lastRealtimeErrorFetch || 0;
           if (now - lastErrorFetch > 30000) {
@@ -953,6 +946,30 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         }
       });
 
+    let externalChannel: ReturnType<typeof externalSupabase.channel> | null = null;
+    const setupExternalChannel = async () => {
+      try {
+        await ensureExternalSession();
+      } catch {
+        // continues without external realtime; Cloud subscription still works
+      }
+      if (disposed) return;
+      const extChannelName = `whatsapp-realtime-external-${Date.now()}`;
+      externalChannel = externalSupabase
+        .channel(extChannelName)
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
+          (payload) => handleIncomingMessage(payload.new as WhatsAppMessage)
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            setRealtimeHealthy(true);
+          }
+        });
+    };
+    setupExternalChannel();
+
     return () => {
       disposed = true;
       if (realtimeRetryTimerRef.current !== null) {
@@ -960,6 +977,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         realtimeRetryTimerRef.current = null;
       }
       supabase.removeChannel(channel);
+      if (externalChannel) externalSupabase.removeChannel(externalChannel);
     };
   }, [hasLoaded, selectedInstanceId, instances, fetchMessages, realtimeRetryNonce]);
 
