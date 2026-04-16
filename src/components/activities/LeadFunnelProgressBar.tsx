@@ -94,8 +94,9 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
         await createLeadInstances(leadId, boardId, stageId);
       }
 
-      // Fetch all instances
-      const allInstances = await fetchLeadInstances(leadId);
+      // Fetch all instances and filter by current board (process workflow vs sales funnel)
+      const allInstancesRaw = await fetchLeadInstances(leadId);
+      const allInstances = allInstancesRaw.filter(i => i.board_id === boardId);
 
       if (allInstances.length > 0) {
         const templateIds = [...new Set(allInstances.map(i => i.checklist_template_id))];
