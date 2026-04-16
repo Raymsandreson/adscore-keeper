@@ -58,6 +58,9 @@ interface ConvShare {
   shared_by: string;
 }
 
+const getConversationKey = (phone: string, instanceName?: string | null) =>
+  `${(phone || '').trim()}__${(instanceName || '').trim().toLowerCase()}`;
+
 // Force clean rebuild
 export function WhatsAppInbox() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
@@ -124,7 +127,7 @@ export function WhatsAppInbox() {
         .limit(1)
         .maybeSingle();
 
-      const targetInstanceName = latestMessage?.instance_name || null;
+        const targetInstanceName = latestMessage?.instance_name || null;
       if (targetInstanceName) {
         const targetInstance = instances.find((instance) => instance.instance_name === targetInstanceName);
         if (targetInstance && selectedInstanceId !== targetInstance.id) {
@@ -132,7 +135,7 @@ export function WhatsAppInbox() {
         } else if (!targetInstance && selectedInstanceId !== 'all') {
           setSelectedInstanceId('all');
         }
-        setSelectedInstance(targetInstanceName);
+          setSelectedInstance(targetInstance?.instance_name || targetInstanceName);
       } else {
         if (selectedInstanceId !== 'all') {
           setSelectedInstanceId('all');
@@ -259,10 +262,12 @@ export function WhatsAppInbox() {
       const convMap = new Map<string, WhatsAppConversation>();
       for (const msg of msgs) {
         // Only include messages from shared instances
-        const isShared = shares.some(s => s.phone === msg.phone && s.instance_name === msg.instance_name);
+        const isShared = shares.some(
+          s => getConversationKey(s.phone, s.instance_name) === getConversationKey(msg.phone, msg.instance_name)
+        );
         if (!isShared) continue;
 
-        const convKey = `${msg.phone}__${(msg.instance_name || '').toLowerCase()}`;
+        const convKey = getConversationKey(msg.phone, msg.instance_name);
         const existing = convMap.get(convKey);
         if (!existing) {
           convMap.set(convKey, {
@@ -298,7 +303,9 @@ export function WhatsAppInbox() {
     if (!user) return conversations;
 
     const filtered = conversations.filter(conv => {
-      const priv = privateConvs.find(p => p.phone === conv.phone && p.instance_name === conv.instance_name);
+      const priv = privateConvs.find(
+        p => getConversationKey(p.phone, p.instance_name) === getConversationKey(conv.phone, conv.instance_name)
+      );
       if (!priv) return true;
       if (priv.private_by === user.id) return true;
       if (canViewPrivate) return true;
@@ -308,9 +315,9 @@ export function WhatsAppInbox() {
     // Merge shared conversations that aren't already in the list — key by phone + instance
     // so a shared conv on instance B isn't dropped just because the user already has the
     // same phone on instance A.
-    const existingKeys = new Set(filtered.map(c => `${c.phone}__${(c.instance_name || '').toLowerCase()}`));
+    const existingKeys = new Set(filtered.map(c => getConversationKey(c.phone, c.instance_name)));
     for (const sharedConv of sharedMessages) {
-      const key = `${sharedConv.phone}__${(sharedConv.instance_name || '').toLowerCase()}`;
+      const key = getConversationKey(sharedConv.phone, sharedConv.instance_name);
       if (!existingKeys.has(key)) {
         filtered.push(sharedConv);
         existingKeys.add(key);
@@ -324,7 +331,7 @@ export function WhatsAppInbox() {
 
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const selectedConversation = visibleConversations.find(
-    c => c.phone === selectedPhone && c.instance_name === selectedInstance
+    c => selectedPhone === c.phone && getConversationKey(c.phone, c.instance_name) === getConversationKey(selectedPhone || '', selectedInstance)
   ) || null;
   const totalUnread = visibleConversations.reduce((sum, c) => sum + c.unread_count, 0);
 
@@ -982,6 +989,7 @@ export function WhatsAppInbox() {
             instanceSwitching={instanceSwitching}
             switchProgress={switchProgress}
             selectedPhone={selectedPhone}
+                  selectedInstanceName={selectedInstance}
             onSelect={handleSelectConversation}
             boards={boards}
             selectedInstanceId={selectedInstanceId}

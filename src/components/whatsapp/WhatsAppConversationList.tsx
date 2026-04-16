@@ -27,6 +27,7 @@ interface Props {
   instanceSwitching?: boolean;
   switchProgress?: number;
   selectedPhone: string | null;
+  selectedInstanceName?: string | null;
   onSelect: (conv: WhatsAppConversation) => void;
   boards: KanbanBoard[];
   selectedInstanceId: string;
@@ -63,6 +64,9 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   const [checklistTemplates, setChecklistTemplates] = useState<{ id: string; name: string; items: { id: string; label: string }[] }[]>([]);
   // lead_id -> 'signed' | 'unsigned' (has doc but not signed) | undefined (no doc)
   const [leadDocStatus, setLeadDocStatus] = useState<Map<string, 'signed' | 'unsigned'>>(new Map());
+
+  const getConversationKey = (phone: string, instanceName?: string | null) =>
+    `${(phone || '').trim()}__${(instanceName || '').trim().toLowerCase()}`;
 
   // Track lead IDs to avoid unnecessary re-fetches
   const prevLeadIdsRef = useRef<string>('');

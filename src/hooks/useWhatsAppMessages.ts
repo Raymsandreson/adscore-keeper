@@ -57,10 +57,13 @@ export interface InstanceStats {
   unread_count: number;
 }
 
+const normalizeInstanceName = (instanceName?: string | null) =>
+  (instanceName || '').trim().toLowerCase();
+
 // Conversation identity = phone + instance_name. Normalize instance_name case-insensitively
 // to avoid creating phantom duplicates when the webhook saves "Cris" but the RPC returns "cris".
 const getConversationKey = (phone: string, instanceName?: string | null) =>
-  `${(phone || '').trim()}__${(instanceName || '').trim().toLowerCase()}`;
+  `${(phone || '').trim()}__${normalizeInstanceName(instanceName)}`;
 
 export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const { user } = useAuthContext();
@@ -84,6 +87,17 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const lastSyncAtRef = useRef<Record<string, number>>({});
   const activeConversationKeyRef = useRef<string | null>(null);
   const fullConvCacheRef = useRef<Record<string, WhatsAppMessage[]>>({});
+
+  const getCanonicalInstanceName = useCallback((instanceName?: string | null) => {
+    const normalized = normalizeInstanceName(instanceName);
+    if (!normalized) return instanceName?.trim() || null;
+
+    const matchedInstance = instances.find(
+      (instance) => normalizeInstanceName(instance.instance_name) === normalized
+    );
+
+    return matchedInstance?.instance_name || instanceName?.trim() || null;
+  }, [instances]);
 
   
 
@@ -205,11 +219,16 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   }, [instances]);
 
   const processMessages = useCallback((msgs: WhatsAppMessage[], silent: boolean) => {
-    setMessages(msgs);
+    const normalizedMessages = msgs.map((msg) => ({
+      ...msg,
+      instance_name: getCanonicalInstanceName(msg.instance_name),
+    }));
+
+    setMessages(normalizedMessages);
 
     const convMap = new Map<string, WhatsAppConversation>();
 
-    for (const msg of msgs) {
+    for (const msg of normalizedMessages) {
       const conversationKey = getConversationKey(msg.phone, msg.instance_name);
       const existing = convMap.get(conversationKey);
       if (!existing) {
@@ -250,7 +269,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     if (!silent) {
       toast.success(`${convList.length} conversas carregadas`);
     }
-  }, []);
+  }, [getCanonicalInstanceName]);
 
   const syncRecentMessages = useCallback(async (instance?: WhatsAppInstance | null, force = false) => {
     if (!instance?.id) return;
@@ -366,35 +385,80 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         return;
       }
 
-      const convList: WhatsAppConversation[] = (summaries || []).map((s: any) => ({
-        phone: s.phone,
-        contact_name: s.contact_name,
-        contact_id: s.contact_id,
-        lead_id: s.lead_id,
-        last_message: s.last_message_text,
-        last_message_at: s.last_message_at,
-        unread_count: Number(s.unread_count) || 0,
-        messages: [{
-          id: `summary-${s.phone}-${s.instance_name}`,
-          phone: s.phone,
-          contact_name: s.contact_name,
-          message_text: s.last_message_text,
+      const canonicalInstanceNames = new Map(
+        targetInstances.map((instance) => [normalizeInstanceName(instance.instance_name), instance.instance_name])
+      );
+
+      const conversationMap = new Map<string, WhatsAppConversation>();
+
+      for (const summary of summaries || []) {
+        const canonicalInstanceName =
+          canonicalInstanceNames.get(normalizeInstanceName(summary.instance_name)) ||
+          summary.instance_name ||
+          null;
+
+        const summaryMessage: WhatsAppMessage = {
+          id: `summary-${summary.phone}-${canonicalInstanceName}`,
+          phone: summary.phone,
+          contact_name: summary.contact_name,
+          message_text: summary.last_message_text,
           message_type: 'text',
           media_url: null,
           media_type: null,
-          direction: s.last_direction || 'inbound',
+          direction: summary.last_direction || 'inbound',
           status: 'received',
-          contact_id: s.contact_id,
-          lead_id: s.lead_id,
+          contact_id: summary.contact_id,
+          lead_id: summary.lead_id,
           external_message_id: null,
           metadata: null,
-          created_at: s.last_message_at,
+          created_at: summary.last_message_at,
           read_at: null,
-          instance_name: s.instance_name,
+          instance_name: canonicalInstanceName,
           instance_token: null,
-        }] as WhatsAppMessage[],
-        instance_name: s.instance_name,
-      }));
+        };
+
+        const conversationKey = getConversationKey(summary.phone, canonicalInstanceName);
+        const existingConversation = conversationMap.get(conversationKey);
+
+        if (!existingConversation) {
+          conversationMap.set(conversationKey, {
+            phone: summary.phone,
+            contact_name: summary.contact_name,
+            contact_id: summary.contact_id,
+            lead_id: summary.lead_id,
+            last_message: summary.last_message_text,
+            last_message_at: summary.last_message_at,
+            unread_count: Number(summary.unread_count) || 0,
+            messages: [summaryMessage],
+            instance_name: canonicalInstanceName,
+          });
+          continue;
+        }
+
+        const existingTime = new Date(existingConversation.last_message_at).getTime();
+        const incomingTime = new Date(summary.last_message_at).getTime();
+
+        existingConversation.unread_count += Number(summary.unread_count) || 0;
+        if (!existingConversation.contact_name && summary.contact_name) {
+          existingConversation.contact_name = summary.contact_name;
+        }
+        if (!existingConversation.contact_id && summary.contact_id) {
+          existingConversation.contact_id = summary.contact_id;
+        }
+        if (!existingConversation.lead_id && summary.lead_id) {
+          existingConversation.lead_id = summary.lead_id;
+        }
+
+        if (incomingTime >= existingTime) {
+          existingConversation.last_message = summary.last_message_text;
+          existingConversation.last_message_at = summary.last_message_at;
+          existingConversation.messages = [summaryMessage];
+          existingConversation.instance_name = canonicalInstanceName;
+        }
+      }
+
+      const convList = Array.from(conversationMap.values())
+        .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
 
       // Preserve full message history for the active conversation
       const activeConversationKey = activeConversationKeyRef.current;
@@ -863,9 +927,13 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       }, 2500);
     };
 
-    const handleIncomingMessage = (newMsg: WhatsAppMessage) => {
+      const handleIncomingMessage = (newMsg: WhatsAppMessage) => {
+        const canonicalMsg = {
+          ...newMsg,
+          instance_name: getCanonicalInstanceName(newMsg.instance_name),
+        };
       const allowedNames = new Set(instances.map(i => i.instance_name?.trim().toLowerCase()));
-      const incomingName = (newMsg.instance_name || '').trim().toLowerCase();
+        const incomingName = (canonicalMsg.instance_name || '').trim().toLowerCase();
       if (allowedNames.size > 0 && !allowedNames.has(incomingName)) return;
 
       if (selectedInstanceId && selectedInstanceId !== 'all') {
@@ -875,47 +943,47 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       }
 
       setMessages(prev => {
-        if (prev.some(m => m.id === newMsg.id)) return prev;
-        return [newMsg, ...prev];
+        if (prev.some(m => m.id === canonicalMsg.id)) return prev;
+        return [canonicalMsg, ...prev];
       });
       setConversations(prev => {
-        const targetConversationKey = getConversationKey(newMsg.phone, newMsg.instance_name);
+        const targetConversationKey = getConversationKey(canonicalMsg.phone, canonicalMsg.instance_name);
         const existing = prev.find(c => getConversationKey(c.phone, c.instance_name) === targetConversationKey);
         if (existing) {
-          const msgId = newMsg.external_message_id?.split(':').pop();
+          const msgId = canonicalMsg.external_message_id?.split(':').pop();
           const isDuplicate = msgId && existing.messages.some(m => {
             const existingMsgId = m.external_message_id?.split(':').pop();
-            return existingMsgId === msgId && m.created_at === newMsg.created_at;
+            return existingMsgId === msgId && m.created_at === canonicalMsg.created_at;
           });
           if (isDuplicate) return prev;
-          if (existing.messages.some(m => m.id === newMsg.id)) return prev;
+          if (existing.messages.some(m => m.id === canonicalMsg.id)) return prev;
 
           if (activeConversationKeyRef.current === targetConversationKey && fullConvCacheRef.current[targetConversationKey]) {
-            fullConvCacheRef.current[targetConversationKey] = [...fullConvCacheRef.current[targetConversationKey], newMsg];
+            fullConvCacheRef.current[targetConversationKey] = [...fullConvCacheRef.current[targetConversationKey], canonicalMsg];
           }
 
           return prev.map(c => {
             if (getConversationKey(c.phone, c.instance_name) !== targetConversationKey) return c;
             return {
               ...c,
-              last_message: newMsg.message_text || c.last_message,
-              last_message_at: newMsg.created_at,
-              unread_count: !newMsg.read_at && newMsg.direction === 'inbound' ? c.unread_count + 1 : c.unread_count,
-              messages: [...c.messages, newMsg],
-              contact_name: newMsg.contact_name || c.contact_name,
+              last_message: canonicalMsg.message_text || c.last_message,
+              last_message_at: canonicalMsg.created_at,
+              unread_count: !canonicalMsg.read_at && canonicalMsg.direction === 'inbound' ? c.unread_count + 1 : c.unread_count,
+              messages: [...c.messages, canonicalMsg],
+              contact_name: canonicalMsg.contact_name || c.contact_name,
             };
           }).sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
         } else {
           const newConv: WhatsAppConversation = {
-            phone: newMsg.phone,
-            contact_name: newMsg.contact_name,
-            contact_id: newMsg.contact_id,
-            lead_id: newMsg.lead_id,
-            last_message: newMsg.message_text,
-            last_message_at: newMsg.created_at,
-            unread_count: !newMsg.read_at && newMsg.direction === 'inbound' ? 1 : 0,
-            messages: [newMsg],
-            instance_name: newMsg.instance_name,
+            phone: canonicalMsg.phone,
+            contact_name: canonicalMsg.contact_name,
+            contact_id: canonicalMsg.contact_id,
+            lead_id: canonicalMsg.lead_id,
+            last_message: canonicalMsg.message_text,
+            last_message_at: canonicalMsg.created_at,
+            unread_count: !canonicalMsg.read_at && canonicalMsg.direction === 'inbound' ? 1 : 0,
+            messages: [canonicalMsg],
+            instance_name: canonicalMsg.instance_name,
           };
           return [newConv, ...prev];
         }
@@ -1007,7 +1075,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         externalSupabase.removeChannel(ch);
       }
     };
-  }, [hasLoaded, selectedInstanceId, instances, fetchMessages, realtimeRetryNonce]);
+  }, [hasLoaded, selectedInstanceId, instances, fetchMessages, realtimeRetryNonce, getCanonicalInstanceName]);
 
   // Refresh conversation list when tab becomes visible + periodic polling fallback
   useEffect(() => {
@@ -1080,7 +1148,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       const firstNamedMessage = deduped.find(m => m.contact_name || m.contact_id || m.lead_id) || deduped[0] || null;
       const lastMessage = deduped[0] || null;
       const unreadCount = deduped.filter(m => !m.read_at && m.direction === 'inbound').length;
-      const targetInstanceName = instanceName || lastMessage?.instance_name || null;
+      const targetInstanceName = getCanonicalInstanceName(instanceName || lastMessage?.instance_name || null);
       const targetConversationKey = getConversationKey(phone, targetInstanceName);
 
       activeConversationKeyRef.current = targetConversationKey;
@@ -1126,7 +1194,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     } catch (error) {
       console.error('Error fetching full conversation:', error);
     }
-  }, []);
+  }, [getCanonicalInstanceName]);
 
   const clearActivePhone = useCallback(() => {
     activeConversationKeyRef.current = null;
