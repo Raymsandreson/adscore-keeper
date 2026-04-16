@@ -27,6 +27,7 @@ interface Props {
   instanceSwitching?: boolean;
   switchProgress?: number;
   selectedPhone: string | null;
+  selectedInstanceName?: string | null;
   onSelect: (conv: WhatsAppConversation) => void;
   boards: KanbanBoard[];
   selectedInstanceId: string;
@@ -42,7 +43,7 @@ type SortMode = 'alpha' | 'last_activity';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
 
-export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones }: Props) {
+export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones }: Props) {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -63,6 +64,9 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   const [checklistTemplates, setChecklistTemplates] = useState<{ id: string; name: string; items: { id: string; label: string }[] }[]>([]);
   // lead_id -> 'signed' | 'unsigned' (has doc but not signed) | undefined (no doc)
   const [leadDocStatus, setLeadDocStatus] = useState<Map<string, 'signed' | 'unsigned'>>(new Map());
+
+  const getConversationKey = (phone: string, instanceName?: string | null) =>
+    `${(phone || '').trim()}__${(instanceName || '').trim().toLowerCase()}`;
 
   // Track lead IDs to avoid unnecessary re-fetches
   const prevLeadIdsRef = useRef<string>('');
@@ -595,11 +599,11 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     const info = getLeadInfo(conv);
     const board = info?.board_id ? boards.find(b => b.id === info.board_id) : null;
     const stage = board?.stages.find(s => s.id === info?.current_stage);
-    const isSelected = selectedPhone === conv.phone;
-    const isLocked = privatePhones?.has(`${conv.phone}__${(conv.instance_name || '').toLowerCase()}`) || false;
+    const isSelected = selectedPhone === conv.phone && getConversationKey(conv.phone, conv.instance_name) === getConversationKey(selectedPhone || '', selectedInstanceName);
+    const isLocked = privatePhones?.has(getConversationKey(conv.phone, conv.instance_name)) || false;
 
     return (
-      <div key={`${conv.phone}__${(conv.instance_name || '').toLowerCase()}`} className="flex items-center">
+      <div key={getConversationKey(conv.phone, conv.instance_name)} className="flex items-center">
         {bulkMode && (
           <div className="pl-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
             <Checkbox
