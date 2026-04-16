@@ -683,14 +683,55 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
                   const { data: caseNumber } = await supabase
                     .rpc('generate_case_number', { p_nucleus_id: matchedNucleusId });
 
-                  await supabase.from('legal_cases').insert({
+                  const { data: createdCase } = await supabase.from('legal_cases').insert({
                     lead_id: leadId,
                     nucleus_id: matchedNucleusId,
                     case_number: caseNumber || 'CASO-0001',
                     title: `Caso - ${currentLead?.lead_name || 'Novo'}`,
                     status: 'em_andamento',
                     created_by: user?.id,
-                  } as any);
+                  } as any).select('id').single();
+
+                  // Auto-create process tracking record
+                  if (createdCase?.id) {
+                    try {
+                      await supabase.from('case_process_tracking').insert({
+                        case_id: createdCase.id,
+                        lead_id: leadId,
+                        cliente: currentLead?.lead_name || '',
+                        caso: `Caso - ${currentLead?.lead_name || 'Novo'}`,
+                        tipo: (currentLead as any)?.case_type || null,
+                        acolhedor: (currentLead as any)?.acolhedor || null,
+                        data_criacao: new Date().toISOString().split('T')[0],
+                        import_source: 'auto_lead_close',
+                      } as any);
+                    } catch (trackErr) {
+                      console.warn('Could not auto-create tracking record:', trackErr);
+                    }
+                  }
+
+                  // Auto-create ONBOARDING activity for CASO-prefixed cases
+                  if (caseNumber && caseNumber.startsWith('CASO')) {
+                    try {
+                      const WANESSA_USER_ID = '1f788b8d-e30e-484a-9460-39a881d25128';
+                      const WANESSA_NAME = 'Wanessa Vitória Rodrigues de Sousa';
+                      await supabase.from('lead_activities').insert({
+                        lead_id: leadId,
+                        lead_name: currentLead?.lead_name || 'Novo',
+                        title: 'ONBOARDING CLIENTE',
+                        description: `Atividade de onboarding criada automaticamente para o caso ${caseNumber}`,
+                        activity_type: 'tarefa',
+                        status: 'pendente',
+                        priority: 'alta',
+                        assigned_to: WANESSA_USER_ID,
+                        assigned_to_name: WANESSA_NAME,
+                        created_by: user?.id,
+                        deadline: new Date().toISOString().split('T')[0],
+                      } as any);
+                    } catch (onbErr) {
+                      console.warn('Could not auto-create onboarding activity:', onbErr);
+                    }
+                  }
 
                   toast.success(`Lead fechado! Caso ${caseNumber} criado automaticamente.`);
                 } else {

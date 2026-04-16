@@ -828,14 +828,53 @@ Deno.serve(async (req) => {
                   p_nucleus_id: null,
                 })
 
-                await supabase.from('legal_cases').insert({
+                const { data: createdCase } = await supabase.from('legal_cases').insert({
                   case_number: caseNumber,
                   title: `Caso - ${leadForBoard.lead_name || 'Novo'}`,
                   lead_id: localDoc.lead_id,
                   status: 'em_andamento',
-                })
+                }).select('id').single()
 
                 console.log(`[zapsign-webhook] Legal case created: ${caseNumber}`)
+
+                // Auto-create process tracking record
+                if (createdCase?.id) {
+                  try {
+                    await supabase.from('case_process_tracking').insert({
+                      case_id: createdCase.id,
+                      lead_id: localDoc.lead_id,
+                      cliente: leadForBoard.lead_name || '',
+                      caso: `Caso - ${leadForBoard.lead_name || 'Novo'}`,
+                      tipo: leadForBoard.case_type || null,
+                      acolhedor: leadForBoard.acolhedor || null,
+                      data_criacao: new Date().toISOString().split('T')[0],
+                      import_source: 'auto_zapsign',
+                    })
+                  } catch (trackErr) {
+                    console.warn('[zapsign-webhook] Could not auto-create tracking:', trackErr)
+                  }
+                }
+
+                // Auto-create ONBOARDING activity for CASO-prefixed cases
+                if (caseNumber && caseNumber.startsWith('CASO')) {
+                  try {
+                    await supabase.from('lead_activities').insert({
+                      lead_id: localDoc.lead_id,
+                      lead_name: leadForBoard.lead_name || 'Novo',
+                      title: 'ONBOARDING CLIENTE',
+                      description: `Atividade de onboarding criada automaticamente para o caso ${caseNumber}`,
+                      activity_type: 'tarefa',
+                      status: 'pendente',
+                      priority: 'alta',
+                      assigned_to: '1f788b8d-e30e-484a-9460-39a881d25128',
+                      assigned_to_name: 'Wanessa Vitória Rodrigues de Sousa',
+                      deadline: new Date().toISOString().split('T')[0],
+                    })
+                    console.log(`[zapsign-webhook] Onboarding activity created for ${caseNumber}`)
+                  } catch (onbErr) {
+                    console.warn('[zapsign-webhook] Onboarding activity error:', onbErr)
+                  }
+                }
               }
             }
 

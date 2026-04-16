@@ -390,7 +390,7 @@ Deno.serve(async (req) => {
               .eq('id', createdLeadId)
               .single();
 
-            const { error } = await supabase.from('legal_cases').insert({
+            const { data: createdCase, error } = await supabase.from('legal_cases').insert({
               case_number: caseNumber,
               title: `Caso - ${leadData?.lead_name || 'Novo'}`,
               lead_id: createdLeadId,
@@ -398,9 +398,25 @@ Deno.serve(async (req) => {
               status: 'em_andamento',
               action_source: 'system',
               action_source_detail: agentLabel,
-            });
+            }).select('id').single();
 
             if (error) throw error;
+
+            // Auto-create process tracking record
+            if (createdCase?.id) {
+              try {
+                await supabase.from('case_process_tracking').insert({
+                  case_id: createdCase.id,
+                  lead_id: createdLeadId,
+                  cliente: leadData?.lead_name || '',
+                  caso: `Caso - ${leadData?.lead_name || 'Novo'}`,
+                  data_criacao: new Date().toISOString().split('T')[0],
+                  import_source: 'auto_agent_automation',
+                });
+              } catch (trackErr) {
+                console.warn('[agent-automations] Tracking record error:', trackErr);
+              }
+            }
 
             if (caseNumber && caseNumber.startsWith('CASO')) {
               try {
