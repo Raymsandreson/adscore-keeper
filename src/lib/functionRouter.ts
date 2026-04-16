@@ -25,6 +25,14 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
 };
 
 // ============================================================
+// FUNÇÕES COM DEPLOY DIRETO NO SUPABASE EXTERNO (bypass proxy)
+// ============================================================
+const EXTERNAL_SUPABASE_URL = 'https://kmedldlepwiityjsdahz.supabase.co';
+const EXTERNAL_FUNCTIONS: Record<string, boolean> = {
+  'extract-accident-data': true,
+};
+
+// ============================================================
 // CONFIGURAÇÃO DOS BACKENDS
 // ============================================================
 const CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
@@ -125,10 +133,31 @@ async function invokeFunction<T = any>(
   functionName: string,
   options?: { body?: any; authToken?: string }
 ): Promise<{ data: T | null; error: Error | null }> {
-  const target = getTarget(functionName);
   const body = options?.body;
   const authToken = options?.authToken;
-  
+
+  // Funções deployadas diretamente no Supabase externo — bypass completo
+  if (EXTERNAL_FUNCTIONS[functionName]) {
+    try {
+      const url = `${EXTERNAL_SUPABASE_URL}/functions/v1/${functionName}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`External function error ${response.status}: ${errorText}`);
+      }
+      const data = await response.json();
+      return { data, error: null };
+    } catch (err) {
+      console.error(`[Router] ${functionName} → external FALHOU:`, err);
+      return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
+    }
+  }
+
+  const target = getTarget(functionName);
   const primary = target === 'railway' ? callRailway : callCloud;
   const fallback = target === 'railway' ? callCloud : callRailway;
   const fallbackAvailable = target === 'railway' ? true : !!RAILWAY_URL;
