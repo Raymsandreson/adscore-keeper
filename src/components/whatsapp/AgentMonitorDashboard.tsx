@@ -253,7 +253,7 @@ export function AgentMonitorDashboard() {
 
     return {
       ...metrics,
-      newConversations: filtered.length,
+      newConversations: metrics.newConvDetails.length > 0 ? filtered.length : metrics.newConversations,
       responseRate: filtered.length > 0 ? Math.round((respondedCount / filtered.length) * 100) : 0,
       avgResponseTimeMin,
       respondedCount,
