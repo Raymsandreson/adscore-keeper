@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { ArrowRightLeft, ClipboardList, Heart, LayoutDashboard, Loader2 } from 'lucide-react';
+import { subDays, startOfDay } from 'date-fns';
 
 import { useMonitorData } from './agent-monitor/hooks/useMonitorData';
 import { useMonitorFilters } from './agent-monitor/hooks/useMonitorFilters';
@@ -67,6 +68,17 @@ export function AgentMonitorDashboard() {
     }
     return () => { if (progressRef.current) clearInterval(progressRef.current); };
   }, [isLoading, monitorLoading, metricsLoading]);
+
+  useEffect(() => {
+    const now = new Date();
+    if (selectedPeriod === 'today') {
+      setDateRange({ from: startOfDay(now), to: now });
+    } else if (selectedPeriod === '7d') {
+      setDateRange({ from: startOfDay(subDays(now, 7)), to: now });
+    } else if (selectedPeriod === '30d') {
+      setDateRange({ from: startOfDay(subDays(now, 30)), to: now });
+    }
+  }, [selectedPeriod]);
 
   const fetchData = useCallback(() => {
     fetchDataRaw(dateRange, selectedPeriod);
