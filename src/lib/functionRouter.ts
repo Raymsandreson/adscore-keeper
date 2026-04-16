@@ -130,27 +130,6 @@ async function invokeFunction<T = any>(
   const body = options?.body;
   const authToken = options?.authToken;
 
-  // Funções deployadas diretamente no Supabase externo — bypass completo
-  if (EXTERNAL_FUNCTIONS[functionName]) {
-    try {
-      const url = `${EXTERNAL_SUPABASE_URL}/functions/v1/${functionName}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`External function error ${response.status}: ${errorText}`);
-      }
-      const data = await response.json();
-      return { data, error: null };
-    } catch (err) {
-      console.error(`[Router] ${functionName} → external FALHOU:`, err);
-      return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
-    }
-  }
-
   const target = getTarget(functionName);
   const primary = target === 'railway' ? callRailway : callCloud;
   const fallback = target === 'railway' ? callCloud : callRailway;
