@@ -88,10 +88,10 @@ import {
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
-import { TeamChatPanel } from '@/components/chat/TeamChatPanel';
-import { LegalCasesTab } from '@/components/leads/LegalCasesTab';
-import { LeadFinancialsTab } from '@/components/leads/LeadFinancialsTab';
-import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+const TeamChatPanel = lazy(() => import('@/components/chat/TeamChatPanel').then(m => ({ default: m.TeamChatPanel })));
+const LegalCasesTab = lazy(() => import('@/components/leads/LegalCasesTab').then(m => ({ default: m.LegalCasesTab })));
+const LeadFinancialsTab = lazy(() => import('@/components/leads/LeadFinancialsTab').then(m => ({ default: m.LeadFinancialsTab })));
+const ContactDetailSheet = lazy(() => import('@/components/contacts/ContactDetailSheet').then(m => ({ default: m.ContactDetailSheet })));
 import { Contact as ContactType } from '@/hooks/useContacts';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
