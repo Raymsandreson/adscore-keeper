@@ -185,10 +185,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     if (!open) return;
     (supabase
       .from('kanban_boards' as any)
-      .select('id, name, board_type, is_active')
+      .select('id, name, board_type')
       .eq('board_type', 'workflow')
-      .eq('is_active', true)
-      .order('name') as any)
+      .order('display_order', { ascending: true }) as any)
       .then(({ data }: { data: any[] | null }) => {
         setWorkflowBoards((data || []).map((b: any) => ({ id: b.id, name: b.name })));
       });
