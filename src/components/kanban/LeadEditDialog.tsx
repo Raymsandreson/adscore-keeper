@@ -45,9 +45,10 @@ import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 import { CustomFieldsConfigPanel } from '@/components/leads/CustomFieldsConfigPanel';
 import { LeadStageHistoryPanel } from '@/components/kanban/LeadStageHistoryPanel';
-import { LeadFunnelOverview } from '@/components/kanban/LeadFunnelOverview';
-import { LeadActivitiesTab } from '@/components/leads/LeadActivitiesTab';
-import { AccidentDataExtractor, ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
+const LeadFunnelOverview = lazy(() => import('@/components/kanban/LeadFunnelOverview').then(m => ({ default: m.LeadFunnelOverview })));
+const LeadActivitiesTab = lazy(() => import('@/components/leads/LeadActivitiesTab').then(m => ({ default: m.LeadActivitiesTab })));
+const AccidentDataExtractor = lazy(() => import('@/components/leads/AccidentDataExtractor').then(m => ({ default: m.AccidentDataExtractor })));
+import { ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { 
   User, 
