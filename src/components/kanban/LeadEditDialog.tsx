@@ -1021,7 +1021,7 @@ ${scrapeData.content || ''}
               </TabsTrigger>
               <TabsTrigger value="checklist" className="text-xs py-1.5 px-2.5">
                 <CheckSquare className="h-3 w-3 mr-1" />
-                {leadOutcome === 'closed' ? 'Fluxo de Trabalho' : 'Funil de Vendas'}
+                Funil de Vendas
               </TabsTrigger>
               <TabsTrigger value="activities" className="text-xs py-1.5 px-2.5">
                 <Calendar className="h-3 w-3 mr-1" />
