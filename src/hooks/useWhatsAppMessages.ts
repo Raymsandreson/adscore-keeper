@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+import {
+  getConversationSummaries,
+  getConversationMessages,
+  markMessagesAsRead,
+  linkMessagesToLead,
+  linkMessagesToContact,
+} from '@/integrations/supabase/external-rpc';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
@@ -337,42 +344,21 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
       const instanceNames = targetInstances.map(i => i.instance_name);
 
-      // Paginate RPC in parallel to bypass the 1000-row default limit
-      const PAGE_SIZE = 1000;
+      // Single call to the typed wrapper backed by the external DB (source of truth).
+      // The RPC partitions by (phone, instance_name) so we get one row per conversation.
+      let summaries: any[] = [];
       let sumError: any = null;
-
-      // First page sequentially to know if there's more
-      const { data: firstBatch, error: firstError } = await supabase
-        .rpc('get_conversation_summaries', { p_instance_names: instanceNames })
-        .range(0, PAGE_SIZE - 1);
-
-      if (firstError) {
-        sumError = firstError;
+      try {
+        await ensureExternalSession();
+        summaries = await getConversationSummaries(instanceNames);
+      } catch (err) {
+        sumError = err;
       }
-
-      let allSummaries: any[] = firstBatch || [];
-
-      // If first page is full, fetch remaining pages in parallel
-      if (!sumError && allSummaries.length === PAGE_SIZE) {
-        const parallelPages = [1, 2, 3, 4]; // up to 5000 total
-        const results = await Promise.all(
-          parallelPages.map(p =>
-            supabase
-              .rpc('get_conversation_summaries', { p_instance_names: instanceNames })
-              .range(p * PAGE_SIZE, (p + 1) * PAGE_SIZE - 1)
-          )
-        );
-        for (const { data, error } of results) {
-          if (error) { sumError = error; break; }
-          if (data && data.length > 0) allSummaries = allSummaries.concat(data);
-          if (!data || data.length < PAGE_SIZE) break;
-        }
-      }
-
-      const summaries = allSummaries;
 
       if (sumError && summaries.length === 0) {
-        console.error('Error fetching conversation summaries:', sumError);
+        console.error('Error fetching conversation summaries from external:', sumError);
+        // Fallback: raw message fetch from Cloud so the UI doesn't stay empty if
+        // external auth/realtime is degraded. May be stale but keeps the app usable.
         const fallbackQuery = supabase
           .from('whatsapp_messages')
           .select('*')
@@ -785,78 +771,57 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   };
 
   const markAsRead = async (phone: string, instanceName?: string | null) => {
+    if (!instanceName) {
+      console.warn('markAsRead called without instance_name — skipping to avoid cross-instance mutation');
+      return;
+    }
     try {
-      let query = supabase
-        .from('whatsapp_messages')
-        .update({ read_at: new Date().toISOString() } as any)
-        .eq('phone', phone)
-        .eq('direction', 'inbound')
-        .is('read_at', null);
-
-      if (instanceName) {
-        query = query.eq('instance_name', instanceName);
-      }
-
-      const { error } = await query;
-      if (error) throw error;
+      await ensureExternalSession().catch(() => {});
+      await markMessagesAsRead(phone, instanceName);
 
       const targetConversationKey = getConversationKey(phone, instanceName);
-      setConversations(prev => prev.map(c => 
-        instanceName
-          ? getConversationKey(c.phone, c.instance_name) === targetConversationKey ? { ...c, unread_count: 0 } : c
-          : c.phone === phone ? { ...c, unread_count: 0 } : c
+      setConversations(prev => prev.map(c =>
+        getConversationKey(c.phone, c.instance_name) === targetConversationKey
+          ? { ...c, unread_count: 0 }
+          : c
       ));
     } catch (error) { console.error('Error marking as read:', error); }
   };
 
   const linkToLead = async (phone: string, leadId: string, instanceName?: string | null) => {
+    if (!instanceName) {
+      toast.error('Erro: instância não identificada para vincular lead.');
+      return;
+    }
     try {
-      let query = supabase
-        .from('whatsapp_messages')
-        .update({ lead_id: leadId } as any)
-        .eq('phone', phone);
-
-      if (instanceName) {
-        query = query.eq('instance_name', instanceName);
-      }
-
-      const { error } = await query;
-      if (error) throw error;
+      await ensureExternalSession().catch(() => {});
+      await linkMessagesToLead(phone, instanceName, leadId);
       toast.success('Conversa vinculada ao lead!');
       const targetConversationKey = getConversationKey(phone, instanceName);
       setConversations(prev => prev.map(c =>
-        instanceName
-          ? getConversationKey(c.phone, c.instance_name) === targetConversationKey ? { ...c, lead_id: leadId } : c
-          : c.phone === phone ? { ...c, lead_id: leadId } : c
+        getConversationKey(c.phone, c.instance_name) === targetConversationKey
+          ? { ...c, lead_id: leadId }
+          : c
       ));
     } catch (error) { console.error(error); toast.error('Erro ao vincular ao lead'); }
   };
 
   const linkToContact = async (phone: string, contactId: string, instanceName?: string | null) => {
+    if (!instanceName) {
+      toast.error('Erro: instância não identificada para vincular contato.');
+      return;
+    }
     try {
-      // Fetch contact name
+      // Fetch contact name from Cloud (contacts table lives there)
       const { data: contactData } = await supabase.from('contacts').select('full_name').eq('id', contactId).single();
-      let query = supabase
-        .from('whatsapp_messages')
-        .update({ contact_id: contactId } as any)
-        .eq('phone', phone);
-
-      if (instanceName) {
-        query = query.eq('instance_name', instanceName);
-      }
-
-      const { error } = await query;
-      if (error) throw error;
+      await ensureExternalSession().catch(() => {});
+      await linkMessagesToContact(phone, instanceName, contactId);
       toast.success('Conversa vinculada ao contato!');
       const targetConversationKey = getConversationKey(phone, instanceName);
       setConversations(prev => prev.map(c =>
-        instanceName
-          ? getConversationKey(c.phone, c.instance_name) === targetConversationKey
-            ? { ...c, contact_id: contactId, contact_name: contactData?.full_name || c.contact_name }
-            : c
-          : c.phone === phone
-            ? { ...c, contact_id: contactId, contact_name: contactData?.full_name || c.contact_name }
-            : c
+        getConversationKey(c.phone, c.instance_name) === targetConversationKey
+          ? { ...c, contact_id: contactId, contact_name: contactData?.full_name || c.contact_name }
+          : c
       ));
     } catch (error) { console.error(error); toast.error('Erro ao vincular ao contato'); }
   };
@@ -1106,32 +1071,17 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     activeConversationKeyRef.current = getConversationKey(phone, instanceName);
     // NOTE: removed background fetchMessages(true) call here to avoid double-loading
     try {
-      // Paginate to get ALL messages for this phone/instance (up to 3000)
-      const allMsgs: WhatsAppMessage[] = [];
-      let from = 0;
-      const pageSize = 1000;
-      const maxPages = 3;
-
-      for (let page = 0; page < maxPages; page++) {
-        let query = supabase
-          .from('whatsapp_messages')
-          .select('*')
-          .eq('phone', phone);
-
-        if (instanceName) {
-          query = query.eq('instance_name', instanceName);
-        }
-
-        const { data, error } = await query
-          .order('created_at', { ascending: false })
-          .range(from, from + pageSize - 1);
-
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        allMsgs.push(...(data as WhatsAppMessage[]));
-        if (data.length < pageSize) break;
-        from += pageSize;
+      // Fetch directly from the external DB (source of truth for whatsapp_messages)
+      // through the typed wrapper. Requires instance_name — without it we'd pull
+      // messages from other instances with the same phone.
+      if (!instanceName) {
+        console.warn('fetchFullConversation called without instance_name — aborting to avoid cross-instance mix');
+        return;
       }
+
+      await ensureExternalSession().catch(() => {});
+      const raw = await getConversationMessages(phone, instanceName, 3000);
+      const allMsgs: WhatsAppMessage[] = raw as unknown as WhatsAppMessage[];
 
       // Deduplicate group messages (same messageid from different instances)
       const deduped: WhatsAppMessage[] = [];
