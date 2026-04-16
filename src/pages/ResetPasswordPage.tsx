@@ -17,22 +17,94 @@ const ResetPasswordPage = () => {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [isRecovery, setIsRecovery] = useState(false);
+  const [initializing, setInitializing] = useState(true);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check for recovery token in URL hash
-    const hash = window.location.hash;
-    if (hash.includes('type=recovery')) {
-      setIsRecovery(true);
-    }
+    let isMounted = true;
+
+    const establishRecoverySession = async () => {
+      try {
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        const queryParams = new URLSearchParams(window.location.search);
+
+        const type = hashParams.get('type') ?? queryParams.get('type');
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        const code = queryParams.get('code');
+
+        if (accessToken && refreshToken && type === 'recovery') {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+
+          if (error) throw error;
+
+          if (!isMounted) return;
+
+          setIsRecovery(true);
+          setRecoveryError(null);
+          window.history.replaceState({}, document.title, window.location.pathname);
+          return;
+        }
+
+        if (code) {
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+          if (error) throw error;
+
+          if (!isMounted) return;
+
+          setIsRecovery(type === 'recovery' || !!data.session);
+          setRecoveryError(null);
+          window.history.replaceState({}, document.title, window.location.pathname);
+          return;
+        }
+
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!isMounted) return;
+
+        if (type === 'recovery' && session?.user) {
+          setIsRecovery(true);
+          setRecoveryError(null);
+          return;
+        }
+
+        setIsRecovery(false);
+        if (type === 'recovery') {
+          setRecoveryError('Sua sessão de recuperação expirou. Solicite um novo link.');
+        }
+      } catch (error: any) {
+        console.error('[RESET] Error establishing recovery session:', error);
+
+        if (!isMounted) return;
+
+        setIsRecovery(false);
+        setRecoveryError(error?.message || 'Link inválido ou expirado. Solicite um novo link.');
+      } finally {
+        if (isMounted) {
+          setInitializing(false);
+        }
+      }
+    };
 
     // Listen for password recovery event
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
         setIsRecovery(true);
+        setRecoveryError(null);
+        setInitializing(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    establishRecoverySession();
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -47,11 +119,22 @@ const ResetPasswordPage = () => {
     }
     setLoading(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session?.user) {
+        setIsRecovery(false);
+        setRecoveryError('Sua sessão de recuperação expirou. Solicite um novo link.');
+        throw new Error('Link inválido ou expirado');
+      }
+
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
+
+      await supabase.auth.signOut({ scope: 'local' });
+
       setSuccess(true);
       toast.success('Senha redefinida com sucesso!');
-      setTimeout(() => navigate('/'), 2000);
+      setTimeout(() => navigate('/dashboard', { replace: true }), 2000);
     } catch (error: any) {
       toast.error('Erro ao redefinir senha', { description: error.message });
     } finally {
@@ -59,13 +142,27 @@ const ResetPasswordPage = () => {
     }
   };
 
+  if (initializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-primary" />
+            <CardTitle className="text-2xl">Validando link</CardTitle>
+            <CardDescription>Aguarde enquanto confirmamos sua recuperação de senha.</CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+
   if (!isRecovery && !success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl">WhatsJUD</CardTitle>
-            <CardDescription>Link inválido ou expirado. Solicite um novo link de redefinição.</CardDescription>
+            <CardDescription>{recoveryError || 'Link inválido ou expirado. Solicite um novo link de redefinição.'}</CardDescription>
           </CardHeader>
           <CardContent>
             <Button className="w-full" onClick={() => navigate('/')}>Voltar ao login</Button>
