@@ -86,13 +86,26 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
           stageId = leadStatus;
         }
       }
+
+      // For process workflows (board different from lead's funnel), the lead.status
+      // belongs to another board and won't match. Default to first stage so the user
+      // sees the workflow steps.
+      const isWorkflowBoard = (boardData?.board_type === 'workflow') || (leadData?.board_id !== boardId);
+      if ((!stageId || !parsedStages.some(s => s.id === stageId)) && isWorkflowBoard && parsedStages.length > 0) {
+        stageId = parsedStages[0].id;
+      }
       
       if (stageId) {
         setCurrentStageId(stageId);
       }
 
-      // Create instances if needed (same as WhatsAppLeadStageManager)
-      if (stageId) {
+      // Create instances. For workflow boards, create for ALL stages so every
+      // objective/step is visible when navigating between phases.
+      if (isWorkflowBoard) {
+        for (const s of parsedStages) {
+          await createLeadInstances(leadId, boardId, s.id);
+        }
+      } else if (stageId) {
         await createLeadInstances(leadId, boardId, stageId);
       }
 
