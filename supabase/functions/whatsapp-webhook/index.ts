@@ -1,18 +1,23 @@
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { geminiChat } from "../_shared/gemini.ts";
 import { getLocationFromDDD } from "../_shared/ddd-mapping.ts";
-import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
+import {
+  resolveServiceRoleKey,
+  resolveSupabaseUrl,
+} from "../_shared/supabase-url-resolver.ts";
 
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
-const RESOLVED_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-const cloudFunctionsUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
-const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+const RESOLVED_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
+  "https://gliigkupoebmlbwyvijp.supabase.co";
+const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+};
 
 async function downloadAndStoreMedia(
   supabase: any,
@@ -25,39 +30,60 @@ async function downloadAndStoreMedia(
   instanceToken: string,
 ): Promise<{ publicUrl: string | null; transcription: string | null }> {
   try {
-    console.log('Downloading media via UazAPI for message:', messageId, 'type:', messageType);
+    console.log(
+      "Downloading media via UazAPI for message:",
+      messageId,
+      "type:",
+      messageType,
+    );
 
     let fileBuffer: ArrayBuffer | null = null;
-    let contentType = mediaType || 'application/octet-stream';
+    let contentType = mediaType || "application/octet-stream";
     let transcription: string | null = null;
 
     // UazAPI v2 endpoint: POST /message/download with { id: messageId, return_link: true, generate_mp3: true }
     const downloadUrl = `${baseUrl}/message/download`;
-    console.log('Calling /message/download at:', downloadUrl, 'with id:', messageId);
+    console.log(
+      "Calling /message/download at:",
+      downloadUrl,
+      "with id:",
+      messageId,
+    );
     const downloadResp = await fetch(downloadUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'token': instanceToken },
-      body: JSON.stringify({ id: messageId, return_link: true, generate_mp3: true }),
+      method: "POST",
+      headers: { "Content-Type": "application/json", "token": instanceToken },
+      body: JSON.stringify({
+        id: messageId,
+        return_link: true,
+        generate_mp3: true,
+      }),
     });
 
-    console.log('downloadMediaMessage response status:', downloadResp.status);
+    console.log("downloadMediaMessage response status:", downloadResp.status);
 
     if (downloadResp.ok) {
-      const respContentType = downloadResp.headers.get('content-type') || '';
-      
-      if (respContentType.includes('application/json')) {
+      const respContentType = downloadResp.headers.get("content-type") || "";
+
+      if (respContentType.includes("application/json")) {
         const jsonData = await downloadResp.json();
-        console.log('downloadMediaMessage JSON response keys:', Object.keys(jsonData));
-        
+        console.log(
+          "downloadMediaMessage JSON response keys:",
+          Object.keys(jsonData),
+        );
+
         // UazAPI v2 returns { fileURL, mimetype, base64Data?, transcription? }
         if (jsonData.fileURL) {
-          console.log('Got fileURL from UazAPI:', jsonData.fileURL);
+          console.log("Got fileURL from UazAPI:", jsonData.fileURL);
           const mediaResp = await fetch(jsonData.fileURL);
           if (mediaResp.ok) {
             fileBuffer = await mediaResp.arrayBuffer();
-            contentType = jsonData.mimetype || mediaResp.headers.get('content-type') || contentType;
+            contentType = jsonData.mimetype ||
+              mediaResp.headers.get("content-type") || contentType;
           }
-          if (typeof jsonData.transcription === 'string' && jsonData.transcription.trim()) {
+          if (
+            typeof jsonData.transcription === "string" &&
+            jsonData.transcription.trim()
+          ) {
             transcription = jsonData.transcription.trim();
           }
         } else if (jsonData.base64Data) {
@@ -80,186 +106,258 @@ async function downloadAndStoreMedia(
           const mediaResp = await fetch(jsonData.url);
           if (mediaResp.ok) {
             fileBuffer = await mediaResp.arrayBuffer();
-            contentType = mediaResp.headers.get('content-type') || contentType;
+            contentType = mediaResp.headers.get("content-type") || contentType;
           }
         } else {
-          console.log('downloadMediaMessage unexpected JSON:', JSON.stringify(jsonData).substring(0, 500));
+          console.log(
+            "downloadMediaMessage unexpected JSON:",
+            JSON.stringify(jsonData).substring(0, 500),
+          );
         }
       } else {
         fileBuffer = await downloadResp.arrayBuffer();
-        if (respContentType && !respContentType.includes('text/')) {
+        if (respContentType && !respContentType.includes("text/")) {
           contentType = respContentType;
         }
       }
     } else {
       const errorText = await downloadResp.text();
-      console.log('downloadMediaMessage error:', downloadResp.status, errorText.substring(0, 300));
+      console.log(
+        "downloadMediaMessage error:",
+        downloadResp.status,
+        errorText.substring(0, 300),
+      );
     }
 
     // Fallback: try with alternate ID format (strip owner prefix or add it)
     if (!fileBuffer || fileBuffer.byteLength < 50) {
-      console.log('Trying /message/download with alternate ID format...');
-      const altId = messageId.includes(':') ? messageId.split(':').pop()! : messageId;
+      console.log("Trying /message/download with alternate ID format...");
+      const altId = messageId.includes(":")
+        ? messageId.split(":").pop()!
+        : messageId;
       if (altId !== messageId) {
         const fallbackResp = await fetch(`${baseUrl}/message/download`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'token': instanceToken },
-          body: JSON.stringify({ id: altId, return_link: true, generate_mp3: true }),
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "token": instanceToken,
+          },
+          body: JSON.stringify({
+            id: altId,
+            return_link: true,
+            generate_mp3: true,
+          }),
         });
-        console.log('Fallback download response status:', fallbackResp.status);
+        console.log("Fallback download response status:", fallbackResp.status);
         if (fallbackResp.ok) {
           const fallbackData = await fallbackResp.json();
-          console.log('Fallback response keys:', Object.keys(fallbackData));
-          if (typeof fallbackData.transcription === 'string' && fallbackData.transcription.trim()) {
+          console.log("Fallback response keys:", Object.keys(fallbackData));
+          if (
+            typeof fallbackData.transcription === "string" &&
+            fallbackData.transcription.trim()
+          ) {
             transcription = fallbackData.transcription.trim();
           }
           const resolvedUrl = fallbackData.fileURL || fallbackData.url;
-          if (resolvedUrl && typeof resolvedUrl === 'string' && resolvedUrl.startsWith('http')) {
+          if (
+            resolvedUrl && typeof resolvedUrl === "string" &&
+            resolvedUrl.startsWith("http")
+          ) {
             const dlResp = await fetch(resolvedUrl);
             if (dlResp.ok) {
               fileBuffer = await dlResp.arrayBuffer();
-              contentType = fallbackData.mimetype || dlResp.headers.get('content-type') || contentType;
+              contentType = fallbackData.mimetype ||
+                dlResp.headers.get("content-type") || contentType;
             }
           }
         } else {
           const errText = await fallbackResp.text();
-          console.log('Fallback download error:', fallbackResp.status, errText.substring(0, 300));
+          console.log(
+            "Fallback download error:",
+            fallbackResp.status,
+            errText.substring(0, 300),
+          );
         }
       }
     }
 
     // Fallback: try direct URL if not encrypted
-    if ((!fileBuffer || fileBuffer.byteLength < 50) && mediaUrl && !mediaUrl.includes('.enc')) {
-      console.log('Trying direct media URL...');
+    if (
+      (!fileBuffer || fileBuffer.byteLength < 50) && mediaUrl &&
+      !mediaUrl.includes(".enc")
+    ) {
+      console.log("Trying direct media URL...");
       const directResp = await fetch(mediaUrl);
       if (directResp.ok) {
         fileBuffer = await directResp.arrayBuffer();
-        contentType = directResp.headers.get('content-type') || contentType;
+        contentType = directResp.headers.get("content-type") || contentType;
       }
     }
 
     if (!fileBuffer || fileBuffer.byteLength < 50) {
-      console.log('Could not download media, buffer empty or too small, size:', fileBuffer?.byteLength || 0);
+      console.log(
+        "Could not download media, buffer empty or too small, size:",
+        fileBuffer?.byteLength || 0,
+      );
       return { publicUrl: null, transcription };
     }
 
-    console.log('Downloaded media:', fileBuffer.byteLength, 'bytes, type:', contentType);
+    console.log(
+      "Downloaded media:",
+      fileBuffer.byteLength,
+      "bytes, type:",
+      contentType,
+    );
 
     // STT: transcribe audio using shared utility (ElevenLabs primary, Gemini fallback)
-    if (messageType === 'audio' && (!transcription || !transcription.trim())) {
+    if (messageType === "audio" && (!transcription || !transcription.trim())) {
       try {
         const { transcribeAudio } = await import("../_shared/stt.ts");
-        const sttText = await transcribeAudio(fileBuffer, contentType || 'audio/ogg');
+        const sttText = await transcribeAudio(
+          fileBuffer,
+          contentType || "audio/ogg",
+        );
         if (sttText) {
           transcription = sttText;
-          console.log('Audio transcription via shared STT:', sttText.substring(0, 120));
+          console.log(
+            "Audio transcription via shared STT:",
+            sttText.substring(0, 120),
+          );
         }
       } catch (sttError) {
-        console.error('Shared STT failed:', sttError);
+        console.error("Shared STT failed:", sttError);
       }
     }
 
     // Determine file extension
     const ext = getFileExtension(contentType, messageType);
     const timestamp = Date.now();
-    const filePath = `${instanceName.replace(/\s+/g, '_')}/${timestamp}_${messageId.substring(0, 8)}.${ext}`;
+    const filePath = `${instanceName.replace(/\s+/g, "_")}/${timestamp}_${
+      messageId.substring(0, 8)
+    }.${ext}`;
 
     // Upload to storage
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('whatsapp-media')
+      .from("whatsapp-media")
       .upload(filePath, fileBuffer, {
         contentType,
         upsert: true,
       });
 
     if (uploadError) {
-      console.error('Storage upload error:', uploadError);
+      console.error("Storage upload error:", uploadError);
       return { publicUrl: null, transcription };
     }
 
     // Get public URL
     const { data: urlData } = supabase.storage
-      .from('whatsapp-media')
+      .from("whatsapp-media")
       .getPublicUrl(filePath);
 
-    console.log('Media uploaded successfully:', urlData.publicUrl);
+    console.log("Media uploaded successfully:", urlData.publicUrl);
     return { publicUrl: urlData.publicUrl, transcription };
   } catch (e) {
-    console.error('Media download/upload error:', e);
+    console.error("Media download/upload error:", e);
     return { publicUrl: null, transcription: null };
   }
 }
 
 function normalizeVoiceCommandText(value: string): string {
-  return (value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9#\s]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9#\s]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
-function resolveAgentControlCommand(text: string | null, messageType: string): '#parar' | '#ativar' | '#status' | '#limpar' | null {
-  const raw = (text || '').trim().toLowerCase();
+function resolveAgentControlCommand(
+  text: string | null,
+  messageType: string,
+): "#parar" | "#ativar" | "#status" | "#limpar" | null {
+  const raw = (text || "").trim().toLowerCase();
   if (!raw) return null;
 
-  if (raw === '#parar' || raw === '#ativar' || raw === '#status' || raw === '#limpar') {
-    return raw as '#parar' | '#ativar' | '#status' | '#limpar';
+  if (
+    raw === "#parar" || raw === "#ativar" || raw === "#status" ||
+    raw === "#limpar"
+  ) {
+    return raw as "#parar" | "#ativar" | "#status" | "#limpar";
   }
 
-  if (messageType !== 'audio') return null;
+  if (messageType !== "audio") return null;
 
   const cleaned = normalizeVoiceCommandText(raw);
-  if (/^#?\s*(parar|pare|desativar|desative)\b/.test(cleaned)) return '#parar';
-  if (/^#?\s*(ativar|ative|retomar|retome)\b/.test(cleaned)) return '#ativar';
-  if (/^#?\s*(status|situacao|situa[çc][aã]o|como\s+esta)\b/.test(cleaned)) return '#status';
-  if (/^#?\s*(limpar|limpe|apagar\s+conversa|limpar\s+conversa)\b/.test(cleaned)) return '#limpar';
+  if (/^#?\s*(parar|pare|desativar|desative)\b/.test(cleaned)) return "#parar";
+  if (/^#?\s*(ativar|ative|retomar|retome)\b/.test(cleaned)) return "#ativar";
+  if (/^#?\s*(status|situacao|situa[çc][aã]o|como\s+esta)\b/.test(cleaned)) {
+    return "#status";
+  }
+  if (
+    /^#?\s*(limpar|limpe|apagar\s+conversa|limpar\s+conversa)\b/.test(cleaned)
+  ) return "#limpar";
 
   return null;
 }
 
 function getFileExtension(contentType: string, messageType: string): string {
   const map: Record<string, string> = {
-    'audio/ogg': 'ogg',
-    'audio/mpeg': 'mp3',
-    'audio/mp4': 'm4a',
-    'audio/amr': 'amr',
-    'audio/aac': 'aac',
-    'image/jpeg': 'jpg',
-    'image/png': 'png',
-    'image/webp': 'webp',
-    'image/gif': 'gif',
-    'video/mp4': 'mp4',
-    'video/3gpp': '3gp',
-    'application/pdf': 'pdf',
+    "audio/ogg": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "audio/amr": "amr",
+    "audio/aac": "aac",
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "video/mp4": "mp4",
+    "video/3gpp": "3gp",
+    "application/pdf": "pdf",
   };
   if (map[contentType]) return map[contentType];
-  if (messageType === 'audio') return 'ogg';
-  if (messageType === 'image') return 'jpg';
-  if (messageType === 'video') return 'mp4';
-  return 'bin';
+  if (messageType === "audio") return "ogg";
+  if (messageType === "image") return "jpg";
+  if (messageType === "video") return "mp4";
+  return "bin";
 }
 
-async function transcribeCallAudio(audioUrl: string, _apiKey: string): Promise<{ summary: string; transcript: string } | null> {
+async function transcribeCallAudio(
+  audioUrl: string,
+  _apiKey: string,
+): Promise<{ summary: string; transcript: string } | null> {
   try {
     const data = await geminiChat({
       model: "google/gemini-2.5-flash",
       messages: [
-        { role: "system", content: "Você é um assistente jurídico de um CRM de advocacia. Transcreva o áudio da chamada e forneça um resumo objetivo." },
+        {
+          role: "system",
+          content:
+            "Você é um assistente jurídico de um CRM de advocacia. Transcreva o áudio da chamada e forneça um resumo objetivo.",
+        },
         {
           role: "user",
           content: [
-            { type: "text", text: "Transcreva este áudio de chamada telefônica e forneça:\n1. TRANSCRIÇÃO: A transcrição completa da conversa\n2. RESUMO: Um resumo conciso dos pontos principais discutidos, decisões tomadas e próximos passos\n\nResponda em português do Brasil. Use o formato:\nTRANSCRIÇÃO:\n[transcrição aqui]\n\nRESUMO:\n[resumo aqui]" },
-            { type: "input_audio", input_audio: { url: audioUrl, format: "wav" } }
-          ]
-        }
+            {
+              type: "text",
+              text:
+                "Transcreva este áudio de chamada telefônica e forneça:\n1. TRANSCRIÇÃO: A transcrição completa da conversa\n2. RESUMO: Um resumo conciso dos pontos principais discutidos, decisões tomadas e próximos passos\n\nResponda em português do Brasil. Use o formato:\nTRANSCRIÇÃO:\n[transcrição aqui]\n\nRESUMO:\n[resumo aqui]",
+            },
+            {
+              type: "input_audio",
+              input_audio: { url: audioUrl, format: "wav" },
+            },
+          ],
+        },
       ],
     });
 
     const content = data.choices?.[0]?.message?.content || "";
 
-    const transcriptMatch = content.match(/TRANSCRIÇÃO:\s*([\s\S]*?)(?=RESUMO:|$)/i);
+    const transcriptMatch = content.match(
+      /TRANSCRIÇÃO:\s*([\s\S]*?)(?=RESUMO:|$)/i,
+    );
     const summaryMatch = content.match(/RESUMO:\s*([\s\S]*?)$/i);
 
     return {
@@ -273,16 +371,16 @@ async function transcribeCallAudio(audioUrl: string, _apiKey: string): Promise<{
 }
 
 function normalizePhone(raw: string | null | undefined): string {
-  return (raw || '')
-    .replace('@s.whatsapp.net', '')
-    .replace('@g.us', '')
-    .replace('@lid', '')
-    .replace(/\D/g, '')
-    .replace(/^0+/, '');
+  return (raw || "")
+    .replace("@s.whatsapp.net", "")
+    .replace("@g.us", "")
+    .replace("@lid", "")
+    .replace(/\D/g, "")
+    .replace(/^0+/, "");
 }
 
 function normalizeInstanceKey(raw: string | null | undefined): string {
-  return (raw || '').trim().toLowerCase();
+  return (raw || "").trim().toLowerCase();
 }
 
 function buildScopedExternalMessageId(
@@ -290,7 +388,7 @@ function buildScopedExternalMessageId(
   instanceName: string | null | undefined,
   phone: string | null | undefined,
 ): string | null {
-  const raw = String(rawExternalMessageId || '').trim();
+  const raw = String(rawExternalMessageId || "").trim();
   const instanceKey = normalizeInstanceKey(instanceName);
   const phoneKey = normalizePhone(phone);
 
@@ -301,9 +399,9 @@ function buildScopedExternalMessageId(
 }
 
 function normalizeCallId(raw: unknown): string | null {
-  const value = String(raw ?? '').trim();
+  const value = String(raw ?? "").trim();
   if (!value) return null;
-  const cleaned = value.replace(/[^a-zA-Z0-9_-]/g, '');
+  const cleaned = value.replace(/[^a-zA-Z0-9_-]/g, "");
   return cleaned || null;
 }
 
@@ -326,57 +424,62 @@ function resolveCallTag(body: any, event: any, call: any): string {
   ];
 
   for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) {
+    if (typeof candidate === "string" && candidate.trim()) {
       return candidate.toLowerCase().trim();
     }
   }
 
-  return '';
+  return "";
 }
 
 async function handleCallEvent(supabase: any, body: any) {
   const event = body.event || {};
   const call = body.call || body.message || body.chat || {};
 
-  const senderPn = body.sender_pn || event.CallCreatorAlt || event.From || call.from || '';
-  const callFrom = event.From || call.from || body.from || body.chat?.phone || senderPn || '';
+  const senderPn = body.sender_pn || event.CallCreatorAlt || event.From ||
+    call.from || "";
+  const callFrom = event.From || call.from || body.from || body.chat?.phone ||
+    senderPn || "";
   const phone = normalizePhone(callFrom);
-  const contactName = body.chat?.name || body.chat?.pushName || body.senderName || call?.caller_name || null;
+  const contactName = body.chat?.name || body.chat?.pushName ||
+    body.senderName || call?.caller_name || null;
   const instanceName = body.instanceName || body.chat?.instanceName || null;
 
   const callId = normalizeCallId(
-    event.CallID
-    || event.call_id
-    || event.callId
-    || call.CallID
-    || call.call_id
-    || call.callId
-    || body.call_id
-    || body.callId
-    || body.message?.call_id
-    || body.message?.callId
-    || body.message?.id
+    event.CallID ||
+      event.call_id ||
+      event.callId ||
+      call.CallID ||
+      call.call_id ||
+      call.callId ||
+      body.call_id ||
+      body.callId ||
+      body.message?.call_id ||
+      body.message?.callId ||
+      body.message?.id,
   );
 
   // Outbound detection (UazAPI variants)
-  const fromMeBody = body.fromMe === true || body.message?.fromMe === true || body.chat?.fromMe === true || call.fromMe === true;
-  const fromMeEvent = event.from_me === true
-    || String(body.direction || '').toLowerCase() === 'outbound'
-    || String(body.call_direction || '').toLowerCase() === 'outbound';
-  const instanceOwner = normalizePhone(body.owner || body.chat?.owner || '');
-  const fromMeOwner = !!instanceOwner && normalizePhone(senderPn) === instanceOwner;
+  const fromMeBody = body.fromMe === true || body.message?.fromMe === true ||
+    body.chat?.fromMe === true || call.fromMe === true;
+  const fromMeEvent = event.from_me === true ||
+    String(body.direction || "").toLowerCase() === "outbound" ||
+    String(body.call_direction || "").toLowerCase() === "outbound";
+  const instanceOwner = normalizePhone(body.owner || body.chat?.owner || "");
+  const fromMeOwner = !!instanceOwner &&
+    normalizePhone(senderPn) === instanceOwner;
 
   const isIncoming = !(fromMeBody || fromMeEvent || fromMeOwner);
   const eventTag = resolveCallTag(body, event, call);
   const reason = String(
-    body.Reason
-    || body.reason
-    || event.Reason
-    || event?.Data?.Attrs?.reason
-    || ''
+    body.Reason ||
+      body.reason ||
+      event.Reason ||
+      event?.Data?.Attrs?.reason ||
+      "",
   ).toLowerCase();
 
-  console.log('Processing call event:', {
+  console.log("Processing call event:", {
     phone,
     callId,
     eventTag,
@@ -389,33 +492,74 @@ async function handleCallEvent(supabase: any, body: any) {
   });
 
   if (!phone) {
-    console.error('No phone for call event, skipping');
+    console.error("No phone for call event, skipping");
     return null;
   }
 
-  const isOffer = ['offer', 'ringing', 'ring', 'initiated', 'incoming', 'calling'].some((s) => eventTag.includes(s));
-  const isAccept = ['accept', 'accepted', 'answer', 'answered', 'connected', 'in_progress', 'ongoing'].some((s) => eventTag.includes(s));
-  const hasMissedSignal = ['reject', 'rejected', 'timeout', 'miss', 'missed', 'cancel', 'cancelled', 'failed', 'unavailable', 'declined'].some((s) => eventTag.includes(s) || reason.includes(s));
-  const hasBusySignal = eventTag.includes('busy') || reason.includes('busy');
-  const isTerminate = ['terminate', 'terminated', 'ended', 'end', 'hangup', 'completed', 'finish', 'finished'].some((s) => eventTag.includes(s))
-    || hasMissedSignal
-    || hasBusySignal;
+  const isOffer = [
+    "offer",
+    "ringing",
+    "ring",
+    "initiated",
+    "incoming",
+    "calling",
+  ].some((s) => eventTag.includes(s));
+  const isAccept = [
+    "accept",
+    "accepted",
+    "answer",
+    "answered",
+    "connected",
+    "in_progress",
+    "ongoing",
+  ].some((s) => eventTag.includes(s));
+  const hasMissedSignal = [
+    "reject",
+    "rejected",
+    "timeout",
+    "miss",
+    "missed",
+    "cancel",
+    "cancelled",
+    "failed",
+    "unavailable",
+    "declined",
+  ].some((s) => eventTag.includes(s) || reason.includes(s));
+  const hasBusySignal = eventTag.includes("busy") || reason.includes("busy");
+  const isTerminate = [
+    "terminate",
+    "terminated",
+    "ended",
+    "end",
+    "hangup",
+    "completed",
+    "finish",
+    "finished",
+  ].some((s) => eventTag.includes(s)) ||
+    hasMissedSignal ||
+    hasBusySignal;
 
-  console.log('Call event routing:', { eventTag, isOffer, isAccept, isTerminate, callId });
+  console.log("Call event routing:", {
+    eventTag,
+    isOffer,
+    isAccept,
+    isTerminate,
+    callId,
+  });
 
   // Record offer/accept on pending table for realtime banners and duration calculation
   if ((isOffer || isAccept) && callId) {
-    const eventType = isOffer ? 'offer' : 'accept';
+    const eventType = isOffer ? "offer" : "accept";
     const { data: alreadyExists } = await supabase
-      .from('call_events_pending')
-      .select('id')
-      .eq('call_id', callId)
-      .eq('event_type', eventType)
+      .from("call_events_pending")
+      .select("id")
+      .eq("call_id", callId)
+      .eq("event_type", eventType)
       .limit(1)
       .maybeSingle();
 
     if (!alreadyExists) {
-      await supabase.from('call_events_pending').insert({
+      await supabase.from("call_events_pending").insert({
         call_id: callId,
         instance_name: instanceName,
         phone,
@@ -430,31 +574,46 @@ async function handleCallEvent(supabase: any, body: any) {
     if (isAccept && instanceName) {
       try {
         const { data: inst } = await supabase
-          .from('whatsapp_instances')
-          .select('instance_token, base_url')
-          .eq('instance_name', instanceName)
-          .eq('is_active', true)
+          .from("whatsapp_instances")
+          .select("instance_token, base_url")
+          .eq("instance_name", instanceName)
+          .eq("is_active", true)
           .limit(1)
           .maybeSingle();
 
         if (inst?.instance_token) {
-          const recBaseUrl = inst.base_url || 'https://abraci.uazapi.com';
+          const recBaseUrl = inst.base_url || "https://abraci.uazapi.com";
           const recordUrl = `${recBaseUrl}/call/record`;
-          console.log('Auto-activating call recording via UazAPI:', recordUrl, 'callId:', callId);
+          console.log(
+            "Auto-activating call recording via UazAPI:",
+            recordUrl,
+            "callId:",
+            callId,
+          );
 
           const recResp = await fetch(recordUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'token': inst.instance_token },
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "token": inst.instance_token,
+            },
             body: JSON.stringify({ callId, number: phone }),
           });
 
           const recData = await recResp.json().catch(() => ({}));
-          console.log('UazAPI record response:', recResp.status, JSON.stringify(recData));
+          console.log(
+            "UazAPI record response:",
+            recResp.status,
+            JSON.stringify(recData),
+          );
         } else {
-          console.warn('No instance token found for recording, instance:', instanceName);
+          console.warn(
+            "No instance token found for recording, instance:",
+            instanceName,
+          );
         }
       } catch (recErr) {
-        console.error('Error activating call recording:', recErr);
+        console.error("Error activating call recording:", recErr);
       }
     }
 
@@ -463,100 +622,141 @@ async function handleCallEvent(supabase: any, body: any) {
 
   // Unknown/intermediate event => skip
   if (!isTerminate) {
-    console.log('Unknown/intermediate call event, skipping:', eventTag || '(empty)');
+    console.log(
+      "Unknown/intermediate call event, skipping:",
+      eventTag || "(empty)",
+    );
     return null;
   }
 
   // Idempotency: avoid duplicated final record creation for same call_id
   if (callId) {
     const { data: existingFinal } = await supabase
-      .from('call_records')
-      .select('id, user_id, audio_url')
-      .ilike('notes', `%CallID:${callId}%`)
-      .neq('call_result', 'em_andamento')
-      .order('created_at', { ascending: false })
+      .from("call_records")
+      .select("id, user_id, audio_url")
+      .ilike("notes", `%CallID:${callId}%`)
+      .neq("call_result", "em_andamento")
+      .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (existingFinal) {
-      console.log('Final call record already exists for call_id, skipping duplicate:', callId, existingFinal.id);
+      console.log(
+        "Final call record already exists for call_id, skipping duplicate:",
+        callId,
+        existingFinal.id,
+      );
       return existingFinal;
     }
   }
 
   // Lookup pending events for duration and better direction/source inference
   let pendingQuery = supabase
-    .from('call_events_pending')
-    .select('*')
-    .order('created_at', { ascending: true })
+    .from("call_events_pending")
+    .select("*")
+    .order("created_at", { ascending: true })
     .limit(30);
 
   if (callId) {
-    pendingQuery = pendingQuery.eq('call_id', callId);
+    pendingQuery = pendingQuery.eq("call_id", callId);
   } else {
-    pendingQuery = pendingQuery.eq('phone', phone);
-    if (instanceName) pendingQuery = pendingQuery.eq('instance_name', instanceName);
+    pendingQuery = pendingQuery.eq("phone", phone);
+    if (instanceName) {
+      pendingQuery = pendingQuery.eq("instance_name", instanceName);
+    }
   }
 
   const { data: pendingEvents } = await pendingQuery;
-  const offerEvent = pendingEvents?.find((e: any) => e.event_type === 'offer');
-  const acceptEvent = pendingEvents?.find((e: any) => e.event_type === 'accept');
+  const offerEvent = pendingEvents?.find((e: any) => e.event_type === "offer");
+  const acceptEvent = pendingEvents?.find((e: any) =>
+    e.event_type === "accept"
+  );
 
   // Calculate duration
   const reportedDurationRaw = Number(
-    call.duration
-    || call.duration_seconds
-    || event.duration
-    || body.duration
-    || body.duration_seconds
-    || 0
+    call.duration ||
+      call.duration_seconds ||
+      event.duration ||
+      body.duration ||
+      body.duration_seconds ||
+      0,
   );
-  let durationSeconds = Number.isFinite(reportedDurationRaw) && reportedDurationRaw > 0
-    ? Math.round(reportedDurationRaw)
-    : 0;
+  let durationSeconds =
+    Number.isFinite(reportedDurationRaw) && reportedDurationRaw > 0
+      ? Math.round(reportedDurationRaw)
+      : 0;
 
   if (!durationSeconds && acceptEvent?.created_at) {
     const acceptTime = new Date(acceptEvent.created_at).getTime();
     durationSeconds = Math.max(0, Math.round((Date.now() - acceptTime) / 1000));
   }
 
-  const hasAnsweredSignal = ['accept', 'accepted', 'answer', 'answered', 'connected', 'in_progress', 'ongoing', 'completed'].some((s) => eventTag.includes(s));
-  const wasAnswered = !!acceptEvent || durationSeconds > 0 || (hasAnsweredSignal && !hasMissedSignal && !hasBusySignal);
+  const hasAnsweredSignal = [
+    "accept",
+    "accepted",
+    "answer",
+    "answered",
+    "connected",
+    "in_progress",
+    "ongoing",
+    "completed",
+  ].some((s) => eventTag.includes(s));
+  const wasAnswered = !!acceptEvent || durationSeconds > 0 ||
+    (hasAnsweredSignal && !hasMissedSignal && !hasBusySignal);
 
-  let callResult = 'atendeu';
+  let callResult = "atendeu";
   if (!wasAnswered) {
-    callResult = hasBusySignal ? 'ocupado' : 'não_atendeu';
+    callResult = hasBusySignal ? "ocupado" : "não_atendeu";
     durationSeconds = 0;
   }
 
   const finalPhone = offerEvent?.phone || acceptEvent?.phone || phone;
-  const finalContactName = offerEvent?.contact_name || acceptEvent?.contact_name || contactName;
-  const isOutbound = offerEvent?.from_me === true || acceptEvent?.from_me === true || !isIncoming;
-  const callType = isOutbound ? 'realizada' : 'recebida';
+  const finalContactName = offerEvent?.contact_name ||
+    acceptEvent?.contact_name || contactName;
+  const isOutbound = offerEvent?.from_me === true ||
+    acceptEvent?.from_me === true || !isIncoming;
+  const callType = isOutbound ? "realizada" : "recebida";
 
-  console.log('Finalizing call record:', { finalPhone, callType, callResult, durationSeconds, callId });
+  console.log("Finalizing call record:", {
+    finalPhone,
+    callType,
+    callResult,
+    durationSeconds,
+    callId,
+  });
 
   // Clean up pending rows for this call (and stale rows older than 8h)
   if (callId) {
-    await supabase.from('call_events_pending').delete().eq('call_id', callId);
+    await supabase.from("call_events_pending").delete().eq("call_id", callId);
   } else {
-    let cleanupQuery = supabase.from('call_events_pending').delete().eq('phone', finalPhone);
-    if (instanceName) cleanupQuery = cleanupQuery.eq('instance_name', instanceName);
+    let cleanupQuery = supabase.from("call_events_pending").delete().eq(
+      "phone",
+      finalPhone,
+    );
+    if (instanceName) {
+      cleanupQuery = cleanupQuery.eq("instance_name", instanceName);
+    }
     await cleanupQuery;
   }
-  const staleCutoffIso = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
-  await supabase.from('call_events_pending').delete().lt('created_at', staleCutoffIso);
+  const staleCutoffIso = new Date(Date.now() - 8 * 60 * 60 * 1000)
+    .toISOString();
+  await supabase.from("call_events_pending").delete().lt(
+    "created_at",
+    staleCutoffIso,
+  );
 
   // Look up contact/lead
   let contactId: string | null = null;
   let leadId: string | null = null;
   let leadName: string | null = null;
 
-  const phoneVariants = Array.from(new Set([finalPhone, finalPhone.replace(/^55/, '')].filter(Boolean)));
+  const phoneVariants = Array.from(
+    new Set([finalPhone, finalPhone.replace(/^55/, "")].filter(Boolean)),
+  );
   for (const variant of phoneVariants) {
     const { data: contacts } = await supabase
-      .from('contacts')
-      .select('id, lead_id, full_name')
+      .from("contacts")
+      .select("id, lead_id, full_name")
       .or(`phone.ilike.%${variant}`)
       .limit(1);
     if (contacts?.length) {
@@ -569,8 +769,8 @@ async function handleCallEvent(supabase: any, body: any) {
   if (!leadId) {
     for (const variant of phoneVariants) {
       const { data: leads } = await supabase
-        .from('leads')
-        .select('id, lead_name')
+        .from("leads")
+        .select("id, lead_name")
         .or(`lead_phone.ilike.%${variant}`)
         .limit(1);
       if (leads?.length) {
@@ -586,10 +786,10 @@ async function handleCallEvent(supabase: any, body: any) {
   let aiTranscript: string | null = null;
   const audioUrl = call.audioUrl || call.audio_url || call.mediaUrl || null;
 
-  if (audioUrl && callResult === 'atendeu' && durationSeconds > 5) {
-    const apiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (audioUrl && callResult === "atendeu" && durationSeconds > 5) {
+    const apiKey = Deno.env.get("LOVABLE_API_KEY");
     if (apiKey) {
-      console.log('Transcribing call audio...');
+      console.log("Transcribing call audio...");
       const result = await transcribeCallAudio(audioUrl, apiKey);
       if (result) {
         aiSummary = result.summary;
@@ -599,27 +799,30 @@ async function handleCallEvent(supabase: any, body: any) {
   }
 
   // Try to update an existing open record first (outbound call created by make-whatsapp-call)
-  const twoHoursAgoIso = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const twoHoursAgoIso = new Date(Date.now() - 2 * 60 * 60 * 1000)
+    .toISOString();
   let openRecordQuery = supabase
-    .from('call_records')
-    .select('id, user_id, created_at')
-    .eq('call_result', 'em_andamento')
-    .gte('created_at', twoHoursAgoIso)
-    .order('created_at', { ascending: false })
+    .from("call_records")
+    .select("id, user_id, created_at")
+    .eq("call_result", "em_andamento")
+    .gte("created_at", twoHoursAgoIso)
+    .order("created_at", { ascending: false })
     .limit(1);
 
   if (instanceName) {
-    openRecordQuery = openRecordQuery.eq('phone_used', instanceName);
+    openRecordQuery = openRecordQuery.eq("phone_used", instanceName);
   }
 
   if (phoneVariants.length > 0) {
-    openRecordQuery = openRecordQuery.or(phoneVariants.map((variant) => `contact_phone.eq.${variant}`).join(','));
+    openRecordQuery = openRecordQuery.or(
+      phoneVariants.map((variant) => `contact_phone.eq.${variant}`).join(","),
+    );
   }
 
   const { data: openRecord } = await openRecordQuery.maybeSingle();
 
   let record: any = null;
-  const callIdNote = callId ? `CallID:${callId}` : 'CallID:unknown';
+  const callIdNote = callId ? `CallID:${callId}` : "CallID:unknown";
   const basePayload = {
     call_type: callType,
     call_result: callResult,
@@ -629,46 +832,48 @@ async function handleCallEvent(supabase: any, body: any) {
     lead_name: leadName || finalContactName,
     contact_name: finalContactName,
     contact_phone: finalPhone,
-    phone_used: instanceName || 'whatsapp',
+    phone_used: instanceName || "whatsapp",
     ai_summary: aiSummary,
     ai_transcript: aiTranscript,
     audio_url: audioUrl,
-    notes: `Chamada WhatsApp ${callType} via ${instanceName || 'UazAPI'}. Duração: ${durationSeconds}s | ${callIdNote}`,
-    tags: ['whatsapp', 'automatico'],
+    notes: `Chamada WhatsApp ${callType} via ${
+      instanceName || "UazAPI"
+    }. Duração: ${durationSeconds}s | ${callIdNote}`,
+    tags: ["whatsapp", "automatico"],
   };
 
   if (openRecord?.id) {
     const { data: updated, error: updateError } = await supabase
-      .from('call_records')
+      .from("call_records")
       .update(basePayload)
-      .eq('id', openRecord.id)
+      .eq("id", openRecord.id)
       .select()
       .single();
 
     if (updateError) {
-      console.error('Error updating open call record:', updateError);
+      console.error("Error updating open call record:", updateError);
     } else {
       record = updated;
-      console.log('Updated open call record:', record.id);
+      console.log("Updated open call record:", record.id);
     }
   }
 
   if (!record) {
     const { data: adminRole } = await supabase
-      .from('user_roles')
-      .select('user_id')
-      .eq('role', 'admin')
+      .from("user_roles")
+      .select("user_id")
+      .eq("role", "admin")
       .limit(1)
       .single();
 
     const userId = adminRole?.user_id;
     if (!userId) {
-      console.error('No admin user found for call record');
+      console.error("No admin user found for call record");
       return null;
     }
 
     const { data: inserted, error } = await supabase
-      .from('call_records')
+      .from("call_records")
       .insert({
         user_id: userId,
         ...basePayload,
@@ -677,468 +882,630 @@ async function handleCallEvent(supabase: any, body: any) {
       .single();
 
     if (error) {
-      console.error('Error creating call record:', error);
+      console.error("Error creating call record:", error);
       return null;
     }
 
     record = inserted;
-    console.log('Call record created:', record.id, 'duration:', durationSeconds, 'seconds');
+    console.log(
+      "Call record created:",
+      record.id,
+      "duration:",
+      durationSeconds,
+      "seconds",
+    );
   }
 
   // Trigger field extraction via analyze-activity-chat (async, don't wait)
-  if (callResult === 'atendeu' && durationSeconds > 5 && (audioUrl || record.audio_url)) {
+  if (
+    callResult === "atendeu" && durationSeconds > 5 &&
+    (audioUrl || record.audio_url)
+  ) {
     const supabaseUrl = RESOLVED_SUPABASE_URL;
     const anonKey = RESOLVED_ANON_KEY;
-const cloudFunctionsUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
-const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+    const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
+      "https://gliigkupoebmlbwyvijp.supabase.co";
+    const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
     fetch(`${cloudFunctionsUrl}/functions/v1/analyze-activity-chat`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${anonKey}`,
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${anonKey}`,
       },
       body: JSON.stringify({
-        action: 'transcribe_call',
+        action: "transcribe_call",
         audio_url: audioUrl || record.audio_url,
         call_record_id: record.id,
         phone: finalPhone,
       }),
-    }).catch((e) => console.error('Field extraction trigger error:', e));
+    }).catch((e) => console.error("Field extraction trigger error:", e));
   }
 
   return record;
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabaseUrl = RESOLVED_SUPABASE_URL
-    const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    const supabaseUrl = RESOLVED_SUPABASE_URL;
+    const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const startTime = Date.now()
+    const startTime = Date.now();
 
     // Handle GET requests (UazAPI may send call events via GET)
-    let body: any
-    if (req.method === 'GET') {
-      const url = new URL(req.url)
-      body = Object.fromEntries(url.searchParams.entries())
+    let body: any;
+    if (req.method === "GET") {
+      const url = new URL(req.url);
+      body = Object.fromEntries(url.searchParams.entries());
       // Try to parse JSON fields that might be URL-encoded
       for (const key of Object.keys(body)) {
         try {
-          const parsed = JSON.parse(body[key])
-          if (typeof parsed === 'object') body[key] = parsed
+          const parsed = JSON.parse(body[key]);
+          if (typeof parsed === "object") body[key] = parsed;
         } catch (_) { /* keep as string */ }
       }
       // Log GET request for debugging
-      console.log('GET webhook received, params:', JSON.stringify(body).substring(0, 2000))
-      
+      console.log(
+        "GET webhook received, params:",
+        JSON.stringify(body).substring(0, 2000),
+      );
+
       // If GET has no meaningful data, just acknowledge
       if (Object.keys(body).length === 0) {
         return new Response(
-          JSON.stringify({ success: true, method: 'GET', message: 'Webhook active' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
+          JSON.stringify({
+            success: true,
+            method: "GET",
+            message: "Webhook active",
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
       }
 
       // Log GET events to webhook_logs for debugging
-      await supabase.from('webhook_logs').insert({
-        source: 'whatsapp',
-        event_type: 'GET_' + (body.EventType || body.event || body.type || 'unknown'),
+      await supabase.from("webhook_logs").insert({
+        source: "whatsapp",
+        event_type: "GET_" +
+          (body.EventType || body.event || body.type || "unknown"),
         instance_name: body.instanceName || body.instance_name || null,
-        phone: (body.phone || body.from || '').replace(/\D/g, '').slice(0, 20),
-        direction: 'inbound',
-        status: 'received_get',
+        phone: (body.phone || body.from || "").replace(/\D/g, "").slice(0, 20),
+        direction: "inbound",
+        status: "received_get",
         payload: body,
         processing_ms: Date.now() - startTime,
-      }).catch(() => {})
+      }).catch(() => {});
     } else {
-      body = await req.json()
+      body = await req.json();
     }
 
     // ========== EARLY FILTERS (no DB queries) ==========
-    const webhookInstanceName = body.instanceName || body.chat?.instanceName || body.instance_name || null
+    const webhookInstanceName = body.instanceName || body.chat?.instanceName ||
+      body.instance_name || null;
 
     // 1) Event classification + call detection
-    const eventType = String(body.EventType || '').toLowerCase()
-    const bodyType = String(body.type || '').toLowerCase()
+    const eventType = String(body.EventType || "").toLowerCase();
+    const bodyType = String(body.type || "").toLowerCase();
     // body.event can be an object (UazAPI call data) — only treat as string if it IS a string
-    const bodyEventStr = (typeof body.event === 'string') ? body.event.toLowerCase() : ''
-    const messageTypeHint = String(body.message?.messageType || body.chat?.wa_lastMessageType || '').toLowerCase()
+    const bodyEventStr = (typeof body.event === "string")
+      ? body.event.toLowerCase()
+      : "";
+    const messageTypeHint = String(
+      body.message?.messageType || body.chat?.wa_lastMessageType || "",
+    ).toLowerCase();
     const hasCallPayload = Boolean(
-      body.call
-      || body.call_id
-      || body.callId
-      || (typeof body.event === 'object' && body.event !== null && (body.event.CallID || body.event.call_id || body.event.Data?.Tag))
-      || body.message?.call_id
-      || body.message?.callId
-    )
+      body.call ||
+        body.call_id ||
+        body.callId ||
+        (typeof body.event === "object" && body.event !== null &&
+          (body.event.CallID || body.event.call_id || body.event.Data?.Tag)) ||
+        body.message?.call_id ||
+        body.message?.callId,
+    );
 
-    const isCallEvent = ['call', 'calls', 'call_log'].includes(eventType)
-      || bodyEventStr === 'call'
-      || bodyType.includes('call')
-      || messageTypeHint.includes('call')
-      || hasCallPayload
+    const isCallEvent = ["call", "calls", "call_log"].includes(eventType) ||
+      bodyEventStr === "call" ||
+      bodyType.includes("call") ||
+      messageTypeHint.includes("call") ||
+      hasCallPayload;
 
     // Helper to log webhook payload to DB (fire-and-forget)
-    const logWebhook = async (status: string, responseData?: any, errorMsg?: string) => {
+    const logWebhook = async (
+      status: string,
+      responseData?: any,
+      errorMsg?: string,
+    ) => {
       try {
-        const phone = body.chat?.phone || body.message?.chatid?.replace('@s.whatsapp.net', '') || ''
-        await supabase.from('webhook_logs').insert({
-          source: 'whatsapp',
-          event_type: eventType || bodyType || bodyEventStr || 'unknown',
+        const phone = body.chat?.phone ||
+          body.message?.chatid?.replace("@s.whatsapp.net", "") || "";
+        await supabase.from("webhook_logs").insert({
+          source: "whatsapp",
+          event_type: eventType || bodyType || bodyEventStr || "unknown",
           instance_name: webhookInstanceName,
-          phone: phone.replace(/\D/g, '').slice(0, 20),
-          direction: body.message?.fromMe ? 'outbound' : 'inbound',
+          phone: phone.replace(/\D/g, "").slice(0, 20),
+          direction: body.message?.fromMe ? "outbound" : "inbound",
           status,
           payload: body,
           response: responseData || null,
           error_message: errorMsg || null,
           processing_ms: Date.now() - startTime,
-        })
+        });
       } catch (e) {
         // Silent fail — logging should never break webhook
       }
-    }
+    };
 
     // ========== EARLY SKIP: Filter high-volume noise events BEFORE logging ==========
-    const skippableEvents = ['messages_update', 'presence', 'chats_update', 'chats_delete', 'contacts_update', 'labels', 'message_ack', 'chats']
+    const skippableEvents = [
+      "messages_update",
+      "presence",
+      "chats_update",
+      "chats_delete",
+      "contacts_update",
+      "labels",
+      "message_ack",
+      "chats",
+    ];
     if (skippableEvents.includes(eventType) && !isCallEvent) {
       return new Response(
-        JSON.stringify({ success: true, skipped: true, reason: `EventType ${eventType} filtered` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+        JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: `EventType ${eventType} filtered`,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     // Log only meaningful events to webhook_logs
-    logWebhook('received', { 
-      detected_event_type: eventType, 
-      body_type: bodyType, 
+    logWebhook("received", {
+      detected_event_type: eventType,
+      body_type: bodyType,
       is_call_event: isCallEvent,
-      keys: Object.keys(body).join(','),
-    })
+      keys: Object.keys(body).join(","),
+    });
 
     // 2) Detect group messages — save them to DB but skip AI agent processing later
-    const chatId = body.chat?.wa_chatid || body.message?.chatid || ''
-    const isGroup = body.chat?.wa_isGroup === true || chatId.includes('@g.us')
-    
+    const chatId = body.chat?.wa_chatid || body.message?.chatid || "";
+    const isGroup = body.chat?.wa_isGroup === true || chatId.includes("@g.us");
+
     // For groups: detect special commands
-    const groupMessageText = body.message?.text || body.message?.content?.text || body.message?.content || ''
-    const groupMsgStr = typeof groupMessageText === 'string' ? groupMessageText.trim() : ''
-    const isFromMe = body.message?.fromMe === true || body.chat?.fromMe === true
-    const isGroupAgentCommand = isFromMe && groupMsgStr.match(/^#[a-z0-9_]+$/i)
-    const isGroupWjiaCommand = isFromMe && groupMsgStr.toLowerCase().startsWith('@wjia')
+    const groupMessageText = body.message?.text ||
+      body.message?.content?.text || body.message?.content || "";
+    const groupMsgStr = typeof groupMessageText === "string"
+      ? groupMessageText.trim()
+      : "";
+    const isFromMe = body.message?.fromMe === true ||
+      body.chat?.fromMe === true;
+    const isGroupAgentCommand = isFromMe && groupMsgStr.match(/^#[a-z0-9_]+$/i);
+    const isGroupWjiaCommand = isFromMe &&
+      groupMsgStr.toLowerCase().startsWith("@wjia");
     // Group messages: save metadata to DB but skip media download and AI processing
     // (isGroup flag is used later to skip expensive operations)
 
     // 3) Skip reaction messages (emoji reactions on existing messages)
-    const msgType = (body.message?.messageType || body.chat?.wa_lastMessageType || '').toLowerCase()
-    if (msgType === 'reactionmessage' || msgType === 'protocolmessage') {
+    const msgType =
+      (body.message?.messageType || body.chat?.wa_lastMessageType || "")
+        .toLowerCase();
+    if (msgType === "reactionmessage" || msgType === "protocolmessage") {
       return new Response(
-        JSON.stringify({ success: true, skipped: true, reason: 'reaction_or_protocol_filtered' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+        JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: "reaction_or_protocol_filtered",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
-    console.log('WhatsApp webhook payload:', JSON.stringify(body).substring(0, 2000))
+    console.log(
+      "WhatsApp webhook payload:",
+      JSON.stringify(body).substring(0, 2000),
+    );
 
     // ========== PAUSE CHECK ==========
     if (webhookInstanceName) {
       const { data: inst } = await supabase
-        .from('whatsapp_instances')
-        .select('is_paused')
-        .eq('instance_name', webhookInstanceName)
+        .from("whatsapp_instances")
+        .select("is_paused")
+        .eq("instance_name", webhookInstanceName)
         .limit(1)
-        .maybeSingle()
+        .maybeSingle();
       if (inst?.is_paused) {
-        console.log(`Instance "${webhookInstanceName}" is PAUSED. Ignoring webhook.`)
+        console.log(
+          `Instance "${webhookInstanceName}" is PAUSED. Ignoring webhook.`,
+        );
         return new Response(
-          JSON.stringify({ success: true, skipped: true, reason: 'instance_paused' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
+          JSON.stringify({
+            success: true,
+            skipped: true,
+            reason: "instance_paused",
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
       }
     }
 
     // ========== CALL EVENT HANDLING (isCallEvent computed in early filters) ==========
     if (isCallEvent) {
-      console.log('Detected CALL event, processing...')
+      console.log("Detected CALL event, processing...");
       const callRecord = await handleCallEvent(supabase, body);
-      const resp = { success: true, type: 'call', call_record_id: callRecord?.id || null }
-      await logWebhook('call_processed', resp)
+      const resp = {
+        success: true,
+        type: "call",
+        call_record_id: callRecord?.id || null,
+      };
+      await logWebhook("call_processed", resp);
       return new Response(
         JSON.stringify(resp),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     // ========== MESSAGE HANDLING ==========
-    let rawPhone = ''
-    let contactName: string | null = null
-    let messageText: string | null = null
-    let messageType = 'text'
-    let mediaUrl: string | null = null
-    let mediaType: string | null = null
-    let direction = 'inbound'
-    let externalMessageId: string | null = null
-    let instanceName: string | null = null
-    let instanceToken: string | null = null
-    let baseUrl: string | null = null
+    let rawPhone = "";
+    let contactName: string | null = null;
+    let messageText: string | null = null;
+    let messageType = "text";
+    let mediaUrl: string | null = null;
+    let mediaType: string | null = null;
+    let direction = "inbound";
+    let externalMessageId: string | null = null;
+    let instanceName: string | null = null;
+    let instanceToken: string | null = null;
+    let baseUrl: string | null = null;
 
     if (body.EventType && body.chat) {
       // UazAPI format
-      console.log('Detected UazAPI format, EventType:', body.EventType)
-      
-      instanceName = body.instanceName || body.chat?.instanceName || null
-      instanceToken = body.token || body.chat?.token || null
-      baseUrl = body.BaseUrl || null
+      console.log("Detected UazAPI format, EventType:", body.EventType);
+
+      instanceName = body.instanceName || body.chat?.instanceName || null;
+      instanceToken = body.token || body.chat?.token || null;
+      baseUrl = body.BaseUrl || null;
 
       // Canonicalize instance by token to avoid alias-name drift (e.g. webhook says "Site ABRACI" while DB uses "WHATSJUD IA")
       if (instanceToken) {
         const { data: canonicalInstance } = await supabase
-          .from('whatsapp_instances')
-          .select('instance_name, base_url')
-          .eq('instance_token', instanceToken)
-          .eq('is_active', true)
+          .from("whatsapp_instances")
+          .select("instance_name, base_url")
+          .eq("instance_token", instanceToken)
+          .eq("is_active", true)
           .limit(1)
-          .maybeSingle()
+          .maybeSingle();
 
         if (canonicalInstance) {
-          if (instanceName && instanceName !== canonicalInstance.instance_name) {
-            console.log('Instance alias mismatch detected. Payload:', instanceName, 'Canonical:', canonicalInstance.instance_name)
+          if (
+            instanceName && instanceName !== canonicalInstance.instance_name
+          ) {
+            console.log(
+              "Instance alias mismatch detected. Payload:",
+              instanceName,
+              "Canonical:",
+              canonicalInstance.instance_name,
+            );
           }
-          instanceName = canonicalInstance.instance_name
-          baseUrl = baseUrl || canonicalInstance.base_url
+          instanceName = canonicalInstance.instance_name;
+          baseUrl = baseUrl || canonicalInstance.base_url;
         }
       }
-      
-      console.log('Instance:', instanceName, 'Token:', instanceToken?.substring(0, 8), 'BaseUrl:', baseUrl)
+
+      console.log(
+        "Instance:",
+        instanceName,
+        "Token:",
+        instanceToken?.substring(0, 8),
+        "BaseUrl:",
+        baseUrl,
+      );
 
       // Auto-save owner_phone from webhook data
-      const ownerFromWebhook = body.chat?.owner || body.owner || null
+      const ownerFromWebhook = body.chat?.owner || body.owner || null;
       if (instanceName && ownerFromWebhook) {
-        const cleanOwnerPhone = ownerFromWebhook.replace('@s.whatsapp.net', '')
+        const cleanOwnerPhone = ownerFromWebhook.replace("@s.whatsapp.net", "");
         supabase
-          .from('whatsapp_instances')
+          .from("whatsapp_instances")
           .update({ owner_phone: cleanOwnerPhone })
-          .eq('instance_name', instanceName)
-          .is('owner_phone', null)
+          .eq("instance_name", instanceName)
+          .is("owner_phone", null)
           .then(({ error: upErr }) => {
-            if (!upErr) console.log(`Auto-saved owner_phone ${cleanOwnerPhone} for ${instanceName}`)
-          })
+            if (!upErr) {
+              console.log(
+                `Auto-saved owner_phone ${cleanOwnerPhone} for ${instanceName}`,
+              );
+            }
+          });
       }
 
       // Check wa_lastMessageType for call events arriving as chats/messages
-      const lastMsgType = (body.chat?.wa_lastMessageType || '').toLowerCase()
-      const msgMessageType = (body.message?.messageType || '').toLowerCase()
-      const isCallInMessage = lastMsgType.includes('call') || msgMessageType.includes('call')
+      const lastMsgType = (body.chat?.wa_lastMessageType || "").toLowerCase();
+      const msgMessageType = (body.message?.messageType || "").toLowerCase();
+      const isCallInMessage = lastMsgType.includes("call") ||
+        msgMessageType.includes("call");
 
       if (isCallInMessage) {
-        console.log('Detected call event via messageType/wa_lastMessageType:', lastMsgType, msgMessageType)
-        const callRecord = await handleCallEvent(supabase, body)
+        console.log(
+          "Detected call event via messageType/wa_lastMessageType:",
+          lastMsgType,
+          msgMessageType,
+        );
+        const callRecord = await handleCallEvent(supabase, body);
         return new Response(
-          JSON.stringify({ success: true, type: 'call', call_record_id: callRecord?.id || null }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
+          JSON.stringify({
+            success: true,
+            type: "call",
+            call_record_id: callRecord?.id || null,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
       }
 
       // Allow call-related EventTypes to pass through to the call handler above
-      if (body.EventType !== 'messages') {
+      if (body.EventType !== "messages") {
         // Check if this is a call event that wasn't caught above (UazAPI may use different naming)
-        const callRelated = body.EventType === 'call' || body.EventType === 'calls' || body.EventType === 'call_log';
+        const callRelated = body.EventType === "call" ||
+          body.EventType === "calls" || body.EventType === "call_log";
         if (callRelated) {
-          console.log('Detected UazAPI call event via EventType:', body.EventType);
+          console.log(
+            "Detected UazAPI call event via EventType:",
+            body.EventType,
+          );
           const callRecord = await handleCallEvent(supabase, body);
           return new Response(
-            JSON.stringify({ success: true, type: 'call', call_record_id: callRecord?.id || null }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            JSON.stringify({
+              success: true,
+              type: "call",
+              call_record_id: callRecord?.id || null,
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
           );
         }
-        console.log('SKIPPING non-message, non-call EventType:', body.EventType, 'Full type field:', body.type, 'Keys:', Object.keys(body).join(','));
-        await logWebhook('skipped_' + (body.EventType || 'unknown'))
+        console.log(
+          "SKIPPING non-message, non-call EventType:",
+          body.EventType,
+          "Full type field:",
+          body.type,
+          "Keys:",
+          Object.keys(body).join(","),
+        );
+        await logWebhook("skipped_" + (body.EventType || "unknown"));
         return new Response(
-          JSON.stringify({ success: true, skipped: true, reason: `EventType ${body.EventType} ignored` }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
+          JSON.stringify({
+            success: true,
+            skipped: true,
+            reason: `EventType ${body.EventType} ignored`,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
       }
 
-      const chatId = body.chat?.wa_chatid || body.message?.chatid || body.chat?.id || ''
-      rawPhone = chatId.replace('@s.whatsapp.net', '').replace('@g.us', '')
-      
-      contactName = body.chat?.name || body.chat?.pushName || body.senderName || null
-      
-      const msg = body.message || body.chat?.message || {}
-      if (typeof msg === 'string') {
-        messageText = msg
+      const chatId = body.chat?.wa_chatid || body.message?.chatid ||
+        body.chat?.id || "";
+      rawPhone = chatId.replace("@s.whatsapp.net", "").replace("@g.us", "");
+
+      contactName = body.chat?.name || body.chat?.pushName || body.senderName ||
+        null;
+
+      const msg = body.message || body.chat?.message || {};
+      if (typeof msg === "string") {
+        messageText = msg;
       } else {
         const rawContent = msg.content;
         let contentText: string | null = null;
-        
-        if (typeof rawContent === 'object' && rawContent !== null) {
+
+        if (typeof rawContent === "object" && rawContent !== null) {
           if (rawContent.URL) {
             mediaUrl = rawContent.URL;
           }
           contentText = rawContent.text || rawContent.conversation || null;
-        } else if (typeof rawContent === 'string') {
+        } else if (typeof rawContent === "string") {
           contentText = rawContent;
         }
 
-        messageText = msg.text
-          || contentText
-          || msg.conversation 
-          || msg.extendedTextMessage?.text 
-          || msg.imageMessage?.caption 
-          || msg.videoMessage?.caption
-          || msg.documentMessage?.caption
-          || null
-        
-        if (messageText && typeof messageText !== 'string') {
-          messageText = JSON.stringify(messageText)
+        messageText = msg.text ||
+          contentText ||
+          msg.conversation ||
+          msg.extendedTextMessage?.text ||
+          msg.imageMessage?.caption ||
+          msg.videoMessage?.caption ||
+          msg.documentMessage?.caption ||
+          null;
+
+        if (messageText && typeof messageText !== "string") {
+          messageText = JSON.stringify(messageText);
         }
       }
 
       // Detect media type
       if (msg.imageMessage) {
-        messageType = 'image'
-        mediaType = msg.imageMessage.mimetype || 'image/jpeg'
-        mediaUrl = mediaUrl || msg.imageMessage.url || null
+        messageType = "image";
+        mediaType = msg.imageMessage.mimetype || "image/jpeg";
+        mediaUrl = mediaUrl || msg.imageMessage.url || null;
       } else if (msg.videoMessage) {
-        messageType = 'video'
-        mediaType = msg.videoMessage.mimetype || 'video/mp4'
-        mediaUrl = mediaUrl || msg.videoMessage.url || null
+        messageType = "video";
+        mediaType = msg.videoMessage.mimetype || "video/mp4";
+        mediaUrl = mediaUrl || msg.videoMessage.url || null;
       } else if (msg.audioMessage) {
-        messageType = 'audio'
-        mediaType = msg.audioMessage.mimetype || 'audio/ogg'
-        mediaUrl = mediaUrl || msg.audioMessage.url || null
+        messageType = "audio";
+        mediaType = msg.audioMessage.mimetype || "audio/ogg";
+        mediaUrl = mediaUrl || msg.audioMessage.url || null;
       } else if (msg.documentMessage) {
-        messageType = 'document'
-        mediaType = msg.documentMessage.mimetype || null
-        mediaUrl = mediaUrl || msg.documentMessage.url || null
-      } else if (msg.mediaType || (typeof msg.content === 'object' && msg.content?.URL)) {
-        const uazMediaType = (msg.mediaType || '').toLowerCase()
-        const chatLastMsgType = (body.chat?.wa_lastMessageType || '').toLowerCase()
-        
-        if (uazMediaType.includes('audio') || uazMediaType.includes('ptt') || chatLastMsgType.includes('audio')) {
-          messageType = 'audio'
-          mediaType = msg.mimetype || 'audio/ogg; codecs=opus'
-        } else if (uazMediaType.includes('image') || chatLastMsgType.includes('image')) {
-          messageType = 'image'
-          mediaType = msg.mimetype || 'image/jpeg'
-        } else if (uazMediaType.includes('video') || chatLastMsgType.includes('video')) {
-          messageType = 'video'
-          mediaType = msg.mimetype || 'video/mp4'
-        } else if (uazMediaType.includes('document') || uazMediaType.includes('sticker') || chatLastMsgType.includes('document') || chatLastMsgType.includes('sticker')) {
-          messageType = 'document'
-          mediaType = msg.mimetype || null
+        messageType = "document";
+        mediaType = msg.documentMessage.mimetype || null;
+        mediaUrl = mediaUrl || msg.documentMessage.url || null;
+      } else if (
+        msg.mediaType || (typeof msg.content === "object" && msg.content?.URL)
+      ) {
+        const uazMediaType = (msg.mediaType || "").toLowerCase();
+        const chatLastMsgType = (body.chat?.wa_lastMessageType || "")
+          .toLowerCase();
+
+        if (
+          uazMediaType.includes("audio") || uazMediaType.includes("ptt") ||
+          chatLastMsgType.includes("audio")
+        ) {
+          messageType = "audio";
+          mediaType = msg.mimetype || "audio/ogg; codecs=opus";
+        } else if (
+          uazMediaType.includes("image") || chatLastMsgType.includes("image")
+        ) {
+          messageType = "image";
+          mediaType = msg.mimetype || "image/jpeg";
+        } else if (
+          uazMediaType.includes("video") || chatLastMsgType.includes("video")
+        ) {
+          messageType = "video";
+          mediaType = msg.mimetype || "video/mp4";
+        } else if (
+          uazMediaType.includes("document") ||
+          uazMediaType.includes("sticker") ||
+          chatLastMsgType.includes("document") ||
+          chatLastMsgType.includes("sticker")
+        ) {
+          messageType = "document";
+          mediaType = msg.mimetype || null;
         } else if (mediaUrl) {
-          messageType = 'document'
-          mediaType = msg.mimetype || null
+          messageType = "document";
+          mediaType = msg.mimetype || null;
         }
-        
-        if (!messageText && messageType !== 'text') {
-          messageText = null
+
+        if (!messageText && messageType !== "text") {
+          messageText = null;
         }
       }
 
       // Determine direction: use fromMe flag
       // UazAPI sometimes incorrectly sets fromMe=true for inbound media using @lid IDs
       // Only apply correction when chatid contains @lid (known problematic case)
-      const fromMeFlag = body.message?.fromMe === true || body.chat?.fromMe === true
-      const chatIdRaw = body.chat?.wa_chatid || body.message?.chatid || ''
-      const isLidChat = chatIdRaw.includes('@lid')
-      
+      const fromMeFlag = body.message?.fromMe === true ||
+        body.chat?.fromMe === true;
+      const chatIdRaw = body.chat?.wa_chatid || body.message?.chatid || "";
+      const isLidChat = chatIdRaw.includes("@lid");
+
       if (fromMeFlag && isLidChat) {
         // @lid chats with fromMe=true are often actually inbound — correct direction
-        console.log(`Direction correction: fromMe=true but @lid chat detected, forcing inbound`)
-        direction = 'inbound'
+        console.log(
+          `Direction correction: fromMe=true but @lid chat detected, forcing inbound`,
+        );
+        direction = "inbound";
       } else {
-        direction = fromMeFlag ? 'outbound' : 'inbound'
+        direction = fromMeFlag ? "outbound" : "inbound";
       }
-      externalMessageId = body.message?.id || body.message?.messageid || body.chat?.id_message || null
+      externalMessageId = body.message?.id || body.message?.messageid ||
+        body.chat?.id_message || null;
     } else {
-      rawPhone = body.phone || body.from || body.sender || body.remoteJid || ''
-      contactName = body.contact_name || body.pushName || body.senderName || body.name || null
-      messageText = body.message || body.text || body.body || body.content || null
-      messageType = body.message_type || body.type || 'text'
-      mediaUrl = body.media_url || body.mediaUrl || null
-      mediaType = body.media_type || body.mediaType || null
-      direction = body.direction || 'inbound'
-      externalMessageId = body.message_id || body.messageId || body.id || null
-      instanceName = body.instance_name || null
-      instanceToken = body.instance_token || null
+      rawPhone = body.phone || body.from || body.sender || body.remoteJid || "";
+      contactName = body.contact_name || body.pushName || body.senderName ||
+        body.name || null;
+      messageText = body.message || body.text || body.body || body.content ||
+        null;
+      messageType = body.message_type || body.type || "text";
+      mediaUrl = body.media_url || body.mediaUrl || null;
+      mediaType = body.media_type || body.mediaType || null;
+      direction = body.direction || "inbound";
+      externalMessageId = body.message_id || body.messageId || body.id || null;
+      instanceName = body.instance_name || null;
+      instanceToken = body.instance_token || null;
     }
 
     // Preservar traço em grupos antigos (ex: "559188395050-1579923779")
     const phone = /^\d+-\d+$/.test(rawPhone)
       ? rawPhone
-      : rawPhone.replace(/\D/g, '').replace(/^0+/, '')
+      : rawPhone.replace(/\D/g, "").replace(/^0+/, "");
 
     // Sanitize contact_name: remove patterns like "WhatsApp 551234567890 | Instance"
     // or names that are just phone numbers
     if (contactName) {
-      const cleaned = contactName.replace(/^WhatsApp\s+/i, '').replace(/\s*\|.*$/, '').trim()
+      const cleaned = contactName.replace(/^WhatsApp\s+/i, "").replace(
+        /\s*\|.*$/,
+        "",
+      ).trim();
       // If the cleaned name is purely numeric (phone number), discard it
       if (/^\+?\d[\d\s\-()]{6,}$/.test(cleaned)) {
-        contactName = null
+        contactName = null;
       } else if (/^WhatsApp\s+\d/i.test(contactName)) {
-        contactName = null
+        contactName = null;
       }
     }
     if (!phone) {
       return new Response(
-        JSON.stringify({ success: false, error: 'No phone number provided' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+        JSON.stringify({ success: false, error: "No phone number provided" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
-    console.log('Parsed message:', { phone, contactName, messageText: messageText?.substring(0, 100), direction, messageType, mediaUrl: mediaUrl?.substring(0, 80), instanceName })
+    console.log("Parsed message:", {
+      phone,
+      contactName,
+      messageText: messageText?.substring(0, 100),
+      direction,
+      messageType,
+      mediaUrl: mediaUrl?.substring(0, 80),
+      instanceName,
+    });
 
     // ========== MUTED CHAT CHECK (Cloud DB) ==========
     if (phone && instanceName) {
       try {
-        const cloudClient = createClient(cloudFunctionsUrl, cloudAnonKey)
+        const cloudClient = createClient(cloudFunctionsUrl, cloudAnonKey);
         const { data: muteRecord } = await cloudClient
-          .from('whatsapp_muted_chats')
-          .select('mute_type')
-          .eq('phone', phone)
-          .eq('instance_name', instanceName)
-          .maybeSingle()
-        
+          .from("whatsapp_muted_chats")
+          .select("mute_type")
+          .eq("phone", phone)
+          .eq("instance_name", instanceName)
+          .maybeSingle();
+
         if (muteRecord) {
-          const mt = muteRecord.mute_type || 'all'
-          const shouldBlock = mt === 'all' 
-            || (mt === 'receive' && direction === 'inbound')
-            || (mt === 'send' && direction === 'outbound')
-          
+          const mt = muteRecord.mute_type || "all";
+          const shouldBlock = mt === "all" ||
+            (mt === "receive" && direction === "inbound") ||
+            (mt === "send" && direction === "outbound");
+
           if (shouldBlock) {
-            console.log(`Chat MUTED (${mt}): phone=${phone}, instance=${instanceName}, direction=${direction}. Skipping.`)
+            console.log(
+              `Chat MUTED (${mt}): phone=${phone}, instance=${instanceName}, direction=${direction}. Skipping.`,
+            );
             return new Response(
-              JSON.stringify({ success: true, skipped: true, reason: 'chat_muted', mute_type: mt }),
-              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
+              JSON.stringify({
+                success: true,
+                skipped: true,
+                reason: "chat_muted",
+                mute_type: mt,
+              }),
+              {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              },
+            );
           }
         }
       } catch (muteErr) {
-        console.warn('Mute check failed, continuing:', muteErr)
+        console.warn("Mute check failed, continuing:", muteErr);
       }
     }
 
     // ========== DOWNLOAD AND STORE MEDIA ==========
     let storedMediaUrl = mediaUrl;
     let mediaTranscription: string | null = null;
-    const isMediaMessage = messageType === 'image' || messageType === 'audio' || messageType === 'video' || messageType === 'document';
-    if (!isGroup && (mediaUrl || isMediaMessage) && messageType !== 'text' && externalMessageId) {
+    const isMediaMessage = messageType === "image" || messageType === "audio" ||
+      messageType === "video" || messageType === "document";
+    if (
+      !isGroup && (mediaUrl || isMediaMessage) && messageType !== "text" &&
+      externalMessageId
+    ) {
       // Look up instance token from DB if not in payload
       let resolvedToken = instanceToken;
       let resolvedBaseUrl = baseUrl;
-      
+
       if (instanceName && (!resolvedToken || !resolvedBaseUrl)) {
         const { data: inst } = await supabase
-          .from('whatsapp_instances')
-          .select('instance_token, base_url')
-          .eq('instance_name', instanceName)
+          .from("whatsapp_instances")
+          .select("instance_token, base_url")
+          .eq("instance_name", instanceName)
           .limit(1)
           .single();
         if (inst) {
@@ -1151,9 +1518,9 @@ Deno.serve(async (req) => {
         const mediaDownload = await downloadAndStoreMedia(
           supabase,
           externalMessageId,
-          instanceName || 'unknown',
-          mediaUrl || '',
-          mediaType || 'application/octet-stream',
+          instanceName || "unknown",
+          mediaUrl || "",
+          mediaType || "application/octet-stream",
           messageType,
           resolvedBaseUrl,
           resolvedToken,
@@ -1161,53 +1528,66 @@ Deno.serve(async (req) => {
         mediaTranscription = mediaDownload.transcription;
         if (mediaDownload.publicUrl) {
           storedMediaUrl = mediaDownload.publicUrl;
-          console.log('Media stored at:', mediaDownload.publicUrl);
+          console.log("Media stored at:", mediaDownload.publicUrl);
         } else {
-          console.log('Media download failed, keeping original URL');
+          console.log("Media download failed, keeping original URL");
         }
       } else {
-        console.log('No instance token/baseUrl for media download');
+        console.log("No instance token/baseUrl for media download");
       }
     }
 
-    if (messageType === 'audio' && !messageText && mediaTranscription) {
+    if (messageType === "audio" && !messageText && mediaTranscription) {
       messageText = mediaTranscription;
-      console.log('Using audio transcription as message_text:', messageText.substring(0, 120));
+      console.log(
+        "Using audio transcription as message_text:",
+        messageText.substring(0, 120),
+      );
     }
 
     // ========== FIND CONTACT/LEAD ==========
-    let contactId: string | null = null
-    let leadId: string | null = null
+    let contactId: string | null = null;
+    let leadId: string | null = null;
 
-    const normalizedPhone = phone.replace(/\D/g, '')
-    const last8Digits = normalizedPhone.slice(-8)
-    const phoneVariants = Array.from(new Set([phone, normalizedPhone, `+${normalizedPhone}`, normalizedPhone.replace(/^55/, ''), last8Digits].filter(Boolean)))
-    
+    const normalizedPhone = phone.replace(/\D/g, "");
+    const last8Digits = normalizedPhone.slice(-8);
+    const phoneVariants = Array.from(
+      new Set(
+        [
+          phone,
+          normalizedPhone,
+          `+${normalizedPhone}`,
+          normalizedPhone.replace(/^55/, ""),
+          last8Digits,
+        ].filter(Boolean),
+      ),
+    );
+
     for (const variant of phoneVariants) {
       const { data: contacts } = await supabase
-        .from('contacts')
-        .select('id, lead_id')
+        .from("contacts")
+        .select("id, lead_id")
         .or(`phone.ilike.%${variant}`)
-        .limit(1)
+        .limit(1);
 
       if (contacts && contacts.length > 0) {
-        contactId = contacts[0].id
-        leadId = contacts[0].lead_id
-        break
+        contactId = contacts[0].id;
+        leadId = contacts[0].lead_id;
+        break;
       }
     }
 
     if (!leadId) {
       for (const variant of phoneVariants) {
         const { data: leads } = await supabase
-          .from('leads')
-          .select('id')
+          .from("leads")
+          .select("id")
           .or(`lead_phone.ilike.%${variant}`)
-          .limit(1)
+          .limit(1);
 
         if (leads && leads.length > 0) {
-          leadId = leads[0].id
-          break
+          leadId = leads[0].id;
+          break;
         }
       }
     }
@@ -1215,34 +1595,37 @@ Deno.serve(async (req) => {
     if (leadId && !contactId) {
       for (const variant of phoneVariants) {
         const { data: linkedContacts } = await supabase
-          .from('contacts')
-          .select('id')
-          .eq('lead_id', leadId)
+          .from("contacts")
+          .select("id")
+          .eq("lead_id", leadId)
           .or(`phone.ilike.%${variant}`)
-          .limit(1)
+          .limit(1);
 
         if (linkedContacts && linkedContacts.length > 0) {
-          contactId = linkedContacts[0].id
-          break
+          contactId = linkedContacts[0].id;
+          break;
         }
       }
     }
 
     // ========== AUTO-REGISTER CONTACT IF NOT FOUND (inbound, individual chats only) ==========
-    if (!contactId && direction === 'inbound' && normalizedPhone.length >= 10 && !isGroup) {
+    if (
+      !contactId && direction === "inbound" && normalizedPhone.length >= 10 &&
+      !isGroup
+    ) {
       try {
         // Check if this phone belongs to one of our WhatsApp instances
         const { data: ownInstances } = await supabase
-          .from('whatsapp_instances')
-          .select('owner_phone')
-          .eq('is_active', true);
-        
+          .from("whatsapp_instances")
+          .select("owner_phone")
+          .eq("is_active", true);
+
         const instancePhones = (ownInstances || [])
-          .map((i: any) => (i.owner_phone || '').replace(/\D/g, ''))
+          .map((i: any) => (i.owner_phone || "").replace(/\D/g, ""))
           .filter(Boolean);
-        
-        const isOurInstance = instancePhones.some((ip: string) => 
-          normalizedPhone.endsWith(ip) || ip.endsWith(normalizedPhone) || 
+
+        const isOurInstance = instancePhones.some((ip: string) =>
+          normalizedPhone.endsWith(ip) || ip.endsWith(normalizedPhone) ||
           normalizedPhone.slice(-8) === ip.slice(-8)
         );
 
@@ -1254,15 +1637,15 @@ Deno.serve(async (req) => {
           let responsibleUserId: string | null = null;
           if (leadId) {
             const { data: leadData } = await supabase
-              .from('leads')
-              .select('acolhedor')
-              .eq('id', leadId)
+              .from("leads")
+              .select("acolhedor")
+              .eq("id", leadId)
               .maybeSingle();
             if (leadData?.acolhedor) {
               const { data: profile } = await supabase
-                .from('profiles')
-                .select('user_id')
-                .ilike('full_name', leadData.acolhedor)
+                .from("profiles")
+                .select("user_id")
+                .ilike("full_name", leadData.acolhedor)
                 .limit(1)
                 .maybeSingle();
               responsibleUserId = profile?.user_id || null;
@@ -1270,227 +1653,296 @@ Deno.serve(async (req) => {
           }
 
           const { data: newContact } = await supabase
-            .from('contacts')
+            .from("contacts")
             .insert({
               full_name: autoContactName,
               phone: normalizedPhone,
               city: location?.city || null,
               state: location?.state || null,
-              classification: 'prospect',
+              classification: "prospect",
               created_by: responsibleUserId,
-              action_source: 'system',
-              action_source_detail: `Auto-registro via WhatsApp (${instanceName || 'unknown'})`,
+              action_source: "system",
+              action_source_detail: `Auto-registro via WhatsApp (${
+                instanceName || "unknown"
+              })`,
             })
-            .select('id')
+            .select("id")
             .single();
 
           if (newContact) {
             contactId = newContact.id;
-            console.log(`Auto-registered contact ${autoContactName} (${normalizedPhone}) → ${contactId}, state=${location?.state}, city=${location?.city}`);
+            console.log(
+              `Auto-registered contact ${autoContactName} (${normalizedPhone}) → ${contactId}, state=${location?.state}, city=${location?.city}`,
+            );
           }
         }
       } catch (autoRegErr: any) {
-        console.warn('Auto-register contact error:', autoRegErr.message);
+        console.warn("Auto-register contact error:", autoRegErr.message);
       }
     }
 
     // ========== CTWA AD TRACKING & AUTO-CREATE LEAD ==========
     let detectedCampaignId: string | null = null;
     let detectedCampaignName: string | null = null;
-    if (direction === 'inbound') {
+    if (direction === "inbound") {
       try {
-        const msg = body.message || body.chat?.message || {}
+        const msg = body.message || body.chat?.message || {};
         // UazAPI stores content nested: message.content.contextInfo
-        const msgContent = msg.content || msg.extendedTextMessage || {}
-        const contextInfo = msgContent.contextInfo || msg.contextInfo || msg.imageMessage?.contextInfo || msg.videoMessage?.contextInfo || {}
-        const externalAdReply = contextInfo.externalAdReply || null
-        
+        const msgContent = msg.content || msg.extendedTextMessage || {};
+        const contextInfo = msgContent.contextInfo || msg.contextInfo ||
+          msg.imageMessage?.contextInfo || msg.videoMessage?.contextInfo || {};
+        const externalAdReply = contextInfo.externalAdReply || null;
+
         // Only process as CTWA if it's actually a Meta ad click (has sourceId/ctwa_clid)
         // Messages forwarded with spam/promo links also have externalAdReply but no sourceId
-        const ctwaSourceId = externalAdReply?.sourceID || externalAdReply?.sourceId || contextInfo.ctwaContext?.sourceId || null
-        const ctwaClid = contextInfo.ctwaContext?.ctwaClid || contextInfo.ctwaClid || null
-        const isTrueCTWA = !!(ctwaSourceId || ctwaClid)
-        
+        const ctwaSourceId = externalAdReply?.sourceID ||
+          externalAdReply?.sourceId || contextInfo.ctwaContext?.sourceId ||
+          null;
+        const ctwaClid = contextInfo.ctwaContext?.ctwaClid ||
+          contextInfo.ctwaClid || null;
+        const isTrueCTWA = !!(ctwaSourceId || ctwaClid);
+
         if (externalAdReply && isTrueCTWA) {
-          console.log('CTWA sourceID resolved:', ctwaSourceId, 'ctwa_clid:', ctwaClid)
-          
+          console.log(
+            "CTWA sourceID resolved:",
+            ctwaSourceId,
+            "ctwa_clid:",
+            ctwaClid,
+          );
+
           const ctwaData = {
             title: externalAdReply.title || null,
             body: externalAdReply.body || null,
-            source_url: externalAdReply.sourceUrl || externalAdReply.mediaUrl || null,
+            source_url: externalAdReply.sourceUrl || externalAdReply.mediaUrl ||
+              null,
             thumbnail_url: externalAdReply.thumbnailUrl || null,
             ctwa_clid: ctwaClid,
             source_id: ctwaSourceId,
             captured_at: new Date().toISOString(),
-          }
-          
-          console.log('CTWA Ad data detected:', JSON.stringify(ctwaData))
-          
+          };
+
+          console.log("CTWA Ad data detected:", JSON.stringify(ctwaData));
+
           // ---- Resolve campaign from campaign_links ----
           // Try matching by source_id (Meta ad ID) or by ad title against campaign_name
-          let matchedCampaignLink: any = null
-          
+          let matchedCampaignLink: any = null;
+
           // Fetch only ACTIVE campaign links — inactive campaigns must NEVER activate agents
           const { data: allCampaignLinks } = await supabase
-            .from('whatsapp_agent_campaign_links')
-            .select('*')
-            .eq('is_active', true)
-          
+            .from("whatsapp_agent_campaign_links")
+            .select("*")
+            .eq("is_active", true);
+
           if (allCampaignLinks && allCampaignLinks.length > 0) {
-            const links = allCampaignLinks as any[]
-            
+            const links = allCampaignLinks as any[];
+
             // Strategy 1: Exact match source_id to campaign_id
             if (ctwaSourceId) {
-              matchedCampaignLink = links.find(l => l.campaign_id === ctwaSourceId)
+              matchedCampaignLink = links.find((l) =>
+                l.campaign_id === ctwaSourceId
+              );
               if (matchedCampaignLink) {
-                console.log('CTWA: Exact match by source_id:', matchedCampaignLink.campaign_id)
+                console.log(
+                  "CTWA: Exact match by source_id:",
+                  matchedCampaignLink.campaign_id,
+                );
               }
             }
-            
+
             // Strategy 2: Prefix match - Meta generates different IDs for campaign/adset/ad
             // but they often share a common prefix (first 12+ digits)
-            if (!matchedCampaignLink && ctwaSourceId && ctwaSourceId.length >= 12) {
-              const sourcePrefix = ctwaSourceId.substring(0, 12)
-              matchedCampaignLink = links.find(l => 
+            if (
+              !matchedCampaignLink && ctwaSourceId && ctwaSourceId.length >= 12
+            ) {
+              const sourcePrefix = ctwaSourceId.substring(0, 12);
+              matchedCampaignLink = links.find((l) =>
                 l.campaign_id && l.campaign_id.startsWith(sourcePrefix)
-              )
+              );
               if (matchedCampaignLink) {
-                console.log('CTWA: Prefix match campaign:', matchedCampaignLink.campaign_id, 'for sourceID:', ctwaSourceId)
+                console.log(
+                  "CTWA: Prefix match campaign:",
+                  matchedCampaignLink.campaign_id,
+                  "for sourceID:",
+                  ctwaSourceId,
+                );
               }
             }
-            
+
             // Strategy 3: Match by ad title against campaign_name
             if (!matchedCampaignLink && ctwaData.title) {
-              const adTitle = (ctwaData.title || '').toLowerCase().trim()
-              matchedCampaignLink = links.find(l => 
-                l.campaign_name && l.campaign_name.toLowerCase().trim() === adTitle
-              )
+              const adTitle = (ctwaData.title || "").toLowerCase().trim();
+              matchedCampaignLink = links.find((l) =>
+                l.campaign_name &&
+                l.campaign_name.toLowerCase().trim() === adTitle
+              );
               if (matchedCampaignLink) {
-                console.log('CTWA: Matched campaign by title:', matchedCampaignLink.campaign_name)
+                console.log(
+                  "CTWA: Matched campaign by title:",
+                  matchedCampaignLink.campaign_name,
+                );
               }
             }
-            
+
             // Strategy 4: Match by instance
             if (!matchedCampaignLink && instanceName) {
               const { data: currentInst } = await supabase
-                .from('whatsapp_instances')
-                .select('id')
-                .eq('instance_name', instanceName)
-                .eq('is_active', true)
+                .from("whatsapp_instances")
+                .select("id")
+                .eq("instance_name", instanceName)
+                .eq("is_active", true)
                 .limit(1)
-                .maybeSingle()
-              
+                .maybeSingle();
+
               if (currentInst) {
-                const instLinks = links.filter(l => l.instance_id === currentInst.id)
+                const instLinks = links.filter((l) =>
+                  l.instance_id === currentInst.id
+                );
                 if (instLinks.length === 1) {
-                  matchedCampaignLink = instLinks[0]
-                  console.log('CTWA: Matched campaign by instance:', matchedCampaignLink.campaign_id)
+                  matchedCampaignLink = instLinks[0];
+                  console.log(
+                    "CTWA: Matched campaign by instance:",
+                    matchedCampaignLink.campaign_id,
+                  );
                 }
               }
             }
-            
+
             // Strategy 5: Single link fallback
             if (!matchedCampaignLink && links.length === 1) {
-              matchedCampaignLink = links[0]
-              console.log('CTWA: Single campaign link fallback:', matchedCampaignLink.campaign_id)
+              matchedCampaignLink = links[0];
+              console.log(
+                "CTWA: Single campaign link fallback:",
+                matchedCampaignLink.campaign_id,
+              );
             }
           }
-          
-          const isCampaignLinkActive = matchedCampaignLink?.is_active === true
+
+          const isCampaignLinkActive = matchedCampaignLink?.is_active === true;
           if (matchedCampaignLink) {
-            detectedCampaignId = matchedCampaignLink.campaign_id
-            detectedCampaignName = matchedCampaignLink.campaign_name || null
-            console.log('CTWA campaign link found, active:', isCampaignLinkActive)
+            detectedCampaignId = matchedCampaignLink.campaign_id;
+            detectedCampaignName = matchedCampaignLink.campaign_name || null;
+            console.log(
+              "CTWA campaign link found, active:",
+              isCampaignLinkActive,
+            );
           }
-          
-          console.log('CTWA resolved campaign:', detectedCampaignId, detectedCampaignName)
-          
+
+          console.log(
+            "CTWA resolved campaign:",
+            detectedCampaignId,
+            detectedCampaignName,
+          );
+
           if (leadId) {
             // Update existing lead with CTWA context + campaign_id
-            const updateData: any = { 
+            const updateData: any = {
               ctwa_context: ctwaData,
-              source: 'ctwa_whatsapp',
-            }
+              source: "ctwa_whatsapp",
+            };
             if (detectedCampaignId) {
-              updateData.campaign_id = detectedCampaignId
-              updateData.ad_name = ctwaData.title || detectedCampaignName || null
+              updateData.campaign_id = detectedCampaignId;
+              updateData.ad_name = ctwaData.title || detectedCampaignName ||
+                null;
             }
-            
+
             const { error: ctwaErr } = await supabase
-              .from('leads')
+              .from("leads")
               .update(updateData)
-              .eq('id', leadId)
-              .is('ctwa_context', null)
-            
-            if (ctwaErr) console.error('Error saving CTWA context:', ctwaErr)
-            else console.log('CTWA context + campaign_id saved for lead:', leadId, 'campaign:', detectedCampaignId)
+              .eq("id", leadId)
+              .is("ctwa_context", null);
+
+            if (ctwaErr) console.error("Error saving CTWA context:", ctwaErr);
+            else {console.log(
+                "CTWA context + campaign_id saved for lead:",
+                leadId,
+                "campaign:",
+                detectedCampaignId,
+              );}
           }
-          
+
           // Auto-create lead if none exists and campaign link is ACTIVE with auto_create_lead enabled
-          if (!leadId && instanceName && matchedCampaignLink && isCampaignLinkActive && matchedCampaignLink.auto_create_lead && matchedCampaignLink.board_id) {
+          if (
+            !leadId && instanceName && matchedCampaignLink &&
+            isCampaignLinkActive && matchedCampaignLink.auto_create_lead &&
+            matchedCampaignLink.board_id
+          ) {
             try {
-              const autoLink = matchedCampaignLink
-              
-              let stageId = autoLink.stage_id
+              const autoLink = matchedCampaignLink;
+
+              let stageId = autoLink.stage_id;
               if (!stageId && autoLink.board_id) {
                 const { data: board } = await supabase
-                  .from('kanban_boards')
-                  .select('stages')
-                  .eq('id', autoLink.board_id)
-                  .single()
-                const stages = (board as any)?.stages || []
-                if (stages.length > 0) stageId = stages[0].id
+                  .from("kanban_boards")
+                  .select("stages")
+                  .eq("id", autoLink.board_id)
+                  .single();
+                const stages = (board as any)?.stages || [];
+                if (stages.length > 0) stageId = stages[0].id;
               }
-              
+
               // NEVER use WhatsApp profile name as lead name — it's often irrelevant (e.g. "Vovo Oficina")
               // Use phone number as placeholder; the agent will ask for the real name
-              const leadName = `WhatsApp ${phone}`
+              const leadName = `WhatsApp ${phone}`;
 
               if (leadId) {
-                console.log('CTWA: Lead already linked/resolved for phone, reusing existing lead:', leadId)
+                console.log(
+                  "CTWA: Lead already linked/resolved for phone, reusing existing lead:",
+                  leadId,
+                );
               }
-              
+
               if (!leadId) {
                 // Resolve instance owner name for acolhedor assignment
-                let resolvedAcolhedor: string | null = null
+                let resolvedAcolhedor: string | null = null;
                 if (autoLink.instance_id) {
                   const { data: linkInstance } = await supabase
-                    .from('whatsapp_instances')
-                    .select('owner_name, instance_name')
-                    .eq('id', autoLink.instance_id)
-                    .maybeSingle()
+                    .from("whatsapp_instances")
+                    .select("owner_name, instance_name")
+                    .eq("id", autoLink.instance_id)
+                    .maybeSingle();
                   if (linkInstance?.owner_name) {
-                    resolvedAcolhedor = linkInstance.owner_name
+                    resolvedAcolhedor = linkInstance.owner_name;
                   }
                 }
 
                 const insertPayload: Record<string, unknown> = {
-                    lead_name: leadName,
-                    lead_phone: phone,
-                    board_id: autoLink.board_id,
-                    status: stageId || 'new',
-                    source: 'ctwa_whatsapp',
-                    ctwa_context: ctwaData,
-                    ad_name: ctwaData.title || detectedCampaignName || null,
-                    campaign_id: detectedCampaignId,
-                    action_source: 'system',
-                    action_source_detail: `CTWA Auto-create (campanha: ${detectedCampaignName || 'desconhecida'})`,
-                }
+                  lead_name: leadName,
+                  lead_phone: phone,
+                  board_id: autoLink.board_id,
+                  status: stageId || "new",
+                  source: "ctwa_whatsapp",
+                  ctwa_context: ctwaData,
+                  ad_name: ctwaData.title || detectedCampaignName || null,
+                  campaign_id: detectedCampaignId,
+                  action_source: "system",
+                  action_source_detail: `CTWA Auto-create (campanha: ${
+                    detectedCampaignName || "desconhecida"
+                  })`,
+                };
                 if (resolvedAcolhedor) {
-                  insertPayload.acolhedor = resolvedAcolhedor
+                  insertPayload.acolhedor = resolvedAcolhedor;
                 }
 
                 const { data: newLead, error: leadErr } = await supabase
-                  .from('leads')
+                  .from("leads")
                   .insert(insertPayload)
-                  .select('id')
-                  .single()
+                  .select("id")
+                  .single();
 
                 if (leadErr) {
-                  console.error('Error auto-creating lead from CTWA:', leadErr)
+                  console.error("Error auto-creating lead from CTWA:", leadErr);
                 } else if (newLead) {
-                  leadId = (newLead as any).id
-                  console.log('Auto-created lead from CTWA:', leadId, 'board:', autoLink.board_id, 'campaign:', detectedCampaignId, 'acolhedor:', resolvedAcolhedor)
+                  leadId = (newLead as any).id;
+                  console.log(
+                    "Auto-created lead from CTWA:",
+                    leadId,
+                    "board:",
+                    autoLink.board_id,
+                    "campaign:",
+                    detectedCampaignId,
+                    "acolhedor:",
+                    resolvedAcolhedor,
+                  );
                 }
               }
 
@@ -1500,182 +1952,235 @@ Deno.serve(async (req) => {
                   ad_name: ctwaData.title || detectedCampaignName || null,
                   campaign_id: detectedCampaignId,
                   campaign_name: detectedCampaignName || null,
-                }
+                };
                 await supabase
-                  .from('leads')
+                  .from("leads")
                   .update(leadPatch)
-                  .eq('id', leadId)
+                  .eq("id", leadId);
               }
 
               // Also create or link contact
-              if (!contactId && leadId && (autoLink.auto_create_contact !== false)) {
+              if (
+                !contactId && leadId && (autoLink.auto_create_contact !== false)
+              ) {
                 const { data: newContact } = await supabase
-                  .from('contacts')
+                  .from("contacts")
                   .insert({
                     full_name: leadName,
                     phone: phone,
                     lead_id: leadId,
-                    classification: 'lead',
-                    action_source: 'system',
-                    action_source_detail: `CTWA Auto-create (campanha: ${detectedCampaignName || 'desconhecida'})`,
+                    classification: "lead",
+                    action_source: "system",
+                    action_source_detail: `CTWA Auto-create (campanha: ${
+                      detectedCampaignName || "desconhecida"
+                    })`,
                   })
-                  .select('id')
-                  .single()
+                  .select("id")
+                  .single();
                 if (newContact) {
-                  contactId = (newContact as any).id
-                  console.log('Auto-created contact from CTWA:', contactId)
+                  contactId = (newContact as any).id;
+                  console.log("Auto-created contact from CTWA:", contactId);
                 }
               }
 
               if (leadId && contactId) {
                 await supabase
-                  .from('whatsapp_messages')
+                  .from("whatsapp_messages")
                   .update({ lead_id: leadId, contact_id: contactId })
-                  .eq('campaign_id', detectedCampaignId)
-                  .or(`phone.eq.${phone},phone.ilike.%${last8Digits}%`)
+                  .eq("campaign_id", detectedCampaignId)
+                  .or(`phone.eq.${phone},phone.ilike.%${last8Digits}%`);
               }
 
               // Auto-assign agent from the campaign link
               if (leadId && autoLink.agent_id && instanceName) {
                 try {
                   await supabase
-                    .from('whatsapp_conversation_agents')
+                    .from("whatsapp_conversation_agents")
                     .upsert({
                       phone,
                       instance_name: instanceName,
                       agent_id: autoLink.agent_id,
                       is_active: true,
-                      activated_by: 'ctwa_campaign',
-                    }, { onConflict: 'phone,instance_name' })
-                  console.log('Auto-assigned agent from CTWA campaign link:', autoLink.agent_id)
+                      activated_by: "ctwa_campaign",
+                    }, { onConflict: "phone,instance_name" });
+                  console.log(
+                    "Auto-assigned agent from CTWA campaign link:",
+                    autoLink.agent_id,
+                  );
                 } catch (agentErr) {
-                  console.error('Error auto-assigning agent from CTWA:', agentErr)
+                  console.error(
+                    "Error auto-assigning agent from CTWA:",
+                    agentErr,
+                  );
                 }
               }
             } catch (autoErr) {
-              console.error('CTWA auto-create error:', autoErr)
+              console.error("CTWA auto-create error:", autoErr);
             }
           }
-          
+
           // NOTE: Removed dangerous generic fallback that was assigning random campaign_ids
           // to messages with externalAdReply but no matching campaign link.
           // Only messages with a proper source_id/ctwa_clid match should get a campaign_id.
           if (!matchedCampaignLink) {
-            console.log('CTWA: No campaign link matched for sourceID:', ctwaSourceId, '- not assigning campaign_id')
+            console.log(
+              "CTWA: No campaign link matched for sourceID:",
+              ctwaSourceId,
+              "- not assigning campaign_id",
+            );
           }
         }
       } catch (ctwaErr) {
-        console.error('CTWA extraction error:', ctwaErr)
+        console.error("CTWA extraction error:", ctwaErr);
       }
     }
 
     // ========== DEDUPLICATION ==========
-    const scopedExternalMessageId = buildScopedExternalMessageId(externalMessageId, instanceName, phone)
-    let storedExternalMessageId = externalMessageId
+    const scopedExternalMessageId = buildScopedExternalMessageId(
+      externalMessageId,
+      instanceName,
+      phone,
+    );
+    let storedExternalMessageId = externalMessageId;
 
     if (externalMessageId) {
-      const candidateExternalIds = Array.from(new Set([
-        externalMessageId,
-        scopedExternalMessageId,
-      ].filter(Boolean))) as string[]
+      const candidateExternalIds = Array.from(
+        new Set([
+          externalMessageId,
+          scopedExternalMessageId,
+        ].filter(Boolean)),
+      ) as string[];
 
       const { data: existingMatches, error: dedupeError } = await supabase
-        .from('whatsapp_messages')
-        .select('id, instance_name, phone, external_message_id')
-        .in('external_message_id', candidateExternalIds)
-        .limit(10)
+        .from("whatsapp_messages")
+        .select("id, instance_name, phone, external_message_id")
+        .in("external_message_id", candidateExternalIds)
+        .limit(10);
 
       if (dedupeError) {
-        console.error('Deduplication lookup error:', dedupeError)
+        console.error("Deduplication lookup error:", dedupeError);
       }
 
-      const currentInstanceKey = normalizeInstanceKey(instanceName)
-      const currentPhoneKey = normalizePhone(phone)
-      const matches = existingMatches || []
+      const currentInstanceKey = normalizeInstanceKey(instanceName);
+      const currentPhoneKey = normalizePhone(phone);
+      const matches = existingMatches || [];
 
       const sameConversationExisting = matches.find((row: any) => {
-        const rowInstanceKey = normalizeInstanceKey(row.instance_name)
-        const rowPhoneKey = normalizePhone(row.phone)
-        return rowInstanceKey === currentInstanceKey && rowPhoneKey === currentPhoneKey
-      })
+        const rowInstanceKey = normalizeInstanceKey(row.instance_name);
+        const rowPhoneKey = normalizePhone(row.phone);
+        return rowInstanceKey === currentInstanceKey &&
+          rowPhoneKey === currentPhoneKey;
+      });
 
       if (sameConversationExisting) {
-        console.log('Duplicate message detected, skipping insert:', externalMessageId, 'instance:', instanceName || '(unknown)', 'phone:', phone)
+        console.log(
+          "Duplicate message detected, skipping insert:",
+          externalMessageId,
+          "instance:",
+          instanceName || "(unknown)",
+          "phone:",
+          phone,
+        );
 
         return new Response(
-          JSON.stringify({ success: true, skipped: true, reason: 'duplicate', existing_id: sameConversationExisting.id }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
+          JSON.stringify({
+            success: true,
+            skipped: true,
+            reason: "duplicate",
+            existing_id: sameConversationExisting.id,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
       }
 
-      const rawCollision = matches.find((row: any) => row.external_message_id === externalMessageId)
-      if (rawCollision && scopedExternalMessageId && scopedExternalMessageId !== externalMessageId) {
-        storedExternalMessageId = scopedExternalMessageId
+      const rawCollision = matches.find((row: any) =>
+        row.external_message_id === externalMessageId
+      );
+      if (
+        rawCollision && scopedExternalMessageId &&
+        scopedExternalMessageId !== externalMessageId
+      ) {
+        storedExternalMessageId = scopedExternalMessageId;
         console.log(
-          'Cross-conversation external_message_id collision detected. Using scoped ID:',
+          "Cross-conversation external_message_id collision detected. Using scoped ID:",
           storedExternalMessageId,
-          'raw:',
+          "raw:",
           externalMessageId,
-          'existing instance:',
+          "existing instance:",
           rawCollision.instance_name,
-          'existing phone:',
+          "existing phone:",
           rawCollision.phone,
-          'current instance:',
+          "current instance:",
           instanceName,
-          'current phone:',
+          "current phone:",
           phone,
-        )
+        );
       }
     }
 
     // ========== OUTBOUND ECHO DEDUP: Skip saving if AI agent already saved this message ==========
-    if (direction === 'outbound' && messageText && instanceName && phone) {
+    if (direction === "outbound" && messageText && instanceName && phone) {
       try {
         const echoWindow = new Date(Date.now() - 120000).toISOString(); // last 2 min
         // First try exact match
         const { data: aiEcho } = await supabase
-          .from('whatsapp_messages')
-          .select('id')
-          .eq('phone', phone)
-          .eq('instance_name', instanceName)
-          .eq('direction', 'outbound')
-          .eq('message_text', messageText)
-          .gte('created_at', echoWindow)
+          .from("whatsapp_messages")
+          .select("id")
+          .eq("phone", phone)
+          .eq("instance_name", instanceName)
+          .eq("direction", "outbound")
+          .eq("message_text", messageText)
+          .gte("created_at", echoWindow)
           .limit(1)
           .maybeSingle();
         if (aiEcho) {
-          console.log(`Outbound echo detected (exact match), skipping insert for ${phone}`);
+          console.log(
+            `Outbound echo detected (exact match), skipping insert for ${phone}`,
+          );
           return new Response(
-            JSON.stringify({ success: true, skipped: true, reason: 'ai_echo_dedup', existing_id: aiEcho.id }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            JSON.stringify({
+              success: true,
+              skipped: true,
+              reason: "ai_echo_dedup",
+              existing_id: aiEcho.id,
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
           );
         }
         // Also check if this text is a PART of a split message (agent saves full text with \n\n, but sends parts separately)
-        const trimmedEcho = (messageText || '').trim();
+        const trimmedEcho = (messageText || "").trim();
         if (trimmedEcho.length >= 10) {
           const { data: parentMsg } = await supabase
-            .from('whatsapp_messages')
-            .select('id, message_text')
-            .eq('phone', phone)
-            .eq('instance_name', instanceName)
-            .eq('direction', 'outbound')
-            .eq('action_source', 'agent')
-            .gte('created_at', echoWindow)
-            .order('created_at', { ascending: false })
+            .from("whatsapp_messages")
+            .select("id, message_text")
+            .eq("phone", phone)
+            .eq("instance_name", instanceName)
+            .eq("direction", "outbound")
+            .eq("action_source", "agent")
+            .gte("created_at", echoWindow)
+            .order("created_at", { ascending: false })
             .limit(5);
-          const isPartOfAgent = (parentMsg || []).some((m: any) => 
+          const isPartOfAgent = (parentMsg || []).some((m: any) =>
             m.message_text && m.message_text.includes(trimmedEcho)
           );
           if (isPartOfAgent) {
-            console.log(`Outbound echo detected (split part of agent message), skipping insert for ${phone}`);
+            console.log(
+              `Outbound echo detected (split part of agent message), skipping insert for ${phone}`,
+            );
             return new Response(
-              JSON.stringify({ success: true, skipped: true, reason: 'ai_echo_split_dedup' }),
-              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              JSON.stringify({
+                success: true,
+                skipped: true,
+                reason: "ai_echo_split_dedup",
+              }),
+              {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              },
             );
           }
         }
       } catch (e) {
-        console.error('Outbound echo dedup error:', e);
+        console.error("Outbound echo dedup error:", e);
       }
     }
 
@@ -1687,7 +2192,7 @@ Deno.serve(async (req) => {
       media_url: storedMediaUrl,
       media_type: mediaType,
       direction,
-      status: direction === 'inbound' ? 'received' : 'sent',
+      status: direction === "inbound" ? "received" : "sent",
       contact_id: contactId,
       lead_id: leadId,
       external_message_id: storedExternalMessageId,
@@ -1696,90 +2201,128 @@ Deno.serve(async (req) => {
       instance_token: instanceToken,
       campaign_id: detectedCampaignId || null,
       campaign_name: detectedCampaignName || null,
-    }
+    };
 
     let { data: message, error } = await supabase
-      .from('whatsapp_messages')
+      .from("whatsapp_messages")
       .insert(messageInsertPayload)
       .select()
-      .single()
+      .single();
 
-    if (error?.code === '23505' && externalMessageId && scopedExternalMessageId && storedExternalMessageId !== scopedExternalMessageId) {
-      console.warn('Unique collision on raw external_message_id, retrying insert with scoped ID:', scopedExternalMessageId)
+    if (
+      error?.code === "23505" && externalMessageId && scopedExternalMessageId &&
+      storedExternalMessageId !== scopedExternalMessageId
+    ) {
+      console.warn(
+        "Unique collision on raw external_message_id, retrying insert with scoped ID:",
+        scopedExternalMessageId,
+      );
 
       const retryPayload = {
         ...messageInsertPayload,
         external_message_id: scopedExternalMessageId,
-      }
+      };
 
       const retryResult = await supabase
-        .from('whatsapp_messages')
+        .from("whatsapp_messages")
         .insert(retryPayload)
         .select()
-        .single()
+        .single();
 
-      message = retryResult.data
-      error = retryResult.error
-      storedExternalMessageId = scopedExternalMessageId
+      message = retryResult.data;
+      error = retryResult.error;
+      storedExternalMessageId = scopedExternalMessageId;
     }
 
     if (error) {
-      if (error.code === '23505' && externalMessageId) {
-        const candidateExternalIds = Array.from(new Set([
-          externalMessageId,
-          scopedExternalMessageId,
-          storedExternalMessageId,
-        ].filter(Boolean))) as string[]
+      if (error.code === "23505" && externalMessageId) {
+        const candidateExternalIds = Array.from(
+          new Set([
+            externalMessageId,
+            scopedExternalMessageId,
+            storedExternalMessageId,
+          ].filter(Boolean)),
+        ) as string[];
 
         const { data: conflictingMatches } = await supabase
-          .from('whatsapp_messages')
-          .select('id, instance_name, phone, external_message_id')
-          .in('external_message_id', candidateExternalIds)
-          .limit(10)
+          .from("whatsapp_messages")
+          .select("id, instance_name, phone, external_message_id")
+          .in("external_message_id", candidateExternalIds)
+          .limit(10);
 
-        const currentInstanceKey = normalizeInstanceKey(instanceName)
-        const currentPhoneKey = normalizePhone(phone)
-        const sameConversationConflict = (conflictingMatches || []).find((row: any) => {
-          const rowInstanceKey = normalizeInstanceKey(row.instance_name)
-          const rowPhoneKey = normalizePhone(row.phone)
-          return rowInstanceKey === currentInstanceKey && rowPhoneKey === currentPhoneKey
-        })
+        const currentInstanceKey = normalizeInstanceKey(instanceName);
+        const currentPhoneKey = normalizePhone(phone);
+        const sameConversationConflict = (conflictingMatches || []).find(
+          (row: any) => {
+            const rowInstanceKey = normalizeInstanceKey(row.instance_name);
+            const rowPhoneKey = normalizePhone(row.phone);
+            return rowInstanceKey === currentInstanceKey &&
+              rowPhoneKey === currentPhoneKey;
+          },
+        );
 
         if (sameConversationConflict) {
-          console.log('Duplicate insert race detected, treating as already saved:', sameConversationConflict.id, 'external_message_id:', sameConversationConflict.external_message_id)
+          console.log(
+            "Duplicate insert race detected, treating as already saved:",
+            sameConversationConflict.id,
+            "external_message_id:",
+            sameConversationConflict.external_message_id,
+          );
           return new Response(
-            JSON.stringify({ success: true, skipped: true, reason: 'duplicate_race', existing_id: sameConversationConflict.id }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
+            JSON.stringify({
+              success: true,
+              skipped: true,
+              reason: "duplicate_race",
+              existing_id: sameConversationConflict.id,
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
         }
       }
 
-      console.error('Error inserting message:', error)
+      console.error("Error inserting message:", error);
       return new Response(
         JSON.stringify({ success: false, error: error.message }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
-    console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName, 'StoredMedia:', storedMediaUrl ? 'yes' : 'no')
+    console.log(
+      "Message saved:",
+      message.id,
+      "Contact:",
+      contactId,
+      "Lead:",
+      leadId,
+      "Instance:",
+      instanceName,
+      "StoredMedia:",
+      storedMediaUrl ? "yes" : "no",
+    );
 
     // ========== PROGRESSIVE CONTACT DATA UPDATE ==========
     // When we already have a contactId, update missing fields (name, city, state) progressively
-    if (contactId && direction === 'inbound' && !isGroup) {
+    if (contactId && direction === "inbound" && !isGroup) {
       try {
         const { data: existingContact } = await supabase
-          .from('contacts')
-          .select('full_name, city, state, phone')
-          .eq('id', contactId)
+          .from("contacts")
+          .select("full_name, city, state, phone")
+          .eq("id", contactId)
           .maybeSingle();
 
         if (existingContact) {
           const updates: Record<string, any> = {};
-          const currentName = existingContact.full_name || '';
+          const currentName = existingContact.full_name || "";
           const isNameJustPhone = /^\+?\d[\d\s\-()]*$/.test(currentName.trim());
 
           // Update name if current is just a phone number and we have a real name
-          if (contactName && contactName.trim() && isNameJustPhone && !/^\+?\d[\d\s\-()]*$/.test(contactName.trim())) {
+          if (
+            contactName && contactName.trim() && isNameJustPhone &&
+            !/^\+?\d[\d\s\-()]*$/.test(contactName.trim())
+          ) {
             updates.full_name = contactName.trim();
           }
 
@@ -1794,34 +2337,41 @@ Deno.serve(async (req) => {
           }
 
           if (Object.keys(updates).length > 0) {
-            await supabase.from('contacts').update(updates).eq('id', contactId);
-            console.log('Progressive contact update:', contactId, JSON.stringify(updates));
+            await supabase.from("contacts").update(updates).eq("id", contactId);
+            console.log(
+              "Progressive contact update:",
+              contactId,
+              JSON.stringify(updates),
+            );
           }
         }
       } catch (progressiveErr: any) {
-        console.warn('Progressive contact update error:', progressiveErr.message);
+        console.warn(
+          "Progressive contact update error:",
+          progressiveErr.message,
+        );
       }
     }
 
     // ========== AUTO-CREATE CONTACT FOR INSTANCE'S OWN PHONE (outbound) ==========
     // Register the instance's own phone number as a contact if not already registered
-    if (direction === 'outbound' && instanceName && !isGroup) {
+    if (direction === "outbound" && instanceName && !isGroup) {
       try {
         // Get instance owner phone
         const { data: inst } = await supabase
-          .from('whatsapp_instances')
-          .select('owner_phone, instance_name')
-          .eq('instance_name', instanceName)
+          .from("whatsapp_instances")
+          .select("owner_phone, instance_name")
+          .eq("instance_name", instanceName)
           .maybeSingle();
 
         if (inst?.owner_phone) {
-          const instPhone = inst.owner_phone.replace(/\D/g, '');
+          const instPhone = inst.owner_phone.replace(/\D/g, "");
           if (instPhone.length >= 10) {
             const instLast8 = instPhone.slice(-8);
             // Check if contact exists for this instance phone
             const { data: existingInstContact } = await supabase
-              .from('contacts')
-              .select('id')
+              .from("contacts")
+              .select("id")
               .or(`phone.ilike.%${instLast8}%`)
               .limit(1)
               .maybeSingle();
@@ -1829,137 +2379,170 @@ Deno.serve(async (req) => {
             if (!existingInstContact) {
               const instLocation = getLocationFromDDD(instPhone);
               const { data: newInstContact } = await supabase
-                .from('contacts')
+                .from("contacts")
                 .insert({
                   full_name: inst.instance_name || instPhone,
                   phone: instPhone,
                   city: instLocation?.city || null,
                   state: instLocation?.state || null,
-                  classification: 'interno',
-                  action_source: 'system',
-                  action_source_detail: `Auto-registro instância WhatsApp (${instanceName})`,
+                  classification: "interno",
+                  action_source: "system",
+                  action_source_detail:
+                    `Auto-registro instância WhatsApp (${instanceName})`,
                 })
-                .select('id')
+                .select("id")
                 .single();
 
               if (newInstContact) {
-                console.log(`Auto-registered instance contact: ${instanceName} (${instPhone}) → ${newInstContact.id}`);
+                console.log(
+                  `Auto-registered instance contact: ${instanceName} (${instPhone}) → ${newInstContact.id}`,
+                );
               }
             }
           }
         }
       } catch (instContactErr: any) {
-        console.warn('Auto-create instance contact error:', instContactErr.message);
+        console.warn(
+          "Auto-create instance contact error:",
+          instContactErr.message,
+        );
       }
     }
 
     // ========== #SHORTCUT AGENT ACTIVATION (single # outbound) ==========
     // MUST run BEFORE human-pause and command-processor blocks which can return early
-    if (direction === 'outbound' && instanceName && phone && messageText) {
-      const trimmedSingle = (messageText || '').trim()
-      const lastLineSingle = trimmedSingle.split('\n').pop()?.trim() || trimmedSingle
-      const singleHashMatch = lastLineSingle.match(/^#([a-zA-Z0-9_]+)\s*$/)
-      if (singleHashMatch && !lastLineSingle.startsWith('##')) {
-        const shortcutName = singleHashMatch[1].toLowerCase()
-        console.log('#shortcut agent activation detected:', shortcutName, 'phone:', phone, 'instance:', instanceName)
+    if (direction === "outbound" && instanceName && phone && messageText) {
+      const trimmedSingle = (messageText || "").trim();
+      const lastLineSingle = trimmedSingle.split("\n").pop()?.trim() ||
+        trimmedSingle;
+      const singleHashMatch = lastLineSingle.match(/^#([a-zA-Z0-9_]+)\s*$/);
+      if (singleHashMatch && !lastLineSingle.startsWith("##")) {
+        const shortcutName = singleHashMatch[1].toLowerCase();
+        console.log(
+          "#shortcut agent activation detected:",
+          shortcutName,
+          "phone:",
+          phone,
+          "instance:",
+          instanceName,
+        );
 
         try {
           const { data: shortcut } = await supabase
-            .from('wjia_command_shortcuts')
-            .select('id, shortcut_name, is_active')
-            .eq('shortcut_name', shortcutName)
-            .eq('is_active', true)
-            .maybeSingle()
+            .from("wjia_command_shortcuts")
+            .select("id, shortcut_name, is_active")
+            .eq("shortcut_name", shortcutName)
+            .eq("is_active", true)
+            .maybeSingle();
 
           if (shortcut) {
             // Activate agent for this conversation
-            await supabase.from('whatsapp_conversation_agents').upsert({
+            await supabase.from("whatsapp_conversation_agents").upsert({
               phone,
               instance_name: instanceName,
               agent_id: shortcut.id,
               is_active: true,
-              activated_by: 'whatsapp_command',
+              activated_by: "whatsapp_command",
               human_paused_until: null,
-            }, { onConflict: 'phone,instance_name' })
-            console.log('Agent activated via #shortcut:', shortcutName, 'agent_id:', shortcut.id)
+            }, { onConflict: "phone,instance_name" });
+            console.log(
+              "Agent activated via #shortcut:",
+              shortcutName,
+              "agent_id:",
+              shortcut.id,
+            );
 
             // Execute agent automation rules (on_activation trigger)
-            const cloudFnUrlAuto = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
-            const cloudAnonKeyAuto = Deno.env.get('SUPABASE_ANON_KEY') || ''
+            const cloudFnUrlAuto = Deno.env.get("SUPABASE_URL") ||
+              "https://gliigkupoebmlbwyvijp.supabase.co";
+            const cloudAnonKeyAuto = Deno.env.get("SUPABASE_ANON_KEY") || "";
             fetch(`${cloudFnUrlAuto}/functions/v1/execute-agent-automations`, {
-              method: 'POST',
+              method: "POST",
               headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${cloudAnonKeyAuto}`,
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${cloudAnonKeyAuto}`,
               },
               body: JSON.stringify({
                 agent_id: shortcut.id,
-                trigger_type: 'on_activation',
+                trigger_type: "on_activation",
                 phone,
                 instance_name: instanceName,
-                contact_name: contactName || '',
+                contact_name: contactName || "",
                 is_group: isGroup,
                 group_id: isGroup ? chatId : null,
               }),
-            }).catch(err => console.error('#shortcut automation trigger error:', err))
+            }).catch((err) =>
+              console.error("#shortcut automation trigger error:", err)
+            );
 
             // Delete the #command message from WhatsApp so client doesn't see it
             if (externalMessageId) {
-              let resolvedToken = instanceToken
-              let resolvedBaseUrl = baseUrl
+              let resolvedToken = instanceToken;
+              let resolvedBaseUrl = baseUrl;
               if (!resolvedToken || !resolvedBaseUrl) {
                 const { data: inst } = await supabase
-                  .from('whatsapp_instances')
-                  .select('instance_token, base_url')
-                  .eq('instance_name', instanceName)
+                  .from("whatsapp_instances")
+                  .select("instance_token, base_url")
+                  .eq("instance_name", instanceName)
                   .limit(1)
-                  .maybeSingle()
+                  .maybeSingle();
                 if (inst) {
-                  resolvedToken = resolvedToken || inst.instance_token
-                  resolvedBaseUrl = resolvedBaseUrl || inst.base_url
+                  resolvedToken = resolvedToken || inst.instance_token;
+                  resolvedBaseUrl = resolvedBaseUrl || inst.base_url;
                 }
               }
               if (resolvedToken && resolvedBaseUrl) {
                 fetch(`${resolvedBaseUrl}/message/delete`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'token': resolvedToken },
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "token": resolvedToken,
+                  },
                   body: JSON.stringify({ id: externalMessageId }),
-                }).catch(e => console.error('Error deleting #shortcut message:', e))
+                }).catch((e) =>
+                  console.error("Error deleting #shortcut message:", e)
+                );
               }
             }
 
             // Also delete from DB
             if (message?.id) {
-              await supabase.from('whatsapp_messages').delete().eq('id', message.id)
+              await supabase.from("whatsapp_messages").delete().eq(
+                "id",
+                message.id,
+              );
             }
 
             // Trigger agent reply with the last inbound message
             const { data: lastInbound } = await supabase
-              .from('whatsapp_messages')
-              .select('message_text, message_type')
-              .eq('phone', phone)
-              .eq('instance_name', instanceName)
-              .eq('direction', 'inbound')
-              .order('created_at', { ascending: false })
+              .from("whatsapp_messages")
+              .select("message_text, message_type")
+              .eq("phone", phone)
+              .eq("instance_name", instanceName)
+              .eq("direction", "inbound")
+              .order("created_at", { ascending: false })
               .limit(1)
-              .maybeSingle()
+              .maybeSingle();
 
             if (lastInbound) {
-              const cloudFnUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
-              const cloudAnonKeyVal = Deno.env.get('SUPABASE_ANON_KEY') || ''
+              const cloudFnUrl = Deno.env.get("SUPABASE_URL") ||
+                "https://gliigkupoebmlbwyvijp.supabase.co";
+              const cloudAnonKeyVal = Deno.env.get("SUPABASE_ANON_KEY") || "";
               fetch(`${cloudFnUrl}/functions/v1/whatsapp-ai-agent-reply`, {
-                method: 'POST',
+                method: "POST",
                 headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${cloudAnonKeyVal}`,
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${cloudAnonKeyVal}`,
                 },
                 body: JSON.stringify({
                   phone,
                   instance_name: instanceName,
-                  message_text: lastInbound.message_text || '',
-                  message_type: lastInbound.message_type || 'text',
+                  message_text: lastInbound.message_text || "",
+                  message_type: lastInbound.message_type || "text",
                 }),
-              }).catch(err => console.error('#shortcut agent reply trigger error:', err))
+              }).catch((err) =>
+                console.error("#shortcut agent reply trigger error:", err)
+              );
             }
 
             const respData = {
@@ -1968,17 +2551,19 @@ Deno.serve(async (req) => {
               shortcut_activated: true,
               agent_id: shortcut.id,
               instance_name: instanceName,
-            }
-            await logWebhook('shortcut_agent_activated', respData)
+            };
+            await logWebhook("shortcut_agent_activated", respData);
             return new Response(
               JSON.stringify(respData),
-              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
+              {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              },
+            );
           } else {
-            console.log('No active shortcut found for #' + shortcutName)
+            console.log("No active shortcut found for #" + shortcutName);
           }
         } catch (e) {
-          console.error('#shortcut activation error:', e)
+          console.error("#shortcut activation error:", e);
         }
       }
     }
@@ -1986,10 +2571,10 @@ Deno.serve(async (req) => {
     // Mirror message to Cloud DB so frontend inbox can read it
     try {
       const cloudClient = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
       );
-      await cloudClient.from('whatsapp_messages').upsert({
+      await cloudClient.from("whatsapp_messages").upsert({
         phone,
         contact_name: contactName,
         message_text: messageText,
@@ -1997,7 +2582,7 @@ Deno.serve(async (req) => {
         media_url: storedMediaUrl,
         media_type: mediaType,
         direction,
-        status: direction === 'inbound' ? 'received' : 'sent',
+        status: direction === "inbound" ? "received" : "sent",
         contact_id: contactId,
         lead_id: leadId,
         external_message_id: externalMessageId,
@@ -2006,22 +2591,25 @@ Deno.serve(async (req) => {
         campaign_id: detectedCampaignId || null,
         campaign_name: detectedCampaignName || null,
         created_at: message.created_at,
-      }, { onConflict: 'external_message_id', ignoreDuplicates: true });
+      }, { onConflict: "external_message_id", ignoreDuplicates: true });
     } catch (mirrorErr) {
-      console.warn('Cloud mirror insert failed (non-blocking):', mirrorErr);
+      console.warn("Cloud mirror insert failed (non-blocking):", mirrorErr);
     }
 
     // ========== AUTO-ENRICH LEAD/CONTACT (after X inbound messages) ==========
-    if (!isGroup && direction === 'inbound' && instanceName && phone && (leadId || contactId)) {
+    if (
+      !isGroup && direction === "inbound" && instanceName && phone &&
+      (leadId || contactId)
+    ) {
       try {
-        const supabaseUrl = RESOLVED_SUPABASE_URL
-        const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
+        const supabaseUrl = RESOLVED_SUPABASE_URL;
+        const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
         // Fire and forget - don't block webhook response
         fetch(`${cloudFunctionsUrl}/functions/v1/auto-enrich-lead`, {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${cloudAnonKey}`,
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${cloudAnonKey}`,
           },
           body: JSON.stringify({
             phone,
@@ -2029,16 +2617,19 @@ Deno.serve(async (req) => {
             lead_id: leadId,
             contact_id: contactId,
           }),
-        }).catch(e => console.error('[auto-enrich] fire-and-forget error:', e))
+        }).catch((e) =>
+          console.error("[auto-enrich] fire-and-forget error:", e)
+        );
       } catch (e) {
-        console.error('[auto-enrich] trigger error:', e)
+        console.error("[auto-enrich] trigger error:", e);
       }
     }
 
     // ========== HUMAN PAUSE: detect human outbound messages ==========
-    if (direction === 'outbound' && instanceName && phone) {
+    if (direction === "outbound" && instanceName && phone) {
       // Check if this outbound message is from a human (not AI-generated)
-      const isAiMessage = body?.metadata?.ai_agent || body?.metadata?.ai_agent_id;
+      const isAiMessage = body?.metadata?.ai_agent ||
+        body?.metadata?.ai_agent_id;
       if (!isAiMessage) {
         // Double-check: see if there's a recent AI-generated outbound message matching this text
         // (AI agent inserts outbound messages into DB before the webhook echoes them back)
@@ -2048,218 +2639,263 @@ Deno.serve(async (req) => {
           if (messageText) {
             // Check exact match first
             const { data: exactMatch } = await supabase
-              .from('whatsapp_messages')
-              .select('id')
-              .eq('phone', phone)
-              .eq('instance_name', instanceName)
-              .eq('direction', 'outbound')
-              .eq('message_text', messageText)
-              .gte('created_at', recentCutoff)
+              .from("whatsapp_messages")
+              .select("id")
+              .eq("phone", phone)
+              .eq("instance_name", instanceName)
+              .eq("direction", "outbound")
+              .eq("message_text", messageText)
+              .gte("created_at", recentCutoff)
               .limit(1)
               .maybeSingle();
             if (exactMatch) {
               isActuallyAi = true;
-              console.log(`Outbound message matches recent AI message, skipping human pause for ${phone}`);
+              console.log(
+                `Outbound message matches recent AI message, skipping human pause for ${phone}`,
+              );
             }
             // Also check if this is a split part of a recent agent message
             if (!isActuallyAi) {
-              const trimmedText = (messageText || '').trim();
+              const trimmedText = (messageText || "").trim();
               if (trimmedText.length >= 10) {
                 const { data: agentMsgs } = await supabase
-                  .from('whatsapp_messages')
-                  .select('id, message_text')
-                  .eq('phone', phone)
-                  .eq('instance_name', instanceName)
-                  .eq('direction', 'outbound')
-                  .eq('action_source', 'agent')
-                  .gte('created_at', recentCutoff)
-                  .order('created_at', { ascending: false })
+                  .from("whatsapp_messages")
+                  .select("id, message_text")
+                  .eq("phone", phone)
+                  .eq("instance_name", instanceName)
+                  .eq("direction", "outbound")
+                  .eq("action_source", "agent")
+                  .gte("created_at", recentCutoff)
+                  .order("created_at", { ascending: false })
                   .limit(5);
-                const isPartOfAgent = (agentMsgs || []).some((m: any) => 
+                const isPartOfAgent = (agentMsgs || []).some((m: any) =>
                   m.message_text && m.message_text.includes(trimmedText)
                 );
                 if (isPartOfAgent) {
                   isActuallyAi = true;
-                  console.log(`Outbound message is split part of agent message, skipping human pause for ${phone}`);
+                  console.log(
+                    `Outbound message is split part of agent message, skipping human pause for ${phone}`,
+                  );
                 }
               }
             }
           }
         } catch (e) {
-          console.error('AI message check error:', e);
+          console.error("AI message check error:", e);
         }
 
         if (!isActuallyAi) {
-        // Human sent a message - pause the AI agent
-        try {
-          const { data: assignment } = await supabase
-            .from('whatsapp_conversation_agents')
-            .select('agent_id, is_active')
-            .eq('phone', phone)
-            .eq('instance_name', instanceName)
-            .eq('is_active', true)
-            .maybeSingle();
-
-          if (assignment) {
-            // Get the agent's human_pause_minutes config
-            const { data: agentConfig } = await supabase
-              .from('whatsapp_ai_agents')
-              .select('human_pause_minutes')
-              .eq('id', (assignment as any).agent_id)
+          // Human sent a message - pause the AI agent
+          try {
+            const { data: assignment } = await supabase
+              .from("whatsapp_conversation_agents")
+              .select("agent_id, is_active")
+              .eq("phone", phone)
+              .eq("instance_name", instanceName)
+              .eq("is_active", true)
               .maybeSingle();
 
-            const pauseMinutes = (agentConfig as any)?.human_pause_minutes || 30;
-            const pauseUntil = new Date(Date.now() + pauseMinutes * 60 * 1000).toISOString();
-            
-            await supabase
-              .from('whatsapp_conversation_agents')
-              .update({ human_paused_until: pauseUntil } as any)
-              .eq('phone', phone)
-              .eq('instance_name', instanceName);
+            if (assignment) {
+              // Get the agent's human_pause_minutes config
+              const { data: agentConfig } = await supabase
+                .from("whatsapp_ai_agents")
+                .select("human_pause_minutes")
+                .eq("id", (assignment as any).agent_id)
+                .maybeSingle();
 
-            console.log(`Human message detected - AI paused until ${pauseUntil} (${pauseMinutes}min)`);
+              const pauseMinutes = (agentConfig as any)?.human_pause_minutes ||
+                30;
+              const pauseUntil = new Date(Date.now() + pauseMinutes * 60 * 1000)
+                .toISOString();
+
+              await supabase
+                .from("whatsapp_conversation_agents")
+                .update({ human_paused_until: pauseUntil } as any)
+                .eq("phone", phone)
+                .eq("instance_name", instanceName);
+
+              console.log(
+                `Human message detected - AI paused until ${pauseUntil} (${pauseMinutes}min)`,
+              );
+            }
+          } catch (e) {
+            console.error("Human pause error:", e);
           }
-        } catch (e) {
-          console.error('Human pause error:', e);
         }
-      }
       }
     }
 
     // ========== WHATSAPP COMMAND PROCESSOR (Chat IA via WhatsApp) ==========
     // Also handle self-chat (messages to own number show as outbound/fromMe)
-    if (instanceName && phone && (direction === 'inbound' || direction === 'outbound')) {
+    if (
+      instanceName && phone &&
+      (direction === "inbound" || direction === "outbound")
+    ) {
       try {
         // Compare with normalized phone variants (with/without country code and optional mobile 9)
         const buildPhoneVariants = (rawPhone: string) => {
-          const digits = (rawPhone || '').replace(/\D/g, '').replace(/^0+/, '')
-          if (!digits) return [] as string[]
+          const digits = (rawPhone || "").replace(/\D/g, "").replace(/^0+/, "");
+          if (!digits) return [] as string[];
 
-          const variants = new Set<string>()
+          const variants = new Set<string>();
           const add = (value?: string) => {
-            if (value) variants.add(value)
-          }
+            if (value) variants.add(value);
+          };
 
-          add(digits)
-          const local = digits.startsWith('55') ? digits.slice(2) : digits
-          add(local)
+          add(digits);
+          const local = digits.startsWith("55") ? digits.slice(2) : digits;
+          add(local);
 
           // Brasil: alguns eventos chegam sem o 9 após DDD
           if (local.length === 10) {
-            const withNine = `${local.slice(0, 2)}9${local.slice(2)}`
-            add(withNine)
-            add(`55${withNine}`)
+            const withNine = `${local.slice(0, 2)}9${local.slice(2)}`;
+            add(withNine);
+            add(`55${withNine}`);
           }
 
-          if (local.length === 11 && local[2] === '9') {
-            const withoutNine = `${local.slice(0, 2)}${local.slice(3)}`
-            add(withoutNine)
-            add(`55${withoutNine}`)
+          if (local.length === 11 && local[2] === "9") {
+            const withoutNine = `${local.slice(0, 2)}${local.slice(3)}`;
+            add(withoutNine);
+            add(`55${withoutNine}`);
           }
 
-          return Array.from(variants)
-        }
+          return Array.from(variants);
+        };
 
         // For groups, use the actual sender's phone instead of the group ID
-        const senderPnRaw = normalizePhone(body?.message?.sender_pn || body?.sender_pn || body?.message?.sender || '')
-        const cmdLookupPhone = isGroup && senderPnRaw ? senderPnRaw : phone
-        const cmdPhoneVariants = buildPhoneVariants(cmdLookupPhone)
-        
+        const senderPnRaw = normalizePhone(
+          body?.message?.sender_pn || body?.sender_pn ||
+            body?.message?.sender || "",
+        );
+        const cmdLookupPhone = isGroup && senderPnRaw ? senderPnRaw : phone;
+        const cmdPhoneVariants = buildPhoneVariants(cmdLookupPhone);
+
         // Also try owner phone as fallback only for outbound group events (never for inbound)
-        const ownerPhoneCmd = normalizePhone(body?.message?.owner || body?.chat?.owner || body?.owner || '')
-        if (isGroup && direction === 'outbound' && ownerPhoneCmd) {
-          buildPhoneVariants(ownerPhoneCmd).forEach(v => { if (!cmdPhoneVariants.includes(v)) cmdPhoneVariants.push(v) })
+        const ownerPhoneCmd = normalizePhone(
+          body?.message?.owner || body?.chat?.owner || body?.owner || "",
+        );
+        if (isGroup && direction === "outbound" && ownerPhoneCmd) {
+          buildPhoneVariants(ownerPhoneCmd).forEach((v) => {
+            if (!cmdPhoneVariants.includes(v)) cmdPhoneVariants.push(v);
+          });
         }
-        
-        let cmdConfig: any = null
+
+        let cmdConfig: any = null;
         for (const variant of cmdPhoneVariants) {
           const { data } = await supabase
-            .from('whatsapp_command_config')
-            .select('id')
-            .eq('authorized_phone', variant)
-            .eq('instance_name', instanceName)
-            .eq('is_active', true)
-            .maybeSingle()
-          if (data) { cmdConfig = data; break }
+            .from("whatsapp_command_config")
+            .select("id")
+            .eq("authorized_phone", variant)
+            .eq("instance_name", instanceName)
+            .eq("is_active", true)
+            .maybeSingle();
+          if (data) {
+            cmdConfig = data;
+            break;
+          }
         }
 
         if (cmdConfig) {
           // Anti-loop: skip bot's own outbound messages to prevent re-triggering
-          const trimmedMsgText = (messageText || '').trim()
-          if (trimmedMsgText.startsWith('🤖 *WhatsJUD IA*') || trimmedMsgText.startsWith('🤖 WhatsJUD IA')) {
-            console.log('Anti-loop: skipping bot own message from command routing:', phone)
+          const trimmedMsgText = (messageText || "").trim();
+          if (
+            trimmedMsgText.startsWith("🤖 *WhatsJUD IA*") ||
+            trimmedMsgText.startsWith("🤖 WhatsJUD IA")
+          ) {
+            console.log(
+              "Anti-loop: skipping bot own message from command routing:",
+              phone,
+            );
           } else {
-          console.log('Authorized command phone detected, routing to command processor:', cmdLookupPhone, isGroup ? `(group: ${phone})` : '')
-          const supabaseUrl = RESOLVED_SUPABASE_URL
-          const supabaseAnonKey = RESOLVED_ANON_KEY
-const cloudFunctionsUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
-const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
-          // Fire-and-forget — pass the actual sender phone and group context
-          fetch(`${cloudFunctionsUrl}/functions/v1/whatsapp-command-processor`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseAnonKey}`,
-            },
-            body: JSON.stringify({
-              phone: cmdLookupPhone,
-              instance_name: instanceName,
-              message_text: messageText || '',
-              media_url: storedMediaUrl || mediaUrl || null,
-              message_type: messageType || 'text',
-              is_group: isGroup,
-              group_id: isGroup ? phone : null,
-            }),
-          }).catch(err => console.error('Command processor trigger error:', err))
+            console.log(
+              "Authorized command phone detected, routing to command processor:",
+              cmdLookupPhone,
+              isGroup ? `(group: ${phone})` : "",
+            );
+            const supabaseUrl = RESOLVED_SUPABASE_URL;
+            const supabaseAnonKey = RESOLVED_ANON_KEY;
+            const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
+              "https://gliigkupoebmlbwyvijp.supabase.co";
+            const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+            // Fire-and-forget — pass the actual sender phone and group context
+            fetch(
+              `${cloudFunctionsUrl}/functions/v1/whatsapp-command-processor`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${supabaseAnonKey}`,
+                },
+                body: JSON.stringify({
+                  phone: cmdLookupPhone,
+                  instance_name: instanceName,
+                  message_text: messageText || "",
+                  media_url: storedMediaUrl || mediaUrl || null,
+                  message_type: messageType || "text",
+                  is_group: isGroup,
+                  group_id: isGroup ? phone : null,
+                }),
+              },
+            ).catch((err) =>
+              console.error("Command processor trigger error:", err)
+            );
 
-          // Skip AI agent auto-reply for command users
-          const respData = { 
-            success: true, 
-            message_id: message.id, 
-            contact_id: contactId,
-            lead_id: leadId,
-            is_new_contact: !contactId,
-            instance_name: instanceName,
-            media_stored: !!storedMediaUrl && storedMediaUrl !== mediaUrl,
-            command_routed: true,
+            // Skip AI agent auto-reply for command users
+            const respData = {
+              success: true,
+              message_id: message.id,
+              contact_id: contactId,
+              lead_id: leadId,
+              is_new_contact: !contactId,
+              instance_name: instanceName,
+              media_stored: !!storedMediaUrl && storedMediaUrl !== mediaUrl,
+              command_routed: true,
+            };
+            await logWebhook("command_routed", respData);
+            return new Response(
+              JSON.stringify(respData),
+              {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              },
+            );
           }
-          await logWebhook('command_routed', respData)
-          return new Response(
-            JSON.stringify(respData),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
-        }
         } // end anti-loop else
       } catch (e) {
-        console.error('Command config check error:', e)
+        console.error("Command config check error:", e);
       }
     }
 
     // ========== @WJIA COMMAND DETECTION (outbound messages from attendant) ==========
-    if (direction === 'outbound' && instanceName && phone && messageText) {
-      const trimmed = (messageText || '').trim()
-      if (trimmed.toLowerCase().startsWith('@wjia')) {
-        console.log('@wjia command detected from attendant via WhatsApp app, phone:', phone, 'command:', trimmed)
+    if (direction === "outbound" && instanceName && phone && messageText) {
+      const trimmed = (messageText || "").trim();
+      if (trimmed.toLowerCase().startsWith("@wjia")) {
+        console.log(
+          "@wjia command detected from attendant via WhatsApp app, phone:",
+          phone,
+          "command:",
+          trimmed,
+        );
         try {
-          const supabaseUrl = RESOLVED_SUPABASE_URL
-          const supabaseAnonKey = RESOLVED_ANON_KEY
-const cloudFunctionsUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
-const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+          const supabaseUrl = RESOLVED_SUPABASE_URL;
+          const supabaseAnonKey = RESOLVED_ANON_KEY;
+          const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
+            "https://gliigkupoebmlbwyvijp.supabase.co";
+          const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
 
           // Resolve instance_name to get instance details
           const { data: instData } = await supabase
-            .from('whatsapp_instances')
-            .select('instance_name')
-            .eq('instance_name', instanceName)
-            .eq('is_active', true)
-            .maybeSingle()
+            .from("whatsapp_instances")
+            .select("instance_name")
+            .eq("instance_name", instanceName)
+            .eq("is_active", true)
+            .maybeSingle();
 
           // Fire-and-forget: call unified wjia-agent
           fetch(`${cloudFunctionsUrl}/functions/v1/wjia-agent`, {
-            method: 'POST',
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseAnonKey}`,
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseAnonKey}`,
             },
             body: JSON.stringify({
               phone,
@@ -2268,45 +2904,53 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
               contact_id: contactId,
               lead_id: leadId,
             }),
-          }).catch(err => console.error('@wjia command trigger error:', err))
+          }).catch((err) => console.error("@wjia command trigger error:", err));
 
           // Delete the @wjia message from WhatsApp so client doesn't see it
           if (externalMessageId && instanceName) {
             try {
-              let resolvedToken = instanceToken
-              let resolvedBaseUrl = baseUrl
+              let resolvedToken = instanceToken;
+              let resolvedBaseUrl = baseUrl;
               if (!resolvedToken || !resolvedBaseUrl) {
                 const { data: inst } = await supabase
-                  .from('whatsapp_instances')
-                  .select('instance_token, base_url')
-                  .eq('instance_name', instanceName)
+                  .from("whatsapp_instances")
+                  .select("instance_token, base_url")
+                  .eq("instance_name", instanceName)
                   .limit(1)
-                  .maybeSingle()
+                  .maybeSingle();
                 if (inst) {
-                  resolvedToken = resolvedToken || inst.instance_token
-                  resolvedBaseUrl = resolvedBaseUrl || inst.base_url
+                  resolvedToken = resolvedToken || inst.instance_token;
+                  resolvedBaseUrl = resolvedBaseUrl || inst.base_url;
                 }
               }
               if (resolvedToken && resolvedBaseUrl) {
                 fetch(`${resolvedBaseUrl}/message/delete`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'token': resolvedToken },
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "token": resolvedToken,
+                  },
                   body: JSON.stringify({ id: externalMessageId }),
-                }).catch(e => console.error('Error deleting @wjia message:', e))
+                }).catch((e) =>
+                  console.error("Error deleting @wjia message:", e)
+                );
               }
             } catch (delErr) {
-              console.error('Error deleting @wjia command message:', delErr)
+              console.error("Error deleting @wjia command message:", delErr);
             }
           }
 
           // Also delete from DB so it doesn't show in inbox
           if (message?.id) {
             const { error: deleteMessageError } = await supabase
-              .from('whatsapp_messages')
+              .from("whatsapp_messages")
               .delete()
-              .eq('id', message.id)
+              .eq("id", message.id);
             if (deleteMessageError) {
-              console.error('Error deleting @wjia message from DB:', deleteMessageError)
+              console.error(
+                "Error deleting @wjia message from DB:",
+                deleteMessageError,
+              );
             }
           }
 
@@ -2315,14 +2959,14 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
             message_id: message.id,
             wjia_command: true,
             instance_name: instanceName,
-          }
-          await logWebhook('wjia_command_routed', respData)
+          };
+          await logWebhook("wjia_command_routed", respData);
           return new Response(
             JSON.stringify(respData),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
         } catch (e) {
-          console.error('@wjia command processing error:', e)
+          console.error("@wjia command processing error:", e);
         }
       }
     }
@@ -2330,95 +2974,136 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
     // ========== ##NAME INTERNAL COMMAND DETECTION (team members) ==========
     // Handles commands like ##lead, ##caso, and free-text like ##criar atividade ...
     // Uses ## prefix and routes to command processor as ghost command
-    if (direction === 'outbound' && instanceName && phone && messageText) {
-      const trimmedCmd = (messageText || '').trim()
+    if (direction === "outbound" && instanceName && phone && messageText) {
+      const trimmedCmd = (messageText || "").trim();
       // Support ##command even with UazAPI signature prefix
-      const lastLineForDouble = trimmedCmd.split('\n').pop()?.trim() || trimmedCmd
-      const doubleHashMatch = lastLineForDouble.match(/^##([a-z0-9_]+)(?:\s+([\s\S]+))?$/i) || trimmedCmd.match(/^##([a-z0-9_]+)(?:\s+([\s\S]+))?$/i)
+      const lastLineForDouble = trimmedCmd.split("\n").pop()?.trim() ||
+        trimmedCmd;
+      const doubleHashMatch =
+        lastLineForDouble.match(/^##([a-z0-9_]+)(?:\s+([\s\S]+))?$/i) ||
+        trimmedCmd.match(/^##([a-z0-9_]+)(?:\s+([\s\S]+))?$/i);
 
       if (doubleHashMatch) {
-        const internalCmdName = doubleHashMatch[1].toLowerCase()
-        const internalCmdArgs = (doubleHashMatch[2] || '').trim()
-        console.log('##internal command detected:', internalCmdName, 'hasArgs:', !!internalCmdArgs, 'phone:', phone, 'instance:', instanceName)
+        const internalCmdName = doubleHashMatch[1].toLowerCase();
+        const internalCmdArgs = (doubleHashMatch[2] || "").trim();
+        console.log(
+          "##internal command detected:",
+          internalCmdName,
+          "hasArgs:",
+          !!internalCmdArgs,
+          "phone:",
+          phone,
+          "instance:",
+          instanceName,
+        );
 
         // Optional shortcut validation (kept for compatibility), but free-text ## commands are also allowed
         const { data: internalShortcut } = await supabase
-          .from('wjia_command_shortcuts')
-          .select('id, shortcut_name, assistant_type, is_active')
-          .eq('shortcut_name', internalCmdName)
-          .eq('command_scope', 'internal')
-          .eq('is_active', true)
-          .maybeSingle()
+          .from("wjia_command_shortcuts")
+          .select("id, shortcut_name, assistant_type, is_active")
+          .eq("shortcut_name", internalCmdName)
+          .eq("command_scope", "internal")
+          .eq("is_active", true)
+          .maybeSingle();
 
         // If there is no active shortcut and no args, keep old behavior (ignore)
         if (!internalShortcut && !internalCmdArgs) {
-          console.log('No active internal shortcut found for:', internalCmdName, '- ignoring bare ## command')
+          console.log(
+            "No active internal shortcut found for:",
+            internalCmdName,
+            "- ignoring bare ## command",
+          );
         } else {
           if (internalShortcut) {
-            console.log('Internal shortcut found:', internalShortcut.shortcut_name)
+            console.log(
+              "Internal shortcut found:",
+              internalShortcut.shortcut_name,
+            );
           } else {
-            console.log('No internal shortcut config found; routing as free-text ## command')
+            console.log(
+              "No internal shortcut config found; routing as free-text ## command",
+            );
           }
 
           try {
             // Delete the ##command message from WhatsApp (ghost command)
             if (externalMessageId) {
-              let resolvedToken = instanceToken
-              let resolvedBaseUrl = baseUrl
+              let resolvedToken = instanceToken;
+              let resolvedBaseUrl = baseUrl;
               if (!resolvedToken || !resolvedBaseUrl) {
                 const { data: inst } = await supabase
-                  .from('whatsapp_instances')
-                  .select('instance_token, base_url')
-                  .eq('instance_name', instanceName)
+                  .from("whatsapp_instances")
+                  .select("instance_token, base_url")
+                  .eq("instance_name", instanceName)
                   .limit(1)
-                  .maybeSingle()
+                  .maybeSingle();
                 if (inst) {
-                  resolvedToken = resolvedToken || inst.instance_token
-                  resolvedBaseUrl = resolvedBaseUrl || inst.base_url
+                  resolvedToken = resolvedToken || inst.instance_token;
+                  resolvedBaseUrl = resolvedBaseUrl || inst.base_url;
                 }
               }
               if (resolvedToken && resolvedBaseUrl) {
                 fetch(`${resolvedBaseUrl}/message/delete`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'token': resolvedToken },
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "token": resolvedToken,
+                  },
                   body: JSON.stringify({ id: externalMessageId }),
-                }).catch(e => console.error('Error deleting ##command message:', e))
+                }).catch((e) =>
+                  console.error("Error deleting ##command message:", e)
+                );
               }
             }
 
             // Delete from DB
             if (message?.id) {
-              await supabase.from('whatsapp_messages').delete().eq('id', message.id)
+              await supabase.from("whatsapp_messages").delete().eq(
+                "id",
+                message.id,
+              );
             }
 
             // For ## commands in regular chats, process as the team member (sender/owner), not the contact phone
-            const internalSenderPhone = normalizePhone(body?.message?.sender_pn || body?.sender_pn || body?.message?.sender || '')
-            const internalOwnerPhone = normalizePhone(body?.message?.owner || body?.chat?.owner || body?.owner || '')
-            const internalLookupPhone = internalSenderPhone || internalOwnerPhone || phone
+            const internalSenderPhone = normalizePhone(
+              body?.message?.sender_pn || body?.sender_pn ||
+                body?.message?.sender || "",
+            );
+            const internalOwnerPhone = normalizePhone(
+              body?.message?.owner || body?.chat?.owner || body?.owner || "",
+            );
+            const internalLookupPhone = internalSenderPhone ||
+              internalOwnerPhone || phone;
 
-            const supabaseUrl = RESOLVED_SUPABASE_URL
-            const supabaseAnonKey = RESOLVED_ANON_KEY
-const cloudFunctionsUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
-const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+            const supabaseUrl = RESOLVED_SUPABASE_URL;
+            const supabaseAnonKey = RESOLVED_ANON_KEY;
+            const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
+              "https://gliigkupoebmlbwyvijp.supabase.co";
+            const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
 
             // Route to command processor preserving full command text
-            fetch(`${cloudFunctionsUrl}/functions/v1/whatsapp-command-processor`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${supabaseAnonKey}`,
+            fetch(
+              `${cloudFunctionsUrl}/functions/v1/whatsapp-command-processor`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${supabaseAnonKey}`,
+                },
+                body: JSON.stringify({
+                  phone: internalLookupPhone,
+                  instance_name: instanceName,
+                  message_text: trimmedCmd,
+                  media_url: storedMediaUrl || mediaUrl || null,
+                  message_type: messageType || "text",
+                  is_group: isGroup,
+                  group_id: isGroup ? phone : null,
+                  is_internal_command: true,
+                }),
               },
-              body: JSON.stringify({
-                phone: internalLookupPhone,
-                instance_name: instanceName,
-                message_text: trimmedCmd,
-                media_url: storedMediaUrl || mediaUrl || null,
-                message_type: messageType || 'text',
-                is_group: isGroup,
-                group_id: isGroup ? phone : null,
-                is_internal_command: true,
-              }),
-            }).catch(err => console.error('##internal command trigger error:', err))
+            ).catch((err) =>
+              console.error("##internal command trigger error:", err)
+            );
 
             const respData = {
               success: true,
@@ -2426,14 +3111,16 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
               internal_command: internalCmdName,
               internal_free_text: !internalShortcut,
               instance_name: instanceName,
-            }
-            await logWebhook('internal_command_routed', respData)
+            };
+            await logWebhook("internal_command_routed", respData);
             return new Response(
               JSON.stringify(respData),
-              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
+              {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              },
+            );
           } catch (e) {
-            console.error('##internal command processing error:', e)
+            console.error("##internal command processing error:", e);
           }
         }
       }
@@ -2442,88 +3129,123 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
     // ========== #NAME AGENT/SHORTCUT COMMAND DETECTION ==========
     // Handles commands like #procuracao_maternidade — validates against wjia_command_shortcuts table
     // Works for both outbound (fromMe) messages. Uses the shortcuts table as single source of truth.
-    if (direction === 'outbound' && instanceName && phone && messageText) {
-      const trimmedCmd = (messageText || '').trim()
+    if (direction === "outbound" && instanceName && phone && messageText) {
+      const trimmedCmd = (messageText || "").trim();
       // Support #command even when UazAPI signature prefix is present (e.g. "*Dr. Name:*\n#procuracaogeral")
       // Extract the last line and check if it's a #command
-      const lastLine = trimmedCmd.split('\n').pop()?.trim() || trimmedCmd
-      const hashNameMatch = lastLine.match(/^#([a-z0-9_ ]+)$/i) || trimmedCmd.match(/^#([a-z0-9_ ]+)$/i)
+      const lastLine = trimmedCmd.split("\n").pop()?.trim() || trimmedCmd;
+      const hashNameMatch = lastLine.match(/^#([a-z0-9_ ]+)$/i) ||
+        trimmedCmd.match(/^#([a-z0-9_ ]+)$/i);
       // Skip control commands handled below (#parar, #ativar, #status)
-      const controlCommands = ['parar', 'ativar', 'status', 'limpar']
-      
-      if (hashNameMatch && !controlCommands.includes(hashNameMatch[1].trim().toLowerCase())) {
-        const shortcutName = hashNameMatch[1].trim().toLowerCase()
-        console.log('#name command detected:', shortcutName, 'phone:', phone, 'instance:', instanceName)
-        
+      const controlCommands = ["parar", "ativar", "status", "limpar"];
+
+      if (
+        hashNameMatch &&
+        !controlCommands.includes(hashNameMatch[1].trim().toLowerCase())
+      ) {
+        const shortcutName = hashNameMatch[1].trim().toLowerCase();
+        console.log(
+          "#name command detected:",
+          shortcutName,
+          "phone:",
+          phone,
+          "instance:",
+          instanceName,
+        );
+
         // Validate against wjia_command_shortcuts table — only client-scope shortcuts
         const { data: shortcutConfig } = await supabase
-          .from('wjia_command_shortcuts')
-          .select('id, shortcut_name, assistant_type, is_active')
-          .eq('shortcut_name', shortcutName)
-          .in('command_scope', ['client'])
-          .eq('is_active', true)
-          .maybeSingle()
+          .from("wjia_command_shortcuts")
+          .select("id, shortcut_name, assistant_type, is_active")
+          .eq("shortcut_name", shortcutName)
+          .in("command_scope", ["client"])
+          .eq("is_active", true)
+          .maybeSingle();
 
         if (shortcutConfig) {
-          console.log('Shortcut found in table:', shortcutConfig.shortcut_name, 'type:', shortcutConfig.assistant_type)
-          
+          console.log(
+            "Shortcut found in table:",
+            shortcutConfig.shortcut_name,
+            "type:",
+            shortcutConfig.assistant_type,
+          );
+
           try {
             // Delete the #command message from WhatsApp so contact doesn't see it (ghost command)
             if (externalMessageId) {
-              let resolvedToken = instanceToken
-              let resolvedBaseUrl = baseUrl
+              let resolvedToken = instanceToken;
+              let resolvedBaseUrl = baseUrl;
               if (!resolvedToken || !resolvedBaseUrl) {
                 const { data: inst } = await supabase
-                  .from('whatsapp_instances')
-                  .select('instance_token, base_url')
-                  .eq('instance_name', instanceName)
+                  .from("whatsapp_instances")
+                  .select("instance_token, base_url")
+                  .eq("instance_name", instanceName)
                   .limit(1)
-                  .maybeSingle()
+                  .maybeSingle();
                 if (inst) {
-                  resolvedToken = resolvedToken || inst.instance_token
-                  resolvedBaseUrl = resolvedBaseUrl || inst.base_url
+                  resolvedToken = resolvedToken || inst.instance_token;
+                  resolvedBaseUrl = resolvedBaseUrl || inst.base_url;
                 }
               }
               if (resolvedToken && resolvedBaseUrl) {
                 fetch(`${resolvedBaseUrl}/message/delete`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'token': resolvedToken },
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "token": resolvedToken,
+                  },
                   body: JSON.stringify({ id: externalMessageId }),
-                }).catch(e => console.error('Error deleting #name command message:', e))
+                }).catch((e) =>
+                  console.error("Error deleting #name command message:", e)
+                );
               }
             }
 
             // Delete from DB so it doesn't show in inbox
             if (message?.id) {
-              await supabase.from('whatsapp_messages').delete().eq('id', message.id)
+              await supabase.from("whatsapp_messages").delete().eq(
+                "id",
+                message.id,
+              );
             }
 
             // Hard reset de memória por conversa ao iniciar um novo #atalho
             await Promise.all([
               supabase
-                .from('wjia_collection_sessions')
-                .update({ status: 'cancelled', updated_at: new Date().toISOString() } as any)
-                .eq('phone', phone)
-                .eq('instance_name', instanceName)
-                .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready']),
+                .from("wjia_collection_sessions")
+                .update(
+                  {
+                    status: "cancelled",
+                    updated_at: new Date().toISOString(),
+                  } as any,
+                )
+                .eq("phone", phone)
+                .eq("instance_name", instanceName)
+                .in("status", [
+                  "collecting",
+                  "collecting_docs",
+                  "processing_docs",
+                  "ready",
+                ]),
               supabase
-                .from('whatsapp_command_history')
+                .from("whatsapp_command_history")
                 .delete()
-                .eq('phone', phone)
-                .eq('instance_name', instanceName),
-            ])
+                .eq("phone", phone)
+                .eq("instance_name", instanceName),
+            ]);
 
-            const supabaseUrl = RESOLVED_SUPABASE_URL
-            const supabaseAnonKey = RESOLVED_ANON_KEY
-const cloudFunctionsUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
-const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+            const supabaseUrl = RESOLVED_SUPABASE_URL;
+            const supabaseAnonKey = RESOLVED_ANON_KEY;
+            const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
+              "https://gliigkupoebmlbwyvijp.supabase.co";
+            const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
 
             // Route to unified wjia-agent with the #name as command
             fetch(`${cloudFunctionsUrl}/functions/v1/wjia-agent`, {
-              method: 'POST',
+              method: "POST",
               headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${supabaseAnonKey}`,
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseAnonKey}`,
               },
               body: JSON.stringify({
                 phone,
@@ -2535,7 +3257,9 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
                 // para o agente extrair os dados atuais do cliente.
                 reset_memory: false,
               }),
-            }).catch(err => console.error('#name command trigger error:', err))
+            }).catch((err) =>
+              console.error("#name command trigger error:", err)
+            );
 
             const respData = {
               success: true,
@@ -2543,54 +3267,78 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
               hash_command: shortcutName,
               shortcut_type: shortcutConfig.assistant_type,
               instance_name: instanceName,
-            }
-            await logWebhook('hash_command_routed', respData)
+            };
+            await logWebhook("hash_command_routed", respData);
             return new Response(
               JSON.stringify(respData),
-              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
+              {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              },
+            );
           } catch (e) {
-            console.error('#name command processing error:', e)
+            console.error("#name command processing error:", e);
           }
         } else {
-          console.log('No active shortcut found for:', shortcutName, '- treating as normal message')
+          console.log(
+            "No active shortcut found for:",
+            shortcutName,
+            "- treating as normal message",
+          );
         }
       }
     }
 
-
-
     // ========== WJIA COLLECTION SESSION CHECK ==========
     // If there's an active data collection session, route to collection processor instead of AI agent.
     // Direction is already corrected above by comparing sender vs owner phone.
-    const hasMedia = !!(storedMediaUrl || mediaUrl || (messageType && messageType !== 'text'))
+    const hasMedia =
+      !!(storedMediaUrl || mediaUrl || (messageType && messageType !== "text"));
 
     // Skip collection routing for ghost control commands (#parar, #ativar, #status)
-    const normalizedMessageText = (messageText || '').trim().toLowerCase()
-    const isControlCommand = ['#parar', '#ativar', '#status'].includes(normalizedMessageText)
-    if (!isControlCommand && direction === 'inbound' && instanceName && phone && (messageText || hasMedia)) {
+    const normalizedMessageText = (messageText || "").trim().toLowerCase();
+    const isControlCommand = ["#parar", "#ativar", "#status"].includes(
+      normalizedMessageText,
+    );
+    if (
+      !isControlCommand && direction === "inbound" && instanceName && phone &&
+      (messageText || hasMedia)
+    ) {
       try {
         const { data: activeSession } = await supabase
-          .from('wjia_collection_sessions')
-          .select('id')
-          .eq('phone', phone)
-          .eq('instance_name', instanceName)
-          .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready', 'generated'])
-          .order('created_at', { ascending: false })
+          .from("wjia_collection_sessions")
+          .select("id")
+          .eq("phone", phone)
+          .eq("instance_name", instanceName)
+          .in("status", [
+            "collecting",
+            "collecting_docs",
+            "processing_docs",
+            "ready",
+            "generated",
+          ])
+          .order("created_at", { ascending: false })
           .limit(1)
-          .maybeSingle()
+          .maybeSingle();
 
         if (activeSession) {
-          console.log('Active WJIA collection session found, routing to collection processor:', activeSession.id, 'direction:', direction, 'message_type:', messageType)
-          const supabaseUrl = RESOLVED_SUPABASE_URL
-          const supabaseAnonKey = RESOLVED_ANON_KEY
-const cloudFunctionsUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
-const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+          console.log(
+            "Active WJIA collection session found, routing to collection processor:",
+            activeSession.id,
+            "direction:",
+            direction,
+            "message_type:",
+            messageType,
+          );
+          const supabaseUrl = RESOLVED_SUPABASE_URL;
+          const supabaseAnonKey = RESOLVED_ANON_KEY;
+          const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
+            "https://gliigkupoebmlbwyvijp.supabase.co";
+          const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
           fetch(`${cloudFunctionsUrl}/functions/v1/wjia-agent`, {
-            method: 'POST',
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseAnonKey}`,
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseAnonKey}`,
             },
             body: JSON.stringify({
               phone,
@@ -2598,9 +3346,11 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
               message_text: messageText,
               media_url: storedMediaUrl || null,
               media_type: mediaType || null,
-              message_type: messageType || 'text',
+              message_type: messageType || "text",
             }),
-          }).catch(err => console.error('Collection processor trigger error:', err))
+          }).catch((err) =>
+            console.error("Collection processor trigger error:", err)
+          );
 
           const respData = {
             success: true,
@@ -2609,320 +3359,433 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
             lead_id: leadId,
             instance_name: instanceName,
             wjia_collection_routed: true,
-          }
-          await logWebhook('wjia_collection_routed', respData)
+          };
+          await logWebhook("wjia_collection_routed", respData);
           return new Response(
             JSON.stringify(respData),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
         }
       } catch (e) {
-        console.error('Collection session check error:', e)
+        console.error("Collection session check error:", e);
       }
     }
 
     // ========== AGENT CONTROL COMMANDS (#parar, #ativar, #status) ==========
     if (instanceName && phone && messageText) {
-      const resolvedControlCommand = resolveAgentControlCommand(messageText, messageType)
-      const isAgentCommand = !!resolvedControlCommand
+      const resolvedControlCommand = resolveAgentControlCommand(
+        messageText,
+        messageType,
+      );
+      const isAgentCommand = !!resolvedControlCommand;
 
       if (isAgentCommand) {
-        console.log('Agent control command detected:', resolvedControlCommand, 'phone:', phone, 'instance:', instanceName, 'direction:', direction)
+        console.log(
+          "Agent control command detected:",
+          resolvedControlCommand,
+          "phone:",
+          phone,
+          "instance:",
+          instanceName,
+          "direction:",
+          direction,
+        );
         try {
           // Build candidate phones to support mirrored webhooks between linked instances
-          const ownerPhone = normalizePhone(body?.message?.owner || body?.chat?.owner || body?.owner || '')
-          const senderPhone = normalizePhone(body?.message?.sender_pn || body?.sender_pn || body?.message?.sender || '')
-          const phoneCandidates = Array.from(new Set([phone, ownerPhone, senderPhone].filter(Boolean)))
+          const ownerPhone = normalizePhone(
+            body?.message?.owner || body?.chat?.owner || body?.owner || "",
+          );
+          const senderPhone = normalizePhone(
+            body?.message?.sender_pn || body?.sender_pn ||
+              body?.message?.sender || "",
+          );
+          const phoneCandidates = Array.from(
+            new Set([phone, ownerPhone, senderPhone].filter(Boolean)),
+          );
 
           // Delete the command message from WhatsApp so contact doesn't see it
           if (externalMessageId) {
-            let resolvedToken = instanceToken
-            let resolvedBaseUrl = baseUrl
+            let resolvedToken = instanceToken;
+            let resolvedBaseUrl = baseUrl;
             if (!resolvedToken || !resolvedBaseUrl) {
               const { data: inst } = await supabase
-                .from('whatsapp_instances')
-                .select('instance_token, base_url')
-                .eq('instance_name', instanceName)
+                .from("whatsapp_instances")
+                .select("instance_token, base_url")
+                .eq("instance_name", instanceName)
                 .limit(1)
-                .maybeSingle()
+                .maybeSingle();
               if (inst) {
-                resolvedToken = resolvedToken || inst.instance_token
-                resolvedBaseUrl = resolvedBaseUrl || inst.base_url
+                resolvedToken = resolvedToken || inst.instance_token;
+                resolvedBaseUrl = resolvedBaseUrl || inst.base_url;
               }
             }
             if (resolvedToken && resolvedBaseUrl) {
               fetch(`${resolvedBaseUrl}/message/delete`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'token': resolvedToken },
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "token": resolvedToken,
+                },
                 body: JSON.stringify({ id: externalMessageId }),
-              }).catch(e => console.error('Error deleting agent command message:', e))
+              }).catch((e) =>
+                console.error("Error deleting agent command message:", e)
+              );
             }
           }
 
           // Delete from DB so it doesn't show in inbox
           if (message?.id) {
-            await supabase.from('whatsapp_messages').delete().eq('id', message.id)
+            await supabase.from("whatsapp_messages").delete().eq(
+              "id",
+              message.id,
+            );
           }
 
           // Helper: check for active collection session (same chat scope for #status)
           const { data: activeCollectionSession } = await supabase
-            .from('wjia_collection_sessions')
-            .select('id, status, shortcut_name')
-            .eq('phone', phone)
-            .eq('instance_name', instanceName)
-            .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready', 'generated'])
-            .order('created_at', { ascending: false })
+            .from("wjia_collection_sessions")
+            .select("id, status, shortcut_name")
+            .eq("phone", phone)
+            .eq("instance_name", instanceName)
+            .in("status", [
+              "collecting",
+              "collecting_docs",
+              "processing_docs",
+              "ready",
+              "generated",
+            ])
+            .order("created_at", { ascending: false })
             .limit(1)
-            .maybeSingle()
+            .maybeSingle();
 
           // Helper: resolve instance for sending messages
           const getInstanceCreds = async () => {
-            let rToken = instanceToken
-            let rBaseUrl = baseUrl
+            let rToken = instanceToken;
+            let rBaseUrl = baseUrl;
             if (!rToken || !rBaseUrl) {
               const { data: inst } = await supabase
-                .from('whatsapp_instances')
-                .select('instance_token, base_url')
-                .eq('instance_name', instanceName)
+                .from("whatsapp_instances")
+                .select("instance_token, base_url")
+                .eq("instance_name", instanceName)
                 .limit(1)
-                .maybeSingle()
+                .maybeSingle();
               if (inst) {
-                rToken = rToken || inst.instance_token
-                rBaseUrl = rBaseUrl || inst.base_url
+                rToken = rToken || inst.instance_token;
+                rBaseUrl = rBaseUrl || inst.base_url;
               }
             }
-            return { token: rToken, baseUrl: rBaseUrl }
-          }
+            return { token: rToken, baseUrl: rBaseUrl };
+          };
 
-          if (resolvedControlCommand === '#parar') {
-            let stoppedAgent = false
-            let stoppedCollection = false
+          if (resolvedControlCommand === "#parar") {
+            let stoppedAgent = false;
+            let stoppedCollection = false;
 
             // Deactivate active agents for all mirrored phone candidates
             const { data: activeAgents } = await supabase
-              .from('whatsapp_conversation_agents')
-              .select('id, agent_id, phone, instance_name')
-              .in('phone', phoneCandidates as string[])
-              .eq('is_active', true)
+              .from("whatsapp_conversation_agents")
+              .select("id, agent_id, phone, instance_name")
+              .in("phone", phoneCandidates as string[])
+              .eq("is_active", true);
 
             if (activeAgents && activeAgents.length > 0) {
-              const activeAgentRows = activeAgents as any[]
-              const agentRowIds = activeAgentRows.map((a) => a.id)
+              const activeAgentRows = activeAgents as any[];
+              const agentRowIds = activeAgentRows.map((a) => a.id);
               await supabase
-                .from('whatsapp_conversation_agents')
+                .from("whatsapp_conversation_agents")
                 .update({ is_active: false, human_paused_until: null } as any)
-                .in('id', agentRowIds)
+                .in("id", agentRowIds);
 
-              stoppedAgent = true
-              console.log(`Deactivated ${activeAgentRows.length} agent assignment(s) via #parar for phones: ${phoneCandidates.join(', ')}`)
+              stoppedAgent = true;
+              console.log(
+                `Deactivated ${activeAgentRows.length} agent assignment(s) via #parar for phones: ${
+                  phoneCandidates.join(", ")
+                }`,
+              );
             }
 
             // Cancel active collection sessions for all mirrored phone candidates
             const { data: sessionsToCancel } = await supabase
-              .from('wjia_collection_sessions')
-              .select('id')
-              .in('phone', phoneCandidates as string[])
-              .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready'])
+              .from("wjia_collection_sessions")
+              .select("id")
+              .in("phone", phoneCandidates as string[])
+              .in("status", [
+                "collecting",
+                "collecting_docs",
+                "processing_docs",
+                "ready",
+              ]);
 
             if (sessionsToCancel && sessionsToCancel.length > 0) {
-              const sessionRows = sessionsToCancel as any[]
+              const sessionRows = sessionsToCancel as any[];
               await supabase
-                .from('wjia_collection_sessions')
-                .update({ status: 'cancelled' } as any)
-                .in('id', sessionRows.map((s) => s.id))
-              stoppedCollection = true
-              console.log(`Cancelled ${sessionRows.length} collection session(s) via #parar for phones: ${phoneCandidates.join(', ')}`)
+                .from("wjia_collection_sessions")
+                .update({ status: "cancelled" } as any)
+                .in("id", sessionRows.map((s) => s.id));
+              stoppedCollection = true;
+              console.log(
+                `Cancelled ${sessionRows.length} collection session(s) via #parar for phones: ${
+                  phoneCandidates.join(", ")
+                }`,
+              );
             }
 
             if (!stoppedAgent && !stoppedCollection) {
-              console.log(`Nothing active to stop for ${phone}. Candidates: ${phoneCandidates.join(', ')}`)
+              console.log(
+                `Nothing active to stop for ${phone}. Candidates: ${
+                  phoneCandidates.join(", ")
+                }`,
+              );
             }
-          } else if (resolvedControlCommand === '#ativar') {
+          } else if (resolvedControlCommand === "#ativar") {
             // Reactivate agent on this conversation
             const { data: existing } = await supabase
-              .from('whatsapp_conversation_agents')
-              .select('agent_id, is_active')
-              .eq('phone', phone)
-              .eq('instance_name', instanceName)
-              .maybeSingle()
+              .from("whatsapp_conversation_agents")
+              .select("agent_id, is_active")
+              .eq("phone", phone)
+              .eq("instance_name", instanceName)
+              .maybeSingle();
 
             if (existing && !(existing as any).is_active) {
               await supabase
-                .from('whatsapp_conversation_agents')
+                .from("whatsapp_conversation_agents")
                 .update({ is_active: true, human_paused_until: null } as any)
-                .eq('phone', phone)
-                .eq('instance_name', instanceName)
+                .eq("phone", phone)
+                .eq("instance_name", instanceName);
 
               const { data: agentData } = await supabase
-                .from('whatsapp_ai_agents')
-                .select('name')
-                .eq('id', (existing as any).agent_id)
-                .maybeSingle()
+                .from("whatsapp_ai_agents")
+                .select("name")
+                .eq("id", (existing as any).agent_id)
+                .maybeSingle();
 
-              console.log(`Agent "${(agentData as any)?.name}" reactivated for ${phone} via #ativar command`)
+              console.log(
+                `Agent "${
+                  (agentData as any)?.name
+                }" reactivated for ${phone} via #ativar command`,
+              );
             } else if (!existing) {
-              console.log(`No agent assigned to ${phone} to reactivate`)
+              console.log(`No agent assigned to ${phone} to reactivate`);
             } else {
-              console.log(`Agent already active for ${phone}`)
+              console.log(`Agent already active for ${phone}`);
             }
-          } else if (resolvedControlCommand === '#status') {
+          } else if (resolvedControlCommand === "#status") {
             // Build status text with both agent and collection info
-            const statusParts: string[] = []
+            const statusParts: string[] = [];
 
             // Agent status — only this conversation (phone + instance)
             const { data: existing } = await supabase
-              .from('whatsapp_conversation_agents')
-              .select('agent_id, is_active, human_paused_until')
-              .eq('phone', phone)
-              .eq('instance_name', instanceName)
-              .maybeSingle()
+              .from("whatsapp_conversation_agents")
+              .select("agent_id, is_active, human_paused_until")
+              .eq("phone", phone)
+              .eq("instance_name", instanceName)
+              .maybeSingle();
 
             if (existing) {
               const { data: agentData } = await supabase
-                .from('whatsapp_ai_agents')
-                .select('name')
-                .eq('id', (existing as any).agent_id)
-                .maybeSingle()
+                .from("whatsapp_ai_agents")
+                .select("name")
+                .eq("id", (existing as any).agent_id)
+                .maybeSingle();
 
-              const agentName = (agentData as any)?.name || 'Desconhecido'
-              const isActive = (existing as any).is_active
-              const pausedUntil = (existing as any).human_paused_until
+              const agentName = (agentData as any)?.name || "Desconhecido";
+              const isActive = (existing as any).is_active;
+              const pausedUntil = (existing as any).human_paused_until;
 
               if (!isActive) {
-                statusParts.push(`🤖 Agente "${agentName}" está *DESATIVADO*.`)
+                statusParts.push(`🤖 Agente "${agentName}" está *DESATIVADO*.`);
               } else if (pausedUntil && new Date(pausedUntil) > new Date()) {
-                const timeStr = new Date(pausedUntil).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-                statusParts.push(`🤖 Agente "${agentName}" está *PAUSADO* até ${timeStr}.`)
+                const timeStr = new Date(pausedUntil).toLocaleTimeString(
+                  "pt-BR",
+                  { hour: "2-digit", minute: "2-digit" },
+                );
+                statusParts.push(
+                  `🤖 Agente "${agentName}" está *PAUSADO* até ${timeStr}.`,
+                );
               } else {
-                statusParts.push(`🤖 Agente "${agentName}" está *ATIVO*.`)
+                statusParts.push(`🤖 Agente "${agentName}" está *ATIVO*.`);
               }
             } else {
-              statusParts.push('🤖 Nenhum agente atribuído.')
+              statusParts.push("🤖 Nenhum agente atribuído.");
             }
 
             // Collection session status — only this conversation
             if (activeCollectionSession) {
-              const sessStatus = (activeCollectionSession as any).status
-              const shortcutName = (activeCollectionSession as any).shortcut_name || 'Atalho'
+              const sessStatus = (activeCollectionSession as any).status;
+              const shortcutName =
+                (activeCollectionSession as any).shortcut_name || "Atalho";
               const statusLabels: Record<string, string> = {
-                collecting: 'coletando dados',
-                collecting_docs: 'coletando documentos',
-                processing_docs: 'processando documentos',
-                ready: 'aguardando confirmação',
-                generated: 'documento gerado (aguardando assinatura)',
-              }
-              const statusLabel = statusLabels[sessStatus] || sessStatus
-              statusParts.push(`📋 Atalho "${shortcutName}" *EM ANDAMENTO* (${statusLabel}).`)
+                collecting: "coletando dados",
+                collecting_docs: "coletando documentos",
+                processing_docs: "processando documentos",
+                ready: "aguardando confirmação",
+                generated: "documento gerado (aguardando assinatura)",
+              };
+              const statusLabel = statusLabels[sessStatus] || sessStatus;
+              statusParts.push(
+                `📋 Atalho "${shortcutName}" *EM ANDAMENTO* (${statusLabel}).`,
+              );
             }
 
-            const statusText = statusParts.join('\n')
+            const statusText = statusParts.join("\n");
 
-            const creds = await getInstanceCreds()
+            const creds = await getInstanceCreds();
             if (creds.token && creds.baseUrl) {
               await fetch(`${creds.baseUrl}/send/text`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'token': creds.token },
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "token": creds.token,
+                },
                 body: JSON.stringify({ number: phone, text: statusText }),
-              })
-              console.log('Status sent to conversation:', phone)
+              });
+              console.log("Status sent to conversation:", phone);
             }
-          } else if (resolvedControlCommand === '#limpar') {
-            if (direction === 'outbound') {
-              console.log(`#limpar command: clearing conversation for phoneCandidates=${JSON.stringify(phoneCandidates)}, instance=${instanceName}`)
+          } else if (resolvedControlCommand === "#limpar") {
+            if (direction === "outbound") {
+              console.log(
+                `#limpar command: clearing conversation for phoneCandidates=${
+                  JSON.stringify(phoneCandidates)
+                }, instance=${instanceName}`,
+              );
 
               // 1. Delete all messages for ALL phone candidates
               // Also delete specifically for this instance_name to handle owner-testing scenario
-              let totalDeleted = 0
+              let totalDeleted = 0;
               for (const p of phoneCandidates) {
                 // Delete across all instances for this phone
                 const { count: c1 } = await supabase
-                  .from('whatsapp_messages')
-                  .delete({ count: 'exact' })
-                  .eq('phone', p)
-                if (c1) totalDeleted += c1
+                  .from("whatsapp_messages")
+                  .delete({ count: "exact" })
+                  .eq("phone", p);
+                if (c1) totalDeleted += c1;
               }
               // Also delete by instance_name in case phone didn't match (owner testing own instance)
               const { count: c2 } = await supabase
-                .from('whatsapp_messages')
-                .delete({ count: 'exact' })
-                .eq('instance_name', instanceName)
-                .eq('phone', phone)
-              if (c2) totalDeleted += c2
-              console.log(`#limpar: deleted ${totalDeleted} messages for phones: ${phoneCandidates.join(', ')}, instance: ${instanceName}`)
+                .from("whatsapp_messages")
+                .delete({ count: "exact" })
+                .eq("instance_name", instanceName)
+                .eq("phone", phone);
+              if (c2) totalDeleted += c2;
+              console.log(
+                `#limpar: deleted ${totalDeleted} messages for phones: ${
+                  phoneCandidates.join(", ")
+                }, instance: ${instanceName}`,
+              );
 
               // 2. Cancel active collection sessions for all phone candidates AND this instance
               for (const p of phoneCandidates) {
                 await supabase
-                  .from('wjia_collection_sessions')
-                  .update({ status: 'cancelled' })
-                  .eq('phone', p)
-                  .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready', 'generated'])
+                  .from("wjia_collection_sessions")
+                  .update({ status: "cancelled" })
+                  .eq("phone", p)
+                  .in("status", [
+                    "collecting",
+                    "collecting_docs",
+                    "processing_docs",
+                    "ready",
+                    "generated",
+                  ]);
               }
               // Also cancel by instance
               await supabase
-                .from('wjia_collection_sessions')
-                .update({ status: 'cancelled' })
-                .eq('instance_name', instanceName)
-                .in('status', ['collecting', 'collecting_docs', 'processing_docs', 'ready', 'generated'])
+                .from("wjia_collection_sessions")
+                .update({ status: "cancelled" })
+                .eq("instance_name", instanceName)
+                .in("status", [
+                  "collecting",
+                  "collecting_docs",
+                  "processing_docs",
+                  "ready",
+                  "generated",
+                ]);
 
               // 3. Deactivate conversation agents for all phone candidates
               for (const p of phoneCandidates) {
                 await supabase
-                  .from('whatsapp_conversation_agents')
+                  .from("whatsapp_conversation_agents")
                   .update({ is_active: false })
-                  .eq('phone', p)
-                  .eq('is_active', true)
+                  .eq("phone", p)
+                  .eq("is_active", true);
               }
 
               // 4. Send confirmation and ghost-delete it
-              const creds = await getInstanceCreds()
+              const creds = await getInstanceCreds();
               if (creds.token && creds.baseUrl) {
                 try {
-                  const confirmResp = await fetch(`${creds.baseUrl}/send/text`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'token': creds.token },
-                    body: JSON.stringify({ number: phone, text: '✅ Conversa limpa.' }),
-                  })
-                  const confirmData = await confirmResp.json()
-                  const confirmMsgId = confirmData?.key?.id || confirmData?.messageId
-                  console.log(`#limpar confirmation sent, msgId: ${confirmMsgId}`)
+                  const confirmResp = await fetch(
+                    `${creds.baseUrl}/send/text`,
+                    {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "token": creds.token,
+                      },
+                      body: JSON.stringify({
+                        number: phone,
+                        text: "✅ Conversa limpa.",
+                      }),
+                    },
+                  );
+                  const confirmData = await confirmResp.json();
+                  const confirmMsgId = confirmData?.key?.id ||
+                    confirmData?.messageId;
+                  console.log(
+                    `#limpar confirmation sent, msgId: ${confirmMsgId}`,
+                  );
                   if (confirmMsgId) {
                     // Wait 4s then delete from WhatsApp (retry once)
-                    await new Promise(r => setTimeout(r, 4000))
-                    let delRes = await fetch(`${creds.baseUrl}/message/delete`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json', 'token': creds.token },
-                      body: JSON.stringify({ id: confirmMsgId }),
-                    })
-                    console.log(`#limpar confirmation delete status: ${delRes.status}`)
+                    await new Promise((r) => setTimeout(r, 4000));
+                    let delRes = await fetch(
+                      `${creds.baseUrl}/message/delete`,
+                      {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          "token": creds.token,
+                        },
+                        body: JSON.stringify({ id: confirmMsgId }),
+                      },
+                    );
+                    console.log(
+                      `#limpar confirmation delete status: ${delRes.status}`,
+                    );
                     // Retry once if failed
                     if (!delRes.ok) {
-                      await new Promise(r => setTimeout(r, 2000))
+                      await new Promise((r) => setTimeout(r, 2000));
                       delRes = await fetch(`${creds.baseUrl}/message/delete`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'token': creds.token },
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          "token": creds.token,
+                        },
                         body: JSON.stringify({ id: confirmMsgId }),
-                      })
-                      console.log(`#limpar confirmation delete retry status: ${delRes.status}`)
+                      });
+                      console.log(
+                        `#limpar confirmation delete retry status: ${delRes.status}`,
+                      );
                     }
                   }
                   // Cleanup any confirmation that got saved to DB
-                  await new Promise(r => setTimeout(r, 2000))
+                  await new Promise((r) => setTimeout(r, 2000));
                   for (const p of phoneCandidates) {
                     await supabase
-                      .from('whatsapp_messages')
+                      .from("whatsapp_messages")
                       .delete()
-                      .eq('phone', p)
-                      .ilike('message_text', '%conversa limpa%')
+                      .eq("phone", p)
+                      .ilike("message_text", "%conversa limpa%");
                   }
                   // Also delete by instance
                   await supabase
-                    .from('whatsapp_messages')
+                    .from("whatsapp_messages")
                     .delete()
-                    .eq('instance_name', instanceName)
-                    .ilike('message_text', '%conversa limpa%')
+                    .eq("instance_name", instanceName)
+                    .ilike("message_text", "%conversa limpa%");
                 } catch (e) {
-                  console.error('Error sending/deleting #limpar confirmation:', e)
+                  console.error(
+                    "Error sending/deleting #limpar confirmation:",
+                    e,
+                  );
                 }
               }
             }
@@ -2933,104 +3796,116 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
             message_id: message.id,
             agent_command: resolvedControlCommand,
             instance_name: instanceName,
-          }
-          await logWebhook('agent_command_processed', respData)
+          };
+          await logWebhook("agent_command_processed", respData);
           return new Response(
             JSON.stringify(respData),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
         } catch (e) {
-          console.error('Agent command processing error:', e)
+          console.error("Agent command processing error:", e);
         }
       }
     }
 
     // ========== MEMBER AI ASSISTANT CHECK ==========
     // If inbound message is from a registered team member's phone, route to member assistant
-    if (direction === 'inbound' && instanceName && phone && messageText && !isGroup) {
+    if (
+      direction === "inbound" && instanceName && phone && messageText &&
+      !isGroup
+    ) {
       try {
         // Check if member assistant is active
         const { data: memberConfig } = await supabase
-          .from('member_assistant_config')
-          .select('is_active, instance_id')
+          .from("member_assistant_config")
+          .select("is_active, instance_id")
           .limit(1)
-          .maybeSingle()
+          .maybeSingle();
 
         if (memberConfig?.is_active) {
           // Match by instance_id (immutable) — resolve current webhook's instance ID
-          let instanceMatch = !memberConfig.instance_id // null = any instance
-          
+          let instanceMatch = !memberConfig.instance_id; // null = any instance
+
           if (!instanceMatch && memberConfig.instance_id) {
             const { data: currentInst } = await supabase
-              .from('whatsapp_instances')
-              .select('id')
-              .eq('instance_name', instanceName)
-              .eq('is_active', true)
+              .from("whatsapp_instances")
+              .select("id")
+              .eq("instance_name", instanceName)
+              .eq("is_active", true)
               .limit(1)
-              .maybeSingle()
-            instanceMatch = currentInst?.id === memberConfig.instance_id
-            
+              .maybeSingle();
+            instanceMatch = currentInst?.id === memberConfig.instance_id;
+
             // Also try matching by token if name lookup didn't work
             if (!instanceMatch && instanceToken) {
               const { data: tokenInst } = await supabase
-                .from('whatsapp_instances')
-                .select('id')
-                .eq('instance_token', instanceToken)
-                .eq('is_active', true)
+                .from("whatsapp_instances")
+                .select("id")
+                .eq("instance_token", instanceToken)
+                .eq("is_active", true)
                 .limit(1)
-                .maybeSingle()
-              instanceMatch = tokenInst?.id === memberConfig.instance_id
+                .maybeSingle();
+              instanceMatch = tokenInst?.id === memberConfig.instance_id;
             }
           }
 
           if (instanceMatch) {
             // Check if sender phone belongs to a team member
-            const senderPhoneNorm = phone.replace(/\D/g, '')
-            const phoneSuffix = senderPhoneNorm.slice(-8)
+            const senderPhoneNorm = phone.replace(/\D/g, "");
+            const phoneSuffix = senderPhoneNorm.slice(-8);
 
             const { data: memberProfile } = await supabase
-              .from('profiles')
-              .select('user_id, full_name, phone')
-              .ilike('phone', `%${phoneSuffix}%`)
+              .from("profiles")
+              .select("user_id, full_name, phone")
+              .ilike("phone", `%${phoneSuffix}%`)
               .limit(1)
-              .maybeSingle()
+              .maybeSingle();
 
             if (memberProfile) {
               // Anti-loop: only block duplicate webhook processing (30s lock), NOT recent outbound replies.
               // The old 2-min outbound check was blocking user confirmations like "Sim" after AI questions.
               const { data: recentInbound } = await supabase
-                .from('whatsapp_command_history')
-                .select('id')
-                .eq('phone', phone)
-                .eq('role', 'member_lock')
-                .gte('created_at', new Date(Date.now() - 30_000).toISOString())
+                .from("whatsapp_command_history")
+                .select("id")
+                .eq("phone", phone)
+                .eq("role", "member_lock")
+                .gte("created_at", new Date(Date.now() - 30_000).toISOString())
                 .limit(1)
-                .maybeSingle()
+                .maybeSingle();
 
               if (recentInbound) {
-                console.log('Anti-loop: skipping member assistant for', phone, '(recent lock)')
+                console.log(
+                  "Anti-loop: skipping member assistant for",
+                  phone,
+                  "(recent lock)",
+                );
               } else {
-                console.log('Member detected:', memberProfile.full_name, '- routing to member AI assistant')
+                console.log(
+                  "Member detected:",
+                  memberProfile.full_name,
+                  "- routing to member AI assistant",
+                );
 
                 // Record processing lock immediately (using existing table columns)
-                await supabase.from('whatsapp_command_history').insert({
+                await supabase.from("whatsapp_command_history").insert({
                   phone,
                   instance_name: instanceName,
-                  role: 'member_lock',
-                  content: messageText?.substring(0, 200) || 'member_assistant',
-                })
+                  role: "member_lock",
+                  content: messageText?.substring(0, 200) || "member_assistant",
+                });
 
-                const supabaseUrl = RESOLVED_SUPABASE_URL
-                const supabaseAnonKey = RESOLVED_ANON_KEY
-const cloudFunctionsUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
-const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+                const supabaseUrl = RESOLVED_SUPABASE_URL;
+                const supabaseAnonKey = RESOLVED_ANON_KEY;
+                const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
+                  "https://gliigkupoebmlbwyvijp.supabase.co";
+                const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
 
                 // Fire-and-forget to member assistant
                 fetch(`${cloudFunctionsUrl}/functions/v1/member-ai-assistant`, {
-                  method: 'POST',
+                  method: "POST",
                   headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${supabaseAnonKey}`,
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${supabaseAnonKey}`,
                   },
                   body: JSON.stringify({
                     phone,
@@ -3040,10 +3915,12 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
                     member_name: memberProfile.full_name,
                     external_message_id: externalMessageId,
                     media_url: storedMediaUrl || null,
-                    message_type: messageType || 'text',
+                    message_type: messageType || "text",
                     media_type: mediaType || null,
                   }),
-                }).catch(err => console.error('Member AI assistant trigger error:', err))
+                }).catch((err) =>
+                  console.error("Member AI assistant trigger error:", err)
+                );
               }
 
               // Skip regular AI agent for team members
@@ -3054,33 +3931,39 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
                 lead_id: leadId,
                 instance_name: instanceName,
                 member_assistant_routed: true,
-              }
-              await logWebhook('member_assistant_routed', respData)
+              };
+              await logWebhook("member_assistant_routed", respData);
               return new Response(
                 JSON.stringify(respData),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-              )
+                {
+                  headers: {
+                    ...corsHeaders,
+                    "Content-Type": "application/json",
+                  },
+                },
+              );
             }
           }
         }
       } catch (e) {
-        console.error('Member assistant check error:', e)
+        console.error("Member assistant check error:", e);
       }
     }
 
     // ========== AI AGENT AUTO-REPLY ==========
-    if (!isGroup && direction === 'inbound' && instanceName && phone) {
+    if (!isGroup && direction === "inbound" && instanceName && phone) {
       try {
-        const supabaseUrl = RESOLVED_SUPABASE_URL
-        const supabaseAnonKey = RESOLVED_ANON_KEY
-const cloudFunctionsUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
-const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+        const supabaseUrl = RESOLVED_SUPABASE_URL;
+        const supabaseAnonKey = RESOLVED_ANON_KEY;
+        const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
+          "https://gliigkupoebmlbwyvijp.supabase.co";
+        const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
         // Fire-and-forget: don't await to avoid delaying webhook response
         fetch(`${cloudFunctionsUrl}/functions/v1/whatsapp-ai-agent-reply`, {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${cloudAnonKey}`,
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${cloudAnonKey}`,
           },
           body: JSON.stringify({
             phone,
@@ -3092,46 +3975,50 @@ const cloudAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
             is_group: isGroup,
             contact_name: contactName || null,
           }),
-        }).catch(err => console.error('AI agent reply trigger error:', err))
+        }).catch((err) => console.error("AI agent reply trigger error:", err));
       } catch (e) {
-        console.error('AI agent trigger setup error:', e)
+        console.error("AI agent trigger setup error:", e);
       }
     }
 
-    const respData = { 
-      success: true, 
-      message_id: message.id, 
+    const respData = {
+      success: true,
+      message_id: message.id,
       contact_id: contactId,
       lead_id: leadId,
       is_new_contact: !contactId,
       instance_name: instanceName,
       media_stored: !!storedMediaUrl && storedMediaUrl !== mediaUrl,
-    }
-    await logWebhook('message_processed', respData)
+    };
+    await logWebhook("message_processed", respData);
     return new Response(
       JSON.stringify(respData),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
-
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (error) {
-    console.error('Webhook error:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error("Webhook error:", error);
+    const errorMessage = error instanceof Error
+      ? error.message
+      : "Unknown error";
     // Try to log the error
     try {
-      const supabaseUrl = RESOLVED_SUPABASE_URL
-      const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
-      const supabase = createClient(supabaseUrl, supabaseKey)
-      await supabase.from('webhook_logs').insert({
-        source: 'whatsapp',
-        event_type: 'error',
-        status: 'error',
+      const supabaseUrl = RESOLVED_SUPABASE_URL;
+      const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      await supabase.from("webhook_logs").insert({
+        source: "whatsapp",
+        event_type: "error",
+        status: "error",
         error_message: errorMessage,
         payload: null,
-      })
+      });
     } catch (_) {}
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
-})
+});
