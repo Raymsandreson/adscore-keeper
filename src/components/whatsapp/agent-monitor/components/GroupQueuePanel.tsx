@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -37,7 +37,8 @@ export function GroupQueuePanel() {
 
   const fetchQueue = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
+    await ensureExternalSession().catch(() => {});
+    const { data } = await (externalSupabase as any)
       .from('group_creation_queue')
       .select('*')
       .order('created_at', { ascending: false })
@@ -63,15 +64,15 @@ export function GroupQueuePanel() {
   };
 
   const removeItem = async (id: string) => {
-    await supabase.from('group_creation_queue').delete().eq('id', id);
+    await (externalSupabase as any).from('group_creation_queue').delete().eq('id', id);
     setItems(prev => prev.filter(i => i.id !== id));
     toast.success('Item removido da fila');
   };
 
   const retryItem = async (id: string) => {
-    await supabase
+    await (externalSupabase as any)
       .from('group_creation_queue')
-      .update({ status: 'pending', attempts: 0, last_error: null } as any)
+      .update({ status: 'pending', attempts: 0, last_error: null })
       .eq('id', id);
     toast.success('Item reenfileirado');
     fetchQueue();
@@ -203,7 +204,8 @@ export function useGroupQueueCount() {
   
   useEffect(() => {
     const fetch = async () => {
-      const { count: c } = await supabase
+      await ensureExternalSession().catch(() => {});
+      const { count: c } = await (externalSupabase as any)
         .from('group_creation_queue')
         .select('*', { count: 'exact', head: true })
         .in('status', ['pending', 'failed']);
