@@ -21,6 +21,10 @@ const STATEMENTS: { label: string; sql: string }[] = [
           WHERE direction = 'inbound' AND read_at IS NULL`,
   },
   {
+    label: 'drop_old_get_conversation_summaries',
+    sql: `DROP FUNCTION IF EXISTS public.get_conversation_summaries(text[])`,
+  },
+  {
     label: 'replace_get_conversation_summaries',
     sql: `
 CREATE OR REPLACE FUNCTION public.get_conversation_summaries(p_instance_names text[])
