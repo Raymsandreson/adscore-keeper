@@ -1784,11 +1784,6 @@ ${scrapeData.content || ''}
                     onValueChange={(val) => {
                       const newBoardId = val === '__none__' ? '' : val;
                       setSelectedBoardId(newBoardId);
-                      if (newBoardId && newBoardId !== (lead as any)?.board_id) {
-                        const newBoard = effectiveBoards.find(b => b.id === newBoardId);
-                        const firstStage = (newBoard?.stages as any[] | undefined)?.[0];
-                        if (firstStage?.id) setStatus(firstStage.id);
-                      }
                     }}
                   >
                     <SelectTrigger>
