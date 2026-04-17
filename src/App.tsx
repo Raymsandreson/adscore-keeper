@@ -68,6 +68,24 @@ class ErrorBoundary extends React.Component<
   }
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary]', error?.message, error?.stack, info?.componentStack);
+
+    // DOMException típica causada por extensões de tradução do navegador
+    // (Google Tradutor) ou por reconciliação inválida do React. Em vez de
+    // travar o usuário na tela "Algo deu errado", tentamos auto-recuperar
+    // remontando a árvore — o estado da app é preservado nos contexts.
+    const msg = error?.message || '';
+    const isTransientDomError =
+      msg.includes("insertBefore") ||
+      msg.includes("removeChild") ||
+      msg.includes("não é filho deste nó") ||
+      msg.includes("not a child of this node");
+
+    if (isTransientDomError) {
+      // Pequeno atraso para deixar o React terminar o ciclo atual.
+      setTimeout(() => {
+        this.setState({ hasError: false, errorMessage: '' });
+      }, 50);
+    }
   }
   render() {
     if (this.state.hasError) {
