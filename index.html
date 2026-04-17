@@ -1,7 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR" translate="no">
   <head>
     <meta charset="UTF-8" />
+    <!-- Desabilita tradução automática (Google Translate etc.) que muta o DOM
+         e quebra a reconciliação do React com erros como
+         "Failed to execute 'insertBefore' on 'Node'". -->
+    <meta name="google" content="notranslate" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/pwa-192x192.png" />
@@ -32,7 +36,7 @@
   </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root" translate="no" class="notranslate"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
