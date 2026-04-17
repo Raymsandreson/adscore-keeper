@@ -180,6 +180,22 @@ export function LeadEditDialog({
   initialTab,
 }: LeadEditDialogProps) {
   const [hydratedLead, setHydratedLead] = useState<Lead | null>(lead);
+  // Fallback: load boards if not provided via props (so funnel selector always works)
+  const [fetchedBoards, setFetchedBoards] = useState<KanbanBoard[]>([]);
+  useEffect(() => {
+    if (!open) return;
+    if (boards && boards.length > 0) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('kanban_boards')
+        .select('id, name, stages, board_type, ad_account_id, product_service_id')
+        .order('name', { ascending: true });
+      if (!cancelled && data) setFetchedBoards(data as any);
+    })();
+    return () => { cancelled = true; };
+  }, [open, boards]);
+  const effectiveBoards: KanbanBoard[] = (boards && boards.length > 0) ? boards : fetchedBoards;
   // Basic fields state
   const [leadName, setLeadName] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
