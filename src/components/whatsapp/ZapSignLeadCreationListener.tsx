@@ -32,7 +32,19 @@ export function ZapSignLeadCreationListener() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [selectedBoardId, setSelectedBoardId] = useState('');
   const [creating, setCreating] = useState(false);
-  const [dismissedDocs, setDismissedDocs] = useState<Set<string>>(new Set());
+  const [dismissedDocs, setDismissedDocs] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('zapsign_dismissed_docs');
+      return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    } catch {
+      return new Set();
+    }
+  });
+  const persistDismissed = useCallback((next: Set<string>) => {
+    try {
+      localStorage.setItem('zapsign_dismissed_docs', JSON.stringify(Array.from(next).slice(-200)));
+    } catch {}
+  }, []);
 
   // Load boards on demand
   const loadBoards = useCallback(async () => {
