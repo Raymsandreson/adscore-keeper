@@ -106,6 +106,23 @@ export function ZapSignLeadCreationListener() {
 
     setCreating(true);
     try {
+      // Re-fetch doc to avoid acting on stale realtime payload (other tab/another click already created)
+      const { data: freshDoc } = await supabase
+        .from('zapsign_documents')
+        .select('id, lead_id, contact_id, status')
+        .eq('id', pendingDoc.id)
+        .maybeSingle();
+
+      if (freshDoc?.lead_id) {
+        toast.info('Lead já criado para este contrato.');
+        const next = new Set(dismissedDocs).add(pendingDoc.id);
+        setDismissedDocs(next);
+        persistDismissed(next);
+        setPendingDoc(null);
+        setSelectedBoardId('');
+        return;
+      }
+
       const board = boards.find(b => b.id === selectedBoardId);
       const stages = Array.isArray(board?.stages) ? board.stages : [];
       const lastStage = stages[stages.length - 1];
@@ -114,13 +131,13 @@ export function ZapSignLeadCreationListener() {
       const contactName = pendingDoc.signer_name || `Contato ${phone}`;
 
       // 1. Find or create contact
-      let contactId = pendingDoc.contact_id;
+      let contactId = freshDoc?.contact_id || pendingDoc.contact_id;
       if (!contactId && phone) {
         const last8 = phone.slice(-8);
         const { data: existing } = await supabase
           .from('contacts')
           .select('id')
-          .or(`phone.like.%${last8}`)
+          .like('phone', `%${last8}`)
           .limit(1)
           .maybeSingle();
 
@@ -160,28 +177,32 @@ export function ZapSignLeadCreationListener() {
 
       if (leadErr) throw leadErr;
 
-      // 3. Link contact to lead
+      // 3. Link contact to lead (idempotent via unique constraint)
       if (contactId && newLead) {
         await supabase
           .from('contact_leads')
-          .insert({ contact_id: contactId, lead_id: newLead.id })
-          .select()
-          .maybeSingle();
+          .upsert(
+            { contact_id: contactId, lead_id: newLead.id },
+            { onConflict: 'contact_id,lead_id', ignoreDuplicates: true }
+          );
 
-        // Update contact with lead_id
         await supabase
           .from('contacts')
           .update({ lead_id: newLead.id })
           .eq('id', contactId);
       }
 
-      // 4. Update zapsign_documents with lead_id and contact_id
+      // 4. Mark zapsign doc as processed (critical: blocks reopen)
       await supabase
         .from('zapsign_documents')
         .update({ lead_id: newLead.id, contact_id: contactId })
-        .eq('id', pendingDoc.id);
+        .eq('id', pendingDoc.id)
+        .is('lead_id', null); // only update if still null — prevents racing overwrite
 
       toast.success(`Lead "${contactName}" criado como fechado no funil "${board?.name}"!`);
+      const next = new Set(dismissedDocs).add(pendingDoc.id);
+      setDismissedDocs(next);
+      persistDismissed(next);
       setPendingDoc(null);
       setSelectedBoardId('');
     } catch (err: any) {
@@ -194,7 +215,9 @@ export function ZapSignLeadCreationListener() {
 
   const handleDismiss = () => {
     if (pendingDoc) {
-      setDismissedDocs(prev => new Set(prev).add(pendingDoc.id));
+      const next = new Set(dismissedDocs).add(pendingDoc.id);
+      setDismissedDocs(next);
+      persistDismissed(next);
     }
     setPendingDoc(null);
     setSelectedBoardId('');
