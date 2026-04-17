@@ -16,14 +16,23 @@ export default defineConfig(({ mode }) => ({
     mode === "development" && componentTagger(),
     VitePWA({
       devOptions: { enabled: false },
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       includeAssets: ['favicon.png', 'favicon.ico'],
       workbox: {
         navigateFallbackDenylist: [/^\/~oauth/],
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
         cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // index.html NUNCA é cacheado — sempre busca da rede para detectar updates
+        navigateFallback: null,
         runtimeCaching: [
+          {
+            // HTML sempre da rede
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkOnly',
+          },
           {
             urlPattern: /^https:\/\/gliigkupoebmlbwyvijp\.supabase\.co\/.*/i,
             handler: 'NetworkFirst',
