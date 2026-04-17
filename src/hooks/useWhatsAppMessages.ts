@@ -349,7 +349,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       // sidebar with old data and removing conversations that only existed in the
       // external DB. If the external call fails, we throw and let the catch block
       // keep the last-known-good state, and show a loading/error UI.
-      await ensureExternalSession();
+      try {
+        await ensureExternalSession();
+      } catch (sessionError) {
+        console.error('External session failed:', sessionError);
+      }
+      console.log('Calling getConversationSummaries with:', instanceNames);
       const summaries = await getConversationSummaries(instanceNames);
 
       const canonicalInstanceNames = new Map(
