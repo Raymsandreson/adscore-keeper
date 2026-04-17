@@ -133,5 +133,14 @@ export function initPWAUpdater() {
         }
       });
     });
+
+    // Auto-update silencioso: poll a cada 60s + quando a aba volta ao foco.
+    // Com skipWaiting/clientsClaim, o SW novo assume controle e o 'controllerchange' recarrega sozinho.
+    const poll = () => { reg.update().catch(() => undefined); };
+    setInterval(poll, 60_000);
+    window.addEventListener('focus', poll);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') poll();
+    });
   });
 }
