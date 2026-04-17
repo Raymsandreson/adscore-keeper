@@ -27,13 +27,39 @@ export interface WhatsAppMessage {
   lead_id: string | null;
 }
 
+/**
+ * Busca resumos de conversas. Para evitar timeout no Postgres quando há muitas
+ * instâncias/mensagens, fazemos UMA chamada por instância em paralelo e juntamos
+ * os resultados. Cada chamada individual é rápida e usa índice por instance_name.
+ */
 export async function getConversationSummaries(
-  instanceNames: string[]
+  instanceNames: string[],
+  daysBack: number = 60
 ): Promise<ConversationSummary[]> {
-  const { data, error } = await (externalSupabase as any)
-    .rpc('get_conversation_summaries', { p_instance_names: instanceNames });
-  if (error) throw error;
-  return data || [];
+  if (!instanceNames || instanceNames.length === 0) return [];
+
+  const callOne = async (name: string): Promise<ConversationSummary[]> => {
+    const { data, error } = await (externalSupabase as any)
+      .rpc('get_conversation_summaries', {
+        p_instance_names: [name],
+        p_days_back: daysBack,
+      });
+    if (error) {
+      console.warn(`[getConversationSummaries] failed for "${name}":`, error.message);
+      return [];
+    }
+    return data || [];
+  };
+
+  const results = await Promise.all(instanceNames.map(callOne));
+  const merged = results.flat();
+  // Mantém ordem por última mensagem desc (a RPC já ordena por instância)
+  merged.sort((a, b) => {
+    const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+    const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+    return tb - ta;
+  });
+  return merged;
 }
 
 export async function getConversationMessages(
