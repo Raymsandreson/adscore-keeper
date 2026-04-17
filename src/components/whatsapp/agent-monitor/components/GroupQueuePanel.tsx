@@ -204,7 +204,8 @@ export function useGroupQueueCount() {
   
   useEffect(() => {
     const fetch = async () => {
-      const { count: c } = await supabase
+      await ensureExternalSession().catch(() => {});
+      const { count: c } = await (externalSupabase as any)
         .from('group_creation_queue')
         .select('*', { count: 'exact', head: true })
         .in('status', ['pending', 'failed']);
