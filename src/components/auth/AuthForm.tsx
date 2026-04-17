@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
+import { cloudFunctions } from '@/lib/functionRouter';
 import { toast } from 'sonner';
 import { Loader2, LogIn, UserPlus, Eye, EyeOff, Scale, CheckCircle2, BarChart3, MessageSquare, Shield } from 'lucide-react';
 
@@ -101,8 +102,11 @@ export const AuthForm = () => {
     if (!forgotEmail.trim()) { toast.error('Informe seu email'); return; }
     setForgotLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
-        redirectTo: `${window.location.origin}/reset-password`,
+      const { error } = await cloudFunctions.invoke('send-password-reset', {
+        body: {
+          email: forgotEmail.trim(),
+          redirectTo: `${window.location.origin}/reset-password`,
+        },
       });
       if (error) throw error;
       toast.success('Email enviado!', { description: 'Verifique sua caixa de entrada (e spam) para redefinir a senha.' });
