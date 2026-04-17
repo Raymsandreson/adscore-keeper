@@ -28,13 +28,12 @@ export interface WhatsAppMessage {
 }
 
 /**
- * Busca resumos de conversas. Para evitar timeout no Postgres quando há muitas
- * instâncias/mensagens, fazemos UMA chamada por instância em paralelo e juntamos
- * os resultados. Cada chamada individual é rápida e usa índice por instance_name.
+ * Busca resumos de conversas. UMA chamada por instância em paralelo (cada uma
+ * rápida graças à função inlineada que usa idx_wam_inst_phone_created).
  */
 export async function getConversationSummaries(
   instanceNames: string[],
-  daysBack: number = 60
+  daysBack: number = 30
 ): Promise<ConversationSummary[]> {
   if (!instanceNames || instanceNames.length === 0) return [];
 
