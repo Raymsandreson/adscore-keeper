@@ -456,13 +456,32 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       if (!silent && convList.length > 0) {
         toast.success(`${convList.length} conversas carregadas`);
       }
-    } catch (error) {
+    } catch (error: any) {
+      const errCode = error?.code || error?.details?.code;
+      const isTimeout = errCode === '57014' || /statement timeout|timeout/i.test(error?.message || '');
       console.error('Error fetching WhatsApp messages from external:', error);
-      // Do NOT overwrite the list. Keeping the last known state (even empty on first
-      // load) prevents stale Cloud data from replacing fresh external data.
+
+      // CRITICAL: never wipe the conversation list on RPC failure.
+      // If we already have conversations in memory, keep them as-is — the next
+      // successful poll/realtime event will refresh them. Only show a toast
+      // when the user explicitly triggered the fetch (not silent polling).
+      const hasExistingData = conversationsRef.current.length > 0;
+
       if (!silent) {
-        toast.error('Erro ao carregar conversas do servidor. Tentando novamente...');
+        if (isTimeout && hasExistingData) {
+          toast.warning('Servidor lento — mostrando últimas conversas em cache.');
+        } else if (isTimeout) {
+          toast.error('Servidor demorou para responder. Tentando novamente em instantes...');
+        } else if (hasExistingData) {
+          toast.warning('Falha temporária ao atualizar conversas. Mantendo lista atual.');
+        } else {
+          toast.error('Erro ao carregar conversas do servidor. Tentando novamente...');
+        }
       }
+
+      // Mark as loaded so the UI stops showing the initial spinner indefinitely
+      // when the very first call fails — the realtime subscription will hydrate later.
+      if (!hasLoaded) setHasLoaded(true);
     } finally {
       isFetchingRef.current = false;
       if (!silent && !hasLoaded) setLoading(false);
