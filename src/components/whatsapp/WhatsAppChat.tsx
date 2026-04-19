@@ -27,6 +27,7 @@ import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { WhatsAppMediaGallery } from './WhatsAppMediaGallery';
 import { cn } from '@/lib/utils';
+import { canonicalizeChatTarget } from '@/lib/whatsappPhone';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -744,9 +745,10 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       return;
     }
 
-    const conversationChatId =
+    const rawChatId =
       conversation.messages.find((msg) => typeof msg.metadata?.chat?.wa_chatid === 'string')?.metadata?.chat?.wa_chatid ||
       conversation.messages.find((msg) => typeof msg.metadata?.message?.chatid === 'string')?.metadata?.message?.chatid;
+    const conversationChatId = canonicalizeChatTarget(rawChatId);
 
     setSending(true);
     try {
@@ -827,9 +829,10 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setPastedCaption('');
   };
 
-  const conversationChatId =
+  const rawChatId =
     conversation.messages.find((msg) => typeof msg.metadata?.chat?.wa_chatid === 'string')?.metadata?.chat?.wa_chatid ||
     conversation.messages.find((msg) => typeof msg.metadata?.message?.chatid === 'string')?.metadata?.message?.chatid;
+  const conversationChatId = canonicalizeChatTarget(rawChatId);
 
   // Media upload handler
   const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
