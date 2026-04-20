@@ -1,92 +1,57 @@
 
 
-## Plano: Edge function de execução única para otimizar `get_conversation_summaries` no banco externo
+## Plano: Diagnóstico de custo Cloud baseado em evidência real
 
-### Objetivo
-Criar uma edge function que conecta no Supabase Externo (`kmedldlepwiityjsdahz`) via `EXTERNAL_DB_URL`, cria os índices necessários e substitui a função `get_conversation_summaries` por uma versão otimizada — eliminando o timeout `57014` que está zerando a lista de conversas.
+### Limitação assumida
+Não tenho acesso ao billing dashboard ($/categoria). Vou medir **proxies de custo** via logs reais e cruzar com o gasto declarado de ~$20/dia pra estimar onde concentra.
 
-### Causa raiz (já diagnosticada via 5 Porquês)
-A função atual no externo:
-- usa `LOWER(m.instance_name)` no WHERE → invalida índices em `instance_name`
-- faz `DISTINCT ON (phone, instance_name) ORDER BY ... created_at DESC` sem índice composto adequado
-- varre `whatsapp_messages` inteira duas vezes (CTE `latest` + CTE `counts`)
+### O que vou rodar (somente leitura)
 
-Resultado: timeout de 8s do PostgREST → front recebe erro → `setConversations([])` → conversas somem.
+**Bloco 1 — Ranking de invocações (7 dias)**
+Query em `function_edge_logs` agrupada por `function_id`, contando invocações, tempo médio de execução, p95, taxa de erro. Resultado: tabela ordenada das 6 funções alvo + outras top 10.
 
-### O que a edge function vai executar no banco externo
+**Bloco 2 — Detecção de chamadas AI Gateway**
+Grep nos arquivos das 6 funções (e nos handlers do `wjia-agent`) procurando `ai.gateway.lovable.dev`, `geminiChat`, `elevenlabs`, e contagem de chamadas LLM por execução. Produz: mapa de "qual função consome AI por chamada".
 
-**1. Índices**
-```sql
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wam_inst_phone_created
-  ON whatsapp_messages (instance_name, phone, created_at DESC);
+**Bloco 3 — Análise das funções suspeitas**
+Leitura de:
+- `wjia-followup-processor/index.ts` — está rodando a cada 60s retornando 383 sessões; entender quanto faz por execução
+- `whatsapp-call-queue-processor/index.ts` (já vi: chama Gemini + ElevenLabs por ligação)
+- `trigger-whatsapp-notifications/index.ts` — só proxy ou faz trabalho?
+- `whatsapp-ai-agent-reply/index.ts` — só proxy ou faz trabalho?
+- `whatsapp-webhook/index.ts` — volume real e o que faz inline
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wam_inst_lower
-  ON whatsapp_messages (LOWER(instance_name));
+**Bloco 4 — Confirmar persistência externa**
+Query no banco externo confirmando que `whatsapp_messages` está sendo escrito lá (e não duplicado no Cloud).
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wam_unread
-  ON whatsapp_messages (instance_name, phone)
-  WHERE direction = 'inbound' AND read_at IS NULL;
-```
+### Entregável
 
-**2. Função otimizada** (uma única varredura, janela de 90 dias casando com `cleanup_old_whatsapp_messages`)
-```sql
-CREATE OR REPLACE FUNCTION public.get_conversation_summaries(p_instance_names text[])
-RETURNS TABLE(...) -- mesma assinatura
-LANGUAGE sql STABLE SET search_path TO 'public'
-AS $$
-  WITH normalized AS (
-    SELECT LOWER(unnest(p_instance_names)) AS name
-  ),
-  base AS (
-    SELECT m.*
-    FROM whatsapp_messages m
-    WHERE LOWER(m.instance_name) IN (SELECT name FROM normalized)
-      AND m.created_at > now() - interval '90 days'
-  ),
-  agg AS (
-    SELECT
-      phone, instance_name,
-      COUNT(*) AS msg_count,
-      COUNT(*) FILTER (WHERE direction='inbound' AND read_at IS NULL) AS unread,
-      MAX(created_at) AS last_at
-    FROM base
-    GROUP BY phone, instance_name
-  ),
-  latest AS (
-    SELECT DISTINCT ON (b.phone, b.instance_name)
-      b.phone, b.contact_name, b.contact_id::text, b.lead_id::text,
-      b.message_text, b.created_at, b.direction, b.instance_name
-    FROM base b
-    ORDER BY b.phone, b.instance_name, b.created_at DESC
-  )
-  SELECT l.phone,
-         COALESCE(NULLIF(l.contact_name,''), c.full_name, '') AS contact_name,
-         COALESCE(l.contact_id,'') , COALESCE(l.lead_id,''),
-         l.message_text, l.created_at, l.direction, l.instance_name,
-         COALESCE(a.unread,0), COALESCE(a.msg_count,0)
-  FROM latest l
-  LEFT JOIN agg a USING (phone, instance_name)
-  LEFT JOIN contacts c ON c.id::text = l.contact_id
-  ORDER BY l.created_at DESC;
-$$;
-```
+Relatório com:
 
-**3. Reload do schema cache do PostgREST** (`NOTIFY pgrst, 'reload schema'`).
+1. **Tabela ranking** das 6 funções:
+   | Função | Invocações/dia | Tempo médio | Chama AI? | Estimativa proporcional |
 
-### Arquivos a criar
-- `supabase/functions/apply-external-perf-indexes/index.ts` — conecta via `postgresjs` usando `EXTERNAL_DB_URL` (secret já existente), executa cada statement, retorna JSON com sucesso/erro por statement. Padrão idêntico ao já usado em `run-external-migration/index.ts`.
-- Sem entrada em `supabase/config.toml` (deploy padrão basta).
+2. **Identificação da dominante** com evidência citada (linha do log, função no código)
 
-### Como o usuário roda
-Uma chamada via curl ou pelo painel:
-```
-POST /functions/v1/apply-external-perf-indexes
-```
-Sem body. A função executa tudo, retorna o relatório, e pode ser deletada depois.
+3. **Recomendação de migração priorizada**:
+   - Quais valem migrar pro Railway (alto volume + sem AI)
+   - Quais NÃO adianta migrar (custo é AI Gateway, não invocação)
+   - Qual a economia esperada em ordem de grandeza
 
-### Observação importante
-- Não toca em Lovable Cloud DB nem em código do front — só infra do banco externo.
-- `CREATE INDEX CONCURRENTLY` não bloqueia tabela.
-- Custo: ~1 execução, segundos. Resultado: queries que hoje dão timeout passam a responder em ms.
-- Não inclui o ajuste no `useWhatsAppMessages.ts` (catch não-destrutivo) — se quiser, peço como passo seguinte.
+4. **Pedido explícito ao usuário** de 2 números do dashboard que só você vê:
+   - Saldo consumido em "AI balance" últimos 7 dias
+   - Saldo consumido em "Cloud balance" últimos 7 dias
+   
+   Com esses 2 números + meu ranking de invocações, fecho o diagnóstico real.
+
+### O que NÃO vou fazer
+
+- Não vou alterar código
+- Não vou tocar em `functionRouter.ts`
+- Não vou rodar SQL de escrita
+- Não vou inventar números de billing — se não tiver evidência, falo "não sei, preciso de X"
+
+### Saída esperada
+
+Um relatório em markdown no chat, ~300 linhas, com queries citadas, contagens reais e recomendação concreta de migração. Tempo: ~5 minutos de execução.
 
