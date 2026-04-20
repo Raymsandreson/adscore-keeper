@@ -1025,6 +1025,91 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         });
       };
 
+      // Canal 1 — conversations. Autoridade server-side de last_message_*,
+      // contact_*, lead_id, ordenação da sidebar. NÃO toca messages[] (autoridade
+      // do Canal 2). Monotonic rule em last_message_at: só avança, nunca retrocede,
+      // pra evitar jitter quando optimistic client-clock está à frente do server.
+      // unread_count NÃO é aplicado por enquanto — Canal 2 ainda incrementa no
+      // append de inbound e aplicar aqui causaria double-count. Limpeza dessa
+      // compatibilidade vira passo posterior.
+      type ConversationRow = {
+        instance_name: string;
+        phone: string;
+        last_message_text: string | null;
+        last_message_at: string;
+        contact_name: string | null;
+        contact_id: string | null;
+        lead_id: string | null;
+        unread_count: number;
+      };
+      type ConvChangePayload = {
+        eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+        new: ConversationRow | Record<string, never>;
+        old: ConversationRow | Record<string, never>;
+      };
+
+      const handleConversationChange = (payload: ConvChangePayload) => {
+        if (payload.eventType === 'DELETE') return;
+        const row = payload.new as ConversationRow;
+        if (!row || !row.instance_name || !row.phone) return;
+
+        const canonicalInstance = getCanonicalInstanceName(row.instance_name);
+        const allowedNames = new Set(instances.map(i => i.instance_name?.trim().toLowerCase()));
+        const incomingName = (canonicalInstance || '').trim().toLowerCase();
+        if (allowedNames.size > 0 && !allowedNames.has(incomingName)) return;
+
+        if (selectedInstanceId && selectedInstanceId !== 'all') {
+          const inst = instances.find(i => i.id === selectedInstanceId);
+          const selectedName = inst?.instance_name?.trim().toLowerCase();
+          if (selectedName && incomingName !== selectedName) return;
+        }
+
+        const targetKey = getConversationKey(row.phone, canonicalInstance);
+
+        setConversations(prev => {
+          const idx = prev.findIndex(c => getConversationKey(c.phone, c.instance_name) === targetKey);
+
+          if (idx < 0) {
+            // Conversa nova pro frontend (primeira inbound numa conversa,
+            // ou instância adicionada após o initial fetch). Insere sem
+            // messages[] — Canal 2 vai popular conforme INSERTs chegarem.
+            const newConv: WhatsAppConversation = {
+              phone: row.phone,
+              contact_name: row.contact_name ?? null,
+              contact_id: row.contact_id ?? null,
+              lead_id: row.lead_id ?? null,
+              last_message: row.last_message_text ?? null,
+              last_message_at: row.last_message_at,
+              unread_count: row.unread_count ?? 0,
+              messages: [],
+              instance_name: canonicalInstance,
+            };
+            return [newConv, ...prev].sort((a, b) =>
+              new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
+            );
+          }
+
+          return prev.map((c, i) => {
+            if (i !== idx) return c;
+            const incomingAt = new Date(row.last_message_at).getTime();
+            const localAt = new Date(c.last_message_at).getTime();
+            const advanceTimestamp = incomingAt > localAt;
+            return {
+              ...c,
+              contact_name: row.contact_name ?? c.contact_name,
+              contact_id: row.contact_id ?? c.contact_id,
+              lead_id: row.lead_id ?? c.lead_id,
+              // unread_count intencionalmente NÃO aplicado aqui (Opção A).
+              last_message: advanceTimestamp ? (row.last_message_text ?? c.last_message) : c.last_message,
+              last_message_at: advanceTimestamp ? row.last_message_at : c.last_message_at,
+              // messages[] NUNCA é tocado por Canal 1 — autoridade é Canal 2.
+            };
+          }).sort((a, b) =>
+            new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
+          );
+        });
+      };
+
     // One external channel per allowed instance, with server-side
     // filter `instance_name=eq.<name>`. This guarantees the Realtime backend
     // only broadcasts events for instances the user actually owns — a message
@@ -1049,9 +1134,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       if (disposed) return;
       for (const instanceName of targetInstanceNames) {
         const safeName = instanceName.replace(/[^a-zA-Z0-9_-]/g, '_');
-        const extChannelName = `whatsapp-realtime-external-${safeName}-${Date.now()}`;
-        const ch = externalSupabase
-          .channel(extChannelName)
+        const timestamp = Date.now();
+
+        // Canal 2 — whatsapp_messages (autoridade de messages[] na conversa ativa).
+        const msgChannelName = `whatsapp-realtime-external-${safeName}-${timestamp}`;
+        const msgCh = externalSupabase
+          .channel(msgChannelName)
           .on(
             'postgres_changes',
             {
@@ -1067,7 +1155,24 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
               setRealtimeHealthy(true);
             }
           });
-        externalChannels.push(ch);
+        externalChannels.push(msgCh);
+
+        // Canal 1 — conversations (autoridade de last_message_*, contact_*, lead_id, ordem).
+        const convChannelName = `conversations-realtime-${safeName}-${timestamp}`;
+        const convCh = externalSupabase
+          .channel(convChannelName)
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'conversations',
+              filter: `instance_name=eq.${instanceName}`,
+            },
+            (payload) => handleConversationChange(payload as unknown as ConvChangePayload)
+          )
+          .subscribe();
+        externalChannels.push(convCh);
       }
     };
     setupExternalChannels();
