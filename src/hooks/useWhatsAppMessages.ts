@@ -1047,17 +1047,21 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
   // Load all messages for a specific conversation (when selected)
   const fetchFullConversation = useCallback(async (phone: string, instanceName?: string | null) => {
-    activeConversationKeyRef.current = getConversationKey(phone, instanceName);
-    // NOTE: removed background fetchMessages(true) call here to avoid double-loading
-    try {
-      // Fetch directly from the external DB (source of truth for whatsapp_messages)
-      // through the typed wrapper. Requires instance_name — without it we'd pull
-      // messages from other instances with the same phone.
-      if (!instanceName) {
-        console.warn('fetchFullConversation called without instance_name — aborting to avoid cross-instance mix');
-        return;
-      }
+    // Requires instance_name — without it we'd pull messages from other instances with the same phone.
+    if (!instanceName) {
+      console.warn('fetchFullConversation called without instance_name — aborting to avoid cross-instance mix');
+      return;
+    }
 
+    // Canonicaliza a key ANTES de qualquer await. O handler realtime compara
+    // activeConversationKeyRef contra targetConversationKey canônica; se um INSERT
+    // chegar durante o await, a key raw setada antes não bate e o cache não atualiza.
+    const targetInstanceName = getCanonicalInstanceName(instanceName);
+    const targetConversationKey = getConversationKey(phone, targetInstanceName);
+    activeConversationKeyRef.current = targetConversationKey;
+
+    try {
+      // Fetch directly from the external DB (source of truth for whatsapp_messages).
       await ensureExternalSession().catch(() => {});
       const raw = await getConversationMessages(phone, instanceName, 3000);
       const allMsgs: WhatsAppMessage[] = raw as unknown as WhatsAppMessage[];
@@ -1077,10 +1081,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       const firstNamedMessage = deduped.find(m => m.contact_name || m.contact_id || m.lead_id) || deduped[0] || null;
       const lastMessage = deduped[0] || null;
       const unreadCount = deduped.filter(m => !m.read_at && m.direction === 'inbound').length;
-      const targetInstanceName = getCanonicalInstanceName(instanceName || lastMessage?.instance_name || null);
-      const targetConversationKey = getConversationKey(phone, targetInstanceName);
 
-      activeConversationKeyRef.current = targetConversationKey;
       fullConvCacheRef.current[targetConversationKey] = deduped;
 
       setConversations(prev => {
