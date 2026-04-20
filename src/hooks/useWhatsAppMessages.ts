@@ -1003,7 +1003,6 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
                 ...c,
                 last_message: canonicalMsg.message_text || c.last_message,
                 last_message_at: canonicalMsg.created_at,
-                unread_count: !canonicalMsg.read_at && canonicalMsg.direction === 'inbound' ? c.unread_count + 1 : c.unread_count,
                 messages: [...c.messages, canonicalMsg],
                 contact_name: canonicalMsg.contact_name || c.contact_name,
               };
@@ -1026,12 +1025,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       };
 
       // Canal 1 — conversations. Autoridade server-side de last_message_*,
-      // contact_*, lead_id, ordenação da sidebar. NÃO toca messages[] (autoridade
-      // do Canal 2). Monotonic rule em last_message_at: só avança, nunca retrocede,
-      // pra evitar jitter quando optimistic client-clock está à frente do server.
-      // unread_count NÃO é aplicado por enquanto — Canal 2 ainda incrementa no
-      // append de inbound e aplicar aqui causaria double-count. Limpeza dessa
-      // compatibilidade vira passo posterior.
+      // contact_*, lead_id, unread_count, ordenação da sidebar. NÃO toca
+      // messages[] (autoridade do Canal 2). Monotonic rule em last_message_at:
+      // só avança, nunca retrocede, pra evitar jitter quando optimistic
+      // client-clock está à frente do server.
       type ConversationRow = {
         instance_name: string;
         phone: string;
@@ -1099,7 +1096,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
               contact_name: row.contact_name ?? c.contact_name,
               contact_id: row.contact_id ?? c.contact_id,
               lead_id: row.lead_id ?? c.lead_id,
-              // unread_count intencionalmente NÃO aplicado aqui (Opção A).
+              unread_count: row.unread_count ?? c.unread_count,
               last_message: advanceTimestamp ? (row.last_message_text ?? c.last_message) : c.last_message,
               last_message_at: advanceTimestamp ? row.last_message_at : c.last_message_at,
               // messages[] NUNCA é tocado por Canal 1 — autoridade é Canal 2.
