@@ -584,7 +584,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         contact_id: contactId || null,
         lead_id: leadId || null,
         external_message_id: null,
-        metadata: null,
+        metadata: { __optimistic: true },
         created_at: new Date().toISOString(),
         read_at: null,
         instance_name: data.instance_name || conversationInstanceName || null,
@@ -659,7 +659,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         message_type: msgType, media_url: mediaUrl, media_type: mediaType,
         direction: 'outbound', status: 'sent',
         contact_id: contactId || null, lead_id: leadId || null,
-        external_message_id: null, metadata: null,
+        external_message_id: null, metadata: { __optimistic: true },
         created_at: new Date().toISOString(), read_at: null,
         instance_name: data.instance_name || conversationInstanceName || null, instance_token: null,
       };
@@ -724,7 +724,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         message_type: 'location', media_url: null, media_type: null,
         direction: 'outbound', status: 'sent',
         contact_id: contactId || null, lead_id: leadId || null,
-        external_message_id: null, metadata: { latitude, longitude, name, address },
+        external_message_id: null, metadata: { latitude, longitude, name, address, __optimistic: true },
         created_at: new Date().toISOString(), read_at: null,
         instance_name: data.instance_name || conversationInstanceName || null, instance_token: null,
       };
@@ -899,68 +899,131 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       }, 2500);
     };
 
+      // Predicate: `existing` é um optimistic local que corresponde ao `incoming`
+      // (INSERT realtime). Fingerprint: phone + instance + outbound dos dois lados,
+      // conteúdo bate (text OU media_url OU location latitude+longitude), delta
+      // created_at < 30s. Só retorna true se existing.metadata.__optimistic === true —
+      // guarda contra replace falso de outbound real recente com mesmo conteúdo.
+      const isOptimisticMatch = (existing: WhatsAppMessage, incoming: WhatsAppMessage): boolean => {
+        if (incoming.direction !== 'outbound') return false;
+        if (existing.direction !== 'outbound') return false;
+        if (!existing.metadata || existing.metadata.__optimistic !== true) return false;
+        if (existing.phone !== incoming.phone) return false;
+        if (existing.instance_name !== incoming.instance_name) return false;
+        const dt = Math.abs(new Date(existing.created_at).getTime() - new Date(incoming.created_at).getTime());
+        if (dt > 30_000) return false;
+        if (existing.message_text != null && incoming.message_text != null &&
+            existing.message_text === incoming.message_text) return true;
+        if (existing.media_url != null && incoming.media_url != null &&
+            existing.media_url === incoming.media_url) return true;
+        const em = existing.metadata;
+        const im = incoming.metadata;
+        if (em && im && em.latitude != null && em.longitude != null &&
+            em.latitude === im.latitude && em.longitude === im.longitude) return true;
+        return false;
+      };
+
+      // Tail do external_message_id (formato "instance:msgid"). Usado pra detectar
+      // 2º INSERT do mesmo evento realtime (ex: mirror disparando duplicado).
+      const extMsgIdTail = (m: WhatsAppMessage) => m.external_message_id?.split(':').pop() || null;
+
       const handleIncomingMessage = (newMsg: WhatsAppMessage) => {
         const canonicalMsg = {
           ...newMsg,
           instance_name: getCanonicalInstanceName(newMsg.instance_name),
         };
-      const allowedNames = new Set(instances.map(i => i.instance_name?.trim().toLowerCase()));
+        const allowedNames = new Set(instances.map(i => i.instance_name?.trim().toLowerCase()));
         const incomingName = (canonicalMsg.instance_name || '').trim().toLowerCase();
-      if (allowedNames.size > 0 && !allowedNames.has(incomingName)) return;
+        if (allowedNames.size > 0 && !allowedNames.has(incomingName)) return;
 
-      if (selectedInstanceId && selectedInstanceId !== 'all') {
-        const inst = instances.find(i => i.id === selectedInstanceId);
-        const selectedName = inst?.instance_name?.trim().toLowerCase();
-        if (selectedName && incomingName !== selectedName) return;
-      }
-
-      setMessages(prev => {
-        if (prev.some(m => m.id === canonicalMsg.id)) return prev;
-        return [canonicalMsg, ...prev];
-      });
-      setConversations(prev => {
-        const targetConversationKey = getConversationKey(canonicalMsg.phone, canonicalMsg.instance_name);
-        const existing = prev.find(c => getConversationKey(c.phone, c.instance_name) === targetConversationKey);
-        if (existing) {
-          const msgId = canonicalMsg.external_message_id?.split(':').pop();
-          const isDuplicate = msgId && existing.messages.some(m => {
-            const existingMsgId = m.external_message_id?.split(':').pop();
-            return existingMsgId === msgId && m.created_at === canonicalMsg.created_at;
-          });
-          if (isDuplicate) return prev;
-          if (existing.messages.some(m => m.id === canonicalMsg.id)) return prev;
-
-          if (activeConversationKeyRef.current === targetConversationKey && fullConvCacheRef.current[targetConversationKey]) {
-            fullConvCacheRef.current[targetConversationKey] = [...fullConvCacheRef.current[targetConversationKey], canonicalMsg];
-          }
-
-          return prev.map(c => {
-            if (getConversationKey(c.phone, c.instance_name) !== targetConversationKey) return c;
-            return {
-              ...c,
-              last_message: canonicalMsg.message_text || c.last_message,
-              last_message_at: canonicalMsg.created_at,
-              unread_count: !canonicalMsg.read_at && canonicalMsg.direction === 'inbound' ? c.unread_count + 1 : c.unread_count,
-              messages: [...c.messages, canonicalMsg],
-              contact_name: canonicalMsg.contact_name || c.contact_name,
-            };
-          }).sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
-        } else {
-          const newConv: WhatsAppConversation = {
-            phone: canonicalMsg.phone,
-            contact_name: canonicalMsg.contact_name,
-            contact_id: canonicalMsg.contact_id,
-            lead_id: canonicalMsg.lead_id,
-            last_message: canonicalMsg.message_text,
-            last_message_at: canonicalMsg.created_at,
-            unread_count: !canonicalMsg.read_at && canonicalMsg.direction === 'inbound' ? 1 : 0,
-            messages: [canonicalMsg],
-            instance_name: canonicalMsg.instance_name,
-          };
-          return [newConv, ...prev];
+        if (selectedInstanceId && selectedInstanceId !== 'all') {
+          const inst = instances.find(i => i.id === selectedInstanceId);
+          const selectedName = inst?.instance_name?.trim().toLowerCase();
+          if (selectedName && incomingName !== selectedName) return;
         }
-      });
-    };
+
+        const incomingExtTail = extMsgIdTail(canonicalMsg);
+
+        setMessages(prev => {
+          // Match 1: external_message_id igual → duplicado, ignora.
+          if (incomingExtTail && prev.some(m => extMsgIdTail(m) === incomingExtTail && m.created_at === canonicalMsg.created_at)) {
+            return prev;
+          }
+          // Match 2: optimistic fingerprint → replace in-place.
+          const optIdx = prev.findIndex(m => isOptimisticMatch(m, canonicalMsg));
+          if (optIdx >= 0) {
+            const next = prev.slice();
+            next[optIdx] = canonicalMsg;
+            return next;
+          }
+          return [canonicalMsg, ...prev];
+        });
+
+        setConversations(prev => {
+          const targetConversationKey = getConversationKey(canonicalMsg.phone, canonicalMsg.instance_name);
+          const existing = prev.find(c => getConversationKey(c.phone, c.instance_name) === targetConversationKey);
+          if (existing) {
+            // Match 1: external_message_id igual → duplicado (mirror disparando 2×).
+            if (incomingExtTail && existing.messages.some(m => extMsgIdTail(m) === incomingExtTail && m.created_at === canonicalMsg.created_at)) {
+              return prev;
+            }
+
+            // Match 2: optimistic fingerprint → replace in-place (preserva posição).
+            const optIdx = existing.messages.findIndex(m => isOptimisticMatch(m, canonicalMsg));
+
+            // Mesma lógica no cache da conversa ativa.
+            if (activeConversationKeyRef.current === targetConversationKey && fullConvCacheRef.current[targetConversationKey]) {
+              const cached = fullConvCacheRef.current[targetConversationKey];
+              const cachedHasExt = incomingExtTail && cached.some(m => extMsgIdTail(m) === incomingExtTail && m.created_at === canonicalMsg.created_at);
+              if (!cachedHasExt) {
+                const cachedOptIdx = cached.findIndex(m => isOptimisticMatch(m, canonicalMsg));
+                if (cachedOptIdx >= 0) {
+                  const nextCached = cached.slice();
+                  nextCached[cachedOptIdx] = canonicalMsg;
+                  fullConvCacheRef.current[targetConversationKey] = nextCached;
+                } else {
+                  fullConvCacheRef.current[targetConversationKey] = [...cached, canonicalMsg];
+                }
+              }
+            }
+
+            return prev.map(c => {
+              if (getConversationKey(c.phone, c.instance_name) !== targetConversationKey) return c;
+              if (optIdx >= 0) {
+                // Replace optimistic com o canonical. Não mexe em last_message*/unread_count:
+                // o optimistic já setou corretamente, e qualquer update aqui causaria
+                // reorder/jitter visual na sidebar quando a mensagem já estava renderizada.
+                return {
+                  ...c,
+                  messages: c.messages.map((m, i) => i === optIdx ? canonicalMsg : m),
+                };
+              }
+              // Append normal (inbound, ou outbound sem optimistic pré-existente).
+              return {
+                ...c,
+                last_message: canonicalMsg.message_text || c.last_message,
+                last_message_at: canonicalMsg.created_at,
+                unread_count: !canonicalMsg.read_at && canonicalMsg.direction === 'inbound' ? c.unread_count + 1 : c.unread_count,
+                messages: [...c.messages, canonicalMsg],
+                contact_name: canonicalMsg.contact_name || c.contact_name,
+              };
+            }).sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
+          } else {
+            const newConv: WhatsAppConversation = {
+              phone: canonicalMsg.phone,
+              contact_name: canonicalMsg.contact_name,
+              contact_id: canonicalMsg.contact_id,
+              lead_id: canonicalMsg.lead_id,
+              last_message: canonicalMsg.message_text,
+              last_message_at: canonicalMsg.created_at,
+              unread_count: !canonicalMsg.read_at && canonicalMsg.direction === 'inbound' ? 1 : 0,
+              messages: [canonicalMsg],
+              instance_name: canonicalMsg.instance_name,
+            };
+            return [newConv, ...prev];
+          }
+        });
+      };
 
     // One external channel per allowed instance, with server-side
     // filter `instance_name=eq.<name>`. This guarantees the Realtime backend
