@@ -1189,30 +1189,6 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     };
   }, [hasLoaded, selectedInstanceId, instances, fetchMessages, realtimeRetryNonce, getCanonicalInstanceName]);
 
-  // Refresh conversation list when tab becomes visible + periodic polling fallback
-  useEffect(() => {
-    if (!hasLoaded) return;
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        fetchMessages(true);
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    // Periodic polling every 30s as fallback for dropped WebSocket connections
-    const pollInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        fetchMessages(true);
-      }
-    }, 30000);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-      clearInterval(pollInterval);
-    };
-  }, [hasLoaded, fetchMessages]);
-
   // Load all messages for a specific conversation (when selected)
   const fetchFullConversation = useCallback(async (phone: string, instanceName?: string | null) => {
     // Requires instance_name — without it we'd pull messages from other instances with the same phone.
