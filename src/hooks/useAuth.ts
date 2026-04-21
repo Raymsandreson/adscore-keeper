@@ -42,12 +42,16 @@ const clearLocalAuthState = async () => {
 };
 
 // Sync user to external DB - sends user data from session
+// Non-blocking: short timeout, falls back to cached profile if slow
 async function syncUserToExternal(user: User): Promise<Profile | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
   try {
     const CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
     const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38';
     const res = await fetch(`${CLOUD_URL}/functions/v1/sync-user-to-external`, {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${ANON_KEY}`,
@@ -64,10 +68,16 @@ async function syncUserToExternal(user: User): Promise<Profile | null> {
       console.log('[AUTH] ✅ User synced to external DB:', data.profile?.full_name);
       return data.profile;
     } else {
-      console.warn('[AUTH] ⚠️ Sync failed:', res.status, await res.text());
+      console.warn('[AUTH] ⚠️ Sync failed:', res.status);
     }
-  } catch (err) {
-    console.warn('[AUTH] ⚠️ Sync error:', err);
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      console.warn('[AUTH] ⏱️ Sync timeout (8s) — usando cache');
+    } else {
+      console.warn('[AUTH] ⚠️ Sync error:', err?.message || err);
+    }
+  } finally {
+    clearTimeout(timeoutId);
   }
   return null;
 }
