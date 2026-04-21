@@ -83,6 +83,8 @@ serve(async (req) => {
       campaign_id: a.campaign_id,
       campaign_name: a.campaign?.name || '',
       effective_status: a.effective_status || 'UNKNOWN',
+      destination_phone: a.promoted_object?.whatsapp_phone_number || a.promoted_object?.page_id || null,
+      destination_type: a.destination_type || null,
     }));
 
     // Store in cache
