@@ -104,7 +104,7 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
       if (error) throw error;
       const now = new Date();
       const reconnected: InstanceStatus[] = [];
-      const enriched: InstanceStatus[] = (data || []).map((s: any) => {
+      const enriched: InstanceStatus[] = (Array.isArray(data) ? data : []).map((s: any) => {
         if (!s.connected) {
           if (!disconnectedTimestamps.current[s.id]) {
             disconnectedTimestamps.current[s.id] = now;
