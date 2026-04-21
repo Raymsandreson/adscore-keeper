@@ -640,7 +640,7 @@ export function CTWACampaignAutomation() {
     if (error) { toast.error('Erro ao vincular'); return; }
 
     // If apply to existing, assign agent to existing conversations from this campaign
-    if (applyToExisting) {
+    if (applyToExisting && addingAgent) {
       await applyAgentToExistingConversations(campaignId, addingAgent, detectedInstance?.id || addingInstance);
     }
 
