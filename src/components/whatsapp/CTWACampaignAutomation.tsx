@@ -606,7 +606,7 @@ export function CTWACampaignAutomation() {
   };
 
   const handleAddLink = async () => {
-    if (!addingAgent) return;
+    // agent_id agora é opcional
 
     let campaignId = '';
     let campaignName = '';
