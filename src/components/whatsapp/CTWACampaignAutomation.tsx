@@ -90,6 +90,9 @@ export function CTWACampaignAutomation() {
   const [manualCampaignId, setManualCampaignId] = useState('');
   const [manualCampaignName, setManualCampaignName] = useState('');
   const [useManualInput, setUseManualInput] = useState(false);
+  const [adsets, setAdsets] = useState<Array<{ id: string; name: string; campaign_id: string; destination_phone?: string | null; effective_status?: string }>>([]);
+  const [loadingAdsets, setLoadingAdsets] = useState(false);
+  const [addingAdset, setAddingAdset] = useState('');
   const [showPaused, setShowPaused] = useState(false);
   const [applyToExisting, setApplyToExisting] = useState(false);
   
