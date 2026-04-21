@@ -16,29 +16,18 @@ Deno.serve(async (req) => {
     'apikey': externalKey,
   };
 
-  // Abort upstream if it takes too long — avoid 150s edge runtime timeout
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000);
-
   try {
-    const resp = await fetch(EXT, { method: req.method, headers, body, signal: controller.signal });
-    clearTimeout(timeoutId);
+    const resp = await fetch(EXT, { method: req.method, headers, body });
     const text = await resp.text();
     return new Response(text, {
       status: resp.status,
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
   } catch (e) {
-    clearTimeout(timeoutId);
-    const isAbort = e instanceof Error && e.name === 'AbortError';
-    // Return empty array so the UI's .map() doesn't crash
-    console.warn('[check-whatsapp-status] upstream failed:', isAbort ? 'timeout' : (e instanceof Error ? e.message : String(e)));
-    return new Response(
-      JSON.stringify([]),
-      {
-        status: 200,
-        headers: { ...cors, 'Content-Type': 'application/json' },
-      },
-    );
+    const msg = e instanceof Error ? e.message : String(e);
+    return new Response(JSON.stringify({ error: `Proxy failed: ${msg}` }), {
+      status: 502,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
   }
 });
