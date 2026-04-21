@@ -626,7 +626,7 @@ export function CTWACampaignAutomation() {
     const detectedInstance = camp?.destination_phone ? findInstanceByPhone(camp.destination_phone) : undefined;
 
     const payload: any = {
-      agent_id: addingAgent,
+      agent_id: addingAgent || null,
       campaign_id: campaignId,
       campaign_name: campaignName,
     };
