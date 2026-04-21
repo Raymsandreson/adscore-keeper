@@ -54,6 +54,7 @@ import { BoardComparisonMetrics } from '@/components/kanban/BoardComparisonMetri
 import { ConversionAlertSettings } from '@/components/kanban/ConversionAlertSettings';
 import { KanbanReportDialog } from '@/components/kanban/KanbanReportDialog';
 import { ChecklistFilter } from '@/components/kanban/ChecklistFilter';
+import { normalizeDateInput } from '@/utils/normalizeDateInput';
 
 interface UnifiedKanbanManagerProps {
   adAccountId?: string;
@@ -355,7 +356,8 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       liability_type: newLeadFormData.liability_type || null,
       legal_viability: newLeadFormData.legal_viability || null,
       client_classification: newLeadFormData.client_classification || null,
-      expected_birth_date: newLeadFormData.expected_birth_date || null,
+      expected_birth_date: normalizeDateInput(newLeadFormData.expected_birth_date),
+      accident_date: normalizeDateInput(newLeadFormData.accident_date),
     } as Partial<Lead>);
 
     // Reset form
@@ -407,7 +409,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       ...prev,
       victim_name: data.victim_name || prev.victim_name,
       victim_age: data.victim_age?.toString() || prev.victim_age,
-      accident_date: data.accident_date || prev.accident_date,
+      accident_date: normalizeDateInput(data.accident_date) || prev.accident_date,
       accident_address: data.accident_address || prev.accident_address,
       damage_description: data.damage_description || prev.damage_description,
       contractor_company: data.contractor_company || prev.contractor_company,

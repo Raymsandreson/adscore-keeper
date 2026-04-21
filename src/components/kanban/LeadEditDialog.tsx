@@ -102,6 +102,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Pencil, Trash2 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDialog';
+import { normalizeDateInput } from '@/utils/normalizeDateInput';
 
 interface LeadEditDialogProps {
   open: boolean;
@@ -458,7 +459,7 @@ export function LeadEditDialog({
     // Accident
     if (u.victim_name) setVictimName(u.victim_name);
     if (u.victim_age) setVictimAge(u.victim_age.toString());
-    if (u.accident_date) setAccidentDate(u.accident_date);
+    if (u.accident_date) setAccidentDate(normalizeDateInput(u.accident_date) || u.accident_date);
     if (u.case_type) setCaseType(u.case_type);
     if (u.accident_address) setAccidentAddress(u.accident_address);
     if (u.damage_description) setDamageDescription(u.damage_description);
@@ -504,7 +505,7 @@ export function LeadEditDialog({
     // Update state with extracted data, filling in visit_region automatically
     if (data.victim_name) setVictimName(data.victim_name);
     if (data.victim_age) setVictimAge(data.victim_age.toString());
-    if (data.accident_date) setAccidentDate(data.accident_date);
+    if (data.accident_date) setAccidentDate(normalizeDateInput(data.accident_date) || data.accident_date);
     if (data.case_type) setCaseType(data.case_type);
     if (data.accident_address) setAccidentAddress(data.accident_address);
     if (data.damage_description) setDamageDescription(data.damage_description);
@@ -740,7 +741,7 @@ ${scrapeData.content || ''}
         whatsapp_group_id: finalGroupId,
         victim_name: victimName || null,
         victim_age: victimAge ? parseInt(victimAge) : null,
-        accident_date: accidentDate || null,
+        accident_date: normalizeDateInput(accidentDate),
         case_type: caseType || null,
         accident_address: accidentAddress || null,
         damage_description: damageDescription || null,
@@ -765,11 +766,11 @@ ${scrapeData.content || ''}
           const firstStage = newBoard?.stages?.[0] as any;
           return firstStage?.id ? { status: firstStage.id } : {};
         })() : {}),
-        expected_birth_date: expectedBirthDate || null,
-        became_client_date: leadOutcome === 'closed' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
-        classification_date: leadOutcome === 'refused' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
-        in_progress_date: leadOutcome === 'in_progress' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
-        inviavel_date: leadOutcome === 'inviavel' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
+        expected_birth_date: normalizeDateInput(expectedBirthDate),
+        became_client_date: leadOutcome === 'closed' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
+        classification_date: leadOutcome === 'refused' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
+        in_progress_date: leadOutcome === 'in_progress' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
+        inviavel_date: leadOutcome === 'inviavel' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         lead_status_reason: leadOutcomeReason || null,
         case_number: caseNumber || null,
       } as any);
