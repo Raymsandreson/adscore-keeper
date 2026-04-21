@@ -1071,6 +1071,9 @@ export function CTWACampaignAutomation() {
                 </div>
                 <Select value={addingCampaign} onValueChange={(val) => {
                   setAddingCampaign(val);
+                  setAddingAdset('');
+                  setAdsets([]);
+                  fetchAdsets(val);
                   const camp = metaCampaigns.find(c => c.campaign_id === val);
                   if (camp?.destination_phone) {
                     const matched = findInstanceByPhone(camp.destination_phone);
