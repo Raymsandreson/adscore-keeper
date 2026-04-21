@@ -343,7 +343,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       visit_state: newLeadFormData.visit_state || null,
       visit_region: newLeadFormData.visit_region || null,
       visit_address: newLeadFormData.visit_address || null,
-      accident_date: newLeadFormData.accident_date || null,
+      accident_date: normalizeDateInput(newLeadFormData.accident_date),
       damage_description: newLeadFormData.damage_description || null,
       victim_name: newLeadFormData.victim_name || null,
       victim_age: newLeadFormData.victim_age ? parseInt(newLeadFormData.victim_age) : null,
@@ -357,7 +357,6 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       legal_viability: newLeadFormData.legal_viability || null,
       client_classification: newLeadFormData.client_classification || null,
       expected_birth_date: normalizeDateInput(newLeadFormData.expected_birth_date),
-      accident_date: normalizeDateInput(newLeadFormData.accident_date),
     } as Partial<Lead>);
 
     // Reset form
