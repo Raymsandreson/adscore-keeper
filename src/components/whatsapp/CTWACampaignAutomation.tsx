@@ -185,12 +185,10 @@ export function CTWACampaignAutomation() {
     try {
       const formattedAdAccountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
       const { data, error } = await cloudFunctions.invoke('list-meta-adsets', {
-        body: { accessToken, adAccountId: formattedAdAccountId, limit: 200 },
+        body: { accessToken, adAccountId: formattedAdAccountId, campaignId, limit: 200 },
       });
       if (error) throw error;
-      const all = (data?.adsets || []) as Array<any>;
-      const filtered = campaignId ? all.filter(a => a.campaign_id === campaignId) : all;
-      setAdsets(filtered);
+      setAdsets((data?.adsets || []) as Array<any>);
     } catch (err) {
       console.error('CTWA: Error fetching adsets:', err);
       setAdsets([]);
