@@ -58,7 +58,7 @@ serve(async (req) => {
       );
     }
 
-    const fields = 'id,name,status,effective_status,campaign_id,campaign{name}';
+    const fields = 'id,name,status,effective_status,campaign_id,campaign{name},promoted_object,destination_type';
     const url = `https://graph.facebook.com/v25.0/${adAccountId}/adsets?fields=${fields}&limit=${limit}&access_token=${accessToken}`;
 
     console.log('Fetching adsets from:', url.replace(accessToken, '***'));
