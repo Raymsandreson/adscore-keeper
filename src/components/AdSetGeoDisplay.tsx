@@ -15,6 +15,12 @@ export const AdSetGeoDisplay = ({ adSetId }: AdSetGeoDisplayProps) => {
   useEffect(() => {
     if (fetched) return;
 
+    // Skip synthetic/fallback IDs (e.g. "adset_1") — only real numeric Meta IDs
+    if (!adSetId || !/^\d+$/.test(adSetId)) {
+      setFetched(true);
+      return;
+    }
+
     const fetchGeo = async () => {
       const { accessToken } = await getMetaCredentials();
       if (!accessToken) return;
