@@ -50,11 +50,13 @@ serve(async (req) => {
 
     const normalizedCampaignId = typeof campaignId === 'string' && campaignId.trim() ? campaignId.trim() : null;
 
+    console.log(`[list-meta-adsets] 📥 Request: adAccountId=${adAccountId}, campaignId=${normalizedCampaignId || 'NONE (account-wide)'}, limit=${limit}`);
+
     // Check fresh cache first
     const cacheKey = `${adAccountId}_${normalizedCampaignId || 'all'}_${limit}`;
     const cached = cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
-      console.log('Returning fresh cached adsets for', normalizedCampaignId || adAccountId);
+      console.log(`[list-meta-adsets] 🟢 FRESH CACHE hit for key=${cacheKey}, returning ${cached.data.length} adsets (age: ${Math.round((Date.now() - cached.storedAt) / 1000)}s)`);
       return new Response(
         JSON.stringify({ success: true, adsets: cached.data, cached: true }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -65,32 +67,33 @@ serve(async (req) => {
     const basePath = normalizedCampaignId ? `${normalizedCampaignId}/adsets` : `${adAccountId}/adsets`;
     const url = `https://graph.facebook.com/v25.0/${basePath}?fields=${fields}&limit=${limit}&access_token=${accessToken}`;
 
-    console.log('Fetching adsets from:', url.replace(accessToken, '***'));
+    console.log(`[list-meta-adsets] 🌐 Calling Meta API: https://graph.facebook.com/v25.0/${basePath}?fields=${fields}&limit=${limit}&access_token=***`);
 
     let data: any;
     try {
       const res = await fetchWithRetry(url);
       data = await res.json();
     } catch (fetchErr) {
+      const errMsg = fetchErr instanceof Error ? fetchErr.message : 'Meta API unavailable';
+      console.error(`[list-meta-adsets] ❌ Fetch failed: ${errMsg}`);
       if (cached && (cached.storedAt + STALE_TTL_MS) > Date.now()) {
-        console.warn('Rate limited, serving STALE cache for', normalizedCampaignId || adAccountId);
+        console.warn(`[list-meta-adsets] 🟡 STALE CACHE fallback (fetch err) for key=${cacheKey}, returning ${cached.data.length} adsets (age: ${Math.round((Date.now() - cached.storedAt) / 1000)}s)`);
         return new Response(
           JSON.stringify({ success: true, adsets: cached.data, cached: true, stale: true }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      const msg = fetchErr instanceof Error ? fetchErr.message : 'Meta API unavailable';
       return new Response(
-        JSON.stringify({ success: false, adsets: [], fallback: true, error: msg }),
+        JSON.stringify({ success: false, adsets: [], fallback: true, error: errMsg }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     if (data.error) {
-      console.error('Meta API error:', JSON.stringify(data.error));
+      console.error(`[list-meta-adsets] ❌ Meta API error: ${JSON.stringify(data.error)}`);
       if (cached && (cached.storedAt + STALE_TTL_MS) > Date.now()) {
-        console.warn('Meta error, serving STALE cache for', normalizedCampaignId || adAccountId);
+        console.warn(`[list-meta-adsets] 🟡 STALE CACHE fallback (meta err) for key=${cacheKey}, returning ${cached.data.length} adsets (age: ${Math.round((Date.now() - cached.storedAt) / 1000)}s)`);
         return new Response(
           JSON.stringify({ success: true, adsets: cached.data, cached: true, stale: true }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -101,6 +104,8 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log(`[list-meta-adsets] ✅ Meta returned ${(data.data || []).length} adsets (raw). Paging: ${data.paging?.next ? 'has next page' : 'no more pages'}`);
 
     const adsets = (data.data || []).map((a: any) => ({
       id: a.id,
