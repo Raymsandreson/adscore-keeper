@@ -647,7 +647,9 @@ export function CTWACampaignAutomation() {
     }
 
     const camp = metaCampaigns.find(c => c.campaign_id === campaignId);
-    const detectedInstance = camp?.destination_phone ? findInstanceByPhone(camp.destination_phone) : undefined;
+    const selectedAdset = adsets.find(a => a.id === addingAdset);
+    const phoneSource = selectedAdset?.destination_phone || camp?.destination_phone;
+    const detectedInstance = phoneSource ? findInstanceByPhone(phoneSource) : undefined;
 
     const payload: any = {
       agent_id: addingAgent || null,
@@ -671,6 +673,8 @@ export function CTWACampaignAutomation() {
     toast.success('Campanha vinculada!');
     setAddingAgent('');
     setAddingCampaign('');
+    setAddingAdset('');
+    setAdsets([]);
     setAddingInstance('');
     setAddingBoard('');
     setAddingStage('');
