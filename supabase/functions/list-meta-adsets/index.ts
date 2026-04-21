@@ -119,6 +119,7 @@ serve(async (req) => {
     }));
 
     cache.set(cacheKey, { data: adsets, expiresAt: Date.now() + CACHE_TTL_MS, storedAt: Date.now() });
+    console.log(`[list-meta-adsets] 💾 Cached ${adsets.length} adsets for key=${cacheKey}, returning to client`);
 
     return new Response(
       JSON.stringify({ success: true, adsets }),
