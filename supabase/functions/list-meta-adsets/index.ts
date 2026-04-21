@@ -58,7 +58,7 @@ serve(async (req) => {
       );
     }
 
-    const fields = 'id,name,status,effective_status,campaign_id,campaign{name}';
+    const fields = 'id,name,status,effective_status,campaign_id,campaign{name},promoted_object,destination_type';
     const url = `https://graph.facebook.com/v25.0/${adAccountId}/adsets?fields=${fields}&limit=${limit}&access_token=${accessToken}`;
 
     console.log('Fetching adsets from:', url.replace(accessToken, '***'));
@@ -83,6 +83,8 @@ serve(async (req) => {
       campaign_id: a.campaign_id,
       campaign_name: a.campaign?.name || '',
       effective_status: a.effective_status || 'UNKNOWN',
+      destination_phone: a.promoted_object?.whatsapp_phone_number || a.promoted_object?.page_id || null,
+      destination_type: a.destination_type || null,
     }));
 
     // Store in cache
