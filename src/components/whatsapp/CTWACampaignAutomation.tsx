@@ -178,6 +178,27 @@ export function CTWACampaignAutomation() {
     }
   };
 
+  const fetchAdsets = async (campaignId?: string) => {
+    const { accessToken, adAccountId } = await getMetaCredentials();
+    if (!accessToken || !adAccountId) return;
+    setLoadingAdsets(true);
+    try {
+      const formattedAdAccountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+      const { data, error } = await cloudFunctions.invoke('list-meta-adsets', {
+        body: { accessToken, adAccountId: formattedAdAccountId, limit: 200 },
+      });
+      if (error) throw error;
+      const all = (data?.adsets || []) as Array<any>;
+      const filtered = campaignId ? all.filter(a => a.campaign_id === campaignId) : all;
+      setAdsets(filtered);
+    } catch (err) {
+      console.error('CTWA: Error fetching adsets:', err);
+      setAdsets([]);
+    } finally {
+      setLoadingAdsets(false);
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     const [linksRes, agentsRes, boardsRes, instancesRes]: any[] = await Promise.all([
