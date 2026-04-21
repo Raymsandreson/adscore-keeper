@@ -31,13 +31,10 @@ Deno.serve(async (req) => {
   } catch (e) {
     clearTimeout(timeoutId);
     const isAbort = e instanceof Error && e.name === 'AbortError';
-    // Return 200 with unknown status so the UI doesn't break the screen
+    // Return empty array so the UI's .map() doesn't crash
+    console.warn('[check-whatsapp-status] upstream failed:', isAbort ? 'timeout' : (e instanceof Error ? e.message : String(e)));
     return new Response(
-      JSON.stringify({
-        status: 'unknown',
-        connected: false,
-        error: isAbort ? 'upstream_timeout' : (e instanceof Error ? e.message : String(e)),
-      }),
+      JSON.stringify([]),
       {
         status: 200,
         headers: { ...cors, 'Content-Type': 'application/json' },
