@@ -74,7 +74,8 @@ export function AdSetGeoRulesConfig() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       console.log('Meta AdSets response:', data);
-      setAdSets(data?.adsets || []);
+      const onlyActive = (data?.adsets || []).filter((a: MetaAdSet) => a.effective_status === 'ACTIVE');
+      setAdSets(onlyActive);
     } catch (e: any) {
       console.error('Error fetching ad sets:', e);
       toast.error('Erro ao buscar conjuntos de anúncios');
