@@ -1130,10 +1130,11 @@ export function CTWACampaignAutomation() {
 
             {/* Agent selector */}
             <div className="space-y-1">
-              <Label className="text-[10px]">Agente IA (exclusivo para leads desta campanha)</Label>
-              <Select value={addingAgent} onValueChange={setAddingAgent}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar agente..." /></SelectTrigger>
+              <Label className="text-[10px]">Agente IA (opcional - exclusivo para leads desta campanha)</Label>
+              <Select value={addingAgent || 'none'} onValueChange={(v) => setAddingAgent(v === 'none' ? '' : v)}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Sem agente" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">Sem agente IA</SelectItem>
                   {agents.length > 0 ? (
                     agents.map(a => <SelectItem key={a.id} value={a.id}>#{a.shortcut_name}</SelectItem>)
                   ) : (
