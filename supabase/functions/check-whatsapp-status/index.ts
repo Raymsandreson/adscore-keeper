@@ -24,6 +24,23 @@ Deno.serve(async (req) => {
     const resp = await fetch(EXT, { method: req.method, headers, body, signal: controller.signal });
     clearTimeout(timeoutId);
     const text = await resp.text();
+
+    const contentType = resp.headers.get('content-type') ?? '';
+    const looksLikeHtml = contentType.includes('text/html') || /^\s*<!DOCTYPE html>/i.test(text);
+
+    if (!resp.ok || looksLikeHtml) {
+      console.warn('[check-whatsapp-status] upstream returned invalid response:', JSON.stringify({
+        status: resp.status,
+        contentType,
+        looksLikeHtml,
+      }));
+
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+
     return new Response(text, {
       status: resp.status,
       headers: { ...cors, 'Content-Type': 'application/json' },
