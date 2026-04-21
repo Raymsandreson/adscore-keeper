@@ -1185,7 +1185,7 @@ export function CTWACampaignAutomation() {
           <Button
             size="sm"
             className="h-8 text-xs"
-            disabled={!addingAgent || (useManualInput ? !manualCampaignId : !addingCampaign)}
+            disabled={useManualInput ? !manualCampaignId : !addingCampaign}
             onClick={handleAddLink}
           >
             <Plus className="h-3.5 w-3.5 mr-1" /> Vincular
