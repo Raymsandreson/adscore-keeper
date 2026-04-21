@@ -39,20 +39,22 @@ serve(async (req) => {
   }
 
   try {
-    const { accessToken, adAccountId, limit = 100 } = await req.json();
+    const { accessToken, adAccountId, campaignId, limit = 100 } = await req.json();
 
     if (!accessToken || !adAccountId) {
       return new Response(
-        JSON.stringify({ error: 'Missing accessToken or adAccountId' }),
+        JSON.stringify({ error: 'Missing accessToken or adAccountId', adsets: [], fallback: true }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    const normalizedCampaignId = typeof campaignId === 'string' && campaignId.trim() ? campaignId.trim() : null;
+
     // Check fresh cache first
-    const cacheKey = `${adAccountId}_${limit}`;
+    const cacheKey = `${adAccountId}_${normalizedCampaignId || 'all'}_${limit}`;
     const cached = cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
-      console.log('Returning fresh cached adsets for', adAccountId);
+      console.log('Returning fresh cached adsets for', normalizedCampaignId || adAccountId);
       return new Response(
         JSON.stringify({ success: true, adsets: cached.data, cached: true }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -60,7 +62,8 @@ serve(async (req) => {
     }
 
     const fields = 'id,name,status,effective_status,campaign_id,campaign{name},promoted_object,destination_type';
-    const url = `https://graph.facebook.com/v25.0/${adAccountId}/adsets?fields=${fields}&limit=${limit}&access_token=${accessToken}`;
+    const basePath = normalizedCampaignId ? `${normalizedCampaignId}/adsets` : `${adAccountId}/adsets`;
+    const url = `https://graph.facebook.com/v25.0/${basePath}?fields=${fields}&limit=${limit}&access_token=${accessToken}`;
 
     console.log('Fetching adsets from:', url.replace(accessToken, '***'));
 
@@ -69,30 +72,33 @@ serve(async (req) => {
       const res = await fetchWithRetry(url);
       data = await res.json();
     } catch (fetchErr) {
-      // Rate limited after retries — serve stale cache if available
       if (cached && (cached.storedAt + STALE_TTL_MS) > Date.now()) {
-        console.warn('Rate limited, serving STALE cache for', adAccountId);
+        console.warn('Rate limited, serving STALE cache for', normalizedCampaignId || adAccountId);
         return new Response(
           JSON.stringify({ success: true, adsets: cached.data, cached: true, stale: true }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      throw fetchErr;
+
+      const msg = fetchErr instanceof Error ? fetchErr.message : 'Meta API unavailable';
+      return new Response(
+        JSON.stringify({ success: false, adsets: [], fallback: true, error: msg }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     if (data.error) {
       console.error('Meta API error:', JSON.stringify(data.error));
-      // Serve stale on rate-limit-ish errors
       if (cached && (cached.storedAt + STALE_TTL_MS) > Date.now()) {
-        console.warn('Meta error, serving STALE cache for', adAccountId);
+        console.warn('Meta error, serving STALE cache for', normalizedCampaignId || adAccountId);
         return new Response(
           JSON.stringify({ success: true, adsets: cached.data, cached: true, stale: true }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       return new Response(
-        JSON.stringify({ error: data.error.message || 'Failed to fetch adsets', meta_error: data.error }),
-        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '60' } }
+        JSON.stringify({ success: false, adsets: [], fallback: true, error: data.error.message || 'Failed to fetch adsets', meta_error: data.error }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -107,7 +113,6 @@ serve(async (req) => {
       destination_type: a.destination_type || null,
     }));
 
-    // Store in cache
     cache.set(cacheKey, { data: adsets, expiresAt: Date.now() + CACHE_TTL_MS, storedAt: Date.now() });
 
     return new Response(
@@ -117,10 +122,9 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error listing Meta adsets:', error);
     const msg = error instanceof Error ? error.message : 'Internal error';
-    const isRateLimit = msg.includes('rate limit');
     return new Response(
-      JSON.stringify({ error: msg }),
-      { status: isRateLimit ? 429 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json', ...(isRateLimit ? { 'Retry-After': '60' } : {}) } }
+      JSON.stringify({ success: false, adsets: [], fallback: true, error: msg }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
