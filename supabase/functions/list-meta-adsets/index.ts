@@ -6,8 +6,9 @@ const corsHeaders = {
 };
 
 // In-memory cache (persists across warm invocations)
-const cache = new Map<string, { data: any; expiresAt: number }>();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const cache = new Map<string, { data: any; expiresAt: number; storedAt: number }>();
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes fresh
+const STALE_TTL_MS = 60 * 60 * 1000; // 1 hour stale fallback
 
 async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -47,11 +48,11 @@ serve(async (req) => {
       );
     }
 
-    // Check cache first
+    // Check fresh cache first
     const cacheKey = `${adAccountId}_${limit}`;
     const cached = cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
-      console.log('Returning cached adsets for', adAccountId);
+      console.log('Returning fresh cached adsets for', adAccountId);
       return new Response(
         JSON.stringify({ success: true, adsets: cached.data, cached: true }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -63,13 +64,32 @@ serve(async (req) => {
 
     console.log('Fetching adsets from:', url.replace(accessToken, '***'));
 
-    const res = await fetchWithRetry(url);
-    const data = await res.json();
-
-    console.log('Meta API response status:', res.status, 'data keys:', Object.keys(data));
+    let data: any;
+    try {
+      const res = await fetchWithRetry(url);
+      data = await res.json();
+    } catch (fetchErr) {
+      // Rate limited after retries — serve stale cache if available
+      if (cached && (cached.storedAt + STALE_TTL_MS) > Date.now()) {
+        console.warn('Rate limited, serving STALE cache for', adAccountId);
+        return new Response(
+          JSON.stringify({ success: true, adsets: cached.data, cached: true, stale: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      throw fetchErr;
+    }
 
     if (data.error) {
       console.error('Meta API error:', JSON.stringify(data.error));
+      // Serve stale on rate-limit-ish errors
+      if (cached && (cached.storedAt + STALE_TTL_MS) > Date.now()) {
+        console.warn('Meta error, serving STALE cache for', adAccountId);
+        return new Response(
+          JSON.stringify({ success: true, adsets: cached.data, cached: true, stale: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       return new Response(
         JSON.stringify({ error: data.error.message || 'Failed to fetch adsets', meta_error: data.error }),
         { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '60' } }
@@ -88,7 +108,7 @@ serve(async (req) => {
     }));
 
     // Store in cache
-    cache.set(cacheKey, { data: adsets, expiresAt: Date.now() + CACHE_TTL_MS });
+    cache.set(cacheKey, { data: adsets, expiresAt: Date.now() + CACHE_TTL_MS, storedAt: Date.now() });
 
     return new Response(
       JSON.stringify({ success: true, adsets }),
