@@ -6,8 +6,9 @@ const corsHeaders = {
 };
 
 // In-memory cache (persists across warm invocations)
-const cache = new Map<string, { data: any; expiresAt: number }>();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const cache = new Map<string, { data: any; expiresAt: number; storedAt: number }>();
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes fresh
+const STALE_TTL_MS = 60 * 60 * 1000; // 1 hour stale fallback
 
 async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
