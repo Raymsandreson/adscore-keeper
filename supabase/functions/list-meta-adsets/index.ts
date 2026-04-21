@@ -13,17 +13,17 @@ const STALE_TTL_MS = 60 * 60 * 1000; // 1 hour stale fallback
 async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     const res = await fetch(url);
+    console.log(`[list-meta-adsets] ↩️ Meta response status=${res.status} attempt=${attempt + 1}/${maxRetries}`);
     
     if (res.status === 400 || res.status === 403) {
       const body = await res.json();
+      console.warn(`[list-meta-adsets] ⚠️ Meta error payload attempt=${attempt + 1}: code=${body.error?.code ?? 'n/a'} subcode=${body.error?.error_subcode ?? 'n/a'} message=${body.error?.message ?? 'unknown'}`);
       if (body.error?.code === 17 || body.error?.error_subcode === 2446079) {
-        // Rate limit hit — wait with exponential backoff + jitter
         const waitMs = Math.min(2000 * Math.pow(2, attempt) + Math.random() * 1000, 30000);
         console.warn(`Rate limited (attempt ${attempt + 1}/${maxRetries}), waiting ${Math.round(waitMs)}ms...`);
         await new Promise(r => setTimeout(r, waitMs));
         continue;
       }
-      // Non-rate-limit error, return as-is
       return new Response(JSON.stringify(body), { status: res.status, headers: res.headers });
     }
     
@@ -55,6 +55,11 @@ serve(async (req) => {
     // Check fresh cache first
     const cacheKey = `${adAccountId}_${normalizedCampaignId || 'all'}_${limit}`;
     const cached = cache.get(cacheKey);
+    if (!cached) {
+      console.log(`[list-meta-adsets] ⚪ Cache miss for key=${cacheKey}`);
+    } else if (cached.expiresAt <= Date.now()) {
+      console.log(`[list-meta-adsets] 🕒 Cache expired for key=${cacheKey}, age=${Math.round((Date.now() - cached.storedAt) / 1000)}s, staleEligible=${(cached.storedAt + STALE_TTL_MS) > Date.now()}`);
+    }
     if (cached && cached.expiresAt > Date.now()) {
       console.log(`[list-meta-adsets] 🟢 FRESH CACHE hit for key=${cacheKey}, returning ${cached.data.length} adsets (age: ${Math.round((Date.now() - cached.storedAt) / 1000)}s)`);
       return new Response(
@@ -84,6 +89,7 @@ serve(async (req) => {
         );
       }
 
+      console.warn(`[list-meta-adsets] 🚫 No stale cache available for key=${cacheKey} after fetch failure`);
       return new Response(
         JSON.stringify({ success: false, adsets: [], fallback: true, error: errMsg }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -99,6 +105,7 @@ serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+      console.warn(`[list-meta-adsets] 🚫 No stale cache available for key=${cacheKey} after Meta error`);
       return new Response(
         JSON.stringify({ success: false, adsets: [], fallback: true, error: data.error.message || 'Failed to fetch adsets', meta_error: data.error }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
