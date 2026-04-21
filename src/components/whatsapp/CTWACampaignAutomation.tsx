@@ -1129,14 +1129,64 @@ export function CTWACampaignAutomation() {
               </div>
             )}
 
-            {/* Instance info (auto-detected) */}
+            {/* Adset selector (filtered by selected campaign) */}
+            {!useManualInput && addingCampaign && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] flex items-center gap-1">
+                    <Target className="h-3 w-3" /> Conjunto de anúncios (opcional)
+                  </Label>
+                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => fetchAdsets(addingCampaign)} disabled={loadingAdsets}>
+                    <RefreshCw className={`h-3 w-3 ${loadingAdsets ? 'animate-spin' : ''}`} />
+                  </Button>
+                </div>
+                <Select
+                  value={addingAdset || 'none'}
+                  onValueChange={(v) => {
+                    const val = v === 'none' ? '' : v;
+                    setAddingAdset(val);
+                    const ads = adsets.find(a => a.id === val);
+                    if (ads?.destination_phone) {
+                      const matched = findInstanceByPhone(ads.destination_phone);
+                      if (matched) setAddingInstance(matched.id);
+                    }
+                  }}
+                  disabled={loadingAdsets}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder={loadingAdsets ? 'Carregando conjuntos...' : 'Todos os conjuntos da campanha'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Todos os conjuntos da campanha</SelectItem>
+                    {adsets.map(a => (
+                      <SelectItem key={a.id} value={a.id}>
+                        <div className="flex flex-col">
+                          <span>{a.name}</span>
+                          {a.destination_phone && (
+                            <span className="text-[10px] text-muted-foreground">📞 {a.destination_phone}</span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                    {!loadingAdsets && adsets.length === 0 && (
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum conjunto encontrado</div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Instance info (auto-detected — adset takes precedence over campaign) */}
             {(() => {
+              const selectedAdset = adsets.find(a => a.id === addingAdset);
               const selectedCamp = metaCampaigns.find(c => c.campaign_id === addingCampaign);
-              const detectedInstance = selectedCamp?.destination_phone ? findInstanceByPhone(selectedCamp.destination_phone) : undefined;
-              return selectedCamp?.destination_phone ? (
+              const phoneSource = selectedAdset?.destination_phone || selectedCamp?.destination_phone;
+              const sourceLabel = selectedAdset?.destination_phone ? 'do conjunto' : 'da campanha';
+              const detectedInstance = phoneSource ? findInstanceByPhone(phoneSource) : undefined;
+              return phoneSource ? (
                 <div className="space-y-1 bg-muted/50 rounded-md p-2">
                   <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
-                    <Phone className="h-3 w-3" /> Instância detectada
+                    <Phone className="h-3 w-3" /> Instância detectada ({sourceLabel})
                   </Label>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-medium">
@@ -1146,7 +1196,7 @@ export function CTWACampaignAutomation() {
                         </span>
                       ) : (
                         <span className="text-amber-600 text-xs">
-                          ⚠️ Nenhuma instância com o número {selectedCamp.destination_phone}
+                          ⚠️ Nenhuma instância com o número {phoneSource}
                         </span>
                       )}
                     </span>
