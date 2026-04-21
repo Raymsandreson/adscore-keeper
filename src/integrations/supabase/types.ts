@@ -8112,7 +8112,7 @@ export type Database = {
       }
       whatsapp_agent_campaign_links: {
         Row: {
-          agent_id: string
+          agent_id: string | null
           auto_create_contact: boolean | null
           auto_create_lead: boolean | null
           board_id: string | null
@@ -8130,7 +8130,7 @@ export type Database = {
           stage_id: string | null
         }
         Insert: {
-          agent_id: string
+          agent_id?: string | null
           auto_create_contact?: boolean | null
           auto_create_lead?: boolean | null
           board_id?: string | null
@@ -8148,7 +8148,7 @@ export type Database = {
           stage_id?: string | null
         }
         Update: {
-          agent_id?: string
+          agent_id?: string | null
           auto_create_contact?: boolean | null
           auto_create_lead?: boolean | null
           board_id?: string | null

@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_agent_campaign_links ALTER COLUMN agent_id DROP NOT NULL;

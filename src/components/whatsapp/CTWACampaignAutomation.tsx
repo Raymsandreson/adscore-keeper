@@ -606,7 +606,7 @@ export function CTWACampaignAutomation() {
   };
 
   const handleAddLink = async () => {
-    if (!addingAgent) return;
+    // agent_id agora é opcional
 
     let campaignId = '';
     let campaignName = '';
@@ -626,7 +626,7 @@ export function CTWACampaignAutomation() {
     const detectedInstance = camp?.destination_phone ? findInstanceByPhone(camp.destination_phone) : undefined;
 
     const payload: any = {
-      agent_id: addingAgent,
+      agent_id: addingAgent || null,
       campaign_id: campaignId,
       campaign_name: campaignName,
     };
@@ -640,7 +640,7 @@ export function CTWACampaignAutomation() {
     if (error) { toast.error('Erro ao vincular'); return; }
 
     // If apply to existing, assign agent to existing conversations from this campaign
-    if (applyToExisting) {
+    if (applyToExisting && addingAgent) {
       await applyAgentToExistingConversations(campaignId, addingAgent, detectedInstance?.id || addingInstance);
     }
 
@@ -1130,10 +1130,11 @@ export function CTWACampaignAutomation() {
 
             {/* Agent selector */}
             <div className="space-y-1">
-              <Label className="text-[10px]">Agente IA (exclusivo para leads desta campanha)</Label>
-              <Select value={addingAgent} onValueChange={setAddingAgent}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar agente..." /></SelectTrigger>
+              <Label className="text-[10px]">Agente IA (opcional - exclusivo para leads desta campanha)</Label>
+              <Select value={addingAgent || 'none'} onValueChange={(v) => setAddingAgent(v === 'none' ? '' : v)}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Sem agente" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">Sem agente IA</SelectItem>
                   {agents.length > 0 ? (
                     agents.map(a => <SelectItem key={a.id} value={a.id}>#{a.shortcut_name}</SelectItem>)
                   ) : (
@@ -1184,7 +1185,7 @@ export function CTWACampaignAutomation() {
           <Button
             size="sm"
             className="h-8 text-xs"
-            disabled={!addingAgent || (useManualInput ? !manualCampaignId : !addingCampaign)}
+            disabled={useManualInput ? !manualCampaignId : !addingCampaign}
             onClick={handleAddLink}
           >
             <Plus className="h-3.5 w-3.5 mr-1" /> Vincular
