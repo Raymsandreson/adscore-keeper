@@ -1,112 +1,82 @@
 
 
-## Diagnóstico técnico — respostas com evidência
+# Plano: Corrigir cadastro de lead lento + 3 bugs do diálogo
 
-Antes de propor mudanças, respondo ponto a ponto com o que vi nos logs e no código nesta sessão. **Nada disso é palpite — cada número tem origem citada.**
+## Diagnóstico (com evidência)
 
----
+**1. Lentidão ao abrir e clicar no diálogo**
+Console mostra refetch em loop:
+- `📋 Kanban boards loaded: 16` — **4x** seguidas (hook sem cache, chamado por múltiplos componentes)
+- `✅ Leads carregados: 2338 (3 página(s))` — **3x**, intercalado com `🔄 Realtime: atualizando leads...`
+Cada ciclo baixa 2338 leads × ~65 colunas. O realtime dispara a cada UPDATE e o próprio refetch causa novo evento → loop. O diálogo não é lento por culpa própria; ele herda uma página travada.
 
-### 1. Escrita dupla `whatsapp_messages` (mirror Cloud)
+**2. "Link da Notícia" salvo no Jurídico em vez do Básico**
+Em `src/components/leads/AccidentLeadForm.tsx`:
+- Linha 268-275 (aba **Básico**): label "Link da Notícia" mas ligado a `formData.group_link` (placeholder `chat.whatsapp.com`). Esse é o **link do grupo do WhatsApp**, rotulado errado.
+- Linha 541-548 (aba **Jurídico**): label "Link da Notícia" ligado a `formData.news_link` — esse é o campo correto.
+Resultado: usuário digita o link da notícia em Básico e ele vai pra coluna `group_link` do banco. O `news_link` real só pode ser preenchido na aba Jurídico.
 
-**Status real**: o mirror está ativo pra **todas as instâncias**, não só Dom. Últimas 24h no Cloud:
+**3. Nome do lead não segue o padrão do funil**
+`UnifiedKanbanManager.handleAddLead` (linha 322-360) salva `lead_name` cru, sem aplicar prefixo + sequence do board. Padrão correto existe em `ImportFromSocialLinkDialog.tsx:478` usando `groupSettings.group_name_prefix` + `current_sequence` da tabela `kanban_boards`. Está faltando aqui.
 
-| Instância | Msgs/24h |
-|---|---|
-| WHATSJUD IA | 1.582 |
-| Raym | 721 |
-| Viviane | 540 |
-| Analyne, Luiz, Luana, João Manoel, Bruno, Andreia, **Dom (126)**, +12 outras | 1.500+ |
-
-A linha 2573-2577 (`cloudClient.from("whatsapp_messages").upsert(...)`) executa em **todo evento** do webhook que roda no Externo. Remover o webhook direto da Dom não desligou nada — desligou só uma rota duplicada que escrevia *fora* do mirror.
-
-**Pode desligar o mirror?** Não direto. **Frontend lê do Cloud em vários componentes**:
-- `WhatsAppInbox.tsx` (linhas 121-125, 250-255) — `supabase.from('whatsapp_messages')`
-- `WhatsAppChat.tsx` (linhas 222-227, 481-485, 1029-1033)
-- `BulkLeadCreationDialog.tsx`, `FloatingWhatsAppCall.tsx`, `DashboardFunnelChecklist.tsx`, `CreateCaseFromWhatsAppDialog.tsx`, `WhatsAppAgentToggle.tsx`
-
-Mas `useWhatsAppMessages.ts` já usa `externalSupabase`. **Mistura inconsistente.** Desligar o mirror agora **quebraria a inbox e o chat**.
-
-**Plano correto**: migrar **todos** os reads do frontend pra `externalSupabase` ANTES de desligar o mirror. Sem rota de fuga = não executa (Regra de processo).
+**4. Lista de funis não aparece para selecionar**
+O diálogo não tem dropdown de board. Usa `selectedBoardId` herdado da página. Se o usuário abre o "Adicionar Lead" sem ter um board pré-selecionado, ou quer mover pra outro funil, não consegue.
 
 ---
 
-### 2. Migração Railway — corrigindo o que eu disse antes
+## O que vai mudar
 
-**O "85x mais rápido" que mencionei na resposta anterior não tinha base.** Não rodei benchmark. Vou retirar.
+### Bug #2 — Renomear o campo da aba Básico
+- Em `AccidentLeadForm.tsx` linha 269, trocar label de "Link da Notícia" para **"Link do Grupo (WhatsApp)"**
+- Manter o binding em `group_link` (já está correto semanticamente)
+- **Adicionar** na aba Básico um campo novo "Link da Notícia" ligado a `news_link` (col-span-2, abaixo do grupo), pra usuário não precisar ir até Jurídico
+- **Manter** o campo "Link da Notícia" da aba Jurídico funcionando (mesma fonte `news_link`) — assim os dois espelham o mesmo dado
 
-O que sei com evidência:
-- Edge Functions Lovable: ~30ms boot por invocação (visto em logs: `"booted (time: 30ms)"`)
-- Railway Node persistente: 0ms boot (já está rodando)
-- Diferença real: ~30ms por chamada + custo de invocação ($2/milhão)
-- `whatsapp-webhook` está rodando ~13k invocações/dia → ~6,5min/dia gastos só em boot
+### Bug #3 — Nome seguindo o funil
+Em `UnifiedKanbanManager.handleAddLead`:
+- Antes do insert, buscar `kanban_boards` do `selectedBoardId` pegando `group_name_prefix` e `current_sequence`
+- Se houver prefixo, montar: `${prefix} ${sequence + 1} | ${nome digitado pelo usuário}`
+- Após insert bem-sucedido, fazer `UPDATE kanban_boards SET current_sequence = sequence + 1`
+- Se o board não tem prefixo configurado, manter o nome cru (comportamento atual)
 
-**Custo Railway pras 6 funções**: não posso estimar sem você me dizer:
-- Tamanho do plano Railway atual ($5? $20? Hobby/Pro?)
-- Memória já alocada
-- Se vai rodar tudo num único service ou múltiplos
+### Bug #4 — Picker de funil no diálogo
+Em `UnifiedKanbanManager` dentro do `<Dialog>` "Adicionar Lead" (linha 772):
+- Adicionar acima do `AccidentLeadForm` um `<Select>` "Funil de Vendas" listando todos os boards de `boards`
+- Default = `selectedBoardId` atual
+- Estado local `selectedBoardForNewLead`, usado no `handleAddLead` em vez de `selectedBoardId` direto
+- Validação: se vazio, erro "Selecione um funil"
 
-**Custo Cloud sem edge functions**: também não sei estimar sem ver o painel de billing real. Os ~$20/dia que você cita podem ser 70% storage+egress+DB e 30% functions, ou o inverso. Preciso dos 2 números do dashboard que pedi antes (AI balance / Cloud balance últimos 7 dias).
-
----
-
-### 3. wjia-agent e AI Gateway — descoberta importante
-
-**O `wjia-agent` no Cloud é um proxy de 10 linhas que reencaminha pro Supabase Externo** (`kmedldlepwiityjsdahz/functions/v1/wjia-agent`). Veja o arquivo: 10 linhas, só um `fetch`.
-
-**As 4 chamadas Gemini acontecem no Externo, não no Cloud.** O AI Gateway do Lovable (`ai.gateway.lovable.dev`) é usado em outras funções (`extract-accident-data`, `extract-social-post-data`, `fetch-post-comments`, `generate-bridge-reply`, `repair-whatsapp-group`), **não no wjia-agent**.
-
-Logo:
-- "Trocar AI Gateway por Google direto no wjia-agent" = **mudança no Externo, não no Cloud**
-- Markup do AI Gateway: docs Lovable falam em margem incluída, mas eu **não tenho número exato**. Não vou inventar.
-
-Antes de decidir essa troca, preciso ler o código real do wjia-agent no Externo. Não tenho acesso direto a ele daqui.
+### Bug #1 — Reduzir refetch em loop
+Duas frentes mínimas (sem refatorar tudo):
+- **`useKanbanBoards`**: introduzir cache via React Query (key `['kanban-boards']`, `staleTime: 5min`) ou singleton no módulo. Hoje cada componente que chama o hook dispara fetch novo — visto pelos 4 logs idênticos consecutivos.
+- **`useLeads` realtime**: o handler do canal está chamando `fetchLeads()` cheio em vez de atualizar localmente o registro mudado. Trocar por: ao receber `UPDATE`, fazer merge do payload no estado local; ao receber `INSERT`, dar `unshift`; ao receber `DELETE`, filter. Refetch completo só no mount inicial. Isso elimina o ciclo "realtime → fetch 2338 → trigger realtime → fetch 2338".
 
 ---
 
-### 4. Ordem de execução recomendada
+## Não vou mexer em
 
-Por **maior impacto / menor risco**, com base no que medi:
-
-| # | Ação | Esforço | Impacto provável |
-|---|---|---|---|
-| 1 | **Desligar `wjia-followup-processor`** ou aumentar intervalo pra 30min | 5min | Alto — 5.040 execuções/sem para 336/sem; processou 3 msgs em 7 dias |
-| 2 | **Migrar reads do frontend pro externo** (7 componentes) | 2-4h | Pré-requisito pra #3 |
-| 3 | **Desligar mirror Cloud** (linha 2573-2577) | 5min | Alto — 30k+ writes/dia eliminadas |
-| 4 | Migrar `whatsapp-webhook` pro Railway | 1 dia | Médio — depende do custo Railway |
-| 5 | Trocar AI Gateway por Google direto **no Externo** | 0,5 dia | Desconhecido sem números |
-
-**Maior impacto/menor esforço imediato**: #1 (followup processor). Roda 720x por dia, fez 3 envios em uma semana.
+- `LeadEditDialog`, `LeadManager.tsx` (diálogo diferente, sem o bug do screenshot)
+- `CreateLeadFromSearchDialog`, `ImportFromSocialLinkDialog` (fluxos próprios, não relatados)
+- Schema do banco (`group_link` e `news_link` já existem corretos)
+- Política de realtime do Supabase
+- Permissões/RLS
 
 ---
 
-### 5. wjia-followup-processor — evidência crua
+## Detalhes técnicos
 
-Query que rodei agora:
-- Sessões `generated`/`collecting` ativas: **15**
-- Mensagens outbound `wjia_*` últimas 24h: **0**
-- Mensagens outbound `wjia_*` últimos 7 dias: **3**
+**Arquivos editados:**
+1. `src/components/leads/AccidentLeadForm.tsx` — renomear label linha 269; adicionar campo `news_link` na aba Básico
+2. `src/components/kanban/UnifiedKanbanManager.tsx` — adicionar Select de board no Dialog (~linha 776); refatorar `handleAddLead` (~linha 322) para aplicar prefixo+sequence e usar `selectedBoardForNewLead`
+3. `src/hooks/useKanbanBoards.ts` — migrar para `useQuery` com `staleTime`
+4. `src/hooks/useLeads.ts` (ou onde está o realtime de leads) — trocar `fetchLeads()` por merge incremental no handler do canal
 
-5.040 execuções/semana → 3 envios. **0,06% de eficácia.** O resto é a função fazendo SELECT, achando 15 sessões em pausa humana ou aguardando delay, e voltando.
+**Validação após implementar:**
+- Cadastrar lead em board com prefixo configurado → nome final começa com `Prefixo N |`
+- Cadastrar lead, conferir no banco que `news_link` foi populado quando preenchido em Básico
+- Mudar funil no Select e confirmar que o lead foi salvo no board escolhido (não no `selectedBoardId`)
+- Console: ver `📋 Kanban boards loaded` aparecer **1x** por carga de página, não 4x
+- Console: editar 1 lead e confirmar que não aparecem mais `✅ Leads carregados: 2338` em sequência
 
-Não precisa desligar — **basta mudar o cron pra 15min** (504 execuções/sem em vez de 5.040). Ou melhor: o sistema já tem `schedule_followup_for_session` que cria cron one-shot pra cada sessão. O processor recorrente é redundante. Posso confirmar isso lendo o resto do arquivo se você aprovar.
-
----
-
-### O que vou fazer se você aprovar
-
-Em modo build, na ordem:
-
-1. **Confirmar com você** qual o cron interval atual do `wjia-followup-processor` e propor mudança pra 15min ou 30min
-2. **Mapear todos os reads** de `whatsapp_messages` no frontend que ainda usam `supabase` (Cloud) e listar pra você aprovar a migração
-3. **Após migração**, comentar a linha 2573-2577 do webhook (não deletar — manter como `_legacy` por 24h)
-4. **NÃO vou** mexer no wjia-agent (proxy mínimo, sem ganho), no Railway (sem dados), nem no AI Gateway (sem número de markup)
-
-### O que ainda preciso de você pra fechar #2 e #3
-
-1. Saldo "AI balance" últimos 7 dias (do dashboard Cloud & AI balance)
-2. Saldo "Cloud balance" últimos 7 dias
-3. Plano Railway atual e quanto está sobrando de capacidade
-4. Confirmar se a Dom (126 msgs/24h) também já tem o webhook apontando pro Externo, ou se ainda chega algo direto no Cloud por algum outro caminho
-
-Sem isso, qualquer estimativa de "quanto cai o custo" é chute.
+**Risco:** mudar handler de realtime mexe num caminho quente. Vou manter um fallback de `fetchLeads()` em caso de evento sem `payload.new` válido, e versionar a função antiga como `_legacy` por 24h conforme prática do projeto.
 
