@@ -271,12 +271,13 @@ export function AccidentDataExtractor({
 
     try {
       // Special path: social-media URLs (Instagram/Facebook/etc.) — Firecrawl gets blocked (403),
-      // so we use Apify via fetch-post-metadata + extract-social-post-data, same as ImportFromSocialLinkDialog.
+      // so we fetch the caption (and optionally comments) via Apify, then send the assembled text
+      // to extract-accident-data which has the CORRECT accident schema (victim_name, accident_date, etc.).
       if (activeTab === 'link' && isSocialUrl(urlInput)) {
         const trimmedUrl = urlInput.trim();
 
         // 1) Fetch caption via Apify
-        toast.info('Detectado link de rede social — usando Apify...');
+        toast.info('Detectado link de rede social — buscando legenda via Apify...');
         const metadata = await fetchMetadata(trimmedUrl);
         const caption = metadata?.caption?.trim() || '';
 
@@ -285,40 +286,9 @@ export function AccidentDataExtractor({
           return;
         }
 
-        // 2) Send caption to AI extractor
-        const { data: socialData, error: socialError } = await cloudFunctions.invoke('extract-social-post-data', {
-          body: { postUrl: trimmedUrl, caption, targetType: 'lead' },
-        });
-
-        if (socialError) {
-          console.error('extract-social-post-data error:', socialError);
-          toast.error('Erro ao analisar a legenda com IA');
-          return;
-        }
-        if (!socialData?.success) {
-          toast.error(socialData?.error || 'Não foi possível extrair os dados');
-          return;
-        }
-
-        // Map social-post-data fields to ExtractedAccidentData shape
-        const raw = socialData.data || {};
-        let mapped: ExtractedAccidentData = {
-          victim_name: raw.victim_name || raw.nome || null,
-          victim_age: raw.victim_age ? parseInt(String(raw.victim_age).replace(/\D/g, ''), 10) || null : null,
-          accident_date: raw.accident_date || null,
-          accident_address: raw.accident_address || null,
-          damage_description: raw.damage_description || null,
-          contractor_company: raw.contractor_company || null,
-          main_company: raw.main_company || null,
-          sector: raw.sector || null,
-          case_type: raw.tipo_caso || raw.case_type || null,
-          liability_type: raw.liability_type || null,
-          legal_viability: raw.legal_viability || raw.contexto || null,
-          visit_city: raw.cidade || raw.visit_city || null,
-          visit_state: raw.estado || raw.visit_state || null,
-        };
-
-        // 3) Optionally fetch & analyze comments via Apify
+        // 2) Optionally fetch comments via Apify (we will pass them as text to the accident extractor)
+        let commentsBlock = '';
+        let commentsAnalysis: any = null;
         if (commentsLimit && commentsLimit > 0) {
           try {
             toast.info(`Buscando até ${commentsLimit} comentários via Apify...`);
@@ -327,18 +297,44 @@ export function AccidentDataExtractor({
             });
             if (cmtError) {
               console.error('fetch-post-comments error:', cmtError);
-              toast.warning('Não foi possível buscar comentários, mas os dados da legenda foram extraídos');
-            } else if (cmtData?.success && cmtData.analysis) {
-              mapped = mergeCommentsAnalysis(mapped, cmtData.analysis);
-              const total = cmtData.total || 0;
-              toast.success(`${total} comentário(s) analisado(s) — dados complementados`);
+              toast.warning('Não foi possível buscar comentários — seguindo só com a legenda');
+            } else if (cmtData?.success && Array.isArray(cmtData.comments) && cmtData.comments.length > 0) {
+              commentsAnalysis = cmtData.analysis || null;
+              const lines = cmtData.comments
+                .slice(0, Math.min(cmtData.comments.length, 100))
+                .map((c: any, i: number) => `[${i + 1}] @${c.ownerUsername || c.username || 'anon'}: ${c.text || ''}`)
+                .join('\n');
+              commentsBlock = `\n\n--- COMENTÁRIOS DO POST (${cmtData.total || cmtData.comments.length}) ---\n${lines}`;
+              toast.success(`${cmtData.total || cmtData.comments.length} comentário(s) coletado(s)`);
             }
           } catch (cmtErr) {
             console.error('Comments fetch failed:', cmtErr);
           }
         }
 
-        setExtractedData(mapped);
+        // 3) Send caption (+ comments) to extract-accident-data as plain text — uses the correct schema
+        const analysisText = `URL do post: ${trimmedUrl}\n\nLEGENDA:\n${caption}${commentsBlock}`;
+        const { data, error } = await cloudFunctions.invoke('extract-accident-data', {
+          body: { content: analysisText, type: 'text' },
+        });
+
+        if (error) {
+          console.error('extract-accident-data error (social path):', error);
+          toast.error('Erro ao analisar dados com IA');
+          return;
+        }
+        if (!data?.success) {
+          toast.error(data?.error || 'Não foi possível extrair os dados');
+          return;
+        }
+
+        // 4) Merge any extra hints from comments analysis (only fills blanks)
+        let merged: ExtractedAccidentData = data.data || {};
+        if (commentsAnalysis) {
+          merged = mergeCommentsAnalysis(merged, commentsAnalysis);
+        }
+
+        setExtractedData(merged);
         toast.success('Dados extraídos com sucesso!');
         return;
       }
