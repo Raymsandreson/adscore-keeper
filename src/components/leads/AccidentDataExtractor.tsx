@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -45,6 +45,27 @@ function isSocialUrl(rawUrl: string): boolean {
   } catch {
     return false;
   }
+}
+
+function withClientTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    promise
+      .then((value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+async function waitForPaint() {
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
 }
 
 export interface ExtractedAccidentData {
@@ -118,7 +139,7 @@ export function AccidentDataExtractor({
   const [progressLabel, setProgressLabel] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const { fetchMetadata } = usePostMetadata();
+  const { fetchMetadata, getCachedMetadata } = usePostMetadata();
 
   const fieldLabels: Record<keyof ExtractedAccidentData, string> = {
     victim_name: 'Nome da Vítima',
@@ -266,6 +287,19 @@ export function AccidentDataExtractor({
     setProgressLabel(label);
   };
 
+  useEffect(() => {
+    if (!open || !urlIsSocial) return;
+
+    const cached = getCachedMetadata(urlInput.trim());
+    if (cached !== null) return;
+
+    const timer = window.setTimeout(() => {
+      void fetchMetadata(urlInput.trim());
+    }, 450);
+
+    return () => window.clearTimeout(timer);
+  }, [open, urlIsSocial, urlInput, fetchMetadata, getCachedMetadata]);
+
   const handleExtract = async () => {
     setIsExtracting(true);
     setExtractedData(null);
@@ -280,8 +314,14 @@ export function AccidentDataExtractor({
 
         // 1) Fetch caption via Apify
         advanceStep(2, 'Buscando metadados do post via Apify...');
+        await waitForPaint();
         toast.info('Detectado link de rede social — buscando legenda via Apify...');
-        const metadata = await fetchMetadata(trimmedUrl);
+        const cachedMetadata = getCachedMetadata(trimmedUrl);
+        const metadata = cachedMetadata ?? await withClientTimeout(
+          fetchMetadata(trimmedUrl),
+          8000,
+          'A busca do post demorou demais. Tente novamente.'
+        );
         const caption = metadata?.caption?.trim() || '';
 
         if (!caption) {
@@ -291,10 +331,15 @@ export function AccidentDataExtractor({
 
         // 2) Send caption to extract-accident-data as plain text — uses the correct accident schema
         advanceStep(3, 'Analisando conteúdo com IA...');
+        await waitForPaint();
         const analysisText = `URL do post: ${trimmedUrl}\n\nLEGENDA:\n${caption}`;
-        const { data, error } = await cloudFunctions.invoke('extract-accident-data', {
-          body: { content: analysisText, type: 'text' },
-        });
+        const { data, error } = await withClientTimeout(
+          cloudFunctions.invoke('extract-accident-data', {
+            body: { content: analysisText, type: 'text' },
+          }),
+          25000,
+          'A análise demorou demais. Tente novamente.'
+        );
 
         if (error) {
           console.error('extract-accident-data error (social path):', error);
@@ -377,9 +422,14 @@ export function AccidentDataExtractor({
       }
 
       advanceStep(3, 'Analisando conteúdo com IA...');
-      const { data, error } = await cloudFunctions.invoke('extract-accident-data', {
-        body: requestBody,
-      });
+      await waitForPaint();
+      const { data, error } = await withClientTimeout(
+        cloudFunctions.invoke('extract-accident-data', {
+          body: requestBody,
+        }),
+        25000,
+        'A análise demorou demais. Tente novamente.'
+      );
 
       if (error) {
         console.error('Error extracting data:', error);
