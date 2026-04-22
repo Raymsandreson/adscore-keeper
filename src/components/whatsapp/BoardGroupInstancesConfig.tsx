@@ -25,9 +25,12 @@ interface Board {
   product_service_id?: string | null;
 }
 
+type AppliesTo = 'both' | 'open' | 'closed';
+
 interface InstanceConfig {
   role_title: string;
   role_description: string;
+  applies_to: AppliesTo;
 }
 
 interface ProcessWorkflow {
