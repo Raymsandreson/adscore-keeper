@@ -1111,6 +1111,7 @@ export type Database = {
       }
       board_group_instances: {
         Row: {
+          applies_to: string
           board_id: string
           created_at: string
           id: string
@@ -1119,6 +1120,7 @@ export type Database = {
           role_title: string | null
         }
         Insert: {
+          applies_to?: string
           board_id: string
           created_at?: string
           id?: string
@@ -1127,6 +1129,7 @@ export type Database = {
           role_title?: string | null
         }
         Update: {
+          applies_to?: string
           board_id?: string
           created_at?: string
           id?: string
