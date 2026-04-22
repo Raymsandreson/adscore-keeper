@@ -108,8 +108,10 @@ export function AccidentDataExtractor({
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
   const [fieldSelections, setFieldSelections] = useState<Record<string, boolean>>({});
+  const [commentsLimit, setCommentsLimit] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const { fetchMetadata } = usePostMetadata();
 
   const fieldLabels: Record<keyof ExtractedAccidentData, string> = {
     victim_name: 'Nome da Vítima',
