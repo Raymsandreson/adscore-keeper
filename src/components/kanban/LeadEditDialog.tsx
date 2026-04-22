@@ -47,6 +47,7 @@ const CustomFieldsConfigPanel = lazy(() => import('@/components/leads/CustomFiel
 const LeadStageHistoryPanel = lazy(() => import('@/components/kanban/LeadStageHistoryPanel').then(m => ({ default: m.LeadStageHistoryPanel })));
 
 const LeadFunnelOverview = lazy(() => import('@/components/kanban/LeadFunnelOverview').then(m => ({ default: m.LeadFunnelOverview })));
+import { CloseLeadGroupDialog, CloseLeadContactPayload } from '@/components/leads/CloseLeadGroupDialog';
 const LeadActivitiesTab = lazy(() => import('@/components/leads/LeadActivitiesTab').then(m => ({ default: m.LeadActivitiesTab })));
 const AccidentDataExtractor = lazy(() => import('@/components/leads/AccidentDataExtractor').then(m => ({ default: m.AccidentDataExtractor })));
 import { ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
