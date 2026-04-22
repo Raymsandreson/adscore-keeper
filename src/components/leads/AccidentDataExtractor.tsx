@@ -464,6 +464,7 @@ export function AccidentDataExtractor({
     setUploadedImage(null);
     setActiveTab('link');
     setFieldSelections({});
+    setCommentsLimit(0);
   };
 
   const handleClose = () => {
