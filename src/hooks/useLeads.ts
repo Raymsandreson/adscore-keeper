@@ -624,6 +624,16 @@ export const useLeads = (adAccountId?: string) => {
   // Debounced realtime - prevents cascade re-fetches when multiple leads update rapidly
   const realtimeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Legacy full refetch handler — kept as `_legacy` fallback per project policy
+  // for safe rollback within 24h. Used when payload shape is unknown/missing.
+  const realtimeRefetchHandler_legacy = useCallback(() => {
+    if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
+    realtimeTimerRef.current = setTimeout(() => {
+      console.log('🔄 Realtime fallback: atualizando leads...');
+      fetchLeads();
+    }, 3000);
+  }, [fetchLeads]);
+
   useEffect(() => {
     fetchLeads();
 
@@ -632,13 +642,64 @@ export const useLeads = (adAccountId?: string) => {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'leads' },
-        () => {
-          // Debounce: wait 3s after last event before re-fetching
-          if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
-          realtimeTimerRef.current = setTimeout(() => {
-            console.log('🔄 Realtime: atualizando leads...');
-            fetchLeads();
-          }, 3000);
+        (payload) => {
+          // Incremental local update — avoids re-downloading 2000+ leads on every change.
+          // Falls back to full refetch only when payload is unusable.
+          try {
+            const eventType = payload.eventType;
+
+            if (eventType === 'INSERT' && payload.new) {
+              const newRow = payload.new as Lead;
+              if (adAccountId && newRow.ad_account_id !== adAccountId) return;
+              if ((newRow as any).deleted_at) return;
+              setLeads(prev => {
+                if (prev.some(l => l.id === newRow.id)) return prev;
+                const next = [newRow, ...prev];
+                calculateStats(next);
+                return next;
+              });
+              return;
+            }
+
+            if (eventType === 'UPDATE' && payload.new) {
+              const updatedRow = payload.new as Lead;
+              setLeads(prev => {
+                // If soft-deleted, drop it
+                if ((updatedRow as any).deleted_at) {
+                  const next = prev.filter(l => l.id !== updatedRow.id);
+                  calculateStats(next);
+                  return next;
+                }
+                const idx = prev.findIndex(l => l.id === updatedRow.id);
+                if (idx === -1) return prev;
+                const next = [...prev];
+                next[idx] = { ...prev[idx], ...updatedRow };
+                calculateStats(next);
+                return next;
+              });
+              return;
+            }
+
+            if (eventType === 'DELETE' && payload.old) {
+              const oldRow = payload.old as { id?: string };
+              if (!oldRow.id) {
+                realtimeRefetchHandler_legacy();
+                return;
+              }
+              setLeads(prev => {
+                const next = prev.filter(l => l.id !== oldRow.id);
+                calculateStats(next);
+                return next;
+              });
+              return;
+            }
+
+            // Unknown event shape — fall back to legacy debounced refetch
+            realtimeRefetchHandler_legacy();
+          } catch (err) {
+            console.warn('[useLeads realtime] incremental update failed, falling back:', err);
+            realtimeRefetchHandler_legacy();
+          }
         }
       )
       .subscribe();
@@ -647,7 +708,7 @@ export const useLeads = (adAccountId?: string) => {
       if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
       supabase.removeChannel(channel);
     };
-  }, [fetchLeads]);
+  }, [fetchLeads, adAccountId, realtimeRefetchHandler_legacy]);
 
   return {
     leads,
