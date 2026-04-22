@@ -1096,7 +1096,7 @@ export function BoardGroupInstancesConfig() {
             ) : (
               instances.map(inst => {
                 const isLinked = linkedInstances.includes(inst.id);
-                const config = instanceConfigs[inst.id] || { role_title: '', role_description: '' };
+                const config: InstanceConfig = instanceConfigs[inst.id] || { role_title: '', role_description: '', applies_to: 'both' };
                 return (
                   <div key={inst.id} className="rounded-lg border hover:bg-muted/50 transition-colors">
                     <label className="flex items-center gap-3 p-2.5 cursor-pointer">
