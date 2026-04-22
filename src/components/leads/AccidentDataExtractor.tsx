@@ -446,6 +446,8 @@ export function AccidentDataExtractor({
     setUploadedImage(null);
     setActiveTab('link');
     setFieldSelections({});
+    setProgressStep(0);
+    setProgressLabel('');
   };
 
   const handleClose = () => {
