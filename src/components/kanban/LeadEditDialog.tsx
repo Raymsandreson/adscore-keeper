@@ -47,6 +47,7 @@ const CustomFieldsConfigPanel = lazy(() => import('@/components/leads/CustomFiel
 const LeadStageHistoryPanel = lazy(() => import('@/components/kanban/LeadStageHistoryPanel').then(m => ({ default: m.LeadStageHistoryPanel })));
 
 const LeadFunnelOverview = lazy(() => import('@/components/kanban/LeadFunnelOverview').then(m => ({ default: m.LeadFunnelOverview })));
+import { CloseLeadGroupDialog, CloseLeadContactPayload } from '@/components/leads/CloseLeadGroupDialog';
 const LeadActivitiesTab = lazy(() => import('@/components/leads/LeadActivitiesTab').then(m => ({ default: m.LeadActivitiesTab })));
 const AccidentDataExtractor = lazy(() => import('@/components/leads/AccidentDataExtractor').then(m => ({ default: m.AccidentDataExtractor })));
 import { ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
@@ -653,9 +654,24 @@ ${scrapeData.content || ''}
     }
   };
 
-  const handleSave = async () => {
+  const [closeGroupDialogOpen, setCloseGroupDialogOpen] = useState(false);
+  const [pendingCloseContacts, setPendingCloseContacts] = useState<CloseLeadContactPayload[] | null>(null);
+
+  const handleSaveClick = () => {
     if (!currentLead) return;
-    
+    const wasAlreadyClosed = !!(currentLead as any).became_client_date;
+    const isFreshClose = leadOutcome === 'closed' && !wasAlreadyClosed;
+    const hasGroup = !!(currentLead as any).whatsapp_group_id;
+    if (isFreshClose && hasGroup) {
+      setCloseGroupDialogOpen(true);
+      return;
+    }
+    handleSave();
+  };
+
+  const handleSave = async (contactsPayload?: CloseLeadContactPayload[]) => {
+    if (!currentLead) return;
+
     if (!leadName.trim()) {
       toast.error('Nome é obrigatório');
       return;
@@ -818,16 +834,19 @@ ${scrapeData.content || ''}
              campaign_id: (currentLead as any).campaign_id,
              contract_value: (currentLead as any).contract_value,
            }, 'closed');
-           // Rename WhatsApp group with closed prefix
-           if ((currentLead as any).whatsapp_group_id) {
-             cloudFunctions.invoke('rename-whatsapp-group', {
-               body: { lead_id: currentLead.id },
-             }).then((res: any) => {
-               if (res?.data?.success) {
-                 console.log('Group renamed:', res.data.old_name, '→', res.data.new_name);
-               }
-             }).catch((e: any) => console.warn('Group rename failed:', e));
-           }
+            // Rename WhatsApp group with closed prefix + sync participants/contacts
+            if ((currentLead as any).whatsapp_group_id) {
+              cloudFunctions.invoke('rename-whatsapp-group', {
+                body: {
+                  lead_id: currentLead.id,
+                  contacts_to_add: contactsPayload || [],
+                },
+              }).then((res: any) => {
+                if (res?.data?.success) {
+                  console.log('Group renamed:', res.data.old_name, '→', res.data.new_name, res.data.sync, res.data.contacts);
+                }
+              }).catch((e: any) => console.warn('Group rename failed:', e));
+            }
          }
 
         try {
@@ -2236,12 +2255,26 @@ ${scrapeData.content || ''}
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button onClick={handleSaveClick} disabled={saving}>
             {saving ? 'Salvando...' : 'Salvar'}
           </Button>
         </Footer>
       </Content>
     </Wrapper>
+
+      {currentLead && (
+        <CloseLeadGroupDialog
+          open={closeGroupDialogOpen}
+          leadId={currentLead.id}
+          boardId={(currentLead as any).board_id}
+          onClose={() => setCloseGroupDialogOpen(false)}
+          onConfirm={(payload) => {
+            setCloseGroupDialogOpen(false);
+            setPendingCloseContacts(payload.contacts_to_add);
+            handleSave(payload.contacts_to_add);
+          }}
+        />
+      )}
 
       {/* Contact Detail Sheet for viewing parties */}
       {contactSheetOpen && (
