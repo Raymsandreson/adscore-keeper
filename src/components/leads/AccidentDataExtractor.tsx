@@ -241,11 +241,108 @@ export function AccidentDataExtractor({
     });
   };
 
+  // Merge insights from comments analysis (Apify) into extracted data, only filling blanks
+  const mergeCommentsAnalysis = (
+    base: ExtractedAccidentData,
+    analysis: any
+  ): ExtractedAccidentData => {
+    if (!analysis) return base;
+    const out: ExtractedAccidentData = { ...base };
+    const v = analysis.victim_info || {};
+    const a = analysis.accident_info || {};
+    if (!out.victim_name && v.name) out.victim_name = v.name;
+    if ((out.victim_age == null) && v.age) {
+      const n = parseInt(String(v.age).replace(/\D/g, ''), 10);
+      if (!isNaN(n)) out.victim_age = n;
+    }
+    if (!out.damage_description && v.condition) out.damage_description = v.condition;
+    if (!out.accident_date && a.date) out.accident_date = a.date;
+    if (!out.accident_address && a.location) out.accident_address = a.location;
+    if (!out.visit_city && a.location) out.visit_city = String(a.location).split(',')[0]?.trim() || a.location;
+    if (!out.visit_state && a.state) out.visit_state = a.state;
+    if (!out.main_company && a.company) out.main_company = a.company;
+    if (!out.legal_viability && a.description) out.legal_viability = a.description;
+    return out;
+  };
+
   const handleExtract = async () => {
     setIsExtracting(true);
     setExtractedData(null);
 
     try {
+      // Special path: social-media URLs (Instagram/Facebook/etc.) — Firecrawl gets blocked (403),
+      // so we use Apify via fetch-post-metadata + extract-social-post-data, same as ImportFromSocialLinkDialog.
+      if (activeTab === 'link' && isSocialUrl(urlInput)) {
+        const trimmedUrl = urlInput.trim();
+
+        // 1) Fetch caption via Apify
+        toast.info('Detectado link de rede social — usando Apify...');
+        const metadata = await fetchMetadata(trimmedUrl);
+        const caption = metadata?.caption?.trim() || '';
+
+        if (!caption) {
+          toast.error('Não foi possível extrair a legenda do post. Cole o texto manualmente na aba PDF/Texto.');
+          return;
+        }
+
+        // 2) Send caption to AI extractor
+        const { data: socialData, error: socialError } = await cloudFunctions.invoke('extract-social-post-data', {
+          body: { postUrl: trimmedUrl, caption, targetType: 'lead' },
+        });
+
+        if (socialError) {
+          console.error('extract-social-post-data error:', socialError);
+          toast.error('Erro ao analisar a legenda com IA');
+          return;
+        }
+        if (!socialData?.success) {
+          toast.error(socialData?.error || 'Não foi possível extrair os dados');
+          return;
+        }
+
+        // Map social-post-data fields to ExtractedAccidentData shape
+        const raw = socialData.data || {};
+        let mapped: ExtractedAccidentData = {
+          victim_name: raw.victim_name || raw.nome || null,
+          victim_age: raw.victim_age ? parseInt(String(raw.victim_age).replace(/\D/g, ''), 10) || null : null,
+          accident_date: raw.accident_date || null,
+          accident_address: raw.accident_address || null,
+          damage_description: raw.damage_description || null,
+          contractor_company: raw.contractor_company || null,
+          main_company: raw.main_company || null,
+          sector: raw.sector || null,
+          case_type: raw.tipo_caso || raw.case_type || null,
+          liability_type: raw.liability_type || null,
+          legal_viability: raw.legal_viability || raw.contexto || null,
+          visit_city: raw.cidade || raw.visit_city || null,
+          visit_state: raw.estado || raw.visit_state || null,
+        };
+
+        // 3) Optionally fetch & analyze comments via Apify
+        if (commentsLimit && commentsLimit > 0) {
+          try {
+            toast.info(`Buscando até ${commentsLimit} comentários via Apify...`);
+            const { data: cmtData, error: cmtError } = await cloudFunctions.invoke('fetch-post-comments', {
+              body: { postUrl: trimmedUrl, maxComments: commentsLimit, analyzeWithAI: true },
+            });
+            if (cmtError) {
+              console.error('fetch-post-comments error:', cmtError);
+              toast.warning('Não foi possível buscar comentários, mas os dados da legenda foram extraídos');
+            } else if (cmtData?.success && cmtData.analysis) {
+              mapped = mergeCommentsAnalysis(mapped, cmtData.analysis);
+              const total = cmtData.total || 0;
+              toast.success(`${total} comentário(s) analisado(s) — dados complementados`);
+            }
+          } catch (cmtErr) {
+            console.error('Comments fetch failed:', cmtErr);
+          }
+        }
+
+        setExtractedData(mapped);
+        toast.success('Dados extraídos com sucesso!');
+        return;
+      }
+
       let requestBody: { content: string; type: string; url?: string; mimeType?: string };
 
       switch (activeTab) {
