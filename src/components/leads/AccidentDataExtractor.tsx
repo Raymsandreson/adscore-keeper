@@ -581,30 +581,10 @@ export function AccidentDataExtractor({
               </div>
 
               {urlInput.trim() && isSocialUrl(urlInput) && (
-                <div className="rounded-lg border border-dashed p-3 space-y-2 bg-muted/30">
-                  <label className="text-sm font-medium flex items-center gap-2">
-                    <FileText className="h-4 w-4" />
-                    Buscar comentários do post (opcional)
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min={0}
-                      max={500}
-                      step={10}
-                      placeholder="0 = não buscar"
-                      value={commentsLimit || ''}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value, 10);
-                        if (isNaN(v) || v <= 0) setCommentsLimit(0);
-                        else setCommentsLimit(Math.min(500, Math.max(10, v)));
-                      }}
-                      className="w-32"
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      Quantidade (10–500). A IA analisa os comentários para identificar pontes (familiares, testemunhas) e complementar dados da vítima.
-                    </span>
-                  </div>
+                <div className="rounded-lg border border-dashed p-3 bg-muted/30">
+                  <p className="text-xs text-muted-foreground">
+                    Para deixar esse fluxo rápido no Adicionar Lead, aqui eu extraio só a legenda do post e preservo o link da publicação no campo <strong>Link da Notícia</strong>.
+                  </p>
                 </div>
               )}
             </TabsContent>
