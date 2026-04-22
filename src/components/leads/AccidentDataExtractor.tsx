@@ -572,6 +572,47 @@ export function AccidentDataExtractor({
           </DialogTitle>
         </DialogHeader>
 
+        {/* Stepper / Progress bar */}
+        {(isExtracting || progressStep > 0) && (
+          <div className="mt-4 space-y-2">
+            <Progress value={(progressStep / 4) * 100} className="h-1.5" />
+            <div className="grid grid-cols-4 gap-2 text-[11px]">
+              {[
+                { n: 1, label: 'Origem', icon: LinkIcon },
+                { n: 2, label: 'Metadados', icon: Globe },
+                { n: 3, label: 'IA', icon: Brain },
+                { n: 4, label: 'Revisão', icon: ListChecks },
+              ].map(({ n, label, icon: Icon }) => {
+                const done = progressStep > n;
+                const active = progressStep === n;
+                return (
+                  <div
+                    key={n}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-md px-2 py-1 border transition-colors',
+                      done && 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600',
+                      active && 'bg-primary/10 border-primary/30 text-primary',
+                      !done && !active && 'bg-muted/30 border-muted text-muted-foreground'
+                    )}
+                  >
+                    {done ? (
+                      <CheckCircle2 className="h-3 w-3 shrink-0" />
+                    ) : active ? (
+                      <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                    ) : (
+                      <Icon className="h-3 w-3 shrink-0" />
+                    )}
+                    <span className="truncate font-medium">{label}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {progressLabel && isExtracting && (
+              <p className="text-xs text-muted-foreground">{progressLabel}</p>
+            )}
+          </div>
+        )}
+
         <div className="space-y-4 mt-4">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-3">
