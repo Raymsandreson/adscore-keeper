@@ -590,7 +590,7 @@ export function AccidentDataExtractor({
                 )}
               </div>
 
-              {urlInput.trim() && isSocialUrl(urlInput) && (
+              {urlIsSocial && (
                 <div className="rounded-lg border border-dashed p-3 bg-muted/30">
                   <p className="text-xs text-muted-foreground">
                     Para deixar esse fluxo rápido no Adicionar Lead, aqui eu extraio só a legenda do post e preservo o link da publicação no campo <strong>Link da Notícia</strong>.
