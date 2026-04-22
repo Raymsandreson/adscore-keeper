@@ -30,6 +30,18 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { usePostMetadata } from '@/hooks/usePostMetadata';
+
+// Detect if URL belongs to a social network that Firecrawl cannot scrape
+const SOCIAL_HOST_REGEX = /(?:^|\.)(instagram\.com|facebook\.com|fb\.com|fb\.watch|threads\.net|tiktok\.com)$/i;
+function isSocialUrl(rawUrl: string): boolean {
+  try {
+    const u = new URL(rawUrl.trim());
+    return SOCIAL_HOST_REGEX.test(u.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
 
 export interface ExtractedAccidentData {
   victim_name?: string | null;
