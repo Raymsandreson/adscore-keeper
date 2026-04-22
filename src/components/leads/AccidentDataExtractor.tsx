@@ -131,7 +131,7 @@ export function AccidentDataExtractor({
     news_link: 'Link da Notícia',
   };
 
-  const compareFields = (): FieldComparisonResult[] => {
+  const comparisons = useMemo<FieldComparisonResult[]>(() => {
     if (!extractedData) return [];
 
     const fields: (keyof ExtractedAccidentData)[] = [
@@ -143,7 +143,7 @@ export function AccidentDataExtractor({
     return fields.map(key => {
       const extractedValue = extractedData[key];
       const currentValue = currentData?.[key];
-      
+
       let status: FieldStatus;
       if (extractedValue === null || extractedValue === undefined || extractedValue === '') {
         status = 'empty';
@@ -155,7 +155,6 @@ export function AccidentDataExtractor({
         status = 'same';
       }
 
-      // Default selection: new fields are selected, conflicts are selected, same/empty are not
       const defaultSelected = status === 'new' || status === 'conflict';
       const selected = fieldSelections[key] ?? defaultSelected;
 
@@ -167,35 +166,47 @@ export function AccidentDataExtractor({
         status,
         selected,
       };
-    }).filter(f => f.status !== 'empty'); // Only show fields that have extracted values
-  };
+    }).filter(f => f.status !== 'empty');
+  }, [extractedData, currentData, fieldSelections]);
 
-  const toggleFieldSelection = (key: string) => {
+  const selectedCount = useMemo(
+    () => comparisons.filter(f => f.selected).length,
+    [comparisons]
+  );
+
+  const toggleFieldSelection = useCallback((key: string) => {
     setFieldSelections(prev => ({
       ...prev,
       [key]: !(prev[key] ?? true),
     }));
-  };
+  }, []);
 
-  const selectAllFields = (status?: FieldStatus) => {
-    const comparisons = compareFields();
-    const newSelections: Record<string, boolean> = { ...fieldSelections };
-    comparisons.forEach(f => {
-      if (!status || f.status === status) {
-        newSelections[f.key] = true;
-      }
+  const selectAllFields = useCallback((status?: FieldStatus) => {
+    setFieldSelections(prev => {
+      const newSelections: Record<string, boolean> = { ...prev };
+      comparisons.forEach(f => {
+        if (!status || f.status === status) {
+          newSelections[f.key] = true;
+        }
+      });
+      return newSelections;
     });
-    setFieldSelections(newSelections);
-  };
+  }, [comparisons]);
 
-  const deselectAllFields = () => {
-    const comparisons = compareFields();
-    const newSelections: Record<string, boolean> = {};
-    comparisons.forEach(f => {
-      newSelections[f.key] = false;
+  const deselectAllFields = useCallback(() => {
+    setFieldSelections(() => {
+      const newSelections: Record<string, boolean> = {};
+      comparisons.forEach(f => {
+        newSelections[f.key] = false;
+      });
+      return newSelections;
     });
-    setFieldSelections(newSelections);
-  };
+  }, [comparisons]);
+
+  const urlIsSocial = useMemo(() => {
+    const trimmed = urlInput.trim();
+    return trimmed.length > 0 && isSocialUrl(trimmed);
+  }, [urlInput]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
