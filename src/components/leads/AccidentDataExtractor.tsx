@@ -23,6 +23,7 @@ import {
   FileUp,
   Plus,
   ArrowRight,
+  MessageSquare,
   Globe,
   Brain,
   ListChecks,
@@ -723,7 +724,7 @@ export function AccidentDataExtractor({
                 { n: 1, label: 'Origem', icon: LinkIcon },
                 { n: 2, label: 'Metadados', icon: Globe },
                 { n: 3, label: 'IA', icon: Brain },
-                { n: 4, label: 'Comentários', icon: MessageSquareMore },
+                { n: 4, label: 'Comentários', icon: MessageSquare },
                 { n: 5, label: 'Revisão', icon: ListChecks },
               ].map(({ n, label, icon: Icon }) => {
                 const done = progressStep > n;
@@ -971,7 +972,7 @@ export function AccidentDataExtractor({
               <div className="rounded-lg border p-3 bg-muted/20 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-sm font-medium">
-                    <MessageSquareMore className="h-4 w-4 text-primary" />
+                    <MessageSquare className="h-4 w-4 text-primary" />
                     Comentários do post
                   </div>
                   {isFetchingComments ? (
