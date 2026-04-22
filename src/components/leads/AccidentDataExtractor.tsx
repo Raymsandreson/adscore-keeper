@@ -23,6 +23,7 @@ import {
   FileUp,
   Plus,
   ArrowRight,
+  MessageSquare,
   Globe,
   Brain,
   ListChecks,
@@ -121,6 +122,32 @@ interface FieldComparisonResult {
   selected: boolean;
 }
 
+interface CommentsAnalysis {
+  victim_info?: {
+    name?: string | null;
+    age?: string | number | null;
+    profession?: string | null;
+    condition?: string | null;
+  };
+  accident_info?: {
+    date?: string | null;
+    location?: string | null;
+    state?: string | null;
+    description?: string | null;
+    company?: string | null;
+  };
+  potential_contacts?: Array<{
+    username?: string | null;
+    type?: string | null;
+    relationship?: string | null;
+    info?: string | null;
+    phone?: string | null;
+  }>;
+  additional_details?: string | null;
+  sentiment?: string | null;
+  key_comments?: string[] | null;
+}
+
 export function AccidentDataExtractor({
   open,
   onOpenChange,
@@ -135,8 +162,12 @@ export function AccidentDataExtractor({
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
   const [fieldSelections, setFieldSelections] = useState<Record<string, boolean>>({});
-  const [progressStep, setProgressStep] = useState<number>(0); // 0=idle, 1=detect, 2=metadata, 3=ai, 4=review
+  const [progressStep, setProgressStep] = useState<number>(0); // 0=idle, 1=detect, 2=metadata, 3=ai, 4=comments, 5=review
   const [progressLabel, setProgressLabel] = useState<string>('');
+  const [isFetchingComments, setIsFetchingComments] = useState(false);
+  const [commentsCount, setCommentsCount] = useState<number | null>(null);
+  const [commentsAnalysis, setCommentsAnalysis] = useState<CommentsAnalysis | null>(null);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const { fetchMetadata, getCachedMetadata } = usePostMetadata();
@@ -287,6 +318,63 @@ export function AccidentDataExtractor({
     setProgressLabel(label);
   };
 
+  const mergeCommentsIntoData = useCallback((baseData: ExtractedAccidentData, analysis: CommentsAnalysis | null) => {
+    if (!analysis) return baseData;
+
+    const nextData: ExtractedAccidentData = { ...baseData };
+    const ageRaw = analysis.victim_info?.age;
+    const parsedAge = ageRaw == null
+      ? null
+      : Number.parseInt(String(ageRaw).replace(/\D+/g, ''), 10);
+
+    if (!nextData.victim_name && analysis.victim_info?.name) nextData.victim_name = analysis.victim_info.name;
+    if ((nextData.victim_age == null) && Number.isFinite(parsedAge) && parsedAge > 0) nextData.victim_age = parsedAge;
+    if (!nextData.accident_date && analysis.accident_info?.date) nextData.accident_date = analysis.accident_info.date;
+    if (!nextData.visit_city && analysis.accident_info?.location) nextData.visit_city = analysis.accident_info.location;
+    if (!nextData.visit_state && analysis.accident_info?.state) nextData.visit_state = analysis.accident_info.state;
+    if (!nextData.main_company && analysis.accident_info?.company) nextData.main_company = analysis.accident_info.company;
+
+    const commentDescription = analysis.accident_info?.description || analysis.additional_details || null;
+    if (!nextData.damage_description && commentDescription) {
+      nextData.damage_description = commentDescription;
+    }
+
+    return nextData;
+  }, []);
+
+  const fetchCommentsInBackground = useCallback(async (postUrl: string, baseData: ExtractedAccidentData) => {
+    setIsFetchingComments(true);
+    setCommentsError(null);
+    setCommentsCount(null);
+    setCommentsAnalysis(null);
+    advanceStep(4, 'Buscando comentários com o mesmo actor...');
+
+    try {
+      await waitForPaint();
+      const { data, error } = await withClientTimeout(
+        cloudFunctions.invoke('fetch-post-comments', {
+          body: { postUrl, analyzeWithAI: true },
+        }),
+        18000,
+        'A busca de comentários demorou demais.'
+      );
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Não foi possível buscar comentários');
+
+      const analysis = (data.analysis || null) as CommentsAnalysis | null;
+      setCommentsCount(typeof data.total === 'number' ? data.total : 0);
+      setCommentsAnalysis(analysis);
+      setExtractedData((prev) => mergeCommentsIntoData(prev ?? baseData, analysis));
+    } catch (err) {
+      console.error('Error fetching post comments:', err);
+      setCommentsError(err instanceof Error ? err.message : 'Erro ao buscar comentários');
+    } finally {
+      setIsFetchingComments(false);
+      advanceStep(5, 'Revisão dos dados extraídos');
+    }
+  }, [mergeCommentsIntoData]);
+
   useEffect(() => {
     if (!open || !urlIsSocial) return;
 
@@ -357,7 +445,8 @@ export function AccidentDataExtractor({
           news_link: trimmedUrl,
         };
         setExtractedData(merged);
-        advanceStep(4, 'Revisão dos dados extraídos');
+        advanceStep(5, 'Revisão dos dados extraídos');
+        void fetchCommentsInBackground(trimmedUrl, merged);
         toast.success('Dados extraídos com sucesso!');
         return;
       }
@@ -461,7 +550,7 @@ export function AccidentDataExtractor({
         ...(data.data || {}),
         news_link: activeTab === 'link' ? urlInput.trim() : data.data?.news_link,
       });
-      advanceStep(4, 'Revisão dos dados extraídos');
+      advanceStep(5, 'Revisão dos dados extraídos');
       toast.success('Dados extraídos com sucesso!');
     } catch (err) {
       console.error('Error:', err);
@@ -498,6 +587,10 @@ export function AccidentDataExtractor({
     setFieldSelections({});
     setProgressStep(0);
     setProgressLabel('');
+    setIsFetchingComments(false);
+    setCommentsCount(null);
+    setCommentsAnalysis(null);
+    setCommentsError(null);
   };
 
   const handleClose = () => {
@@ -623,15 +716,16 @@ export function AccidentDataExtractor({
         </DialogHeader>
 
         {/* Stepper / Progress bar */}
-        {(isExtracting || progressStep > 0) && (
+        {(isExtracting || isFetchingComments || progressStep > 0) && (
           <div className="mt-4 space-y-2">
-            <Progress value={(progressStep / 4) * 100} className="h-1.5" />
-            <div className="grid grid-cols-4 gap-2 text-[11px]">
+            <Progress value={(progressStep / 5) * 100} className="h-1.5" />
+            <div className="grid grid-cols-5 gap-2 text-[11px]">
               {[
                 { n: 1, label: 'Origem', icon: LinkIcon },
                 { n: 2, label: 'Metadados', icon: Globe },
                 { n: 3, label: 'IA', icon: Brain },
-                { n: 4, label: 'Revisão', icon: ListChecks },
+                { n: 4, label: 'Comentários', icon: MessageSquare },
+                { n: 5, label: 'Revisão', icon: ListChecks },
               ].map(({ n, label, icon: Icon }) => {
                 const done = progressStep > n;
                 const active = progressStep === n;
@@ -657,7 +751,7 @@ export function AccidentDataExtractor({
                 );
               })}
             </div>
-            {progressLabel && isExtracting && (
+            {progressLabel && (isExtracting || isFetchingComments) && (
               <p className="text-xs text-muted-foreground">{progressLabel}</p>
             )}
           </div>
@@ -696,7 +790,7 @@ export function AccidentDataExtractor({
                 {urlIsSocial ? (
                   <p className="text-xs text-primary mt-1 flex items-center gap-1">
                     <Sparkles className="h-3 w-3" />
-                    Detectado link de rede social — usaremos Apify (mesma rota do Importar Link Social)
+                    Detectado link de rede social — usaremos Apify para metadados e comentários
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground mt-1">
@@ -708,7 +802,7 @@ export function AccidentDataExtractor({
               {urlIsSocial && (
                 <div className="rounded-lg border border-dashed p-3 bg-muted/30">
                   <p className="text-xs text-muted-foreground">
-                    Para deixar esse fluxo rápido no Adicionar Lead, aqui eu extraio só a legenda do post e preservo o link da publicação no campo <strong>Link da Notícia</strong>.
+                    Primeiro eu monto a revisão com a legenda e o link da publicação. Em seguida, os comentários são buscados em segundo plano usando o mesmo actor, sem travar o modal.
                   </p>
                 </div>
               )}
@@ -874,6 +968,58 @@ export function AccidentDataExtractor({
 
         {extractedData && (
           <div className="mt-4 space-y-4">
+            {urlIsSocial && (
+              <div className="rounded-lg border p-3 bg-muted/20 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <MessageSquare className="h-4 w-4 text-primary" />
+                    Comentários do post
+                  </div>
+                  {isFetchingComments ? (
+                    <Badge variant="outline" className="text-xs">
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      Buscando
+                    </Badge>
+                  ) : commentsError ? (
+                    <Badge variant="outline" className="text-xs">
+                      <AlertCircle className="h-3 w-3 mr-1" />
+                      Erro
+                    </Badge>
+                  ) : commentsCount !== null ? (
+                    <Badge variant="outline" className="text-xs">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      {commentsCount} encontrados
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs">Pendente</Badge>
+                  )}
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  {isFetchingComments
+                    ? 'Buscando comentários semelhantes usando o mesmo actor, sem bloquear a revisão.'
+                    : commentsError
+                      ? commentsError
+                      : commentsCount !== null
+                        ? 'Os dados úteis dos comentários foram incorporados automaticamente quando encontrados.'
+                        : 'A busca de comentários começa após a extração inicial.'}
+                </p>
+
+                {!!commentsAnalysis?.potential_contacts?.length && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium">Possíveis pontes encontradas</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {commentsAnalysis.potential_contacts.slice(0, 4).map((contact, index) => (
+                        <Badge key={`${contact.username ?? 'contact'}-${index}`} variant="secondary" className="text-xs max-w-full truncate">
+                          {contact.username || 'Sem usuário'}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-emerald-600">
                 <CheckCircle2 className="h-5 w-5" />
