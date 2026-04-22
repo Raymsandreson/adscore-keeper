@@ -654,9 +654,24 @@ ${scrapeData.content || ''}
     }
   };
 
-  const handleSave = async () => {
+  const [closeGroupDialogOpen, setCloseGroupDialogOpen] = useState(false);
+  const [pendingCloseContacts, setPendingCloseContacts] = useState<CloseLeadContactPayload[] | null>(null);
+
+  const handleSaveClick = () => {
     if (!currentLead) return;
-    
+    const wasAlreadyClosed = !!(currentLead as any).became_client_date;
+    const isFreshClose = leadOutcome === 'closed' && !wasAlreadyClosed;
+    const hasGroup = !!(currentLead as any).whatsapp_group_id;
+    if (isFreshClose && hasGroup) {
+      setCloseGroupDialogOpen(true);
+      return;
+    }
+    handleSave();
+  };
+
+  const handleSave = async (contactsPayload?: CloseLeadContactPayload[]) => {
+    if (!currentLead) return;
+
     if (!leadName.trim()) {
       toast.error('Nome é obrigatório');
       return;
