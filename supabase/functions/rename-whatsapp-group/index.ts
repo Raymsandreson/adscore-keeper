@@ -6,6 +6,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+interface ContactToAdd {
+  contact_id?: string;
+  phone: string;
+  mark_as_client?: boolean;
+}
+
+const normalizePhone = (raw: string | null | undefined): string => {
+  if (!raw) return '';
+  return String(raw).replace(/\D/g, '');
+};
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -13,7 +24,8 @@ Deno.serve(async (req) => {
 
   try {
     const supabase = createClient(resolveSupabaseUrl(), resolveServiceRoleKey())
-    const { lead_id } = await req.json()
+    const body = await req.json().catch(() => ({}))
+    const { lead_id, contacts_to_add } = body as { lead_id?: string; contacts_to_add?: ContactToAdd[] }
 
     if (!lead_id) {
       return new Response(JSON.stringify({ success: false, error: 'lead_id required' }), {
@@ -36,13 +48,13 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Get board group settings
     if (!lead.board_id) {
       return new Response(JSON.stringify({ success: false, error: 'Lead has no board' }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
+    // Get board group settings
     const { data: settings } = await supabase
       .from('board_group_settings')
       .select('closed_group_name_prefix, group_name_prefix, lead_fields, closed_sequence_start, closed_current_sequence')
@@ -55,16 +67,15 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Calculate next closed sequence number
     const closedSeq = Math.max(
       (settings.closed_current_sequence || 0) + 1,
       settings.closed_sequence_start || 1
     )
 
-    // Find a connected instance to rename the group
+    // Find a connected instance to operate on the group
     const { data: boardInstances } = await supabase
       .from('board_group_instances')
-      .select('instance_id')
+      .select('instance_id, applies_to')
       .eq('board_id', lead.board_id)
 
     let instance: any = null
@@ -80,7 +91,6 @@ Deno.serve(async (req) => {
     }
 
     if (!instance) {
-      // Fallback: try any connected instance
       const { data: anyInstance } = await supabase
         .from('whatsapp_instances')
         .select('*')
@@ -96,12 +106,13 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Get current group name to extract sequence number
     const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
     const fullJid = groupJid.includes('@g.us') ? groupJid : `${groupJid}@g.us`
+    const executorPhone = normalizePhone(instance.owner_phone || instance.phone || '')
 
-    // Fetch current group info to get the current name
+    // Fetch current group info (name + participants)
     let currentName = ''
+    let currentParticipants: string[] = []
     try {
       const infoRes = await fetch(`${baseUrl}/group/info`, {
         method: 'POST',
@@ -111,35 +122,30 @@ Deno.serve(async (req) => {
       if (infoRes.ok) {
         const info = await infoRes.json()
         currentName = info?.subject || info?.name || info?.data?.subject || ''
+        const partsRaw = info?.participants || info?.data?.participants || []
+        currentParticipants = partsRaw
+          .map((p: any) => normalizePhone(typeof p === 'string' ? p : (p?.id || p?.jid || p?.phone || '')))
+          .filter(Boolean)
       }
     } catch (e) {
       console.warn('Could not fetch group info:', e)
     }
 
-    // Build new name using closed prefix + closed sequence + lead fields
+    // Build new name
     const closedPrefix = settings.closed_group_name_prefix
     const leadFields = settings.lead_fields || ['lead_name']
-    
     const parts: string[] = []
     if (closedPrefix) parts.push(closedPrefix)
     parts.push(String(closedSeq).padStart(4, '0'))
-    
     for (const field of leadFields) {
-      if (lead[field]) {
-        parts.push(String(lead[field]))
-      }
+      if (lead[field]) parts.push(String(lead[field]))
     }
-    
     let newName = parts.join(' ')
-
-    // Truncate to WhatsApp limit
-    if (newName.length > 100) {
-      newName = newName.slice(0, 100).trim()
-    }
+    if (newName.length > 100) newName = newName.slice(0, 100).trim()
 
     console.log(`Renaming group from "${currentName}" to "${newName}"`)
 
-    // Try updateSubject first, then fallback to subject
+    // Rename group
     let renamed = false
     try {
       const renameRes = await fetch(`${baseUrl}/group/updateSubject`, {
@@ -160,15 +166,121 @@ Deno.serve(async (req) => {
       console.error('Rename error:', e)
     }
 
-    // Update sequence and group name in DB
+    // ---- Sync instance participants based on applies_to ----
+    const sync = { added: [] as string[], removed: [] as string[], skipped: [] as string[] }
+
+    if (boardInstances?.length) {
+      // Resolve all instance phones
+      const { data: allInstances } = await supabase
+        .from('whatsapp_instances')
+        .select('id, owner_phone, phone, instance_name')
+        .in('id', boardInstances.map((b: any) => b.instance_id))
+
+      const phoneByInstance = new Map<string, string>()
+      ;(allInstances || []).forEach((i: any) => {
+        const p = normalizePhone(i.owner_phone || i.phone || '')
+        if (p) phoneByInstance.set(i.id, p)
+      })
+
+      const shouldStay = new Set<string>()
+      const shouldLeave = new Set<string>()
+      for (const bi of boardInstances as any[]) {
+        const p = phoneByInstance.get(bi.instance_id)
+        if (!p) continue
+        const applies = bi.applies_to || 'both'
+        if (applies === 'both' || applies === 'closed') shouldStay.add(p)
+        else if (applies === 'open') shouldLeave.add(p)
+      }
+
+      // Add missing closed-instances
+      for (const phone of shouldStay) {
+        const isPresent = currentParticipants.some(cp => cp.endsWith(phone) || phone.endsWith(cp))
+        if (!isPresent) {
+          try {
+            const r = await fetch(`${baseUrl}/group/participants`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', token: instance.instance_token },
+              body: JSON.stringify({ groupjid: fullJid, action: 'add', participants: [`${phone}@s.whatsapp.net`] }),
+            })
+            if (r.ok) sync.added.push(phone)
+            else sync.skipped.push(`add:${phone}`)
+          } catch (e) {
+            console.warn('Add instance failed', phone, e)
+            sync.skipped.push(`add:${phone}`)
+          }
+        }
+      }
+
+      // Remove open-only instances (executor last)
+      const removeList = [...shouldLeave].sort((a, b) => {
+        if (a === executorPhone) return 1
+        if (b === executorPhone) return -1
+        return 0
+      })
+      for (const phone of removeList) {
+        const isPresent = currentParticipants.some(cp => cp.endsWith(phone) || phone.endsWith(cp))
+        if (isPresent) {
+          try {
+            const r = await fetch(`${baseUrl}/group/participants`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', token: instance.instance_token },
+              body: JSON.stringify({ groupjid: fullJid, action: 'remove', participants: [`${phone}@s.whatsapp.net`] }),
+            })
+            if (r.ok) sync.removed.push(phone)
+            else sync.skipped.push(`remove:${phone}`)
+          } catch (e) {
+            console.warn('Remove instance failed', phone, e)
+            sync.skipped.push(`remove:${phone}`)
+          }
+        }
+      }
+    }
+
+    // ---- Add lead contacts and mark as client ----
+    const contactsResult = { added: [] as string[], marked_as_client: [] as string[], skipped: [] as string[] }
+    if (Array.isArray(contacts_to_add) && contacts_to_add.length > 0) {
+      for (const c of contacts_to_add) {
+        const phone = normalizePhone(c.phone)
+        if (!phone) {
+          contactsResult.skipped.push(`empty:${c.contact_id || ''}`)
+          continue
+        }
+        const isPresent = currentParticipants.some(cp => cp.endsWith(phone) || phone.endsWith(cp))
+        if (!isPresent) {
+          try {
+            const r = await fetch(`${baseUrl}/group/participants`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', token: instance.instance_token },
+              body: JSON.stringify({ groupjid: fullJid, action: 'add', participants: [`${phone}@s.whatsapp.net`] }),
+            })
+            if (r.ok) contactsResult.added.push(phone)
+            else contactsResult.skipped.push(`add:${phone}`)
+          } catch (e) {
+            console.warn('Add contact failed', phone, e)
+            contactsResult.skipped.push(`add:${phone}`)
+          }
+        }
+        if (c.mark_as_client && c.contact_id) {
+          try {
+            await supabase
+              .from('contacts')
+              .update({ classification: 'client', updated_at: new Date().toISOString() })
+              .eq('id', c.contact_id)
+            contactsResult.marked_as_client.push(c.contact_id)
+          } catch (e) {
+            console.warn('Mark as client failed', c.contact_id, e)
+          }
+        }
+      }
+    }
+
+    // Persist sequence + group name
     if (renamed) {
-      // Increment closed sequence
       await supabase
         .from('board_group_settings')
         .update({ closed_current_sequence: closedSeq })
         .eq('board_id', lead.board_id)
 
-      // Update group_links table
       await supabase
         .from('whatsapp_group_links')
         .update({ group_name: newName })
@@ -176,10 +288,12 @@ Deno.serve(async (req) => {
         .catch(() => {})
     }
 
-    return new Response(JSON.stringify({ 
-      success: renamed, 
-      old_name: currentName, 
-      new_name: newName 
+    return new Response(JSON.stringify({
+      success: renamed,
+      old_name: currentName,
+      new_name: newName,
+      sync,
+      contacts: contactsResult,
     }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
