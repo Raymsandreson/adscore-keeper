@@ -444,7 +444,8 @@ export function AccidentDataExtractor({
           news_link: trimmedUrl,
         };
         setExtractedData(merged);
-        advanceStep(4, 'Revisão dos dados extraídos');
+        advanceStep(5, 'Revisão dos dados extraídos');
+        void fetchCommentsInBackground(trimmedUrl, merged);
         toast.success('Dados extraídos com sucesso!');
         return;
       }
@@ -548,7 +549,7 @@ export function AccidentDataExtractor({
         ...(data.data || {}),
         news_link: activeTab === 'link' ? urlInput.trim() : data.data?.news_link,
       });
-      advanceStep(4, 'Revisão dos dados extraídos');
+      advanceStep(5, 'Revisão dos dados extraídos');
       toast.success('Dados extraídos com sucesso!');
     } catch (err) {
       console.error('Error:', err);
@@ -585,6 +586,10 @@ export function AccidentDataExtractor({
     setFieldSelections({});
     setProgressStep(0);
     setProgressLabel('');
+    setIsFetchingComments(false);
+    setCommentsCount(null);
+    setCommentsAnalysis(null);
+    setCommentsError(null);
   };
 
   const handleClose = () => {
@@ -710,15 +715,16 @@ export function AccidentDataExtractor({
         </DialogHeader>
 
         {/* Stepper / Progress bar */}
-        {(isExtracting || progressStep > 0) && (
+        {(isExtracting || isFetchingComments || progressStep > 0) && (
           <div className="mt-4 space-y-2">
-            <Progress value={(progressStep / 4) * 100} className="h-1.5" />
-            <div className="grid grid-cols-4 gap-2 text-[11px]">
+            <Progress value={(progressStep / 5) * 100} className="h-1.5" />
+            <div className="grid grid-cols-5 gap-2 text-[11px]">
               {[
                 { n: 1, label: 'Origem', icon: LinkIcon },
                 { n: 2, label: 'Metadados', icon: Globe },
                 { n: 3, label: 'IA', icon: Brain },
-                { n: 4, label: 'Revisão', icon: ListChecks },
+                { n: 4, label: 'Comentários', icon: MessageSquareMore },
+                { n: 5, label: 'Revisão', icon: ListChecks },
               ].map(({ n, label, icon: Icon }) => {
                 const done = progressStep > n;
                 const active = progressStep === n;
@@ -744,7 +750,7 @@ export function AccidentDataExtractor({
                 );
               })}
             </div>
-            {progressLabel && isExtracting && (
+            {progressLabel && (isExtracting || isFetchingComments) && (
               <p className="text-xs text-muted-foreground">{progressLabel}</p>
             )}
           </div>
@@ -783,7 +789,7 @@ export function AccidentDataExtractor({
                 {urlIsSocial ? (
                   <p className="text-xs text-primary mt-1 flex items-center gap-1">
                     <Sparkles className="h-3 w-3" />
-                    Detectado link de rede social — usaremos Apify (mesma rota do Importar Link Social)
+                    Detectado link de rede social — usaremos Apify para metadados e comentários
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground mt-1">
@@ -795,7 +801,7 @@ export function AccidentDataExtractor({
               {urlIsSocial && (
                 <div className="rounded-lg border border-dashed p-3 bg-muted/30">
                   <p className="text-xs text-muted-foreground">
-                    Para deixar esse fluxo rápido no Adicionar Lead, aqui eu extraio só a legenda do post e preservo o link da publicação no campo <strong>Link da Notícia</strong>.
+                    Primeiro eu monto a revisão com a legenda e o link da publicação. Em seguida, os comentários são buscados em segundo plano usando o mesmo actor, sem travar o modal.
                   </p>
                 </div>
               )}
@@ -961,6 +967,58 @@ export function AccidentDataExtractor({
 
         {extractedData && (
           <div className="mt-4 space-y-4">
+            {urlIsSocial && (
+              <div className="rounded-lg border p-3 bg-muted/20 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <MessageSquareMore className="h-4 w-4 text-primary" />
+                    Comentários do post
+                  </div>
+                  {isFetchingComments ? (
+                    <Badge variant="outline" className="text-xs">
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      Buscando
+                    </Badge>
+                  ) : commentsError ? (
+                    <Badge variant="outline" className="text-xs">
+                      <AlertCircle className="h-3 w-3 mr-1" />
+                      Erro
+                    </Badge>
+                  ) : commentsCount !== null ? (
+                    <Badge variant="outline" className="text-xs">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      {commentsCount} encontrados
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs">Pendente</Badge>
+                  )}
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  {isFetchingComments
+                    ? 'Buscando comentários semelhantes usando o mesmo actor, sem bloquear a revisão.'
+                    : commentsError
+                      ? commentsError
+                      : commentsCount !== null
+                        ? 'Os dados úteis dos comentários foram incorporados automaticamente quando encontrados.'
+                        : 'A busca de comentários começa após a extração inicial.'}
+                </p>
+
+                {!!commentsAnalysis?.potential_contacts?.length && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium">Possíveis pontes encontradas</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {commentsAnalysis.potential_contacts.slice(0, 4).map((contact, index) => (
+                        <Badge key={`${contact.username ?? 'contact'}-${index}`} variant="secondary" className="text-xs max-w-full truncate">
+                          {contact.username || 'Sem usuário'}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-emerald-600">
                 <CheckCircle2 className="h-5 w-5" />
