@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -131,7 +131,7 @@ export function AccidentDataExtractor({
     news_link: 'Link da Notícia',
   };
 
-  const compareFields = (): FieldComparisonResult[] => {
+  const comparisons = useMemo<FieldComparisonResult[]>(() => {
     if (!extractedData) return [];
 
     const fields: (keyof ExtractedAccidentData)[] = [
@@ -143,7 +143,7 @@ export function AccidentDataExtractor({
     return fields.map(key => {
       const extractedValue = extractedData[key];
       const currentValue = currentData?.[key];
-      
+
       let status: FieldStatus;
       if (extractedValue === null || extractedValue === undefined || extractedValue === '') {
         status = 'empty';
@@ -155,7 +155,6 @@ export function AccidentDataExtractor({
         status = 'same';
       }
 
-      // Default selection: new fields are selected, conflicts are selected, same/empty are not
       const defaultSelected = status === 'new' || status === 'conflict';
       const selected = fieldSelections[key] ?? defaultSelected;
 
@@ -167,35 +166,47 @@ export function AccidentDataExtractor({
         status,
         selected,
       };
-    }).filter(f => f.status !== 'empty'); // Only show fields that have extracted values
-  };
+    }).filter(f => f.status !== 'empty');
+  }, [extractedData, currentData, fieldSelections]);
 
-  const toggleFieldSelection = (key: string) => {
+  const selectedCount = useMemo(
+    () => comparisons.filter(f => f.selected).length,
+    [comparisons]
+  );
+
+  const toggleFieldSelection = useCallback((key: string) => {
     setFieldSelections(prev => ({
       ...prev,
       [key]: !(prev[key] ?? true),
     }));
-  };
+  }, []);
 
-  const selectAllFields = (status?: FieldStatus) => {
-    const comparisons = compareFields();
-    const newSelections: Record<string, boolean> = { ...fieldSelections };
-    comparisons.forEach(f => {
-      if (!status || f.status === status) {
-        newSelections[f.key] = true;
-      }
+  const selectAllFields = useCallback((status?: FieldStatus) => {
+    setFieldSelections(prev => {
+      const newSelections: Record<string, boolean> = { ...prev };
+      comparisons.forEach(f => {
+        if (!status || f.status === status) {
+          newSelections[f.key] = true;
+        }
+      });
+      return newSelections;
     });
-    setFieldSelections(newSelections);
-  };
+  }, [comparisons]);
 
-  const deselectAllFields = () => {
-    const comparisons = compareFields();
-    const newSelections: Record<string, boolean> = {};
-    comparisons.forEach(f => {
-      newSelections[f.key] = false;
+  const deselectAllFields = useCallback(() => {
+    setFieldSelections(() => {
+      const newSelections: Record<string, boolean> = {};
+      comparisons.forEach(f => {
+        newSelections[f.key] = false;
+      });
+      return newSelections;
     });
-    setFieldSelections(newSelections);
-  };
+  }, [comparisons]);
+
+  const urlIsSocial = useMemo(() => {
+    const trimmed = urlInput.trim();
+    return trimmed.length > 0 && isSocialUrl(trimmed);
+  }, [urlInput]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -391,9 +402,8 @@ export function AccidentDataExtractor({
   const handleConfirm = () => {
     if (extractedData) {
       // Build data with only selected fields
-      const comparisons = compareFields();
       const selectedData: ExtractedAccidentData = {};
-      
+
       comparisons.forEach(field => {
         if (field.selected && field.extractedValue !== null && field.extractedValue !== undefined) {
           (selectedData as any)[field.key] = field.extractedValue;
@@ -568,7 +578,7 @@ export function AccidentDataExtractor({
                   value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
                 />
-                {urlInput.trim() && isSocialUrl(urlInput) ? (
+                {urlIsSocial ? (
                   <p className="text-xs text-primary mt-1 flex items-center gap-1">
                     <Sparkles className="h-3 w-3" />
                     Detectado link de rede social — usaremos Apify (mesma rota do Importar Link Social)
@@ -580,7 +590,7 @@ export function AccidentDataExtractor({
                 )}
               </div>
 
-              {urlInput.trim() && isSocialUrl(urlInput) && (
+              {urlIsSocial && (
                 <div className="rounded-lg border border-dashed p-3 bg-muted/30">
                   <p className="text-xs text-muted-foreground">
                     Para deixar esse fluxo rápido no Adicionar Lead, aqui eu extraio só a legenda do post e preservo o link da publicação no campo <strong>Link da Notícia</strong>.
@@ -801,9 +811,9 @@ export function AccidentDataExtractor({
 
             {/* Fields comparison */}
             <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
-              {compareFields().map(field => renderComparisonField(field))}
-              
-              {compareFields().length === 0 && (
+              {comparisons.map(field => renderComparisonField(field))}
+
+              {comparisons.length === 0 && (
                 <div className="flex items-center gap-2 text-amber-600 py-4 justify-center">
                   <AlertCircle className="h-4 w-4" />
                   <span className="text-sm">Nenhum dado identificado. Verifique se o conteúdo está completo.</span>
@@ -812,9 +822,9 @@ export function AccidentDataExtractor({
             </div>
 
             {/* Summary */}
-            {compareFields().length > 0 && (
+            {comparisons.length > 0 && (
               <div className="text-xs text-muted-foreground">
-                {compareFields().filter(f => f.selected).length} de {compareFields().length} campos selecionados
+                {selectedCount} de {comparisons.length} campos selecionados
               </div>
             )}
 
@@ -822,9 +832,9 @@ export function AccidentDataExtractor({
               <Button variant="outline" onClick={() => setExtractedData(null)}>
                 Tentar Novamente
               </Button>
-              <Button 
+              <Button
                 onClick={handleConfirm}
-                disabled={compareFields().filter(f => f.selected).length === 0}
+                disabled={selectedCount === 0}
               >
                 Usar Dados Selecionados
               </Button>
