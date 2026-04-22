@@ -811,9 +811,9 @@ export function AccidentDataExtractor({
 
             {/* Fields comparison */}
             <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
-              {compareFields().map(field => renderComparisonField(field))}
-              
-              {compareFields().length === 0 && (
+              {comparisons.map(field => renderComparisonField(field))}
+
+              {comparisons.length === 0 && (
                 <div className="flex items-center gap-2 text-amber-600 py-4 justify-center">
                   <AlertCircle className="h-4 w-4" />
                   <span className="text-sm">Nenhum dado identificado. Verifique se o conteúdo está completo.</span>
@@ -822,9 +822,9 @@ export function AccidentDataExtractor({
             </div>
 
             {/* Summary */}
-            {compareFields().length > 0 && (
+            {comparisons.length > 0 && (
               <div className="text-xs text-muted-foreground">
-                {compareFields().filter(f => f.selected).length} de {compareFields().length} campos selecionados
+                {selectedCount} de {comparisons.length} campos selecionados
               </div>
             )}
 
@@ -832,9 +832,9 @@ export function AccidentDataExtractor({
               <Button variant="outline" onClick={() => setExtractedData(null)}>
                 Tentar Novamente
               </Button>
-              <Button 
+              <Button
                 onClick={handleConfirm}
-                disabled={compareFields().filter(f => f.selected).length === 0}
+                disabled={selectedCount === 0}
               >
                 Usar Dados Selecionados
               </Button>
