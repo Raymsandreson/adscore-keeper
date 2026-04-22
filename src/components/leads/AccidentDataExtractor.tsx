@@ -402,9 +402,8 @@ export function AccidentDataExtractor({
   const handleConfirm = () => {
     if (extractedData) {
       // Build data with only selected fields
-      const comparisons = compareFields();
       const selectedData: ExtractedAccidentData = {};
-      
+
       comparisons.forEach(field => {
         if (field.selected && field.extractedValue !== null && field.extractedValue !== undefined) {
           (selectedData as any)[field.key] = field.extractedValue;
