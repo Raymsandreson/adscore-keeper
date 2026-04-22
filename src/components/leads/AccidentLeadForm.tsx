@@ -266,11 +266,20 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
             </div>
 
             <div className="col-span-2">
-              <Label>Link da Notícia</Label>
+              <Label>Link do Grupo (WhatsApp)</Label>
               <Input
                 value={formData.group_link}
                 onChange={(e) => updateField('group_link', e.target.value)}
                 placeholder="https://chat.whatsapp.com/..."
+              />
+            </div>
+
+            <div className="col-span-2">
+              <Label>Link da Notícia</Label>
+              <Input
+                value={formData.news_link}
+                onChange={(e) => updateField('news_link', e.target.value)}
+                placeholder="https://..."
               />
             </div>
 

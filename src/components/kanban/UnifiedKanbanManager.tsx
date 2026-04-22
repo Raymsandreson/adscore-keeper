@@ -319,22 +319,60 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     }
   };
 
+  // Selected board for the new-lead dialog (independent of page-level selection)
+  const [selectedBoardForNewLead, setSelectedBoardForNewLead] = useState<string | null>(null);
+
+  // Sync default whenever dialog opens
+  useEffect(() => {
+    if (showAddLeadDialog) {
+      setSelectedBoardForNewLead(prev => prev ?? selectedBoardId ?? null);
+    }
+  }, [showAddLeadDialog, selectedBoardId]);
+
   const handleAddLead = async () => {
     if (!newLeadFormData.lead_name.trim()) {
       toast.error('Nome é obrigatório');
       return;
     }
 
-    const firstStage = selectedBoard?.stages[0]?.id || 'new';
-    
+    const targetBoardId = selectedBoardForNewLead || selectedBoardId;
+    if (!targetBoardId) {
+      toast.error('Selecione um funil');
+      return;
+    }
+
+    const targetBoard = boards.find(b => b.id === targetBoardId) || selectedBoard;
+    const firstStage = targetBoard?.stages[0]?.id || 'new';
+
+    // Apply funnel naming pattern: "<prefix> <N> | <user-typed name>"
+    let finalLeadName = newLeadFormData.lead_name.trim();
+    let usedSequence: number | null = null;
+    try {
+      const { data: settings } = await supabase
+        .from('board_group_settings')
+        .select('group_name_prefix, current_sequence, sequence_start')
+        .eq('board_id', targetBoardId)
+        .maybeSingle();
+
+      const prefix = settings?.group_name_prefix?.trim();
+      if (prefix) {
+        const start = settings?.sequence_start ?? 1;
+        const current = settings?.current_sequence ?? (start - 1);
+        usedSequence = current + 1;
+        finalLeadName = `${prefix} ${usedSequence} | ${finalLeadName}`;
+      }
+    } catch (err) {
+      console.warn('[handleAddLead] could not load board prefix settings, using raw name:', err);
+    }
+
     await addLead({
-      lead_name: newLeadFormData.lead_name,
+      lead_name: finalLeadName,
       lead_phone: newLeadFormData.lead_phone || null,
       lead_email: newLeadFormData.lead_email || null,
       notes: newLeadFormData.notes || null,
       source: newLeadFormData.source,
       status: firstStage as LeadStatus,
-      board_id: selectedBoardId,
+      board_id: targetBoardId,
       // Accident-specific fields
       acolhedor: newLeadFormData.acolhedor || null,
       case_type: newLeadFormData.case_type || null,
@@ -358,6 +396,18 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       client_classification: newLeadFormData.client_classification || null,
       expected_birth_date: normalizeDateInput(newLeadFormData.expected_birth_date),
     } as Partial<Lead>);
+
+    // Bump board sequence counter when prefix was applied
+    if (usedSequence !== null) {
+      try {
+        await supabase
+          .from('board_group_settings')
+          .update({ current_sequence: usedSequence })
+          .eq('board_id', targetBoardId);
+      } catch (err) {
+        console.warn('[handleAddLead] failed to bump board sequence:', err);
+      }
+    }
 
     // Reset form
     setNewLeadFormData({
@@ -388,6 +438,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       liability_type: '',
       legal_viability: '',
     });
+    setSelectedBoardForNewLead(null);
     setShowAddLeadDialog(false);
   };
 
@@ -774,6 +825,25 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
           <DialogHeader>
             <DialogTitle>Adicionar Lead</DialogTitle>
           </DialogHeader>
+
+          <div className="mb-4">
+            <Label>Funil de Vendas *</Label>
+            <Select
+              value={selectedBoardForNewLead || selectedBoardId || ''}
+              onValueChange={(v) => setSelectedBoardForNewLead(v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um funil..." />
+              </SelectTrigger>
+              <SelectContent>
+                {boards.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           <AccidentLeadForm
             formData={newLeadFormData}
