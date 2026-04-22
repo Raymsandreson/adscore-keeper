@@ -57,6 +57,7 @@ export interface ExtractedAccidentData {
   legal_viability?: string | null;
   visit_city?: string | null;
   visit_state?: string | null;
+  news_link?: string | null;
 }
 
 // Current lead data for comparison
@@ -74,6 +75,7 @@ export interface CurrentLeadData {
   legal_viability?: string | null;
   visit_city?: string | null;
   visit_state?: string | null;
+  news_link?: string | null;
 }
 
 interface AccidentDataExtractorProps {
@@ -108,7 +110,6 @@ export function AccidentDataExtractor({
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
   const [fieldSelections, setFieldSelections] = useState<Record<string, boolean>>({});
-  const [commentsLimit, setCommentsLimit] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const { fetchMetadata } = usePostMetadata();
@@ -127,6 +128,7 @@ export function AccidentDataExtractor({
     legal_viability: 'Viabilidade Jurídica',
     visit_city: 'Cidade',
     visit_state: 'Estado',
+    news_link: 'Link da Notícia',
   };
 
   const compareFields = (): FieldComparisonResult[] => {
@@ -135,7 +137,7 @@ export function AccidentDataExtractor({
     const fields: (keyof ExtractedAccidentData)[] = [
       'victim_name', 'victim_age', 'accident_date', 'accident_address',
       'damage_description', 'contractor_company', 'main_company', 'sector',
-      'case_type', 'liability_type', 'visit_city', 'visit_state', 'legal_viability'
+      'case_type', 'liability_type', 'visit_city', 'visit_state', 'legal_viability', 'news_link'
     ];
 
     return fields.map(key => {
@@ -241,30 +243,6 @@ export function AccidentDataExtractor({
     });
   };
 
-  // Merge insights from comments analysis (Apify) into extracted data, only filling blanks
-  const mergeCommentsAnalysis = (
-    base: ExtractedAccidentData,
-    analysis: any
-  ): ExtractedAccidentData => {
-    if (!analysis) return base;
-    const out: ExtractedAccidentData = { ...base };
-    const v = analysis.victim_info || {};
-    const a = analysis.accident_info || {};
-    if (!out.victim_name && v.name) out.victim_name = v.name;
-    if ((out.victim_age == null) && v.age) {
-      const n = parseInt(String(v.age).replace(/\D/g, ''), 10);
-      if (!isNaN(n)) out.victim_age = n;
-    }
-    if (!out.damage_description && v.condition) out.damage_description = v.condition;
-    if (!out.accident_date && a.date) out.accident_date = a.date;
-    if (!out.accident_address && a.location) out.accident_address = a.location;
-    if (!out.visit_city && a.location) out.visit_city = String(a.location).split(',')[0]?.trim() || a.location;
-    if (!out.visit_state && a.state) out.visit_state = a.state;
-    if (!out.main_company && a.company) out.main_company = a.company;
-    if (!out.legal_viability && a.description) out.legal_viability = a.description;
-    return out;
-  };
-
   const handleExtract = async () => {
     setIsExtracting(true);
     setExtractedData(null);
@@ -286,34 +264,8 @@ export function AccidentDataExtractor({
           return;
         }
 
-        // 2) Optionally fetch comments via Apify (we will pass them as text to the accident extractor)
-        let commentsBlock = '';
-        let commentsAnalysis: any = null;
-        if (commentsLimit && commentsLimit > 0) {
-          try {
-            toast.info(`Buscando até ${commentsLimit} comentários via Apify...`);
-            const { data: cmtData, error: cmtError } = await cloudFunctions.invoke('fetch-post-comments', {
-              body: { postUrl: trimmedUrl, maxComments: commentsLimit, analyzeWithAI: true },
-            });
-            if (cmtError) {
-              console.error('fetch-post-comments error:', cmtError);
-              toast.warning('Não foi possível buscar comentários — seguindo só com a legenda');
-            } else if (cmtData?.success && Array.isArray(cmtData.comments) && cmtData.comments.length > 0) {
-              commentsAnalysis = cmtData.analysis || null;
-              const lines = cmtData.comments
-                .slice(0, Math.min(cmtData.comments.length, 100))
-                .map((c: any, i: number) => `[${i + 1}] @${c.ownerUsername || c.username || 'anon'}: ${c.text || ''}`)
-                .join('\n');
-              commentsBlock = `\n\n--- COMENTÁRIOS DO POST (${cmtData.total || cmtData.comments.length}) ---\n${lines}`;
-              toast.success(`${cmtData.total || cmtData.comments.length} comentário(s) coletado(s)`);
-            }
-          } catch (cmtErr) {
-            console.error('Comments fetch failed:', cmtErr);
-          }
-        }
-
-        // 3) Send caption (+ comments) to extract-accident-data as plain text — uses the correct schema
-        const analysisText = `URL do post: ${trimmedUrl}\n\nLEGENDA:\n${caption}${commentsBlock}`;
+        // 2) Send caption to extract-accident-data as plain text — uses the correct accident schema
+        const analysisText = `URL do post: ${trimmedUrl}\n\nLEGENDA:\n${caption}`;
         const { data, error } = await cloudFunctions.invoke('extract-accident-data', {
           body: { content: analysisText, type: 'text' },
         });
@@ -328,12 +280,11 @@ export function AccidentDataExtractor({
           return;
         }
 
-        // 4) Merge any extra hints from comments analysis (only fills blanks)
-        let merged: ExtractedAccidentData = data.data || {};
-        if (commentsAnalysis) {
-          merged = mergeCommentsAnalysis(merged, commentsAnalysis);
-        }
-
+        // 3) Preserve the source URL so the lead form receives the news/social link
+        const merged: ExtractedAccidentData = {
+          ...(data.data || {}),
+          news_link: trimmedUrl,
+        };
         setExtractedData(merged);
         toast.success('Dados extraídos com sucesso!');
         return;
@@ -424,7 +375,10 @@ export function AccidentDataExtractor({
         return;
       }
 
-      setExtractedData(data.data);
+      setExtractedData({
+        ...(data.data || {}),
+        news_link: activeTab === 'link' ? urlInput.trim() : data.data?.news_link,
+      });
       toast.success('Dados extraídos com sucesso!');
     } catch (err) {
       console.error('Error:', err);
@@ -460,7 +414,6 @@ export function AccidentDataExtractor({
     setUploadedImage(null);
     setActiveTab('link');
     setFieldSelections({});
-    setCommentsLimit(0);
   };
 
   const handleClose = () => {
@@ -628,30 +581,10 @@ export function AccidentDataExtractor({
               </div>
 
               {urlInput.trim() && isSocialUrl(urlInput) && (
-                <div className="rounded-lg border border-dashed p-3 space-y-2 bg-muted/30">
-                  <label className="text-sm font-medium flex items-center gap-2">
-                    <FileText className="h-4 w-4" />
-                    Buscar comentários do post (opcional)
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min={0}
-                      max={500}
-                      step={10}
-                      placeholder="0 = não buscar"
-                      value={commentsLimit || ''}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value, 10);
-                        if (isNaN(v) || v <= 0) setCommentsLimit(0);
-                        else setCommentsLimit(Math.min(500, Math.max(10, v)));
-                      }}
-                      className="w-32"
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      Quantidade (10–500). A IA analisa os comentários para identificar pontes (familiares, testemunhas) e complementar dados da vítima.
-                    </span>
-                  </div>
+                <div className="rounded-lg border border-dashed p-3 bg-muted/30">
+                  <p className="text-xs text-muted-foreground">
+                    Para deixar esse fluxo rápido no Adicionar Lead, aqui eu extraio só a legenda do post e preservo o link da publicação no campo <strong>Link da Notícia</strong>.
+                  </p>
                 </div>
               )}
             </TabsContent>
