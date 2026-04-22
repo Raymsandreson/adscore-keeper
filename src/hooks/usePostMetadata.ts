@@ -16,6 +16,22 @@ interface PostMetadataCache {
 
 // Global cache to avoid repeated fetches
 const metadataCache: PostMetadataCache = {};
+const pendingMetadataRequests: Record<string, Promise<PostMetadata | null>> = {};
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    promise
+      .then((value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
 
 // Helper to decode HTML entities in the browser
 function decodeHtmlEntities(text: string): string {
@@ -46,47 +62,56 @@ export function usePostMetadata() {
     if (metadataCache[normalizedUrl] !== undefined) {
       return metadataCache[normalizedUrl];
     }
+
+    if (pendingMetadataRequests[normalizedUrl]) {
+      return pendingMetadataRequests[normalizedUrl];
+    }
     
     setIsLoading(true);
     setError(null);
-    
-    try {
-      const { data, error: fnError } = await cloudFunctions.invoke('fetch-post-metadata', {
-        body: { postUrl: normalizedUrl },
-      });
-      
-      if (fnError) throw fnError;
-      
-      if (data?.success && data?.metadata) {
-        // Decode HTML entities in the browser
-        const rawCaption = decodeHtmlEntities(data.metadata.caption || '');
-        const cleanedCaption = cleanCaption(rawCaption);
+
+    const requestPromise = (async () => {
+      try {
+        const { data, error: fnError } = await withTimeout(
+          cloudFunctions.invoke('fetch-post-metadata', {
+            body: { postUrl: normalizedUrl },
+          }),
+          7000,
+          'Tempo esgotado ao buscar metadados do post'
+        );
         
-        const metadata: PostMetadata = {
-          caption: cleanedCaption,
-          thumbnailUrl: decodeHtmlEntities(data.metadata.thumbnailUrl || '') || null,
-          ownerUsername: data.metadata.ownerUsername || '',
-          mediaType: data.metadata.mediaType || 'image',
-          html: data.metadata.html,
-        };
+        if (fnError) throw fnError;
         
-        // Cache the result
-        metadataCache[normalizedUrl] = metadata;
-        return metadata;
+        if (data?.success && data?.metadata) {
+          const rawCaption = decodeHtmlEntities(data.metadata.caption || '');
+          const cleanedCaption = cleanCaption(rawCaption);
+          
+          const metadata: PostMetadata = {
+            caption: cleanedCaption,
+            thumbnailUrl: decodeHtmlEntities(data.metadata.thumbnailUrl || '') || null,
+            ownerUsername: data.metadata.ownerUsername || '',
+            mediaType: data.metadata.mediaType || 'image',
+            html: data.metadata.html,
+          };
+          
+          metadataCache[normalizedUrl] = metadata;
+          return metadata;
+        }
+        
+        metadataCache[normalizedUrl] = null;
+        return null;
+      } catch (err) {
+        console.error('Error fetching post metadata:', err);
+        setError(err instanceof Error ? err.message : 'Erro ao buscar metadados');
+        return null;
+      } finally {
+        delete pendingMetadataRequests[normalizedUrl];
+        setIsLoading(false);
       }
-      
-      // Cache null result to avoid repeated fetches
-      metadataCache[normalizedUrl] = null;
-      return null;
-      
-    } catch (err) {
-      console.error('Error fetching post metadata:', err);
-      setError(err instanceof Error ? err.message : 'Erro ao buscar metadados');
-      metadataCache[normalizedUrl] = null;
-      return null;
-    } finally {
-      setIsLoading(false);
-    }
+    })();
+
+    pendingMetadataRequests[normalizedUrl] = requestPromise;
+    return requestPromise;
   }, []);
 
   const getCachedMetadata = useCallback((postUrl: string): PostMetadata | null => {
