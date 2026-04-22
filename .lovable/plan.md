@@ -1,82 +1,68 @@
 
 
-# Plano: Corrigir cadastro de lead lento + 3 bugs do diálogo
+## Sincronização de participantes + seleção de contatos do lead ao fechar
 
-## Diagnóstico (com evidência)
+### O que muda em relação ao plano anterior
 
-**1. Lentidão ao abrir e clicar no diálogo**
-Console mostra refetch em loop:
-- `📋 Kanban boards loaded: 16` — **4x** seguidas (hook sem cache, chamado por múltiplos componentes)
-- `✅ Leads carregados: 2338 (3 página(s))` — **3x**, intercalado com `🔄 Realtime: atualizando leads...`
-Cada ciclo baixa 2338 leads × ~65 colunas. O realtime dispara a cada UPDATE e o próprio refetch causa novo evento → loop. O diálogo não é lento por culpa própria; ele herda uma página travada.
+Mantém tudo que já estava planejado para `rename-whatsapp-group` (sincronizar instâncias open/closed) e **adiciona** uma etapa interativa antes da renomeação: perguntar ao usuário quais **contatos do lead** devem ser adicionados ao grupo e marcados como `client` na tabela `contacts`.
 
-**2. "Link da Notícia" salvo no Jurídico em vez do Básico**
-Em `src/components/leads/AccidentLeadForm.tsx`:
-- Linha 268-275 (aba **Básico**): label "Link da Notícia" mas ligado a `formData.group_link` (placeholder `chat.whatsapp.com`). Esse é o **link do grupo do WhatsApp**, rotulado errado.
-- Linha 541-548 (aba **Jurídico**): label "Link da Notícia" ligado a `formData.news_link` — esse é o campo correto.
-Resultado: usuário digita o link da notícia em Básico e ele vai pra coluna `group_link` do banco. O `news_link` real só pode ser preenchido na aba Jurídico.
+### Fluxo novo ao fechar lead
 
-**3. Nome do lead não segue o padrão do funil**
-`UnifiedKanbanManager.handleAddLead` (linha 322-360) salva `lead_name` cru, sem aplicar prefixo + sequence do board. Padrão correto existe em `ImportFromSocialLinkDialog.tsx:478` usando `groupSettings.group_name_prefix` + `current_sequence` da tabela `kanban_boards`. Está faltando aqui.
+1. Usuário muda lead para `closed` (via UI normal de fechamento).
+2. **Antes** de chamar `rename-whatsapp-group`, abrir um diálogo `CloseLeadGroupDialog`:
+   - Lista todos os contatos vinculados ao lead (via `contact_leads` join `contacts`)
+   - Cada contato tem checkbox "Adicionar ao grupo" + checkbox "Marcar como cliente"
+   - Padrão: ambos marcados para todos
+   - Mostra também resumo do que vai acontecer com instâncias (X entram, Y saem)
+   - Botões: "Confirmar e fechar" / "Cancelar"
+3. Ao confirmar, chama `rename-whatsapp-group` passando `contacts_to_add: [{phone, mark_as_client}]` no body.
 
-**4. Lista de funis não aparece para selecionar**
-O diálogo não tem dropdown de board. Usa `selectedBoardId` herdado da página. Se o usuário abre o "Adicionar Lead" sem ter um board pré-selecionado, ou quer mover pra outro funil, não consegue.
+### Mudanças técnicas
 
----
+**1. `supabase/functions/rename-whatsapp-group/index.ts`** (acumula com plano anterior)
+- Aceitar novo payload opcional `contacts_to_add: Array<{phone, mark_as_client}>`
+- Após sincronizar instâncias:
+  - Para cada contato: chamar `${baseUrl}/group/participants` com `action:'add'` e `phone@s.whatsapp.net`
+  - Se `mark_as_client = true`: `UPDATE contacts SET classification='client' WHERE id = X`
+- Soft fail por contato (loga e continua se um número não puder ser adicionado)
 
-## O que vai mudar
+**2. Novo componente `src/components/leads/CloseLeadGroupDialog.tsx`**
+- Props: `leadId`, `boardId`, `open`, `onClose`, `onConfirm(payload)`
+- Query 1: `contacts` vinculados ao lead via `contact_leads`
+- Query 2: `board_group_instances` do board, agrupados por `applies_to` para mostrar preview
+- Renderiza tabela: contato | telefone | "Adicionar ao grupo" | "Marcar como cliente"
+- Footer mostra: "X instâncias entrarão, Y sairão, Z contatos serão adicionados"
 
-### Bug #2 — Renomear o campo da aba Básico
-- Em `AccidentLeadForm.tsx` linha 269, trocar label de "Link da Notícia" para **"Link do Grupo (WhatsApp)"**
-- Manter o binding em `group_link` (já está correto semanticamente)
-- **Adicionar** na aba Básico um campo novo "Link da Notícia" ligado a `news_link` (col-span-2, abaixo do grupo), pra usuário não precisar ir até Jurídico
-- **Manter** o campo "Link da Notícia" da aba Jurídico funcionando (mesma fonte `news_link`) — assim os dois espelham o mesmo dado
+**3. Integração na UI de fechamento**
+- Localizar onde hoje o lead vira `closed` (provavelmente `LeadEditDialog` ou `UnifiedKanbanManager` no drag para última stage)
+- Interceptar a transição: abrir `CloseLeadGroupDialog` antes de gravar `lead_status='closed'`
+- Só após confirmação: gravar status + invocar `rename-whatsapp-group` com payload de contatos
 
-### Bug #3 — Nome seguindo o funil
-Em `UnifiedKanbanManager.handleAddLead`:
-- Antes do insert, buscar `kanban_boards` do `selectedBoardId` pegando `group_name_prefix` e `current_sequence`
-- Se houver prefixo, montar: `${prefix} ${sequence + 1} | ${nome digitado pelo usuário}`
-- Após insert bem-sucedido, fazer `UPDATE kanban_boards SET current_sequence = sequence + 1`
-- Se o board não tem prefixo configurado, manter o nome cru (comportamento atual)
+**4. Trigger `auto_classify_contacts_on_lead_close`**
+- Já existe e marca **todos** contatos do grupo como `client` automaticamente
+- Conflito com a nova UX (usuário pode querer marcar só alguns)
+- Solução: manter trigger como fallback, mas a edge function processa a lista explícita primeiro. Se `contacts_to_add` veio com `mark_as_client=false` para algum contato, o trigger ainda assim sobrescreve.
+- **Decisão**: alterar o trigger para só marcar contatos que **não estão** em `contact_leads` do lead (pega só "extras" do grupo), deixando os contatos vinculados sob controle do usuário via dialog.
 
-### Bug #4 — Picker de funil no diálogo
-Em `UnifiedKanbanManager` dentro do `<Dialog>` "Adicionar Lead" (linha 772):
-- Adicionar acima do `AccidentLeadForm` um `<Select>` "Funil de Vendas" listando todos os boards de `boards`
-- Default = `selectedBoardId` atual
-- Estado local `selectedBoardForNewLead`, usado no `handleAddLead` em vez de `selectedBoardId` direto
-- Validação: se vazio, erro "Selecione um funil"
+### O que NÃO muda
 
-### Bug #1 — Reduzir refetch em loop
-Duas frentes mínimas (sem refatorar tudo):
-- **`useKanbanBoards`**: introduzir cache via React Query (key `['kanban-boards']`, `staleTime: 5min`) ou singleton no módulo. Hoje cada componente que chama o hook dispara fetch novo — visto pelos 4 logs idênticos consecutivos.
-- **`useLeads` realtime**: o handler do canal está chamando `fetchLeads()` cheio em vez de atualizar localmente o registro mudado. Trocar por: ao receber `UPDATE`, fazer merge do payload no estado local; ao receber `INSERT`, dar `unshift`; ao receber `DELETE`, filter. Refetch completo só no mount inicial. Isso elimina o ciclo "realtime → fetch 2338 → trigger realtime → fetch 2338".
+- Schema de `board_group_instances` (coluna `applies_to` já existe)
+- UI de configuração de instâncias por status (`BoardGroupInstancesConfig.tsx`)
+- Lógica de criação de grupo (`create-whatsapp-group`)
+- Lógica de nome do grupo
+- Fluxo de fechamento que **não passa** por mudança de status (ex: criação direta de caso) — o trigger `auto_close_lead_on_case_creation` segue como está
 
----
+### Verificação pós-deploy
 
-## Não vou mexer em
+1. Lead aberto com 3 contatos vinculados → fechar → dialog aparece com 3 linhas marcadas
+2. Desmarcar 1 "adicionar ao grupo" e 1 "marcar como cliente" → confirmar
+3. Conferir no grupo: só 2 contatos novos foram adicionados
+4. Conferir `contacts.classification`: só os marcados viraram `client`
+5. Conferir instâncias: open saiu, closed entrou (sem regressão do plano anterior)
 
-- `LeadEditDialog`, `LeadManager.tsx` (diálogo diferente, sem o bug do screenshot)
-- `CreateLeadFromSearchDialog`, `ImportFromSocialLinkDialog` (fluxos próprios, não relatados)
-- Schema do banco (`group_link` e `news_link` já existem corretos)
-- Política de realtime do Supabase
-- Permissões/RLS
+### Risco e rollback
 
----
-
-## Detalhes técnicos
-
-**Arquivos editados:**
-1. `src/components/leads/AccidentLeadForm.tsx` — renomear label linha 269; adicionar campo `news_link` na aba Básico
-2. `src/components/kanban/UnifiedKanbanManager.tsx` — adicionar Select de board no Dialog (~linha 776); refatorar `handleAddLead` (~linha 322) para aplicar prefixo+sequence e usar `selectedBoardForNewLead`
-3. `src/hooks/useKanbanBoards.ts` — migrar para `useQuery` com `staleTime`
-4. `src/hooks/useLeads.ts` (ou onde está o realtime de leads) — trocar `fetchLeads()` por merge incremental no handler do canal
-
-**Validação após implementar:**
-- Cadastrar lead em board com prefixo configurado → nome final começa com `Prefixo N |`
-- Cadastrar lead, conferir no banco que `news_link` foi populado quando preenchido em Básico
-- Mudar funil no Select e confirmar que o lead foi salvo no board escolhido (não no `selectedBoardId`)
-- Console: ver `📋 Kanban boards loaded` aparecer **1x** por carga de página, não 4x
-- Console: editar 1 lead e confirmar que não aparecem mais `✅ Leads carregados: 2338` em sequência
-
-**Risco:** mudar handler de realtime mexe num caminho quente. Vou manter um fallback de `fetchLeads()` em caso de evento sem `payload.new` válido, e versionar a função antiga como `_legacy` por 24h conforme prática do projeto.
+- Trigger `auto_classify_contacts_on_lead_close` alterado → backup do código atual em comentário no migration; reverter via novo migration restaura comportamento original
+- `rename-whatsapp-group` aceita payload novo de forma **opcional** → chamadas antigas (sem `contacts_to_add`) continuam funcionando idênticas
+- Dialog é uma camada nova; se der erro pode ser bypassado deixando fluxo direto temporariamente
 
