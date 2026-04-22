@@ -260,9 +260,16 @@ export function AccidentDataExtractor({
     });
   };
 
+  const advanceStep = (step: number, label: string) => {
+    // Defer to next frame so React paints the progress before heavy work continues
+    setProgressStep(step);
+    setProgressLabel(label);
+  };
+
   const handleExtract = async () => {
     setIsExtracting(true);
     setExtractedData(null);
+    advanceStep(1, 'Detectando origem do conteúdo...');
 
     try {
       // Special path: social-media URLs (Instagram/Facebook/etc.) — Firecrawl gets blocked (403),
@@ -272,6 +279,7 @@ export function AccidentDataExtractor({
         const trimmedUrl = urlInput.trim();
 
         // 1) Fetch caption via Apify
+        advanceStep(2, 'Buscando metadados do post via Apify...');
         toast.info('Detectado link de rede social — buscando legenda via Apify...');
         const metadata = await fetchMetadata(trimmedUrl);
         const caption = metadata?.caption?.trim() || '';
@@ -282,6 +290,7 @@ export function AccidentDataExtractor({
         }
 
         // 2) Send caption to extract-accident-data as plain text — uses the correct accident schema
+        advanceStep(3, 'Analisando conteúdo com IA...');
         const analysisText = `URL do post: ${trimmedUrl}\n\nLEGENDA:\n${caption}`;
         const { data, error } = await cloudFunctions.invoke('extract-accident-data', {
           body: { content: analysisText, type: 'text' },
@@ -303,6 +312,7 @@ export function AccidentDataExtractor({
           news_link: trimmedUrl,
         };
         setExtractedData(merged);
+        advanceStep(4, 'Revisão dos dados extraídos');
         toast.success('Dados extraídos com sucesso!');
         return;
       }
@@ -315,11 +325,13 @@ export function AccidentDataExtractor({
             toast.error('Cole o link da notícia');
             return;
           }
+          advanceStep(2, 'Acessando página da notícia...');
           requestBody = { content: urlInput.trim(), type: 'url', url: urlInput.trim() };
           break;
 
         case 'document':
           if (uploadedFile) {
+            advanceStep(2, 'Lendo arquivo enviado...');
             // Read file and send as base64
             const base64Content = await fileToBase64(uploadedFile);
             requestBody = { 
@@ -328,6 +340,7 @@ export function AccidentDataExtractor({
               mimeType: uploadedFile.type,
             };
           } else {
+            advanceStep(2, 'Preparando texto colado...');
             const sanitizedText = documentText.replace(/\u0000/g, '').trim();
             if (!sanitizedText) {
               toast.error('Cole o texto ou faça upload de um arquivo');
@@ -349,6 +362,7 @@ export function AccidentDataExtractor({
             toast.error('Faça upload de uma imagem');
             return;
           }
+          advanceStep(2, 'Preparando imagem para OCR...');
           const imageBase64 = await fileToBase64(uploadedImage);
           requestBody = { 
             content: imageBase64, 
@@ -362,6 +376,7 @@ export function AccidentDataExtractor({
           return;
       }
 
+      advanceStep(3, 'Analisando conteúdo com IA...');
       const { data, error } = await cloudFunctions.invoke('extract-accident-data', {
         body: requestBody,
       });
@@ -396,6 +411,7 @@ export function AccidentDataExtractor({
         ...(data.data || {}),
         news_link: activeTab === 'link' ? urlInput.trim() : data.data?.news_link,
       });
+      advanceStep(4, 'Revisão dos dados extraídos');
       toast.success('Dados extraídos com sucesso!');
     } catch (err) {
       console.error('Error:', err);
