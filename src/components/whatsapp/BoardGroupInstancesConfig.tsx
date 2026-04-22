@@ -198,7 +198,7 @@ export function BoardGroupInstancesConfig() {
   const fetchLinked = async () => {
     const { data } = await (supabase as any)
       .from('board_group_instances')
-      .select('instance_id, role_title, role_description')
+      .select('instance_id, role_title, role_description, applies_to')
       .eq('board_id', selectedBoard);
     setLinkedInstances((data || []).map((d: any) => d.instance_id));
     const configs: Record<string, InstanceConfig> = {};
@@ -206,6 +206,7 @@ export function BoardGroupInstancesConfig() {
       configs[d.instance_id] = {
         role_title: d.role_title || '',
         role_description: d.role_description || '',
+        applies_to: (d.applies_to as AppliesTo) || 'both',
       };
     });
     setInstanceConfigs(configs);
@@ -280,8 +281,12 @@ export function BoardGroupInstancesConfig() {
       } else {
         await (supabase as any)
           .from('board_group_instances')
-          .insert({ board_id: selectedBoard, instance_id: instanceId });
+          .insert({ board_id: selectedBoard, instance_id: instanceId, applies_to: 'both' });
         setLinkedInstances(prev => [...prev, instanceId]);
+        setInstanceConfigs(prev => ({
+          ...prev,
+          [instanceId]: { role_title: '', role_description: '', applies_to: 'both' },
+        }));
       }
       toast.success('Configuração atualizada');
     } catch (e: any) {
@@ -294,8 +299,30 @@ export function BoardGroupInstancesConfig() {
   const updateInstanceConfig = (instanceId: string, field: keyof InstanceConfig, value: string) => {
     setInstanceConfigs(prev => ({
       ...prev,
-      [instanceId]: { ...(prev[instanceId] || { role_title: '', role_description: '' }), [field]: value },
+      [instanceId]: {
+        ...(prev[instanceId] || { role_title: '', role_description: '', applies_to: 'both' as AppliesTo }),
+        [field]: value,
+      },
     }));
+  };
+
+  const updateInstanceAppliesTo = async (instanceId: string, value: AppliesTo) => {
+    setInstanceConfigs(prev => ({
+      ...prev,
+      [instanceId]: {
+        ...(prev[instanceId] || { role_title: '', role_description: '', applies_to: 'both' as AppliesTo }),
+        applies_to: value,
+      },
+    }));
+    try {
+      await (supabase as any)
+        .from('board_group_instances')
+        .update({ applies_to: value })
+        .eq('board_id', selectedBoard)
+        .eq('instance_id', instanceId);
+    } catch (e) {
+      toast.error('Erro ao atualizar regra');
+    }
   };
 
   const saveSettings = async () => {

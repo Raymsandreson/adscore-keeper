@@ -506,12 +506,14 @@ Deno.serve(async (req) => {
     }
 
     // Get configured instances for this board with roles
+    // Filter by applies_to: lead is being created/group is being created -> open or both
     let boardInstances: any[] = []
     if (board_id) {
       const { data: bgi } = await supabase
         .from('board_group_instances')
-        .select('instance_id, role_title, role_description')
+        .select('instance_id, role_title, role_description, applies_to')
         .eq('board_id', board_id)
+        .in('applies_to', ['both', 'open'])
 
       if (bgi && bgi.length > 0) {
         const instanceIds = bgi.map((b: any) => b.instance_id)
