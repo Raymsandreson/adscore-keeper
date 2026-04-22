@@ -121,6 +121,32 @@ interface FieldComparisonResult {
   selected: boolean;
 }
 
+interface CommentsAnalysis {
+  victim_info?: {
+    name?: string | null;
+    age?: string | number | null;
+    profession?: string | null;
+    condition?: string | null;
+  };
+  accident_info?: {
+    date?: string | null;
+    location?: string | null;
+    state?: string | null;
+    description?: string | null;
+    company?: string | null;
+  };
+  potential_contacts?: Array<{
+    username?: string | null;
+    type?: string | null;
+    relationship?: string | null;
+    info?: string | null;
+    phone?: string | null;
+  }>;
+  additional_details?: string | null;
+  sentiment?: string | null;
+  key_comments?: string[] | null;
+}
+
 export function AccidentDataExtractor({
   open,
   onOpenChange,
@@ -135,8 +161,12 @@ export function AccidentDataExtractor({
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
   const [fieldSelections, setFieldSelections] = useState<Record<string, boolean>>({});
-  const [progressStep, setProgressStep] = useState<number>(0); // 0=idle, 1=detect, 2=metadata, 3=ai, 4=review
+  const [progressStep, setProgressStep] = useState<number>(0); // 0=idle, 1=detect, 2=metadata, 3=ai, 4=comments, 5=review
   const [progressLabel, setProgressLabel] = useState<string>('');
+  const [isFetchingComments, setIsFetchingComments] = useState(false);
+  const [commentsCount, setCommentsCount] = useState<number | null>(null);
+  const [commentsAnalysis, setCommentsAnalysis] = useState<CommentsAnalysis | null>(null);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const { fetchMetadata, getCachedMetadata } = usePostMetadata();
@@ -286,6 +316,63 @@ export function AccidentDataExtractor({
     setProgressStep(step);
     setProgressLabel(label);
   };
+
+  const mergeCommentsIntoData = useCallback((baseData: ExtractedAccidentData, analysis: CommentsAnalysis | null) => {
+    if (!analysis) return baseData;
+
+    const nextData: ExtractedAccidentData = { ...baseData };
+    const ageRaw = analysis.victim_info?.age;
+    const parsedAge = ageRaw == null
+      ? null
+      : Number.parseInt(String(ageRaw).replace(/\D+/g, ''), 10);
+
+    if (!nextData.victim_name && analysis.victim_info?.name) nextData.victim_name = analysis.victim_info.name;
+    if ((nextData.victim_age == null) && Number.isFinite(parsedAge) && parsedAge > 0) nextData.victim_age = parsedAge;
+    if (!nextData.accident_date && analysis.accident_info?.date) nextData.accident_date = analysis.accident_info.date;
+    if (!nextData.visit_city && analysis.accident_info?.location) nextData.visit_city = analysis.accident_info.location;
+    if (!nextData.visit_state && analysis.accident_info?.state) nextData.visit_state = analysis.accident_info.state;
+    if (!nextData.main_company && analysis.accident_info?.company) nextData.main_company = analysis.accident_info.company;
+
+    const commentDescription = analysis.accident_info?.description || analysis.additional_details || null;
+    if (!nextData.damage_description && commentDescription) {
+      nextData.damage_description = commentDescription;
+    }
+
+    return nextData;
+  }, []);
+
+  const fetchCommentsInBackground = useCallback(async (postUrl: string, baseData: ExtractedAccidentData) => {
+    setIsFetchingComments(true);
+    setCommentsError(null);
+    setCommentsCount(null);
+    setCommentsAnalysis(null);
+    advanceStep(4, 'Buscando comentários com o mesmo actor...');
+
+    try {
+      await waitForPaint();
+      const { data, error } = await withClientTimeout(
+        cloudFunctions.invoke('fetch-post-comments', {
+          body: { postUrl, analyzeWithAI: true },
+        }),
+        18000,
+        'A busca de comentários demorou demais.'
+      );
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Não foi possível buscar comentários');
+
+      const analysis = (data.analysis || null) as CommentsAnalysis | null;
+      setCommentsCount(typeof data.total === 'number' ? data.total : 0);
+      setCommentsAnalysis(analysis);
+      setExtractedData((prev) => mergeCommentsIntoData(prev ?? baseData, analysis));
+    } catch (err) {
+      console.error('Error fetching post comments:', err);
+      setCommentsError(err instanceof Error ? err.message : 'Erro ao buscar comentários');
+    } finally {
+      setIsFetchingComments(false);
+      advanceStep(5, 'Revisão dos dados extraídos');
+    }
+  }, [mergeCommentsIntoData]);
 
   useEffect(() => {
     if (!open || !urlIsSocial) return;
