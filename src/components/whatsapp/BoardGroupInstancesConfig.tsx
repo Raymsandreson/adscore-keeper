@@ -25,9 +25,12 @@ interface Board {
   product_service_id?: string | null;
 }
 
+type AppliesTo = 'both' | 'open' | 'closed';
+
 interface InstanceConfig {
   role_title: string;
   role_description: string;
+  applies_to: AppliesTo;
 }
 
 interface ProcessWorkflow {
@@ -195,7 +198,7 @@ export function BoardGroupInstancesConfig() {
   const fetchLinked = async () => {
     const { data } = await (supabase as any)
       .from('board_group_instances')
-      .select('instance_id, role_title, role_description')
+      .select('instance_id, role_title, role_description, applies_to')
       .eq('board_id', selectedBoard);
     setLinkedInstances((data || []).map((d: any) => d.instance_id));
     const configs: Record<string, InstanceConfig> = {};
@@ -203,6 +206,7 @@ export function BoardGroupInstancesConfig() {
       configs[d.instance_id] = {
         role_title: d.role_title || '',
         role_description: d.role_description || '',
+        applies_to: (d.applies_to as AppliesTo) || 'both',
       };
     });
     setInstanceConfigs(configs);
@@ -277,8 +281,12 @@ export function BoardGroupInstancesConfig() {
       } else {
         await (supabase as any)
           .from('board_group_instances')
-          .insert({ board_id: selectedBoard, instance_id: instanceId });
+          .insert({ board_id: selectedBoard, instance_id: instanceId, applies_to: 'both' });
         setLinkedInstances(prev => [...prev, instanceId]);
+        setInstanceConfigs(prev => ({
+          ...prev,
+          [instanceId]: { role_title: '', role_description: '', applies_to: 'both' },
+        }));
       }
       toast.success('Configuração atualizada');
     } catch (e: any) {
@@ -291,8 +299,30 @@ export function BoardGroupInstancesConfig() {
   const updateInstanceConfig = (instanceId: string, field: keyof InstanceConfig, value: string) => {
     setInstanceConfigs(prev => ({
       ...prev,
-      [instanceId]: { ...(prev[instanceId] || { role_title: '', role_description: '' }), [field]: value },
+      [instanceId]: {
+        ...(prev[instanceId] || { role_title: '', role_description: '', applies_to: 'both' as AppliesTo }),
+        [field]: value,
+      },
     }));
+  };
+
+  const updateInstanceAppliesTo = async (instanceId: string, value: AppliesTo) => {
+    setInstanceConfigs(prev => ({
+      ...prev,
+      [instanceId]: {
+        ...(prev[instanceId] || { role_title: '', role_description: '', applies_to: 'both' as AppliesTo }),
+        applies_to: value,
+      },
+    }));
+    try {
+      await (supabase as any)
+        .from('board_group_instances')
+        .update({ applies_to: value })
+        .eq('board_id', selectedBoard)
+        .eq('instance_id', instanceId);
+    } catch (e) {
+      toast.error('Erro ao atualizar regra');
+    }
   };
 
   const saveSettings = async () => {
@@ -1066,7 +1096,7 @@ export function BoardGroupInstancesConfig() {
             ) : (
               instances.map(inst => {
                 const isLinked = linkedInstances.includes(inst.id);
-                const config = instanceConfigs[inst.id] || { role_title: '', role_description: '' };
+                const config: InstanceConfig = instanceConfigs[inst.id] || { role_title: '', role_description: '', applies_to: 'both' };
                 return (
                   <div key={inst.id} className="rounded-lg border hover:bg-muted/50 transition-colors">
                     <label className="flex items-center gap-3 p-2.5 cursor-pointer">
@@ -1087,6 +1117,29 @@ export function BoardGroupInstancesConfig() {
                     </label>
                     {isLinked && (
                       <div className="px-2.5 pb-2.5 space-y-1.5 border-t pt-2 mx-2.5">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Entra em quais grupos?</Label>
+                          <div className="flex gap-1">
+                            {([
+                              { value: 'both', label: 'Ambos' },
+                              { value: 'open', label: 'Aberto' },
+                              { value: 'closed', label: 'Fechado' },
+                            ] as { value: AppliesTo; label: string }[]).map(opt => (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => updateInstanceAppliesTo(inst.id, opt.value)}
+                                className={`flex-1 h-6 text-[10px] rounded border transition-colors ${
+                                  config.applies_to === opt.value
+                                    ? 'bg-primary text-primary-foreground border-primary'
+                                    : 'bg-background hover:bg-muted border-border text-muted-foreground'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                         <Input
                           value={config.role_title}
                           onChange={e => updateInstanceConfig(inst.id, 'role_title', e.target.value)}
