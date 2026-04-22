@@ -1117,6 +1117,29 @@ export function BoardGroupInstancesConfig() {
                     </label>
                     {isLinked && (
                       <div className="px-2.5 pb-2.5 space-y-1.5 border-t pt-2 mx-2.5">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Entra em quais grupos?</Label>
+                          <div className="flex gap-1">
+                            {([
+                              { value: 'both', label: 'Ambos' },
+                              { value: 'open', label: 'Aberto' },
+                              { value: 'closed', label: 'Fechado' },
+                            ] as { value: AppliesTo; label: string }[]).map(opt => (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => updateInstanceAppliesTo(inst.id, opt.value)}
+                                className={`flex-1 h-6 text-[10px] rounded border transition-colors ${
+                                  config.applies_to === opt.value
+                                    ? 'bg-primary text-primary-foreground border-primary'
+                                    : 'bg-background hover:bg-muted border-border text-muted-foreground'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                         <Input
                           value={config.role_title}
                           onChange={e => updateInstanceConfig(inst.id, 'role_title', e.target.value)}
