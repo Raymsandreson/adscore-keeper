@@ -826,6 +826,25 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
             <DialogTitle>Adicionar Lead</DialogTitle>
           </DialogHeader>
 
+          <div className="mb-4">
+            <Label>Funil de Vendas *</Label>
+            <Select
+              value={selectedBoardForNewLead || selectedBoardId || ''}
+              onValueChange={(v) => setSelectedBoardForNewLead(v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um funil..." />
+              </SelectTrigger>
+              <SelectContent>
+                {boards.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <AccidentLeadForm
             formData={newLeadFormData}
             onChange={(data) => setNewLeadFormData(prev => ({ ...prev, ...data }))}
