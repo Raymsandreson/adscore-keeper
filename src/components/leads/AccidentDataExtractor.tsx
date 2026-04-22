@@ -619,7 +619,7 @@ export function AccidentDataExtractor({
                   onChange={(e) => setUrlInput(e.target.value)}
                 />
                 {urlInput.trim() && isSocialUrl(urlInput) ? (
-                  <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
+                  <p className="text-xs text-primary mt-1 flex items-center gap-1">
                     <Sparkles className="h-3 w-3" />
                     Detectado link de rede social — usaremos Apify (mesma rota do Importar Link Social)
                   </p>
