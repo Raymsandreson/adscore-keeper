@@ -114,6 +114,8 @@ export function AccidentDataExtractor({
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
   const [fieldSelections, setFieldSelections] = useState<Record<string, boolean>>({});
+  const [progressStep, setProgressStep] = useState<number>(0); // 0=idle, 1=detect, 2=metadata, 3=ai, 4=review
+  const [progressLabel, setProgressLabel] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const { fetchMetadata } = usePostMetadata();
