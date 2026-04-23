@@ -59,18 +59,19 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
       }
     }
 
+    let names: Record<string, { name: string; is_mandatory: boolean }> = {};
     if (data.length > 0) {
       const templateIds = [...new Set(data.map(d => d.checklist_template_id))];
       const { data: templates } = await supabase
         .from('checklist_templates')
         .select('id, name, is_mandatory')
         .in('id', templateIds);
-      const names: Record<string, { name: string; is_mandatory: boolean }> = {};
       (templates || []).forEach(t => { names[t.id] = { name: t.name, is_mandatory: t.is_mandatory }; });
       setTemplateNames(names);
     }
 
     setInstances(data);
+    funnelCache.set(cacheKey, { instances: data, templateNames: names });
     setLoading(false);
   };
 
