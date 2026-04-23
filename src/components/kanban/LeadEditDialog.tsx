@@ -788,6 +788,22 @@ ${scrapeData.content || ''}
           const firstStage = newBoard?.stages?.[0] as any;
           return firstStage?.id ? { status: firstStage.id } : {};
         })() : {}),
+        // Auto-move to closed/refused stage when outcome changes
+        ...(() => {
+          const targetBoardId = selectedBoardId || (currentLead as any).board_id;
+          const targetBoard = boards.find(b => b.id === targetBoardId);
+          const stages = (targetBoard?.stages as any[]) || [];
+          if (stages.length === 0) return {};
+          const currentStageId = (currentLead as any).status;
+          if (leadOutcome === 'closed') {
+            const closedId = findClosedStageId(stages);
+            if (closedId && closedId !== currentStageId) return { status: closedId };
+          } else if (leadOutcome === 'refused' || leadOutcome === 'inviavel') {
+            const refusedId = findRefusedStageId(stages);
+            if (refusedId && refusedId !== currentStageId) return { status: refusedId };
+          }
+          return {};
+        })(),
         expected_birth_date: normalizeDateInput(expectedBirthDate),
         became_client_date: leadOutcome === 'closed' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         classification_date: leadOutcome === 'refused' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
