@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -34,11 +34,22 @@ interface LeadCardChecklistsProps {
   stageId: string;
 }
 
-export function LeadCardChecklists({ leadId, boardId, stageId }: LeadCardChecklistsProps) {
+function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklistsProps) {
   const [instances, setInstances] = useState<ChecklistInstance[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
   const { logActivity } = useActivityLogger();
+
+  // DEV-only render counter (remove after perf validation)
+  const renderCountRef = useRef(0);
+  if (import.meta.env.DEV) {
+    renderCountRef.current += 1;
+    // Only log every 3rd render to reduce noise; flag suspicious >2
+    if (renderCountRef.current === 1 || renderCountRef.current % 3 === 0) {
+      // eslint-disable-next-line no-console
+      console.log(`[LeadCardChecklists ${leadId.slice(0, 8)}] render #${renderCountRef.current}`);
+    }
+  }
 
   const loadAndAutoCreate = useCallback(async () => {
     try {
@@ -283,3 +294,11 @@ export function LeadCardChecklists({ leadId, boardId, stageId }: LeadCardCheckli
     </div>
   );
 }
+
+// Memoized export — re-renders only when leadId/boardId/stageId actually change.
+// This is the main lever to stop the 500+ card cascade re-render on Realtime UPDATEs.
+export const LeadCardChecklists = memo(LeadCardChecklistsImpl, (prev, next) =>
+  prev.leadId === next.leadId &&
+  prev.boardId === next.boardId &&
+  prev.stageId === next.stageId
+);

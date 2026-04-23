@@ -243,7 +243,7 @@ export function DynamicKanbanBoard({
     return grouped;
   }, [activeLeads, board.stages]);
 
-  const getInitials = (name: string | null) => {
+  const getInitials = useCallback((name: string | null) => {
     if (!name) return '?';
     return name
       .split(' ')
@@ -251,18 +251,18 @@ export function DynamicKanbanBoard({
       .join('')
       .toUpperCase()
       .slice(0, 2);
-  };
+  }, []);
 
-  const getDaysInStage = (lead: Lead) => {
+  const getDaysInStage = useCallback((lead: Lead) => {
     return differenceInDays(new Date(), new Date(lead.updated_at));
-  };
+  }, []);
 
-  const isLeadStagnant = (lead: Lead, stageId: string) => {
+  const isLeadStagnant = useCallback((lead: Lead, stageId: string) => {
     const stage = board.stages.find(s => s.id === stageId);
     if (!stage?.stagnationDays) return false;
     const daysInStage = getDaysInStage(lead);
     return daysInStage >= stage.stagnationDays;
-  };
+  }, [board.stages, getDaysInStage]);
 
   // Calculate stagnant leads for the alert panel
   const stagnantLeads = useMemo(() => {
@@ -500,7 +500,12 @@ export function DynamicKanbanBoard({
                       stageLeads.map((lead) => {
                         const daysInStage = getDaysInStage(lead);
                         const isStagnant = isLeadStagnant(lead, stage.id);
-                        
+                        // DEV-only render counter — remove after perf validation
+                        if (import.meta.env.DEV) {
+                          // eslint-disable-next-line no-console
+                          console.count(`[LeadCard ${lead.id.slice(0, 8)}]`);
+                        }
+
                         return (
                           <ContextMenu key={lead.id}>
                             <ContextMenuTrigger asChild>
