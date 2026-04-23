@@ -755,14 +755,14 @@ export function WhatsAppInbox() {
         )}
 
         <div className="w-full md:w-auto md:ml-auto flex flex-wrap md:flex-nowrap gap-0.5 md:gap-1 items-center justify-end">
-          {disconnectedInstances.length > 0 && (
+          {relevantDisconnectedInstances.length > 0 && (
             <Button
               variant="destructive"
               size="sm"
               className="h-8"
               onClick={() => {
-                if (disconnectedInstances.length === 1) {
-                  const inst = disconnectedInstances[0];
+                if (relevantDisconnectedInstances.length === 1) {
+                  const inst = relevantDisconnectedInstances[0];
                   setReconnectInstance({ id: inst.id, name: inst.instance_name });
                   return;
                 }
@@ -877,14 +877,14 @@ export function WhatsAppInbox() {
         </div>
       </div>
 
-      {/* Reconnect Bar - always visible when offline */}
-      {disconnectedInstances.length > 0 && (
+      {/* Reconnect Bar - apenas para instância padrão do usuário */}
+      {relevantDisconnectedInstances.length > 0 && (
         <div className="flex items-center gap-2 px-4 py-2 border-b bg-destructive/10 shrink-0 animate-in slide-in-from-top">
           <WifiOff className="h-4 w-4 text-destructive flex-shrink-0" />
           <span className="text-sm font-medium text-destructive flex-1">
-            {disconnectedInstances.length === 1 
-              ? `${disconnectedInstances[0].instance_name} está offline`
-              : `${disconnectedInstances.length} instâncias offline`
+            {relevantDisconnectedInstances.length === 1 
+              ? `${relevantDisconnectedInstances[0].instance_name} está offline`
+              : `${relevantDisconnectedInstances.length} instâncias offline`
             }
           </span>
           <Button
@@ -892,8 +892,8 @@ export function WhatsAppInbox() {
             size="sm"
             className="h-7 text-xs"
             onClick={() => {
-              if (disconnectedInstances.length === 1) {
-                const inst = disconnectedInstances[0];
+              if (relevantDisconnectedInstances.length === 1) {
+                const inst = relevantDisconnectedInstances[0];
                 setReconnectInstance({ id: inst.id, name: inst.instance_name });
               } else {
                 setDismissedAlert(false);
@@ -925,8 +925,8 @@ export function WhatsAppInbox() {
         </div>
       )}
 
-      {/* Disconnection Alert Overlay */}
-      {disconnectedInstances.length > 0 && !dismissedAlert && (
+      {/* Disconnection Alert Overlay - apenas para instância padrão do usuário */}
+      {relevantDisconnectedInstances.length > 0 && !dismissedAlert && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm pointer-events-auto">
           <div className="relative bg-card border-2 border-destructive rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 text-center space-y-4 animate-in fade-in zoom-in-95">
             <Button
@@ -945,11 +945,11 @@ export function WhatsAppInbox() {
             </div>
 
             <h2 className="text-xl font-bold text-destructive">
-              {disconnectedInstances.length === 1 ? 'Instância Desconectada!' : `${disconnectedInstances.length} Instâncias Desconectadas!`}
+              {relevantDisconnectedInstances.length === 1 ? 'Instância Desconectada!' : `${relevantDisconnectedInstances.length} Instâncias Desconectadas!`}
             </h2>
 
             <div className="space-y-2">
-              {disconnectedInstances.map(inst => {
+              {relevantDisconnectedInstances.map(inst => {
                 const since = inst.disconnected_since;
                 const elapsedMs = since ? Date.now() - new Date(since).getTime() : 0;
                 const elapsedMin = Math.floor(elapsedMs / 60000);
