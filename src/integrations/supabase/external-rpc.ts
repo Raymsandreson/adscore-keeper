@@ -35,6 +35,16 @@ export async function getConversationSummaries(
   instanceNames: string[],
   daysBack: number = 30
 ): Promise<ConversationSummary[]> {
+  // Trace: detecta chamadas duplicadas/em rajada da RPC mais cara do Inbox
+  // (import dinâmico para evitar ciclo se um dia esse arquivo for usado fora do app)
+  try {
+    const { traceHook } = await import('@/utils/hookTracer');
+    traceHook('getConversationSummaries', {
+      instanceCount: instanceNames?.length ?? 0,
+      instances: instanceNames,
+      daysBack,
+    });
+  } catch {}
   if (!instanceNames || instanceNames.length === 0) return [];
 
   const callOne = async (name: string): Promise<ConversationSummary[]> => {
