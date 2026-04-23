@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText, Volume2, Sparkles, Send, Zap, Scale, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText, Volume2, Sparkles, Send, Zap, Scale, Plus, Trash2, Lock, Archive, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { OnboardingMeetingConfig } from './OnboardingMeetingConfig';
@@ -56,6 +57,9 @@ interface GroupSettings {
   audio_voice_id: string;
   auto_close_lead_on_sign: boolean;
   auto_create_group_on_sign: boolean;
+  post_sign_mode: 'group' | 'private';
+  auto_archive_on_sign: boolean;
+  processual_acolhedor_id: string;
   auto_create_process: boolean;
   process_nucleus_id: string;
   process_workflow_board_id: string;
@@ -145,6 +149,9 @@ export function BoardGroupInstancesConfig() {
     audio_voice_id: '',
     auto_close_lead_on_sign: false,
     auto_create_group_on_sign: false,
+    post_sign_mode: 'group',
+    auto_archive_on_sign: false,
+    processual_acolhedor_id: '',
     auto_create_process: false,
     process_nucleus_id: '',
     process_workflow_board_id: '',
@@ -235,6 +242,9 @@ export function BoardGroupInstancesConfig() {
         audio_voice_id: data.audio_voice_id || '',
         auto_close_lead_on_sign: data.auto_close_lead_on_sign || false,
         auto_create_group_on_sign: data.auto_create_group_on_sign || false,
+        post_sign_mode: (data.post_sign_mode as 'group' | 'private') || 'group',
+        auto_archive_on_sign: data.auto_archive_on_sign || false,
+        processual_acolhedor_id: data.processual_acolhedor_id || '',
         auto_create_process: data.auto_create_process || false,
         process_nucleus_id: data.process_nucleus_id || '',
         process_workflow_board_id: data.process_workflow_board_id || '',
@@ -255,6 +265,7 @@ export function BoardGroupInstancesConfig() {
         forward_document_types: [],
         send_audio_message: false, audio_voice_id: '',
         auto_close_lead_on_sign: false, auto_create_group_on_sign: false,
+        post_sign_mode: 'group', auto_archive_on_sign: false, processual_acolhedor_id: '',
         auto_create_process: false, process_nucleus_id: '', process_workflow_board_id: '',
         process_auto_activities: [], process_workflows: [],
         bridge_approach_prompt: '',
@@ -349,6 +360,9 @@ export function BoardGroupInstancesConfig() {
         audio_voice_id: settings.audio_voice_id || null,
         auto_close_lead_on_sign: settings.auto_close_lead_on_sign,
         auto_create_group_on_sign: settings.auto_create_group_on_sign,
+        post_sign_mode: settings.post_sign_mode,
+        auto_archive_on_sign: settings.auto_archive_on_sign,
+        processual_acolhedor_id: settings.processual_acolhedor_id || null,
         auto_create_process: settings.auto_create_process,
         process_nucleus_id: settings.process_nucleus_id || null,
         process_workflow_board_id: settings.process_workflow_board_id || null,
@@ -782,19 +796,98 @@ export function BoardGroupInstancesConfig() {
               </Label>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="auto_create_group_on_sign"
-                checked={settings.auto_create_group_on_sign}
-                onCheckedChange={(checked) => setSettings(prev => ({ ...prev, auto_create_group_on_sign: !!checked }))}
-              />
-              <Label htmlFor="auto_create_group_on_sign" className="text-xs cursor-pointer">
-                📱 Criar <strong>grupo WhatsApp</strong> automaticamente
-              </Label>
+            {/* Modo pós-assinatura: Grupo OU Privado (exclusivo) */}
+            <div className="space-y-2 pt-2 border-t border-border/50">
+              <Label className="text-xs font-medium">Modo de atendimento pós-assinatura</Label>
+              <RadioGroup
+                value={settings.post_sign_mode}
+                onValueChange={(value) => setSettings(prev => ({
+                  ...prev,
+                  post_sign_mode: value as 'group' | 'private',
+                  // Sincroniza o checkbox legado para o webhook continuar funcionando
+                  auto_create_group_on_sign: value === 'group',
+                }))}
+                className="space-y-2"
+              >
+                <div className="flex items-start gap-2 p-2 rounded-md border bg-background hover:bg-accent/30 cursor-pointer">
+                  <RadioGroupItem value="group" id="mode_group" className="mt-0.5" />
+                  <Label htmlFor="mode_group" className="text-xs cursor-pointer flex-1">
+                    <div className="flex items-center gap-1.5 font-medium">
+                      <Users className="h-3.5 w-3.5" />
+                      📱 Criar grupo WhatsApp
+                    </div>
+                    <p className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                      Cria um grupo com a equipe e envia mensagem inicial + documentos no grupo.
+                    </p>
+                  </Label>
+                </div>
+                <div className="flex items-start gap-2 p-2 rounded-md border bg-background hover:bg-accent/30 cursor-pointer">
+                  <RadioGroupItem value="private" id="mode_private" className="mt-0.5" />
+                  <Label htmlFor="mode_private" className="text-xs cursor-pointer flex-1">
+                    <div className="flex items-center gap-1.5 font-medium">
+                      <Lock className="h-3.5 w-3.5" />
+                      🔒 Continuar no privado (1:1)
+                    </div>
+                    <p className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                      Sem grupo. Mensagem inicial, documentos e atualizações vão direto no chat individual.
+                      Ideal pra leads que se assustam com grupos ou que respondem melhor 1:1.
+                    </p>
+                  </Label>
+                </div>
+              </RadioGroup>
             </div>
 
-            {settings.auto_create_group_on_sign && (
-              <p className="text-[10px] text-muted-foreground ml-6">
+            {/* Configurações específicas do modo Privado */}
+            {settings.post_sign_mode === 'private' && (
+              <div className="space-y-3 pl-3 border-l-2 border-primary/30 ml-1">
+                <div className="space-y-1.5">
+                  <Label htmlFor="processual_acolhedor" className="text-xs flex items-center gap-1.5">
+                    <UserCheck className="h-3.5 w-3.5" />
+                    Acolhedor processual (assume a conversa)
+                  </Label>
+                  <Select
+                    value={settings.processual_acolhedor_id}
+                    onValueChange={(value) => setSettings(prev => ({ ...prev, processual_acolhedor_id: value }))}
+                  >
+                    <SelectTrigger className="text-xs h-9">
+                      <SelectValue placeholder="Selecione o responsável processual..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {teamMembers.map(m => (
+                        <SelectItem key={m.user_id} value={m.user_id}>
+                          {m.full_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground">
+                    Esse usuário receberá o lead reatribuído após a assinatura. Equipe processual assume daqui.
+                  </p>
+                </div>
+
+                <div className="flex items-start gap-2 pt-1">
+                  <Checkbox
+                    id="auto_archive_on_sign"
+                    checked={settings.auto_archive_on_sign}
+                    onCheckedChange={(checked) => setSettings(prev => ({ ...prev, auto_archive_on_sign: !!checked }))}
+                    className="mt-0.5"
+                  />
+                  <Label htmlFor="auto_archive_on_sign" className="text-xs cursor-pointer flex-1">
+                    <div className="flex items-center gap-1.5 font-medium">
+                      <Archive className="h-3.5 w-3.5" />
+                      Arquivar conversa ao assinar
+                    </div>
+                    <p className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                      Arquiva no Inbox interno e também no WhatsApp (via API). A conversa sai da lista ativa
+                      mas continua acessível em "Arquivadas".
+                    </p>
+                  </Label>
+                </div>
+              </div>
+            )}
+
+            {settings.post_sign_mode === 'group' && (
+              <p className="text-[10px] text-muted-foreground">
                 ⚠️ Usará as configurações de grupo deste funil (instâncias, nome, mensagem, documentos).
               </p>
             )}
