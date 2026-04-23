@@ -1098,6 +1098,7 @@ ${scrapeData.content || ''}
           >
             {/* Basic Info Tab */}
             <TabsContent value="basic" className="space-y-4 mt-0">
+              {activeTab === 'basic' && (<>
               {/* Meta info */}
               {(() => {
                 const leadAny = lead as any;
