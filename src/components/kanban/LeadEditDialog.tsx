@@ -969,8 +969,12 @@ ${scrapeData.content || ''}
            ctwa_context: (currentLead as any).ctwa_context,
            campaign_id: (currentLead as any).campaign_id,
          }, 'inviavel');
-       } else if ((currentLead as any).became_client_date || (currentLead as any).inviavel_date) {
-         // Was closed/inviável, now reopened
+       } else if (
+         (currentLead as any).became_client_date ||
+         (currentLead as any).inviavel_date ||
+         ['closed', 'refused', 'inviavel'].includes((currentLead as any).lead_status)
+       ) {
+         // Was closed/refused/inviável, now reopened (or status drifted)
          await supabase.from('leads').update({ lead_status: 'active' } as any).eq('id', currentLead.id);
        }
 
