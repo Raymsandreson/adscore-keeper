@@ -49,12 +49,16 @@ interface LeadLinkedContactsProps {
   leadId: string;
 }
 
+// Module-level cache: instant render on re-open
+const contactsCache = new Map<string, { contacts: LinkedContact[]; callStats: Record<string, ContactCallStats> }>();
+
 export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
-  const [contacts, setContacts] = useState<LinkedContact[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cached = contactsCache.get(leadId);
+  const [contacts, setContacts] = useState<LinkedContact[]>(() => cached?.contacts || []);
+  const [loading, setLoading] = useState(() => !cached);
   const [selectedContact, setSelectedContact] = useState<any>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [callStats, setCallStats] = useState<Record<string, ContactCallStats>>({});
+  const [callStats, setCallStats] = useState<Record<string, ContactCallStats>>(() => cached?.callStats || {});
 
   // Search & link existing contact
   const [showSearch, setShowSearch] = useState(false);
