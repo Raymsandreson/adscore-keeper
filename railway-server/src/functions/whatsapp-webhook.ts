@@ -61,7 +61,7 @@ async function downloadAndStoreMedia(
       const respContentType = downloadResp.headers.get('content-type') || '';
 
       if (respContentType.includes('application/json')) {
-        const jsonData = await downloadResp.json();
+        const jsonData = await downloadResp.json() as any;
         console.log('downloadMediaMessage JSON response keys:', Object.keys(jsonData));
 
         if (jsonData.fileURL) {
@@ -112,7 +112,7 @@ async function downloadAndStoreMedia(
         });
         console.log('Fallback download response status:', fallbackResp.status);
         if (fallbackResp.ok) {
-          const fallbackData = await fallbackResp.json();
+          const fallbackData = await fallbackResp.json() as any;
           console.log('Fallback response keys:', Object.keys(fallbackData));
           if (typeof fallbackData.transcription === 'string' && fallbackData.transcription.trim()) {
             transcription = fallbackData.transcription.trim();
@@ -500,12 +500,14 @@ export const handler: RequestHandler = async (req, res) => {
       if (Object.keys(body).length === 0) {
         return res.json({ success: true, method: 'GET', message: 'Webhook active' });
       }
-      await supabase.from('webhook_logs').insert({
-        source: 'whatsapp', event_type: 'GET_' + (body.EventType || body.event || body.type || 'unknown'),
-        instance_name: body.instanceName || body.instance_name || null,
-        phone: (body.phone || body.from || '').replace(/\D/g, '').slice(0, 20),
-        direction: 'inbound', status: 'received_get', payload: body, processing_ms: Date.now() - startTime,
-      }).catch(() => {});
+      try {
+        await supabase.from('webhook_logs').insert({
+          source: 'whatsapp', event_type: 'GET_' + (body.EventType || body.event || body.type || 'unknown'),
+          instance_name: body.instanceName || body.instance_name || null,
+          phone: (body.phone || body.from || '').replace(/\D/g, '').slice(0, 20),
+          direction: 'inbound', status: 'received_get', payload: body, processing_ms: Date.now() - startTime,
+        });
+      } catch (_) { /* ignore log failures */ }
     } else {
       body = req.body;
     }

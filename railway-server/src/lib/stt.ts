@@ -49,7 +49,7 @@ export async function transcribeAudio(
         );
 
         if (res.ok) {
-          const data = await res.json();
+          const data = await res.json() as any;
           const text = data.text?.trim();
           if (text) {
             console.log(`ElevenLabs STT OK (${text.length} chars): ${text.substring(0, 100)}`);
