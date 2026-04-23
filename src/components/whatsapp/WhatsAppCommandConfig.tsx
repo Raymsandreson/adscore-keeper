@@ -291,6 +291,20 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string }[]>([]);
   const [instances, setInstances] = useState<any[]>([]);
   const [boards, setBoards] = useState<{ id: string; name: string }[]>([]);
+  const [filterTestOpen, setFilterTestOpen] = useState(false);
+  const [filterTestPhone, setFilterTestPhone] = useState('');
+  const [filterTestLoading, setFilterTestLoading] = useState(false);
+  const [filterTestResult, setFilterTestResult] = useState<{
+    found: boolean;
+    leadName?: string;
+    boardId?: string | null;
+    boardName?: string | null;
+    leadStatus?: string | null;
+    boardPass: boolean;
+    statusPass: boolean;
+    willRespond: boolean;
+    reason: string;
+  } | null>(null);
 
   useEffect(() => {
     const fetchInstances = async () => {
@@ -796,9 +810,20 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     )}
                   </div>
 
-                  <p className="text-[10px] text-muted-foreground border-t pt-2">
-                    ⚠️ A aplicação desse filtro no responder de IA depende da edge function externa <code className="text-[9px]">wjia-agent</code>. Se o agente continuar respondendo em casos filtrados, avise — preciso aplicar o guard no servidor externo.
-                  </p>
+                  <div className="border-t pt-2 space-y-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs w-full"
+                      onClick={() => setFilterTestOpen(true)}
+                    >
+                      🧪 Testar filtro
+                    </Button>
+                    <p className="text-[10px] text-muted-foreground">
+                      ⚠️ A aplicação desse filtro no responder de IA depende da edge function externa <code className="text-[9px]">wjia-agent</code>. Se o agente continuar respondendo em casos filtrados, avise — preciso aplicar o guard no servidor externo.
+                    </p>
+                  </div>
                 </div>
 
               </div>
@@ -1838,6 +1863,115 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
           </div>
           <div className="flex justify-end pt-2 border-t">
             <Button size="sm" variant="outline" onClick={() => setSuperPromptPreviewOpen(false)}>Fechar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG: Testar filtro Funil × Resultado */}
+      <Dialog open={filterTestOpen} onOpenChange={(o) => { setFilterTestOpen(o); if (!o) { setFilterTestResult(null); setFilterTestPhone(''); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>🧪 Testar filtro do agente</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Digite o telefone de um lead real (apenas números, com DDD). O sistema vai buscar o lead, comparar com o filtro configurado e mostrar se o agente <strong>responderia</strong> ou ficaria <strong>em silêncio</strong>.
+            </p>
+            <div className="space-y-1">
+              <Label className="text-xs">Telefone do lead</Label>
+              <Input
+                placeholder="11999998888"
+                value={filterTestPhone}
+                onChange={(e) => setFilterTestPhone(e.target.value.replace(/\D/g, ''))}
+                className="h-9"
+              />
+            </div>
+
+            <div className="rounded-md border p-2 bg-muted/30 text-[11px] space-y-1">
+              <div><strong>Filtro atual deste agente:</strong></div>
+              <div>• Funis: {form.lead_status_board_ids.length === 0 ? <em>(qualquer)</em> : form.lead_status_board_ids.map(id => boards.find(b => b.id === id)?.name || id).join(', ')}</div>
+              <div>• Resultados: {form.lead_status_filter.length === 0 ? <em>(qualquer)</em> : form.lead_status_filter.map(s => LEAD_RESULT_OPTIONS.find(o => o.value === s)?.label || s).join(', ')}</div>
+            </div>
+
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={!filterTestPhone || filterTestLoading}
+              onClick={async () => {
+                setFilterTestLoading(true);
+                setFilterTestResult(null);
+                try {
+                  const tail = filterTestPhone.slice(-8);
+                  const { data: leads, error } = await supabase
+                    .from('leads')
+                    .select('id, lead_name, lead_phone, board_id, lead_status')
+                    .ilike('lead_phone', `%${tail}%`)
+                    .limit(1);
+                  if (error) throw error;
+                  if (!leads || leads.length === 0) {
+                    setFilterTestResult({
+                      found: false,
+                      boardPass: form.lead_status_board_ids.length === 0,
+                      statusPass: form.lead_status_filter.length === 0,
+                      willRespond: form.lead_status_board_ids.length === 0 && form.lead_status_filter.length === 0,
+                      reason: 'Nenhum lead encontrado com esse telefone. Sem lead, o filtro não bloqueia (responde como contato novo).',
+                    });
+                    return;
+                  }
+                  const lead = leads[0] as any;
+                  const board = boards.find(b => b.id === lead.board_id);
+                  const boardPass = form.lead_status_board_ids.length === 0 || form.lead_status_board_ids.includes(lead.board_id);
+                  const statusPass = form.lead_status_filter.length === 0 || form.lead_status_filter.includes(lead.lead_status);
+                  const willRespond = boardPass && statusPass;
+                  let reason = '';
+                  if (willRespond) {
+                    reason = 'Lead bate com o filtro. Agente RESPONDERIA.';
+                  } else if (!boardPass && !statusPass) {
+                    reason = 'Funil e resultado do lead estão fora do filtro. Agente FICARIA EM SILÊNCIO.';
+                  } else if (!boardPass) {
+                    reason = `Funil do lead (${board?.name || 'desconhecido'}) não está na lista permitida. Agente FICARIA EM SILÊNCIO.`;
+                  } else {
+                    reason = `Resultado do lead (${LEAD_RESULT_OPTIONS.find(o => o.value === lead.lead_status)?.label || lead.lead_status || 'sem resultado'}) não está na lista permitida. Agente FICARIA EM SILÊNCIO.`;
+                  }
+                  setFilterTestResult({
+                    found: true,
+                    leadName: lead.lead_name,
+                    boardId: lead.board_id,
+                    boardName: board?.name || null,
+                    leadStatus: lead.lead_status,
+                    boardPass,
+                    statusPass,
+                    willRespond,
+                    reason,
+                  });
+                } catch (e: any) {
+                  toast.error('Erro: ' + (e.message || 'falha ao buscar lead'));
+                } finally {
+                  setFilterTestLoading(false);
+                }
+              }}
+            >
+              {filterTestLoading ? 'Verificando...' : 'Verificar'}
+            </Button>
+
+            {filterTestResult && (
+              <div className={`rounded-md border p-3 space-y-1.5 text-xs ${filterTestResult.willRespond ? 'border-primary bg-primary/10' : 'border-destructive bg-destructive/10'}`}>
+                <div className="font-semibold">
+                  {filterTestResult.willRespond ? '✅ AGENTE RESPONDERIA' : '🔇 AGENTE EM SILÊNCIO'}
+                </div>
+                {filterTestResult.found && (
+                  <>
+                    <div>Lead: <strong>{filterTestResult.leadName}</strong></div>
+                    <div>Funil do lead: {filterTestResult.boardName || <em>(sem funil)</em>} {filterTestResult.boardPass ? '✓' : '✗'}</div>
+                    <div>Resultado: {LEAD_RESULT_OPTIONS.find(o => o.value === filterTestResult.leadStatus)?.label || filterTestResult.leadStatus || <em>(sem resultado)</em>} {filterTestResult.statusPass ? '✓' : '✗'}</div>
+                  </>
+                )}
+                <div className="pt-1 border-t border-current/20">{filterTestResult.reason}</div>
+                <div className="text-[10px] text-muted-foreground pt-1 italic">
+                  ⚠️ Simulação local. O guard real ainda precisa ser aplicado na edge function externa <code>wjia-agent</code>.
+                </div>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
