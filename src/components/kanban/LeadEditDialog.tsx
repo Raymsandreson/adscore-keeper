@@ -104,9 +104,6 @@ import { Pencil, Trash2 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDialog';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
-import { prefetchLeadActivities } from '@/components/leads/LeadActivitiesTab';
-import { prefetchLeadLinkedContacts } from '@/components/leads/LeadLinkedContacts';
-import { prefetchLeadFunnelOverview } from '@/components/kanban/LeadFunnelOverview';
 import { useChecklists } from '@/hooks/useChecklists';
 
 const leadGroupsCache = new Map<string, Array<{ id?: string; group_link: string; group_jid: string; group_name: string; label: string }>>();
@@ -363,21 +360,18 @@ export function LeadEditDialog({
       
       const profileIds = [leadAny.created_by, leadAny.updated_by].filter(Boolean) as string[];
       void Promise.all([
-        import('@/components/leads/LeadActivitiesTab'),
-        import('@/components/leads/LeadLinkedContacts'),
-        import('@/components/kanban/LeadFunnelOverview'),
         loadLeadGroups(currentLead.id, leadAny),
         loadCustomFieldValues(currentLead.id),
         profileIds.length > 0 ? fetchProfileNames(profileIds) : Promise.resolve(),
-        prefetchLeadActivities(currentLead.id),
-        prefetchLeadLinkedContacts(currentLead.id),
-        prefetchLeadFunnelOverview(
+        import('@/components/leads/LeadActivitiesTab').then(({ prefetchLeadActivities }) => prefetchLeadActivities(currentLead.id)),
+        import('@/components/leads/LeadLinkedContacts').then(({ prefetchLeadLinkedContacts }) => prefetchLeadLinkedContacts(currentLead.id)),
+        import('@/components/kanban/LeadFunnelOverview').then(({ prefetchLeadFunnelOverview }) => prefetchLeadFunnelOverview(
           currentLead.id,
           leadAny.board_id || null,
           currentLead.status || null,
           fetchLeadInstances,
           createLeadInstances,
-        ),
+        )),
       ]);
     }
   }, [currentLead, open, fetchProfileNames, fetchLeadInstances, createLeadInstances]);
@@ -728,6 +722,7 @@ ${scrapeData.content || ''}
         );
       }
       setWhatsappGroups(resolvedGroups);
+      leadGroupsCache.set(currentLead.id, resolvedGroups);
 
       // Auto-sync group contacts: trigger for first group with a resolved JID
       const groupWithJid = resolvedGroups.find(g => g.group_jid?.includes('@g.us'));
@@ -804,6 +799,7 @@ ${scrapeData.content || ''}
       // Save custom field values
        if (Object.keys(localFieldValues).length > 0) {
          await saveAllFieldValues(currentLead.id, localFieldValues);
+          leadFieldValuesCache.delete(currentLead.id);
        }
 
       // Save status history if outcome changed

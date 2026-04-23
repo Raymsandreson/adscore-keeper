@@ -87,6 +87,12 @@ export const prefetchLeadFunnelOverview = async (
   await loadLeadFunnelOverview(leadId, boardId, currentStageId, fetchLeadInstances, createLeadInstances, true);
 };
 
+export const invalidateLeadFunnelOverviewCache = (leadId: string, boardId: string | null, currentStageId: string | null) => {
+  const cacheKey = `${leadId}:${boardId || ''}:${currentStageId || ''}`;
+  funnelCache.delete(cacheKey);
+  funnelRequests.delete(cacheKey);
+};
+
 export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [], isClosed }: LeadFunnelOverviewProps) {
   const { fetchLeadInstances, updateInstanceItem, createLeadInstances } = useChecklists();
   const cacheKey = `${leadId}:${boardId || ''}:${currentStageId || ''}`;
@@ -109,10 +115,10 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
     }
   }, [currentStageId]);
 
-  const loadData = async () => {
+  const loadData = async (force = false) => {
     if (!funnelCache.has(cacheKey)) setLoading(true);
     try {
-      const payload = await loadLeadFunnelOverview(leadId, boardId, currentStageId, fetchLeadInstances, createLeadInstances, true);
+      const payload = await loadLeadFunnelOverview(leadId, boardId, currentStageId, fetchLeadInstances, createLeadInstances, force);
       setInstances(payload.instances);
       setTemplateNames(payload.templateNames);
     } finally {

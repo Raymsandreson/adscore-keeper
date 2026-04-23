@@ -114,6 +114,11 @@ export const prefetchLeadLinkedContacts = async (leadId: string) => {
   await loadLinkedContacts(leadId, true);
 };
 
+export const invalidateLeadLinkedContactsCache = (leadId: string) => {
+  contactsCache.delete(leadId);
+  contactsRequests.delete(leadId);
+};
+
 export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
   const cached = contactsCache.get(leadId);
   const [contacts, setContacts] = useState<LinkedContact[]>(() => cached?.contacts || []);
@@ -136,10 +141,10 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
   const [newInstagram, setNewInstagram] = useState('');
   const [creating, setCreating] = useState(false);
 
-  const fetchContacts = useCallback(async () => {
+  const fetchContacts = useCallback(async (force = false) => {
     if (!contactsCache.has(leadId)) setLoading(true);
     try {
-      const payload = await loadLinkedContacts(leadId, true);
+      const payload = await loadLinkedContacts(leadId, force);
       setContacts(payload.contacts);
       setCallStats(payload.callStats);
     } catch (err) {
@@ -150,7 +155,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
   }, [leadId]);
 
   useEffect(() => {
-    if (leadId) fetchContacts();
+    if (leadId) fetchContacts(false);
   }, [leadId, fetchContacts]);
 
   // Search contacts
@@ -196,7 +201,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
         toast.success('Contato vinculado!');
         setShowSearch(false);
         setSearchQuery('');
-        fetchContacts();
+        fetchContacts(true);
       }
     } catch {
       toast.error('Erro ao vincular contato');
@@ -214,7 +219,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
 
       if (error) throw error;
       toast.success('Contato desvinculado');
-      fetchContacts();
+      fetchContacts(true);
     } catch {
       toast.error('Erro ao desvincular');
     }
@@ -251,7 +256,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
         setNewName('');
         setNewPhone('');
         setNewInstagram('');
-        fetchContacts();
+        fetchContacts(true);
       }
     } catch (err) {
       console.error(err);
