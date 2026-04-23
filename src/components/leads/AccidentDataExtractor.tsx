@@ -378,18 +378,76 @@ export function AccidentDataExtractor({
     }
   }, [mergeCommentsIntoData]);
 
-  useEffect(() => {
-    if (!open || !urlIsSocial) return;
+  // Manual flow: prefetch automático removido. Usuário aciona Legenda → Comentários → IA via botões.
 
-    const cached = getCachedMetadata(urlInput.trim());
-    if (cached !== null) return;
+  const handleFetchCaptionManual = async () => {
+    const trimmedUrl = urlInput.trim();
+    if (!trimmedUrl) {
+      toast.error('Cole o link do post primeiro');
+      return;
+    }
+    setIsFetchingCaption(true);
+    advanceStep(2, 'Buscando legenda via Apify...');
+    try {
+      await waitForPaint();
+      const cached = getCachedMetadata(trimmedUrl);
+      const metadata = cached ?? await withClientTimeout(
+        fetchMetadata(trimmedUrl),
+        12000,
+        'A busca da legenda demorou demais. Tente novamente.'
+      );
+      const caption = metadata?.caption?.trim() || '';
+      if (!caption) {
+        toast.error('Legenda não encontrada. Você pode colar manualmente abaixo.');
+        return;
+      }
+      setManualCaption(caption);
+      toast.success('Legenda extraída!');
+    } catch (err) {
+      console.error('handleFetchCaptionManual error:', err);
+      toast.error(err instanceof Error ? err.message : 'Erro ao buscar legenda');
+    } finally {
+      setIsFetchingCaption(false);
+    }
+  };
 
-    const timer = window.setTimeout(() => {
-      void fetchMetadata(urlInput.trim());
-    }, 450);
+  const handleFetchCommentsManual = async () => {
+    const trimmedUrl = urlInput.trim();
+    if (!trimmedUrl) {
+      toast.error('Cole o link do post primeiro');
+      return;
+    }
+    setIsFetchingComments(true);
+    setCommentsError(null);
+    setCommentsCount(null);
+    setCommentsAnalysis(null);
+    advanceStep(4, 'Buscando comentários...');
+    try {
+      await waitForPaint();
+      const { data, error } = await withClientTimeout(
+        cloudFunctions.invoke('fetch-post-comments', {
+          body: { postUrl: trimmedUrl, analyzeWithAI: true },
+        }),
+        25000,
+        'A busca de comentários demorou demais.'
+      );
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Não foi possível buscar comentários');
 
-    return () => window.clearTimeout(timer);
-  }, [open, urlIsSocial, urlInput, fetchMetadata, getCachedMetadata]);
+      const analysis = (data.analysis || null) as CommentsAnalysis | null;
+      setCommentsCount(typeof data.total === 'number' ? data.total : 0);
+      setCommentsAnalysis(analysis);
+      // Se já temos extractedData, mesclar comentários nele agora
+      setExtractedData((prev) => prev ? mergeCommentsIntoData(prev, analysis) : prev);
+      toast.success(`${data.total ?? 0} comentários encontrados`);
+    } catch (err) {
+      console.error('handleFetchCommentsManual error:', err);
+      setCommentsError(err instanceof Error ? err.message : 'Erro ao buscar comentários');
+      toast.error(err instanceof Error ? err.message : 'Erro ao buscar comentários');
+    } finally {
+      setIsFetchingComments(false);
+    }
+  };
 
   const handleExtract = async () => {
     setIsExtracting(true);
