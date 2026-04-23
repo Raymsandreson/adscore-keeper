@@ -571,16 +571,32 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     };
 
     let error;
+    let savedAgentId = editingId;
     if (editingId) {
       ({ error } = await (supabase.from('wjia_command_shortcuts') as any).update(payload).eq('id', editingId));
     } else {
-      const { error: insertError } = await (supabase.from('wjia_command_shortcuts') as any)
+      const { data: insertData, error: insertError } = await (supabase.from('wjia_command_shortcuts') as any)
         .insert({ ...payload, display_order: shortcuts.length }).select('id').single();
       error = insertError;
+      savedAgentId = insertData?.id || null;
     }
     if (error) { toast.error(error.message); return; }
 
-    // No separate filter save needed - filters are part of the view/base table
+    // Save lead filter (funil x resultado) via dedicated edge function
+    if (savedAgentId) {
+      try {
+        await cloudFunctions.invoke('update-agent-filters', {
+          body: {
+            agent_id: savedAgentId,
+            lead_status_board_ids: form.lead_status_board_ids || [],
+            lead_status_filter: form.lead_status_filter || [],
+          },
+        });
+      } catch (e) {
+        console.error('Failed to save agent filters:', e);
+        toast.error('Agente salvo, mas filtros de funil/resultado não foram persistidos.');
+      }
+    }
 
     toast.success(editingId ? 'Agente atualizado!' : 'Agente criado!');
     logAudit({ action: editingId ? 'update' : 'create', entityType: 'agent', entityId: editingId || undefined, entityName: form.shortcut_name });
