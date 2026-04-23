@@ -672,7 +672,7 @@ export const useLeads = (adAccountId?: string) => {
               setLeads(prev => {
                 if (prev.some(l => l.id === newRow.id)) return prev;
                 const next = [newRow, ...prev];
-                calculateStats(next);
+                calculateStatsDebounced(next);
                 return next;
               });
               return;
@@ -684,14 +684,14 @@ export const useLeads = (adAccountId?: string) => {
                 // If soft-deleted, drop it
                 if ((updatedRow as any).deleted_at) {
                   const next = prev.filter(l => l.id !== updatedRow.id);
-                  calculateStats(next);
+                  calculateStatsDebounced(next);
                   return next;
                 }
                 const idx = prev.findIndex(l => l.id === updatedRow.id);
                 if (idx === -1) return prev;
                 const next = [...prev];
                 next[idx] = { ...prev[idx], ...updatedRow };
-                calculateStats(next);
+                calculateStatsDebounced(next);
                 return next;
               });
               return;
@@ -705,7 +705,7 @@ export const useLeads = (adAccountId?: string) => {
               }
               setLeads(prev => {
                 const next = prev.filter(l => l.id !== oldRow.id);
-                calculateStats(next);
+                calculateStatsDebounced(next);
                 return next;
               });
               return;
