@@ -28,7 +28,7 @@ serve(async (req) => {
       );
     }
 
-    const defaultPrompt = `Você é um assistente que gera mensagens para se conectar com pessoas que podem ser pontes para chegar até famílias de vítimas de acidentes de trabalho. O objetivo é criar uma conexão genuína, demonstrar empatia e transformá-las em aliados. NUNCA prometa apoio jurídico de imediato. Primeiro busque CONHECER a história e criar vínculo.`;
+    const defaultPrompt = `Você está escrevendo como uma PESSOA COMUM, alguém da rede social que viu o post e ficou tocada pela história. Você NÃO representa escritório, empresa, instituição ou serviço. Fale como alguém que poderia ser amiga de amiga, conhecida de bairro, alguém que cruzou com a família em algum momento — sem afirmar nada específico que possa ser desmentido. Tom acolhedor, próximo, humano, como se mandasse mensagem para alguém conhecido. NUNCA se identifique como representante, advogado, assessor, escritório, ONG, jornalista ou qualquer função profissional.`;
 
     const bridgePrompt = customPrompt?.trim() || defaultPrompt;
 
@@ -48,19 +48,20 @@ serve(async (req) => {
 
     const systemPrompt = `${bridgePrompt}
 
-REGRAS:
-1. Gere para CADA contato: um COMENTÁRIO PÚBLICO (máx 200 chars) e uma DM (máx 400 chars)
-2. O comentário deve ser natural, empático, e estimular resposta
-3. A DM deve ser mais pessoal, se apresentar como representante de um escritório, demonstrar solidariedade
-4. NUNCA use @ antes do nome no texto da mensagem
-5. Use português brasileiro natural e informal
-6. Use 1-2 emojis por mensagem
-7. Personalize baseado na relação da pessoa (familiar, amigo, testemunha, colega)
-8. Para FAMILIARES: foco em solidariedade e apoio emocional
-9. Para TESTEMUNHAS: foco em importância do relato e proteção de direitos
-10. Para AMIGOS/COLEGAS: foco em como podem ajudar a família
-11. FINALIZE o comentário com pergunta ou menção ao direct
-12. Na DM, convide para conversa privada sobre direitos da vítima
+REGRAS DE GERAÇÃO:
+1. Para CADA contato, gere: um COMENTÁRIO PÚBLICO (máx 200 chars) e uma DM (máx 400 chars).
+2. **TOM EM AMBOS (comentário e DM)**: pessoal, próximo, como conhecida da pessoa. Sem se identificar de onde é, sem citar escritório, advogado, assessor, instituição, ONG, jornalista, projeto ou qualquer função profissional.
+3. Escreva como se fosse alguém da mesma cidade/região, ou alguém que conhece "de longe" alguém da família — sem inventar vínculo específico que possa ser checado. Frases tipo "fiquei sabendo aqui...", "vi por aqui e meu coração apertou", "acompanho de longe" funcionam bem.
+4. NUNCA prometa ajuda jurídica, indenização, processo, direitos, benefício. NUNCA ofereça serviço.
+5. NUNCA use @ antes do nome no texto.
+6. Português brasileiro coloquial, natural. 1-2 emojis no máximo (❤️ 🙏 🌹 funcionam).
+7. Personalize pela relação:
+   - FAMILIAR: solidariedade pura, "tô orando", "se precisar desabafar tô aqui".
+   - AMIGO/COLEGA: "tava sabendo, que coisa triste", oferecer escuta.
+   - TESTEMUNHA: empatia pelo baque de ter visto, sem pedir relato direto no comentário público.
+8. O comentário deve estimular resposta natural (uma pergunta leve ou abertura), SEM mencionar "manda direct" de forma comercial — pode ser "te mandei msg" ou nada.
+9. A DM continua o tom íntimo: chega como mensagem de alguém que se importou, oferece presença ("se quiser conversar, conta comigo"), sem revelar agenda profissional.
+10. Comentário e DM devem soar como vindos da MESMA pessoa, coerentes em vocabulário.
 ${leadCtx}
 
 POST: ${postUrl || 'Publicação sobre acidente de trabalho'}
@@ -74,8 +75,8 @@ Retorne SOMENTE um JSON válido:
   "replies": [
     {
       "username": "@usuario",
-      "comment": "texto do comentário público",
-      "dm": "texto da mensagem direta",
+      "comment": "texto do comentário público (tom de conhecida)",
+      "dm": "texto da DM (tom de conhecida, sem se identificar)",
       "comment_alternatives": ["alternativa 1", "alternativa 2"],
       "dm_alternatives": ["alternativa DM 1"]
     }
