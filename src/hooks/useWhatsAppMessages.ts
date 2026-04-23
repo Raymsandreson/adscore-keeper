@@ -12,6 +12,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { traceHook } from '@/utils/hookTracer';
 
 export interface WhatsAppMessage {
   id: string;
@@ -313,6 +314,14 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   }, [user?.id]);
 
   const fetchMessages = useCallback(async (silent = false, triggerSync = false) => {
+    traceHook('useWhatsAppMessages.fetchMessages', {
+      silent,
+      triggerSync,
+      selectedInstanceId,
+      instancesCount: instances.length,
+      hasLoaded,
+      isFetching: isFetchingRef.current,
+    });
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
 
@@ -835,11 +844,16 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
   // Fetch instances on mount
   useEffect(() => {
+    traceHook('useWhatsAppMessages.effect:fetchInstances', { hasUser: !!user });
     if (user) fetchInstances();
   }, [user, fetchInstances]);
 
   // Fetch lightweight stats when instances load (NOT full messages)
   useEffect(() => {
+    traceHook('useWhatsAppMessages.effect:onInstancesLoaded', {
+      instancesCount: instances.length,
+      hasLoaded,
+    });
     if (instances.length > 0) {
       fetchInstanceStats();
       // Auto-load conversations when instances are ready
@@ -851,21 +865,25 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
   // If conversations were already loaded, re-fetch when instance filter changes
   useEffect(() => {
+    traceHook('useWhatsAppMessages.effect:onInstanceFilterChange', {
+      selectedInstanceId,
+      hasLoaded,
+    });
     if (!hasLoaded) return;
     // Clear caches so stale data from previous instance doesn't leak
     fullConvCacheRef.current = {};
     activeConversationKeyRef.current = null;
     // Reset fetching guard so instance switch always triggers a fresh load
     isFetchingRef.current = false;
-    
+
     // Show switching indicator with progress
     setInstanceSwitching(true);
     setSwitchProgress(10);
-    
+
     const progressTimer1 = setTimeout(() => setSwitchProgress(30), 200);
     const progressTimer2 = setTimeout(() => setSwitchProgress(50), 600);
     const progressTimer3 = setTimeout(() => setSwitchProgress(70), 1200);
-    
+
     const doFetch = async () => {
       await fetchMessages(true);
       setSwitchProgress(100);
@@ -875,7 +893,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       }, 300);
     };
     doFetch();
-    
+
     return () => {
       clearTimeout(progressTimer1);
       clearTimeout(progressTimer2);
