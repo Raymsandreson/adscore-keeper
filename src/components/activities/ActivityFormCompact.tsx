@@ -120,7 +120,7 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
 
   const handleSendToGroup = async () => {
     if (!leadId) {
-      // No lead: send to assessor's WhatsApp instance as private message
+      // No lead: try WhatsApp first; fallback to internal Team Chat
       if (!formAssignedTo) {
         toast.error('Vincule um lead ou selecione um assessor para enviar');
         return;
@@ -133,30 +133,55 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
           .eq('user_id', formAssignedTo)
           .maybeSingle();
 
-        if (!profile?.phone) {
-          toast.error('O assessor não possui telefone cadastrado no perfil');
-          setSending(false);
-          return;
-        }
-        if (!profile?.default_instance_id) {
-          toast.error('O assessor não possui instância WhatsApp configurada');
-          setSending(false);
-          return;
-        }
-
         const message = buildMsg();
-        const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
-          body: {
-            phone: (profile.phone as string).replace(/\D/g, ''),
-            message,
-            instance_id: profile.default_instance_id,
-          },
-        });
+        const hasWhatsApp = !!profile?.phone && !!profile?.default_instance_id;
 
-        if (error || !data?.success) {
-          toast.error(data?.error || 'Erro ao enviar mensagem');
+        if (hasWhatsApp) {
+          // Send via WhatsApp (assessor has phone + instance configured)
+          const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
+            body: {
+              phone: (profile!.phone as string).replace(/\D/g, ''),
+              message,
+              instance_id: profile!.default_instance_id,
+            },
+          });
+
+          if (error || !data?.success) {
+            toast.error(data?.error || 'Erro ao enviar mensagem');
+          } else {
+            toast.success(`Mensagem enviada para ${profile?.full_name || 'o assessor'} no WhatsApp!`);
+          }
         } else {
-          toast.success(`Mensagem enviada para ${profile.full_name || 'o assessor'}!`);
+          // Fallback: send via internal Team Chat
+          const { data: convId, error: convError } = await supabase
+            .rpc('start_team_direct_conversation', { _other_user_id: formAssignedTo });
+
+          if (convError || !convId) {
+            toast.error('Erro ao abrir conversa no Chat da Equipe');
+            setSending(false);
+            return;
+          }
+
+          const { data: { user } } = await supabase.auth.getUser();
+          const { data: senderProfile } = user ? await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('user_id', user.id)
+            .maybeSingle() : { data: null };
+
+          const { error: msgError } = await supabase.from('team_messages').insert({
+            conversation_id: convId,
+            sender_id: user?.id,
+            sender_name: senderProfile?.full_name || null,
+            content: message,
+            message_type: 'text',
+          });
+
+          if (msgError) {
+            toast.error('Erro ao enviar no Chat da Equipe');
+          } else {
+            toast.success(`Enviado para ${profile?.full_name || 'o assessor'} no Chat da Equipe!`);
+          }
         }
       } catch (e: any) {
         toast.error(e.message || 'Erro ao enviar');
