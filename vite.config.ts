@@ -39,6 +39,14 @@ export default defineConfig(({ mode }) => ({
   // Auth uses Lovable Cloud (env vars from .env) - external DB is accessed via edge functions only
   plugins: [
     react(),
+    {
+      name: 'html-build-meta',
+      transformIndexHtml(html) {
+        return html
+          .replace(/%VITE_BUILD_SHA%/g, BUILD_SHA)
+          .replace(/%VITE_BUILD_TIME%/g, BUILD_TIME);
+      },
+    },
     mode === "development" && componentTagger(),
     VitePWA({
       devOptions: { enabled: false },
