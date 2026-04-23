@@ -168,6 +168,9 @@ export function AccidentDataExtractor({
   const [commentsCount, setCommentsCount] = useState<number | null>(null);
   const [commentsAnalysis, setCommentsAnalysis] = useState<CommentsAnalysis | null>(null);
   const [commentsError, setCommentsError] = useState<string | null>(null);
+  // Manual flow state for social URLs
+  const [manualCaption, setManualCaption] = useState<string>('');
+  const [isFetchingCaption, setIsFetchingCaption] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const { fetchMetadata, getCachedMetadata } = usePostMetadata();
@@ -375,18 +378,76 @@ export function AccidentDataExtractor({
     }
   }, [mergeCommentsIntoData]);
 
-  useEffect(() => {
-    if (!open || !urlIsSocial) return;
+  // Manual flow: prefetch automático removido. Usuário aciona Legenda → Comentários → IA via botões.
 
-    const cached = getCachedMetadata(urlInput.trim());
-    if (cached !== null) return;
+  const handleFetchCaptionManual = async () => {
+    const trimmedUrl = urlInput.trim();
+    if (!trimmedUrl) {
+      toast.error('Cole o link do post primeiro');
+      return;
+    }
+    setIsFetchingCaption(true);
+    advanceStep(2, 'Buscando legenda via Apify...');
+    try {
+      await waitForPaint();
+      const cached = getCachedMetadata(trimmedUrl);
+      const metadata = cached ?? await withClientTimeout(
+        fetchMetadata(trimmedUrl),
+        12000,
+        'A busca da legenda demorou demais. Tente novamente.'
+      );
+      const caption = metadata?.caption?.trim() || '';
+      if (!caption) {
+        toast.error('Legenda não encontrada. Você pode colar manualmente abaixo.');
+        return;
+      }
+      setManualCaption(caption);
+      toast.success('Legenda extraída!');
+    } catch (err) {
+      console.error('handleFetchCaptionManual error:', err);
+      toast.error(err instanceof Error ? err.message : 'Erro ao buscar legenda');
+    } finally {
+      setIsFetchingCaption(false);
+    }
+  };
 
-    const timer = window.setTimeout(() => {
-      void fetchMetadata(urlInput.trim());
-    }, 450);
+  const handleFetchCommentsManual = async () => {
+    const trimmedUrl = urlInput.trim();
+    if (!trimmedUrl) {
+      toast.error('Cole o link do post primeiro');
+      return;
+    }
+    setIsFetchingComments(true);
+    setCommentsError(null);
+    setCommentsCount(null);
+    setCommentsAnalysis(null);
+    advanceStep(4, 'Buscando comentários...');
+    try {
+      await waitForPaint();
+      const { data, error } = await withClientTimeout(
+        cloudFunctions.invoke('fetch-post-comments', {
+          body: { postUrl: trimmedUrl, analyzeWithAI: true },
+        }),
+        25000,
+        'A busca de comentários demorou demais.'
+      );
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Não foi possível buscar comentários');
 
-    return () => window.clearTimeout(timer);
-  }, [open, urlIsSocial, urlInput, fetchMetadata, getCachedMetadata]);
+      const analysis = (data.analysis || null) as CommentsAnalysis | null;
+      setCommentsCount(typeof data.total === 'number' ? data.total : 0);
+      setCommentsAnalysis(analysis);
+      // Se já temos extractedData, mesclar comentários nele agora
+      setExtractedData((prev) => prev ? mergeCommentsIntoData(prev, analysis) : prev);
+      toast.success(`${data.total ?? 0} comentários encontrados`);
+    } catch (err) {
+      console.error('handleFetchCommentsManual error:', err);
+      setCommentsError(err instanceof Error ? err.message : 'Erro ao buscar comentários');
+      toast.error(err instanceof Error ? err.message : 'Erro ao buscar comentários');
+    } finally {
+      setIsFetchingComments(false);
+    }
+  };
 
   const handleExtract = async () => {
     setIsExtracting(true);
@@ -400,27 +461,33 @@ export function AccidentDataExtractor({
       if (activeTab === 'link' && isSocialUrl(urlInput)) {
         const trimmedUrl = urlInput.trim();
 
-        // 1) Fetch caption via Apify
-        advanceStep(2, 'Buscando metadados do post via Apify...');
-        await waitForPaint();
-        toast.info('Detectado link de rede social — buscando legenda via Apify...');
-        const cachedMetadata = getCachedMetadata(trimmedUrl);
-        const metadata = cachedMetadata ?? await withClientTimeout(
-          fetchMetadata(trimmedUrl),
-          8000,
-          'A busca do post demorou demais. Tente novamente.'
-        );
-        const caption = metadata?.caption?.trim() || '';
+        // 1) Reuse legenda já buscada manualmente; só busca se não tiver.
+        let caption = manualCaption.trim();
+        if (!caption) {
+          advanceStep(2, 'Buscando legenda via Apify...');
+          await waitForPaint();
+          const cachedMetadata = getCachedMetadata(trimmedUrl);
+          const metadata = cachedMetadata ?? await withClientTimeout(
+            fetchMetadata(trimmedUrl),
+            12000,
+            'A busca do post demorou demais. Tente novamente.'
+          );
+          caption = metadata?.caption?.trim() || '';
+          if (caption) setManualCaption(caption);
+        }
 
         if (!caption) {
-          toast.error('Não foi possível extrair a legenda do post. Cole o texto manualmente na aba PDF/Texto.');
+          toast.error('Sem legenda. Use "1. Buscar Legenda" ou cole na aba PDF/Texto.');
           return;
         }
 
-        // 2) Send caption to extract-accident-data as plain text — uses the correct accident schema
+        // 2) Enviar legenda + comentários (se já buscados) para análise da IA
         advanceStep(3, 'Analisando conteúdo com IA...');
         await waitForPaint();
-        const analysisText = `URL do post: ${trimmedUrl}\n\nLEGENDA:\n${caption}`;
+        let analysisText = `URL do post: ${trimmedUrl}\n\nLEGENDA:\n${caption}`;
+        if (commentsAnalysis) {
+          analysisText += `\n\nCOMENTÁRIOS_ANALISADOS:\n${JSON.stringify(commentsAnalysis, null, 2)}`;
+        }
         const { data, error } = await withClientTimeout(
           cloudFunctions.invoke('extract-accident-data', {
             body: { content: analysisText, type: 'text' },
@@ -439,14 +506,16 @@ export function AccidentDataExtractor({
           return;
         }
 
-        // 3) Preserve the source URL so the lead form receives the news/social link
-        const merged: ExtractedAccidentData = {
+        // 3) Preservar URL e mesclar comentários (se houver)
+        let merged: ExtractedAccidentData = {
           ...(data.data || {}),
           news_link: trimmedUrl,
         };
+        if (commentsAnalysis) {
+          merged = mergeCommentsIntoData(merged, commentsAnalysis);
+        }
         setExtractedData(merged);
         advanceStep(5, 'Revisão dos dados extraídos');
-        void fetchCommentsInBackground(trimmedUrl, merged);
         toast.success('Dados extraídos com sucesso!');
         return;
       }
@@ -591,6 +660,8 @@ export function AccidentDataExtractor({
     setCommentsCount(null);
     setCommentsAnalysis(null);
     setCommentsError(null);
+    setManualCaption('');
+    setIsFetchingCaption(false);
   };
 
   const handleClose = () => {
@@ -719,7 +790,7 @@ export function AccidentDataExtractor({
         {(isExtracting || isFetchingComments || progressStep > 0) && (
           <div className="mt-4 space-y-2">
             <Progress value={(progressStep / 5) * 100} className="h-1.5" />
-            <div className="grid grid-cols-5 gap-2 text-[11px]">
+            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x">
               {[
                 { n: 1, label: 'Origem', icon: LinkIcon },
                 { n: 2, label: 'Metadados', icon: Globe },
@@ -733,7 +804,7 @@ export function AccidentDataExtractor({
                   <div
                     key={n}
                     className={cn(
-                      'flex items-center gap-1.5 rounded-md px-2 py-1 border transition-colors',
+                      'flex items-center gap-1.5 rounded-md px-2 py-1 border transition-colors text-[11px] shrink-0 snap-start',
                       done && 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600',
                       active && 'bg-primary/10 border-primary/30 text-primary',
                       !done && !active && 'bg-muted/30 border-muted text-muted-foreground'
@@ -746,7 +817,7 @@ export function AccidentDataExtractor({
                     ) : (
                       <Icon className="h-3 w-3 shrink-0" />
                     )}
-                    <span className="truncate font-medium">{label}</span>
+                    <span className="font-medium whitespace-nowrap">{label}</span>
                   </div>
                 );
               })}
@@ -800,10 +871,99 @@ export function AccidentDataExtractor({
               </div>
 
               {urlIsSocial && (
-                <div className="rounded-lg border border-dashed p-3 bg-muted/30">
+                <div className="rounded-lg border border-dashed p-3 bg-muted/30 space-y-3">
                   <p className="text-xs text-muted-foreground">
-                    Primeiro eu monto a revisão com a legenda e o link da publicação. Em seguida, os comentários são buscados em segundo plano usando o mesmo actor, sem travar o modal.
+                    Fluxo manual em 3 passos. Cada botão dispara uma chamada separada — assim você decide o que extrair sem travar o modal.
                   </p>
+
+                  {/* 1. Buscar Legenda */}
+                  <div className="space-y-1.5">
+                    <Button
+                      type="button"
+                      variant={manualCaption ? 'outline' : 'default'}
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={handleFetchCaptionManual}
+                      disabled={isFetchingCaption || !urlInput.trim()}
+                    >
+                      {isFetchingCaption ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : manualCaption ? (
+                        <CheckCircle2 className="h-4 w-4 mr-2 text-emerald-600" />
+                      ) : (
+                        <FileText className="h-4 w-4 mr-2" />
+                      )}
+                      1. Buscar Legenda do Post
+                    </Button>
+                    {manualCaption && (
+                      <Textarea
+                        value={manualCaption}
+                        onChange={(e) => setManualCaption(e.target.value)}
+                        rows={3}
+                        className="text-xs resize-none"
+                        placeholder="Legenda extraída (editável)"
+                      />
+                    )}
+                  </div>
+
+                  {/* 2. Buscar Comentários (opcional) */}
+                  <div className="space-y-1.5">
+                    <Button
+                      type="button"
+                      variant={commentsCount !== null ? 'outline' : 'secondary'}
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={handleFetchCommentsManual}
+                      disabled={isFetchingComments || !urlInput.trim()}
+                    >
+                      {isFetchingComments ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : commentsCount !== null ? (
+                        <CheckCircle2 className="h-4 w-4 mr-2 text-emerald-600" />
+                      ) : (
+                        <MessageSquare className="h-4 w-4 mr-2" />
+                      )}
+                      2. Buscar Comentários (opcional)
+                      {commentsCount !== null && (
+                        <Badge variant="outline" className="ml-auto text-[10px]">
+                          {commentsCount}
+                        </Badge>
+                      )}
+                    </Button>
+                    {commentsError && (
+                      <p className="text-xs text-destructive flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {commentsError}
+                      </p>
+                    )}
+                    {commentsAnalysis && (
+                      <div className="text-xs text-muted-foreground space-y-0.5 pl-1">
+                        {commentsAnalysis.victim_info?.name && <p>👤 Vítima: {commentsAnalysis.victim_info.name}</p>}
+                        {commentsAnalysis.accident_info?.location && <p>📍 Local: {commentsAnalysis.accident_info.location}</p>}
+                        {commentsAnalysis.accident_info?.company && <p>🏢 Empresa: {commentsAnalysis.accident_info.company}</p>}
+                        {!!commentsAnalysis.potential_contacts?.length && (
+                          <p>🔗 {commentsAnalysis.potential_contacts.length} possíveis pontes</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. Analisar com IA */}
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    className="w-full"
+                    onClick={handleExtract}
+                    disabled={isExtracting || !manualCaption.trim()}
+                  >
+                    {isExtracting ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4 mr-2" />
+                    )}
+                    3. Analisar com IA e Montar Lead
+                  </Button>
                 </div>
               )}
             </TabsContent>
@@ -946,7 +1106,7 @@ export function AccidentDataExtractor({
           </Tabs>
         </div>
 
-        {!extractedData && (
+        {!extractedData && !(activeTab === 'link' && urlIsSocial) && (
           <Button 
             onClick={handleExtract} 
             disabled={isExtracting || !canExtract()}
