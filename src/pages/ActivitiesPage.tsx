@@ -98,6 +98,32 @@ interface TeamMember {
   full_name: string | null;
 }
 
+/**
+ * Extrai apenas o primeiro nome do cliente a partir de uma string que pode ser
+ * o nome de um grupo de WhatsApp.
+ *  "✅PREV 291 | Allana / Irma socorro II" -> "Allana"
+ *  "PREV 123 - João Silva"                 -> "João"
+ *  "Maria Souza"                            -> "Maria"
+ */
+function extractClientFirstName(raw: string): string {
+  if (!raw) return '';
+  let s = raw.trim();
+  s = s.replace(/^[^\p{L}\p{N}]+/u, '');
+  if (s.includes('|')) s = s.split('|').slice(1).join('|').trim();
+  if (s.includes('/')) s = s.split('/')[0].trim();
+  for (const sep of [' - ', ' — ', ' – ', ':']) {
+    if (s.includes(sep)) s = s.split(sep).slice(-1)[0].trim();
+  }
+  const tokens = s.split(/\s+/);
+  while (tokens.length > 1) {
+    const t = tokens[0];
+    const looksLikeCode = /^[A-Z]{2,}$/.test(t) || /^\d+$/.test(t) || /^[A-Z]{2,}\d+$/.test(t);
+    if (looksLikeCode) tokens.shift(); else break;
+  }
+  const first = tokens[0] || '';
+  return first ? first.charAt(0).toUpperCase() + first.slice(1).toLowerCase() : '';
+}
+
 const ActivitiesPage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1241,7 +1267,7 @@ const ActivitiesPage = () => {
         : '';
       const tplVars: Record<string, string> = {
         titulo: formTitle.toUpperCase(),
-        lead_name: formLeadName || '',
+        lead_name: extractClientFirstName(formLeadName || ''),
         campos_dinamicos: fieldLines,
         responsavel: formAssignedToName || '',
         responsavel_dr: responsavelDr,
@@ -1286,7 +1312,8 @@ const ActivitiesPage = () => {
 
     // Fallback: hardcoded default
     const responsavelDrFb = formAssignedToName ? `Dr. ${formAssignedToName.split(' ').slice(0, 2).join(' ')}` : '';
-    return `*Boa tarde Sr(a). ${formLeadName || ''}*\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${formLeadName ? `Referente ao caso de ${formLeadName}` : ''}\n\n${fieldLines}\n\n${responsavelDrFb ? `*${responsavelDrFb}* voltará com mais informações no dia *${notifDate || '—'}*, até o final do dia.` : ''}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    const clientFirstName = extractClientFirstName(formLeadName || '');
+    return `*Boa tarde Sr(a). ${clientFirstName}*\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${responsavelDrFb ? `*${responsavelDrFb} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.*` : ''}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
   const activityFormContent = (
