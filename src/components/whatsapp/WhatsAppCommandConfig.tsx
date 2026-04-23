@@ -116,6 +116,7 @@ interface ShortcutFormState {
   zapsign_settings: Record<string, any>;
   forward_questions_to_group: boolean;
   notify_instance_name: string | null;
+  lead_status_filter: string[];
 }
 
 const DEFAULT_FORM: ShortcutFormState = {
@@ -132,6 +133,7 @@ const DEFAULT_FORM: ShortcutFormState = {
   max_tts_chars: 1000, send_window_start_hour: 8, send_window_end_hour: 20,
   send_call_followup_audio: false, zapsign_mode: 'final_document', zapsign_settings: {},
   forward_questions_to_group: false, notify_instance_name: null,
+  lead_status_filter: [],
 };
 
 interface Profile { user_id: string; full_name: string | null; }
