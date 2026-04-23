@@ -959,23 +959,8 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
               </div>
             )}
 
-            {/* Fetch Comments Button */}
-            {url.trim() && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleFetchComments}
-                disabled={isFetchingComments}
-                className="w-full gap-2 border-dashed"
-              >
-                {isFetchingComments ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <MessageSquare className="h-4 w-4" />
-                )}
-                {isFetchingComments ? 'Buscando comentários via Apify...' : '🔍 Buscar comentários do post (Apify)'}
-              </Button>
-            )}
+            {/* Botão "Buscar comentários" foi movido pro step input — aqui exibimos apenas a análise */}
+
 
             {/* Comments Analysis Display */}
             {commentsAnalysis && (
