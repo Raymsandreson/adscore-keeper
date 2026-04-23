@@ -660,6 +660,8 @@ export function AccidentDataExtractor({
     setCommentsCount(null);
     setCommentsAnalysis(null);
     setCommentsError(null);
+    setManualCaption('');
+    setIsFetchingCaption(false);
   };
 
   const handleClose = () => {
