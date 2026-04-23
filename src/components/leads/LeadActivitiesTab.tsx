@@ -40,6 +40,40 @@ interface LeadActivity {
 
 // Module-level cache: instant render on re-open, background revalidation
 const activitiesCache = new Map<string, LeadActivity[]>();
+const activitiesRequests = new Map<string, Promise<LeadActivity[]>>();
+
+const loadLeadActivities = async (leadId: string, force = false): Promise<LeadActivity[]> => {
+  if (!force && activitiesCache.has(leadId)) {
+    return activitiesCache.get(leadId) || [];
+  }
+
+  const inFlight = activitiesRequests.get(leadId);
+  if (inFlight) return inFlight;
+
+  const request = (async () => {
+    try {
+      const { data, error } = await supabase
+        .from('lead_activities')
+        .select('id, title, description, activity_type, status, priority, deadline, assigned_to, assigned_to_name, created_at, completed_at, what_was_done, current_status_notes, next_steps, notes, matrix_quadrant')
+        .eq('lead_id', leadId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      const list = (data || []) as LeadActivity[];
+      activitiesCache.set(leadId, list);
+      return list;
+    } finally {
+      activitiesRequests.delete(leadId);
+    }
+  })();
+
+  activitiesRequests.set(leadId, request);
+  return request;
+};
+
+export const prefetchLeadActivities = async (leadId: string) => {
+  await loadLeadActivities(leadId, true);
+};
 
 interface LeadActivitiesTabProps {
   leadId: string;
@@ -147,20 +181,15 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   };
 
   const fetchActivities = useCallback(async () => {
-    // Show cached data instantly; only show spinner if cache miss
     if (!activitiesCache.has(leadId)) setLoading(true);
-    const { data, error } = await supabase
-      .from('lead_activities')
-      .select('id, title, description, activity_type, status, priority, deadline, assigned_to, assigned_to_name, created_at, completed_at, what_was_done, current_status_notes, next_steps, notes, matrix_quadrant')
-      .eq('lead_id', leadId)
-      .order('created_at', { ascending: false });
-
-    if (!error && data) {
-      const list = data as LeadActivity[];
+    try {
+      const list = await loadLeadActivities(leadId, true);
       setActivities(list);
-      activitiesCache.set(leadId, list);
+    } catch (error) {
+      console.error('Error fetching activities:', error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [leadId]);
 
   useEffect(() => { fetchActivities(); }, [fetchActivities]);
