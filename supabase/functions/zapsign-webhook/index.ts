@@ -878,50 +878,61 @@ Deno.serve(async (req) => {
               }
             }
 
-            // Auto-create WhatsApp group
-            if (boardSettings.auto_create_group_on_sign && !leadForBoard.whatsapp_group_id) {
-              console.log(`[zapsign-webhook] Auto-creating group for lead ${localDoc.lead_id} (board setting)`)
-              
-              const leadPhone = (leadForBoard.lead_phone || localDoc.whatsapp_phone || '').replace(/\D/g, '')
-              
-              // Resolve the correct instance: prefer the one that originated the conversation (created_by user's default instance)
-              let creatorInstanceId: string | null = null
+            // Determine post-signature mode (group | private)
+            // Backward-compat: if post_sign_mode is null, fall back to auto_create_group_on_sign
+            const postSignMode = boardSettings.post_sign_mode
+              || (boardSettings.auto_create_group_on_sign ? 'group' : null)
 
-              // 1. Try to resolve from the document's instance_name
-              if (localDoc.instance_name) {
-                const { data: docInst } = await supabase
-                  .from('whatsapp_instances')
-                  .select('id')
-                  .eq('instance_name', localDoc.instance_name)
-                  .eq('is_active', true)
-                  .maybeSingle()
-                if (docInst) creatorInstanceId = docInst.id
+            const leadPhone = (leadForBoard.lead_phone || localDoc.whatsapp_phone || '').replace(/\D/g, '')
+
+            // Resolve the creator instance (used in both modes)
+            let creatorInstanceId: string | null = null
+            let creatorInstanceName: string | null = localDoc.instance_name || null
+
+            if (localDoc.instance_name) {
+              const { data: docInst } = await supabase
+                .from('whatsapp_instances')
+                .select('id, instance_name')
+                .eq('instance_name', localDoc.instance_name)
+                .eq('is_active', true)
+                .maybeSingle()
+              if (docInst) {
+                creatorInstanceId = docInst.id
+                creatorInstanceName = docInst.instance_name
               }
+            }
 
-              // 2. Fallback: resolve from the document creator's default_instance_id
-              if (!creatorInstanceId && localDoc.created_by) {
-                const { data: creatorProfile } = await supabase
-                  .from('profiles')
-                  .select('default_instance_id')
-                  .eq('user_id', localDoc.created_by)
-                  .maybeSingle()
-                if (creatorProfile?.default_instance_id) {
-                  creatorInstanceId = creatorProfile.default_instance_id
-                }
+            if (!creatorInstanceId && localDoc.created_by) {
+              const { data: creatorProfile } = await supabase
+                .from('profiles')
+                .select('default_instance_id')
+                .eq('user_id', localDoc.created_by)
+                .maybeSingle()
+              if (creatorProfile?.default_instance_id) {
+                creatorInstanceId = creatorProfile.default_instance_id
               }
+            }
 
-              // 3. Final fallback: first board instance
-              if (!creatorInstanceId) {
-                const { data: boardInst } = await supabase
-                  .from('board_group_instances')
-                  .select('instance_id')
-                  .eq('board_id', leadForBoard.board_id)
-                  .limit(1)
-                  .maybeSingle()
-                creatorInstanceId = boardInst?.instance_id || null
+            if (!creatorInstanceId) {
+              const { data: boardInst } = await supabase
+                .from('board_group_instances')
+                .select('instance_id, whatsapp_instances:instance_id(instance_name)')
+                .eq('board_id', leadForBoard.board_id)
+                .limit(1)
+                .maybeSingle()
+              if (boardInst) {
+                creatorInstanceId = boardInst.instance_id || null
+                creatorInstanceName = (boardInst as any).whatsapp_instances?.instance_name || creatorInstanceName
               }
+            }
 
-              console.log(`[zapsign-webhook] Resolved creator instance: ${creatorInstanceId} (from doc instance_name: ${localDoc.instance_name}, created_by: ${localDoc.created_by})`)
+            console.log(`[zapsign-webhook] post_sign_mode=${postSignMode} creator_instance=${creatorInstanceId} (${creatorInstanceName})`)
+
+            // ====================================================
+            // MODE: GROUP — original behavior
+            // ====================================================
+            if (postSignMode === 'group' && !leadForBoard.whatsapp_group_id) {
+              console.log(`[zapsign-webhook] Auto-creating group for lead ${localDoc.lead_id}`)
 
               const groupRes = await fetch(`${cloudFunctionsUrl}/functions/v1/create-whatsapp-group`, {
                 method: 'POST',
@@ -949,6 +960,100 @@ Deno.serve(async (req) => {
                 console.log(`[zapsign-webhook] Group created: ${groupData.group_id}`)
               } else {
                 console.error(`[zapsign-webhook] Group creation failed:`, groupData.error)
+              }
+            }
+
+            // ====================================================
+            // MODE: PRIVATE — send initial message in 1:1 chat,
+            // reassign to processual acolhedor, optionally archive
+            // ====================================================
+            if (postSignMode === 'private' && leadPhone && creatorInstanceName) {
+              console.log(`[zapsign-webhook] Private mode: sending initial message in 1:1 to ${leadPhone}`)
+
+              // 1. Render initial message (use AI-generated if available, else template)
+              let messageText: string | null = null
+              if (boardSettings.use_ai_message && boardSettings.ai_generated_message) {
+                messageText = boardSettings.ai_generated_message
+              } else if (boardSettings.initial_message_template) {
+                messageText = boardSettings.initial_message_template
+              }
+
+              if (messageText) {
+                // Replace variables
+                const replacements: Record<string, string> = {
+                  '{lead_name}': leadForBoard.lead_name || '',
+                  '{victim_name}': (leadForBoard as any).victim_name || leadForBoard.lead_name || '',
+                  '{case_type}': (leadForBoard as any).case_type || '',
+                  '{city}': (leadForBoard as any).city || '',
+                  '{state}': (leadForBoard as any).state || '',
+                  '{case_number}': (leadForBoard as any).case_number || '',
+                  '{board_name}': '',
+                }
+                Object.entries(replacements).forEach(([key, val]) => {
+                  messageText = messageText!.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), val)
+                })
+
+                try {
+                  const sendRes = await fetch(`${cloudFunctionsUrl}/functions/v1/send-whatsapp`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${cloudAnonKey}`,
+                    },
+                    body: JSON.stringify({
+                      phone: leadPhone,
+                      message: messageText,
+                      instance_name: creatorInstanceName,
+                      lead_id: localDoc.lead_id,
+                    }),
+                  })
+                  const sendData = await sendRes.json().catch(() => ({}))
+                  console.log(`[zapsign-webhook] Private initial message sent:`, sendData?.success ?? sendRes.status)
+                } catch (sendErr) {
+                  console.error('[zapsign-webhook] Private message send error:', sendErr)
+                }
+              } else {
+                console.log('[zapsign-webhook] Private mode: no initial message template configured, skipping message')
+              }
+
+              // 2. Reassign lead to processual acolhedor
+              if (boardSettings.processual_acolhedor_id) {
+                try {
+                  const { data: acolhedorProfile } = await supabase
+                    .from('profiles')
+                    .select('full_name')
+                    .eq('user_id', boardSettings.processual_acolhedor_id)
+                    .maybeSingle()
+
+                  await supabase
+                    .from('leads')
+                    .update({
+                      assigned_to: boardSettings.processual_acolhedor_id,
+                      acolhedor: acolhedorProfile?.full_name || null,
+                    } as any)
+                    .eq('id', localDoc.lead_id)
+
+                  console.log(`[zapsign-webhook] Lead reassigned to processual acolhedor: ${acolhedorProfile?.full_name}`)
+                } catch (reassignErr) {
+                  console.error('[zapsign-webhook] Reassign error:', reassignErr)
+                }
+              }
+
+              // 3. Archive conversation in internal inbox
+              // (WhatsApp-side archive via UazAPI not implemented yet — endpoint not confirmed)
+              if (boardSettings.auto_archive_on_sign) {
+                try {
+                  await supabase
+                    .from('archived_conversations')
+                    .upsert({
+                      phone: leadPhone,
+                      instance_name: creatorInstanceName,
+                      reason: 'auto_zapsign_signed',
+                    }, { onConflict: 'phone,instance_name' })
+                  console.log(`[zapsign-webhook] Conversation archived in inbox: ${leadPhone}@${creatorInstanceName}`)
+                } catch (archErr) {
+                  console.error('[zapsign-webhook] Archive error:', archErr)
+                }
               }
             }
           }
