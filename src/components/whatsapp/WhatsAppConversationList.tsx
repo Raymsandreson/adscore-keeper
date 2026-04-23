@@ -171,7 +171,11 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   };
 
   const isGroupConversation = (conv: WhatsAppConversation) => {
+    // Group JIDs: explicit @g.us OR phone is digits-only with length >= 16
+    // (individual BR phones have at most 13 digits; group JIDs are 18+).
     if (conv.phone.includes('@g.us')) return true;
+    const digits = (conv.phone || '').replace(/\D/g, '');
+    if (digits.length >= 16) return true;
     return conv.messages.some(msg => {
       const meta = msg.metadata;
       if (!meta) return false;
