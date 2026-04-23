@@ -719,7 +719,7 @@ export function AccidentDataExtractor({
         {(isExtracting || isFetchingComments || progressStep > 0) && (
           <div className="mt-4 space-y-2">
             <Progress value={(progressStep / 5) * 100} className="h-1.5" />
-            <div className="grid grid-cols-5 gap-2 text-[11px]">
+            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x">
               {[
                 { n: 1, label: 'Origem', icon: LinkIcon },
                 { n: 2, label: 'Metadados', icon: Globe },
@@ -733,7 +733,7 @@ export function AccidentDataExtractor({
                   <div
                     key={n}
                     className={cn(
-                      'flex items-center gap-1.5 rounded-md px-2 py-1 border transition-colors',
+                      'flex items-center gap-1.5 rounded-md px-2 py-1 border transition-colors text-[11px] shrink-0 snap-start',
                       done && 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600',
                       active && 'bg-primary/10 border-primary/30 text-primary',
                       !done && !active && 'bg-muted/30 border-muted text-muted-foreground'
@@ -746,7 +746,7 @@ export function AccidentDataExtractor({
                     ) : (
                       <Icon className="h-3 w-3 shrink-0" />
                     )}
-                    <span className="truncate font-medium">{label}</span>
+                    <span className="font-medium whitespace-nowrap">{label}</span>
                   </div>
                 );
               })}
