@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -156,6 +157,7 @@ const initialFormData: AccidentLeadFormData = {
 
 export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, initialUrl }: ImportFromSocialLinkDialogProps) {
   const { user } = useAuthContext();
+  const navigate = useNavigate();
   const [url, setUrl] = useState(initialUrl || '');
   const [caption, setCaption] = useState('');
   const [targetType, setTargetType] = useState<TargetType>('lead');
@@ -411,9 +413,14 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
         const createdLeadId = newLead?.id;
 
         // Fechar o diálogo IMEDIATAMENTE após criar o lead — o resto roda em background.
-        toast.success('Lead criado! Finalizando vínculos em segundo plano...');
+        toast.success('Lead criado! Abrindo para revisão...');
         onSuccess?.();
         handleClose();
+
+        // Redirecionar pra Central de Leads e abrir o LeadEditDialog completo automaticamente
+        if (createdLeadId) {
+          navigate(`/leads?openLead=${createdLeadId}&tab=basic`);
+        }
 
         // Capturar valores que serão usados no background (depois do reset do state)
         const bgBoardId = selectedBoardId;
@@ -802,35 +809,98 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
                   </Badge>
                 )}
               </div>
-              {url.trim() && (
+            </div>
+
+            {/* Sequência manual de extração: Legenda → Comentários → IA */}
+            {url.trim() && (
+              <div className="space-y-2 rounded-lg border border-dashed p-3 bg-muted/20">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Etapas de extração (manual)
+                </p>
+
+                {/* 1. Legenda */}
                 <Button
-                  variant="outline"
+                  variant={caption.trim() ? 'outline' : 'default'}
                   size="sm"
                   onClick={handleFetchCaption}
                   disabled={isFetchingMeta}
-                  className="w-full"
+                  className="w-full justify-start gap-2"
                 >
                   {isFetchingMeta ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : caption.trim() ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                   ) : (
-                    <Sparkles className="h-4 w-4 mr-2" />
+                    <Sparkles className="h-4 w-4" />
                   )}
-                  Extrair legenda automaticamente
+                  <span className="flex-1 text-left">
+                    1. {caption.trim() ? 'Legenda extraída' : 'Extrair legenda do post'}
+                  </span>
+                  {caption.trim() && (
+                    <Badge variant="secondary" className="text-[10px]">
+                      {caption.length} chars
+                    </Badge>
+                  )}
                 </Button>
-              )}
-            </div>
+
+                {/* 2. Comentários (opcional, recomendado) */}
+                <Button
+                  variant={commentsAnalysis ? 'outline' : 'secondary'}
+                  size="sm"
+                  onClick={handleFetchComments}
+                  disabled={isFetchingComments || !caption.trim()}
+                  className="w-full justify-start gap-2"
+                >
+                  {isFetchingComments ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : commentsAnalysis ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  ) : (
+                    <MessageSquare className="h-4 w-4" />
+                  )}
+                  <span className="flex-1 text-left">
+                    2. {isFetchingComments
+                      ? 'Buscando comentários via Apify...'
+                      : commentsAnalysis
+                        ? `${commentsCount} comentários analisados`
+                        : 'Buscar comentários do post (opcional)'}
+                  </span>
+                </Button>
+
+                {/* Preview rápido dos comentários extraídos */}
+                {commentsAnalysis && (
+                  <div className="ml-6 space-y-1.5 text-xs text-muted-foreground border-l-2 border-muted pl-3">
+                    {commentsAnalysis.victim_info?.name && (
+                      <p>👤 Vítima: <span className="text-foreground">{commentsAnalysis.victim_info.name}</span></p>
+                    )}
+                    {commentsAnalysis.accident_info?.location && (
+                      <p>📍 Local: <span className="text-foreground">{commentsAnalysis.accident_info.location}</span></p>
+                    )}
+                    {commentsAnalysis.accident_info?.company && (
+                      <p>🏢 Empresa: <span className="text-foreground">{commentsAnalysis.accident_info.company}</span></p>
+                    )}
+                    {commentsAnalysis.potential_contacts?.length > 0 && (
+                      <p>👥 {commentsAnalysis.potential_contacts.length} ponte(s) identificada(s)</p>
+                    )}
+                    {commentsAnalysis.key_comments?.length > 0 && (
+                      <p className="italic truncate">💬 "{commentsAnalysis.key_comments[0]}"</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Caption */}
             <div className="space-y-2">
               <Label>Legenda / Texto do Post</Label>
               <Textarea
-                placeholder="Cole aqui a legenda do post ou clique acima para extrair automaticamente..."
+                placeholder="Cole aqui a legenda do post ou clique em '1. Extrair legenda' acima..."
                 value={caption}
                 onChange={(e) => setCaption(e.target.value)}
                 rows={5}
               />
               <p className="text-xs text-muted-foreground">
-                A IA vai analisar este texto para extrair nome, telefone, interesse e outros dados
+                A IA vai analisar este texto + comentários (se buscados) para extrair os dados
               </p>
             </div>
 
@@ -889,23 +959,8 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
               </div>
             )}
 
-            {/* Fetch Comments Button */}
-            {url.trim() && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleFetchComments}
-                disabled={isFetchingComments}
-                className="w-full gap-2 border-dashed"
-              >
-                {isFetchingComments ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <MessageSquare className="h-4 w-4" />
-                )}
-                {isFetchingComments ? 'Buscando comentários via Apify...' : '🔍 Buscar comentários do post (Apify)'}
-              </Button>
-            )}
+            {/* Botão "Buscar comentários" foi movido pro step input — aqui exibimos apenas a análise */}
+
 
             {/* Comments Analysis Display */}
             {commentsAnalysis && (
