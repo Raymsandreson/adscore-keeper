@@ -63,7 +63,9 @@ const getConversationKey = (phone: string, instanceName?: string | null) =>
 
 // Force clean rebuild
 export function WhatsAppInbox() {
-  const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
+  // null = ainda não resolvi qual instância usar (não buscar nada).
+  // 'all' ou um id = pronto para buscar.
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const { conversations, loading, instanceSwitching, switchProgress, instances, instanceStats, statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, linkToLead, linkToContact, refetch, refetchStats, fetchFullConversation } = useWhatsAppMessages(selectedInstanceId);
   const { statuses, disconnectedInstances, loading: statusLoading, refetchStatus } = useWhatsAppInstanceStatus(instances.length > 0);
   const [dismissedAlert, setDismissedAlert] = useState(false);
@@ -76,36 +78,50 @@ export function WhatsAppInbox() {
   const [importingWhatsApp, setImportingWhatsApp] = useState(false);
   const [creatingLead, setCreatingLead] = useState(false);
 
+  // Default instance do perfil do usuário (fonte da verdade para alertas e fallback).
+  const [userDefaultInstanceId, setUserDefaultInstanceId] = useState<string | null>(null);
+
+  // Filtra alertas de desconexão: só mostra se a instância caída é a default do user.
+  // Admins continuam vendo todas (não têm default específico ou enxergam o pool inteiro).
+  const relevantDisconnectedInstances = useMemo(() => {
+    if (!userDefaultInstanceId) return [];
+    return disconnectedInstances.filter((inst) => inst.id === userDefaultInstanceId);
+  }, [disconnectedInstances, userDefaultInstanceId]);
+
   const disconnectedSignature = useMemo(
-    () => disconnectedInstances.map((inst) => inst.id).sort().join('|'),
-    [disconnectedInstances]
+    () => relevantDisconnectedInstances.map((inst) => inst.id).sort().join('|'),
+    [relevantDisconnectedInstances]
   );
 
   useEffect(() => {
     setDismissedAlert(false);
   }, [disconnectedSignature]);
 
-  // Auto-select default instance on mount (localStorage > profile default > first available)
+  // Auto-select default instance on mount.
+  // Ordem de prioridade (corrigida): perfil.default_instance_id > localStorage > primeira disponível.
+  // O default do perfil é soberano: se existir e estiver na lista de instâncias do user, ganha sempre.
   const [defaultInstanceApplied, setDefaultInstanceApplied] = useState(false);
   useEffect(() => {
     if (defaultInstanceApplied || !user || instances.length === 0) return;
     const applyDefault = async () => {
-      // 1. Try localStorage last used
+      // 1. Perfil default (fonte primária)
+      const { data } = await supabase.from('profiles').select('default_instance_id').eq('user_id', user.id).single();
+      const defaultId = (data as any)?.default_instance_id || null;
+      setUserDefaultInstanceId(defaultId);
+
+      if (defaultId && instances.some(i => i.id === defaultId)) {
+        setSelectedInstanceId(defaultId);
+        setDefaultInstanceApplied(true);
+        return;
+      }
+      // 2. Fallback: localStorage da última usada
       const lastUsed = localStorage.getItem('whatsapp_last_instance_id');
       if (lastUsed && instances.some(i => i.id === lastUsed)) {
         setSelectedInstanceId(lastUsed);
         setDefaultInstanceApplied(true);
         return;
       }
-      // 2. Try profile default
-      const { data } = await supabase.from('profiles').select('default_instance_id').eq('user_id', user.id).single();
-      const defaultId = (data as any)?.default_instance_id;
-      if (defaultId && instances.some(i => i.id === defaultId)) {
-        setSelectedInstanceId(defaultId);
-        setDefaultInstanceApplied(true);
-        return;
-      }
-      // 3. Fallback to first instance
+      // 3. Fallback final: primeira instância disponível
       setSelectedInstanceId(instances[0].id);
       setDefaultInstanceApplied(true);
     };

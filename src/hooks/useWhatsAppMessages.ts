@@ -343,6 +343,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       hasLoaded,
       isFetching: isFetchingRef.current,
     });
+    // Gating: enquanto a instância padrão ainda não foi resolvida (null/undefined),
+    // não dispara fetch — evita o flash de "todas as instâncias" antes do default aplicar.
+    if (selectedInstanceId === null || selectedInstanceId === undefined) {
+      return;
+    }
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
 
@@ -482,6 +487,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       setConversations(convList);
       setMessages(convList.map(c => c.messages[0]));
       setHasLoaded(true);
+
+      // Persiste no cache module-level para sobreviver a unmount/remount
+      conversationsCache.set(cacheKeyFor(selectedInstanceId), {
+        conversations: convList,
+        fetchedAt: Date.now(),
+      });
 
       if (!silent && convList.length > 0) {
         toast.success(`${convList.length} conversas carregadas`);
