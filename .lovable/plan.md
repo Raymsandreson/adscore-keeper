@@ -1,68 +1,61 @@
 
 
-## Sincronização de participantes + seleção de contatos do lead ao fechar
+# Migrar `whatsapp-call-queue-processor` pro Railway
 
-### O que muda em relação ao plano anterior
+## Objetivo
+Tirar a função "discadora automática" do Lovable Cloud (que roda 1x/min = 1.440 invocações/dia) e colocá-la no `railway-server/`, mantendo **comportamento idêntico**.
 
-Mantém tudo que já estava planejado para `rename-whatsapp-group` (sincronizar instâncias open/closed) e **adiciona** uma etapa interativa antes da renomeação: perguntar ao usuário quais **contatos do lead** devem ser adicionados ao grupo e marcados como `client` na tabela `contacts`.
+## O que vai mudar (e o que NÃO vai mudar)
 
-### Fluxo novo ao fechar lead
+| Item | Antes | Depois |
+|------|-------|--------|
+| Onde roda | Lovable Cloud Edge Function | Railway (`railway-server/`) |
+| Frequência | 1x/min via `pg_cron` | 1x/min via `pg_cron` (mesmo CRON, só muda a URL chamada) |
+| Comportamento | Discadora pega próximo da fila, liga via UazAPI, gera áudio de follow-up | **Idêntico** |
+| Custo Lovable | ~1.440 invocações/dia desta função | **0** invocações desta função |
+| Custo Railway | Já pago fixo, sem aumento perceptível | Mesmo |
 
-1. Usuário muda lead para `closed` (via UI normal de fechamento).
-2. **Antes** de chamar `rename-whatsapp-group`, abrir um diálogo `CloseLeadGroupDialog`:
-   - Lista todos os contatos vinculados ao lead (via `contact_leads` join `contacts`)
-   - Cada contato tem checkbox "Adicionar ao grupo" + checkbox "Marcar como cliente"
-   - Padrão: ambos marcados para todos
-   - Mostra também resumo do que vai acontecer com instâncias (X entram, Y saem)
-   - Botões: "Confirmar e fechar" / "Cancelar"
-3. Ao confirmar, chama `rename-whatsapp-group` passando `contacts_to_add: [{phone, mark_as_client}]` no body.
+## Arquivos que vou criar/alterar
 
-### Mudanças técnicas
+1. **`railway-server/src/functions/call-queue-processor.ts`** (novo) — porta exata da lógica da edge function. Mesma fila, mesma UazAPI, mesmo Gemini, mesmo ElevenLabs, mesmo upload pro Storage do Supabase externo.
+2. **`railway-server/src/index.ts`** — registrar a rota `POST /functions/call-queue-processor` no `functionHandlers`.
+3. **`railway-server/package.json`** — sem mudança (todas as deps já existem: `@supabase/supabase-js`, `express`).
+4. **Migration SQL** (`supabase/migrations/...`) — atualizar o `pg_cron` job no Lovable Cloud:
+   - **Desativar** o job atual que chama a edge function `whatsapp-call-queue-processor`.
+   - **Criar** novo job (mesma frequência: `* * * * *`) que faz `net.http_post` para `https://[seu-railway].up.railway.app/functions/call-queue-processor` com header `x-api-key`.
+5. **`supabase/functions/whatsapp-call-queue-processor/index.ts`** — manter por 24h como `_legacy` (rota dorminhoca que retorna 200 sem fazer nada) pra rollback rápido. **Não deletar agora** (Regra 4 do projeto).
 
-**1. `supabase/functions/rename-whatsapp-group/index.ts`** (acumula com plano anterior)
-- Aceitar novo payload opcional `contacts_to_add: Array<{phone, mark_as_client}>`
-- Após sincronizar instâncias:
-  - Para cada contato: chamar `${baseUrl}/group/participants` com `action:'add'` e `phone@s.whatsapp.net`
-  - Se `mark_as_client = true`: `UPDATE contacts SET classification='client' WHERE id = X`
-- Soft fail por contato (loga e continua se um número não puder ser adicionado)
+## Variáveis de ambiente no Railway
 
-**2. Novo componente `src/components/leads/CloseLeadGroupDialog.tsx`**
-- Props: `leadId`, `boardId`, `open`, `onClose`, `onConfirm(payload)`
-- Query 1: `contacts` vinculados ao lead via `contact_leads`
-- Query 2: `board_group_instances` do board, agrupados por `applies_to` para mostrar preview
-- Renderiza tabela: contato | telefone | "Adicionar ao grupo" | "Marcar como cliente"
-- Footer mostra: "X instâncias entrarão, Y sairão, Z contatos serão adicionados"
+Você precisa garantir que o Railway tem (provavelmente já tem, mas vou confirmar no momento da implementação):
+- `EXTERNAL_SUPABASE_URL` ✅ (já configurado)
+- `EXTERNAL_SUPABASE_SERVICE_ROLE_KEY` ✅ (já configurado)
+- `LOVABLE_API_KEY` — pra chamar Gemini via `ai.gateway.lovable.dev` (talvez precise adicionar, te aviso)
+- `ELEVENLABS_API_KEY` — pra gerar áudio de follow-up (talvez precise adicionar, te aviso)
+- `RAILWAY_API_KEY` ✅ (já configurado, será usado pelo `pg_cron` no header)
 
-**3. Integração na UI de fechamento**
-- Localizar onde hoje o lead vira `closed` (provavelmente `LeadEditDialog` ou `UnifiedKanbanManager` no drag para última stage)
-- Interceptar a transição: abrir `CloseLeadGroupDialog` antes de gravar `lead_status='closed'`
-- Só após confirmação: gravar status + invocar `rename-whatsapp-group` com payload de contatos
+Se faltar alguma, vou pedir pra você adicionar antes de ativar o CRON novo.
 
-**4. Trigger `auto_classify_contacts_on_lead_close`**
-- Já existe e marca **todos** contatos do grupo como `client` automaticamente
-- Conflito com a nova UX (usuário pode querer marcar só alguns)
-- Solução: manter trigger como fallback, mas a edge function processa a lista explícita primeiro. Se `contacts_to_add` veio com `mark_as_client=false` para algum contato, o trigger ainda assim sobrescreve.
-- **Decisão**: alterar o trigger para só marcar contatos que **não estão** em `contact_leads` do lead (pega só "extras" do grupo), deixando os contatos vinculados sob controle do usuário via dialog.
+## Plano de rollback (Regra 1 do projeto)
 
-### O que NÃO muda
+Se algo quebrar:
+1. Reverter a migration que troca o CRON (volto a apontar pra edge function antiga, que ainda existe intacta).
+2. Tempo de rollback: <2 min via SQL.
 
-- Schema de `board_group_instances` (coluna `applies_to` já existe)
-- UI de configuração de instâncias por status (`BoardGroupInstancesConfig.tsx`)
-- Lógica de criação de grupo (`create-whatsapp-group`)
-- Lógica de nome do grupo
-- Fluxo de fechamento que **não passa** por mudança de status (ex: criação direta de caso) — o trigger `auto_close_lead_on_case_creation` segue como está
+## Validação pós-deploy
 
-### Verificação pós-deploy
+1. Aguardar 1 ciclo do CRON (~60s).
+2. Conferir logs do Railway pra ver "Initiating call to..." aparecer.
+3. Conferir tabela `whatsapp_call_queue` no Supabase externo: status mudando de `pending` → `calling` → `completed`.
+4. Conferir 1 ligação real chegando no WhatsApp do contato de teste.
+5. Conferir áudio de follow-up sendo enviado.
 
-1. Lead aberto com 3 contatos vinculados → fechar → dialog aparece com 3 linhas marcadas
-2. Desmarcar 1 "adicionar ao grupo" e 1 "marcar como cliente" → confirmar
-3. Conferir no grupo: só 2 contatos novos foram adicionados
-4. Conferir `contacts.classification`: só os marcados viraram `client`
-5. Conferir instâncias: open saiu, closed entrou (sem regressão do plano anterior)
+Só depois de validar essas 5 coisas, considero a migração concluída e te peço autorização pra deletar a edge function antiga (em 24h).
 
-### Risco e rollback
+## O que você precisa fazer
 
-- Trigger `auto_classify_contacts_on_lead_close` alterado → backup do código atual em comentário no migration; reverter via novo migration restaura comportamento original
-- `rename-whatsapp-group` aceita payload novo de forma **opcional** → chamadas antigas (sem `contacts_to_add`) continuam funcionando idênticas
-- Dialog é uma camada nova; se der erro pode ser bypassado deixando fluxo direto temporariamente
+1. **Aprovar este plano** (clicar em "Approve plan").
+2. Quando eu terminar o código, fazer `git push` (Railway redeploya sozinho).
+3. Se eu pedir, adicionar 1-2 env vars no painel do Railway (te dou o passo a passo).
+4. Acompanhar comigo a validação pós-deploy.
 
