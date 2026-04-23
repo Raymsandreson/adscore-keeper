@@ -73,11 +73,29 @@ const normalizeInstanceName = (instanceName?: string | null) =>
 const getConversationKey = (phone: string, instanceName?: string | null) =>
   `${(phone || '').trim()}__${normalizeInstanceName(instanceName)}`;
 
+// ---------------------------------------------------------------------------
+// Module-level cache (sobrevive a unmount/remount do WhatsAppInbox).
+// Mantém a última lista de conversas por filtro de instância, para que ao
+// voltar para a página o usuário veja imediatamente o estado anterior em vez
+// de tela branca + flash de outra instância.
+// ---------------------------------------------------------------------------
+type ConversationsCacheEntry = {
+  conversations: WhatsAppConversation[];
+  fetchedAt: number;
+};
+const conversationsCache: Map<string, ConversationsCacheEntry> = new Map();
+const cacheKeyFor = (selectedInstanceId?: string | null) =>
+  `inst:${selectedInstanceId ?? 'none'}`;
+
 export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const { user } = useAuthContext();
   const { isAdmin } = useUserRole();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
-  const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
+  // Restaura cache imediato no mount para evitar tela branca / flash ao re-entrar na página
+  const [conversations, setConversations] = useState<WhatsAppConversation[]>(() => {
+    const cached = conversationsCache.get(cacheKeyFor(selectedInstanceId));
+    return cached?.conversations ?? [];
+  });
   const [loading, setLoading] = useState(false);
   const [instanceSwitching, setInstanceSwitching] = useState(false);
   const [switchProgress, setSwitchProgress] = useState(0);
@@ -85,7 +103,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const [instanceStats, setInstanceStats] = useState<InstanceStats[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
   const conversationsRef = useRef<WhatsAppConversation[]>([]);
-  const [hasLoaded, setHasLoaded] = useState(false);
+  // Se restaurou do cache, considera "já carregado" — não mostra spinner
+  const [hasLoaded, setHasLoaded] = useState(() => {
+    return conversationsCache.has(cacheKeyFor(selectedInstanceId));
+  });
   const profileCacheRef = useRef<{ full_name: string | null; treatment_title: string | null } | null>(null);
   const isFetchingRef = useRef(false);
   const [realtimeHealthy, setRealtimeHealthy] = useState(true);
@@ -322,6 +343,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       hasLoaded,
       isFetching: isFetchingRef.current,
     });
+    // Gating: enquanto a instância padrão ainda não foi resolvida (null/undefined),
+    // não dispara fetch — evita o flash de "todas as instâncias" antes do default aplicar.
+    if (selectedInstanceId === null || selectedInstanceId === undefined) {
+      return;
+    }
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
 
@@ -461,6 +487,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       setConversations(convList);
       setMessages(convList.map(c => c.messages[0]));
       setHasLoaded(true);
+
+      // Persiste no cache module-level para sobreviver a unmount/remount
+      conversationsCache.set(cacheKeyFor(selectedInstanceId), {
+        conversations: convList,
+        fetchedAt: Date.now(),
+      });
 
       if (!silent && convList.length > 0) {
         toast.success(`${convList.length} conversas carregadas`);

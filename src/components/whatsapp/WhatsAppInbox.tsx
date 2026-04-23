@@ -63,7 +63,9 @@ const getConversationKey = (phone: string, instanceName?: string | null) =>
 
 // Force clean rebuild
 export function WhatsAppInbox() {
-  const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
+  // null = ainda não resolvi qual instância usar (não buscar nada).
+  // 'all' ou um id = pronto para buscar.
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const { conversations, loading, instanceSwitching, switchProgress, instances, instanceStats, statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, linkToLead, linkToContact, refetch, refetchStats, fetchFullConversation } = useWhatsAppMessages(selectedInstanceId);
   const { statuses, disconnectedInstances, loading: statusLoading, refetchStatus } = useWhatsAppInstanceStatus(instances.length > 0);
   const [dismissedAlert, setDismissedAlert] = useState(false);
@@ -76,36 +78,50 @@ export function WhatsAppInbox() {
   const [importingWhatsApp, setImportingWhatsApp] = useState(false);
   const [creatingLead, setCreatingLead] = useState(false);
 
+  // Default instance do perfil do usuário (fonte da verdade para alertas e fallback).
+  const [userDefaultInstanceId, setUserDefaultInstanceId] = useState<string | null>(null);
+
+  // Filtra alertas de desconexão: só mostra se a instância caída é a default do user.
+  // Admins continuam vendo todas (não têm default específico ou enxergam o pool inteiro).
+  const relevantDisconnectedInstances = useMemo(() => {
+    if (!userDefaultInstanceId) return [];
+    return disconnectedInstances.filter((inst) => inst.id === userDefaultInstanceId);
+  }, [disconnectedInstances, userDefaultInstanceId]);
+
   const disconnectedSignature = useMemo(
-    () => disconnectedInstances.map((inst) => inst.id).sort().join('|'),
-    [disconnectedInstances]
+    () => relevantDisconnectedInstances.map((inst) => inst.id).sort().join('|'),
+    [relevantDisconnectedInstances]
   );
 
   useEffect(() => {
     setDismissedAlert(false);
   }, [disconnectedSignature]);
 
-  // Auto-select default instance on mount (localStorage > profile default > first available)
+  // Auto-select default instance on mount.
+  // Ordem de prioridade (corrigida): perfil.default_instance_id > localStorage > primeira disponível.
+  // O default do perfil é soberano: se existir e estiver na lista de instâncias do user, ganha sempre.
   const [defaultInstanceApplied, setDefaultInstanceApplied] = useState(false);
   useEffect(() => {
     if (defaultInstanceApplied || !user || instances.length === 0) return;
     const applyDefault = async () => {
-      // 1. Try localStorage last used
+      // 1. Perfil default (fonte primária)
+      const { data } = await supabase.from('profiles').select('default_instance_id').eq('user_id', user.id).single();
+      const defaultId = (data as any)?.default_instance_id || null;
+      setUserDefaultInstanceId(defaultId);
+
+      if (defaultId && instances.some(i => i.id === defaultId)) {
+        setSelectedInstanceId(defaultId);
+        setDefaultInstanceApplied(true);
+        return;
+      }
+      // 2. Fallback: localStorage da última usada
       const lastUsed = localStorage.getItem('whatsapp_last_instance_id');
       if (lastUsed && instances.some(i => i.id === lastUsed)) {
         setSelectedInstanceId(lastUsed);
         setDefaultInstanceApplied(true);
         return;
       }
-      // 2. Try profile default
-      const { data } = await supabase.from('profiles').select('default_instance_id').eq('user_id', user.id).single();
-      const defaultId = (data as any)?.default_instance_id;
-      if (defaultId && instances.some(i => i.id === defaultId)) {
-        setSelectedInstanceId(defaultId);
-        setDefaultInstanceApplied(true);
-        return;
-      }
-      // 3. Fallback to first instance
+      // 3. Fallback final: primeira instância disponível
       setSelectedInstanceId(instances[0].id);
       setDefaultInstanceApplied(true);
     };
@@ -739,14 +755,14 @@ export function WhatsAppInbox() {
         )}
 
         <div className="w-full md:w-auto md:ml-auto flex flex-wrap md:flex-nowrap gap-0.5 md:gap-1 items-center justify-end">
-          {disconnectedInstances.length > 0 && (
+          {relevantDisconnectedInstances.length > 0 && (
             <Button
               variant="destructive"
               size="sm"
               className="h-8"
               onClick={() => {
-                if (disconnectedInstances.length === 1) {
-                  const inst = disconnectedInstances[0];
+                if (relevantDisconnectedInstances.length === 1) {
+                  const inst = relevantDisconnectedInstances[0];
                   setReconnectInstance({ id: inst.id, name: inst.instance_name });
                   return;
                 }
@@ -861,14 +877,14 @@ export function WhatsAppInbox() {
         </div>
       </div>
 
-      {/* Reconnect Bar - always visible when offline */}
-      {disconnectedInstances.length > 0 && (
+      {/* Reconnect Bar - apenas para instância padrão do usuário */}
+      {relevantDisconnectedInstances.length > 0 && (
         <div className="flex items-center gap-2 px-4 py-2 border-b bg-destructive/10 shrink-0 animate-in slide-in-from-top">
           <WifiOff className="h-4 w-4 text-destructive flex-shrink-0" />
           <span className="text-sm font-medium text-destructive flex-1">
-            {disconnectedInstances.length === 1 
-              ? `${disconnectedInstances[0].instance_name} está offline`
-              : `${disconnectedInstances.length} instâncias offline`
+            {relevantDisconnectedInstances.length === 1 
+              ? `${relevantDisconnectedInstances[0].instance_name} está offline`
+              : `${relevantDisconnectedInstances.length} instâncias offline`
             }
           </span>
           <Button
@@ -876,8 +892,8 @@ export function WhatsAppInbox() {
             size="sm"
             className="h-7 text-xs"
             onClick={() => {
-              if (disconnectedInstances.length === 1) {
-                const inst = disconnectedInstances[0];
+              if (relevantDisconnectedInstances.length === 1) {
+                const inst = relevantDisconnectedInstances[0];
                 setReconnectInstance({ id: inst.id, name: inst.instance_name });
               } else {
                 setDismissedAlert(false);
@@ -909,8 +925,8 @@ export function WhatsAppInbox() {
         </div>
       )}
 
-      {/* Disconnection Alert Overlay */}
-      {disconnectedInstances.length > 0 && !dismissedAlert && (
+      {/* Disconnection Alert Overlay - apenas para instância padrão do usuário */}
+      {relevantDisconnectedInstances.length > 0 && !dismissedAlert && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm pointer-events-auto">
           <div className="relative bg-card border-2 border-destructive rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 text-center space-y-4 animate-in fade-in zoom-in-95">
             <Button
@@ -929,11 +945,11 @@ export function WhatsAppInbox() {
             </div>
 
             <h2 className="text-xl font-bold text-destructive">
-              {disconnectedInstances.length === 1 ? 'Instância Desconectada!' : `${disconnectedInstances.length} Instâncias Desconectadas!`}
+              {relevantDisconnectedInstances.length === 1 ? 'Instância Desconectada!' : `${relevantDisconnectedInstances.length} Instâncias Desconectadas!`}
             </h2>
 
             <div className="space-y-2">
-              {disconnectedInstances.map(inst => {
+              {relevantDisconnectedInstances.map(inst => {
                 const since = inst.disconnected_since;
                 const elapsedMs = since ? Date.now() - new Date(since).getTime() : 0;
                 const elapsedMin = Math.floor(elapsedMs / 60000);
