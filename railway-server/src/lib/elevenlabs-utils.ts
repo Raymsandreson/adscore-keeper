@@ -20,7 +20,7 @@ export async function checkElevenLabsCredits(apiKey: string): Promise<ElevenLabs
     return { character_count: 0, character_limit: 999999, remaining: 999999, has_credits: true };
   }
 
-  const data = await res.json();
+  const data = await res.json() as any;
   const used = data.character_count ?? 0;
   const limit = data.character_limit ?? 0;
   const remaining = Math.max(0, limit - used);
