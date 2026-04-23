@@ -157,6 +157,7 @@ const initialFormData: AccidentLeadFormData = {
 
 export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, initialUrl }: ImportFromSocialLinkDialogProps) {
   const { user } = useAuthContext();
+  const navigate = useNavigate();
   const [url, setUrl] = useState(initialUrl || '');
   const [caption, setCaption] = useState('');
   const [targetType, setTargetType] = useState<TargetType>('lead');
