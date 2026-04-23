@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
 import { cacheSet, cacheGet, cacheRemove, CACHE_TTL } from '@/lib/offlineCache';
+import { traceHook } from '@/utils/hookTracer';
 
 interface Profile {
   id: string;
@@ -91,6 +92,7 @@ export const useAuth = () => {
   const [isOfflineMode, setIsOfflineMode] = useState(false);
 
   const initialize = () => {
+    traceHook('useAuth.initialize', { reason: 'mount-or-retry' });
     setLoading(true);
     setConnectionError(null);
     setIsOfflineMode(false);
@@ -148,6 +150,7 @@ export const useAuth = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        traceHook('useAuth.onAuthStateChange', { event: _event, hasSession: !!session, userId: session?.user?.id });
         if ((_event === 'TOKEN_REFRESHED' || _event === 'SIGNED_OUT') && !session) {
           console.warn('[AUTH] Sessão ausente após evento de auth, limpando estado local...');
           await resetToLoggedOut();
