@@ -312,7 +312,11 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       setInstances(data || []);
     };
     const fetchBoards = async () => {
-      const { data } = await supabase.from('kanban_boards').select('id, name').order('name');
+      const { data } = await supabase
+        .from('kanban_boards')
+        .select('id, name')
+        .or('board_type.eq.funnel,board_type.is.null')
+        .order('name');
       setBoards((data as any) || []);
     };
     fetchInstances();
