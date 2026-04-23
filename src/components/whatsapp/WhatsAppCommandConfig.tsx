@@ -291,6 +291,20 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string }[]>([]);
   const [instances, setInstances] = useState<any[]>([]);
   const [boards, setBoards] = useState<{ id: string; name: string }[]>([]);
+  const [filterTestOpen, setFilterTestOpen] = useState(false);
+  const [filterTestPhone, setFilterTestPhone] = useState('');
+  const [filterTestLoading, setFilterTestLoading] = useState(false);
+  const [filterTestResult, setFilterTestResult] = useState<{
+    found: boolean;
+    leadName?: string;
+    boardId?: string | null;
+    boardName?: string | null;
+    leadStatus?: string | null;
+    boardPass: boolean;
+    statusPass: boolean;
+    willRespond: boolean;
+    reason: string;
+  } | null>(null);
 
   useEffect(() => {
     const fetchInstances = async () => {
