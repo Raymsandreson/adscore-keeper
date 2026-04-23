@@ -298,6 +298,11 @@ export const useLeads = (adAccountId?: string) => {
         .from('leads')
         .insert([{
           ...lead,
+          lead_status: lead.lead_status ?? 'active',
+          became_client_date: lead.became_client_date ?? null,
+          classification_date: lead.classification_date ?? null,
+          in_progress_date: lead.in_progress_date ?? null,
+          inviavel_date: lead.inviavel_date ?? null,
           ad_account_id: adAccountId || lead.ad_account_id,
           created_by: user?.id,
           updated_by: user?.id,

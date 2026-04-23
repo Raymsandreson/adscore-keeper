@@ -179,7 +179,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   // Lead form data (used in review step)
   const [formData, setFormData] = useState<AccidentLeadFormData>({ ...initialFormData });
   // Board selection
-  const [boards, setBoards] = useState<{ id: string; name: string }[]>([]);
+  const [boards, setBoards] = useState<Array<{ id: string; name: string; stages?: any[] }>>([]);
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
   // Team profiles for acolhedor selector
   const [teamMembers, setTeamMembers] = useState<{ id: string; full_name: string | null; email: string | null }[]>([]);
@@ -231,9 +231,9 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   useEffect(() => {
     if (step === 'review') {
       if (boards.length === 0) {
-        supabase.from('kanban_boards').select('id, name, board_type').order('display_order').then(({ data }) => {
+        supabase.from('kanban_boards').select('id, name, stages, board_type').order('display_order').then(({ data }) => {
           if (data) {
-            setBoards(data.filter(b => b.board_type === 'funnel' || !b.board_type).map(b => ({ id: b.id, name: b.name })));
+            setBoards(data.filter(b => b.board_type === 'funnel' || !b.board_type).map(b => ({ id: b.id, name: b.name, stages: Array.isArray((b as any).stages) ? (b as any).stages : [] })));
           }
         });
       }
@@ -377,6 +377,10 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
 
     try {
       if (targetType === 'lead') {
+        const board = boards.find(b => b.id === selectedBoardId);
+        const stages = Array.isArray(board?.stages) ? board.stages : [];
+        const firstStageId = stages[0]?.id || null;
+
         const { data: newLead, error } = await supabase.from('leads').insert({
           lead_name: formData.lead_name,
           lead_phone: formData.lead_phone || null,
@@ -405,6 +409,12 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           liability_type: formData.liability_type || null,
           legal_viability: formData.legal_viability || null,
           board_id: selectedBoardId || null,
+          status: firstStageId,
+          lead_status: 'active',
+          became_client_date: null,
+          classification_date: null,
+          in_progress_date: null,
+          inviavel_date: null,
           created_by: user?.id || null,
           updated_by: user?.id || null,
         }).select('id').single();
@@ -535,6 +545,12 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
                     sector: bgFormData.sector || null,
                     news_link: bgFormData.news_link || null,
                     board_id: bgBoardId,
+                    status: ((Array.isArray((boards.find(b => b.id === bgBoardId)?.stages)) ? (boards.find(b => b.id === bgBoardId)?.stages as any[]) : [])[0]?.id) || null,
+                    lead_status: 'active',
+                    became_client_date: null,
+                    classification_date: null,
+                    in_progress_date: null,
+                    inviavel_date: null,
                     created_by: bgUserId,
                     updated_by: bgUserId,
                   }).select('id').single();
