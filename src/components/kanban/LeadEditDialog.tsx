@@ -269,113 +269,123 @@ export function LeadEditDialog({
   // Track previous lead id to only reset tab on lead change, not hydration
   const prevLeadIdRef = useRef<string | null>(null);
 
-  // Load lead data when dialog opens
+  // Hydrate form fields ONLY when opening the dialog or switching to a different lead.
+  // We intentionally DO NOT re-hydrate on every currentLead reference change, otherwise
+  // realtime/refetch updates would overwrite fields the user just edited (ex: Acolhedor
+  // gets deselected immediately after picking it).
   useEffect(() => {
-    if (currentLead && open) {
-      const leadAny = currentLead as any;
-      
-      // Only reset tab when opening a different lead (not on hydration updates)
-      const isNewLead = prevLeadIdRef.current !== currentLead.id;
-      if (isNewLead) {
-        setActiveTab(initialTab || 'basic');
-        prevLeadIdRef.current = currentLead.id;
-      }
-      // Basic fields
-      setLeadName(currentLead.lead_name || '');
-      setLeadPhone(currentLead.lead_phone || '');
-      setLeadEmail(currentLead.lead_email || '');
-      setInstagramUsername(currentLead.instagram_username || '');
-      setSource(currentLead.source || 'manual');
-      setNotes(currentLead.notes || '');
-      setAcolhedor(leadAny.acolhedor || '');
-      // Load whatsapp groups from new table
-      const cachedGroups = leadGroupsCache.get(currentLead.id);
-      if (cachedGroups) {
-        setWhatsappGroups(cachedGroups);
-      } else if (leadAny.group_link || leadAny.whatsapp_group_id) {
-        setWhatsappGroups([{
-          group_link: leadAny.group_link || '',
-          group_jid: leadAny.whatsapp_group_id || '',
-          group_name: '',
-          label: '',
-        }]);
-      } else {
-        setWhatsappGroups([]);
-      }
-      setClientClassification(currentLead.client_classification || '');
-      setExpectedBirthDate(leadAny.expected_birth_date || '');
-      setSelectedBoardId(leadAny.board_id || '');
-      // Outcome
-      setCaseNumber(leadAny.case_number || '');
-      setLeadOutcomeReason(leadAny.lead_status_reason || '');
-      // Use lead_status field as primary source of truth
-      const leadStatus = leadAny.lead_status;
-      if (leadStatus === 'closed' || leadAny.became_client_date) {
-        setLeadOutcome('closed');
-        setLeadOutcomeDate(leadAny.became_client_date || '');
-      } else if (leadStatus === 'inviavel' || leadAny.inviavel_date) {
-        setLeadOutcome('inviavel');
-        setLeadOutcomeDate(leadAny.inviavel_date || '');
-      } else if (leadStatus === 'refused') {
-        setLeadOutcome('refused');
-        setLeadOutcomeDate(leadAny.classification_date || '');
-      } else if (leadAny.in_progress_date) {
-        setLeadOutcome('in_progress');
-        setLeadOutcomeDate(leadAny.in_progress_date || '');
-      } else {
-        setLeadOutcome('');
-        setLeadOutcomeDate('');
-      }
-      
-      // Accident fields
-      setVictimName(leadAny.victim_name || '');
-      setVictimAge(leadAny.victim_age?.toString() || '');
-      setAccidentDate(leadAny.accident_date || '');
-      setCaseType(leadAny.case_type || '');
-      setAccidentAddress(leadAny.accident_address || '');
-      setDamageDescription(leadAny.damage_description || '');
-      
-      // Location fields
-      const state = leadAny.visit_state || '';
-      setVisitState(state);
-      setVisitCity(leadAny.visit_city || '');
-      setVisitRegion(leadAny.visit_region || stateToRegion[state] || '');
-      setVisitAddress(leadAny.visit_address || '');
-      
-      // Fetch cities for the state
-      if (state) {
-        fetchCities(state);
-      }
-      
-      // Companies fields
-      setContractorCompany(leadAny.contractor_company || '');
-      setMainCompany(leadAny.main_company || '');
-      setSector(leadAny.sector || '');
-      setCompanySizeJustification(leadAny.company_size_justification || '');
-      
-      // Legal fields
-      setLiabilityType(leadAny.liability_type || '');
-      setNewsLink(currentLead.news_link || '');
-      setNewsLinks(leadAny.news_links || (currentLead.news_link ? [currentLead.news_link] : []));
-      setLegalViability(leadAny.legal_viability || '');
-      
-      const profileIds = [leadAny.created_by, leadAny.updated_by].filter(Boolean) as string[];
-      void Promise.all([
-        loadLeadGroups(currentLead.id, leadAny),
-        loadCustomFieldValues(currentLead.id),
-        profileIds.length > 0 ? fetchProfileNames(profileIds) : Promise.resolve(),
-        import('@/components/leads/LeadActivitiesTab').then(({ prefetchLeadActivities }) => prefetchLeadActivities(currentLead.id)),
-        import('@/components/leads/LeadLinkedContacts').then(({ prefetchLeadLinkedContacts }) => prefetchLeadLinkedContacts(currentLead.id)),
-        import('@/components/kanban/LeadFunnelOverview').then(({ prefetchLeadFunnelOverview }) => prefetchLeadFunnelOverview(
-          currentLead.id,
-          leadAny.board_id || null,
-          currentLead.status || null,
-          fetchLeadInstances,
-          createLeadInstances,
-        )),
-      ]);
+    if (!currentLead || !open) return;
+
+    const isNewLead = prevLeadIdRef.current !== currentLead.id;
+    if (!isNewLead) return;
+
+    const leadAny = currentLead as any;
+    prevLeadIdRef.current = currentLead.id;
+    setActiveTab(initialTab || 'basic');
+
+    // Basic fields
+    setLeadName(currentLead.lead_name || '');
+    setLeadPhone(currentLead.lead_phone || '');
+    setLeadEmail(currentLead.lead_email || '');
+    setInstagramUsername(currentLead.instagram_username || '');
+    setSource(currentLead.source || 'manual');
+    setNotes(currentLead.notes || '');
+    setAcolhedor(leadAny.acolhedor || '');
+    // Load whatsapp groups from new table
+    const cachedGroups = leadGroupsCache.get(currentLead.id);
+    if (cachedGroups) {
+      setWhatsappGroups(cachedGroups);
+    } else if (leadAny.group_link || leadAny.whatsapp_group_id) {
+      setWhatsappGroups([{
+        group_link: leadAny.group_link || '',
+        group_jid: leadAny.whatsapp_group_id || '',
+        group_name: '',
+        label: '',
+      }]);
+    } else {
+      setWhatsappGroups([]);
     }
-  }, [currentLead, open, fetchProfileNames, fetchLeadInstances, createLeadInstances]);
+    setClientClassification(currentLead.client_classification || '');
+    setExpectedBirthDate(leadAny.expected_birth_date || '');
+    setSelectedBoardId(leadAny.board_id || '');
+    // Outcome
+    setCaseNumber(leadAny.case_number || '');
+    setLeadOutcomeReason(leadAny.lead_status_reason || '');
+    // Use lead_status field as primary source of truth
+    const leadStatus = leadAny.lead_status;
+    if (leadStatus === 'closed' || leadAny.became_client_date) {
+      setLeadOutcome('closed');
+      setLeadOutcomeDate(leadAny.became_client_date || '');
+    } else if (leadStatus === 'inviavel' || leadAny.inviavel_date) {
+      setLeadOutcome('inviavel');
+      setLeadOutcomeDate(leadAny.inviavel_date || '');
+    } else if (leadStatus === 'refused') {
+      setLeadOutcome('refused');
+      setLeadOutcomeDate(leadAny.classification_date || '');
+    } else if (leadAny.in_progress_date) {
+      setLeadOutcome('in_progress');
+      setLeadOutcomeDate(leadAny.in_progress_date || '');
+    } else {
+      setLeadOutcome('');
+      setLeadOutcomeDate('');
+    }
+
+    // Accident fields
+    setVictimName(leadAny.victim_name || '');
+    setVictimAge(leadAny.victim_age?.toString() || '');
+    setAccidentDate(leadAny.accident_date || '');
+    setCaseType(leadAny.case_type || '');
+    setAccidentAddress(leadAny.accident_address || '');
+    setDamageDescription(leadAny.damage_description || '');
+
+    // Location fields
+    const state = leadAny.visit_state || '';
+    setVisitState(state);
+    setVisitCity(leadAny.visit_city || '');
+    setVisitRegion(leadAny.visit_region || stateToRegion[state] || '');
+    setVisitAddress(leadAny.visit_address || '');
+
+    // Fetch cities for the state
+    if (state) {
+      fetchCities(state);
+    }
+
+    // Companies fields
+    setContractorCompany(leadAny.contractor_company || '');
+    setMainCompany(leadAny.main_company || '');
+    setSector(leadAny.sector || '');
+    setCompanySizeJustification(leadAny.company_size_justification || '');
+
+    // Legal fields
+    setLiabilityType(leadAny.liability_type || '');
+    setNewsLink(currentLead.news_link || '');
+    setNewsLinks(leadAny.news_links || (currentLead.news_link ? [currentLead.news_link] : []));
+    setLegalViability(leadAny.legal_viability || '');
+
+    const profileIds = [leadAny.created_by, leadAny.updated_by].filter(Boolean) as string[];
+    void Promise.all([
+      loadLeadGroups(currentLead.id, leadAny),
+      loadCustomFieldValues(currentLead.id),
+      profileIds.length > 0 ? fetchProfileNames(profileIds) : Promise.resolve(),
+      import('@/components/leads/LeadActivitiesTab').then(({ prefetchLeadActivities }) => prefetchLeadActivities(currentLead.id)),
+      import('@/components/leads/LeadLinkedContacts').then(({ prefetchLeadLinkedContacts }) => prefetchLeadLinkedContacts(currentLead.id)),
+      import('@/components/kanban/LeadFunnelOverview').then(({ prefetchLeadFunnelOverview }) => prefetchLeadFunnelOverview(
+        currentLead.id,
+        leadAny.board_id || null,
+        currentLead.status || null,
+        fetchLeadInstances,
+        createLeadInstances,
+      )),
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLead?.id, open]);
+
+  // Reset hydration tracker when dialog closes so reopening the same lead re-hydrates from DB.
+  useEffect(() => {
+    if (!open) {
+      prevLeadIdRef.current = null;
+    }
+  }, [open]);
 
   const loadCustomFieldValues = async (leadId: string) => {
     const values = leadFieldValuesCache.get(leadId) || await getFieldValues(leadId);
