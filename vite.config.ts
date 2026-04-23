@@ -41,7 +41,7 @@ export default defineConfig(({ mode }) => ({
     react(),
     {
       name: 'html-build-meta',
-      transformIndexHtml(html) {
+      transformIndexHtml(html: string) {
         return html
           .replace(/%VITE_BUILD_SHA%/g, BUILD_SHA)
           .replace(/%VITE_BUILD_TIME%/g, BUILD_TIME);
