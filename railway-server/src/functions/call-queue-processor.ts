@@ -266,7 +266,7 @@ async function sendCallFollowupAudio(
       return;
     }
 
-    const aiResult = await aiResp.json();
+    const aiResult: any = await aiResp.json();
     const followupText = aiResult.choices?.[0]?.message?.content?.trim();
     if (!followupText) {
       console.log('[call-queue] No AI text generated');
