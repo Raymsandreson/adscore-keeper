@@ -2568,33 +2568,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Mirror message to Cloud DB so frontend inbox can read it
-    try {
-      const cloudClient = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      );
-      await cloudClient.from("whatsapp_messages").upsert({
-        phone,
-        contact_name: contactName,
-        message_text: messageText,
-        message_type: messageType,
-        media_url: storedMediaUrl,
-        media_type: mediaType,
-        direction,
-        status: direction === "inbound" ? "received" : "sent",
-        contact_id: contactId,
-        lead_id: leadId,
-        external_message_id: externalMessageId,
-        instance_name: instanceName,
-        instance_token: instanceToken,
-        campaign_id: detectedCampaignId || null,
-        campaign_name: detectedCampaignName || null,
-        created_at: message.created_at,
-      }, { onConflict: "external_message_id", ignoreDuplicates: true });
-    } catch (mirrorErr) {
-      console.warn("Cloud mirror insert failed (non-blocking):", mirrorErr);
-    }
+    // ========== Cloud mirror REMOVED ==========
+    // Single source of truth: external Supabase only. No mirror to Cloud.
 
     // ========== AUTO-ENRICH LEAD/CONTACT (after X inbound messages) ==========
     if (
