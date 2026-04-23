@@ -410,129 +410,156 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
 
         const createdLeadId = newLead?.id;
 
-        // Enqueue WhatsApp group creation
-        if (createdLeadId && selectedBoardId) {
-          try {
-            const { data: groupSettings } = await supabase
-              .from('board_group_settings')
-              .select('group_name_prefix, current_sequence')
-              .eq('board_id', selectedBoardId)
-              .maybeSingle();
+        // Fechar o diálogo IMEDIATAMENTE após criar o lead — o resto roda em background.
+        toast.success('Lead criado! Finalizando vínculos em segundo plano...');
+        onSuccess?.();
+        handleClose();
 
-            if (groupSettings) {
-              // Update sequence counter
-              await supabase
-                .from('board_group_settings')
-                .update({ current_sequence: (groupSettings.current_sequence || 0) + 1 })
-                .eq('board_id', selectedBoardId);
+        // Capturar valores que serão usados no background (depois do reset do state)
+        const bgBoardId = selectedBoardId;
+        const bgSavedContacts = Array.from(savedContacts);
+        const bgAdditionalVictims = [...additionalVictims];
+        const bgFormData = { ...formData };
+        const bgUrl = url;
+        const bgUserId = user?.id || null;
 
-              // Enqueue group creation
-              await supabase.from('group_creation_queue').insert({
-                lead_id: createdLeadId,
-                lead_name: formData.lead_name,
-                board_id: selectedBoardId,
-                phone: formData.lead_phone || null,
-                creation_origin: 'instagram_import',
-                status: 'pending',
-              } as any);
-            }
-          } catch (groupErr) {
-            console.error('Error enqueuing group creation:', groupErr);
-            // Non-blocking: lead was already created
-          }
-        }
+        // Background: roda em paralelo, sem bloquear UI
+        (async () => {
+          const tasks: Promise<any>[] = [];
 
-        // Link saved bridge contacts to the lead
-        if (createdLeadId && savedContacts.size > 0) {
-          try {
-            for (const username of savedContacts) {
-              const { data: contact } = await supabase
-                .from('contacts')
-                .select('id')
-                .eq('instagram_username', username)
-                .maybeSingle();
-              if (contact) {
-                await (supabase as any)
-                  .from('contact_leads')
-                  .insert({ contact_id: contact.id, lead_id: createdLeadId });
+          // 1) Group queue
+          if (createdLeadId && bgBoardId) {
+            tasks.push((async () => {
+              try {
+                const { data: groupSettings } = await supabase
+                  .from('board_group_settings')
+                  .select('group_name_prefix, current_sequence')
+                  .eq('board_id', bgBoardId)
+                  .maybeSingle();
+                if (groupSettings) {
+                  await Promise.all([
+                    supabase
+                      .from('board_group_settings')
+                      .update({ current_sequence: (groupSettings.current_sequence || 0) + 1 })
+                      .eq('board_id', bgBoardId),
+                    supabase.from('group_creation_queue').insert({
+                      lead_id: createdLeadId,
+                      lead_name: bgFormData.lead_name,
+                      board_id: bgBoardId,
+                      phone: bgFormData.lead_phone || null,
+                      creation_origin: 'instagram_import',
+                      status: 'pending',
+                    } as any),
+                  ]);
+                }
+              } catch (e) {
+                console.error('[bg] group queue', e);
               }
-            }
-          } catch (linkErr) {
-            console.error('Error linking contacts:', linkErr);
+            })());
           }
-        }
 
-        // Create additional leads for extra victims
-        if (additionalVictims.length > 0 && selectedBoardId) {
-          let extraCreated = 0;
-          for (const victim of additionalVictims) {
-            try {
-              const { data: groupSettings2 } = await supabase
-                .from('board_group_settings')
-                .select('group_name_prefix, current_sequence')
-                .eq('board_id', selectedBoardId)
-                .maybeSingle();
-
-              const nextSeq2 = (groupSettings2?.current_sequence || 0) + 1;
-              const victimLeadName = groupSettings2?.group_name_prefix
-                ? `${groupSettings2.group_name_prefix} ${nextSeq2} ${generateLeadName({
-                    city: formData.visit_city, state: formData.visit_state,
-                    victim_name: victim.victim_name, main_company: formData.main_company,
-                    contractor_company: formData.contractor_company, accident_date: formData.accident_date,
-                    damage_description: victim.damage_description || formData.damage_description,
-                    case_type: formData.case_type,
-                  })}`.trim()
-                : victim.victim_name;
-
-              const { data: extraLead } = await supabase.from('leads').insert({
-                lead_name: victimLeadName,
-                source: formData.source || detectPlatform(url).toLowerCase(),
-                notes: formData.notes || null,
-                acolhedor: formData.acolhedor || null,
-                case_type: formData.case_type || null,
-                city: formData.visit_city || null,
-                state: formData.visit_state || null,
-                visit_city: formData.visit_city || null,
-                visit_state: formData.visit_state || null,
-                visit_region: formData.visit_region || null,
-                visit_address: formData.visit_address || null,
-                accident_date: formData.accident_date || null,
-                damage_description: victim.damage_description || formData.damage_description || null,
-                victim_name: victim.victim_name || null,
-                victim_age: victim.victim_age ? parseInt(victim.victim_age) : null,
-                accident_address: formData.accident_address || null,
-                contractor_company: formData.contractor_company || null,
-                main_company: formData.main_company || null,
-                sector: formData.sector || null,
-                news_link: formData.news_link || null,
-                board_id: selectedBoardId,
-                created_by: user?.id || null,
-                updated_by: user?.id || null,
-              }).select('id').single();
-
-              if (extraLead?.id && groupSettings2) {
-                await supabase.from('board_group_settings')
-                  .update({ current_sequence: nextSeq2 })
-                  .eq('board_id', selectedBoardId);
-                await supabase.from('group_creation_queue').insert({
-                  lead_id: extraLead.id,
-                  lead_name: victimLeadName,
-                  board_id: selectedBoardId,
-                  creation_origin: 'instagram_import',
-                  status: 'pending',
-                } as any);
+          // 2) Linkar contatos pontes ao lead — em paralelo
+          if (createdLeadId && bgSavedContacts.length > 0) {
+            tasks.push((async () => {
+              try {
+                await Promise.all(bgSavedContacts.map(async (username) => {
+                  const { data: contact } = await supabase
+                    .from('contacts')
+                    .select('id')
+                    .eq('instagram_username', username)
+                    .maybeSingle();
+                  if (contact) {
+                    await (supabase as any)
+                      .from('contact_leads')
+                      .insert({ contact_id: contact.id, lead_id: createdLeadId });
+                  }
+                }));
+              } catch (e) {
+                console.error('[bg] link contacts', e);
               }
-              extraCreated++;
-            } catch (err) {
-              console.error('Error creating extra victim lead:', err);
-            }
+            })());
           }
-          if (extraCreated > 0) {
-            toast.success(`+ ${extraCreated} lead(s) adicional(is) criado(s) para outras vítimas`);
-          }
-        }
 
-        toast.success('Lead criado com sucesso!');
+          // 3) Vítimas adicionais — em paralelo
+          if (bgAdditionalVictims.length > 0 && bgBoardId) {
+            tasks.push((async () => {
+              try {
+                const { data: groupSettings2 } = await supabase
+                  .from('board_group_settings')
+                  .select('group_name_prefix, current_sequence')
+                  .eq('board_id', bgBoardId)
+                  .maybeSingle();
+
+                let seqCounter = groupSettings2?.current_sequence || 0;
+                let extraCreated = 0;
+
+                await Promise.all(bgAdditionalVictims.map(async (victim) => {
+                  seqCounter += 1;
+                  const localSeq = seqCounter;
+                  const victimLeadName = groupSettings2?.group_name_prefix
+                    ? `${groupSettings2.group_name_prefix} ${localSeq} ${generateLeadName({
+                        city: bgFormData.visit_city, state: bgFormData.visit_state,
+                        victim_name: victim.victim_name, main_company: bgFormData.main_company,
+                        contractor_company: bgFormData.contractor_company, accident_date: bgFormData.accident_date,
+                        damage_description: victim.damage_description || bgFormData.damage_description,
+                        case_type: bgFormData.case_type,
+                      })}`.trim()
+                    : victim.victim_name;
+
+                  const { data: extraLead } = await supabase.from('leads').insert({
+                    lead_name: victimLeadName,
+                    source: bgFormData.source || detectPlatform(bgUrl).toLowerCase(),
+                    notes: bgFormData.notes || null,
+                    acolhedor: bgFormData.acolhedor || null,
+                    case_type: bgFormData.case_type || null,
+                    city: bgFormData.visit_city || null,
+                    state: bgFormData.visit_state || null,
+                    visit_city: bgFormData.visit_city || null,
+                    visit_state: bgFormData.visit_state || null,
+                    visit_region: bgFormData.visit_region || null,
+                    visit_address: bgFormData.visit_address || null,
+                    accident_date: bgFormData.accident_date || null,
+                    damage_description: victim.damage_description || bgFormData.damage_description || null,
+                    victim_name: victim.victim_name || null,
+                    victim_age: victim.victim_age ? parseInt(victim.victim_age) : null,
+                    accident_address: bgFormData.accident_address || null,
+                    contractor_company: bgFormData.contractor_company || null,
+                    main_company: bgFormData.main_company || null,
+                    sector: bgFormData.sector || null,
+                    news_link: bgFormData.news_link || null,
+                    board_id: bgBoardId,
+                    created_by: bgUserId,
+                    updated_by: bgUserId,
+                  }).select('id').single();
+
+                  if (extraLead?.id) {
+                    await supabase.from('group_creation_queue').insert({
+                      lead_id: extraLead.id,
+                      lead_name: victimLeadName,
+                      board_id: bgBoardId,
+                      creation_origin: 'instagram_import',
+                      status: 'pending',
+                    } as any);
+                    extraCreated++;
+                  }
+                }));
+
+                if (groupSettings2 && extraCreated > 0) {
+                  await supabase.from('board_group_settings')
+                    .update({ current_sequence: seqCounter })
+                    .eq('board_id', bgBoardId);
+                  toast.success(`+ ${extraCreated} lead(s) adicional(is) criado(s) para outras vítimas`);
+                }
+              } catch (e) {
+                console.error('[bg] additional victims', e);
+              }
+            })());
+          }
+
+          await Promise.allSettled(tasks);
+        })();
+
+        return; // Save concluído do ponto de vista do usuário
       } else if (targetType === 'contact') {
         const { error } = await supabase.from('contacts').insert({
           full_name: formData.lead_name || `Contato ${detectPlatform(url)}`,
