@@ -15,11 +15,16 @@ interface LeadFunnelOverviewProps {
   isClosed?: boolean; // true = "Fluxo de Trabalho", false = "Funil de Vendas"
 }
 
+// Module-level cache: instant render on re-open
+const funnelCache = new Map<string, { instances: LeadChecklistInstance[]; templateNames: Record<string, { name: string; is_mandatory: boolean }> }>();
+
 export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [], isClosed }: LeadFunnelOverviewProps) {
   const { fetchLeadInstances, updateInstanceItem, createLeadInstances } = useChecklists();
-  const [instances, setInstances] = useState<LeadChecklistInstance[]>([]);
-  const [templateNames, setTemplateNames] = useState<Record<string, { name: string; is_mandatory: boolean }>>({});
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `${leadId}:${boardId || ''}:${currentStageId || ''}`;
+  const cached = funnelCache.get(cacheKey);
+  const [instances, setInstances] = useState<LeadChecklistInstance[]>(() => cached?.instances || []);
+  const [templateNames, setTemplateNames] = useState<Record<string, { name: string; is_mandatory: boolean }>>(() => cached?.templateNames || {});
+  const [loading, setLoading] = useState(() => !cached);
   const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set());
 
   const board = boards.find(b => b.id === boardId);
@@ -36,36 +41,37 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
   }, [currentStageId]);
 
   const loadData = async () => {
-    setLoading(true);
+    if (!funnelCache.has(cacheKey)) setLoading(true);
     if (boardId && currentStageId) {
       await createLeadInstances(leadId, boardId, currentStageId);
     }
     const data = await fetchLeadInstances(leadId);
 
-    // Reset readonly for current stage instances
+    // Reset readonly for current stage instances — single bulk UPDATE (was: N sequential updates)
     if (currentStageId) {
-      const readonlyCurrent = data.filter(i => i.stage_id === currentStageId && i.is_readonly);
-      for (const inst of readonlyCurrent) {
+      const readonlyCurrentIds = data.filter(i => i.stage_id === currentStageId && i.is_readonly).map(i => i.id);
+      if (readonlyCurrentIds.length > 0) {
         await supabase
           .from('lead_checklist_instances')
           .update({ is_readonly: false })
-          .eq('id', inst.id);
-        inst.is_readonly = false;
+          .in('id', readonlyCurrentIds);
+        data.forEach(i => { if (readonlyCurrentIds.includes(i.id)) i.is_readonly = false; });
       }
     }
 
+    let names: Record<string, { name: string; is_mandatory: boolean }> = {};
     if (data.length > 0) {
       const templateIds = [...new Set(data.map(d => d.checklist_template_id))];
       const { data: templates } = await supabase
         .from('checklist_templates')
         .select('id, name, is_mandatory')
         .in('id', templateIds);
-      const names: Record<string, { name: string; is_mandatory: boolean }> = {};
       (templates || []).forEach(t => { names[t.id] = { name: t.name, is_mandatory: t.is_mandatory }; });
       setTemplateNames(names);
     }
 
     setInstances(data);
+    funnelCache.set(cacheKey, { instances: data, templateNames: names });
     setLoading(false);
   };
 

@@ -38,14 +38,17 @@ interface LeadActivity {
   matrix_quadrant: string | null;
 }
 
+// Module-level cache: instant render on re-open, background revalidation
+const activitiesCache = new Map<string, LeadActivity[]>();
+
 interface LeadActivitiesTabProps {
   leadId: string;
   leadName: string;
 }
 
 export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) {
-  const [activities, setActivities] = useState<LeadActivity[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [activities, setActivities] = useState<LeadActivity[]>(() => activitiesCache.get(leadId) || []);
+  const [loading, setLoading] = useState(() => !activitiesCache.has(leadId));
   const [showChatSheet, setShowChatSheet] = useState(false);
   const [editActivityId, setEditActivityId] = useState<string | null>(null);
 
@@ -144,14 +147,19 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   };
 
   const fetchActivities = useCallback(async () => {
-    setLoading(true);
+    // Show cached data instantly; only show spinner if cache miss
+    if (!activitiesCache.has(leadId)) setLoading(true);
     const { data, error } = await supabase
       .from('lead_activities')
       .select('id, title, description, activity_type, status, priority, deadline, assigned_to, assigned_to_name, created_at, completed_at, what_was_done, current_status_notes, next_steps, notes, matrix_quadrant')
       .eq('lead_id', leadId)
       .order('created_at', { ascending: false });
 
-    if (!error && data) setActivities(data as LeadActivity[]);
+    if (!error && data) {
+      const list = data as LeadActivity[];
+      setActivities(list);
+      activitiesCache.set(leadId, list);
+    }
     setLoading(false);
   }, [leadId]);
 
