@@ -727,6 +727,80 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                   </div>
                 </div>
 
+                {/* QUANDO RESPONDER — Filtro Funil × Resultado do Lead */}
+                <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
+                  <div className="space-y-0.5">
+                    <Label className="text-xs font-semibold">🎯 Quando esse agente deve responder</Label>
+                    <p className="text-[10px] text-muted-foreground">
+                      Filtra por <strong>funil</strong> e <strong>resultado do lead</strong>. Se nada for marcado em uma seção, não filtra por ela (responde sempre).
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] font-medium">Funis permitidos</Label>
+                    {boards.length === 0 ? (
+                      <p className="text-[10px] text-muted-foreground italic">Nenhum funil encontrado.</p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto p-1">
+                        {boards.map(b => {
+                          const checked = form.lead_status_board_ids.includes(b.id);
+                          return (
+                            <label key={b.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-accent/50 rounded px-1.5 py-1">
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={(v) => {
+                                  setForm(f => ({
+                                    ...f,
+                                    lead_status_board_ids: v
+                                      ? [...f.lead_status_board_ids, b.id]
+                                      : f.lead_status_board_ids.filter(id => id !== b.id),
+                                  }));
+                                }}
+                              />
+                              <span className="truncate">{b.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {form.lead_status_board_ids.length === 0 && (
+                      <p className="text-[10px] text-muted-foreground italic">Sem filtro por funil — responde em qualquer funil.</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] font-medium">Resultado do lead permitido</Label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {LEAD_RESULT_OPTIONS.map(opt => {
+                        const checked = form.lead_status_filter.includes(opt.value);
+                        return (
+                          <label key={opt.value} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-accent/50 rounded px-1.5 py-1">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(v) => {
+                                setForm(f => ({
+                                  ...f,
+                                  lead_status_filter: v
+                                    ? [...f.lead_status_filter, opt.value]
+                                    : f.lead_status_filter.filter(s => s !== opt.value),
+                                }));
+                              }}
+                            />
+                            <span>{opt.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {form.lead_status_filter.length === 0 && (
+                      <p className="text-[10px] text-muted-foreground italic">Sem filtro por resultado — responde em qualquer resultado.</p>
+                    )}
+                  </div>
+
+                  <p className="text-[10px] text-muted-foreground border-t pt-2">
+                    ⚠️ A aplicação desse filtro no responder de IA depende da edge function externa <code className="text-[9px]">wjia-agent</code>. Se o agente continuar respondendo em casos filtrados, avise — preciso aplicar o guard no servidor externo.
+                  </p>
+                </div>
+
               </div>
             )}
 
