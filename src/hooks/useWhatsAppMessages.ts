@@ -494,6 +494,18 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         fetchedAt: Date.now(),
       });
 
+      // Auto-rehidrata histórico quando há conversa ativa mas o cache de mensagens
+      // está vazio (caso típico após remount/reload: a ref foi recriada zerada).
+      // Sem isso, o usuário veria apenas a última mensagem (summary) do grupo.
+      const activeKey = activeConversationKeyRef.current;
+      if (activeKey && !fullConvCacheRef.current[activeKey]) {
+        const activeConv = convList.find(c => getConversationKey(c.phone, c.instance_name) === activeKey);
+        if (activeConv) {
+          // Dispara assíncrono — não bloqueia o ciclo do fetchMessages
+          void fetchFullConversationRef.current?.(activeConv.phone, activeConv.instance_name);
+        }
+      }
+
       if (!silent && convList.length > 0) {
         toast.success(`${convList.length} conversas carregadas`);
       }
