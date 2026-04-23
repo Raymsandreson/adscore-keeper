@@ -796,9 +796,20 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     )}
                   </div>
 
-                  <p className="text-[10px] text-muted-foreground border-t pt-2">
-                    ⚠️ A aplicação desse filtro no responder de IA depende da edge function externa <code className="text-[9px]">wjia-agent</code>. Se o agente continuar respondendo em casos filtrados, avise — preciso aplicar o guard no servidor externo.
-                  </p>
+                  <div className="border-t pt-2 space-y-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs w-full"
+                      onClick={() => setFilterTestOpen(true)}
+                    >
+                      🧪 Testar filtro
+                    </Button>
+                    <p className="text-[10px] text-muted-foreground">
+                      ⚠️ A aplicação desse filtro no responder de IA depende da edge function externa <code className="text-[9px]">wjia-agent</code>. Se o agente continuar respondendo em casos filtrados, avise — preciso aplicar o guard no servidor externo.
+                    </p>
+                  </div>
                 </div>
 
               </div>
