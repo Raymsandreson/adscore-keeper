@@ -1,61 +1,99 @@
 
 
-# Migrar `whatsapp-call-queue-processor` pro Railway
+# Diagnóstico do erro e plano para verificar deploys sem abrir a UI
 
-## Objetivo
-Tirar a função "discadora automática" do Lovable Cloud (que roda 1x/min = 1.440 invocações/dia) e colocá-la no `railway-server/`, mantendo **comportamento idêntico**.
+## O erro que você viu
 
-## O que vai mudar (e o que NÃO vai mudar)
+```
+/orchestrator.BuildService/StartSnapshotAndBuild UNKNOWN:
+failed to get temporal client: dial tcp 10.10.10.50:7233: cannot assign requested address
+```
 
-| Item | Antes | Depois |
-|------|-------|--------|
-| Onde roda | Lovable Cloud Edge Function | Railway (`railway-server/`) |
-| Frequência | 1x/min via `pg_cron` | 1x/min via `pg_cron` (mesmo CRON, só muda a URL chamada) |
-| Comportamento | Discadora pega próximo da fila, liga via UazAPI, gera áudio de follow-up | **Idêntico** |
-| Custo Lovable | ~1.440 invocações/dia desta função | **0** invocações desta função |
-| Custo Railway | Já pago fixo, sem aumento perceptível | Mesmo |
+Isso é falha **interna da infra de build da Lovable** (serviço Temporal não acessível durante o snapshot do build). **Não é** problema do seu código, nem do Railway, nem do GitHub. Ação correta: clicar **Publish** de novo após alguns minutos. Se persistir por >30min, é incidente da Lovable.
 
-## Arquivos que vou criar/alterar
+## Sua pergunta real: como confirmar deploy sem abrir a UI toda vez
 
-1. **`railway-server/src/functions/call-queue-processor.ts`** (novo) — porta exata da lógica da edge function. Mesma fila, mesma UazAPI, mesmo Gemini, mesmo ElevenLabs, mesmo upload pro Storage do Supabase externo.
-2. **`railway-server/src/index.ts`** — registrar a rota `POST /functions/call-queue-processor` no `functionHandlers`.
-3. **`railway-server/package.json`** — sem mudança (todas as deps já existem: `@supabase/supabase-js`, `express`).
-4. **Migration SQL** (`supabase/migrations/...`) — atualizar o `pg_cron` job no Lovable Cloud:
-   - **Desativar** o job atual que chama a edge function `whatsapp-call-queue-processor`.
-   - **Criar** novo job (mesma frequência: `* * * * *`) que faz `net.http_post` para `https://[seu-railway].up.railway.app/functions/call-queue-processor` com header `x-api-key`.
-5. **`supabase/functions/whatsapp-call-queue-processor/index.ts`** — manter por 24h como `_legacy` (rota dorminhoca que retorna 200 sem fazer nada) pra rollback rápido. **Não deletar agora** (Regra 4 do projeto).
+Hoje você tem **3 alvos de deploy diferentes**, cada um com forma própria de verificar:
 
-## Variáveis de ambiente no Railway
+| Alvo | Onde mora | Como o deploy acontece hoje |
+|---|---|---|
+| **Frontend (Lovable)** | `.lovable.app` | Botão Publish na UI da Lovable |
+| **Edge Functions (Lovable Cloud)** | `gliigkupoebmlbwyvijp.supabase.co/functions/v1/*` | Auto-deploy a cada edição |
+| **Railway server** (`whatsapp-webhook`, `call-queue-processor`) | `*.up.railway.app` | Push no GitHub → Railway auto-builda |
 
-Você precisa garantir que o Railway tem (provavelmente já tem, mas vou confirmar no momento da implementação):
-- `EXTERNAL_SUPABASE_URL` ✅ (já configurado)
-- `EXTERNAL_SUPABASE_SERVICE_ROLE_KEY` ✅ (já configurado)
-- `LOVABLE_API_KEY` — pra chamar Gemini via `ai.gateway.lovable.dev` (talvez precise adicionar, te aviso)
-- `ELEVENLABS_API_KEY` — pra gerar áudio de follow-up (talvez precise adicionar, te aviso)
-- `RAILWAY_API_KEY` ✅ (já configurado, será usado pelo `pg_cron` no header)
+GitHub não te diz se o Railway buildou — só diz que o commit chegou no repo. E a Lovable UI é o único lugar oficial pra ver o status do Publish do frontend.
 
-Se faltar alguma, vou pedir pra você adicionar antes de ativar o CRON novo.
+## Plano: criar 3 verificadores HTTP (zero UI)
 
-## Plano de rollback (Regra 1 do projeto)
+Tudo via `curl` no terminal ou um script único. Sem mexer em código de produção.
 
-Se algo quebrar:
-1. Reverter a migration que troca o CRON (volto a apontar pra edge function antiga, que ainda existe intacta).
-2. Tempo de rollback: <2 min via SQL.
+### 1) Frontend Lovable — verificar versão publicada
 
-## Validação pós-deploy
+Adicionar no `index.html` uma `<meta name="build-sha" content="...">` populada no build pelo Vite a partir de `import.meta.env.VITE_BUILD_SHA` (ou timestamp). Aí:
 
-1. Aguardar 1 ciclo do CRON (~60s).
-2. Conferir logs do Railway pra ver "Initiating call to..." aparecer.
-3. Conferir tabela `whatsapp_call_queue` no Supabase externo: status mudando de `pending` → `calling` → `completed`.
-4. Conferir 1 ligação real chegando no WhatsApp do contato de teste.
-5. Conferir áudio de follow-up sendo enviado.
+```bash
+curl -s https://adscore-keeper.lovable.app/ | grep build-sha
+```
 
-Só depois de validar essas 5 coisas, considero a migração concluída e te peço autorização pra deletar a edge function antiga (em 24h).
+Compara com o commit local: se o SHA bate, o Publish foi pra produção. Se não bate, ainda não rodou ou falhou.
 
-## O que você precisa fazer
+**Arquivos**: `index.html` (1 linha de meta), `vite.config.ts` (injetar `VITE_BUILD_SHA` via `define` lendo `process.env.VERCEL_GIT_COMMIT_SHA || git rev-parse HEAD`).
 
-1. **Aprovar este plano** (clicar em "Approve plan").
-2. Quando eu terminar o código, fazer `git push` (Railway redeploya sozinho).
-3. Se eu pedir, adicionar 1-2 env vars no painel do Railway (te dou o passo a passo).
-4. Acompanhar comigo a validação pós-deploy.
+### 2) Railway server — endpoint `/version`
+
+Já existe `/health` no `railway-server/src/index.ts`. Estender pra retornar:
+
+```json
+{
+  "status": "ok",
+  "commit": "abc1234",
+  "deployed_at": "2026-04-23T14:00:00Z",
+  "functions": [...]
+}
+```
+
+Railway expõe `RAILWAY_GIT_COMMIT_SHA` e `RAILWAY_DEPLOYMENT_ID` como env vars automaticamente. Basta lê-las no handler.
+
+```bash
+curl -s https://SEU-APP.up.railway.app/health | jq .commit
+```
+
+**Arquivos**: `railway-server/src/index.ts` (estender o handler `/health` existente, ~5 linhas).
+
+### 3) Edge Functions Lovable — ping com versão
+
+Criar **uma** edge function read-only `_status` que retorna `{ deployed_at, functions: [...] }`. Como edge functions auto-deployam, não tem SHA do git, mas dá pra pôr `Date.now()` no build (a Lovable rebuilda a função a cada edit). Útil pra confirmar "a última edição da função X chegou".
+
+**Opcional** — só vale a pena se você frequentemente duvida se uma edge subiu.
+
+### 4) Script único `scripts/check-deploys.sh`
+
+Um shell que roda os 3 curls em paralelo e printa uma tabela:
+
+```
+Frontend  ✅  abc1234 (igual ao HEAD local)
+Railway   ✅  abc1234 (igual ao HEAD local)
+Edge Fns  ✅  deployed 2min atrás
+```
+
+Você roda `bash scripts/check-deploys.sh` depois de cada Publish. 5 segundos.
+
+## O que NÃO vou mexer
+
+- Nada em `src/integrations/supabase/*`
+- Nada em migrations
+- Nada nos handlers de webhook, IA, follow-up
+- Nada na lógica de negócio
+- Nada que mude comportamento do app — só **observabilidade de deploy**
+
+## Rollback
+
+Tudo é aditivo (meta tag, endpoint `/health` estendido, script novo). Reverter = deletar os arquivos. Zero risco em prod.
+
+## O que preciso decidir com você
+
+1. **Quais dos 3 verificadores quer?** Recomendo **1 + 2** (frontend + Railway). O #3 (edge functions) só se você sente que elas falham silenciosamente.
+2. **GitHub Actions opcional**: posso adicionar um workflow `.github/workflows/post-deploy-check.yml` que roda o script automaticamente após cada push e te avisa por email/Discord se algo não bateu em 5min. Quer? (Requer só o script do passo 4.)
+
+Responde **"vai com 1+2"**, **"vai com 1+2+3"**, ou **"adiciona o GitHub Action também"** que eu executo na próxima rodada.
 
