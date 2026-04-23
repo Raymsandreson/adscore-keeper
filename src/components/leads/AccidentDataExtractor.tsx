@@ -168,6 +168,9 @@ export function AccidentDataExtractor({
   const [commentsCount, setCommentsCount] = useState<number | null>(null);
   const [commentsAnalysis, setCommentsAnalysis] = useState<CommentsAnalysis | null>(null);
   const [commentsError, setCommentsError] = useState<string | null>(null);
+  // Manual flow state for social URLs
+  const [manualCaption, setManualCaption] = useState<string>('');
+  const [isFetchingCaption, setIsFetchingCaption] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const { fetchMetadata, getCachedMetadata } = usePostMetadata();
