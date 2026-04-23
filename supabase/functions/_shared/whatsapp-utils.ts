@@ -76,11 +76,6 @@ export async function sendWhatsApp(
       action_source_detail: "WJIA Agent (comando)",
     };
     await supabase.from("whatsapp_messages").insert(msgRow);
-    if (options?.cloudClient) {
-      await options.cloudClient.from("whatsapp_messages").insert(msgRow).catch((
-        e: any,
-      ) => console.error("Cloud mirror error:", e));
-    }
   }
 }
 
