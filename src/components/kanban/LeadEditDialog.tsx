@@ -4,6 +4,7 @@ import { sendLeadConversionEvent } from '@/utils/metaConversionTracking';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { generateLeadName } from '@/utils/generateLeadName';
+import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
 const LeadLinkedContacts = lazy(() => import('@/components/leads/LeadLinkedContacts').then(m => ({ default: m.LeadLinkedContacts })));
 const LeadLinkedComments = lazy(() => import('@/components/leads/LeadLinkedComments').then(m => ({ default: m.LeadLinkedComments })));
 const LeadNewsLinksManager = lazy(() => import('@/components/leads/LeadNewsLinksManager').then(m => ({ default: m.LeadNewsLinksManager })));
@@ -787,6 +788,22 @@ ${scrapeData.content || ''}
           const firstStage = newBoard?.stages?.[0] as any;
           return firstStage?.id ? { status: firstStage.id } : {};
         })() : {}),
+        // Auto-move to closed/refused stage when outcome changes
+        ...(() => {
+          const targetBoardId = selectedBoardId || (currentLead as any).board_id;
+          const targetBoard = boards.find(b => b.id === targetBoardId);
+          const stages = (targetBoard?.stages as any[]) || [];
+          if (stages.length === 0) return {};
+          const currentStageId = (currentLead as any).status;
+          if (leadOutcome === 'closed') {
+            const closedId = findClosedStageId(stages);
+            if (closedId && closedId !== currentStageId) return { status: closedId };
+          } else if (leadOutcome === 'refused' || leadOutcome === 'inviavel') {
+            const refusedId = findRefusedStageId(stages);
+            if (refusedId && refusedId !== currentStageId) return { status: refusedId };
+          }
+          return {};
+        })(),
         expected_birth_date: normalizeDateInput(expectedBirthDate),
         became_client_date: leadOutcome === 'closed' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         classification_date: leadOutcome === 'refused' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
@@ -952,8 +969,12 @@ ${scrapeData.content || ''}
            ctwa_context: (currentLead as any).ctwa_context,
            campaign_id: (currentLead as any).campaign_id,
          }, 'inviavel');
-       } else if ((currentLead as any).became_client_date || (currentLead as any).inviavel_date) {
-         // Was closed/inviável, now reopened
+       } else if (
+         (currentLead as any).became_client_date ||
+         (currentLead as any).inviavel_date ||
+         ['closed', 'refused', 'inviavel'].includes((currentLead as any).lead_status)
+       ) {
+         // Was closed/refused/inviável, now reopened (or status drifted)
          await supabase.from('leads').update({ lead_status: 'active' } as any).eq('id', currentLead.id);
        }
 
