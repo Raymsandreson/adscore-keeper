@@ -974,6 +974,33 @@ export type Database = {
           },
         ]
       }
+      archived_conversations: {
+        Row: {
+          archived_by: string | null
+          created_at: string
+          id: string
+          instance_name: string
+          phone: string
+          reason: string | null
+        }
+        Insert: {
+          archived_by?: string | null
+          created_at?: string
+          id?: string
+          instance_name: string
+          phone: string
+          reason?: string | null
+        }
+        Update: {
+          archived_by?: string | null
+          created_at?: string
+          id?: string
+          instance_name?: string
+          phone?: string
+          reason?: string | null
+        }
+        Relationships: []
+      }
       audit_logs: {
         Row: {
           action: string
