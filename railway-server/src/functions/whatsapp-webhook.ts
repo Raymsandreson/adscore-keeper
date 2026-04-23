@@ -990,19 +990,8 @@ export const handler: RequestHandler = async (req, res) => {
       } catch (instContactErr: any) { console.warn('Auto-create instance contact error:', instContactErr.message); }
     }
 
-    // ========== Mirror message to Cloud DB ==========
-    try {
-      const cloudClient = createClient(CLOUD_FUNCTIONS_URL, process.env.CLOUD_SERVICE_ROLE_KEY || CLOUD_ANON_KEY);
-      await cloudClient.from('whatsapp_messages').upsert({
-        phone, contact_name: contactName, message_text: messageText, message_type: messageType,
-        media_url: storedMediaUrl, media_type: mediaType, direction,
-        status: direction === 'inbound' ? 'received' : 'sent',
-        contact_id: contactId, lead_id: leadId, external_message_id: externalMessageId,
-        instance_name: instanceName, instance_token: instanceToken,
-        campaign_id: detectedCampaignId || null, campaign_name: detectedCampaignName || null,
-        created_at: message.created_at,
-      }, { onConflict: 'external_message_id', ignoreDuplicates: true });
-    } catch (mirrorErr) { console.warn('Cloud mirror insert failed (non-blocking):', mirrorErr); }
+    // ========== Cloud mirror REMOVED ==========
+    // Single source of truth: external Supabase only. No mirror to Cloud.
 
     // ========== #SHORTCUT AGENT ACTIVATION ==========
     if (direction === 'outbound' && instanceName && phone && messageText) {
