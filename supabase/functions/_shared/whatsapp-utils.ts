@@ -25,7 +25,6 @@ export async function sendWhatsApp(
   options?: {
     splitMessages?: boolean;
     splitDelaySeconds?: number;
-    cloudClient?: any;
   },
 ) {
   if (!inst?.instance_token) return;
