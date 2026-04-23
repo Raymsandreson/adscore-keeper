@@ -238,7 +238,7 @@ export const useLeads = (adAccountId?: string) => {
     }
   }, [adAccountId]);
 
-  const calculateStats = (leadsData: Lead[]) => {
+  const calculateStats = useCallback((leadsData: Lead[]) => {
     const total = leadsData.length;
     const newLeads = leadsData.filter(l => l.status === 'new').length;
     const contacted = leadsData.filter(l => l.status === 'contacted').length;
@@ -273,7 +273,24 @@ export const useLeads = (adAccountId?: string) => {
       conversionRate,
       qualificationRate,
     });
-  };
+  }, []);
+
+  // Debounced stats — used ONLY in Realtime handlers (events from other clients/triggers).
+  // Local actions (addLead/updateLead/deleteLead, drag&drop) call calculateStats directly
+  // so the user always sees instant counter updates on their own actions.
+  const statsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestLeadsForStatsRef = useRef<Lead[] | null>(null);
+  const calculateStatsDebounced = useCallback((leadsData: Lead[]) => {
+    latestLeadsForStatsRef.current = leadsData;
+    if (statsDebounceRef.current) clearTimeout(statsDebounceRef.current);
+    statsDebounceRef.current = setTimeout(() => {
+      if (latestLeadsForStatsRef.current) {
+        calculateStats(latestLeadsForStatsRef.current);
+        latestLeadsForStatsRef.current = null;
+      }
+      statsDebounceRef.current = null;
+    }, 500);
+  }, [calculateStats]);
 
   const addLead = async (lead: Partial<Lead>, testEventCode?: string) => {
     try {
