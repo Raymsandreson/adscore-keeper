@@ -1,4 +1,4 @@
-// v4 - Updates whatsapp_ai_agents directly on external Supabase
+// v5 - Grava em agent_filter_settings (Cloud), tabela criada exatamente pra isso
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -11,48 +11,49 @@ Deno.serve(async (req) => {
 
   try {
     const { agent_id, lead_status_board_ids, lead_status_filter } = await req.json();
-    
+
     if (!agent_id) {
-      return new Response(JSON.stringify({ error: 'agent_id is required' }), { 
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      return new Response(JSON.stringify({ error: 'agent_id is required' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // Use EXTERNAL Supabase only
-    const supabaseUrl = Deno.env.get('EXTERNAL_SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')!;
+    // Cloud Supabase (onde existe a tabela agent_filter_settings)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const boardIds = lead_status_board_ids && lead_status_board_ids.length > 0 
-      ? lead_status_board_ids 
+    const boardIds = lead_status_board_ids && lead_status_board_ids.length > 0
+      ? lead_status_board_ids
       : null;
-    const statusFilter = lead_status_filter && lead_status_filter.length > 0 
-      ? lead_status_filter 
+    const statusFilter = lead_status_filter && lead_status_filter.length > 0
+      ? lead_status_filter
       : null;
 
-    // Update directly on the base table whatsapp_ai_agents
+    // Upsert por agent_id (constraint unique já existe)
     const { error } = await supabase
-      .from('whatsapp_ai_agents')
-      .update({
+      .from('agent_filter_settings')
+      .upsert({
+        agent_id,
         lead_status_board_ids: boardIds,
         lead_status_filter: statusFilter,
-      })
-      .eq('id', agent_id);
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'agent_id' });
 
     if (error) {
-      console.error('Update error:', error);
-      return new Response(JSON.stringify({ error: error.message }), { 
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      console.error('Upsert error:', error);
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    return new Response(JSON.stringify({ success: true }), { 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   } catch (error) {
     console.error('Function error:', error);
-    return new Response(JSON.stringify({ error: error.message, stack: error.stack }), { 
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    return new Response(JSON.stringify({ error: error.message, stack: error.stack }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
 });
