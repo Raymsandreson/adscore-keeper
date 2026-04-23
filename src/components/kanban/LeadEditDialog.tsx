@@ -107,6 +107,7 @@ import { normalizeDateInput } from '@/utils/normalizeDateInput';
 import { prefetchLeadActivities } from '@/components/leads/LeadActivitiesTab';
 import { prefetchLeadLinkedContacts } from '@/components/leads/LeadLinkedContacts';
 import { prefetchLeadFunnelOverview } from '@/components/kanban/LeadFunnelOverview';
+import { useChecklists } from '@/hooks/useChecklists';
 
 const leadGroupsCache = new Map<string, Array<{ id?: string; group_link: string; group_jid: string; group_name: string; label: string }>>();
 const leadFieldValuesCache = new Map<string, Record<string, CustomFieldValue>>();
@@ -242,6 +243,7 @@ export function LeadEditDialog({
   const { classifications, classificationConfig, addClassification } = useContactClassifications();
   const { fetchProfileNames, getDisplayName, loading: profilesLoading } = useProfileNames();
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
+  const { fetchLeadInstances, createLeadInstances } = useChecklists();
   const [fieldValues, setFieldValues] = useState<Record<string, CustomFieldValue>>({});
   const [localFieldValues, setLocalFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
   const [saving, setSaving] = useState(false);
@@ -361,6 +363,9 @@ export function LeadEditDialog({
       
       const profileIds = [leadAny.created_by, leadAny.updated_by].filter(Boolean) as string[];
       void Promise.all([
+        import('@/components/leads/LeadActivitiesTab'),
+        import('@/components/leads/LeadLinkedContacts'),
+        import('@/components/kanban/LeadFunnelOverview'),
         loadLeadGroups(currentLead.id, leadAny),
         loadCustomFieldValues(currentLead.id),
         profileIds.length > 0 ? fetchProfileNames(profileIds) : Promise.resolve(),
