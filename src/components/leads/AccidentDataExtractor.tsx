@@ -1106,7 +1106,7 @@ export function AccidentDataExtractor({
           </Tabs>
         </div>
 
-        {!extractedData && (
+        {!extractedData && !(activeTab === 'link' && urlIsSocial) && (
           <Button 
             onClick={handleExtract} 
             disabled={isExtracting || !canExtract()}
