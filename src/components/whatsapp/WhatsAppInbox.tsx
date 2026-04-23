@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useWhatsAppMessages, WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
+import { usePageState } from '@/hooks/usePageState';
 import { useWhatsAppInstanceStatus } from '@/hooks/useWhatsAppInstanceStatus';
 import { WhatsAppConversationList } from './WhatsAppConversationList';
 import { WhatsAppChat } from './WhatsAppChat';
@@ -129,7 +130,7 @@ export function WhatsAppInbox() {
   }, [user, instances, defaultInstanceApplied]);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
+  const [selectedPhone, setSelectedPhone] = usePageState<string | null>('wa_selected_phone', null);
 
   const handleOpenChatByPhone = useCallback(async (phone: string) => {
     if (!phone) return;
@@ -345,7 +346,20 @@ export function WhatsAppInbox() {
     );
   }, [conversations, privateConvs, sharedMessages, user, canViewPrivate]);
 
-  const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
+  const [selectedInstance, setSelectedInstance] = usePageState<string | null>('wa_selected_instance', null);
+
+  // Reidrata o histórico completo ao remontar (reload, troca de aba, navegação interna).
+  // Sem isso, o chat exibe apenas a mensagem-resumo do RPC, dando a impressão de que o
+  // grupo "perdeu" todas as mensagens antigas. Roda uma única vez por par phone+instance.
+  const rehydratedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!hasLoaded || !selectedPhone) return;
+    const key = `${selectedPhone}__${(selectedInstance || '').toLowerCase()}`;
+    if (rehydratedKeyRef.current === key) return;
+    rehydratedKeyRef.current = key;
+    fetchFullConversation(selectedPhone, selectedInstance);
+  }, [hasLoaded, selectedPhone, selectedInstance, fetchFullConversation]);
+
   const selectedConversation = visibleConversations.find(
     c => selectedPhone === c.phone && getConversationKey(c.phone, c.instance_name) === getConversationKey(selectedPhone || '', selectedInstance)
   ) || null;
