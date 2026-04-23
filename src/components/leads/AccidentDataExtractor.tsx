@@ -461,27 +461,33 @@ export function AccidentDataExtractor({
       if (activeTab === 'link' && isSocialUrl(urlInput)) {
         const trimmedUrl = urlInput.trim();
 
-        // 1) Fetch caption via Apify
-        advanceStep(2, 'Buscando metadados do post via Apify...');
-        await waitForPaint();
-        toast.info('Detectado link de rede social — buscando legenda via Apify...');
-        const cachedMetadata = getCachedMetadata(trimmedUrl);
-        const metadata = cachedMetadata ?? await withClientTimeout(
-          fetchMetadata(trimmedUrl),
-          8000,
-          'A busca do post demorou demais. Tente novamente.'
-        );
-        const caption = metadata?.caption?.trim() || '';
+        // 1) Reuse legenda já buscada manualmente; só busca se não tiver.
+        let caption = manualCaption.trim();
+        if (!caption) {
+          advanceStep(2, 'Buscando legenda via Apify...');
+          await waitForPaint();
+          const cachedMetadata = getCachedMetadata(trimmedUrl);
+          const metadata = cachedMetadata ?? await withClientTimeout(
+            fetchMetadata(trimmedUrl),
+            12000,
+            'A busca do post demorou demais. Tente novamente.'
+          );
+          caption = metadata?.caption?.trim() || '';
+          if (caption) setManualCaption(caption);
+        }
 
         if (!caption) {
-          toast.error('Não foi possível extrair a legenda do post. Cole o texto manualmente na aba PDF/Texto.');
+          toast.error('Sem legenda. Use "1. Buscar Legenda" ou cole na aba PDF/Texto.');
           return;
         }
 
-        // 2) Send caption to extract-accident-data as plain text — uses the correct accident schema
+        // 2) Enviar legenda + comentários (se já buscados) para análise da IA
         advanceStep(3, 'Analisando conteúdo com IA...');
         await waitForPaint();
-        const analysisText = `URL do post: ${trimmedUrl}\n\nLEGENDA:\n${caption}`;
+        let analysisText = `URL do post: ${trimmedUrl}\n\nLEGENDA:\n${caption}`;
+        if (commentsAnalysis) {
+          analysisText += `\n\nCOMENTÁRIOS_ANALISADOS:\n${JSON.stringify(commentsAnalysis, null, 2)}`;
+        }
         const { data, error } = await withClientTimeout(
           cloudFunctions.invoke('extract-accident-data', {
             body: { content: analysisText, type: 'text' },
@@ -500,14 +506,16 @@ export function AccidentDataExtractor({
           return;
         }
 
-        // 3) Preserve the source URL so the lead form receives the news/social link
-        const merged: ExtractedAccidentData = {
+        // 3) Preservar URL e mesclar comentários (se houver)
+        let merged: ExtractedAccidentData = {
           ...(data.data || {}),
           news_link: trimmedUrl,
         };
+        if (commentsAnalysis) {
+          merged = mergeCommentsIntoData(merged, commentsAnalysis);
+        }
         setExtractedData(merged);
         advanceStep(5, 'Revisão dos dados extraídos');
-        void fetchCommentsInBackground(trimmedUrl, merged);
         toast.success('Dados extraídos com sucesso!');
         return;
       }
