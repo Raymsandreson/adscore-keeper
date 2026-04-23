@@ -723,9 +723,10 @@ export const useLeads = (adAccountId?: string) => {
 
     return () => {
       if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
+      if (statsDebounceRef.current) clearTimeout(statsDebounceRef.current);
       supabase.removeChannel(channel);
     };
-  }, [fetchLeads, adAccountId, realtimeRefetchHandler_legacy]);
+  }, [fetchLeads, adAccountId, realtimeRefetchHandler_legacy, calculateStatsDebounced]);
 
   return {
     leads,
