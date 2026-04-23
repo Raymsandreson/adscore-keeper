@@ -104,6 +104,12 @@ import { Pencil, Trash2 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDialog';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
+import { prefetchLeadActivities } from '@/components/leads/LeadActivitiesTab';
+import { prefetchLeadLinkedContacts } from '@/components/leads/LeadLinkedContacts';
+import { prefetchLeadFunnelOverview } from '@/components/kanban/LeadFunnelOverview';
+
+const leadGroupsCache = new Map<string, Array<{ id?: string; group_link: string; group_jid: string; group_name: string; label: string }>>();
+const leadFieldValuesCache = new Map<string, Record<string, CustomFieldValue>>();
 
 interface LeadEditDialogProps {
   open: boolean;
@@ -181,7 +187,6 @@ export function LeadEditDialog({
   mode = 'dialog',
   initialTab,
 }: LeadEditDialogProps) {
-  const [hydratedLead, setHydratedLead] = useState<Lead | null>(lead);
   // Basic fields state
   const [leadName, setLeadName] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
@@ -259,35 +264,7 @@ export function LeadEditDialog({
   const [tempNewsLink, setTempNewsLink] = useState('');
   const [selectedBoardId, setSelectedBoardId] = useState('');
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const hydrateLead = async () => {
-      if (!open || !lead?.id) {
-        setHydratedLead(lead);
-        prevLeadIdRef.current = null;
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*')
-        .eq('id', lead.id)
-        .maybeSingle();
-
-      if (!cancelled) {
-        setHydratedLead(!error && data ? (data as Lead) : lead);
-      }
-    };
-
-    hydrateLead();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, lead]);
-
-  const currentLead = hydratedLead ?? lead;
+  const currentLead = lead;
 
   // Track previous lead id to only reset tab on lead change, not hydration
   const prevLeadIdRef = useRef<string | null>(null);
@@ -312,32 +289,19 @@ export function LeadEditDialog({
       setNotes(currentLead.notes || '');
       setAcolhedor(leadAny.acolhedor || '');
       // Load whatsapp groups from new table
-      const loadGroups = async () => {
-        const { data: groups } = await supabase
-          .from('lead_whatsapp_groups')
-          .select('*')
-          .eq('lead_id', currentLead.id)
-          .order('created_at', { ascending: true });
-        if (groups) {
-          setWhatsappGroups(groups.map((g: any) => ({
-            id: g.id,
-            group_link: g.group_link || '',
-            group_jid: g.group_jid || '',
-            group_name: g.group_name || '',
-            label: g.label || '',
-          })));
-        }
-        // Also migrate legacy single group if exists and no groups in new table
-        if ((!groups || groups.length === 0) && (leadAny.group_link || leadAny.whatsapp_group_id)) {
-          setWhatsappGroups([{
-            group_link: leadAny.group_link || '',
-            group_jid: leadAny.whatsapp_group_id || '',
-            group_name: '',
-            label: '',
-          }]);
-        }
-      };
-      loadGroups();
+      const cachedGroups = leadGroupsCache.get(currentLead.id);
+      if (cachedGroups) {
+        setWhatsappGroups(cachedGroups);
+      } else if (leadAny.group_link || leadAny.whatsapp_group_id) {
+        setWhatsappGroups([{
+          group_link: leadAny.group_link || '',
+          group_jid: leadAny.whatsapp_group_id || '',
+          group_name: '',
+          label: '',
+        }]);
+      } else {
+        setWhatsappGroups([]);
+      }
       setClientClassification(currentLead.client_classification || '');
       setExpectedBirthDate(leadAny.expected_birth_date || '');
       setSelectedBoardId(leadAny.board_id || '');
@@ -395,16 +359,27 @@ export function LeadEditDialog({
       setNewsLinks(leadAny.news_links || (currentLead.news_link ? [currentLead.news_link] : []));
       setLegalViability(leadAny.legal_viability || '');
       
-      // Load custom field values
-      loadCustomFieldValues(currentLead.id);
-      
-      // Fetch profile names for created_by and updated_by
-      fetchProfileNames([leadAny.created_by, leadAny.updated_by]);
+      const profileIds = [leadAny.created_by, leadAny.updated_by].filter(Boolean) as string[];
+      void Promise.all([
+        loadLeadGroups(currentLead.id, leadAny),
+        loadCustomFieldValues(currentLead.id),
+        profileIds.length > 0 ? fetchProfileNames(profileIds) : Promise.resolve(),
+        prefetchLeadActivities(currentLead.id),
+        prefetchLeadLinkedContacts(currentLead.id),
+        prefetchLeadFunnelOverview(
+          currentLead.id,
+          leadAny.board_id || null,
+          currentLead.status || null,
+          fetchLeadInstances,
+          createLeadInstances,
+        ),
+      ]);
     }
-  }, [currentLead, open, fetchProfileNames]);
+  }, [currentLead, open, fetchProfileNames, fetchLeadInstances, createLeadInstances]);
 
   const loadCustomFieldValues = async (leadId: string) => {
-    const values = await getFieldValues(leadId);
+    const values = leadFieldValuesCache.get(leadId) || await getFieldValues(leadId);
+    leadFieldValuesCache.set(leadId, values);
     setFieldValues(values);
     
     // Initialize local values from loaded values
@@ -432,6 +407,36 @@ export function LeadEditDialog({
       }
     });
     setLocalFieldValues(initial);
+  };
+
+  const loadLeadGroups = async (leadId: string, leadSnapshot: any) => {
+    const { data: groups } = await supabase
+      .from('lead_whatsapp_groups')
+      .select('*')
+      .eq('lead_id', leadId)
+      .order('created_at', { ascending: true });
+
+    let mappedGroups: Array<{ id?: string; group_link: string; group_jid: string; group_name: string; label: string }> = [];
+
+    if (groups && groups.length > 0) {
+      mappedGroups = groups.map((g: any) => ({
+        id: g.id,
+        group_link: g.group_link || '',
+        group_jid: g.group_jid || '',
+        group_name: g.group_name || '',
+        label: g.label || '',
+      }));
+    } else if (leadSnapshot.group_link || leadSnapshot.whatsapp_group_id) {
+      mappedGroups = [{
+        group_link: leadSnapshot.group_link || '',
+        group_jid: leadSnapshot.whatsapp_group_id || '',
+        group_name: '',
+        label: '',
+      }];
+    }
+
+    leadGroupsCache.set(leadId, mappedGroups);
+    setWhatsappGroups(mappedGroups);
   };
 
   const handleFieldChange = (fieldId: string, type: FieldType, value: string | number | boolean | null) => {
