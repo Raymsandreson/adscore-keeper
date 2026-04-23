@@ -1158,6 +1158,7 @@ export type Database = {
         Row: {
           ai_generated_message: string | null
           audio_voice_id: string | null
+          auto_archive_on_sign: boolean
           auto_close_lead_on_sign: boolean | null
           auto_create_group_on_sign: boolean | null
           auto_create_process: boolean
@@ -1173,10 +1174,12 @@ export type Database = {
           id: string
           initial_message_template: string | null
           lead_fields: string[] | null
+          post_sign_mode: string
           process_auto_activities: Json | null
           process_nucleus_id: string | null
           process_workflow_board_id: string | null
           process_workflows: Json | null
+          processual_acolhedor_id: string | null
           send_audio_message: boolean | null
           sequence_start: number | null
           updated_at: string
@@ -1185,6 +1188,7 @@ export type Database = {
         Insert: {
           ai_generated_message?: string | null
           audio_voice_id?: string | null
+          auto_archive_on_sign?: boolean
           auto_close_lead_on_sign?: boolean | null
           auto_create_group_on_sign?: boolean | null
           auto_create_process?: boolean
@@ -1200,10 +1204,12 @@ export type Database = {
           id?: string
           initial_message_template?: string | null
           lead_fields?: string[] | null
+          post_sign_mode?: string
           process_auto_activities?: Json | null
           process_nucleus_id?: string | null
           process_workflow_board_id?: string | null
           process_workflows?: Json | null
+          processual_acolhedor_id?: string | null
           send_audio_message?: boolean | null
           sequence_start?: number | null
           updated_at?: string
@@ -1212,6 +1218,7 @@ export type Database = {
         Update: {
           ai_generated_message?: string | null
           audio_voice_id?: string | null
+          auto_archive_on_sign?: boolean
           auto_close_lead_on_sign?: boolean | null
           auto_create_group_on_sign?: boolean | null
           auto_create_process?: boolean
@@ -1227,10 +1234,12 @@ export type Database = {
           id?: string
           initial_message_template?: string | null
           lead_fields?: string[] | null
+          post_sign_mode?: string
           process_auto_activities?: Json | null
           process_nucleus_id?: string | null
           process_workflow_board_id?: string | null
           process_workflows?: Json | null
+          processual_acolhedor_id?: string | null
           send_audio_message?: boolean | null
           sequence_start?: number | null
           updated_at?: string
