@@ -23,18 +23,12 @@ app.use('/functions', (req, res, next) => {
   next();
 });
 
-// Health check (also exposes deploy metadata for `curl | jq .commit`)
+// Health check
 app.get('/health', (_req, res) => {
-  res.json({
-    status: 'ok',
+  res.json({ 
+    status: 'ok', 
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
-    commit: process.env.RAILWAY_GIT_COMMIT_SHA?.substring(0, 12) || 'unknown',
-    commit_full: process.env.RAILWAY_GIT_COMMIT_SHA || null,
-    branch: process.env.RAILWAY_GIT_BRANCH || null,
-    deployment_id: process.env.RAILWAY_DEPLOYMENT_ID || null,
-    deployed_at: process.env.RAILWAY_DEPLOYMENT_CREATED_AT || null,
-    service: process.env.RAILWAY_SERVICE_NAME || null,
     functions: Object.keys(functionHandlers),
   });
 });
