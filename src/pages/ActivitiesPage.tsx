@@ -461,47 +461,7 @@ const ActivitiesPage = () => {
         notification_date: formNotificationDate || null,
       });
       if (result?.id) createdActivityId = result.id;
-}
-
-/**
- * Extrai apenas o primeiro nome do cliente a partir de uma string que pode ser
- * o nome de um grupo de WhatsApp. Exemplos:
- *  "✅PREV 291 | Allana / Irma socorro II" -> "Allana"
- *  "PREV 123 - João Silva"                 -> "João"
- *  "Maria Souza"                            -> "Maria"
- *  ""                                       -> ""
- */
-function extractClientFirstName(raw: string): string {
-  if (!raw) return '';
-  let s = raw.trim();
-  // Remove emojis e símbolos comuns no início
-  s = s.replace(/^[^\p{L}\p{N}]+/u, '');
-  // Se houver "|", o nome do cliente costuma vir depois do primeiro "|"
-  if (s.includes('|')) {
-    s = s.split('|').slice(1).join('|').trim();
-  }
-  // Corta no primeiro "/" (separador entre cliente e familiar/grupo)
-  if (s.includes('/')) {
-    s = s.split('/')[0].trim();
-  }
-  // Corta separadores comuns entre prefixo de caso e nome
-  for (const sep of [' - ', ' — ', ' – ', ':']) {
-    if (s.includes(sep)) {
-      s = s.split(sep).slice(-1)[0].trim();
     }
-  }
-  // Remove tokens iniciais que pareçam código de caso (ex.: "PREV 291", "BPC", números)
-  const tokens = s.split(/\s+/);
-  while (tokens.length > 1) {
-    const t = tokens[0];
-    const looksLikeCode = /^[A-Z]{2,}$/.test(t) || /^\d+$/.test(t) || /^[A-Z]{2,}\d+$/.test(t);
-    if (looksLikeCode) tokens.shift(); else break;
-  }
-  // Pega só a primeira palavra "humana"
-  const first = tokens[0] || '';
-  // Capitaliza preservando acentos
-  return first ? first.charAt(0).toUpperCase() + first.slice(1).toLowerCase() : '';
-}
 
 
     // If created for another assignee, add them to the filter so the activities are visible
