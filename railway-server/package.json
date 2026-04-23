@@ -5,9 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "check-node": "node -e \"const v=process.versions.node.split('.')[0]; if(v!=='20'){console.error('❌ Node 20.x required, got '+process.versions.node); process.exit(1)} else {console.log('✅ Node '+process.versions.node)}\"",
-    "build": "npm run check-node && tsc",
-    "start": "npm run check-node && node dist/index.js"
+    "build": "tsc",
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",
