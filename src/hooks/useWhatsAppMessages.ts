@@ -116,6 +116,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const lastSyncAtRef = useRef<Record<string, number>>({});
   const activeConversationKeyRef = useRef<string | null>(null);
   const fullConvCacheRef = useRef<Record<string, WhatsAppMessage[]>>({});
+  // Ref para `fetchFullConversation` permitir auto-rehidratação dentro do `fetchMessages`
+  // sem criar dependência circular (fetchFullConversation é definido bem depois neste hook).
+  const fetchFullConversationRef = useRef<((phone: string, instanceName?: string | null) => Promise<void>) | null>(null);
 
   const getCanonicalInstanceName = useCallback((instanceName?: string | null) => {
     const normalized = normalizeInstanceName(instanceName);
