@@ -1098,6 +1098,7 @@ ${scrapeData.content || ''}
           >
             {/* Basic Info Tab */}
             <TabsContent value="basic" className="space-y-4 mt-0">
+              {activeTab === 'basic' && (<>
               {/* Meta info */}
               {(() => {
                 const leadAny = lead as any;
@@ -1814,6 +1815,7 @@ ${scrapeData.content || ''}
                   </div>
                 )}
               </div>
+              </>)}
             </TabsContent>
 
             {/* Contacts Tab */}
@@ -1836,6 +1838,7 @@ ${scrapeData.content || ''}
 
             {/* Accident Details Tab */}
             <TabsContent value="accident" className="space-y-4 mt-0">
+              {activeTab === 'accident' && (<>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Nome da Vítima</Label>
@@ -1898,10 +1901,12 @@ ${scrapeData.content || ''}
                   />
                 </div>
               </div>
+              </>)}
             </TabsContent>
 
             {/* Location Tab */}
             <TabsContent value="location" className="space-y-4 mt-0">
+              {activeTab === 'location' && (<>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Estado da Visita</Label>
@@ -1977,10 +1982,12 @@ ${scrapeData.content || ''}
                   />
                 </div>
               </div>
+              </>)}
             </TabsContent>
 
             {/* Companies Tab */}
             <TabsContent value="companies" className="space-y-4 mt-0">
+              {activeTab === 'companies' && (<>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Empresa Terceirizada</Label>
@@ -2024,10 +2031,12 @@ ${scrapeData.content || ''}
                   />
                 </div>
               </div>
+              </>)}
             </TabsContent>
 
             {/* Legal Tab */}
             <TabsContent value="legal" className="space-y-4 mt-0">
+              {activeTab === 'legal' && (<>
               {/* AI Analysis Button */}
               <div className="bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-lg p-4">
                 <div className="flex items-center justify-between">
@@ -2150,6 +2159,7 @@ ${scrapeData.content || ''}
                   />
                 </div>
               </div>
+              </>)}
             </TabsContent>
 
             {/* Funnel/Workflow Tab */}
