@@ -57,6 +57,9 @@ interface GroupSettings {
   audio_voice_id: string;
   auto_close_lead_on_sign: boolean;
   auto_create_group_on_sign: boolean;
+  post_sign_mode: 'group' | 'private';
+  auto_archive_on_sign: boolean;
+  processual_acolhedor_id: string;
   auto_create_process: boolean;
   process_nucleus_id: string;
   process_workflow_board_id: string;
@@ -146,6 +149,9 @@ export function BoardGroupInstancesConfig() {
     audio_voice_id: '',
     auto_close_lead_on_sign: false,
     auto_create_group_on_sign: false,
+    post_sign_mode: 'group',
+    auto_archive_on_sign: false,
+    processual_acolhedor_id: '',
     auto_create_process: false,
     process_nucleus_id: '',
     process_workflow_board_id: '',
@@ -236,6 +242,9 @@ export function BoardGroupInstancesConfig() {
         audio_voice_id: data.audio_voice_id || '',
         auto_close_lead_on_sign: data.auto_close_lead_on_sign || false,
         auto_create_group_on_sign: data.auto_create_group_on_sign || false,
+        post_sign_mode: (data.post_sign_mode as 'group' | 'private') || 'group',
+        auto_archive_on_sign: data.auto_archive_on_sign || false,
+        processual_acolhedor_id: data.processual_acolhedor_id || '',
         auto_create_process: data.auto_create_process || false,
         process_nucleus_id: data.process_nucleus_id || '',
         process_workflow_board_id: data.process_workflow_board_id || '',
@@ -256,6 +265,7 @@ export function BoardGroupInstancesConfig() {
         forward_document_types: [],
         send_audio_message: false, audio_voice_id: '',
         auto_close_lead_on_sign: false, auto_create_group_on_sign: false,
+        post_sign_mode: 'group', auto_archive_on_sign: false, processual_acolhedor_id: '',
         auto_create_process: false, process_nucleus_id: '', process_workflow_board_id: '',
         process_auto_activities: [], process_workflows: [],
         bridge_approach_prompt: '',
@@ -350,6 +360,9 @@ export function BoardGroupInstancesConfig() {
         audio_voice_id: settings.audio_voice_id || null,
         auto_close_lead_on_sign: settings.auto_close_lead_on_sign,
         auto_create_group_on_sign: settings.auto_create_group_on_sign,
+        post_sign_mode: settings.post_sign_mode,
+        auto_archive_on_sign: settings.auto_archive_on_sign,
+        processual_acolhedor_id: settings.processual_acolhedor_id || null,
         auto_create_process: settings.auto_create_process,
         process_nucleus_id: settings.process_nucleus_id || null,
         process_workflow_board_id: settings.process_workflow_board_id || null,
