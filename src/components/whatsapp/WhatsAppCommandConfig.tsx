@@ -3,6 +3,7 @@ import { PromptVariableSelector } from './PromptVariableSelector';
 import { PromptBuilderChat } from './PromptBuilderChat';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { logAudit } from '@/hooks/useAuditLog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1905,24 +1906,44 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                 setFilterTestLoading(true);
                 setFilterTestResult(null);
                 try {
-                  const tail = filterTestPhone.slice(-8);
-                  const { data: leads, error } = await supabase
+                  const digits = filterTestPhone.replace(/\D/g, '');
+                  const tail8 = digits.slice(-8);
+                  await ensureExternalSession();
+                  // Busca leads no banco externo (fonte real) com últimos 8 dígitos
+                  const { data: leadsRaw, error } = await externalSupabase
                     .from('leads')
                     .select('id, lead_name, lead_phone, board_id, lead_status')
-                    .ilike('lead_phone', `%${tail}%`)
-                    .limit(1);
+                    .ilike('lead_phone', `%${tail8}%`)
+                    .limit(20);
                   if (error) throw error;
-                  if (!leads || leads.length === 0) {
+                  // Match estrito: comparar só dígitos, exigir igualdade dos últimos 10/11
+                  const matches = (leadsRaw || []).filter((l: any) => {
+                    const ld = String(l.lead_phone || '').replace(/\D/g, '');
+                    if (!ld) return false;
+                    // Igual completo, ou últimos 10 dígitos batem (DDD+numero)
+                    return ld === digits || ld.slice(-10) === digits.slice(-10) || ld.slice(-11) === digits.slice(-11);
+                  });
+                  if (matches.length === 0) {
                     setFilterTestResult({
                       found: false,
                       boardPass: form.lead_status_board_ids.length === 0,
                       statusPass: form.lead_status_filter.length === 0,
                       willRespond: form.lead_status_board_ids.length === 0 && form.lead_status_filter.length === 0,
-                      reason: 'Nenhum lead encontrado com esse telefone. Sem lead, o filtro não bloqueia (responde como contato novo).',
+                      reason: 'Nenhum lead encontrado com esse telefone exato. Sem lead vinculado, o filtro não bloqueia (responderia como contato novo).',
                     });
                     return;
                   }
-                  const lead = leads[0] as any;
+                  if (matches.length > 1) {
+                    setFilterTestResult({
+                      found: false,
+                      boardPass: false,
+                      statusPass: false,
+                      willRespond: false,
+                      reason: `⚠️ ${matches.length} leads encontrados com esse telefone: ${matches.map((m: any) => m.lead_name).join(', ')}. Resolva a duplicidade antes de testar.`,
+                    });
+                    return;
+                  }
+                  const lead = matches[0] as any;
                   const board = boards.find(b => b.id === lead.board_id);
                   const boardPass = form.lead_status_board_ids.length === 0 || form.lead_status_board_ids.includes(lead.board_id);
                   const statusPass = form.lead_status_filter.length === 0 || form.lead_status_filter.includes(lead.lead_status);
