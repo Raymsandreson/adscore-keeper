@@ -1361,6 +1361,13 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     }
   };
 
+  // Mantém a ref alinhada com a versão atual de `fetchFullConversation` para que o
+  // auto-rehydrate dentro de `fetchMessages` (linha ~505) consiga chamar a função
+  // sem criar dependência circular.
+  useEffect(() => {
+    fetchFullConversationRef.current = fetchFullConversation;
+  }, [fetchFullConversation]);
+
   return {
     messages,
     conversations,
