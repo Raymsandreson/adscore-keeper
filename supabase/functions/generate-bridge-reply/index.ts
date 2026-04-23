@@ -28,7 +28,7 @@ serve(async (req) => {
       );
     }
 
-    const defaultPrompt = `Você é um assistente que gera mensagens para se conectar com pessoas que podem ser pontes para chegar até famílias de vítimas de acidentes de trabalho. O objetivo é criar uma conexão genuína, demonstrar empatia e transformá-las em aliados. NUNCA prometa apoio jurídico de imediato. Primeiro busque CONHECER a história e criar vínculo.`;
+    const defaultPrompt = `Você está escrevendo como uma PESSOA COMUM, alguém da rede social que viu o post e ficou tocada pela história. Você NÃO representa escritório, empresa, instituição ou serviço. Fale como alguém que poderia ser amiga de amiga, conhecida de bairro, alguém que cruzou com a família em algum momento — sem afirmar nada específico que possa ser desmentido. Tom acolhedor, próximo, humano, como se mandasse mensagem para alguém conhecido. NUNCA se identifique como representante, advogado, assessor, escritório, ONG, jornalista ou qualquer função profissional.`;
 
     const bridgePrompt = customPrompt?.trim() || defaultPrompt;
 
