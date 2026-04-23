@@ -413,9 +413,14 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
         const createdLeadId = newLead?.id;
 
         // Fechar o diálogo IMEDIATAMENTE após criar o lead — o resto roda em background.
-        toast.success('Lead criado! Finalizando vínculos em segundo plano...');
+        toast.success('Lead criado! Abrindo para revisão...');
         onSuccess?.();
         handleClose();
+
+        // Redirecionar pra Central de Leads e abrir o LeadEditDialog completo automaticamente
+        if (createdLeadId) {
+          navigate(`/leads?openLead=${createdLeadId}&tab=basic`);
+        }
 
         // Capturar valores que serão usados no background (depois do reset do state)
         const bgBoardId = selectedBoardId;
