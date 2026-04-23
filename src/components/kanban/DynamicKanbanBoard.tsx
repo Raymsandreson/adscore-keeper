@@ -500,7 +500,12 @@ export function DynamicKanbanBoard({
                       stageLeads.map((lead) => {
                         const daysInStage = getDaysInStage(lead);
                         const isStagnant = isLeadStagnant(lead, stage.id);
-                        
+                        // DEV-only render counter — remove after perf validation
+                        if (import.meta.env.DEV) {
+                          // eslint-disable-next-line no-console
+                          console.count(`[LeadCard ${lead.id.slice(0, 8)}]`);
+                        }
+
                         return (
                           <ContextMenu key={lead.id}>
                             <ContextMenuTrigger asChild>
