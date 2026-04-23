@@ -347,22 +347,39 @@ export function WhatsAppInbox() {
   }, [conversations, privateConvs, sharedMessages, user, canViewPrivate]);
 
   const [selectedInstance, setSelectedInstance] = usePageState<string | null>('wa_selected_instance', null);
-
-  // Reidrata o histórico completo ao remontar (reload, troca de aba, navegação interna).
-  // Sem isso, o chat exibe apenas a mensagem-resumo do RPC, dando a impressão de que o
-  // grupo "perdeu" todas as mensagens antigas. Roda uma única vez por par phone+instance.
-  const rehydratedKeyRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!hasLoaded || !selectedPhone) return;
-    const key = `${selectedPhone}__${(selectedInstance || '').toLowerCase()}`;
-    if (rehydratedKeyRef.current === key) return;
-    rehydratedKeyRef.current = key;
-    fetchFullConversation(selectedPhone, selectedInstance);
-  }, [hasLoaded, selectedPhone, selectedInstance, fetchFullConversation]);
-
   const selectedConversation = visibleConversations.find(
     c => selectedPhone === c.phone && getConversationKey(c.phone, c.instance_name) === getConversationKey(selectedPhone || '', selectedInstance)
   ) || null;
+
+  // Reidrata o histórico completo ao remontar (reload, troca de aba, navegação interna).
+  // Importante: não basta rodar uma vez por chave, porque a lista-resumo pode sobrescrever
+  // a conversa depois que a instância padrão é resolvida. Então reidratamos sempre que a
+  // conversa ativa existir apenas com a mensagem-resumo.
+  const rehydratingKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!hasLoaded || selectedInstanceId === null || !selectedPhone || !selectedInstance) return;
+
+    const key = `${selectedPhone}__${(selectedInstance || '').toLowerCase()}`;
+    const needsHydration = !selectedConversation || selectedConversation.messages.length <= 1;
+
+    if (!needsHydration) return;
+    if (rehydratingKeyRef.current === key) return;
+
+    rehydratingKeyRef.current = key;
+    Promise.resolve(fetchFullConversation(selectedPhone, selectedInstance)).finally(() => {
+      if (rehydratingKeyRef.current === key) {
+        rehydratingKeyRef.current = null;
+      }
+    });
+  }, [
+    hasLoaded,
+    selectedInstanceId,
+    selectedPhone,
+    selectedInstance,
+    selectedConversation,
+    fetchFullConversation,
+  ]);
+
   const totalUnread = visibleConversations.reduce((sum, c) => sum + c.unread_count, 0);
 
   const handleSelectConversation = (conv: WhatsAppConversation) => {
