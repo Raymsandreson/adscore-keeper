@@ -51,6 +51,68 @@ interface LeadLinkedContactsProps {
 
 // Module-level cache: instant render on re-open
 const contactsCache = new Map<string, { contacts: LinkedContact[]; callStats: Record<string, ContactCallStats> }>();
+const contactsRequests = new Map<string, Promise<{ contacts: LinkedContact[]; callStats: Record<string, ContactCallStats> }>>();
+
+const loadLinkedContacts = async (leadId: string, force = false) => {
+  if (!force && contactsCache.has(leadId)) {
+    return contactsCache.get(leadId) || { contacts: [], callStats: {} };
+  }
+
+  const inFlight = contactsRequests.get(leadId);
+  if (inFlight) return inFlight;
+
+  const request = (async () => {
+    try {
+      const { data, error } = await (supabase as any)
+        .from('contact_leads')
+        .select('id, contact_id, relationship_to_victim, contacts:contact_id(id, full_name, instagram_username, phone, email, classification, classifications)')
+        .eq('lead_id', leadId);
+
+      if (error) throw error;
+
+      const mapped: LinkedContact[] = (data || [])
+        .filter((d: any) => d.contacts)
+        .map((d: any) => ({
+          id: d.id,
+          contact_id: d.contact_id,
+          relationship_to_victim: d.relationship_to_victim || null,
+          contact: d.contacts,
+        }));
+
+      const contactIds = mapped.map(c => c.contact_id);
+      let stats: Record<string, ContactCallStats> = {};
+      if (contactIds.length > 0) {
+        const { data: callData } = await supabase
+          .from('call_records')
+          .select('contact_id, call_result, duration_seconds, created_at')
+          .in('contact_id', contactIds)
+          .order('created_at', { ascending: false });
+
+        for (const cid of contactIds) {
+          const contactCalls = (callData || []).filter(r => r.contact_id === cid);
+          const answeredCall = contactCalls.find(r => r.call_result === 'answered' && r.duration_seconds && r.duration_seconds > 0);
+          stats[cid] = {
+            totalCalls: contactCalls.length,
+            lastAnsweredDuration: answeredCall?.duration_seconds ?? null,
+          };
+        }
+      }
+
+      const payload = { contacts: mapped, callStats: stats };
+      contactsCache.set(leadId, payload);
+      return payload;
+    } finally {
+      contactsRequests.delete(leadId);
+    }
+  })();
+
+  contactsRequests.set(leadId, request);
+  return request;
+};
+
+export const prefetchLeadLinkedContacts = async (leadId: string) => {
+  await loadLinkedContacts(leadId, true);
+};
 
 export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
   const cached = contactsCache.get(leadId);
@@ -77,44 +139,9 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
   const fetchContacts = useCallback(async () => {
     if (!contactsCache.has(leadId)) setLoading(true);
     try {
-      const { data, error } = await (supabase as any)
-        .from('contact_leads')
-        .select('id, contact_id, relationship_to_victim, contacts:contact_id(id, full_name, instagram_username, phone, email, classification, classifications)')
-        .eq('lead_id', leadId);
-
-      if (!error && data) {
-        const mapped: LinkedContact[] = data
-          .filter((d: any) => d.contacts)
-          .map((d: any) => ({
-            id: d.id,
-            contact_id: d.contact_id,
-            relationship_to_victim: d.relationship_to_victim || null,
-            contact: d.contacts,
-          }));
-        setContacts(mapped);
-
-        // Fetch call stats in parallel (was: sequential after contacts)
-        const contactIds = mapped.map(c => c.contact_id);
-        let stats: Record<string, ContactCallStats> = {};
-        if (contactIds.length > 0) {
-          const { data: callData } = await supabase
-            .from('call_records')
-            .select('contact_id, call_result, duration_seconds, created_at')
-            .in('contact_id', contactIds)
-            .order('created_at', { ascending: false });
-
-          for (const cid of contactIds) {
-            const contactCalls = (callData || []).filter(r => r.contact_id === cid);
-            const answeredCall = contactCalls.find(r => r.call_result === 'answered' && r.duration_seconds && r.duration_seconds > 0);
-            stats[cid] = {
-              totalCalls: contactCalls.length,
-              lastAnsweredDuration: answeredCall?.duration_seconds ?? null,
-            };
-          }
-        }
-        setCallStats(stats);
-        contactsCache.set(leadId, { contacts: mapped, callStats: stats });
-      }
+      const payload = await loadLinkedContacts(leadId, true);
+      setContacts(payload.contacts);
+      setCallStats(payload.callStats);
     } catch (err) {
       console.error('Error fetching linked contacts:', err);
     } finally {

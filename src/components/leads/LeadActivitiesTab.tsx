@@ -50,20 +50,22 @@ const loadLeadActivities = async (leadId: string, force = false): Promise<LeadAc
   const inFlight = activitiesRequests.get(leadId);
   if (inFlight) return inFlight;
 
-  const request = supabase
-    .from('lead_activities')
-    .select('id, title, description, activity_type, status, priority, deadline, assigned_to, assigned_to_name, created_at, completed_at, what_was_done, current_status_notes, next_steps, notes, matrix_quadrant')
-    .eq('lead_id', leadId)
-    .order('created_at', { ascending: false })
-    .then(({ data, error }) => {
+  const request = (async () => {
+    try {
+      const { data, error } = await supabase
+        .from('lead_activities')
+        .select('id, title, description, activity_type, status, priority, deadline, assigned_to, assigned_to_name, created_at, completed_at, what_was_done, current_status_notes, next_steps, notes, matrix_quadrant')
+        .eq('lead_id', leadId)
+        .order('created_at', { ascending: false });
+
       if (error) throw error;
       const list = (data || []) as LeadActivity[];
       activitiesCache.set(leadId, list);
       return list;
-    })
-    .finally(() => {
+    } finally {
       activitiesRequests.delete(leadId);
-    });
+    }
+  })();
 
   activitiesRequests.set(leadId, request);
   return request;
