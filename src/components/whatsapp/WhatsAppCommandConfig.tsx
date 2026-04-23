@@ -290,13 +290,19 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [formSection, setFormSection] = useState<'general' | 'ai' | 'document' | 'followup' | 'automations'>('general');
   const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string }[]>([]);
   const [instances, setInstances] = useState<any[]>([]);
+  const [boards, setBoards] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
     const fetchInstances = async () => {
       const { data } = await supabase.from('whatsapp_instances').select('id, instance_name').order('instance_name');
       setInstances(data || []);
     };
+    const fetchBoards = async () => {
+      const { data } = await supabase.from('kanban_boards').select('id, name').order('name');
+      setBoards((data as any) || []);
+    };
     fetchInstances();
+    fetchBoards();
   }, []);
 
   const [promptSheetOpen, setPromptSheetOpen] = useState(false);
@@ -486,6 +492,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       zapsign_settings: (s as any).zapsign_settings || {},
       forward_questions_to_group: (s as any).forward_questions_to_group ?? false,
       notify_instance_name: (s as any).notify_instance_name || null,
+      lead_status_board_ids: (s as any).lead_status_board_ids || [],
+      lead_status_filter: (s as any).lead_status_filter || [],
     });
     setFollowupSteps(s.followup_steps || []);
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
