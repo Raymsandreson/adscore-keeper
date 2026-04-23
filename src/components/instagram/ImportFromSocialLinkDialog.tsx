@@ -179,7 +179,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   // Lead form data (used in review step)
   const [formData, setFormData] = useState<AccidentLeadFormData>({ ...initialFormData });
   // Board selection
-  const [boards, setBoards] = useState<{ id: string; name: string }[]>([]);
+  const [boards, setBoards] = useState<Array<{ id: string; name: string; stages?: any[] }>>([]);
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
   // Team profiles for acolhedor selector
   const [teamMembers, setTeamMembers] = useState<{ id: string; full_name: string | null; email: string | null }[]>([]);
@@ -231,9 +231,9 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   useEffect(() => {
     if (step === 'review') {
       if (boards.length === 0) {
-        supabase.from('kanban_boards').select('id, name, board_type').order('display_order').then(({ data }) => {
+        supabase.from('kanban_boards').select('id, name, stages, board_type').order('display_order').then(({ data }) => {
           if (data) {
-            setBoards(data.filter(b => b.board_type === 'funnel' || !b.board_type).map(b => ({ id: b.id, name: b.name })));
+            setBoards(data.filter(b => b.board_type === 'funnel' || !b.board_type).map(b => ({ id: b.id, name: b.name, stages: Array.isArray((b as any).stages) ? (b as any).stages : [] })));
           }
         });
       }
