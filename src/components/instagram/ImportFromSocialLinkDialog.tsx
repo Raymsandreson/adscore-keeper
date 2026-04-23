@@ -377,6 +377,10 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
 
     try {
       if (targetType === 'lead') {
+        const board = boards.find(b => b.id === selectedBoardId);
+        const stages = Array.isArray(board?.stages) ? board.stages : [];
+        const firstStageId = stages[0]?.id || null;
+
         const { data: newLead, error } = await supabase.from('leads').insert({
           lead_name: formData.lead_name,
           lead_phone: formData.lead_phone || null,
@@ -405,6 +409,12 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           liability_type: formData.liability_type || null,
           legal_viability: formData.legal_viability || null,
           board_id: selectedBoardId || null,
+          status: firstStageId,
+          lead_status: 'active',
+          became_client_date: null,
+          classification_date: null,
+          in_progress_date: null,
+          inviavel_date: null,
           created_by: user?.id || null,
           updated_by: user?.id || null,
         }).select('id').single();
@@ -535,6 +545,12 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
                     sector: bgFormData.sector || null,
                     news_link: bgFormData.news_link || null,
                     board_id: bgBoardId,
+                    status: ((Array.isArray((boards.find(b => b.id === bgBoardId)?.stages)) ? (boards.find(b => b.id === bgBoardId)?.stages as any[]) : [])[0]?.id) || null,
+                    lead_status: 'active',
+                    became_client_date: null,
+                    classification_date: null,
+                    in_progress_date: null,
+                    inviavel_date: null,
                     created_by: bgUserId,
                     updated_by: bgUserId,
                   }).select('id').single();
