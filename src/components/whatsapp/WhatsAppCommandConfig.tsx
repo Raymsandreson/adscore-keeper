@@ -116,6 +116,8 @@ interface ShortcutFormState {
   zapsign_settings: Record<string, any>;
   forward_questions_to_group: boolean;
   notify_instance_name: string | null;
+  lead_status_board_ids: string[];
+  lead_status_filter: string[];
 }
 
 const DEFAULT_FORM: ShortcutFormState = {
@@ -132,7 +134,15 @@ const DEFAULT_FORM: ShortcutFormState = {
   max_tts_chars: 1000, send_window_start_hour: 8, send_window_end_hour: 20,
   send_call_followup_audio: false, zapsign_mode: 'final_document', zapsign_settings: {},
   forward_questions_to_group: false, notify_instance_name: null,
+  lead_status_board_ids: [], lead_status_filter: [],
 };
+
+const LEAD_RESULT_OPTIONS: { value: string; label: string }[] = [
+  { value: 'in_progress', label: 'Em Andamento' },
+  { value: 'closed', label: 'Fechado' },
+  { value: 'refused', label: 'Recusado' },
+  { value: 'unviable', label: 'Inviável' },
+];
 
 interface Profile { user_id: string; full_name: string | null; }
 interface ZapSignTemplateOption { token: string; name: string; }
