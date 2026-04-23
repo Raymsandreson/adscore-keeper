@@ -871,10 +871,99 @@ export function AccidentDataExtractor({
               </div>
 
               {urlIsSocial && (
-                <div className="rounded-lg border border-dashed p-3 bg-muted/30">
+                <div className="rounded-lg border border-dashed p-3 bg-muted/30 space-y-3">
                   <p className="text-xs text-muted-foreground">
-                    Primeiro eu monto a revisão com a legenda e o link da publicação. Em seguida, os comentários são buscados em segundo plano usando o mesmo actor, sem travar o modal.
+                    Fluxo manual em 3 passos. Cada botão dispara uma chamada separada — assim você decide o que extrair sem travar o modal.
                   </p>
+
+                  {/* 1. Buscar Legenda */}
+                  <div className="space-y-1.5">
+                    <Button
+                      type="button"
+                      variant={manualCaption ? 'outline' : 'default'}
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={handleFetchCaptionManual}
+                      disabled={isFetchingCaption || !urlInput.trim()}
+                    >
+                      {isFetchingCaption ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : manualCaption ? (
+                        <CheckCircle2 className="h-4 w-4 mr-2 text-emerald-600" />
+                      ) : (
+                        <FileText className="h-4 w-4 mr-2" />
+                      )}
+                      1. Buscar Legenda do Post
+                    </Button>
+                    {manualCaption && (
+                      <Textarea
+                        value={manualCaption}
+                        onChange={(e) => setManualCaption(e.target.value)}
+                        rows={3}
+                        className="text-xs resize-none"
+                        placeholder="Legenda extraída (editável)"
+                      />
+                    )}
+                  </div>
+
+                  {/* 2. Buscar Comentários (opcional) */}
+                  <div className="space-y-1.5">
+                    <Button
+                      type="button"
+                      variant={commentsCount !== null ? 'outline' : 'secondary'}
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={handleFetchCommentsManual}
+                      disabled={isFetchingComments || !urlInput.trim()}
+                    >
+                      {isFetchingComments ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : commentsCount !== null ? (
+                        <CheckCircle2 className="h-4 w-4 mr-2 text-emerald-600" />
+                      ) : (
+                        <MessageSquare className="h-4 w-4 mr-2" />
+                      )}
+                      2. Buscar Comentários (opcional)
+                      {commentsCount !== null && (
+                        <Badge variant="outline" className="ml-auto text-[10px]">
+                          {commentsCount}
+                        </Badge>
+                      )}
+                    </Button>
+                    {commentsError && (
+                      <p className="text-xs text-destructive flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {commentsError}
+                      </p>
+                    )}
+                    {commentsAnalysis && (
+                      <div className="text-xs text-muted-foreground space-y-0.5 pl-1">
+                        {commentsAnalysis.victim_info?.name && <p>👤 Vítima: {commentsAnalysis.victim_info.name}</p>}
+                        {commentsAnalysis.accident_info?.location && <p>📍 Local: {commentsAnalysis.accident_info.location}</p>}
+                        {commentsAnalysis.accident_info?.company && <p>🏢 Empresa: {commentsAnalysis.accident_info.company}</p>}
+                        {!!commentsAnalysis.potential_contacts?.length && (
+                          <p>🔗 {commentsAnalysis.potential_contacts.length} possíveis pontes</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. Analisar com IA */}
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    className="w-full"
+                    onClick={handleExtract}
+                    disabled={isExtracting || !manualCaption.trim()}
+                  >
+                    {isExtracting ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4 mr-2" />
+                    )}
+                    3. Analisar com IA e Montar Lead
+                  </Button>
                 </div>
               )}
             </TabsContent>
