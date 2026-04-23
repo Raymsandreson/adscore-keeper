@@ -67,7 +67,7 @@ interface Shortcut {
   send_window_start_hour: number;
   send_window_end_hour: number;
   send_call_followup_audio: boolean;
-  
+  lead_status_filter: string[];
 }
 
 interface FollowupStep {
@@ -116,6 +116,7 @@ interface ShortcutFormState {
   zapsign_settings: Record<string, any>;
   forward_questions_to_group: boolean;
   notify_instance_name: string | null;
+  lead_status_filter: string[];
 }
 
 const DEFAULT_FORM: ShortcutFormState = {
@@ -132,6 +133,7 @@ const DEFAULT_FORM: ShortcutFormState = {
   max_tts_chars: 1000, send_window_start_hour: 8, send_window_end_hour: 20,
   send_call_followup_audio: false, zapsign_mode: 'final_document', zapsign_settings: {},
   forward_questions_to_group: false, notify_instance_name: null,
+  lead_status_filter: [],
 };
 
 interface Profile { user_id: string; full_name: string | null; }
@@ -550,6 +552,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       zapsign_settings: form.zapsign_settings || {},
       forward_questions_to_group: form.forward_questions_to_group ?? false,
       notify_instance_name: form.notify_instance_name || null,
+      lead_status_filter: form.lead_status_filter || [],
     };
 
     let error;
@@ -941,6 +944,42 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       <p className="text-[10px] text-muted-foreground">Vozes personalizadas aparecem com 🎤</p>
                     </div>
                   )}
+                </div>
+                {/* Filtro: não responder em leads com determinados status */}
+                <div className="space-y-2 border rounded-lg p-3">
+                  <div>
+                    <Label className="text-xs">🚫 Não responder quando o lead estiver:</Label>
+                    <p className="text-[10px] text-muted-foreground">
+                      O agente ignora a conversa se o lead vinculado tiver um destes status. Útil para evitar responder em casos já fechados ou recusados.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { value: 'closed', label: 'Fechado' },
+                      { value: 'refused', label: 'Recusado' },
+                      { value: 'unviable', label: 'Inviável' },
+                      { value: 'lost', label: 'Perdido' },
+                    ].map(opt => {
+                      const checked = (form.lead_status_filter || []).includes(opt.value);
+                      return (
+                        <label key={opt.value} className="flex items-center gap-2 text-xs cursor-pointer">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(v) => {
+                              setForm(f => {
+                                const current = f.lead_status_filter || [];
+                                const next = v
+                                  ? [...current, opt.value]
+                                  : current.filter(s => s !== opt.value);
+                                return { ...f, lead_status_filter: next };
+                              });
+                            }}
+                          />
+                          <span>{opt.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
