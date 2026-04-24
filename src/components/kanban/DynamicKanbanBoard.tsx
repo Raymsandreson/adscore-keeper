@@ -297,8 +297,37 @@ export function DynamicKanbanBoard({
       .slice(0, 2);
   }, []);
 
+  const getStageEntryDate = useCallback((lead: Lead) => {
+    return stageEnteredAt[lead.id] || lead.updated_at;
+  }, [stageEnteredAt]);
+
   const getDaysInStage = useCallback((lead: Lead) => {
-    return differenceInDays(new Date(), new Date(lead.updated_at));
+    return differenceInDays(new Date(), new Date(getStageEntryDate(lead)));
+  }, [getStageEntryDate]);
+
+  const formatTimeInStage = useCallback((lead: Lead) => {
+    const entry = new Date(getStageEntryDate(lead));
+    const now = new Date();
+    const totalHours = differenceInHours(now, entry);
+    if (totalHours < 1) return 'Há menos de 1 hora';
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    if (days === 0) return `Há ${hours}h`;
+    if (hours === 0) return `Há ${days}d`;
+    return `Há ${days}d ${hours}h`;
+  }, [getStageEntryDate]);
+
+  // Extract short lead name (before "|" or "(") to show on card
+  const getShortLeadName = useCallback((fullName: string | null | undefined) => {
+    if (!fullName) return 'Sem nome';
+    const cleaned = fullName.split(/[|(]/)[0].trim();
+    return cleaned || fullName;
+  }, []);
+
+  // Get company name from lead (main_company or contractor_company)
+  const getCompanyName = useCallback((lead: Lead): string | null => {
+    const l = lead as any;
+    return l.main_company || l.contractor_company || null;
   }, []);
 
   const isLeadStagnant = useCallback((lead: Lead, stageId: string) => {
