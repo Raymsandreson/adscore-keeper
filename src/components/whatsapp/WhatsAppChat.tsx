@@ -1489,7 +1489,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       )}
 
       {/* Messages + Call Records Timeline */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
         {timelineItems.map((item, idx) => {
           // Date separator
           const itemDate = new Date(item.timestamp);
