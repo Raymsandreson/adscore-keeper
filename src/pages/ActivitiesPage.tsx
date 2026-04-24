@@ -169,6 +169,7 @@ const ActivitiesPage = () => {
   }, [assigneeStorageKey]);
   const [filterLead, setFilterLead] = usePageState<string[]>('activities_filterLead', []);
   const [filterContact, setFilterContact] = usePageState<string[]>('activities_filterContact', []);
+  const [filterCase, setFilterCase] = usePageState<string[]>('activities_filterCase', []);
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
   const [selectedActivityId, setSelectedActivityId] = usePageState<string | null>('activities_selectedId', null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
