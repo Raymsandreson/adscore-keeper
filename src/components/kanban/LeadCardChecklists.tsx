@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { ListChecks, MessageSquareText, ClipboardList } from 'lucide-react';
+import { ListChecks, MessageSquareText, ClipboardList, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useActivityLogger } from '@/hooks/useActivityLogger';
@@ -38,6 +38,7 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
   const [instances, setInstances] = useState<ChecklistInstance[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
+  const [itemsExpanded, setItemsExpanded] = useState(false);
   const { logActivity } = useActivityLogger();
 
   // DEV-only render counter (remove after perf validation)
@@ -230,8 +231,13 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
 
   return (
     <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} draggable={false}>
-      {/* Overall progress bar */}
-      <div className="flex items-center gap-1.5">
+      {/* Overall progress bar (clickable to expand/collapse items) */}
+      <button
+        type="button"
+        onClick={() => setItemsExpanded(v => !v)}
+        className="flex items-center gap-1.5 w-full hover:bg-muted/30 rounded px-1 py-0.5 transition-colors"
+        title={itemsExpanded ? 'Recolher tarefas' : 'Exibir tarefas'}
+      >
         <ListChecks className="h-3 w-3 text-muted-foreground flex-shrink-0" />
         <Progress value={overallPercent} className="h-1.5 flex-1" />
         <span className={cn(
@@ -240,10 +246,13 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
         )}>
           {overallPercent}%
         </span>
-      </div>
+        {itemsExpanded
+          ? <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+          : <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />}
+      </button>
 
-      {/* Current phase - always visible checklist items */}
-      {currentStageInstances.length > 0 && (
+      {/* Current phase items - only when expanded */}
+      {itemsExpanded && currentStageInstances.length > 0 && (
         <div className="space-y-0.5">
           {currentStageInstances.map(instance => (
             <div key={instance.id} className="space-y-0.5">
