@@ -1133,12 +1133,12 @@ export function WhatsAppInbox() {
           )}
         </div>
 
-        {/* DESKTOP: resizable layout */}
-        <ResizablePanelGroup
-          direction="horizontal"
-          autoSaveId="whatsapp-inbox-layout"
-          className="hidden md:flex flex-1"
-        >
+        {/* DESKTOP: layout com largura fixa redimensionável por arrasto */}
+        <div className="hidden md:flex flex-1 min-w-0">
+          <div
+            className="border-r overflow-y-auto bg-card flex flex-col flex-shrink-0"
+            style={{ width: `${listWidth}px` }}
+          >
           <ResizablePanel defaultSize={25} minSize={18} maxSize={45} className="!overflow-visible">
             <div className="h-full border-r overflow-y-auto bg-card flex flex-col">
               <WhatsAppConversationList
