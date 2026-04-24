@@ -880,7 +880,7 @@ export function DynamicKanbanBoard({
                         onClick={() =>
                           setVisibleCounts(prev => ({
                             ...prev,
-                            [stage.id]: (prev[stage.id] ?? PAGE_INCREMENT) + PAGE_INCREMENT,
+                            [stage.id]: (prev[stage.id] ?? INITIAL_PAGE_SIZE) + LOAD_MORE_INCREMENT,
                           }))
                         }
                       >
