@@ -130,11 +130,14 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
         .order('created_at');
 
       // Defesa: deduplicar por (stage_id, checklist_template_id) caso ainda exista lixo
+      // E descartar instâncias sem itens (template vazio) — não devem mostrar barra de progresso
       const seen = new Set<string>();
       const allInstances = (allInstancesRaw || []).filter(i => {
         const key = `${i.stage_id}_${i.checklist_template_id}`;
         if (seen.has(key)) return false;
         seen.add(key);
+        const items = (i.items as unknown as ChecklistItem[]) || [];
+        if (items.length === 0) return false;
         return true;
       });
 
