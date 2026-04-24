@@ -842,11 +842,11 @@ export function DynamicKanbanBoard({
                                         </CopyableText>
                                       </div>
                                     )}
-                                    {lead.lead_email && (
+                                    {getCompanyName(lead) && (
                                       <div className="flex items-center gap-1 text-xs text-muted-foreground" onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
-                                        <Mail className="h-3 w-3" />
-                                        <CopyableText copyValue={lead.lead_email} label="Email" className="truncate">
-                                          {lead.lead_email}
+                                        <Building2 className="h-3 w-3 flex-shrink-0" />
+                                        <CopyableText copyValue={getCompanyName(lead) || ''} label="Empresa" className="truncate">
+                                          {getCompanyName(lead)}
                                         </CopyableText>
                                       </div>
                                     )}
