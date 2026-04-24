@@ -104,6 +104,7 @@ export function DynamicKanbanBoard({
   const [activityDescription, setActivityDescription] = useState('');
   const [contactCounts, setContactCounts] = useState<Record<string, number>>({});
   const [leadContacts, setLeadContacts] = useState<Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null; profession?: string | null; profession_cbo_code?: string | null }[]>>({});
+  const [checklistProgress, setChecklistProgress] = useState<Record<string, { checked: number; total: number }>>({});
   const [stageFilters, setStageFilters] = useState<Record<string, string>>({});
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   const PAGE_INCREMENT = 15;
