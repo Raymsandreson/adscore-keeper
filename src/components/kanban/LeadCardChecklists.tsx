@@ -211,7 +211,8 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
       .eq('id', instance.id);
   };
 
-  if (!loaded || instances.length === 0) return null;
+  // Hide entirely only after we've loaded and confirmed there are no checklists
+  if (loaded && instances.length === 0) return null;
 
   // Calculate overall progress
   const totalItems = instances.reduce((sum, i) => sum + i.items.length, 0);
