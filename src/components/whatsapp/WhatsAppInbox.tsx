@@ -20,7 +20,6 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Users, List, Contact2 } from 'lucide-react';
 
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
@@ -217,6 +216,47 @@ export function WhatsAppInbox() {
   // Create contact dialog
   const [showCreateContactDialog, setShowCreateContactDialog] = useState(false);
   const [showCreateCaseDialog, setShowCreateCaseDialog] = useState(false);
+
+  // Largura redimensionável da lista de conversas (desktop)
+  const LIST_MIN_WIDTH = 260;
+  const LIST_MAX_WIDTH = 600;
+  const LIST_DEFAULT_WIDTH = 320;
+  const [listWidth, setListWidth] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem('whatsapp_list_width');
+      if (stored) {
+        const n = parseInt(stored, 10);
+        if (!isNaN(n) && n >= LIST_MIN_WIDTH && n <= LIST_MAX_WIDTH) return n;
+      }
+    } catch {}
+    return LIST_DEFAULT_WIDTH;
+  });
+  const isResizingRef = useRef(false);
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingRef.current = true;
+    const startX = e.clientX;
+    const startWidth = listWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (ev: MouseEvent) => {
+      if (!isResizingRef.current) return;
+      const next = Math.min(LIST_MAX_WIDTH, Math.max(LIST_MIN_WIDTH, startWidth + (ev.clientX - startX)));
+      setListWidth(next);
+    };
+    const onUp = () => {
+      isResizingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      try { localStorage.setItem('whatsapp_list_width', String(Math.round(listWidthRef.current))); } catch {}
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [listWidth]);
+  const listWidthRef = useRef(listWidth);
+  useEffect(() => { listWidthRef.current = listWidth; }, [listWidth]);
 
   // Activity sheet state
   const [showActivitySheet, setShowActivitySheet] = useState(false);
@@ -1093,38 +1133,40 @@ export function WhatsAppInbox() {
           )}
         </div>
 
-        {/* DESKTOP: resizable layout */}
-        <ResizablePanelGroup
-          direction="horizontal"
-          autoSaveId="whatsapp-inbox-layout"
-          className="hidden md:flex flex-1"
-        >
-          <ResizablePanel defaultSize={25} minSize={18} maxSize={45} className="!overflow-visible">
-            <div className="h-full border-r overflow-y-auto bg-card flex flex-col">
-              <WhatsAppConversationList
-                conversations={visibleConversations}
-                loading={loading}
-                instanceSwitching={instanceSwitching}
-                switchProgress={switchProgress}
-                selectedPhone={selectedPhone}
-                selectedInstanceName={selectedInstance}
-                onSelect={handleSelectConversation}
-                boards={boards}
-                selectedInstanceId={selectedInstanceId}
-                bulkMode={bulkMode}
-                selectedPhones={bulkSelectedPhones}
-                onToggleBulkPhone={handleToggleBulkPhone}
-                onSelectAllFiltered={handleSelectAllFiltered}
-                privatePhones={new Set(privateConvs.map(p => `${p.phone}__${(p.instance_name || '').toLowerCase()}`))}
-              />
-            </div>
-          </ResizablePanel>
+        {/* DESKTOP: layout com largura fixa redimensionável por arrasto */}
+        <div className="hidden md:flex flex-1 min-w-0">
+          <div
+            className="border-r overflow-y-auto bg-card flex flex-col flex-shrink-0"
+            style={{ width: `${listWidth}px` }}
+          >
+            <WhatsAppConversationList
+              conversations={visibleConversations}
+              loading={loading}
+              instanceSwitching={instanceSwitching}
+              switchProgress={switchProgress}
+              selectedPhone={selectedPhone}
+              selectedInstanceName={selectedInstance}
+              onSelect={handleSelectConversation}
+              boards={boards}
+              selectedInstanceId={selectedInstanceId}
+              bulkMode={bulkMode}
+              selectedPhones={bulkSelectedPhones}
+              onToggleBulkPhone={handleToggleBulkPhone}
+              onSelectAllFiltered={handleSelectAllFiltered}
+              privatePhones={new Set(privateConvs.map(p => `${p.phone}__${(p.instance_name || '').toLowerCase()}`))}
+            />
+          </div>
 
-          <ResizableHandle withHandle />
+          {/* Alça de redimensionamento */}
+          <div
+            onMouseDown={handleResizeStart}
+            onDoubleClick={() => { setListWidth(LIST_DEFAULT_WIDTH); try { localStorage.setItem('whatsapp_list_width', String(LIST_DEFAULT_WIDTH)); } catch {} }}
+            title="Arraste para redimensionar (duplo clique para resetar)"
+            className="w-1 hover:w-1.5 bg-border hover:bg-primary/40 cursor-col-resize flex-shrink-0 transition-all"
+          />
 
-          <ResizablePanel defaultSize={75} minSize={40}>
-            <div className="h-full flex flex-col overflow-hidden">
-              {selectedConversation ? (
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+            {selectedConversation ? (
                 <WhatsAppChat
                   conversation={selectedConversation}
                   onBack={() => { setSelectedPhone(null); setSelectedInstance(null); }}
@@ -1220,9 +1262,8 @@ export function WhatsAppInbox() {
                   </div>
                 </div>
               )}
-            </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
+          </div>
+        </div>
       </div>
 
       {/* Lead Edit Panel - Full form with all tabs + AI */}
