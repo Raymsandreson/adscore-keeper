@@ -53,6 +53,7 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
   }
 
   const loadAndAutoCreate = useCallback(async () => {
+    setLoaded(false);
     try {
       // 1. Fetch stage links for this board (which templates belong to which stages)
       const { data: stageLinks } = await supabase
