@@ -665,7 +665,24 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
 
               const { data: { user } } = await supabase.auth.getUser();
 
-              await supabase.from('leads').update({ lead_status: newStatus } as any).eq('id', leadId);
+              // When reactivating a lead, also move it back to the first stage (Triagem/Caixa de Entrada)
+              // of its board, otherwise the card stays visually in the "Fechados" column because the
+              // Kanban groups by `status` (stage), not by `lead_status`.
+              const updatePayload: any = { lead_status: newStatus };
+              if (newStatus === 'active') {
+                // Resolve target board (lead might be on a different board than the currently selected one)
+                const targetBoard =
+                  boards.find(b => b.id === currentLead?.board_id) || selectedBoard;
+                const firstStageId = targetBoard?.stages?.[0]?.id;
+                if (firstStageId) {
+                  updatePayload.status = firstStageId;
+                }
+                // Clear closure markers so the lead is fully reopened
+                updatePayload.became_client_date = null;
+                updatePayload.inviavel_date = null;
+              }
+
+              await supabase.from('leads').update(updatePayload).eq('id', leadId);
 
               // Record in lead_stage_history so productivity metrics track it
               await supabase.from('lead_stage_history').insert({
