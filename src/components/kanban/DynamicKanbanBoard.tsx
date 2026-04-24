@@ -891,20 +891,20 @@ export function DynamicKanbanBoard({
                                     stageId={stage.id}
                                   />
 
-                                  {/* Days in stage indicator */}
-                                  {(daysInStage > 3 || isStagnant) && (
-                                    <Badge 
-                                      variant="outline" 
-                                      className={`text-xs mt-1 inline-flex ${
-                                        isStagnant 
-                                          ? 'text-red-600 border-red-400 bg-red-100 dark:bg-red-950' 
-                                          : 'text-amber-600 border-amber-300'
-                                      }`}
-                                    >
-                                      <Clock className="h-3 w-3 mr-1" />
-                                      {daysInStage}d {isStagnant && '⚠️'}
-                                    </Badge>
-                                  )}
+                                  {/* Time in stage indicator */}
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[10px] mt-1 inline-flex font-normal ${
+                                      isStagnant
+                                        ? 'text-red-600 border-red-400 bg-red-100 dark:bg-red-950'
+                                        : daysInStage > 3
+                                          ? 'text-amber-600 border-amber-300'
+                                          : 'text-muted-foreground border-muted'
+                                    }`}
+                                  >
+                                    <Clock className="h-3 w-3 mr-1" />
+                                    {formatTimeInStage(lead)} em {stage.name} {isStagnant && '⚠️'}
+                                  </Badge>
                             </CardContent>
                           </Card>
                             </ContextMenuTrigger>
