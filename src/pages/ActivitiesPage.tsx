@@ -141,7 +141,23 @@ const ActivitiesPage = () => {
   const [filterStatus, setFilterStatus] = usePageState<string[]>('activities_filterStatus', []);
   const [filterType, setFilterType] = usePageState<string[]>('activities_filterType', []);
   const assigneeStorageKey = useMemo(() => `page_state_activities_filterAssignee_${user?.id ?? 'pending'}`, [user?.id]);
-  const [filterAssignee, setFilterAssigneeState] = useState<string[]>([]);
+  // Lazy initializer reads localStorage synchronously on mount, avoiding the race where
+  // the filter UI shows the assignee but the fetch ran with an empty filter.
+  const readAssigneeFromStorage = (key: string, fallback: string[]): string[] => {
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored !== null) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((value): value is string => typeof value === 'string');
+        }
+      }
+    } catch {}
+    return fallback;
+  };
+  const [filterAssignee, setFilterAssigneeState] = useState<string[]>(() =>
+    readAssigneeFromStorage(`page_state_activities_filterAssignee_${user?.id ?? 'pending'}`, user?.id ? [user.id] : [])
+  );
   const setFilterAssignee: Dispatch<SetStateAction<string[]>> = useCallback((value) => {
     setFilterAssigneeState(prev => {
       const next = typeof value === 'function' ? (value as (prev: string[]) => string[])(prev) : value;
