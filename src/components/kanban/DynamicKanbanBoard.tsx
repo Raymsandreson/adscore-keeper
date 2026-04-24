@@ -275,8 +275,12 @@ export function DynamicKanbanBoard({
       const map: Record<string, { checked: number; total: number }> = {};
 
       // Seed with expected totals from stage links (covers leads without instances)
+      // NOTE: in this schema the lead's current stage is stored in `status`,
+      // not `stage_id`/`column_id`. Using the wrong field made every lead
+      // resolve to an empty template list, so the bar stayed at 0% until the
+      // user expanded the card and triggered the per-card fetch.
       leads.forEach(l => {
-        const stageId = (l as any).stage_id || (l as any).column_id;
+        const stageId = (l as any).status || (l as any).stage_id || (l as any).column_id;
         const tmplIds = linksByStage[stageId] || [];
         const expectedTotal = tmplIds.reduce((s, tid) => s + (templateItemCount[tid] || 0), 0);
         if (expectedTotal > 0) {
