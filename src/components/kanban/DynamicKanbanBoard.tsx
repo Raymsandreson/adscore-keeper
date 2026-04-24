@@ -105,6 +105,8 @@ export function DynamicKanbanBoard({
   const [contactCounts, setContactCounts] = useState<Record<string, number>>({});
   const [leadContacts, setLeadContacts] = useState<Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null; profession?: string | null; profession_cbo_code?: string | null }[]>>({});
   const [stageFilters, setStageFilters] = useState<Record<string, string>>({});
+  const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
+  const PAGE_INCREMENT = 50;
   const topScrollRef = useRef<HTMLDivElement>(null);
   const bottomScrollRef = useRef<HTMLDivElement>(null);
   const isSyncing = useRef(false);
@@ -419,11 +421,17 @@ export function DynamicKanbanBoard({
             const stageFilter = stageFilters[stage.id] || '';
             const allStageLeads = leadsByStage[stage.id] || [];
             // Filter leads by search query within the column
-            const stageLeads = stageFilter
+            const matchedStageLeads = stageFilter
               ? allStageLeads.filter(lead =>
                   lead.lead_name?.toLowerCase().includes(stageFilter.toLowerCase())
                 )
               : allStageLeads;
+            // Pagination: show only `visibleCount` cards. Bypass when filtering.
+            const visibleCount = visibleCounts[stage.id] ?? PAGE_INCREMENT;
+            const stageLeads = stageFilter
+              ? matchedStageLeads
+              : matchedStageLeads.slice(0, visibleCount);
+            const hasMore = !stageFilter && matchedStageLeads.length > stageLeads.length;
             const isDropTarget = dragOverStage === stage.id;
 
             return (
@@ -455,8 +463,8 @@ export function DynamicKanbanBoard({
                         {stage.name}
                       </h3>
                       <Badge variant="secondary" className="text-xs">
-                        {stageFilter && stageLeads.length !== allStageLeads.length
-                          ? <><AnimatedNumber value={stageLeads.length} />/<AnimatedNumber value={allStageLeads.length} /></>
+                        {stageFilter && matchedStageLeads.length !== allStageLeads.length
+                          ? <><AnimatedNumber value={matchedStageLeads.length} />/<AnimatedNumber value={allStageLeads.length} /></>
                           : <AnimatedNumber value={allStageLeads.length} />}
                       </Badge>
                     </div>
@@ -914,6 +922,21 @@ export function DynamicKanbanBoard({
                         );
                       })
                     )}
+                    {hasMore && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-2 text-xs"
+                        onClick={() =>
+                          setVisibleCounts(prev => ({
+                            ...prev,
+                            [stage.id]: (prev[stage.id] ?? PAGE_INCREMENT) + PAGE_INCREMENT,
+                          }))
+                        }
+                      >
+                        Carregar mais ({matchedStageLeads.length - stageLeads.length} restantes)
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -927,9 +950,14 @@ export function DynamicKanbanBoard({
             { id: 'inviavel', name: 'Inviáveis', color: '#f59e0b', icon: AlertTriangle, leads: inviavelLeads },
           ].map(statusCol => {
             const colFilter = stageFilters[statusCol.id] || '';
-            const filteredLeads = colFilter
+            const matchedColLeads = colFilter
               ? statusCol.leads.filter(lead => lead.lead_name?.toLowerCase().includes(colFilter.toLowerCase()))
               : statusCol.leads;
+            const colVisibleCount = visibleCounts[statusCol.id] ?? PAGE_INCREMENT;
+            const filteredLeads = colFilter
+              ? matchedColLeads
+              : matchedColLeads.slice(0, colVisibleCount);
+            const colHasMore = !colFilter && matchedColLeads.length > filteredLeads.length;
             const IconComp = statusCol.icon;
             return (
               <div
@@ -1046,6 +1074,21 @@ export function DynamicKanbanBoard({
                           </CardContent>
                         </Card>
                       ))
+                    )}
+                    {colHasMore && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-2 text-xs"
+                        onClick={() =>
+                          setVisibleCounts(prev => ({
+                            ...prev,
+                            [statusCol.id]: (prev[statusCol.id] ?? PAGE_INCREMENT) + PAGE_INCREMENT,
+                          }))
+                        }
+                      >
+                        Carregar mais ({matchedColLeads.length - filteredLeads.length} restantes)
+                      </Button>
                     )}
                   </div>
                 </div>

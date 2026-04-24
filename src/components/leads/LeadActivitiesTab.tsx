@@ -9,7 +9,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Plus, CheckCircle2, Clock, AlertCircle, Loader2, ListTodo, Sparkles } from 'lucide-react';
+import { Plus, CheckCircle2, Clock, AlertCircle, Loader2, ListTodo, Sparkles, ChevronDown, ChevronRight } from 'lucide-react';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
@@ -85,6 +85,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   const [loading, setLoading] = useState(() => !activitiesCache.has(leadId));
   const [showChatSheet, setShowChatSheet] = useState(false);
   const [editActivityId, setEditActivityId] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(true);
 
   // New activity creation state
   const [showNewSheet, setShowNewSheet] = useState(false);
@@ -268,71 +269,84 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h4 className="font-medium flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setCollapsed(prev => !prev)}
+          className="flex items-center gap-2 font-medium hover:text-primary transition-colors flex-1 text-left"
+          aria-expanded={!collapsed}
+        >
+          {collapsed ? (
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          )}
           <ListTodo className="h-4 w-4" />
-          Atividades ({activities.length})
-        </h4>
+          <span>Atividades</span>
+          <Badge variant="secondary" className="text-xs ml-1">{activities.length}</Badge>
+        </button>
         <div className="flex items-center gap-1.5">
           <TeamChatButton entityType="lead" entityId={leadId} entityName={leadName} variant="icon" />
-          <Button size="sm" variant="outline" onClick={() => setShowChatSheet(true)} className="gap-1">
+          <Button size="sm" variant="outline" onClick={() => { setCollapsed(false); setShowChatSheet(true); }} className="gap-1">
             <Sparkles className="h-3 w-3" />
             IA
           </Button>
-          <Button size="sm" onClick={() => setShowNewSheet(true)} className="gap-1">
+          <Button size="sm" onClick={() => { setCollapsed(false); setShowNewSheet(true); }} className="gap-1">
             <Plus className="h-3 w-3" />
             Nova
           </Button>
         </div>
       </div>
 
-      {activities.length === 0 ? (
-        <div className="text-center py-8 text-sm text-muted-foreground">
-          Nenhuma atividade vinculada a este lead.
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {activities.map(a => (
-            <div
-              key={a.id}
-              className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/30 transition-colors cursor-pointer"
-              onClick={() => openEdit(a)}
-            >
-              <button
-                onClick={e => { e.stopPropagation(); if (a.status !== 'concluida') handleComplete(a.id); }}
-                className="shrink-0"
+      {!collapsed && (
+        activities.length === 0 ? (
+          <div className="text-center py-8 text-sm text-muted-foreground">
+            Nenhuma atividade vinculada a este lead.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {activities.map(a => (
+              <div
+                key={a.id}
+                className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/30 transition-colors cursor-pointer"
+                onClick={() => openEdit(a)}
               >
-                {statusIcon(a.status)}
-              </button>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm font-medium truncate ${a.status === 'concluida' ? 'line-through text-muted-foreground' : ''}`}>
-                  {a.title}
-                </p>
-                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1" style={{ borderColor: getTypeColor(a.activity_type) }}>
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getTypeColor(a.activity_type) }} />
-                    {getTypeLabel(a.activity_type)}
-                  </Badge>
-                  {a.matrix_quadrant && quadrantLabels[a.matrix_quadrant] && (
-                    <span className="text-[10px] text-muted-foreground">
-                      {quadrantLabels[a.matrix_quadrant]}
-                    </span>
-                  )}
-                  {a.deadline && (
-                    <span className="text-[10px] text-muted-foreground">
-                      {format(new Date(a.deadline), "dd/MM HH:mm", { locale: ptBR })}
-                    </span>
-                  )}
-                  {a.assigned_to_name && (
-                    <span className="text-[10px] text-muted-foreground truncate max-w-[80px]">
-                      {a.assigned_to_name}
-                    </span>
-                  )}
+                <button
+                  onClick={e => { e.stopPropagation(); if (a.status !== 'concluida') handleComplete(a.id); }}
+                  className="shrink-0"
+                >
+                  {statusIcon(a.status)}
+                </button>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-medium truncate ${a.status === 'concluida' ? 'line-through text-muted-foreground' : ''}`}>
+                    {a.title}
+                  </p>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1" style={{ borderColor: getTypeColor(a.activity_type) }}>
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getTypeColor(a.activity_type) }} />
+                      {getTypeLabel(a.activity_type)}
+                    </Badge>
+                    {a.matrix_quadrant && quadrantLabels[a.matrix_quadrant] && (
+                      <span className="text-[10px] text-muted-foreground">
+                        {quadrantLabels[a.matrix_quadrant]}
+                      </span>
+                    )}
+                    {a.deadline && (
+                      <span className="text-[10px] text-muted-foreground">
+                        {format(new Date(a.deadline), "dd/MM HH:mm", { locale: ptBR })}
+                      </span>
+                    )}
+                    {a.assigned_to_name && (
+                      <span className="text-[10px] text-muted-foreground truncate max-w-[80px]">
+                        {a.assigned_to_name}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )
       )}
 
       {/* New Activity Creation Sheet */}
