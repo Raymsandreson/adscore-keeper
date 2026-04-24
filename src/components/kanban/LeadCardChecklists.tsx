@@ -53,6 +53,7 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
   }
 
   const loadAndAutoCreate = useCallback(async () => {
+    setLoaded(false);
     try {
       // 1. Fetch stage links for this board (which templates belong to which stages)
       const { data: stageLinks } = await supabase
@@ -168,9 +169,12 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
     }
   }, [leadId, boardId, stageId]);
 
+  // Lazy load: only fetch checklists the first time the user expands the section
   useEffect(() => {
-    loadAndAutoCreate();
-  }, [loadAndAutoCreate]);
+    if (itemsExpanded && !loaded) {
+      loadAndAutoCreate();
+    }
+  }, [itemsExpanded, loaded, loadAndAutoCreate]);
 
   const handleToggleItem = async (instance: ChecklistInstance, itemId: string) => {
     if (instance.is_readonly) return;
@@ -207,7 +211,8 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
       .eq('id', instance.id);
   };
 
-  if (!loaded || instances.length === 0) return null;
+  // Hide entirely only after we've loaded and confirmed there are no checklists
+  if (loaded && instances.length === 0) return null;
 
   // Calculate overall progress
   const totalItems = instances.reduce((sum, i) => sum + i.items.length, 0);
@@ -252,7 +257,10 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
       </button>
 
       {/* Current phase items - only when expanded */}
-      {itemsExpanded && currentStageInstances.length > 0 && (
+      {itemsExpanded && !loaded && (
+        <div className="text-[10px] text-muted-foreground px-1 py-0.5">Carregando...</div>
+      )}
+      {itemsExpanded && loaded && currentStageInstances.length > 0 && (
         <div className="space-y-0.5">
           {currentStageInstances.map(instance => (
             <div key={instance.id} className="space-y-0.5">
