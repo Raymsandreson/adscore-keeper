@@ -49,22 +49,23 @@ const statusLabels: Record<string, string> = {
 export function WhatsAppLeadPreview({ leadId, contactId, contactName, onCreateActivity, onNavigateToLead }: WhatsAppLeadPreviewProps) {
   const [lead, setLead] = useState<LeadData | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [loading, setLoading] = useState(true);
 
   const fetchLead = useCallback(async () => {
-    setLoading(true);
     const { data } = await supabase
       .from('leads')
       .select('id, lead_name, status, city, state, case_type, acolhedor, victim_name, victim_age, accident_date, damage_description, main_company, contractor_company, visit_city, visit_state, board_id')
       .eq('id', leadId)
       .single();
-    setLead(data as LeadData | null);
-    setLoading(false);
+    if (data) setLead(data as LeadData);
   }, [leadId]);
 
-  useEffect(() => { fetchLead(); }, [fetchLead]);
+  // Reset lead only when leadId changes; keep previous visible while refetch happens for the SAME id
+  useEffect(() => {
+    setLead(prev => (prev && prev.id === leadId ? prev : null));
+    fetchLead();
+  }, [leadId, fetchLead]);
 
-  if (loading || !lead) return null;
+  if (!lead) return null;
 
   const summaryParts: string[] = [];
   if (lead.victim_name) summaryParts.push(lead.victim_name);
