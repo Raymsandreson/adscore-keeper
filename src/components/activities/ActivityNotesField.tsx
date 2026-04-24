@@ -246,15 +246,31 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
     }
   };
 
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
   return (
-    <div>
+    <div
+      ref={containerRef}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`relative rounded-md transition-colors ${isDragging ? 'ring-2 ring-primary ring-offset-2 bg-primary/5' : ''}`}
+    >
       {label && <Label>{label}</Label>}
       <RichTextEditor
         value={value}
         onChange={onChange}
-        placeholder={placeholder || 'Notas adicionais...'}
+        placeholder={placeholder || 'Notas adicionais... (cole com Ctrl+V ou arraste arquivos)'}
         minHeight="60px"
       />
+
+      {isDragging && (
+        <div className="absolute inset-0 flex items-center justify-center bg-primary/10 border-2 border-dashed border-primary rounded-md pointer-events-none z-10">
+          <div className="text-sm font-medium text-primary flex items-center gap-2">
+            <Upload className="h-4 w-4" /> Solte para anexar
+          </div>
+        </div>
+      )}
 
       {/* Attachment toolbar */}
       <div className="flex items-center gap-1 mt-1.5">
