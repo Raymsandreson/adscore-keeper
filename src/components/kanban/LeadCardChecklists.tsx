@@ -329,5 +329,7 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId, precomputedProgress 
 export const LeadCardChecklists = memo(LeadCardChecklistsImpl, (prev, next) =>
   prev.leadId === next.leadId &&
   prev.boardId === next.boardId &&
-  prev.stageId === next.stageId
+  prev.stageId === next.stageId &&
+  prev.precomputedProgress?.checked === next.precomputedProgress?.checked &&
+  prev.precomputedProgress?.total === next.precomputedProgress?.total
 );
