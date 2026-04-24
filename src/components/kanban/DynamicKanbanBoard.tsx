@@ -950,9 +950,14 @@ export function DynamicKanbanBoard({
             { id: 'inviavel', name: 'Inviáveis', color: '#f59e0b', icon: AlertTriangle, leads: inviavelLeads },
           ].map(statusCol => {
             const colFilter = stageFilters[statusCol.id] || '';
-            const filteredLeads = colFilter
+            const matchedColLeads = colFilter
               ? statusCol.leads.filter(lead => lead.lead_name?.toLowerCase().includes(colFilter.toLowerCase()))
               : statusCol.leads;
+            const colVisibleCount = visibleCounts[statusCol.id] ?? PAGE_INCREMENT;
+            const filteredLeads = colFilter
+              ? matchedColLeads
+              : matchedColLeads.slice(0, colVisibleCount);
+            const colHasMore = !colFilter && matchedColLeads.length > filteredLeads.length;
             const IconComp = statusCol.icon;
             return (
               <div
