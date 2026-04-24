@@ -922,6 +922,21 @@ export function DynamicKanbanBoard({
                         );
                       })
                     )}
+                    {hasMore && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-2 text-xs"
+                        onClick={() =>
+                          setVisibleCounts(prev => ({
+                            ...prev,
+                            [stage.id]: (prev[stage.id] ?? PAGE_INCREMENT) + PAGE_INCREMENT,
+                          }))
+                        }
+                      >
+                        Carregar mais ({matchedStageLeads.length - stageLeads.length} restantes)
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
