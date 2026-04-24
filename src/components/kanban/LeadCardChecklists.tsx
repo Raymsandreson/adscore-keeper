@@ -169,9 +169,12 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
     }
   }, [leadId, boardId, stageId]);
 
+  // Lazy load: only fetch checklists the first time the user expands the section
   useEffect(() => {
-    loadAndAutoCreate();
-  }, [loadAndAutoCreate]);
+    if (itemsExpanded && !loaded) {
+      loadAndAutoCreate();
+    }
+  }, [itemsExpanded, loaded, loadAndAutoCreate]);
 
   const handleToggleItem = async (instance: ChecklistInstance, itemId: string) => {
     if (instance.is_readonly) return;
