@@ -111,19 +111,34 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
           }));
 
         if (newInstances.length > 0) {
-          await supabase.from('lead_checklist_instances').insert(newInstances);
+          // upsert evita duplicatas em race conditions (constraint única no banco)
+          await supabase
+            .from('lead_checklist_instances')
+            .upsert(newInstances, {
+              onConflict: 'lead_id,board_id,stage_id,checklist_template_id',
+              ignoreDuplicates: true,
+            });
         }
       }
 
       // 5. Re-fetch all instances after auto-creation
-      const { data: allInstances } = await supabase
+      const { data: allInstancesRaw } = await supabase
         .from('lead_checklist_instances')
         .select('id, checklist_template_id, stage_id, items, is_completed, is_readonly')
         .eq('lead_id', leadId)
         .eq('board_id', boardId)
         .order('created_at');
 
-      if (!allInstances || allInstances.length === 0) {
+      // Defesa: deduplicar por (stage_id, checklist_template_id) caso ainda exista lixo
+      const seen = new Set<string>();
+      const allInstances = (allInstancesRaw || []).filter(i => {
+        const key = `${i.stage_id}_${i.checklist_template_id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      if (allInstances.length === 0) {
         setInstances([]);
         setLoaded(true);
         return;
