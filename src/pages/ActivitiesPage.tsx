@@ -141,7 +141,23 @@ const ActivitiesPage = () => {
   const [filterStatus, setFilterStatus] = usePageState<string[]>('activities_filterStatus', []);
   const [filterType, setFilterType] = usePageState<string[]>('activities_filterType', []);
   const assigneeStorageKey = useMemo(() => `page_state_activities_filterAssignee_${user?.id ?? 'pending'}`, [user?.id]);
-  const [filterAssignee, setFilterAssigneeState] = useState<string[]>([]);
+  // Lazy initializer reads localStorage synchronously on mount, avoiding the race where
+  // the filter UI shows the assignee but the fetch ran with an empty filter.
+  const readAssigneeFromStorage = (key: string, fallback: string[]): string[] => {
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored !== null) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((value): value is string => typeof value === 'string');
+        }
+      }
+    } catch {}
+    return fallback;
+  };
+  const [filterAssignee, setFilterAssigneeState] = useState<string[]>(() =>
+    readAssigneeFromStorage(`page_state_activities_filterAssignee_${user?.id ?? 'pending'}`, user?.id ? [user.id] : [])
+  );
   const setFilterAssignee: Dispatch<SetStateAction<string[]>> = useCallback((value) => {
     setFilterAssigneeState(prev => {
       const next = typeof value === 'function' ? (value as (prev: string[]) => string[])(prev) : value;
@@ -251,28 +267,25 @@ const ActivitiesPage = () => {
     contact_id: filterContact.length > 0 ? filterContact : 'all',
   });
 
+  // Re-sync from localStorage when the storage key changes (e.g. user logs in after mount).
+  // The initial value already came from the lazy initializer, so we skip the first run
+  // to avoid clobbering an in-memory selection on every render.
+  const lastSyncedKeyRef = useRef<string | null>(assigneeStorageKey);
   useEffect(() => {
+    if (lastSyncedKeyRef.current === assigneeStorageKey) return;
+    lastSyncedKeyRef.current = assigneeStorageKey;
+
     if (!user?.id) {
       setFilterAssigneeState([]);
       return;
     }
 
+    setFilterAssigneeState(readAssigneeFromStorage(assigneeStorageKey, [user.id]));
+    // Persist default if nothing was stored yet
     try {
-      const stored = localStorage.getItem(assigneeStorageKey);
-      if (stored !== null) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          setFilterAssigneeState(parsed.filter((value): value is string => typeof value === 'string'));
-          return;
-        }
+      if (localStorage.getItem(assigneeStorageKey) === null) {
+        localStorage.setItem(assigneeStorageKey, JSON.stringify([user.id]));
       }
-    } catch {}
-
-    // Default: show only current user's activities for better performance
-    const defaultFilter = user?.id ? [user.id] : [];
-    setFilterAssigneeState(defaultFilter);
-    try {
-      localStorage.setItem(assigneeStorageKey, JSON.stringify(defaultFilter));
     } catch {}
   }, [assigneeStorageKey, user?.id]);
 
