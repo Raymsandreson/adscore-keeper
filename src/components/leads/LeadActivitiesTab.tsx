@@ -9,7 +9,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Plus, CheckCircle2, Clock, AlertCircle, Loader2, ListTodo, Sparkles } from 'lucide-react';
+import { Plus, CheckCircle2, Clock, AlertCircle, Loader2, ListTodo, Sparkles, ChevronDown, ChevronRight } from 'lucide-react';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
