@@ -246,8 +246,6 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
     }
   };
 
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-
   return (
     <div
       ref={containerRef}
