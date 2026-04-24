@@ -38,6 +38,7 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
   const [instances, setInstances] = useState<ChecklistInstance[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
+  const [itemsExpanded, setItemsExpanded] = useState(false);
   const { logActivity } = useActivityLogger();
 
   // DEV-only render counter (remove after perf validation)
