@@ -120,6 +120,17 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   // sem criar dependência circular (fetchFullConversation é definido bem depois neste hook).
   const fetchFullConversationRef = useRef<((phone: string, instanceName?: string | null) => Promise<void>) | null>(null);
 
+  useEffect(() => {
+    conversationsRef.current = conversations;
+
+    if (!hasLoaded) return;
+
+    conversationsCache.set(cacheKeyFor(selectedInstanceId), {
+      conversations,
+      fetchedAt: Date.now(),
+    });
+  }, [conversations, hasLoaded, selectedInstanceId]);
+
   const getCanonicalInstanceName = useCallback((instanceName?: string | null) => {
     const normalized = normalizeInstanceName(instanceName);
     if (!normalized) return instanceName?.trim() || null;
