@@ -108,13 +108,6 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
     loadData();
   }, [leadId, boardId, currentStageId]);
 
-  // Auto-expand current stage
-  useEffect(() => {
-    if (currentStageId) {
-      setExpandedStages(prev => new Set([...prev, currentStageId]));
-    }
-  }, [currentStageId]);
-
   const loadData = async (force = false) => {
     if (!funnelCache.has(cacheKey)) setLoading(true);
     try {
