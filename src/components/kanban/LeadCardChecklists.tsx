@@ -32,9 +32,13 @@ interface LeadCardChecklistsProps {
   leadId: string;
   boardId: string;
   stageId: string;
+  /** Optional precomputed { checked, total } from the parent batch fetch.
+   *  When provided, the overall % bar renders immediately without waiting
+   *  for this card's own fetch. The detailed items still load lazily on expand. */
+  precomputedProgress?: { checked: number; total: number };
 }
 
-function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklistsProps) {
+function LeadCardChecklistsImpl({ leadId, boardId, stageId, precomputedProgress }: LeadCardChecklistsProps) {
   const [instances, setInstances] = useState<ChecklistInstance[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
