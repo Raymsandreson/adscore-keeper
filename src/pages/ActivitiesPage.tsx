@@ -28,7 +28,7 @@ import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, Command
 import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
-  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp,
+  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp, Briefcase,
 } from 'lucide-react';
 import { ShareMenu } from '@/components/ShareMenu';
 import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
