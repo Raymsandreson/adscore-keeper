@@ -1288,7 +1288,36 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         externalSupabase.removeChannel(ch);
       }
     };
-  }, [hasLoaded, selectedInstanceId, instances, fetchMessages, realtimeRetryNonce, getCanonicalInstanceName]);
+  }, [hasLoaded, selectedInstanceId, instances, fetchMessages, realtimeRetryNonce, getCanonicalInstanceName, realtimeHealthy]);
+
+  // Safety net: polling de baixa frequência + refetch ao voltar foco.
+  // Cobre casos em que o Realtime perde mensagens (canal cai silenciosamente,
+  // INSERT chega antes do SUBSCRIBED, filtro instance_name não bate, etc).
+  // Só roda quando a aba está visível para não desperdiçar recursos.
+  useEffect(() => {
+    if (!hasLoaded || selectedInstanceId === null || selectedInstanceId === undefined) return;
+
+    const POLL_INTERVAL_MS = 30_000;
+
+    const safeRefetch = () => {
+      if (document.visibilityState !== 'visible') return;
+      fetchMessages(true).catch(() => {});
+    };
+
+    const intervalId = window.setInterval(safeRefetch, POLL_INTERVAL_MS);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        safeRefetch();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [hasLoaded, selectedInstanceId, fetchMessages]);
 
   // Load all messages for a specific conversation (when selected)
   const fetchFullConversation = useCallback(async (phone: string, instanceName?: string | null) => {
