@@ -99,7 +99,7 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
         });
 
         const newInstances = missingLinks
-          .filter(l => templateItemsMap[l.checklist_template_id])
+          .filter(l => templateItemsMap[l.checklist_template_id] && templateItemsMap[l.checklist_template_id].length > 0)
           .map(l => ({
             lead_id: leadId,
             board_id: boardId,
