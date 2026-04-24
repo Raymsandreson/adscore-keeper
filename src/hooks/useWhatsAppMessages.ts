@@ -120,6 +120,17 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   // sem criar dependência circular (fetchFullConversation é definido bem depois neste hook).
   const fetchFullConversationRef = useRef<((phone: string, instanceName?: string | null) => Promise<void>) | null>(null);
 
+  useEffect(() => {
+    conversationsRef.current = conversations;
+
+    if (!hasLoaded) return;
+
+    conversationsCache.set(cacheKeyFor(selectedInstanceId), {
+      conversations,
+      fetchedAt: Date.now(),
+    });
+  }, [conversations, hasLoaded, selectedInstanceId]);
+
   const getCanonicalInstanceName = useCallback((instanceName?: string | null) => {
     const normalized = normalizeInstanceName(instanceName);
     if (!normalized) return instanceName?.trim() || null;
@@ -486,14 +497,34 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         }
       }
 
-      conversationsRef.current = convList;
-      setConversations(convList);
-      setMessages(convList.map(c => c.messages[0]));
+      const previousByKey = new Map(
+        conversationsRef.current.map((conversation) => [
+          getConversationKey(conversation.phone, conversation.instance_name),
+          conversation,
+        ])
+      );
+
+      const mergedConvList = convList.map((conversation) => {
+        const previous = previousByKey.get(getConversationKey(conversation.phone, conversation.instance_name));
+        if (!previous) return conversation;
+
+        return {
+          ...conversation,
+          contact_name: conversation.contact_name || previous.contact_name,
+          contact_id: conversation.contact_id || previous.contact_id,
+          lead_id: conversation.lead_id || previous.lead_id,
+          messages: previous.messages.length > conversation.messages.length ? previous.messages : conversation.messages,
+        };
+      });
+
+      conversationsRef.current = mergedConvList;
+      setConversations(mergedConvList);
+      setMessages(mergedConvList.map(c => c.messages[0]));
       setHasLoaded(true);
 
       // Persiste no cache module-level para sobreviver a unmount/remount
       conversationsCache.set(cacheKeyFor(selectedInstanceId), {
-        conversations: convList,
+        conversations: mergedConvList,
         fetchedAt: Date.now(),
       });
 
@@ -502,15 +533,15 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       // Sem isso, o usuário veria apenas a última mensagem (summary) do grupo.
       const activeKey = activeConversationKeyRef.current;
       if (activeKey && !fullConvCacheRef.current[activeKey]) {
-        const activeConv = convList.find(c => getConversationKey(c.phone, c.instance_name) === activeKey);
+        const activeConv = mergedConvList.find(c => getConversationKey(c.phone, c.instance_name) === activeKey);
         if (activeConv) {
           // Dispara assíncrono — não bloqueia o ciclo do fetchMessages
           void fetchFullConversationRef.current?.(activeConv.phone, activeConv.instance_name);
         }
       }
 
-      if (!silent && convList.length > 0) {
-        toast.success(`${convList.length} conversas carregadas`);
+      if (!silent && mergedConvList.length > 0) {
+        toast.success(`${mergedConvList.length} conversas carregadas`);
       }
     } catch (error: any) {
       const errCode = error?.code || error?.details?.code;
