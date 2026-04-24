@@ -1029,131 +1029,201 @@ export function WhatsAppInbox() {
 
       {/* Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Conversation List - hidden on mobile when chat is open */}
-        <div className={`${selectedPhone ? 'hidden md:flex' : 'flex'} w-full md:w-80 border-r flex-shrink-0 overflow-y-auto bg-card flex-col`}>
-          <WhatsAppConversationList
-            conversations={visibleConversations}
-            loading={loading}
-            instanceSwitching={instanceSwitching}
-            switchProgress={switchProgress}
-            selectedPhone={selectedPhone}
-                  selectedInstanceName={selectedInstance}
-            onSelect={handleSelectConversation}
-            boards={boards}
-            selectedInstanceId={selectedInstanceId}
-            bulkMode={bulkMode}
-            selectedPhones={bulkSelectedPhones}
-            onToggleBulkPhone={handleToggleBulkPhone}
-            onSelectAllFiltered={handleSelectAllFiltered}
-            privatePhones={new Set(privateConvs.map(p => `${p.phone}__${(p.instance_name || '').toLowerCase()}`))}
-          />
-        </div>
-
-        {/* Chat Area - full width on mobile when chat is open */}
-        <div className={`${selectedPhone ? 'flex' : 'hidden md:flex'} flex-1 flex-col overflow-hidden`}>
-          {selectedConversation ? (
-            <WhatsAppChat
-              conversation={selectedConversation}
-              onBack={() => {
-                setSelectedPhone(null);
-                setSelectedInstance(null);
-              }}
-              onSendMessage={(() => {
-                const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
-                if (share) {
-                  return (phone: string, message: string, contactId?: string, leadId?: string, instanceName?: string | null, _identifySender?: boolean, chatId?: string, treatmentOverride?: string | null, nameFormatOverride?: string, nicknameOverride?: string | null) =>
-                    sendMessage(phone, message, contactId, leadId, instanceName, share.identify_sender, chatId, treatmentOverride, nameFormatOverride, nicknameOverride);
-                }
-                return sendMessage;
-              })()}
-              shareInfo={sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name) || null}
-              onSendMedia={sendMedia}
-              onSendLocation={sendLocation}
-              onDeleteMessage={deleteMessage}
-              onLinkToLead={linkToLead}
-              onLinkToContact={linkToContact}
-              onCreateLead={handleCreateLead}
-              onCreateContact={handleCreateContact}
-              onCreateCase={() => setShowCreateCaseDialog(true)}
-              extractingData={extracting}
-              extractionStep={extractionStep}
-              onUpdateWithAI={handleUpdateWithAI}
-              onCreateActivity={handleCreateActivity}
-              onNavigateToLead={handleNavigateToLead}
-              onViewContact={handleViewContact}
-              onPrivacyChanged={async () => {
-                const { data } = await supabase
-                  .from('whatsapp_private_conversations')
-                  .select('phone, instance_name, private_by');
-                setPrivateConvs((data || []) as PrivateConv[]);
-              }}
-              onOpenChat={handleOpenChatByPhone}
-              onClearConversation={clearConversation}
-            />
+      <div className="flex-1 flex overflow-hidden">
+        {/* MOBILE: existing flex layout (list OR chat) */}
+        <div className={`md:hidden w-full flex ${selectedPhone ? '' : ''}`}>
+          {!selectedPhone ? (
+            <div className="w-full border-r flex-shrink-0 overflow-y-auto bg-card flex flex-col">
+              <WhatsAppConversationList
+                conversations={visibleConversations}
+                loading={loading}
+                instanceSwitching={instanceSwitching}
+                switchProgress={switchProgress}
+                selectedPhone={selectedPhone}
+                selectedInstanceName={selectedInstance}
+                onSelect={handleSelectConversation}
+                boards={boards}
+                selectedInstanceId={selectedInstanceId}
+                bulkMode={bulkMode}
+                selectedPhones={bulkSelectedPhones}
+                onToggleBulkPhone={handleToggleBulkPhone}
+                onSelectAllFiltered={handleSelectAllFiltered}
+                privatePhones={new Set(privateConvs.map(p => `${p.phone}__${(p.instance_name || '').toLowerCase()}`))}
+              />
+            </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center bg-muted/20">
-              <div className="text-center space-y-4 max-w-md">
-                <MessageSquare className="h-16 w-16 mx-auto text-muted-foreground/30" />
-                
-                {!hasLoaded ? (
-                  <div className="space-y-4">
-                    <p className="text-muted-foreground font-medium">Conversas sob demanda</p>
-                    <p className="text-xs text-muted-foreground">
-                      As conversas não são carregadas automaticamente para melhor performance.
-                      Clique abaixo para carregar quando precisar.
-                    </p>
-                    <Button onClick={() => refetch()} disabled={loading} className="gap-2">
-                      {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                      Carregar Conversas
-                    </Button>
-
-                    {/* Instance Stats */}
-                    {instanceStats.length > 0 && (
-                      <div className="mt-6 space-y-2">
-                        <p className="text-xs font-medium text-muted-foreground">Resumo por instância:</p>
-                        <div className="grid gap-2">
-                          {instanceStats.map(stat => (
-                            <div key={stat.instance_name} className="flex items-center justify-between p-3 rounded-lg border bg-card text-left">
-                              <div className="flex items-center gap-2">
-                                <Smartphone className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-sm font-medium">{stat.instance_name}</span>
-                              </div>
-                              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                <span title="Conversas">{stat.conversation_count} 💬</span>
-                                <span title="Enviadas">↑{stat.outbound_count}</span>
-                                <span title="Recebidas">↓{stat.inbound_count}</span>
-                                {stat.unread_count > 0 && (
-                                  <Badge variant="destructive" className="text-[10px] h-5">{stat.unread_count} novas</Badge>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {statsLoading && (
-                      <div className="flex items-center justify-center py-4">
-                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-primary border-t-transparent" />
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-muted-foreground">Selecione uma conversa</p>
-                    {conversations.length === 0 && !loading && (
-                      <div className="space-y-2">
-                        <p className="text-sm text-muted-foreground">Nenhuma mensagem encontrada</p>
-                        <Button variant="outline" size="sm" onClick={() => { setSettingsTab('integration'); setShowSetup(true); }}>
-                          Configurar integração
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+            <div className="flex flex-1 flex-col overflow-hidden">
+              {selectedConversation && (
+                <WhatsAppChat
+                  conversation={selectedConversation}
+                  onBack={() => { setSelectedPhone(null); setSelectedInstance(null); }}
+                  onSendMessage={(() => {
+                    const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
+                    if (share) {
+                      return (phone: string, message: string, contactId?: string, leadId?: string, instanceName?: string | null, _identifySender?: boolean, chatId?: string, treatmentOverride?: string | null, nameFormatOverride?: string, nicknameOverride?: string | null) =>
+                        sendMessage(phone, message, contactId, leadId, instanceName, share.identify_sender, chatId, treatmentOverride, nameFormatOverride, nicknameOverride);
+                    }
+                    return sendMessage;
+                  })()}
+                  shareInfo={sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name) || null}
+                  onSendMedia={sendMedia}
+                  onSendLocation={sendLocation}
+                  onDeleteMessage={deleteMessage}
+                  onLinkToLead={linkToLead}
+                  onLinkToContact={linkToContact}
+                  onCreateLead={handleCreateLead}
+                  onCreateContact={handleCreateContact}
+                  onCreateCase={() => setShowCreateCaseDialog(true)}
+                  extractingData={extracting}
+                  extractionStep={extractionStep}
+                  onUpdateWithAI={handleUpdateWithAI}
+                  onCreateActivity={handleCreateActivity}
+                  onNavigateToLead={handleNavigateToLead}
+                  onViewContact={handleViewContact}
+                  onPrivacyChanged={async () => {
+                    const { data } = await supabase
+                      .from('whatsapp_private_conversations')
+                      .select('phone, instance_name, private_by');
+                    setPrivateConvs((data || []) as PrivateConv[]);
+                  }}
+                  onOpenChat={handleOpenChatByPhone}
+                  onClearConversation={clearConversation}
+                />
+              )}
             </div>
           )}
         </div>
+
+        {/* DESKTOP: resizable layout */}
+        <ResizablePanelGroup
+          direction="horizontal"
+          autoSaveId="whatsapp-inbox-layout"
+          className="hidden md:flex flex-1"
+        >
+          <ResizablePanel defaultSize={25} minSize={18} maxSize={45} className="!overflow-visible">
+            <div className="h-full border-r overflow-y-auto bg-card flex flex-col">
+              <WhatsAppConversationList
+                conversations={visibleConversations}
+                loading={loading}
+                instanceSwitching={instanceSwitching}
+                switchProgress={switchProgress}
+                selectedPhone={selectedPhone}
+                selectedInstanceName={selectedInstance}
+                onSelect={handleSelectConversation}
+                boards={boards}
+                selectedInstanceId={selectedInstanceId}
+                bulkMode={bulkMode}
+                selectedPhones={bulkSelectedPhones}
+                onToggleBulkPhone={handleToggleBulkPhone}
+                onSelectAllFiltered={handleSelectAllFiltered}
+                privatePhones={new Set(privateConvs.map(p => `${p.phone}__${(p.instance_name || '').toLowerCase()}`))}
+              />
+            </div>
+          </ResizablePanel>
+
+          <ResizableHandle withHandle />
+
+          <ResizablePanel defaultSize={75} minSize={40}>
+            <div className="h-full flex flex-col overflow-hidden">
+              {selectedConversation ? (
+                <WhatsAppChat
+                  conversation={selectedConversation}
+                  onBack={() => { setSelectedPhone(null); setSelectedInstance(null); }}
+                  onSendMessage={(() => {
+                    const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
+                    if (share) {
+                      return (phone: string, message: string, contactId?: string, leadId?: string, instanceName?: string | null, _identifySender?: boolean, chatId?: string, treatmentOverride?: string | null, nameFormatOverride?: string, nicknameOverride?: string | null) =>
+                        sendMessage(phone, message, contactId, leadId, instanceName, share.identify_sender, chatId, treatmentOverride, nameFormatOverride, nicknameOverride);
+                    }
+                    return sendMessage;
+                  })()}
+                  shareInfo={sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name) || null}
+                  onSendMedia={sendMedia}
+                  onSendLocation={sendLocation}
+                  onDeleteMessage={deleteMessage}
+                  onLinkToLead={linkToLead}
+                  onLinkToContact={linkToContact}
+                  onCreateLead={handleCreateLead}
+                  onCreateContact={handleCreateContact}
+                  onCreateCase={() => setShowCreateCaseDialog(true)}
+                  extractingData={extracting}
+                  extractionStep={extractionStep}
+                  onUpdateWithAI={handleUpdateWithAI}
+                  onCreateActivity={handleCreateActivity}
+                  onNavigateToLead={handleNavigateToLead}
+                  onViewContact={handleViewContact}
+                  onPrivacyChanged={async () => {
+                    const { data } = await supabase
+                      .from('whatsapp_private_conversations')
+                      .select('phone, instance_name, private_by');
+                    setPrivateConvs((data || []) as PrivateConv[]);
+                  }}
+                  onOpenChat={handleOpenChatByPhone}
+                  onClearConversation={clearConversation}
+                />
+              ) : (
+                <div className="flex-1 flex items-center justify-center bg-muted/20">
+                  <div className="text-center space-y-4 max-w-md">
+                    <MessageSquare className="h-16 w-16 mx-auto text-muted-foreground/30" />
+                    {!hasLoaded ? (
+                      <div className="space-y-4">
+                        <p className="text-muted-foreground font-medium">Conversas sob demanda</p>
+                        <p className="text-xs text-muted-foreground">
+                          As conversas não são carregadas automaticamente para melhor performance.
+                          Clique abaixo para carregar quando precisar.
+                        </p>
+                        <Button onClick={() => refetch()} disabled={loading} className="gap-2">
+                          {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                          Carregar Conversas
+                        </Button>
+                        {instanceStats.length > 0 && (
+                          <div className="mt-6 space-y-2">
+                            <p className="text-xs font-medium text-muted-foreground">Resumo por instância:</p>
+                            <div className="grid gap-2">
+                              {instanceStats.map(stat => (
+                                <div key={stat.instance_name} className="flex items-center justify-between p-3 rounded-lg border bg-card text-left">
+                                  <div className="flex items-center gap-2">
+                                    <Smartphone className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-sm font-medium">{stat.instance_name}</span>
+                                  </div>
+                                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                    <span title="Conversas">{stat.conversation_count} 💬</span>
+                                    <span title="Enviadas">↑{stat.outbound_count}</span>
+                                    <span title="Recebidas">↓{stat.inbound_count}</span>
+                                    {stat.unread_count > 0 && (
+                                      <Badge variant="destructive" className="text-[10px] h-5">{stat.unread_count} novas</Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {statsLoading && (
+                          <div className="flex items-center justify-center py-4">
+                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-primary border-t-transparent" />
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-muted-foreground">Selecione uma conversa</p>
+                        {conversations.length === 0 && !loading && (
+                          <div className="space-y-2">
+                            <p className="text-sm text-muted-foreground">Nenhuma mensagem encontrada</p>
+                            <Button variant="outline" size="sm" onClick={() => { setSettingsTab('integration'); setShowSetup(true); }}>
+                              Configurar integração
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
 
       {/* Lead Edit Panel - Full form with all tabs + AI */}
