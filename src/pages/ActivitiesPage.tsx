@@ -1079,12 +1079,16 @@ const ActivitiesPage = () => {
   }, [activities]);
 
   const displayedActivities = useMemo(() => {
-    if (selectedCalDays.length === 0) return activities;
-    return activities.filter(a => {
+    let list = activities;
+    if (filterCase.length > 0) {
+      list = list.filter(a => (a as any).case_id && filterCase.includes((a as any).case_id));
+    }
+    if (selectedCalDays.length === 0) return list;
+    return list.filter(a => {
       const dateKey = a.deadline || a.notification_date;
       return dateKey ? selectedCalDays.includes(dateKey) : false;
     });
-  }, [activities, selectedCalDays]);
+  }, [activities, selectedCalDays, filterCase]);
 
   const resolveUserName = (userId: string | null) => {
     if (!userId) return null;
