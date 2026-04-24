@@ -1075,6 +1075,21 @@ export function DynamicKanbanBoard({
                         </Card>
                       ))
                     )}
+                    {colHasMore && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-2 text-xs"
+                        onClick={() =>
+                          setVisibleCounts(prev => ({
+                            ...prev,
+                            [statusCol.id]: (prev[statusCol.id] ?? PAGE_INCREMENT) + PAGE_INCREMENT,
+                          }))
+                        }
+                      >
+                        Carregar mais ({matchedColLeads.length - filteredLeads.length} restantes)
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
