@@ -142,6 +142,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [muteLoading, setMuteLoading] = useState(false);
   const { notes, addNote, deleteNote } = useWhatsAppInternalNotes(conversation.phone);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const conversationKeyRef = useRef<string>('');
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -638,17 +640,34 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const prevItemsCountRef = useRef(0);
   useEffect(() => {
     if (timelineItems.length === 0) return;
-    const isInitialLoad = prevItemsCountRef.current === 0 || prevItemsCountRef.current === 1;
+    const currentKey = `${conversation.phone}__${conversation.instance_name || ''}`;
+    const isConversationSwitch = conversationKeyRef.current !== currentKey;
+    const isInitialLoad = isConversationSwitch || prevItemsCountRef.current === 0;
+    conversationKeyRef.current = currentKey;
     prevItemsCountRef.current = timelineItems.length;
-    // Use 'auto' (instant) on initial load, 'smooth' for new messages
-    const behavior = isInitialLoad ? 'auto' as const : 'smooth' as const;
-    // Use rAF + setTimeout to ensure DOM has rendered
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior });
-      }, isInitialLoad ? 50 : 0);
-    });
-  }, [timelineItems.length]);
+
+    const jumpToBottom = (smooth = false) => {
+      const container = messagesContainerRef.current;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      } else {
+        messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' });
+      }
+    };
+
+    if (isInitialLoad) {
+      // Salto instantâneo direto para o fim, repetido para cobrir lazy-load de mídias/imagens
+      jumpToBottom(false);
+      requestAnimationFrame(() => jumpToBottom(false));
+      const t1 = setTimeout(() => jumpToBottom(false), 50);
+      const t2 = setTimeout(() => jumpToBottom(false), 200);
+      const t3 = setTimeout(() => jumpToBottom(false), 600);
+      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    } else {
+      // Nova mensagem: scroll suave
+      requestAnimationFrame(() => jumpToBottom(true));
+    }
+  }, [timelineItems.length, conversation.phone, conversation.instance_name]);
 
   const handleToggleIdentifySender = (checked: boolean) => {
     setIdentifySender(checked);
@@ -1470,7 +1489,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       )}
 
       {/* Messages + Call Records Timeline */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
         {timelineItems.map((item, idx) => {
           // Date separator
           const itemDate = new Date(item.timestamp);
