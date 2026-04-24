@@ -222,6 +222,45 @@ export function DynamicKanbanBoard({
     fetchLeadContacts();
   }, [leads]);
 
+  // Fetch stage entry timestamps in batch from lead_stage_history
+  useEffect(() => {
+    const fetchStageEntries = async () => {
+      const leadIds = leads.map(l => l.id);
+      if (leadIds.length === 0) {
+        setStageEnteredAt({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('lead_stage_history')
+        .select('lead_id, to_stage, changed_at')
+        .in('lead_id', leadIds)
+        .order('changed_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching stage history:', error);
+        return;
+      }
+
+      // Pick the most recent entry per (lead_id, to_stage) matching lead.status
+      const map: Record<string, string> = {};
+      const leadStatusById: Record<string, string | null> = {};
+      leads.forEach(l => { leadStatusById[l.id] = l.status || null; });
+
+      (data || []).forEach((row: any) => {
+        const currentStage = leadStatusById[row.lead_id];
+        if (!currentStage || row.to_stage !== currentStage) return;
+        if (!map[row.lead_id]) {
+          map[row.lead_id] = row.changed_at;
+        }
+      });
+
+      setStageEnteredAt(map);
+    };
+
+    fetchStageEntries();
+  }, [leads]);
+
   // Separate leads by business status
   const activeLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'active' || !(l as any).lead_status), [leads]);
   const closedLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'closed'), [leads]);
