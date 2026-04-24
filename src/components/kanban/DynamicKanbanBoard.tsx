@@ -428,7 +428,7 @@ export function DynamicKanbanBoard({
                 )
               : allStageLeads;
             // Pagination: show only `visibleCount` cards. Bypass when filtering.
-            const visibleCount = visibleCounts[stage.id] ?? PAGE_INCREMENT;
+            const visibleCount = visibleCounts[stage.id] ?? INITIAL_PAGE_SIZE;
             const stageLeads = stageFilter
               ? matchedStageLeads
               : matchedStageLeads.slice(0, visibleCount);
