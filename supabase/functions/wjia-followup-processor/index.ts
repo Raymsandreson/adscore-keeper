@@ -78,10 +78,12 @@ serve(async (req) => {
             const replyTime = new Date(humanReply.created_at).getTime();
             const resumeAt = replyTime + pauseMinutes * 60 * 1000;
             const remainingMinutes = Math.max(1, Math.ceil((resumeAt - Date.now()) / 60000));
-            await supabase.rpc("schedule_followup_for_session", {
-              p_session_id: session.id,
-              p_delay_minutes: remainingMinutes,
-            }).catch(e => console.error("Schedule pause error:", e));
+            try {
+              await supabase.rpc("schedule_followup_for_session", {
+                p_session_id: session.id,
+                p_delay_minutes: remainingMinutes,
+              });
+            } catch (e) { console.error("Schedule pause error:", e); }
             continue;
           }
         }

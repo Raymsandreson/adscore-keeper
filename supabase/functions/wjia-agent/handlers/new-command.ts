@@ -794,6 +794,7 @@ async function generateImmediate(opts: {
   const shouldMarkIncomplete = hasIncompleteDocFields || forceEditable;
 
   // Apply zapsign_mode: 'prefilled_form' sends only auto fields + editable form; 'final_document' sends all
+  const zapsignMode: string = matchedShortcut?.zapsign_mode || "final_document";
   const isPrefilledForm = zapsignMode === "prefilled_form";
   const dataToSend = isPrefilledForm
     ? fieldsData.filter((f: any) => f?.de && f?.para && String(f.para).trim().length > 0 && f.para !== " " && autoKeysMain.has(normalizeFieldKey(f.de)))

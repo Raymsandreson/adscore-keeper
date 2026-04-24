@@ -46,7 +46,7 @@ export async function transcribeAudio(
     } else {
       try {
         const ext = audioMime.split("/")[1]?.split(";")[0] || "ogg";
-        const blob = new Blob([bytes], { type: audioMime });
+        const blob = new Blob([bytes as BlobPart], { type: audioMime });
         const formData = new FormData();
         formData.append("file", blob, `audio.${ext}`);
         formData.append("model_id", "scribe_v2");
