@@ -1139,32 +1139,34 @@ export function WhatsAppInbox() {
             className="border-r overflow-y-auto bg-card flex flex-col flex-shrink-0"
             style={{ width: `${listWidth}px` }}
           >
-          <ResizablePanel defaultSize={25} minSize={18} maxSize={45} className="!overflow-visible">
-            <div className="h-full border-r overflow-y-auto bg-card flex flex-col">
-              <WhatsAppConversationList
-                conversations={visibleConversations}
-                loading={loading}
-                instanceSwitching={instanceSwitching}
-                switchProgress={switchProgress}
-                selectedPhone={selectedPhone}
-                selectedInstanceName={selectedInstance}
-                onSelect={handleSelectConversation}
-                boards={boards}
-                selectedInstanceId={selectedInstanceId}
-                bulkMode={bulkMode}
-                selectedPhones={bulkSelectedPhones}
-                onToggleBulkPhone={handleToggleBulkPhone}
-                onSelectAllFiltered={handleSelectAllFiltered}
-                privatePhones={new Set(privateConvs.map(p => `${p.phone}__${(p.instance_name || '').toLowerCase()}`))}
-              />
-            </div>
-          </ResizablePanel>
+            <WhatsAppConversationList
+              conversations={visibleConversations}
+              loading={loading}
+              instanceSwitching={instanceSwitching}
+              switchProgress={switchProgress}
+              selectedPhone={selectedPhone}
+              selectedInstanceName={selectedInstance}
+              onSelect={handleSelectConversation}
+              boards={boards}
+              selectedInstanceId={selectedInstanceId}
+              bulkMode={bulkMode}
+              selectedPhones={bulkSelectedPhones}
+              onToggleBulkPhone={handleToggleBulkPhone}
+              onSelectAllFiltered={handleSelectAllFiltered}
+              privatePhones={new Set(privateConvs.map(p => `${p.phone}__${(p.instance_name || '').toLowerCase()}`))}
+            />
+          </div>
 
-          <ResizableHandle withHandle />
+          {/* Alça de redimensionamento */}
+          <div
+            onMouseDown={handleResizeStart}
+            onDoubleClick={() => { setListWidth(LIST_DEFAULT_WIDTH); try { localStorage.setItem('whatsapp_list_width', String(LIST_DEFAULT_WIDTH)); } catch {} }}
+            title="Arraste para redimensionar (duplo clique para resetar)"
+            className="w-1 hover:w-1.5 bg-border hover:bg-primary/40 cursor-col-resize flex-shrink-0 transition-all"
+          />
 
-          <ResizablePanel defaultSize={75} minSize={40}>
-            <div className="h-full flex flex-col overflow-hidden">
-              {selectedConversation ? (
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+            {selectedConversation ? (
                 <WhatsAppChat
                   conversation={selectedConversation}
                   onBack={() => { setSelectedPhone(null); setSelectedInstance(null); }}
