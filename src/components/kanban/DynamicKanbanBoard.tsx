@@ -903,7 +903,7 @@ export function DynamicKanbanBoard({
             const matchedColLeads = colFilter
               ? statusCol.leads.filter(lead => lead.lead_name?.toLowerCase().includes(colFilter.toLowerCase()))
               : statusCol.leads;
-            const colVisibleCount = visibleCounts[statusCol.id] ?? PAGE_INCREMENT;
+            const colVisibleCount = visibleCounts[statusCol.id] ?? INITIAL_PAGE_SIZE;
             const filteredLeads = colFilter
               ? matchedColLeads
               : matchedColLeads.slice(0, colVisibleCount);
