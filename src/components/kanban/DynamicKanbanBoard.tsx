@@ -106,7 +106,8 @@ export function DynamicKanbanBoard({
   const [leadContacts, setLeadContacts] = useState<Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null; profession?: string | null; profession_cbo_code?: string | null }[]>>({});
   const [stageFilters, setStageFilters] = useState<Record<string, string>>({});
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
-  const PAGE_INCREMENT = 15;
+  const INITIAL_PAGE_SIZE = 15;
+  const LOAD_MORE_INCREMENT = 35;
   const topScrollRef = useRef<HTMLDivElement>(null);
   const bottomScrollRef = useRef<HTMLDivElement>(null);
   const isSyncing = useRef(false);
@@ -427,7 +428,7 @@ export function DynamicKanbanBoard({
                 )
               : allStageLeads;
             // Pagination: show only `visibleCount` cards. Bypass when filtering.
-            const visibleCount = visibleCounts[stage.id] ?? PAGE_INCREMENT;
+            const visibleCount = visibleCounts[stage.id] ?? INITIAL_PAGE_SIZE;
             const stageLeads = stageFilter
               ? matchedStageLeads
               : matchedStageLeads.slice(0, visibleCount);
@@ -879,7 +880,7 @@ export function DynamicKanbanBoard({
                         onClick={() =>
                           setVisibleCounts(prev => ({
                             ...prev,
-                            [stage.id]: (prev[stage.id] ?? PAGE_INCREMENT) + PAGE_INCREMENT,
+                            [stage.id]: (prev[stage.id] ?? INITIAL_PAGE_SIZE) + LOAD_MORE_INCREMENT,
                           }))
                         }
                       >
@@ -902,7 +903,7 @@ export function DynamicKanbanBoard({
             const matchedColLeads = colFilter
               ? statusCol.leads.filter(lead => lead.lead_name?.toLowerCase().includes(colFilter.toLowerCase()))
               : statusCol.leads;
-            const colVisibleCount = visibleCounts[statusCol.id] ?? PAGE_INCREMENT;
+            const colVisibleCount = visibleCounts[statusCol.id] ?? INITIAL_PAGE_SIZE;
             const filteredLeads = colFilter
               ? matchedColLeads
               : matchedColLeads.slice(0, colVisibleCount);
@@ -1032,7 +1033,7 @@ export function DynamicKanbanBoard({
                         onClick={() =>
                           setVisibleCounts(prev => ({
                             ...prev,
-                            [statusCol.id]: (prev[statusCol.id] ?? PAGE_INCREMENT) + PAGE_INCREMENT,
+                            [statusCol.id]: (prev[statusCol.id] ?? INITIAL_PAGE_SIZE) + LOAD_MORE_INCREMENT,
                           }))
                         }
                       >
