@@ -257,7 +257,10 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
       </button>
 
       {/* Current phase items - only when expanded */}
-      {itemsExpanded && currentStageInstances.length > 0 && (
+      {itemsExpanded && !loaded && (
+        <div className="text-[10px] text-muted-foreground px-1 py-0.5">Carregando...</div>
+      )}
+      {itemsExpanded && loaded && currentStageInstances.length > 0 && (
         <div className="space-y-0.5">
           {currentStageInstances.map(instance => (
             <div key={instance.id} className="space-y-0.5">
