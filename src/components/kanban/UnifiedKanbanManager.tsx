@@ -163,14 +163,26 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       result = result.filter(lead => checklistFilteredIds.has(lead.id));
     }
     
-    // Apply search filter
+    // Apply search filter — busca em todos os campos textuais relevantes
     if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(lead => 
-        lead.lead_name?.toLowerCase().includes(query) ||
-        lead.lead_phone?.includes(query) ||
-        lead.lead_email?.toLowerCase().includes(query)
-      );
+      const query = searchQuery.toLowerCase().trim();
+      const searchableFields: (keyof Lead | string)[] = [
+        'lead_name', 'lead_phone', 'lead_email', 'notes',
+        'victim_name', 'case_type', 'damage_description',
+        'main_company', 'contractor_company', 'sector',
+        'city', 'state', 'neighborhood',
+        'visit_city', 'visit_state', 'visit_region', 'visit_address',
+        'accident_address', 'acolhedor', 'instagram_username',
+        'case_number', 'campaign_name', 'adset_name', 'ad_name',
+        'group_link', 'news_link', 'lead_status_reason',
+      ];
+      result = result.filter(lead => {
+        return searchableFields.some(field => {
+          const value = (lead as any)[field];
+          if (value == null) return false;
+          return String(value).toLowerCase().includes(query);
+        });
+      });
     }
 
     // Apply advanced filters
