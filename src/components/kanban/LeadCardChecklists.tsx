@@ -32,9 +32,13 @@ interface LeadCardChecklistsProps {
   leadId: string;
   boardId: string;
   stageId: string;
+  /** Optional precomputed { checked, total } from the parent batch fetch.
+   *  When provided, the overall % bar renders immediately without waiting
+   *  for this card's own fetch. The detailed items still load lazily on expand. */
+  precomputedProgress?: { checked: number; total: number };
 }
 
-function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklistsProps) {
+function LeadCardChecklistsImpl({ leadId, boardId, stageId, precomputedProgress }: LeadCardChecklistsProps) {
   const [instances, setInstances] = useState<ChecklistInstance[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
@@ -211,12 +215,20 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
       .eq('id', instance.id);
   };
 
-  // Hide entirely only after we've loaded and confirmed there are no checklists
-  if (loaded && instances.length === 0) return null;
+  // Hide entirely only if we have no precomputed data AND we've loaded
+  // and confirmed there are no checklists.
+  const hasPrecomputed = precomputedProgress && precomputedProgress.total > 0;
+  if (!hasPrecomputed && loaded && instances.length === 0) return null;
+  // If parent says there are no checklists for this lead, hide.
+  if (!hasPrecomputed && !loaded && precomputedProgress && precomputedProgress.total === 0) return null;
 
-  // Calculate overall progress
-  const totalItems = instances.reduce((sum, i) => sum + i.items.length, 0);
-  const checkedItems = instances.reduce((sum, i) => sum + i.items.filter(it => it.checked).length, 0);
+  // Calculate overall progress: prefer loaded data; fallback to precomputed.
+  const totalItems = loaded
+    ? instances.reduce((sum, i) => sum + i.items.length, 0)
+    : (precomputedProgress?.total ?? 0);
+  const checkedItems = loaded
+    ? instances.reduce((sum, i) => sum + i.items.filter(it => it.checked).length, 0)
+    : (precomputedProgress?.checked ?? 0);
   const overallPercent = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
 
   // Group instances by stage_id
@@ -317,5 +329,7 @@ function LeadCardChecklistsImpl({ leadId, boardId, stageId }: LeadCardChecklists
 export const LeadCardChecklists = memo(LeadCardChecklistsImpl, (prev, next) =>
   prev.leadId === next.leadId &&
   prev.boardId === next.boardId &&
-  prev.stageId === next.stageId
+  prev.stageId === next.stageId &&
+  prev.precomputedProgress?.checked === next.precomputedProgress?.checked &&
+  prev.precomputedProgress?.total === next.precomputedProgress?.total
 );
