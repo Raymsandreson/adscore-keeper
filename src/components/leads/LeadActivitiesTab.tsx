@@ -85,6 +85,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   const [loading, setLoading] = useState(() => !activitiesCache.has(leadId));
   const [showChatSheet, setShowChatSheet] = useState(false);
   const [editActivityId, setEditActivityId] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(true);
 
   // New activity creation state
   const [showNewSheet, setShowNewSheet] = useState(false);
