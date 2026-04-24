@@ -69,21 +69,19 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
     return 'document';
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
+  const uploadFiles = async (filesArr: File[]) => {
+    if (!filesArr.length) return;
     setUploading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      
-      for (const file of Array.from(files)) {
-        const fileExt = file.name.split('.').pop();
+
+      for (const file of filesArr) {
+        const fileExt = (file.name.split('.').pop() || 'bin').toLowerCase();
         const filePath = `${activityId || 'temp'}/${crypto.randomUUID()}.${fileExt}`;
-        
+
         const { error: uploadError } = await supabase.storage
           .from('activity-attachments')
-          .upload(filePath, file);
+          .upload(filePath, file, { contentType: file.type || undefined });
 
         if (uploadError) {
           toast.error(`Erro ao enviar ${file.name}`);
@@ -95,7 +93,7 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
           .getPublicUrl(filePath);
 
         const attachmentType = getAttachmentType(file.type);
-        
+
         const newAttachment: Attachment = {
           file_url: publicUrl,
           file_name: file.name,
@@ -129,9 +127,63 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
       toast.error('Erro ao enviar arquivo');
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    await uploadFiles(Array.from(files));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Paste (Ctrl+V) — captura imagens e arquivos do clipboard
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const files: File[] = [];
+      for (const item of Array.from(items)) {
+        if (item.kind === 'file') {
+          const f = item.getAsFile();
+          if (f) {
+            if (f.name === 'image.png' || !f.name) {
+              const ext = (f.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+              files.push(new File([f], `colado-${Date.now()}.${ext}`, { type: f.type }));
+            } else {
+              files.push(f);
+            }
+          }
+        }
+      }
+      if (files.length === 0) return;
+      e.preventDefault();
+      uploadFiles(files);
+    };
+    el.addEventListener('paste', handlePaste as any);
+    return () => el.removeEventListener('paste', handlePaste as any);
+  }, [activityId]);
+
+  // Drag & Drop
+  const handleDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer?.types?.includes('Files')) {
+      e.preventDefault();
+      setIsDragging(true);
+    }
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length) uploadFiles(files);
+  };
+
 
   const handleAddLink = async () => {
     if (!linkUrl.trim()) return;
