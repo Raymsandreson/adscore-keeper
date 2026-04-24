@@ -523,6 +523,12 @@ export function DynamicKanbanBoard({
                             } ${isStagnant ? 'ring-2 ring-red-400 bg-red-50/50 dark:bg-red-950/20' : ''}`}
                             draggable
                             onDragStart={(e) => handleDragStart(e, lead)}
+                            onClick={(e) => {
+                              // Ignora cliques nos botões de ação no canto superior
+                              const target = e.target as HTMLElement;
+                              if (target.closest('button, a, [role="menuitem"], [data-no-card-click]')) return;
+                              onEditLead?.(lead);
+                            }}
                           >
                             <CardContent className="p-2.5 relative">
                               {/* Action buttons - top right corner */}
