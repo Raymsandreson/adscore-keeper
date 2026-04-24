@@ -106,7 +106,7 @@ export function DynamicKanbanBoard({
   const [leadContacts, setLeadContacts] = useState<Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null; profession?: string | null; profession_cbo_code?: string | null }[]>>({});
   const [stageFilters, setStageFilters] = useState<Record<string, string>>({});
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
-  const PAGE_INCREMENT = 50;
+  const PAGE_INCREMENT = 15;
   const topScrollRef = useRef<HTMLDivElement>(null);
   const bottomScrollRef = useRef<HTMLDivElement>(null);
   const isSyncing = useRef(false);
