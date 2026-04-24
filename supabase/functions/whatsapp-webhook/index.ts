@@ -967,17 +967,19 @@ Deno.serve(async (req) => {
       }
 
       // Log GET events to webhook_logs for debugging
-      await supabase.from("webhook_logs").insert({
-        source: "whatsapp",
-        event_type: "GET_" +
-          (body.EventType || body.event || body.type || "unknown"),
-        instance_name: body.instanceName || body.instance_name || null,
-        phone: (body.phone || body.from || "").replace(/\D/g, "").slice(0, 20),
-        direction: "inbound",
-        status: "received_get",
-        payload: body,
-        processing_ms: Date.now() - startTime,
-      }).catch(() => {});
+      try {
+        await supabase.from("webhook_logs").insert({
+          source: "whatsapp",
+          event_type: "GET_" +
+            (body.EventType || body.event || body.type || "unknown"),
+          instance_name: body.instanceName || body.instance_name || null,
+          phone: (body.phone || body.from || "").replace(/\D/g, "").slice(0, 20),
+          direction: "inbound",
+          status: "received_get",
+          payload: body,
+          processing_ms: Date.now() - startTime,
+        });
+      } catch { /* ignore */ }
     } else {
       body = await req.json();
     }

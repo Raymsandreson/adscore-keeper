@@ -845,8 +845,8 @@ Deno.serve(async (req) => {
                       lead_id: localDoc.lead_id,
                       cliente: leadForBoard.lead_name || '',
                       caso: `Caso - ${leadForBoard.lead_name || 'Novo'}`,
-                      tipo: leadForBoard.case_type || null,
-                      acolhedor: leadForBoard.acolhedor || null,
+                      tipo: (leadForBoard as any).case_type || null,
+                      acolhedor: (leadForBoard as any).acolhedor || null,
                       data_criacao: new Date().toISOString().split('T')[0],
                       import_source: 'auto_zapsign',
                     })
