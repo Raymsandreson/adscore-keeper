@@ -44,7 +44,10 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [linkTitle, setLinkTitle] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (activityId) fetchAttachments();
@@ -67,21 +70,19 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
     return 'document';
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
+  const uploadFiles = async (filesArr: File[]) => {
+    if (!filesArr.length) return;
     setUploading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      
-      for (const file of Array.from(files)) {
-        const fileExt = file.name.split('.').pop();
+
+      for (const file of filesArr) {
+        const fileExt = (file.name.split('.').pop() || 'bin').toLowerCase();
         const filePath = `${activityId || 'temp'}/${crypto.randomUUID()}.${fileExt}`;
-        
+
         const { error: uploadError } = await supabase.storage
           .from('activity-attachments')
-          .upload(filePath, file);
+          .upload(filePath, file, { contentType: file.type || undefined });
 
         if (uploadError) {
           toast.error(`Erro ao enviar ${file.name}`);
@@ -93,7 +94,7 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
           .getPublicUrl(filePath);
 
         const attachmentType = getAttachmentType(file.type);
-        
+
         const newAttachment: Attachment = {
           file_url: publicUrl,
           file_name: file.name,
@@ -127,9 +128,63 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
       toast.error('Erro ao enviar arquivo');
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    await uploadFiles(Array.from(files));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Paste (Ctrl+V) — captura imagens e arquivos do clipboard
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const files: File[] = [];
+      for (const item of Array.from(items)) {
+        if (item.kind === 'file') {
+          const f = item.getAsFile();
+          if (f) {
+            if (f.name === 'image.png' || !f.name) {
+              const ext = (f.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+              files.push(new File([f], `colado-${Date.now()}.${ext}`, { type: f.type }));
+            } else {
+              files.push(f);
+            }
+          }
+        }
+      }
+      if (files.length === 0) return;
+      e.preventDefault();
+      uploadFiles(files);
+    };
+    el.addEventListener('paste', handlePaste as any);
+    return () => el.removeEventListener('paste', handlePaste as any);
+  }, [activityId]);
+
+  // Drag & Drop
+  const handleDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer?.types?.includes('Files')) {
+      e.preventDefault();
+      setIsDragging(true);
+    }
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length) uploadFiles(files);
+  };
+
 
   const handleAddLink = async () => {
     if (!linkUrl.trim()) return;
@@ -193,14 +248,28 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
   };
 
   return (
-    <div>
+    <div
+      ref={containerRef}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`relative rounded-md transition-colors ${isDragging ? 'ring-2 ring-primary ring-offset-2 bg-primary/5' : ''}`}
+    >
       {label && <Label>{label}</Label>}
       <RichTextEditor
         value={value}
         onChange={onChange}
-        placeholder={placeholder || 'Notas adicionais...'}
+        placeholder={placeholder || 'Notas adicionais... (cole com Ctrl+V ou arraste arquivos)'}
         minHeight="60px"
       />
+
+      {isDragging && (
+        <div className="absolute inset-0 flex items-center justify-center bg-primary/10 border-2 border-dashed border-primary rounded-md pointer-events-none z-10">
+          <div className="text-sm font-medium text-primary flex items-center gap-2">
+            <Upload className="h-4 w-4" /> Solte para anexar
+          </div>
+        </div>
+      )}
 
       {/* Attachment toolbar */}
       <div className="flex items-center gap-1 mt-1.5">
@@ -301,19 +370,48 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
         </div>
       )}
 
-      {/* Attachments list */}
-      {attachments.length > 0 && (
+      {/* Image previews — grid com prévia parcialmente aberta */}
+      {attachments.filter(a => a.attachment_type === 'image').length > 0 && (
+        <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+          {attachments.map((att, idx) => att.attachment_type === 'image' && (
+            <div key={att.id || `img-${idx}`} className="relative group rounded-md overflow-hidden border bg-muted/30">
+              <button
+                type="button"
+                onClick={() => setPreviewUrl(att.file_url)}
+                className="block w-full"
+                title={att.file_name}
+              >
+                <img
+                  src={att.file_url}
+                  alt={att.file_name}
+                  className="w-full h-24 object-cover hover:scale-105 transition-transform"
+                />
+              </button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shadow"
+                onClick={() => handleRemoveAttachment(idx)}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+              <p className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1.5 py-0.5 truncate">
+                {att.file_name}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Non-image attachments list */}
+      {attachments.filter(a => a.attachment_type !== 'image').length > 0 && (
         <div className="mt-2 space-y-1.5">
-          {attachments.map((att, idx) => (
+          {attachments.map((att, idx) => att.attachment_type !== 'image' && (
             <div key={att.id || idx} className="flex items-center gap-2 p-1.5 rounded border bg-muted/30">
-              {att.attachment_type === 'image' && (
-                <img src={att.file_url} alt={att.file_name} className="h-10 w-10 object-cover rounded flex-shrink-0" />
-              )}
-              {att.attachment_type !== 'image' && (
-                <div className="h-10 w-10 flex items-center justify-center rounded bg-muted flex-shrink-0">
-                  {getIcon(att.attachment_type)}
-                </div>
-              )}
+              <div className="h-10 w-10 flex items-center justify-center rounded bg-muted flex-shrink-0">
+                {getIcon(att.attachment_type)}
+              </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium truncate">{att.link_title || att.file_name}</p>
                 <p className="text-[10px] text-muted-foreground">
@@ -339,6 +437,30 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
               </Button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Lightbox preview */}
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 cursor-zoom-out"
+          onClick={() => setPreviewUrl(null)}
+        >
+          <img
+            src={previewUrl}
+            alt="Preview"
+            className="max-w-full max-h-full object-contain rounded shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            className="absolute top-4 right-4 h-9 w-9"
+            onClick={() => setPreviewUrl(null)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
         </div>
       )}
     </div>
