@@ -28,7 +28,7 @@ import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, Command
 import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
-  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp,
+  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp, Briefcase,
 } from 'lucide-react';
 import { ShareMenu } from '@/components/ShareMenu';
 import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
@@ -169,6 +169,7 @@ const ActivitiesPage = () => {
   }, [assigneeStorageKey]);
   const [filterLead, setFilterLead] = usePageState<string[]>('activities_filterLead', []);
   const [filterContact, setFilterContact] = usePageState<string[]>('activities_filterContact', []);
+  const [filterCase, setFilterCase] = usePageState<string[]>('activities_filterCase', []);
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
   const [selectedActivityId, setSelectedActivityId] = usePageState<string | null>('activities_selectedId', null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
@@ -1078,12 +1079,16 @@ const ActivitiesPage = () => {
   }, [activities]);
 
   const displayedActivities = useMemo(() => {
-    if (selectedCalDays.length === 0) return activities;
-    return activities.filter(a => {
+    let list = activities;
+    if (filterCase.length > 0) {
+      list = list.filter(a => (a as any).case_id && filterCase.includes((a as any).case_id));
+    }
+    if (selectedCalDays.length === 0) return list;
+    return list.filter(a => {
       const dateKey = a.deadline || a.notification_date;
       return dateKey ? selectedCalDays.includes(dateKey) : false;
     });
-  }, [activities, selectedCalDays]);
+  }, [activities, selectedCalDays, filterCase]);
 
   const resolveUserName = (userId: string | null) => {
     if (!userId) return null;
@@ -1841,8 +1846,65 @@ const ActivitiesPage = () => {
           </PopoverContent>
         </Popover>
 
-        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || selectedCalDays.length > 0) && (
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setSelectedCalDays([]); }}>
+        {/* Caso */}
+        <Popover open={openFilterKey === 'case'} onOpenChange={o => setOpenFilterKey(o ? 'case' : null)}>
+          <PopoverTrigger asChild>
+            <Button variant={filterCase.length > 0 ? "default" : "outline"} size="sm" className="h-7 text-xs shrink-0 gap-1">
+              <Briefcase className="h-3 w-3" />
+              {filterCase.length === 0
+                ? 'Caso'
+                : filterCase.length === 1
+                  ? (availableCases.find(c => c.id === filterCase[0])?.case_number || '1')
+                  : `${filterCase.length}`}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[340px] p-0" align="start">
+            <Command
+              filter={(value, search) => {
+                const v = value.toLowerCase();
+                const s = search.toLowerCase().trim();
+                if (!s) return 1;
+                // Match all whitespace-separated tokens (so "PREV 663" matches "prev-0663 título")
+                const tokens = s.split(/\s+/).filter(Boolean);
+                return tokens.every(t => v.includes(t)) ? 1 : 0;
+              }}
+            >
+              <CommandInput placeholder="Buscar caso (ex: PREV 663)..." />
+              <CommandList>
+                <CommandEmpty>Nenhum caso encontrado</CommandEmpty>
+                <CommandGroup>
+                  <CommandItem value="__clear_all_case" onSelect={() => setFilterCase([])}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", filterCase.length === 0 ? "opacity-100" : "opacity-0")} />
+                    Todos
+                  </CommandItem>
+                  {availableCases.map(cs => {
+                    const isSelected = filterCase.includes(cs.id);
+                    const count = activities.filter(a => (a as any).case_id === cs.id).length;
+                    return (
+                      <CommandItem
+                        key={cs.id}
+                        value={`${cs.case_number} ${cs.title || ''}`}
+                        onSelect={() => toggleFilter(setFilterCase, filterCase, cs.id)}
+                      >
+                        <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium truncate">{cs.case_number}</div>
+                          {cs.title && <div className="text-[10px] text-muted-foreground truncate">{cs.title}</div>}
+                        </div>
+                        {count > 0 && (
+                          <Badge variant="outline" className="ml-2 px-1 py-0 text-[10px]">{count}</Badge>
+                        )}
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+
+        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || selectedCalDays.length > 0) && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setSelectedCalDays([]); }}>
             <X className="h-3 w-3 mr-1" /> Limpar
           </Button>
         )}
