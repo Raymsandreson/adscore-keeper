@@ -42,6 +42,7 @@ import {
   AlertTriangle,
   Eye,
   Briefcase,
+  Building2,
   Search,
   X,
   LayoutGrid,
@@ -54,7 +55,7 @@ import {
 import { CopyableText } from '@/components/ui/copyable-text';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
-import { differenceInDays } from 'date-fns';
+import { differenceInDays, differenceInHours } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { LeadContactsManager } from './LeadContactsManager';
 import { LeadCardChecklists } from './LeadCardChecklists';
@@ -104,6 +105,7 @@ export function DynamicKanbanBoard({
   const [activityDescription, setActivityDescription] = useState('');
   const [contactCounts, setContactCounts] = useState<Record<string, number>>({});
   const [leadContacts, setLeadContacts] = useState<Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null; profession?: string | null; profession_cbo_code?: string | null }[]>>({});
+  const [stageEnteredAt, setStageEnteredAt] = useState<Record<string, string>>({});
   const [stageFilters, setStageFilters] = useState<Record<string, string>>({});
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   const INITIAL_PAGE_SIZE = 15;
@@ -220,6 +222,45 @@ export function DynamicKanbanBoard({
     fetchLeadContacts();
   }, [leads]);
 
+  // Fetch stage entry timestamps in batch from lead_stage_history
+  useEffect(() => {
+    const fetchStageEntries = async () => {
+      const leadIds = leads.map(l => l.id);
+      if (leadIds.length === 0) {
+        setStageEnteredAt({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('lead_stage_history')
+        .select('lead_id, to_stage, changed_at')
+        .in('lead_id', leadIds)
+        .order('changed_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching stage history:', error);
+        return;
+      }
+
+      // Pick the most recent entry per (lead_id, to_stage) matching lead.status
+      const map: Record<string, string> = {};
+      const leadStatusById: Record<string, string | null> = {};
+      leads.forEach(l => { leadStatusById[l.id] = l.status || null; });
+
+      (data || []).forEach((row: any) => {
+        const currentStage = leadStatusById[row.lead_id];
+        if (!currentStage || row.to_stage !== currentStage) return;
+        if (!map[row.lead_id]) {
+          map[row.lead_id] = row.changed_at;
+        }
+      });
+
+      setStageEnteredAt(map);
+    };
+
+    fetchStageEntries();
+  }, [leads]);
+
   // Separate leads by business status
   const activeLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'active' || !(l as any).lead_status), [leads]);
   const closedLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'closed'), [leads]);
@@ -256,8 +297,37 @@ export function DynamicKanbanBoard({
       .slice(0, 2);
   }, []);
 
+  const getStageEntryDate = useCallback((lead: Lead) => {
+    return stageEnteredAt[lead.id] || lead.updated_at;
+  }, [stageEnteredAt]);
+
   const getDaysInStage = useCallback((lead: Lead) => {
-    return differenceInDays(new Date(), new Date(lead.updated_at));
+    return differenceInDays(new Date(), new Date(getStageEntryDate(lead)));
+  }, [getStageEntryDate]);
+
+  const formatTimeInStage = useCallback((lead: Lead) => {
+    const entry = new Date(getStageEntryDate(lead));
+    const now = new Date();
+    const totalHours = differenceInHours(now, entry);
+    if (totalHours < 1) return 'Há menos de 1 hora';
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    if (days === 0) return `Há ${hours}h`;
+    if (hours === 0) return `Há ${days}d`;
+    return `Há ${days}d ${hours}h`;
+  }, [getStageEntryDate]);
+
+  // Extract short lead name (before "|" or "(") to show on card
+  const getShortLeadName = useCallback((fullName: string | null | undefined) => {
+    if (!fullName) return 'Sem nome';
+    const cleaned = fullName.split(/[|(]/)[0].trim();
+    return cleaned || fullName;
+  }, []);
+
+  // Get company name from lead (main_company or contractor_company)
+  const getCompanyName = useCallback((lead: Lead): string | null => {
+    const l = lead as any;
+    return l.main_company || l.contractor_company || null;
   }, []);
 
   const isLeadStagnant = useCallback((lead: Lead, stageId: string) => {
@@ -752,7 +822,7 @@ export function DynamicKanbanBoard({
                                     <TooltipTrigger asChild>
                                       <div className="font-medium text-xs leading-tight break-words cursor-default" onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
                                         <CopyableText copyValue={lead.lead_name || 'Sem nome'} label="Nome">
-                                          {lead.lead_name || 'Sem nome'}
+                                          {getShortLeadName(lead.lead_name)}
                                         </CopyableText>
                                       </div>
                                     </TooltipTrigger>
@@ -772,11 +842,11 @@ export function DynamicKanbanBoard({
                                         </CopyableText>
                                       </div>
                                     )}
-                                    {lead.lead_email && (
+                                    {getCompanyName(lead) && (
                                       <div className="flex items-center gap-1 text-xs text-muted-foreground" onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
-                                        <Mail className="h-3 w-3" />
-                                        <CopyableText copyValue={lead.lead_email} label="Email" className="truncate">
-                                          {lead.lead_email}
+                                        <Building2 className="h-3 w-3 flex-shrink-0" />
+                                        <CopyableText copyValue={getCompanyName(lead) || ''} label="Empresa" className="truncate">
+                                          {getCompanyName(lead)}
                                         </CopyableText>
                                       </div>
                                     )}
@@ -821,20 +891,20 @@ export function DynamicKanbanBoard({
                                     stageId={stage.id}
                                   />
 
-                                  {/* Days in stage indicator */}
-                                  {(daysInStage > 3 || isStagnant) && (
-                                    <Badge 
-                                      variant="outline" 
-                                      className={`text-xs mt-1 inline-flex ${
-                                        isStagnant 
-                                          ? 'text-red-600 border-red-400 bg-red-100 dark:bg-red-950' 
-                                          : 'text-amber-600 border-amber-300'
-                                      }`}
-                                    >
-                                      <Clock className="h-3 w-3 mr-1" />
-                                      {daysInStage}d {isStagnant && '⚠️'}
-                                    </Badge>
-                                  )}
+                                  {/* Time in stage indicator */}
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[10px] mt-1 inline-flex font-normal ${
+                                      isStagnant
+                                        ? 'text-red-600 border-red-400 bg-red-100 dark:bg-red-950'
+                                        : daysInStage > 3
+                                          ? 'text-amber-600 border-amber-300'
+                                          : 'text-muted-foreground border-muted'
+                                    }`}
+                                  >
+                                    <Clock className="h-3 w-3 mr-1" />
+                                    {formatTimeInStage(lead)} em {stage.name} {isStagnant && '⚠️'}
+                                  </Badge>
                             </CardContent>
                           </Card>
                             </ContextMenuTrigger>
