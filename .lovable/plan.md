@@ -1,64 +1,58 @@
+## Problema 1 — Mensagens não aparecem (sincronização)
 
+### Diagnóstico
+O `useWhatsAppMessages` depende **100% do Realtime** do Supabase externo. Não existe nenhum polling de segurança (`grep` em `setInterval`, `polling` retornou só comentários). Quando:
+- O canal Realtime cai (rede instável, troca de aba, suspend do laptop, limites do servidor),
+- Um INSERT chega antes do canal estar `SUBSCRIBED`,
+- O filtro `instance_name=eq.X` não bate por algum desalinhamento de canonicalização,
 
-## Problema
+…a mensagem fica órfã no DB externo. O usuário só descobre quando troca de instância ou aperta refresh manual. Isso explica o "algumas chegam, outras não".
 
-Ao abrir um grupo no WhatsApp, alternar para outra aba do navegador e voltar (ou recarregar a página), o histórico do grupo desaparece e só sobra a última mensagem.
+Existe ainda um sintoma secundário: em `useWhatsAppMessages.ts` linha 241, a contagem de telefones distintos usa `.limit(1000)` — em instâncias com mais de 1000 conversas o contador fica errado (não é o foco aqui, mas anoto).
 
-## Causa raiz
+### Correção
+1. **Polling de segurança** — adicionar um `setInterval` no hook que dispara `fetchMessages(true)` a cada 30s **somente quando a aba está visível** (`document.visibilityState === 'visible'`). Reduz a janela de perda para 30s no pior caso. Custo: 1 RPC `get_conversation_summaries` por minuto por usuário ativo — aceitável (a função é leve, com índice `idx_wam_inst_phone_created`).
+2. **Refetch ao voltar foco** — listener em `visibilitychange` que dispara `fetchMessages(true)` quando a aba volta de hidden→visible. Cobre o caso "deixei o computador 1h, voltei".
+3. **Refetch ao reconectar Realtime** — no callback `.subscribe((status) => …)` do canal de mensagens, quando `status === 'SUBSCRIBED'` e já houve uma desconexão prévia (`realtimeHealthy` era `false`), dispara um `fetchMessages(true)` para recuperar mensagens perdidas durante a queda.
 
-Três fatores se combinam em `WhatsAppInbox.tsx` + `useWhatsAppMessages.ts`:
+Nada disso muda a UI — é puramente resiliência. Marcação `silent=true` evita o toast "X conversas carregadas".
 
-1. **A conversa selecionada não persiste.** `selectedPhone` e `selectedInstance` são `useState` simples (linhas 132 e 348 de `WhatsAppInbox.tsx`). No reload, voltam para `null` — não temos como saber qual era a conversa ativa para recarregar.
+## Problema 2 — Texto vaza para a direita na lista
 
-2. **O cache de histórico vive só em `ref` na memória.** `activeConversationKeyRef` e `fullConvCacheRef` (em `useWhatsAppMessages.ts`) são `useRef` — somem no remount/reload.
+### Diagnóstico
+No `WhatsAppConversationList.tsx` linha 620, o `<button>` que envolve cada cartão tem `flex-1 flex items-start gap-3` mas **não tem `min-w-0`**. O filho interno (linha 639) tem `flex-1 min-w-0`, mas em flex aninhado o `min-w-0` precisa estar em **toda a cadeia de pais flex** para o `truncate` funcionar. Sem `min-w-0` no botão, títulos longos como "Cândido x RPJ Transportes | 21/08/2025" forçam o cartão a ser mais largo que o container `w-80`.
 
-3. **O `fetchMessages` periódico só carrega 1 mensagem por conversa.** Linha 488: `setMessages(convList.map(c => c.messages[0]))`. O `summaryMessage` (linhas 407-425) é construído com a última mensagem do RPC `get_conversation_summaries`. Sem `fetchFullConversation` ter rodado depois do reload, o chat exibe exatamente esse 1 item.
+### Correção
+Adicionar `min-w-0` no `<button>` (linha 620–629). É uma mudança de uma classe. Também adicionar `overflow-hidden` no wrapper externo da linha 610 como cinto-e-suspensório.
 
-Em grupos a degradação é mais visível porque chegam dezenas de mensagens novas — o "buraco" entre o summary e o histórico real fica óbvio. Em conversas 1:1 raramente se nota.
+## Problema 3 — Permitir redimensionar a largura da lista
 
-## Solução proposta
+### Diagnóstico
+Hoje em `WhatsAppInbox.tsx` linha 1030–1052, a lista tem largura fixa `md:w-80` (320px) e o chat ocupa `flex-1`. O projeto já tem `src/components/ui/resizable.tsx` (shadcn) instalado — pode ser usado diretamente.
 
-**Persistir a conversa selecionada e refazer o fetch completo no mount.**
+### Correção
+Substituir o layout flexbox da área principal por `ResizablePanelGroup` horizontal:
+- Painel 1 (lista): `defaultSize={25}`, `minSize={18}`, `maxSize={45}`
+- `ResizableHandle withHandle`
+- Painel 2 (chat): ocupa o resto
 
-### Mudanças em `src/components/whatsapp/WhatsAppInbox.tsx`
+Persistir a largura escolhida em `localStorage` (`whatsapp_list_panel_size`) para restaurar entre sessões. Comportamento mobile preservado: no mobile já existe a lógica `${selectedPhone ? 'hidden md:flex' : 'flex'}` — usar `ResizablePanelGroup` apenas em `md:` e manter o layout atual em mobile via condicional.
 
-1. Trocar:
-   ```ts
-   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
-   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
-   ```
-   por `usePageState` (já existe em `src/hooks/usePageState.ts`):
-   ```ts
-   const [selectedPhone, setSelectedPhone] = usePageState<string | null>('wa_selected_phone', null);
-   const [selectedInstance, setSelectedInstance] = usePageState<string | null>('wa_selected_instance', null);
-   ```
+Como `WhatsAppConversationList` já usa `flex-1 min-w-0` corretamente nos cartões (após a correção do Problema 2), os cartões irão se alongar/encurtar conforme o painel for redimensionado.
 
-2. Adicionar `useEffect` que, quando `hasLoaded === true` e existir `selectedPhone + selectedInstance` restaurados do storage, dispara `fetchFullConversation(selectedPhone, selectedInstance)` uma vez. Isso reidrata o histórico completo do grupo no remount.
+## Detalhes técnicos
 
-3. Garantir que `Select` de instância e o botão "voltar para lista" (mobile) limpam ambos os states (já limpa no `setSelectedInstanceId` da linha 724 — só estender para o `selectedInstance`).
+**Arquivos a alterar:**
+- `src/hooks/useWhatsAppMessages.ts` — adicionar `useEffect` com `setInterval` (30s) + listener `visibilitychange` + refetch on reconnect.
+- `src/components/whatsapp/WhatsAppConversationList.tsx` — adicionar `min-w-0` no botão do cartão (linha 620) e `overflow-hidden` no wrapper (linha 610).
+- `src/components/whatsapp/WhatsAppInbox.tsx` — envolver área principal em `ResizablePanelGroup` (em desktop), preservar comportamento mobile, persistir tamanho em `localStorage`.
 
-### Mudança em `src/hooks/useWhatsAppMessages.ts`
+**Arquivos NÃO tocados:**
+- Nenhuma mudança em edge functions.
+- Nenhuma migration SQL.
+- Nenhum mexido em `WhatsAppChat.tsx` (só recebe `flex-1` do painel pai, não precisa ajuste).
+- Nenhum mexido na lógica de canonicalização de instâncias ou no handler de Realtime.
 
-4. Após o `fetchMessages` rodar, se `activeConversationKeyRef.current` estiver setado mas **sem** entrada em `fullConvCacheRef.current[key]`, disparar `fetchFullConversation` automaticamente (cobre o caso "ref preservada mas cache vazio após remount").
+**Risco / rollback:** mudanças confinadas a 3 arquivos de UI/hook. Se o polling causar carga excedente, basta remover o `useEffect` novo (10 linhas). Se o resizable quebrar layout, basta reverter o `WhatsAppInbox.tsx`.
 
-### O que NÃO vou mexer
-
-- `getConversationSummaries` / RPC externa — a lógica de listagem está correta.
-- `fetchFullConversation` em si — o pull de até 3000 msgs já funciona; o problema é apenas que ele não é redisparado no reload.
-- Realtime subscription, dedupe de mensagens de grupo, lógica de envio.
-- `WhatsAppChat.tsx` — exibição já lê de `selectedConversation.messages`, basta o estado superior estar correto.
-
-## Plano de verificação
-
-1. Abrir um grupo com histórico longo.
-2. Abrir nova aba do navegador, esperar 30s, voltar.
-3. Confirmar que o grupo continua selecionado e com histórico completo (não só a última mensagem).
-4. Fazer reload (F5).
-5. Confirmar que o grupo é reaberto automaticamente com histórico completo.
-6. Trocar de instância no `Select` — deve limpar a seleção (comportamento atual).
-
-## Risco e rollback
-
-Risco: baixo. Mudança isolada a state management do Inbox; usa hook `usePageState` já em produção.
-Rollback: reverter `WhatsAppInbox.tsx` e o efeito adicionado em `useWhatsAppMessages.ts` — sem migração, sem alteração de schema, sem deploy de edge function.
-
+**Custo:** ~2 chamadas RPC adicionais/min/usuário. Para 50 usuários simultâneos = 100 RPC/min = irrelevante para a função inlineada com índice.

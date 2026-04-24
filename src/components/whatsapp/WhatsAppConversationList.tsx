@@ -607,7 +607,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     const isLocked = privatePhones?.has(getConversationKey(conv.phone, conv.instance_name)) || false;
 
     return (
-      <div key={getConversationKey(conv.phone, conv.instance_name)} className="flex items-center">
+      <div key={getConversationKey(conv.phone, conv.instance_name)} className="flex items-center min-w-0 overflow-hidden">
         {bulkMode && (
           <div className="pl-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
             <Checkbox
@@ -620,7 +620,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
         <button
           onClick={() => bulkMode ? onToggleBulkPhone?.(conv.phone) : onSelect(conv)}
           className={cn(
-            "flex-1 flex items-start gap-3 p-3 text-left border-b border-border/30",
+            "flex-1 min-w-0 flex items-start gap-3 p-3 text-left border-b border-border/30 overflow-hidden",
             isSelected && !bulkMode
               ? "bg-primary border-l-2 border-l-primary shadow-sm"
               : bulkMode && selectedPhones?.has(conv.phone)
