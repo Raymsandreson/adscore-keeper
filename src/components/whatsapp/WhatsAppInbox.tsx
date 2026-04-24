@@ -1262,7 +1262,6 @@ export function WhatsAppInbox() {
                   </div>
                 </div>
               )}
-            </div>
           </div>
         </div>
       </div>
