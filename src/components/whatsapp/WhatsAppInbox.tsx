@@ -1029,7 +1029,6 @@ export function WhatsAppInbox() {
 
       {/* Content */}
       <div className="flex-1 flex overflow-hidden">
-      <div className="flex-1 flex overflow-hidden">
         {/* MOBILE: existing flex layout (list OR chat) */}
         <div className={`md:hidden w-full flex ${selectedPhone ? '' : ''}`}>
           {!selectedPhone ? (
