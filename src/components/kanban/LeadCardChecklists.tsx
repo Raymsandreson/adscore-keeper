@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { ListChecks, MessageSquareText, ClipboardList } from 'lucide-react';
+import { ListChecks, MessageSquareText, ClipboardList, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useActivityLogger } from '@/hooks/useActivityLogger';
