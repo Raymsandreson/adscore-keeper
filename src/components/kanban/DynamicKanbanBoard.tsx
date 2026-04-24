@@ -855,6 +855,7 @@ export function DynamicKanbanBoard({
                                     leadId={lead.id}
                                     boardId={board.id}
                                     stageId={stage.id}
+                                    precomputedProgress={checklistProgress[lead.id]}
                                   />
 
                                   {/* Days in stage indicator */}
