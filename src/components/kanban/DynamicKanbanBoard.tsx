@@ -104,7 +104,6 @@ export function DynamicKanbanBoard({
   const [activityDescription, setActivityDescription] = useState('');
   const [contactCounts, setContactCounts] = useState<Record<string, number>>({});
   const [leadContacts, setLeadContacts] = useState<Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null; profession?: string | null; profession_cbo_code?: string | null }[]>>({});
-  const [checklistProgress, setChecklistProgress] = useState<Record<string, { checked: number; total: number }>>({});
   const [stageFilters, setStageFilters] = useState<Record<string, string>>({});
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   const PAGE_INCREMENT = 15;
@@ -219,95 +218,6 @@ export function DynamicKanbanBoard({
 
     fetchLeadContacts();
   }, [leads]);
-
-  // Batch fetch checklist progress for all visible leads in one query.
-  // Avoids N requests (one per card) and lets the % render immediately
-  // without expanding each card.
-  // Also computes expected totals from stage links + templates so leads that
-  // never had instances created yet still show a 0% bar (instead of hiding it).
-  useEffect(() => {
-    const fetchProgress = async () => {
-      const leadIds = leads.map(l => l.id);
-      if (leadIds.length === 0) {
-        setChecklistProgress({});
-        return;
-      }
-
-      // 1. Existing instances (real progress)
-      const { data: instances, error: instErr } = await supabase
-        .from('lead_checklist_instances')
-        .select('lead_id, stage_id, checklist_template_id, items')
-        .eq('board_id', board.id)
-        .in('lead_id', leadIds);
-
-      if (instErr) {
-        console.error('Error fetching checklist progress batch:', instErr);
-        return;
-      }
-
-      // 2. Stage links + template item counts (expected totals for leads w/o instances)
-      const { data: stageLinks } = await supabase
-        .from('checklist_stage_links')
-        .select('checklist_template_id, stage_id')
-        .eq('board_id', board.id);
-
-      const templateIds = [...new Set((stageLinks || []).map(l => l.checklist_template_id))];
-      let templateItemCount: Record<string, number> = {};
-      if (templateIds.length > 0) {
-        const { data: templates } = await supabase
-          .from('checklist_templates')
-          .select('id, items')
-          .in('id', templateIds);
-        (templates || []).forEach(t => {
-          const items = (t.items as unknown as unknown[]) || [];
-          templateItemCount[t.id] = items.length;
-        });
-      }
-
-      // Build expected totals per lead based on its current stage_id link map.
-      // If a lead has no instances yet, we still show 0/expected so the bar appears.
-      const linksByStage: Record<string, string[]> = {};
-      (stageLinks || []).forEach(l => {
-        if (!linksByStage[l.stage_id]) linksByStage[l.stage_id] = [];
-        linksByStage[l.stage_id].push(l.checklist_template_id);
-      });
-
-      const map: Record<string, { checked: number; total: number }> = {};
-
-      // Seed with expected totals from stage links (covers leads without instances)
-      // NOTE: in this schema the lead's current stage is stored in `status`,
-      // not `stage_id`/`column_id`. Using the wrong field made every lead
-      // resolve to an empty template list, so the bar stayed at 0% until the
-      // user expanded the card and triggered the per-card fetch.
-      leads.forEach(l => {
-        const stageId = (l as any).status || (l as any).stage_id || (l as any).column_id;
-        const tmplIds = linksByStage[stageId] || [];
-        const expectedTotal = tmplIds.reduce((s, tid) => s + (templateItemCount[tid] || 0), 0);
-        if (expectedTotal > 0) {
-          map[l.id] = { checked: 0, total: expectedTotal };
-        }
-      });
-
-      // Overlay actual instance data (replaces seed for leads that have instances)
-      const seenLeads = new Set<string>();
-      (instances || []).forEach(row => {
-        const items = (row.items as unknown as { checked?: boolean }[]) || [];
-        const total = items.length;
-        const checked = items.filter(i => i.checked).length;
-        if (!seenLeads.has(row.lead_id)) {
-          // First instance row for this lead → reset seed
-          map[row.lead_id] = { checked: 0, total: 0 };
-          seenLeads.add(row.lead_id);
-        }
-        const cur = map[row.lead_id];
-        map[row.lead_id] = { checked: cur.checked + checked, total: cur.total + total };
-      });
-
-      setChecklistProgress(map);
-    };
-
-    fetchProgress();
-  }, [leads, board.id]);
 
   // Separate leads by business status
   const activeLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'active' || !(l as any).lead_status), [leads]);
@@ -908,7 +818,6 @@ export function DynamicKanbanBoard({
                                     leadId={lead.id}
                                     boardId={board.id}
                                     stageId={stage.id}
-                                    precomputedProgress={checklistProgress[lead.id]}
                                   />
 
                                   {/* Days in stage indicator */}
