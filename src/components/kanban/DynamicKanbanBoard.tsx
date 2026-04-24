@@ -421,11 +421,17 @@ export function DynamicKanbanBoard({
             const stageFilter = stageFilters[stage.id] || '';
             const allStageLeads = leadsByStage[stage.id] || [];
             // Filter leads by search query within the column
-            const stageLeads = stageFilter
+            const matchedStageLeads = stageFilter
               ? allStageLeads.filter(lead =>
                   lead.lead_name?.toLowerCase().includes(stageFilter.toLowerCase())
                 )
               : allStageLeads;
+            // Pagination: show only `visibleCount` cards. Bypass when filtering.
+            const visibleCount = visibleCounts[stage.id] ?? PAGE_INCREMENT;
+            const stageLeads = stageFilter
+              ? matchedStageLeads
+              : matchedStageLeads.slice(0, visibleCount);
+            const hasMore = !stageFilter && matchedStageLeads.length > stageLeads.length;
             const isDropTarget = dragOverStage === stage.id;
 
             return (
