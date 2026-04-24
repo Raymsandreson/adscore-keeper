@@ -106,7 +106,7 @@ export function DynamicKanbanBoard({
   const [leadContacts, setLeadContacts] = useState<Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null; profession?: string | null; profession_cbo_code?: string | null }[]>>({});
   const [stageFilters, setStageFilters] = useState<Record<string, string>>({});
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
-  const PAGE_INCREMENT = 50;
+  const PAGE_INCREMENT = 15;
   const topScrollRef = useRef<HTMLDivElement>(null);
   const bottomScrollRef = useRef<HTMLDivElement>(null);
   const isSyncing = useRef(false);
@@ -523,6 +523,12 @@ export function DynamicKanbanBoard({
                             } ${isStagnant ? 'ring-2 ring-red-400 bg-red-50/50 dark:bg-red-950/20' : ''}`}
                             draggable
                             onDragStart={(e) => handleDragStart(e, lead)}
+                            onClick={(e) => {
+                              // Ignora cliques nos botões de ação no canto superior
+                              const target = e.target as HTMLElement;
+                              if (target.closest('button, a, [role="menuitem"], [data-no-card-click]')) return;
+                              onEditLead?.(lead);
+                            }}
                           >
                             <CardContent className="p-2.5 relative">
                               {/* Action buttons - top right corner */}
