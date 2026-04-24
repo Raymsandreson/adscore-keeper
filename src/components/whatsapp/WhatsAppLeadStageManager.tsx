@@ -34,62 +34,70 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
   const [loadingChecklist, setLoadingChecklist] = useState(true);
   const [expandedScripts, setExpandedScripts] = useState<Set<string>>(new Set());
 
-  // Fetch board data
+  // Fetch board data — keep previous board visible while refetching when boardId changes
   useEffect(() => {
     if (!boardId) { setBoard(null); return; }
+    let cancelled = false;
     supabase
       .from('kanban_boards')
       .select('*')
       .eq('id', boardId)
       .single()
       .then(({ data }) => {
-        if (data) {
-          setBoard({
-            ...data,
-            board_type: (data as any).board_type || 'funnel',
-            stages: (data.stages as unknown as KanbanStage[]) || [],
-          } as KanbanBoard);
-        }
+        if (cancelled || !data) return;
+        setBoard({
+          ...data,
+          board_type: (data as any).board_type || 'funnel',
+          stages: (data.stages as unknown as KanbanStage[]) || [],
+        } as KanbanBoard);
       });
+    return () => { cancelled = true; };
   }, [boardId]);
 
-  // Sync stageId with prop
+  // Sync stageId only when the lead changes or external stage changes
   useEffect(() => {
     setStageId(currentStageId);
-  }, [currentStageId]);
+  }, [leadId, currentStageId]);
 
-  // Fetch checklists
+  // Fetch checklists — stable callback, only reruns when ids actually change
   const loadChecklists = useCallback(async () => {
+    if (!leadId) return;
     setLoadingChecklist(true);
-    if (boardId && stageId) {
-      await createLeadInstances(leadId, boardId, stageId);
-    }
-    const data = await fetchLeadInstances(leadId);
-
-    // Reset readonly for instances that match the current stage
-    if (stageId) {
-      const readonlyCurrentStage = data.filter(i => i.stage_id === stageId && i.is_readonly);
-      for (const inst of readonlyCurrentStage) {
-        await supabase
-          .from('lead_checklist_instances')
-          .update({ is_readonly: false })
-          .eq('id', inst.id);
-        inst.is_readonly = false;
+    try {
+      if (boardId && stageId) {
+        await createLeadInstances(leadId, boardId, stageId);
       }
-    }
+      const data = await fetchLeadInstances(leadId);
 
-    if (data.length > 0) {
-      const templateIds = [...new Set(data.map(d => d.checklist_template_id))];
-      const { data: templates } = await supabase
-        .from('checklist_templates')
-        .select('id, name, is_mandatory')
-        .in('id', templateIds);
-      const names: Record<string, { name: string; is_mandatory: boolean }> = {};
-      (templates || []).forEach(t => { names[t.id] = { name: t.name, is_mandatory: t.is_mandatory }; });
-      setTemplateNames(names);
+      // Reset readonly for instances that match the current stage (batch in a single update)
+      if (stageId) {
+        const readonlyIds = data.filter(i => i.stage_id === stageId && i.is_readonly).map(i => i.id);
+        if (readonlyIds.length > 0) {
+          await supabase
+            .from('lead_checklist_instances')
+            .update({ is_readonly: false })
+            .in('id', readonlyIds);
+          data.forEach(i => { if (readonlyIds.includes(i.id)) i.is_readonly = false; });
+        }
+      }
+
+      if (data.length > 0) {
+        const templateIds = [...new Set(data.map(d => d.checklist_template_id))];
+        const { data: templates } = await supabase
+          .from('checklist_templates')
+          .select('id, name, is_mandatory')
+          .in('id', templateIds);
+        const names: Record<string, { name: string; is_mandatory: boolean }> = {};
+        (templates || []).forEach(t => { names[t.id] = { name: t.name, is_mandatory: t.is_mandatory }; });
+        setTemplateNames(names);
+      } else {
+        setTemplateNames({});
+      }
+      setInstances(data);
+    } finally {
+      setLoadingChecklist(false);
     }
-    setInstances(data);
-    setLoadingChecklist(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId, boardId, stageId]);
 
   useEffect(() => {
