@@ -781,70 +781,86 @@ export function DynamicKanbanBoard({
                                     )}
                                   </div>
 
-                                  {/* Linked contacts list */}
-                                  {leadContacts[lead.id]?.length > 0 && (
-                                    <div className="mt-2 space-y-1">
-                                      {leadContacts[lead.id].length > 2 ? (
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <div 
-                                              className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-                                              onClick={() => setContactsManagerLead(lead)}
-                                            >
-                                              <Users className="h-3 w-3 flex-shrink-0" />
-                                              <span className="truncate">
-                                                {leadContacts[lead.id].slice(0, 2).map(c => c.full_name).join(', ')} +{leadContacts[lead.id].length - 2}
-                                              </span>
-                                            </div>
-                                          </TooltipTrigger>
-                                          <TooltipContent side="bottom" className="max-w-xs">
-                                            <div className="space-y-2">
-                                              <p className="font-medium text-xs border-b pb-1">Contatos vinculados:</p>
-                                              {leadContacts[lead.id].map(c => (
-                                                <div key={c.id} className="flex items-center justify-between gap-3 text-xs">
-                                                  <span className="font-medium">{c.full_name}</span>
-                                                  <div className="flex items-center gap-1">
-                                                    {c.phone && (
-                                                      <a
-                                                        href={`https://wa.me/${c.phone.replace(/\D/g, '')}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="p-1 rounded hover:bg-green-100 text-green-600 transition-colors"
-                                                        title={`WhatsApp: ${c.phone}`}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                      >
-                                                        <Phone className="h-3 w-3" />
-                                                      </a>
-                                                    )}
-                                                    {c.instagram_username && (
-                                                      <a
-                                                        href={`https://instagram.com/${c.instagram_username.replace('@', '')}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="p-1 rounded hover:bg-pink-100 text-pink-600 transition-colors"
-                                                        title={`Instagram: @${c.instagram_username.replace('@', '')}`}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                      >
-                                                        <Instagram className="h-3 w-3" />
-                                                      </a>
-                                                    )}
+                                  {/* Linked contacts list (excluding auto-created group contacts) */}
+                                  {(() => {
+                                    const nonGroupContacts = (leadContacts[lead.id] || []).filter(
+                                      c => !/^grupo\s*-/i.test(c.full_name || '')
+                                    );
+                                    if (nonGroupContacts.length === 0) return null;
+                                    return (
+                                      <div className="mt-2 space-y-1">
+                                        {nonGroupContacts.length > 2 ? (
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <div
+                                                className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                                                onClick={() => setContactsManagerLead(lead)}
+                                              >
+                                                <Users className="h-3 w-3 flex-shrink-0" />
+                                                <span className="truncate">
+                                                  {nonGroupContacts.slice(0, 2).map(c => c.full_name).join(', ')} +{nonGroupContacts.length - 2}
+                                                </span>
+                                              </div>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="bottom" className="max-w-xs">
+                                              <div className="space-y-2">
+                                                <p className="font-medium text-xs border-b pb-1">Contatos vinculados:</p>
+                                                {nonGroupContacts.map(c => (
+                                                  <div key={c.id} className="flex items-center justify-between gap-3 text-xs">
+                                                    <span className="font-medium">{c.full_name}</span>
+                                                    <div className="flex items-center gap-1">
+                                                      {c.phone && (
+                                                        <a
+                                                          href={`https://wa.me/${c.phone.replace(/\D/g, '')}`}
+                                                          target="_blank"
+                                                          rel="noopener noreferrer"
+                                                          className="p-1 rounded hover:bg-green-100 text-green-600 transition-colors"
+                                                          title={`WhatsApp: ${c.phone}`}
+                                                          onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                          <Phone className="h-3 w-3" />
+                                                        </a>
+                                                      )}
+                                                      {c.instagram_username && (
+                                                        <a
+                                                          href={`https://instagram.com/${c.instagram_username.replace('@', '')}`}
+                                                          target="_blank"
+                                                          rel="noopener noreferrer"
+                                                          className="p-1 rounded hover:bg-pink-100 text-pink-600 transition-colors"
+                                                          title={`Instagram: @${c.instagram_username.replace('@', '')}`}
+                                                          onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                          <Instagram className="h-3 w-3" />
+                                                        </a>
+                                                      )}
+                                                    </div>
                                                   </div>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      ) : (
-                                        <div 
-                                          className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-                                          onClick={() => setContactsManagerLead(lead)}
-                                        >
-                                          <Users className="h-3 w-3 flex-shrink-0" />
-                                          <span className="truncate">
-                                            {leadContacts[lead.id].map(c => c.full_name).join(', ')}
-                                          </span>
-                                        </div>
-                                      )}
+                                                ))}
+                                              </div>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        ) : (
+                                          <div
+                                            className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                                            onClick={() => setContactsManagerLead(lead)}
+                                          >
+                                            <Users className="h-3 w-3 flex-shrink-0" />
+                                            <span className="truncate">
+                                              {nonGroupContacts.map(c => c.full_name).join(', ')}
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+
+                                  {/* Acolhedor vinculado ao lead */}
+                                  {(lead as any).acolhedor && (
+                                    <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+                                      <UserPlus className="h-3 w-3 flex-shrink-0" />
+                                      <span className="truncate" title={`Acolhedor: ${(lead as any).acolhedor}`}>
+                                        Acolhedor: {(lead as any).acolhedor}
+                                      </span>
                                     </div>
                                   )}
 
