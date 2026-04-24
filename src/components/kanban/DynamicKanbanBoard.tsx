@@ -463,8 +463,8 @@ export function DynamicKanbanBoard({
                         {stage.name}
                       </h3>
                       <Badge variant="secondary" className="text-xs">
-                        {stageFilter && stageLeads.length !== allStageLeads.length
-                          ? <><AnimatedNumber value={stageLeads.length} />/<AnimatedNumber value={allStageLeads.length} /></>
+                        {stageFilter && matchedStageLeads.length !== allStageLeads.length
+                          ? <><AnimatedNumber value={matchedStageLeads.length} />/<AnimatedNumber value={allStageLeads.length} /></>
                           : <AnimatedNumber value={allStageLeads.length} />}
                       </Badge>
                     </div>
