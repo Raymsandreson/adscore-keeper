@@ -42,6 +42,7 @@ import {
   AlertTriangle,
   Eye,
   Briefcase,
+  Building2,
   Search,
   X,
   LayoutGrid,
@@ -54,7 +55,7 @@ import {
 import { CopyableText } from '@/components/ui/copyable-text';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
-import { differenceInDays } from 'date-fns';
+import { differenceInDays, differenceInHours } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { LeadContactsManager } from './LeadContactsManager';
 import { LeadCardChecklists } from './LeadCardChecklists';
