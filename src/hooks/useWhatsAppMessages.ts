@@ -1245,7 +1245,15 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
           )
           .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
+              // Se acabou de reconectar após uma queda, força refetch para recuperar
+              // mensagens que possam ter sido perdidas durante a desconexão.
+              if (!realtimeHealthy) {
+                fetchMessages(true).catch(() => {});
+              }
               setRealtimeHealthy(true);
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+              setRealtimeHealthy(false);
+              scheduleRetry();
             }
           });
         externalChannels.push(msgCh);
