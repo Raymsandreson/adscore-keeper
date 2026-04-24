@@ -770,6 +770,7 @@ async function generateImmediate(opts: {
     parsed, fieldsData, signerName, signerPhone, templateFields,
     zapsignSettings, skipConfirmation, partialMinFields, instanceRes,
     leadData, zapsignToken, hasMissing, notifyOnSignature, sendSignedPdf,
+    matchedShortcut,
   } = opts;
 
   const inst = instanceRes.data;
