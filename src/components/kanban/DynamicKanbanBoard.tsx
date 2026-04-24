@@ -822,7 +822,7 @@ export function DynamicKanbanBoard({
                                     <TooltipTrigger asChild>
                                       <div className="font-medium text-xs leading-tight break-words cursor-default" onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
                                         <CopyableText copyValue={lead.lead_name || 'Sem nome'} label="Nome">
-                                          {lead.lead_name || 'Sem nome'}
+                                          {getShortLeadName(lead.lead_name)}
                                         </CopyableText>
                                       </div>
                                     </TooltipTrigger>
