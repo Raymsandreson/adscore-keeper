@@ -217,6 +217,47 @@ export function WhatsAppInbox() {
   const [showCreateContactDialog, setShowCreateContactDialog] = useState(false);
   const [showCreateCaseDialog, setShowCreateCaseDialog] = useState(false);
 
+  // Largura redimensionável da lista de conversas (desktop)
+  const LIST_MIN_WIDTH = 260;
+  const LIST_MAX_WIDTH = 600;
+  const LIST_DEFAULT_WIDTH = 320;
+  const [listWidth, setListWidth] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem('whatsapp_list_width');
+      if (stored) {
+        const n = parseInt(stored, 10);
+        if (!isNaN(n) && n >= LIST_MIN_WIDTH && n <= LIST_MAX_WIDTH) return n;
+      }
+    } catch {}
+    return LIST_DEFAULT_WIDTH;
+  });
+  const isResizingRef = useRef(false);
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingRef.current = true;
+    const startX = e.clientX;
+    const startWidth = listWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (ev: MouseEvent) => {
+      if (!isResizingRef.current) return;
+      const next = Math.min(LIST_MAX_WIDTH, Math.max(LIST_MIN_WIDTH, startWidth + (ev.clientX - startX)));
+      setListWidth(next);
+    };
+    const onUp = () => {
+      isResizingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      try { localStorage.setItem('whatsapp_list_width', String(Math.round(listWidthRef.current))); } catch {}
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [listWidth]);
+  const listWidthRef = useRef(listWidth);
+  useEffect(() => { listWidthRef.current = listWidth; }, [listWidth]);
+
   // Activity sheet state
   const [showActivitySheet, setShowActivitySheet] = useState(false);
   const [activityDefaults, setActivityDefaults] = useState<{ leadId?: string; leadName?: string; contactId?: string; contactName?: string }>({});
