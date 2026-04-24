@@ -220,6 +220,42 @@ export function DynamicKanbanBoard({
     fetchLeadContacts();
   }, [leads]);
 
+  // Batch fetch checklist progress for all visible leads in one query.
+  // Avoids N requests (one per card) and lets the % render immediately
+  // without expanding each card.
+  useEffect(() => {
+    const fetchProgress = async () => {
+      const leadIds = leads.map(l => l.id);
+      if (leadIds.length === 0) {
+        setChecklistProgress({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('lead_checklist_instances')
+        .select('lead_id, items')
+        .eq('board_id', board.id)
+        .in('lead_id', leadIds);
+
+      if (error) {
+        console.error('Error fetching checklist progress batch:', error);
+        return;
+      }
+
+      const map: Record<string, { checked: number; total: number }> = {};
+      (data || []).forEach(row => {
+        const items = (row.items as unknown as { checked?: boolean }[]) || [];
+        const total = items.length;
+        const checked = items.filter(i => i.checked).length;
+        const cur = map[row.lead_id] || { checked: 0, total: 0 };
+        map[row.lead_id] = { checked: cur.checked + checked, total: cur.total + total };
+      });
+      setChecklistProgress(map);
+    };
+
+    fetchProgress();
+  }, [leads, board.id]);
+
   // Separate leads by business status
   const activeLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'active' || !(l as any).lead_status), [leads]);
   const closedLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'closed'), [leads]);
