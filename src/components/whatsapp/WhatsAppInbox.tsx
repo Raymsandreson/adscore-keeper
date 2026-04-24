@@ -1263,8 +1263,8 @@ export function WhatsAppInbox() {
                 </div>
               )}
             </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
+          </div>
+        </div>
       </div>
 
       {/* Lead Edit Panel - Full form with all tabs + AI */}
