@@ -1389,7 +1389,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       {conversation.lead_id && (
         <WhatsAppLeadProgressBar
           leadId={conversation.lead_id}
-          onClick={handleOpenLeadEdit}
+          onClick={() => setShowLeadPanel(true)}
         />
       )}
 
