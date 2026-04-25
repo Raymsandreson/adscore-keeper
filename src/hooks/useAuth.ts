@@ -45,40 +45,71 @@ const clearLocalAuthState = async () => {
 // Sync user to external DB - sends user data from session
 // Non-blocking: short timeout, falls back to cached profile if slow
 async function syncUserToExternal(user: User): Promise<Profile | null> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
-  try {
-    const CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
-    const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38';
-    const res = await fetch(`${CLOUD_URL}/functions/v1/sync-user-to-external`, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${ANON_KEY}`,
-        'apikey': ANON_KEY,
-      },
-      body: JSON.stringify({
-        user_id: user.id,
-        email: user.email,
-        full_name: user.user_metadata?.full_name || '',
-      }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      console.log('[AUTH] ✅ User synced to external DB:', data.profile?.full_name);
-      return data.profile;
-    } else {
-      console.warn('[AUTH] ⚠️ Sync failed:', res.status);
+  const CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
+  const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38';
+
+  type AttemptResult = { ok: boolean; profile?: Profile | null; status?: number; aborted?: boolean; error?: any };
+  const attempt = async (timeoutMs: number): Promise<AttemptResult> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${CLOUD_URL}/functions/v1/sync-user-to-external`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${ANON_KEY}`,
+          'apikey': ANON_KEY,
+        },
+        body: JSON.stringify({
+          user_id: user.id,
+          email: user.email,
+          full_name: user.user_metadata?.full_name || '',
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return { ok: true, profile: data.profile ?? null };
+      }
+      return { ok: false, status: res.status };
+    } catch (err: any) {
+      return { ok: false, aborted: err?.name === 'AbortError', error: err };
+    } finally {
+      clearTimeout(timeoutId);
     }
-  } catch (err: any) {
-    if (err?.name === 'AbortError') {
+  };
+
+  // Tentativa 1
+  const first = await attempt(8000);
+  if (first.ok) {
+    console.log('[AUTH] ✅ User synced to external DB:', first.profile?.full_name);
+    return first.profile;
+  }
+
+  // Retry único em 503 (cold start da Edge Function) com backoff curto
+  if (first.status === 503) {
+    await new Promise((r) => setTimeout(r, 800));
+    const retry = await attempt(8000);
+    if (retry.ok) {
+      console.log('[AUTH] ✅ User synced to external DB (retry):', retry.profile?.full_name);
+      return retry.profile;
+    }
+    if (retry.aborted) {
       console.warn('[AUTH] ⏱️ Sync timeout (8s) — usando cache');
+    } else if (retry.status) {
+      console.warn('[AUTH] ⚠️ Sync failed (after retry):', retry.status);
     } else {
-      console.warn('[AUTH] ⚠️ Sync error:', err?.message || err);
+      console.warn('[AUTH] ⚠️ Sync error (after retry):', retry.error?.message || retry.error);
     }
-  } finally {
-    clearTimeout(timeoutId);
+    return null;
+  }
+
+  if (first.aborted) {
+    console.warn('[AUTH] ⏱️ Sync timeout (8s) — usando cache');
+  } else if (first.status) {
+    console.warn('[AUTH] ⚠️ Sync failed:', first.status);
+  } else {
+    console.warn('[AUTH] ⚠️ Sync error:', first.error?.message || first.error);
   }
   return null;
 }
