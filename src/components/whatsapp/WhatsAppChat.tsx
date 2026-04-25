@@ -1351,6 +1351,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         </div>
       </div>
 
+      {/* Barra de progresso dos passos do lead - clique para abrir painel lateral */}
+      {conversation.lead_id && (
+        <WhatsAppLeadProgressBar
+          leadId={conversation.lead_id}
+          onClick={() => setShowLeadPanel(true)}
+        />
+      )}
+
       {/* AI Extraction Progress Banner */}
       {extractingData && extractionStep && (
         <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border-b text-sm shrink-0">
