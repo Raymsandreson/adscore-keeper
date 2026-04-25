@@ -1229,12 +1229,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              {!conversation.lead_id && (
+              {!conversation.lead_id && contactLinkedLeadIds.length === 0 && (
                 <DropdownMenuItem onClick={() => { setShowLinkDialog(true); fetchLeads(); }} className="gap-2">
                   <Link2 className="h-4 w-4" /> Vincular Lead
                 </DropdownMenuItem>
               )}
-              {!conversation.lead_id && (
+              {!conversation.lead_id && contactLinkedLeadIds.length === 0 && (
                 <DropdownMenuItem onClick={onCreateLead} className="gap-2">
                   <Plus className="h-4 w-4" /> Criar Lead + Contato
                 </DropdownMenuItem>
