@@ -96,6 +96,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [showLeadPanel, setShowLeadPanel] = useState(false);
   const [leads, setLeads] = useState<Array<{ id: string; lead_name: string | null }>>([]);
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [leadSearchQuery, setLeadSearchQuery] = useState('');
