@@ -45,27 +45,39 @@ function getTarget(functionName: string): FunctionTarget {
   return FUNCTION_ROUTES[functionName] || 'cloud';
 }
 
+function generateRequestId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return (crypto as any).randomUUID();
+    }
+  } catch {/* fallback */}
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 async function callCloud<T>(
   functionName: string,
   body?: Record<string, any>,
-  authToken?: string
+  authToken?: string,
+  requestId?: string
 ): Promise<{ data: T | null; error: Error | null }> {
   const url = `${CLOUD_URL}/functions/v1/${functionName}`;
   const bearerToken = authToken || CLOUD_ANON_KEY;
-  
+  const rid = requestId || generateRequestId();
+
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${bearerToken}`,
       'apikey': CLOUD_ANON_KEY,
+      'x-request-id': rid,
     },
     body: body ? JSON.stringify(body) : undefined,
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Cloud function error ${response.status}: ${errorText}`);
+    throw new Error(`Cloud function error ${response.status} [rid=${rid}]: ${errorText}`);
   }
 
   const contentType = response.headers.get('content-type') || '';
