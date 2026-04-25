@@ -441,37 +441,6 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
     confirmDelete('Remover Lead', 'Tem certeza que deseja remover este lead? Esta ação não pode ser desfeita.', () => deleteLead(id));
   };
 
-  const handleEditLead = async () => {
-    if (!editingLead) return;
-    
-    await updateLead(editingLead.id, {
-      lead_name: editingLead.lead_name,
-      lead_phone: editingLead.lead_phone,
-      lead_email: editingLead.lead_email,
-      campaign_name: editingLead.campaign_name,
-      ad_name: editingLead.ad_name,
-      notes: editingLead.notes,
-      classification_date: editingLead.classification_date,
-      became_client_date: editingLead.became_client_date,
-      city: editingLead.city,
-      state: editingLead.state,
-      neighborhood: editingLead.neighborhood,
-    });
-
-    // Save custom field values
-    if (Object.keys(customFieldValues).length > 0) {
-      try {
-        await saveAllFieldValues(editingLead.id, customFieldValues);
-      } catch (error) {
-        console.error('Error saving custom fields:', error);
-      }
-    }
-    
-    setEditingLead(null);
-    setCustomFieldValues({});
-    toast.success('Lead atualizado com sucesso!');
-    logAudit({ action: 'update', entityType: 'lead', entityId: editingLead.id, entityName: editingLead.lead_name });
-  };
 
   return (
     <div className="space-y-6">
