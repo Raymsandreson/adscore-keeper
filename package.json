@@ -8,7 +8,8 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:lead-form": "node scripts/validate-lead-form-unification.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.3",
