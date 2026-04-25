@@ -103,6 +103,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Pencil, Trash2 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { useLegalCases } from '@/hooks/useLegalCases';
+import { Badge } from '@/components/ui/badge';
 import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDialog';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
 import { useChecklists } from '@/hooks/useChecklists';
