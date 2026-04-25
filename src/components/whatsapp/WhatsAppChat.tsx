@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Pencil } from 'lucide-react';
 import { FastForward } from 'lucide-react';
@@ -95,6 +96,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [showLeadPanel, setShowLeadPanel] = useState(false);
   const [leads, setLeads] = useState<Array<{ id: string; lead_name: string | null }>>([]);
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [leadSearchQuery, setLeadSearchQuery] = useState('');
@@ -1150,7 +1152,16 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               <VolumeX className="h-3 w-3" /> Mudo
             </Badge>
           )}
-          {conversation.lead_id && <Badge variant="outline" className="text-[10px] gap-1 text-blue-600 px-1.5 py-0"><Link2 className="h-3 w-3" /> Lead</Badge>}
+          {conversation.lead_id && (
+            <Badge
+              variant="outline"
+              className="text-[10px] gap-1 text-blue-600 px-1.5 py-0 cursor-pointer hover:bg-blue-50"
+              onClick={() => setShowLeadPanel(true)}
+              title="Ver detalhes do lead"
+            >
+              <Link2 className="h-3 w-3" /> Lead
+            </Badge>
+          )}
           {agentEnabled && activeAgentName && (
             <Badge variant="default" className="text-[9px] gap-1 bg-emerald-600 hover:bg-emerald-700 px-1.5 py-0 cursor-pointer" onClick={handleAgentToggle}>
               <Bot className="h-3 w-3" /> {activeAgentName}
@@ -1477,15 +1488,27 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         </DialogContent>
       </Dialog>
 
-      {/* Lead Preview Card */}
+      {/* Lead Preview - aba lateral */}
       {conversation.lead_id && onCreateActivity && (
-        <WhatsAppLeadPreview
-          leadId={conversation.lead_id}
-          contactId={conversation.contact_id}
-          contactName={conversation.contact_name}
-          onCreateActivity={onCreateActivity}
-          onNavigateToLead={onNavigateToLead}
-        />
+        <Sheet open={showLeadPanel} onOpenChange={setShowLeadPanel}>
+          <SheetContent side="right" className="w-full sm:w-[480px] p-0 overflow-y-auto">
+            <SheetHeader className="px-4 py-3 border-b">
+              <SheetTitle className="text-sm">Detalhes do Lead</SheetTitle>
+            </SheetHeader>
+            <div className="p-3">
+              <WhatsAppLeadPreview
+                leadId={conversation.lead_id}
+                contactId={conversation.contact_id}
+                contactName={conversation.contact_name}
+                onCreateActivity={(...args) => {
+                  setShowLeadPanel(false);
+                  onCreateActivity(...args);
+                }}
+                onNavigateToLead={onNavigateToLead}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
       )}
 
       {/* Messages + Call Records Timeline */}
