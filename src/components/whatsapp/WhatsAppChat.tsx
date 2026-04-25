@@ -1065,7 +1065,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           if (insertErr) throw insertErr;
         }
         toast.success('Grupo WhatsApp vinculado ao lead');
-        setShowLinkLeadDialog(false);
+        setShowLinkDialog(false);
         setSelectedLeadId('');
       } catch (e: any) {
         console.error('Error linking group to lead:', e);
