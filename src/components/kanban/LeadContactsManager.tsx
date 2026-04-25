@@ -503,7 +503,7 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
                   ) : (
                     <Button onClick={handleAddContact} disabled={!formName.trim()} className="w-full">
                       <Plus className="h-4 w-4 mr-2" />
-                      Adicionar Contato
+                      {formPhone && isWhatsAppGroupId(formPhone) ? 'Vincular como Grupo WhatsApp' : 'Adicionar Contato'}
                     </Button>
                   )}
                 </div>
