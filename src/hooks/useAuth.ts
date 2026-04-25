@@ -79,31 +79,36 @@ async function syncUserToExternal(user: User): Promise<Profile | null> {
   };
 
   // Tentativa 1
-  let result = await attempt(8000);
-  if (result.ok) {
-    console.log('[AUTH] ✅ User synced to external DB:', result.profile?.full_name);
-    return result.profile;
+  const first = await attempt(8000);
+  if (first.ok) {
+    console.log('[AUTH] ✅ User synced to external DB:', first.profile?.full_name);
+    return first.profile;
   }
 
   // Retry único em 503 (cold start da Edge Function) com backoff curto
-  if (result.status === 503) {
+  if (first.status === 503) {
     await new Promise((r) => setTimeout(r, 800));
     const retry = await attempt(8000);
     if (retry.ok) {
       console.log('[AUTH] ✅ User synced to external DB (retry):', retry.profile?.full_name);
       return retry.profile;
     }
-    result = retry;
+    if (retry.aborted) {
+      console.warn('[AUTH] ⏱️ Sync timeout (8s) — usando cache');
+    } else if (retry.status) {
+      console.warn('[AUTH] ⚠️ Sync failed (after retry):', retry.status);
+    } else {
+      console.warn('[AUTH] ⚠️ Sync error (after retry):', retry.error?.message || retry.error);
+    }
+    return null;
   }
 
-  if (result.ok) return result.profile;
-
-  if (result.aborted) {
+  if (first.aborted) {
     console.warn('[AUTH] ⏱️ Sync timeout (8s) — usando cache');
-  } else if (result.status) {
-    console.warn('[AUTH] ⚠️ Sync failed:', result.status);
+  } else if (first.status) {
+    console.warn('[AUTH] ⚠️ Sync failed:', first.status);
   } else {
-    console.warn('[AUTH] ⚠️ Sync error:', result.error?.message || result.error);
+    console.warn('[AUTH] ⚠️ Sync error:', first.error?.message || first.error);
   }
   return null;
 }
