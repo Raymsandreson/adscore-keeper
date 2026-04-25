@@ -730,9 +730,34 @@ ${scrapeData.content || ''}
     setSaving(true);
     try {
       // Save WhatsApp groups to new table
-      // First delete all existing groups for this lead, then insert current ones
-      await supabase.from('lead_whatsapp_groups').delete().eq('lead_id', currentLead.id);
-      
+      // First fetch existing groups (for audit), delete all, then insert current ones
+      const { data: existingGroups } = await supabase
+        .from('lead_whatsapp_groups')
+        .select('group_jid, group_name')
+        .eq('lead_id', currentLead.id);
+
+      const { error: deleteErr } = await supabase
+        .from('lead_whatsapp_groups')
+        .delete()
+        .eq('lead_id', currentLead.id);
+
+      // Audit unlinks: groups that existed before but are not in the new list
+      const newJids = new Set(whatsappGroups.map(g => g.group_jid).filter(Boolean));
+      for (const old of existingGroups || []) {
+        if (!old.group_jid || !newJids.has(old.group_jid)) {
+          await logGroupAudit({
+            action: 'unlink',
+            group_jid: old.group_jid,
+            group_name: old.group_name,
+            lead_id: currentLead.id,
+            lead_name: currentLead.lead_name || null,
+            result: deleteErr ? 'error' : 'success',
+            error_message: deleteErr?.message || null,
+            source: 'LeadEditDialog.handleSave',
+          });
+        }
+      }
+
       const resolvedGroups = [...whatsappGroups];
       for (let i = 0; i < resolvedGroups.length; i++) {
         const g = resolvedGroups[i];
@@ -756,7 +781,7 @@ ${scrapeData.content || ''}
       }
       
       if (resolvedGroups.length > 0) {
-        await supabase.from('lead_whatsapp_groups').insert(
+        const { error: insertErr } = await supabase.from('lead_whatsapp_groups').insert(
           resolvedGroups.map(g => ({
             lead_id: currentLead.id,
             group_link: g.group_link || null,
@@ -765,6 +790,21 @@ ${scrapeData.content || ''}
             label: g.label || null,
           }))
         );
+        // Audit links for groups that weren't there before
+        const oldJids = new Set((existingGroups || []).map(g => g.group_jid).filter(Boolean));
+        for (const g of resolvedGroups) {
+          if (!g.group_jid) continue;
+          await logGroupAudit({
+            action: 'link',
+            group_jid: g.group_jid,
+            group_name: g.group_name || null,
+            lead_id: currentLead.id,
+            lead_name: currentLead.lead_name || null,
+            result: insertErr ? 'error' : (oldJids.has(g.group_jid) ? 'duplicate_skipped' : 'success'),
+            error_message: insertErr?.message || null,
+            source: 'LeadEditDialog.handleSave',
+          });
+        }
       }
       setWhatsappGroups(resolvedGroups);
       leadGroupsCache.set(currentLead.id, resolvedGroups);
