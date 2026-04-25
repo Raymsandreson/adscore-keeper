@@ -48,6 +48,7 @@ import { useContactLeads } from '@/hooks/useContactLeads';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
 import { CampaignInsight } from '@/services/metaAPI';
 import LeadsPipeline from './LeadsPipeline';
+import { LeadEditDialog } from './kanban/LeadEditDialog';
 import { format, differenceInDays, getDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useLeadCustomFields, FieldType } from '@/hooks/useLeadCustomFields';
@@ -440,37 +441,6 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
     confirmDelete('Remover Lead', 'Tem certeza que deseja remover este lead? Esta ação não pode ser desfeita.', () => deleteLead(id));
   };
 
-  const handleEditLead = async () => {
-    if (!editingLead) return;
-    
-    await updateLead(editingLead.id, {
-      lead_name: editingLead.lead_name,
-      lead_phone: editingLead.lead_phone,
-      lead_email: editingLead.lead_email,
-      campaign_name: editingLead.campaign_name,
-      ad_name: editingLead.ad_name,
-      notes: editingLead.notes,
-      classification_date: editingLead.classification_date,
-      became_client_date: editingLead.became_client_date,
-      city: editingLead.city,
-      state: editingLead.state,
-      neighborhood: editingLead.neighborhood,
-    });
-
-    // Save custom field values
-    if (Object.keys(customFieldValues).length > 0) {
-      try {
-        await saveAllFieldValues(editingLead.id, customFieldValues);
-      } catch (error) {
-        console.error('Error saving custom fields:', error);
-      }
-    }
-    
-    setEditingLead(null);
-    setCustomFieldValues({});
-    toast.success('Lead atualizado com sucesso!');
-    logAudit({ action: 'update', entityType: 'lead', entityId: editingLead.id, entityName: editingLead.lead_name });
-  };
 
   return (
     <div className="space-y-6">
@@ -1175,151 +1145,21 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
           <CustomFieldsManager adAccountId={adAccountId} />
         </TabsContent>
       </Tabs>
-      <Dialog open={!!editingLead} onOpenChange={(open) => !open && setEditingLead(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar Lead</DialogTitle>
-          </DialogHeader>
-          {editingLead && (
-            <div className="space-y-4">
-              <div>
-                <Label>Nome</Label>
-                <Input
-                  placeholder="Nome do lead"
-                  value={editingLead.lead_name || ''}
-                  onChange={(e) => setEditingLead({ ...editingLead, lead_name: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Telefone (WhatsApp)</Label>
-                <Input
-                  placeholder="(11) 99999-9999"
-                  value={editingLead.lead_phone || ''}
-                  onChange={(e) => setEditingLead({ ...editingLead, lead_phone: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Email</Label>
-                <Input
-                  type="email"
-                  placeholder="email@exemplo.com"
-                  value={editingLead.lead_email || ''}
-                  onChange={(e) => setEditingLead({ ...editingLead, lead_email: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Campanha</Label>
-                <Input
-                  placeholder="Nome da campanha"
-                  value={editingLead.campaign_name || ''}
-                  onChange={(e) => setEditingLead({ ...editingLead, campaign_name: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Anúncio</Label>
-                <Input
-                  placeholder="Nome do anúncio"
-                  value={editingLead.ad_name || ''}
-                  onChange={(e) => setEditingLead({ ...editingLead, ad_name: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Data da Classificação</Label>
-                <Input
-                  type="date"
-                  value={editingLead.classification_date || format(new Date(), 'yyyy-MM-dd')}
-                  onChange={(e) => setEditingLead({ ...editingLead, classification_date: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Data que Virou Cliente</Label>
-                <Input
-                  type="date"
-                  value={editingLead.became_client_date || ''}
-                  onChange={(e) => setEditingLead({ ...editingLead, became_client_date: e.target.value })}
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <Label>Estado</Label>
-                  <Select
-                    value={editingLead.state || ''}
-                    onValueChange={(value) => {
-                      setEditingLead({ ...editingLead, state: value, city: '' });
-                      fetchCities(value);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o estado" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-background border z-50 max-h-60">
-                      {states.map((state) => (
-                        <SelectItem key={state.sigla} value={state.sigla}>
-                          {state.sigla} - {state.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Cidade</Label>
-                  <Select
-                    value={editingLead.city || ''}
-                    onValueChange={(value) => setEditingLead({ ...editingLead, city: value })}
-                    disabled={!editingLead.state || loadingCities}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={loadingCities ? 'Carregando...' : 'Selecione a cidade'} />
-                    </SelectTrigger>
-                    <SelectContent className="bg-background border z-50 max-h-60">
-                      {cities.map((city) => (
-                        <SelectItem key={city.id} value={city.nome}>
-                          {city.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Bairro</Label>
-                  <Input
-                    placeholder="Bairro"
-                    value={editingLead.neighborhood || ''}
-                    onChange={(e) => setEditingLead({ ...editingLead, neighborhood: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div>
-                <Label>Observações</Label>
-                <Textarea
-                  placeholder="Anotações sobre o lead..."
-                  value={editingLead.notes || ''}
-                  onChange={(e) => setEditingLead({ ...editingLead, notes: e.target.value })}
-                />
-              </div>
-
-              {/* Custom Fields */}
-              {customFields.length > 0 && (
-                <CustomFieldsForm
-                  customFields={customFields}
-                  leadId={editingLead.id}
-                  getFieldValues={getFieldValues}
-                  onValuesChange={setCustomFieldValues}
-                />
-              )}
-
-              <DialogFooter>
-                <Button variant="outline" onClick={() => { setEditingLead(null); setCustomFieldValues({}); }}>
-                  Cancelar
-                </Button>
-                <Button onClick={handleEditLead}>
-                  Salvar Alterações
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <LeadEditDialog
+        open={!!editingLead}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingLead(null);
+            setCustomFieldValues({});
+          }
+        }}
+        lead={editingLead}
+        onSave={async (leadId, updates) => {
+          await updateLead(leadId, updates);
+          logAudit({ action: 'update', entityType: 'lead', entityId: leadId, entityName: updates.lead_name || editingLead?.lead_name });
+        }}
+        adAccountId={adAccountId}
+      />
       <ConfirmDeleteDialog />
     </div>
   );
