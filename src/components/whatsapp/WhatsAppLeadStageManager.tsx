@@ -373,7 +373,7 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
                               const showScript = item.script && (isNextUnchecked || expandedScripts.has(item.id));
 
                               return (
-                                <div key={item.id}>
+                                <div key={item.id} data-step-id={item.id}>
                                   <div className="flex items-center gap-1.5 py-0.5 text-xs hover:bg-accent/50 rounded px-1 -mx-1">
                                     <Checkbox
                                       checked={item.checked || false}
