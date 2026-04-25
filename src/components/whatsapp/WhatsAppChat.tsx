@@ -1488,15 +1488,27 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         </DialogContent>
       </Dialog>
 
-      {/* Lead Preview Card */}
+      {/* Lead Preview - aba lateral */}
       {conversation.lead_id && onCreateActivity && (
-        <WhatsAppLeadPreview
-          leadId={conversation.lead_id}
-          contactId={conversation.contact_id}
-          contactName={conversation.contact_name}
-          onCreateActivity={onCreateActivity}
-          onNavigateToLead={onNavigateToLead}
-        />
+        <Sheet open={showLeadPanel} onOpenChange={setShowLeadPanel}>
+          <SheetContent side="right" className="w-full sm:w-[480px] p-0 overflow-y-auto">
+            <SheetHeader className="px-4 py-3 border-b">
+              <SheetTitle className="text-sm">Detalhes do Lead</SheetTitle>
+            </SheetHeader>
+            <div className="p-3">
+              <WhatsAppLeadPreview
+                leadId={conversation.lead_id}
+                contactId={conversation.contact_id}
+                contactName={conversation.contact_name}
+                onCreateActivity={(...args) => {
+                  setShowLeadPanel(false);
+                  onCreateActivity(...args);
+                }}
+                onNavigateToLead={onNavigateToLead}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
       )}
 
       {/* Messages + Call Records Timeline */}
