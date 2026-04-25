@@ -1572,6 +1572,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           }}
           mode="sheet"
           initialTab="basic"
+          boards={kanbanBoards as any}
         />
       )}
 
