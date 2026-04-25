@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { CheckSquare, Loader2, MessageSquareText, Copy, CircleDot, CheckCircle2, Circle, ArrowRight, CheckCheck, Sparkles } from 'lucide-react';
+import { CheckSquare, Loader2, MessageSquareText, Copy, CircleDot, CheckCircle2, Circle, CheckCheck, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, LeadChecklistInstance } from '@/hooks/useChecklists';
