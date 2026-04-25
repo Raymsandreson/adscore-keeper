@@ -449,6 +449,17 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
                     onChange={(e) => setFormPhone(e.target.value)}
                     placeholder="(00) 00000-0000"
                   />
+                  {formPhone && isWhatsAppGroupId(formPhone) && (
+                    <p className="text-xs text-amber-600 mt-1 flex items-start gap-1">
+                      <Users className="h-3 w-3 mt-0.5 shrink-0" />
+                      <span>
+                        Este número é um <strong>ID de grupo WhatsApp</strong>, não um telefone individual.
+                        {editingContact
+                          ? ' Não é possível salvar como contato. Remova este contato e adicione o grupo na aba "Básico" → "Grupos WhatsApp".'
+                          : ' Ao salvar, ele será vinculado automaticamente como Grupo WhatsApp do lead (aba "Básico").'}
+                      </span>
+                    </p>
+                  )}
                 </div>
 
                 <div>
