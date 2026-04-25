@@ -149,6 +149,7 @@ const ExtensionPage = lazyRetry(() => import("./pages/ExtensionPage"), "Extensio
 const ShareTargetPage = lazyRetry(() => import("./pages/ShareTargetPage"), "ShareTargetPage");
 const ArchivedItemsPage = lazyRetry(() => import("./pages/ArchivedItemsPage"), "ArchivedItemsPage");
 const HookDebugPage = lazyRetry(() => import("./pages/HookDebugPage"), "HookDebugPage");
+const GroupAuditLogPage = lazyRetry(() => import("./pages/GroupAuditLogPage"), "GroupAuditLogPage");
 
 const queryClient = new QueryClient();
 
@@ -248,6 +249,7 @@ function SidebarLayout() {
                 <Route path="/process-tracking" element={<ProtectedRoute><ProcessTrackingPage /></ProtectedRoute>} />
                 <Route path="/archived" element={<ProtectedRoute><ArchivedItemsPage /></ProtectedRoute>} />
                 <Route path="/debug/hooks" element={<ProtectedRoute><HookDebugPage /></ProtectedRoute>} />
+                <Route path="/debug/group-audit" element={<ProtectedRoute><GroupAuditLogPage /></ProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>

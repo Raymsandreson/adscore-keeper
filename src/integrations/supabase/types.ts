@@ -5028,6 +5028,51 @@ export type Database = {
           },
         ]
       }
+      lead_group_audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          error_message: string | null
+          group_jid: string | null
+          group_name: string | null
+          id: string
+          lead_id: string | null
+          lead_name: string | null
+          result: string
+          source: string | null
+          user_id: string | null
+          user_name: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          error_message?: string | null
+          group_jid?: string | null
+          group_name?: string | null
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          result: string
+          source?: string | null
+          user_id?: string | null
+          user_name?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          error_message?: string | null
+          group_jid?: string | null
+          group_name?: string | null
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          result?: string
+          source?: string | null
+          user_id?: string | null
+          user_name?: string | null
+        }
+        Relationships: []
+      }
       lead_processes: {
         Row: {
           ano_inicio: number | null
