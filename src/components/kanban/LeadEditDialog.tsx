@@ -1653,6 +1653,11 @@ ${scrapeData.content || ''}
                             <X className="h-3 w-3" />
                           </Button>
                         </div>
+                        {!canOpen && (g.group_jid || g.group_link) && (
+                          <p className="text-xs text-amber-600">
+                            ⚠ JID de grupo não abre direto. Cole o link de convite (chat.whatsapp.com/…) para habilitar o botão Abrir.
+                          </p>
+                        )}
                         {g.group_jid?.includes('@g.us') ? (
                           <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
                             ✅ {g.group_name ? <span className="font-medium">{g.group_name}</span> : null}
