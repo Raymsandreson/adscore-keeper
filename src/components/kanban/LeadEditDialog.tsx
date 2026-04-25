@@ -697,6 +697,26 @@ ${scrapeData.content || ''}
     handleSave();
   };
 
+  const handleDeleteLead = async () => {
+    if (!currentLead) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('leads')
+        .update({ deleted_at: new Date().toISOString() } as any)
+        .eq('id', currentLead.id);
+      if (error) throw error;
+      toast.success('Lead arquivado com sucesso');
+      setShowDeleteConfirm(false);
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error('Error deleting lead:', err);
+      toast.error('Erro ao arquivar lead');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleSave = async (contactsPayload?: CloseLeadContactPayload[]) => {
     if (!currentLead) return;
 
