@@ -19,17 +19,20 @@ Deno.serve(async (req) => {
     const target = EXT + (url.search || '');
 
     // Logs detalhados para diagnóstico de 503
-    const requestId = crypto.randomUUID();
+    // Usa x-request-id do cliente quando presente para correlacionar logs end-to-end
+    const incomingRid = req.headers.get('x-request-id');
+    const requestId = incomingRid || crypto.randomUUID();
     const startTime = Date.now();
-    console.log(`[send-whatsapp ${requestId}] INCOMING → method=${req.method}, querystring=${url.search || '(none)'}, target=${target}`);
+    console.log(`[send-whatsapp ${requestId}] INCOMING → method=${req.method}, querystring=${url.search || '(none)'}, target=${target}, clientRid=${incomingRid || '(none)'}`);
 
     // Lê body apenas em métodos que podem tê-lo
     const body =
       req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.text();
 
-    // Encaminha headers úteis (Authorization + apikey + content-type)
+    // Encaminha headers úteis (Authorization + apikey + content-type + request-id)
     const fwdHeaders: Record<string, string> = {
       'Content-Type': req.headers.get('content-type') || 'application/json',
+      'x-request-id': requestId,
     };
     const auth = req.headers.get('authorization');
     if (auth) fwdHeaders['Authorization'] = auth;
