@@ -104,7 +104,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [showLeadEdit, setShowLeadEdit] = useState(false);
   const [editingLeadData, setEditingLeadData] = useState<any | null>(null);
   const [contactLinkedLeadIds, setContactLinkedLeadIds] = useState<string[]>([]);
-  const [leads, setLeads] = useState<Array<{ id: string; lead_name: string | null }>>([]);
+  const [leads, setLeads] = useState<Array<{ id: string; lead_name: string | null; phone: string | null }>>([]);
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [leadSearchQuery, setLeadSearchQuery] = useState('');
   const [selectedRelationship, setSelectedRelationship] = useState('');
