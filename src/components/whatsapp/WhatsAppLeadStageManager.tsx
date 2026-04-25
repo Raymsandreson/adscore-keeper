@@ -24,16 +24,13 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
   const [changing, setChanging] = useState(false);
   const { addHistoryEntry } = useLeadStageHistory();
 
-  // Collapse states
-  const [phasesCollapsed, setPhasesCollapsed] = useState(false);
-  const [stepsCollapsed, setStepsCollapsed] = useState(false);
-
   // Checklist state
   const { fetchLeadInstances, updateInstanceItem, createLeadInstances } = useChecklists();
   const [instances, setInstances] = useState<LeadChecklistInstance[]>([]);
   const [templateNames, setTemplateNames] = useState<Record<string, { name: string; is_mandatory: boolean }>>({});
   const [loadingChecklist, setLoadingChecklist] = useState(true);
   const [expandedScripts, setExpandedScripts] = useState<Set<string>>(new Set());
+  const [openPhase, setOpenPhase] = useState<string | undefined>(undefined);
 
   // Fetch board data — keep previous board visible while refetching when boardId changes
   useEffect(() => {
