@@ -1022,7 +1022,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const fetchLeads = async (search?: string) => {
     let query = supabase
       .from('leads')
-      .select('id, lead_name, phone')
+      .select('id, lead_name, lead_phone')
       .order('created_at', { ascending: false });
     
     if (search && search.trim().length >= 2) {
