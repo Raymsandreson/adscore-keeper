@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { CheckSquare, Loader2, MessageSquareText, Copy, CircleDot, CheckCircle2, Circle, ArrowRight } from 'lucide-react';
+import { CheckSquare, Loader2, MessageSquareText, Copy, CircleDot, CheckCircle2, Circle, ArrowRight, CheckCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, LeadChecklistInstance } from '@/hooks/useChecklists';
@@ -146,6 +146,16 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
     ));
   };
 
+  const handleCompleteAll = async (instance: LeadChecklistInstance) => {
+    if (instance.is_readonly) return;
+    const updatedItems = instance.items.map(item => ({ ...item, checked: true }));
+    await updateInstanceItem(instance.id, updatedItems);
+    setInstances(prev => prev.map(i =>
+      i.id === instance.id ? { ...i, items: updatedItems, is_completed: true } : i
+    ));
+    toast.success('Todos os passos marcados como concluídos');
+  };
+
 
   if (!board || !boardId) return null;
 
@@ -274,17 +284,30 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
                       return (
                         <div key={instance.id} className="rounded-md border bg-background/40 p-1.5">
                           {/* Objective header */}
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center gap-1.5 min-w-0">
+                          <div className="flex items-center justify-between mb-1 gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
                               <CheckSquare className="h-3 w-3 text-primary shrink-0" />
                               <span className="text-[11px] font-medium truncate">{info?.name || 'Objetivo'}</span>
                               {info?.is_mandatory && (
                                 <Badge variant="destructive" className="text-[8px] h-3 px-1 shrink-0">Obrigatório</Badge>
                               )}
                             </div>
-                            <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                              {completedCount}/{totalCount}
-                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className="text-[10px] text-muted-foreground tabular-nums">
+                                {completedCount}/{totalCount}
+                              </span>
+                              {!instance.is_readonly && completedCount < totalCount && totalCount > 0 && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 text-muted-foreground hover:text-green-600"
+                                  onClick={(e) => { e.stopPropagation(); handleCompleteAll(instance); }}
+                                  title="Marcar todos os passos como concluídos"
+                                >
+                                  <CheckCheck className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
                           </div>
 
                           {/* Steps */}
