@@ -53,6 +53,7 @@ import {
 import { Lead } from '@/hooks/useLeads';
 import { useLeadContacts, LeadContact } from '@/hooks/useLeadContacts';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
+import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 
 interface LeadContactsManagerProps {
   lead: Lead | null;
@@ -236,40 +237,50 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
               ) : (
                 <div className="space-y-3">
                   {contacts.map((contact) => {
+                    const isGroup = isWhatsAppGroupId(contact.phone);
                     return (
-                      <Card key={contact.id}>
+                      <Card key={contact.id} className={isGroup ? 'border-emerald-500/40 bg-emerald-500/5' : ''}>
                         <CardContent className="p-3">
                           <div className="flex items-start gap-3">
                             <Avatar className="h-10 w-10">
-                              <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                                {getInitials(contact.full_name)}
+                              <AvatarFallback className={`text-xs ${isGroup ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-primary/10 text-primary'}`}>
+                                {isGroup ? <Users className="h-5 w-5" /> : getInitials(contact.full_name)}
                               </AvatarFallback>
                             </Avatar>
                             
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <p className="font-medium text-sm truncate">
                                   {contact.full_name}
                                 </p>
-                                <Badge variant="secondary" className={`text-xs ${getClassificationColor(contact.classification)}`}>
-                                  {getClassificationLabel(contact.classification || '')}
-                                </Badge>
+                                {isGroup ? (
+                                  <Badge variant="secondary" className="text-xs bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                                    <Users className="h-3 w-3 mr-1" />
+                                    Grupo WhatsApp
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="secondary" className={`text-xs ${getClassificationColor(contact.classification)}`}>
+                                    {getClassificationLabel(contact.classification || '')}
+                                  </Badge>
+                                )}
                               </div>
                               
                               <div className="mt-1 space-y-0.5">
                                 {contact.phone && (
                                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                    <Phone className="h-3 w-3" />
-                                    <span>{contact.phone}</span>
+                                    {isGroup ? <Users className="h-3 w-3" /> : <Phone className="h-3 w-3" />}
+                                    <span className="truncate">
+                                      {isGroup ? `ID do grupo: ${contact.phone}` : contact.phone}
+                                    </span>
                                   </div>
                                 )}
-                                {contact.email && (
+                                {!isGroup && contact.email && (
                                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                     <Mail className="h-3 w-3" />
                                     <span className="truncate">{contact.email}</span>
                                   </div>
                                 )}
-                                {contact.instagram_username && (
+                                {!isGroup && contact.instagram_username && (
                                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                     <Instagram className="h-3 w-3" />
                                     <span>@{contact.instagram_username.replace('@', '')}</span>
@@ -289,7 +300,18 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
                                   <Edit2 className="h-3 w-3 mr-2" />
                                   Editar
                                 </DropdownMenuItem>
-                                {contact.phone && (
+                                {isGroup && contact.phone && (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      const jid = contact.phone!.includes('@g.us') ? contact.phone! : `${contact.phone!.replace(/\D/g, '')}@g.us`;
+                                      window.open(`https://wa.me/${encodeURIComponent(jid)}`, '_blank');
+                                    }}
+                                  >
+                                    <Users className="h-3 w-3 mr-2" />
+                                    Abrir grupo no WhatsApp
+                                  </DropdownMenuItem>
+                                )}
+                                {!isGroup && contact.phone && (
                                   <DropdownMenuItem
                                     onClick={() => window.open(`https://wa.me/${contact.phone?.replace(/\D/g, '')}`, '_blank')}
                                   >
@@ -297,7 +319,7 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
                                     WhatsApp
                                   </DropdownMenuItem>
                                 )}
-                                {contact.instagram_username && (
+                                {!isGroup && contact.instagram_username && (
                                   <DropdownMenuItem
                                     onClick={() => window.open(`https://instagram.com/${contact.instagram_username?.replace('@', '')}`, '_blank')}
                                   >
