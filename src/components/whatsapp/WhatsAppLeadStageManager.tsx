@@ -146,6 +146,16 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
     ));
   };
 
+  const handleCompleteAll = async (instance: LeadChecklistInstance) => {
+    if (instance.is_readonly) return;
+    const updatedItems = instance.items.map(item => ({ ...item, checked: true }));
+    await updateInstanceItem(instance.id, updatedItems);
+    setInstances(prev => prev.map(i =>
+      i.id === instance.id ? { ...i, items: updatedItems, is_completed: true } : i
+    ));
+    toast.success('Todos os passos marcados como concluídos');
+  };
+
 
   if (!board || !boardId) return null;
 
