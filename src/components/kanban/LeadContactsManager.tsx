@@ -54,6 +54,8 @@ import { Lead } from '@/hooks/useLeads';
 import { useLeadContacts, LeadContact } from '@/hooks/useLeadContacts';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
+import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface LeadContactsManagerProps {
   lead: Lead | null;
@@ -125,8 +127,51 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
     setEditingContact(null);
   };
 
+  const saveAsWhatsAppGroup = async (jidOrLink: string): Promise<boolean> => {
+    if (!lead?.id) return false;
+    const trimmed = jidOrLink.trim();
+    // Build a canonical group_jid when possible
+    let groupJid = trimmed;
+    if (!trimmed.includes('@g.us')) {
+      const digits = trimmed.replace(/\D/g, '');
+      if (digits.length >= 17) groupJid = `${digits}@g.us`;
+    }
+    try {
+      const { data: existing } = await supabase
+        .from('lead_whatsapp_groups')
+        .select('id')
+        .eq('lead_id', lead.id)
+        .eq('group_jid', groupJid)
+        .maybeSingle();
+      if (!existing) {
+        const { error } = await supabase.from('lead_whatsapp_groups').insert({
+          lead_id: lead.id,
+          group_jid: groupJid,
+          group_name: formName.trim() || null,
+        } as any);
+        if (error) throw error;
+      }
+      toast.success('Grupo WhatsApp vinculado ao lead (seção "Grupos WhatsApp" na aba Básico)');
+      return true;
+    } catch (e: any) {
+      console.error('Error linking group:', e);
+      toast.error('Erro ao vincular grupo: ' + (e.message || 'desconhecido'));
+      return false;
+    }
+  };
+
   const handleAddContact = async () => {
     if (!formName.trim()) return;
+
+    // If the phone looks like a WhatsApp GROUP id, save as group instead of contact
+    if (formPhone && isWhatsAppGroupId(formPhone)) {
+      const ok = await saveAsWhatsAppGroup(formPhone);
+      if (ok) {
+        resetForm();
+        setActiveTab('contacts');
+      }
+      return;
+    }
 
     await addContactToLead({
       full_name: formName,
@@ -148,6 +193,11 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
 
   const handleUpdateContact = async () => {
     if (!editingContact || !formName.trim()) return;
+
+    if (formPhone && isWhatsAppGroupId(formPhone)) {
+      toast.error('Este número é um ID de grupo WhatsApp. Remova este contato e adicione o grupo na aba "Básico" → "Grupos WhatsApp".');
+      return;
+    }
 
     await updateContact(editingContact.id, {
       full_name: formName,
@@ -399,6 +449,17 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
                     onChange={(e) => setFormPhone(e.target.value)}
                     placeholder="(00) 00000-0000"
                   />
+                  {formPhone && isWhatsAppGroupId(formPhone) && (
+                    <p className="text-xs text-amber-600 mt-1 flex items-start gap-1">
+                      <Users className="h-3 w-3 mt-0.5 shrink-0" />
+                      <span>
+                        Este número é um <strong>ID de grupo WhatsApp</strong>, não um telefone individual.
+                        {editingContact
+                          ? ' Não é possível salvar como contato. Remova este contato e adicione o grupo na aba "Básico" → "Grupos WhatsApp".'
+                          : ' Ao salvar, ele será vinculado automaticamente como Grupo WhatsApp do lead (aba "Básico").'}
+                      </span>
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -442,7 +503,7 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
                   ) : (
                     <Button onClick={handleAddContact} disabled={!formName.trim()} className="w-full">
                       <Plus className="h-4 w-4 mr-2" />
-                      Adicionar Contato
+                      {formPhone && isWhatsAppGroupId(formPhone) ? 'Vincular como Grupo WhatsApp' : 'Adicionar Contato'}
                     </Button>
                   )}
                 </div>
