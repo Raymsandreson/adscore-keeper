@@ -1553,6 +1553,26 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         </Sheet>
       )}
 
+      {/* Lead Edit Dialog — opens directly when clicking "Ver Lead" */}
+      {editingLeadData && (
+        <LeadEditDialog
+          open={showLeadEdit}
+          onOpenChange={(open) => {
+            setShowLeadEdit(open);
+            if (!open) setEditingLeadData(null);
+          }}
+          lead={editingLeadData}
+          onSave={async (leadId, updates) => {
+            await supabase.from('leads').update(updates as any).eq('id', leadId);
+            setShowLeadEdit(false);
+            setEditingLeadData(null);
+            toast.success('Lead atualizado');
+          }}
+          mode="sheet"
+          initialTab="basic"
+        />
+      )}
+
       {/* Messages + Call Records Timeline */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
         {timelineItems.map((item, idx) => {
