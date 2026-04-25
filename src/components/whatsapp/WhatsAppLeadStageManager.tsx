@@ -55,6 +55,7 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
   // Sync stageId only when the lead changes or external stage changes
   useEffect(() => {
     setStageId(currentStageId);
+    if (currentStageId) setOpenPhase(currentStageId);
   }, [leadId, currentStageId]);
 
   // Fetch checklists — stable callback, only reruns when ids actually change
