@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { CheckSquare, Loader2, MessageSquareText, Copy, CircleDot, CheckCircle2, Circle, ArrowRight, CheckCheck, Sparkles } from 'lucide-react';
+import { CheckSquare, Loader2, MessageSquareText, Copy, CircleDot, CheckCircle2, Circle, CheckCheck, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, LeadChecklistInstance } from '@/hooks/useChecklists';
@@ -306,22 +306,6 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
               </AccordionTrigger>
 
               <AccordionContent className="px-2 pb-2 pt-0">
-                {/* Move-to-phase shortcut if not active */}
-                {!isActive && (
-                  <div className="mb-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-[10px] gap-1"
-                      onClick={() => handleStageChange(stage.id)}
-                      disabled={changing}
-                    >
-                      <ArrowRight className="h-3 w-3" />
-                      Mover lead para esta fase
-                    </Button>
-                  </div>
-                )}
-
                 {loadingChecklist && stage.id === stageId ? (
                   <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground py-1">
                     <Loader2 className="h-3 w-3 animate-spin" /> Carregando passos...
