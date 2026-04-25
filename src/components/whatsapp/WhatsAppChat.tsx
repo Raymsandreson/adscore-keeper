@@ -1047,9 +1047,10 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     // vincular APENAS o GRUPO ao lead (lead_whatsapp_groups).
     // NÃO chamar onLinkToLead pois ele vincularia o JID do grupo como se fosse contato individual.
     if (isGroup && !selectedParticipantPhone) {
+      const groupJid = conversation.phone;
+      const groupName = conversation.contact_name || null;
+      const leadName = leads.find(l => l.id === selectedLeadId)?.lead_name || null;
       try {
-        const groupJid = conversation.phone; // já é o JID do grupo (@g.us ou dígitos longos)
-        const groupName = conversation.contact_name || null;
         const { data: existingGroup } = await supabase
           .from('lead_whatsapp_groups')
           .select('id')
@@ -1063,12 +1064,29 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             group_name: groupName,
           } as any);
           if (insertErr) throw insertErr;
+          await logGroupAudit({
+            action: 'link', group_jid: groupJid, group_name: groupName,
+            lead_id: selectedLeadId, lead_name: leadName, result: 'success',
+            source: 'WhatsAppChat.handleLinkLead',
+          });
+        } else {
+          await logGroupAudit({
+            action: 'link', group_jid: groupJid, group_name: groupName,
+            lead_id: selectedLeadId, lead_name: leadName, result: 'duplicate_skipped',
+            source: 'WhatsAppChat.handleLinkLead',
+          });
         }
         toast.success('Grupo WhatsApp vinculado ao lead');
         setShowLinkDialog(false);
         setSelectedLeadId('');
       } catch (e: any) {
         console.error('Error linking group to lead:', e);
+        await logGroupAudit({
+          action: 'link', group_jid: groupJid, group_name: groupName,
+          lead_id: selectedLeadId, lead_name: leadName, result: 'error',
+          error_message: e?.message || String(e),
+          source: 'WhatsAppChat.handleLinkLead',
+        });
         toast.error(`Erro ao vincular grupo: ${e?.message || 'desconhecido'}`);
       }
       return;
