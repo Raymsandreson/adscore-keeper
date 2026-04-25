@@ -3,7 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { CheckSquare, Loader2, MessageSquareText, Copy, ChevronDown } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { CheckSquare, Loader2, MessageSquareText, Copy, CircleDot, CheckCircle2, Circle, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, LeadChecklistInstance } from '@/hooks/useChecklists';
@@ -23,16 +24,13 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
   const [changing, setChanging] = useState(false);
   const { addHistoryEntry } = useLeadStageHistory();
 
-  // Collapse states
-  const [phasesCollapsed, setPhasesCollapsed] = useState(false);
-  const [stepsCollapsed, setStepsCollapsed] = useState(false);
-
   // Checklist state
   const { fetchLeadInstances, updateInstanceItem, createLeadInstances } = useChecklists();
   const [instances, setInstances] = useState<LeadChecklistInstance[]>([]);
   const [templateNames, setTemplateNames] = useState<Record<string, { name: string; is_mandatory: boolean }>>({});
   const [loadingChecklist, setLoadingChecklist] = useState(true);
   const [expandedScripts, setExpandedScripts] = useState<Set<string>>(new Set());
+  const [openPhase, setOpenPhase] = useState<string | undefined>(undefined);
 
   // Fetch board data — keep previous board visible while refetching when boardId changes
   useEffect(() => {
@@ -57,6 +55,7 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
   // Sync stageId only when the lead changes or external stage changes
   useEffect(() => {
     setStageId(currentStageId);
+    if (currentStageId) setOpenPhase(currentStageId);
   }, [leadId, currentStageId]);
 
   // Fetch checklists — stable callback, only reruns when ids actually change
@@ -150,18 +149,6 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
 
   if (!board || !boardId) return null;
 
-  const currentStage = board.stages.find(s => s.id === stageId);
-  const currentInstances = instances.filter(i => i.stage_id === stageId && !i.is_readonly);
-
-  // Find next unchecked step with script across all current instances
-  const nextStepWithScript = (() => {
-    for (const inst of currentInstances) {
-      const nextItem = inst.items.find(i => !i.checked && i.script);
-      if (nextItem) return nextItem;
-    }
-    return null;
-  })();
-
   const toggleScriptExpanded = (itemId: string) => {
     setExpandedScripts(prev => {
       const next = new Set(prev);
@@ -175,138 +162,190 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
     toast.success('Script copiado!');
   };
 
+  // Aggregate progress per phase (across all non-readonly instances of that stage)
+  const phaseAggregate = (sid: string) => {
+    const inst = instances.filter(i => i.stage_id === sid && !i.is_readonly);
+    let done = 0, total = 0;
+    inst.forEach(i => {
+      total += i.items.length;
+      done += i.items.filter(it => it.checked).length;
+    });
+    return { done, total, instances: inst, allCompleted: total > 0 && done === total };
+  };
+
   return (
-    <div className="px-3 py-2 space-y-1">
-      {/* FASE header - collapsible */}
-      <button
-        onClick={() => setPhasesCollapsed(!phasesCollapsed)}
-        className="flex items-center gap-1.5 w-full text-left hover:bg-accent/50 rounded px-1 py-0.5 transition-colors"
-      >
-        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider shrink-0">Fase:</span>
-        <span className="text-[10px] font-semibold text-primary truncate flex-1">
-          {currentStage?.name || 'Nenhuma'}
+    <div className="px-3 py-2 space-y-2">
+      <div className="flex items-center justify-between px-1">
+        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+          Fases do Funil
         </span>
-        <ChevronDown className={cn("h-3 w-3 text-muted-foreground transition-transform", !phasesCollapsed && "rotate-180")} />
         {changing && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-      </button>
+      </div>
 
-      {/* Phase tabs - expandable */}
-      {!phasesCollapsed && (
-        <div className="flex items-center gap-1 flex-wrap pl-1">
-          {board.stages.map((stage) => {
-            const isActive = stage.id === stageId;
-            return (
-              <button
-                key={stage.id}
-                onClick={() => handleStageChange(stage.id)}
-                disabled={changing || isActive}
-                className={cn(
-                  "text-[10px] px-2 py-0.5 rounded-full border transition-all",
-                  isActive
-                    ? "border-primary bg-primary text-primary-foreground font-medium"
-                    : "border-border hover:border-primary/50 hover:bg-accent text-muted-foreground"
-                )}
-                title={stage.name}
-              >
-                {stage.name}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <Accordion
+        type="single"
+        collapsible
+        value={openPhase}
+        onValueChange={(v) => setOpenPhase(v || undefined)}
+        className="space-y-1"
+      >
+        {board.stages.map((stage) => {
+          const isActive = stage.id === stageId;
+          const { done, total, instances: stageInstances, allCompleted } = phaseAggregate(stage.id);
+          const progress = total > 0 ? (done / total) * 100 : 0;
 
-      {/* Checklist for current stage - collapsible */}
-      {!loadingChecklist && currentInstances.length > 0 && (
-        <div className="space-y-1">
-          {currentInstances.map(instance => {
-            const info = templateNames[instance.checklist_template_id];
-            const completedCount = instance.items.filter(i => i.checked).length;
-            const totalCount = instance.items.length;
-            const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
-
-            return (
-              <div key={instance.id} className="rounded-lg border bg-card/50 p-2">
-                {/* Objective header - clickable to collapse */}
-                <button
-                  onClick={() => setStepsCollapsed(!stepsCollapsed)}
-                  className="flex items-center justify-between w-full text-left"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <CheckSquare className="h-3 w-3 text-primary" />
-                    <span className="text-xs font-medium">{info?.name || 'Passos'}</span>
-                    {info?.is_mandatory && (
-                      <Badge variant="destructive" className="text-[8px] h-3 px-1">Obrigatório</Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] text-muted-foreground">{completedCount}/{totalCount}</span>
-                    <ChevronDown className={cn("h-3 w-3 text-muted-foreground transition-transform", !stepsCollapsed && "rotate-180")} />
-                  </div>
-                </button>
-
-                {/* Progress bar - always visible */}
-                <div className="w-full bg-muted rounded-full h-1 my-1.5">
-                  <div
-                    className={cn("h-1 rounded-full transition-all", instance.is_completed ? "bg-green-500" : "bg-primary")}
-                    style={{ width: `${progress}%` }}
-                  />
+          return (
+            <AccordionItem
+              key={stage.id}
+              value={stage.id}
+              className={cn(
+                "border rounded-lg bg-card/50 overflow-hidden",
+                isActive && "border-primary/60 bg-primary/5"
+              )}
+            >
+              <AccordionTrigger className="px-2 py-1.5 hover:no-underline hover:bg-accent/30 [&>svg]:h-3 [&>svg]:w-3">
+                <div className="flex items-center gap-2 flex-1 min-w-0 pr-2">
+                  {/* Phase status icon */}
+                  {allCompleted ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                  ) : isActive ? (
+                    <CircleDot className="h-3.5 w-3.5 text-primary shrink-0" />
+                  ) : (
+                    <Circle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  )}
+                  <span className={cn(
+                    "text-xs font-medium truncate text-left",
+                    isActive ? "text-primary" : "text-foreground"
+                  )}>
+                    {stage.name}
+                  </span>
+                  {isActive && (
+                    <Badge variant="outline" className="text-[8px] h-3.5 px-1 border-primary/40 text-primary shrink-0">
+                      atual
+                    </Badge>
+                  )}
+                  <div className="flex-1" />
+                  {total > 0 && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="w-12 bg-muted rounded-full h-1">
+                        <div
+                          className={cn("h-1 rounded-full transition-all", allCompleted ? "bg-green-500" : "bg-primary")}
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground tabular-nums">{done}/{total}</span>
+                    </div>
+                  )}
                 </div>
+              </AccordionTrigger>
 
-                {/* Steps - collapsible */}
-                {!stepsCollapsed && (
-                  <div className="space-y-0.5">
-                    {instance.items.map(item => {
-                      const isNextUnchecked = !item.checked && instance.items.findIndex(i => !i.checked) === instance.items.indexOf(item);
-                      const showScript = item.script && (isNextUnchecked || expandedScripts.has(item.id));
+              <AccordionContent className="px-2 pb-2 pt-0">
+                {/* Move-to-phase shortcut if not active */}
+                {!isActive && (
+                  <div className="mb-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[10px] gap-1"
+                      onClick={() => handleStageChange(stage.id)}
+                      disabled={changing}
+                    >
+                      <ArrowRight className="h-3 w-3" />
+                      Mover lead para esta fase
+                    </Button>
+                  </div>
+                )}
+
+                {loadingChecklist && stage.id === stageId ? (
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground py-1">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Carregando passos...
+                  </div>
+                ) : stageInstances.length === 0 ? (
+                  <p className="text-[10px] text-muted-foreground italic px-1">
+                    Nenhum objetivo configurado para esta fase.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {stageInstances.map(instance => {
+                      const info = templateNames[instance.checklist_template_id];
+                      const completedCount = instance.items.filter(i => i.checked).length;
+                      const totalCount = instance.items.length;
 
                       return (
-                        <div key={item.id}>
-                          <div className="flex items-center gap-1.5 py-0.5 text-xs cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1">
-                            <Checkbox
-                              checked={item.checked || false}
-                              onCheckedChange={() => handleToggleItem(instance, item.id)}
-                              className="h-3.5 w-3.5"
-                            />
-                            <span className={cn("flex-1", item.checked ? 'line-through text-muted-foreground' : '')}>
-                              {item.label}
-                            </span>
-                            {item.script && (
-                              <button
-                                onClick={(e) => { e.preventDefault(); toggleScriptExpanded(item.id); }}
-                                className={cn("p-0.5 rounded", expandedScripts.has(item.id) || isNextUnchecked ? "text-primary" : "text-muted-foreground hover:text-primary")}
-                                title="Ver script"
-                              >
-                                <MessageSquareText className="h-3 w-3" />
-                              </button>
-                            )}
-                          </div>
-                          {showScript && item.script && (
-                            <div className="ml-5 mt-1 mb-1.5 p-2 rounded-md bg-primary/5 border border-primary/20">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-[9px] font-semibold text-primary uppercase tracking-wide">Script</span>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-5 w-5"
-                                  onClick={() => copyScript(item.script!)}
-                                  title="Copiar script"
-                                >
-                                  <Copy className="h-2.5 w-2.5" />
-                                </Button>
-                              </div>
-                              <p className="text-[11px] text-foreground whitespace-pre-wrap leading-relaxed">{item.script}</p>
+                        <div key={instance.id} className="rounded-md border bg-background/40 p-1.5">
+                          {/* Objective header */}
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <CheckSquare className="h-3 w-3 text-primary shrink-0" />
+                              <span className="text-[11px] font-medium truncate">{info?.name || 'Objetivo'}</span>
+                              {info?.is_mandatory && (
+                                <Badge variant="destructive" className="text-[8px] h-3 px-1 shrink-0">Obrigatório</Badge>
+                              )}
                             </div>
-                          )}
+                            <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                              {completedCount}/{totalCount}
+                            </span>
+                          </div>
+
+                          {/* Steps */}
+                          <div className="space-y-0.5">
+                            {instance.items.map(item => {
+                              const isNextUnchecked = !item.checked && instance.items.findIndex(i => !i.checked) === instance.items.indexOf(item);
+                              const showScript = item.script && (isNextUnchecked || expandedScripts.has(item.id));
+
+                              return (
+                                <div key={item.id}>
+                                  <div className="flex items-center gap-1.5 py-0.5 text-xs hover:bg-accent/50 rounded px-1 -mx-1">
+                                    <Checkbox
+                                      checked={item.checked || false}
+                                      onCheckedChange={() => handleToggleItem(instance, item.id)}
+                                      disabled={instance.is_readonly}
+                                      className="h-3.5 w-3.5"
+                                    />
+                                    <span className={cn("flex-1 text-[11px]", item.checked ? 'line-through text-muted-foreground' : '')}>
+                                      {item.label}
+                                    </span>
+                                    {item.script && (
+                                      <button
+                                        onClick={(e) => { e.preventDefault(); toggleScriptExpanded(item.id); }}
+                                        className={cn("p-0.5 rounded", expandedScripts.has(item.id) || isNextUnchecked ? "text-primary" : "text-muted-foreground hover:text-primary")}
+                                        title="Ver script"
+                                      >
+                                        <MessageSquareText className="h-3 w-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                  {showScript && item.script && (
+                                    <div className="ml-5 mt-1 mb-1.5 p-2 rounded-md bg-primary/5 border border-primary/20">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="text-[9px] font-semibold text-primary uppercase tracking-wide">Script</span>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-5 w-5"
+                                          onClick={() => copyScript(item.script!)}
+                                          title="Copiar script"
+                                        >
+                                          <Copy className="h-2.5 w-2.5" />
+                                        </Button>
+                                      </div>
+                                      <p className="text-[11px] text-foreground whitespace-pre-wrap leading-relaxed">{item.script}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       );
                     })}
                   </div>
                 )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+              </AccordionContent>
+            </AccordionItem>
+          );
+        })}
+      </Accordion>
     </div>
   );
 }
