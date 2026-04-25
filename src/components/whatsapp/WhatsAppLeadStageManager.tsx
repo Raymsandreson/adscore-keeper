@@ -306,22 +306,6 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
               </AccordionTrigger>
 
               <AccordionContent className="px-2 pb-2 pt-0">
-                {/* Move-to-phase shortcut if not active */}
-                {!isActive && (
-                  <div className="mb-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-[10px] gap-1"
-                      onClick={() => handleStageChange(stage.id)}
-                      disabled={changing}
-                    >
-                      <ArrowRight className="h-3 w-3" />
-                      Mover lead para esta fase
-                    </Button>
-                  </div>
-                )}
-
                 {loadingChecklist && stage.id === stageId ? (
                   <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground py-1">
                     <Loader2 className="h-3 w-3 animate-spin" /> Carregando passos...
