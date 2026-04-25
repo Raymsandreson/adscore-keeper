@@ -86,14 +86,17 @@ async function syncUserToExternal(user: User): Promise<Profile | null> {
   }
 
   // Retry único em 503 (cold start da Edge Function) com backoff curto
-  if (!result.ok && result.status === 503) {
+  if (result.status === 503) {
     await new Promise((r) => setTimeout(r, 800));
-    result = await attempt(8000);
-    if (result.ok) {
-      console.log('[AUTH] ✅ User synced to external DB (retry):', result.profile?.full_name);
-      return result.profile;
+    const retry = await attempt(8000);
+    if (retry.ok) {
+      console.log('[AUTH] ✅ User synced to external DB (retry):', retry.profile?.full_name);
+      return retry.profile;
     }
+    result = retry;
   }
+
+  if (result.ok) return result.profile;
 
   if (result.aborted) {
     console.warn('[AUTH] ⏱️ Sync timeout (8s) — usando cache');
