@@ -48,7 +48,8 @@ async function syncUserToExternal(user: User): Promise<Profile | null> {
   const CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
   const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38';
 
-  const attempt = async (timeoutMs: number): Promise<{ ok: true; profile: Profile | null } | { ok: false; status?: number; aborted?: boolean; error?: any }> => {
+  type AttemptResult = { ok: boolean; profile?: Profile | null; status?: number; aborted?: boolean; error?: any };
+  const attempt = async (timeoutMs: number): Promise<AttemptResult> => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
