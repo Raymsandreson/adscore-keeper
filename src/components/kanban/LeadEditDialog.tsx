@@ -1670,7 +1670,8 @@ ${scrapeData.content || ''}
                           </p>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                     <Button
                       type="button"
                       variant="outline"
