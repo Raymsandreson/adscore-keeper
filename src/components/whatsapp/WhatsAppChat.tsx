@@ -1022,7 +1022,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const fetchLeads = async (search?: string) => {
     let query = supabase
       .from('leads')
-      .select('id, lead_name')
+      .select('id, lead_name, phone')
       .order('created_at', { ascending: false });
     
     if (search && search.trim().length >= 2) {
@@ -1030,21 +1030,26 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     }
     
     const { data } = await query.limit(50);
-    setLeads(data || []);
+    // Dedup defensivo por id (caso algum join futuro repita)
+    const seen = new Set<string>();
+    const unique = (data || []).filter(l => {
+      if (seen.has(l.id)) return false;
+      seen.add(l.id);
+      return true;
+    });
+    setLeads(unique);
   };
 
   const handleLinkLead = async () => {
     if (!selectedLeadId) return;
     
-    onLinkToLead(conversation.phone, selectedLeadId);
-    
     // Caso a conversa seja um GRUPO e nenhum participante específico foi escolhido,
-    // vincular o GRUPO ao lead (lead_whatsapp_groups) — não criar contato fake.
+    // vincular APENAS o GRUPO ao lead (lead_whatsapp_groups).
+    // NÃO chamar onLinkToLead pois ele vincularia o JID do grupo como se fosse contato individual.
     if (isGroup && !selectedParticipantPhone) {
       try {
         const groupJid = conversation.phone; // já é o JID do grupo (@g.us ou dígitos longos)
         const groupName = conversation.contact_name || null;
-        // wa.me não funciona com grupo; deixamos link nulo (usuário pode preencher depois)
         const { data: existingGroup } = await supabase
           .from('lead_whatsapp_groups')
           .select('id')
@@ -1052,18 +1057,25 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           .eq('group_jid', groupJid)
           .maybeSingle();
         if (!existingGroup) {
-          await supabase.from('lead_whatsapp_groups').insert({
+          const { error: insertErr } = await supabase.from('lead_whatsapp_groups').insert({
             lead_id: selectedLeadId,
             group_jid: groupJid,
             group_name: groupName,
           } as any);
+          if (insertErr) throw insertErr;
         }
         toast.success('Grupo WhatsApp vinculado ao lead');
-      } catch (e) {
+        setShowLinkLeadDialog(false);
+        setSelectedLeadId('');
+      } catch (e: any) {
         console.error('Error linking group to lead:', e);
-        toast.error('Erro ao vincular grupo ao lead');
+        toast.error(`Erro ao vincular grupo: ${e?.message || 'desconhecido'}`);
       }
+      return;
     }
+    
+    // Conversa individual ou grupo com participante selecionado: usa fluxo normal
+    onLinkToLead(conversation.phone, selectedLeadId);
     // For groups: create/find contact from selected participant and link to lead
     else if (isGroup && selectedParticipantPhone) {
       try {
