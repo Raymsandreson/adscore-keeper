@@ -1496,7 +1496,10 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                         )}
                         onClick={() => setSelectedLeadId(lead.id)}
                       >
-                        <span className="truncate">{lead.lead_name || 'Lead sem nome'}</span>
+                        <span className="truncate flex-1">{lead.lead_name || 'Lead sem nome'}</span>
+                        {lead.lead_phone && (
+                          <span className="text-xs text-muted-foreground ml-2 shrink-0">{lead.lead_phone}</span>
+                        )}
                       </button>
                     ))
                   }
