@@ -999,7 +999,14 @@ ${scrapeData.content || ''}
     }
   };
 
-  const { cases: linkedCases } = useLegalCases(currentLead?.id);
+  const { cases: linkedCases, fetchCases: fetchLinkedCases } = useLegalCases(currentLead?.id);
+
+  // Garante que o resumo do topo exiba os casos vinculados (hook não auto-fetch)
+  useEffect(() => {
+    if (currentLead?.id) {
+      fetchLinkedCases(currentLead.id);
+    }
+  }, [currentLead?.id, fetchLinkedCases]);
 
   if (!currentLead) return null;
 
