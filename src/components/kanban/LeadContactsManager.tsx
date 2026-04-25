@@ -53,6 +53,7 @@ import {
 import { Lead } from '@/hooks/useLeads';
 import { useLeadContacts, LeadContact } from '@/hooks/useLeadContacts';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
+import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 
 interface LeadContactsManagerProps {
   lead: Lead | null;
