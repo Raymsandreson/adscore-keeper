@@ -152,30 +152,30 @@ async function invokeFunction<T = any>(
   const fallbackAvailable = target === 'railway' ? true : !!RAILWAY_URL;
 
   try {
-    const result = await primary<T>(functionName, body, authToken);
+    const result = await primary<T>(functionName, body, authToken, requestId);
     if (import.meta.env.DEV) {
-      console.log(`[Router] ${functionName} → ${target} ✓`);
+      console.log(`[Router] ${functionName} → ${target} ✓ [rid=${requestId}]`);
     }
     return result;
   } catch (err) {
-    console.warn(`[Router] ${functionName} → ${target} FALHOU:`, err);
-    
+    console.warn(`[Router] ${functionName} → ${target} FALHOU [rid=${requestId}]:`, err);
+
     // Fallback: tenta o outro backend
     if (fallbackAvailable) {
       try {
         const fallbackTarget = target === 'railway' ? 'cloud' : 'railway';
-        console.log(`[Router] ${functionName} → fallback para ${fallbackTarget}...`);
-        const result = await fallback<T>(functionName, body, authToken);
-        console.log(`[Router] ${functionName} → ${fallbackTarget} (fallback) ✓`);
+        console.log(`[Router] ${functionName} → fallback para ${fallbackTarget}... [rid=${requestId}]`);
+        const result = await fallback<T>(functionName, body, authToken, requestId);
+        console.log(`[Router] ${functionName} → ${fallbackTarget} (fallback) ✓ [rid=${requestId}]`);
         return result;
       } catch (fallbackErr) {
-        console.error(`[Router] ${functionName} → fallback também falhou:`, fallbackErr);
+        console.error(`[Router] ${functionName} → fallback também falhou [rid=${requestId}]:`, fallbackErr);
       }
     }
-    
-    return { 
-      data: null, 
-      error: err instanceof Error ? err : new Error(String(err)) 
+
+    return {
+      data: null,
+      error: err instanceof Error ? err : new Error(String(err))
     };
   }
 }
