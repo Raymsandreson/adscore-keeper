@@ -101,8 +101,25 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
   const [templateNames, setTemplateNames] = useState<Record<string, { name: string; is_mandatory: boolean }>>(() => cached?.templateNames || {});
   const [loading, setLoading] = useState(() => !cached);
   const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set());
+  const [fallbackBoard, setFallbackBoard] = useState<KanbanBoard | null>(null);
 
-  const board = boards.find(b => b.id === boardId);
+  const board = boards.find(b => b.id === boardId) || fallbackBoard;
+
+  // Fallback: fetch board directly when not provided via boards prop
+  useEffect(() => {
+    if (!boardId) { setFallbackBoard(null); return; }
+    if (boards.find(b => b.id === boardId)) { setFallbackBoard(null); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('kanban_boards')
+        .select('*')
+        .eq('id', boardId)
+        .maybeSingle();
+      if (!cancelled && data) setFallbackBoard(data as unknown as KanbanBoard);
+    })();
+    return () => { cancelled = true; };
+  }, [boardId, boards]);
 
   useEffect(() => {
     loadData();
