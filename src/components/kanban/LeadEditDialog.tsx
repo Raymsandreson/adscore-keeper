@@ -1456,30 +1456,67 @@ ${scrapeData.content || ''}
                 <div className="col-span-2">
                   <Label>Grupos WhatsApp</Label>
                   <div className="space-y-2 mt-1">
-                    {whatsappGroups.map((g, idx) => (
-                      <div key={idx}>
+                    {whatsappGroups.map((g, idx) => {
+                      // Computa URL final clicável: prioriza group_link se for chat.whatsapp.com,
+                      // senão tenta extrair código de convite. JID puro NÃO abre — exige link de convite.
+                      const rawLink = (g.group_link || '').trim();
+                      const inviteUrl = rawLink.includes('chat.whatsapp.com')
+                        ? (rawLink.startsWith('http') ? rawLink : `https://${rawLink.replace(/^\/+/, '')}`)
+                        : (rawLink && !rawLink.includes('@g.us') && /^[A-Za-z0-9_-]{15,}$/.test(rawLink)
+                            ? `https://chat.whatsapp.com/${rawLink}`
+                            : '');
+                      const canOpen = !!inviteUrl;
+                      return (
+                      <div key={idx} className="space-y-2 p-2 border rounded-md bg-muted/20">
                         <div className="flex items-center gap-2">
                           <Input
-                            value={g.group_name || g.group_link || g.group_jid || ''}
+                            value={g.group_name || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setWhatsappGroups(prev => prev.map((item, i) => i === idx ? { ...item, group_name: val } : item));
+                            }}
+                            placeholder="Nome do grupo"
+                            className="flex-1"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={g.group_link || g.group_jid || ''}
                             onChange={(e) => {
                               const val = e.target.value;
                               setWhatsappGroups(prev => prev.map((item, i) => i === idx ? {
                                 ...item,
                                 group_link: val.includes('@g.us') ? '' : val,
                                 group_jid: val.includes('@g.us') ? val : item.group_jid,
-                                group_name: val.includes('@g.us') || val.includes('chat.whatsapp.com') ? item.group_name : '',
                               } : item));
                             }}
-                            placeholder="https://chat.whatsapp.com/... ou JID"
-                            className="flex-1"
+                            placeholder="https://chat.whatsapp.com/... ou JID (@g.us)"
+                            className="flex-1 font-mono text-xs"
                           />
-                          {(g.group_link || g.group_jid) && (
-                            <a href={g.group_link?.includes('chat.whatsapp.com') ? g.group_link : `https://chat.whatsapp.com/${g.group_link || ''}`} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                          {canOpen ? (
+                            <a href={inviteUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
                               <Button type="button" variant="outline" size="sm" className="gap-1 text-green-600 border-green-200">
                                 <ExternalLink className="h-3 w-3" /> Abrir
                               </Button>
                             </a>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="gap-1 text-muted-foreground shrink-0"
+                              disabled
+                              title="Cole o link de convite (chat.whatsapp.com/…) para poder abrir"
+                            >
+                              <ExternalLink className="h-3 w-3" /> Abrir
+                            </Button>
                           )}
+                        </div>
+                        {!canOpen && (g.group_jid || g.group_link) && (
+                          <p className="text-xs text-amber-600">
+                            ⚠ JID de grupo não abre direto. Cole o link de convite (chat.whatsapp.com/…) para habilitar o botão Abrir.
+                          </p>
+                        )}
                           {g.group_jid?.includes('@g.us') && currentLead && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
