@@ -149,18 +149,6 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
 
   if (!board || !boardId) return null;
 
-  const currentStage = board.stages.find(s => s.id === stageId);
-  const currentInstances = instances.filter(i => i.stage_id === stageId && !i.is_readonly);
-
-  // Find next unchecked step with script across all current instances
-  const nextStepWithScript = (() => {
-    for (const inst of currentInstances) {
-      const nextItem = inst.items.find(i => !i.checked && i.script);
-      if (nextItem) return nextItem;
-    }
-    return null;
-  })();
-
   const toggleScriptExpanded = (itemId: string) => {
     setExpandedScripts(prev => {
       const next = new Set(prev);
