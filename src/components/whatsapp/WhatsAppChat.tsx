@@ -1152,7 +1152,16 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               <VolumeX className="h-3 w-3" /> Mudo
             </Badge>
           )}
-          {conversation.lead_id && <Badge variant="outline" className="text-[10px] gap-1 text-blue-600 px-1.5 py-0"><Link2 className="h-3 w-3" /> Lead</Badge>}
+          {conversation.lead_id && (
+            <Badge
+              variant="outline"
+              className="text-[10px] gap-1 text-blue-600 px-1.5 py-0 cursor-pointer hover:bg-blue-50"
+              onClick={() => setShowLeadPanel(true)}
+              title="Ver detalhes do lead"
+            >
+              <Link2 className="h-3 w-3" /> Lead
+            </Badge>
+          )}
           {agentEnabled && activeAgentName && (
             <Badge variant="default" className="text-[9px] gap-1 bg-emerald-600 hover:bg-emerald-700 px-1.5 py-0 cursor-pointer" onClick={handleAgentToggle}>
               <Bot className="h-3 w-3" /> {activeAgentName}
