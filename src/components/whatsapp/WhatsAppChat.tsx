@@ -160,6 +160,36 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
 
+  // Fetch leads already linked to this contact (to hide redundant "Vincular Lead" actions)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!conversation.contact_id) {
+        setContactLinkedLeadIds([]);
+        return;
+      }
+      const { data } = await supabase
+        .from('contact_leads' as any)
+        .select('lead_id')
+        .eq('contact_id', conversation.contact_id);
+      if (!cancelled) {
+        setContactLinkedLeadIds(((data as any[]) || []).map(r => r.lead_id).filter(Boolean));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [conversation.contact_id]);
+
+  const handleOpenLeadEdit = async () => {
+    if (!conversation.lead_id) return;
+    const { data } = await supabase.from('leads').select('*').eq('id', conversation.lead_id).maybeSingle();
+    if (data) {
+      setEditingLeadData(data);
+      setShowLeadEdit(true);
+    } else {
+      toast.error('Lead não encontrado');
+    }
+  };
+
   // Fetch agent state for this conversation
   useEffect(() => {
     const fetchAgentState = async () => {
