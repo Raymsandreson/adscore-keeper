@@ -23,6 +23,16 @@ import {
   SheetTitle,
   SheetFooter,
 } from '@/components/ui/sheet';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -246,6 +256,8 @@ export function LeadEditDialog({
   const [fieldValues, setFieldValues] = useState<Record<string, CustomFieldValue>>({});
   const [localFieldValues, setLocalFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
   const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [activeTab, setActiveTab] = useState('basic');
   const [viewingContactId, setViewingContactId] = useState<string | null>(null);
   const [viewingContact, setViewingContact] = useState<ContactType | null>(null);
@@ -683,6 +695,26 @@ ${scrapeData.content || ''}
       return;
     }
     handleSave();
+  };
+
+  const handleDeleteLead = async () => {
+    if (!currentLead) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('leads')
+        .update({ deleted_at: new Date().toISOString() } as any)
+        .eq('id', currentLead.id);
+      if (error) throw error;
+      toast.success('Lead arquivado com sucesso');
+      setShowDeleteConfirm(false);
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error('Error deleting lead:', err);
+      toast.error('Erro ao arquivar lead');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleSave = async (contactsPayload?: CloseLeadContactPayload[]) => {
@@ -2339,14 +2371,47 @@ ${scrapeData.content || ''}
           </div>
         </Tabs>
 
-        <Footer className="mt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button onClick={handleSaveClick} disabled={saving}>
-            {saving ? 'Salvando...' : 'Salvar'}
-          </Button>
+        <Footer className="mt-4 flex-row sm:justify-between gap-2">
+          {currentLead ? (
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Excluir Lead
+            </Button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveClick} disabled={saving}>
+              {saving ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </div>
         </Footer>
+
+        <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir lead?</AlertDialogTitle>
+              <AlertDialogDescription>
+                O lead <strong>{currentLead?.lead_name || 'sem nome'}</strong> será arquivado e poderá ser recuperado em "Itens Arquivados". Deseja continuar?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => { e.preventDefault(); handleDeleteLead(); }}
+                disabled={deleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting ? 'Excluindo...' : 'Excluir'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </Content>
     </Wrapper>
 

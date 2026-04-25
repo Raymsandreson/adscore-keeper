@@ -24,6 +24,7 @@ import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDial
 import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
 import { WhatsAppLeadProgressBar } from './WhatsAppLeadProgressBar';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -98,6 +99,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [sending, setSending] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [showLeadPanel, setShowLeadPanel] = useState(false);
+  const [showLeadEdit, setShowLeadEdit] = useState(false);
+  const [editingLeadData, setEditingLeadData] = useState<any | null>(null);
+  const [contactLinkedLeadIds, setContactLinkedLeadIds] = useState<string[]>([]);
   const [leads, setLeads] = useState<Array<{ id: string; lead_name: string | null }>>([]);
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [leadSearchQuery, setLeadSearchQuery] = useState('');
@@ -155,6 +159,36 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const messages = [...conversation.messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
+
+  // Fetch leads already linked to this contact (to hide redundant "Vincular Lead" actions)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!conversation.contact_id) {
+        setContactLinkedLeadIds([]);
+        return;
+      }
+      const { data } = await supabase
+        .from('contact_leads' as any)
+        .select('lead_id')
+        .eq('contact_id', conversation.contact_id);
+      if (!cancelled) {
+        setContactLinkedLeadIds(((data as any[]) || []).map(r => r.lead_id).filter(Boolean));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [conversation.contact_id]);
+
+  const handleOpenLeadEdit = async () => {
+    if (!conversation.lead_id) return;
+    const { data } = await supabase.from('leads').select('*').eq('id', conversation.lead_id).maybeSingle();
+    if (data) {
+      setEditingLeadData(data);
+      setShowLeadEdit(true);
+    } else {
+      toast.error('Lead não encontrado');
+    }
+  };
 
   // Fetch agent state for this conversation
   useEffect(() => {
@@ -1156,8 +1190,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           {conversation.lead_id && (
             <Badge
               className="text-[10px] gap-1 px-2 py-0.5 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white border-0 shadow-sm"
-              onClick={() => setShowLeadPanel(true)}
-              title="Clique para ver os detalhes do lead"
+              onClick={handleOpenLeadEdit}
+              title="Clique para abrir o formulário de edição do lead"
             >
               <Link2 className="h-3 w-3" /> Ver Lead
             </Badge>
@@ -1195,12 +1229,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              {!conversation.lead_id && (
+              {!conversation.lead_id && contactLinkedLeadIds.length === 0 && (
                 <DropdownMenuItem onClick={() => { setShowLinkDialog(true); fetchLeads(); }} className="gap-2">
                   <Link2 className="h-4 w-4" /> Vincular Lead
                 </DropdownMenuItem>
               )}
-              {!conversation.lead_id && (
+              {!conversation.lead_id && contactLinkedLeadIds.length === 0 && (
                 <DropdownMenuItem onClick={onCreateLead} className="gap-2">
                   <Plus className="h-4 w-4" /> Criar Lead + Contato
                 </DropdownMenuItem>
@@ -1355,7 +1389,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       {conversation.lead_id && (
         <WhatsAppLeadProgressBar
           leadId={conversation.lead_id}
-          onClick={() => setShowLeadPanel(true)}
+          onClick={handleOpenLeadEdit}
         />
       )}
 
@@ -1517,6 +1551,26 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             </div>
           </SheetContent>
         </Sheet>
+      )}
+
+      {/* Lead Edit Dialog — opens directly when clicking "Ver Lead" */}
+      {editingLeadData && (
+        <LeadEditDialog
+          open={showLeadEdit}
+          onOpenChange={(open) => {
+            setShowLeadEdit(open);
+            if (!open) setEditingLeadData(null);
+          }}
+          lead={editingLeadData}
+          onSave={async (leadId, updates) => {
+            await supabase.from('leads').update(updates as any).eq('id', leadId);
+            setShowLeadEdit(false);
+            setEditingLeadData(null);
+            toast.success('Lead atualizado');
+          }}
+          mode="sheet"
+          initialTab="basic"
+        />
       )}
 
       {/* Messages + Call Records Timeline */}
