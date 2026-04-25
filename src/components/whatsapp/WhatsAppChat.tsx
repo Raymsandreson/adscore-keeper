@@ -1038,8 +1038,34 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     
     onLinkToLead(conversation.phone, selectedLeadId);
     
+    // Caso a conversa seja um GRUPO e nenhum participante específico foi escolhido,
+    // vincular o GRUPO ao lead (lead_whatsapp_groups) — não criar contato fake.
+    if (isGroup && !selectedParticipantPhone) {
+      try {
+        const groupJid = conversation.phone; // já é o JID do grupo (@g.us ou dígitos longos)
+        const groupName = conversation.contact_name || null;
+        // wa.me não funciona com grupo; deixamos link nulo (usuário pode preencher depois)
+        const { data: existingGroup } = await supabase
+          .from('lead_whatsapp_groups')
+          .select('id')
+          .eq('lead_id', selectedLeadId)
+          .eq('group_jid', groupJid)
+          .maybeSingle();
+        if (!existingGroup) {
+          await supabase.from('lead_whatsapp_groups').insert({
+            lead_id: selectedLeadId,
+            group_jid: groupJid,
+            group_name: groupName,
+          } as any);
+        }
+        toast.success('Grupo WhatsApp vinculado ao lead');
+      } catch (e) {
+        console.error('Error linking group to lead:', e);
+        toast.error('Erro ao vincular grupo ao lead');
+      }
+    }
     // For groups: create/find contact from selected participant and link to lead
-    if (isGroup && selectedParticipantPhone) {
+    else if (isGroup && selectedParticipantPhone) {
       try {
         const participant = groupParticipants.find(p => p.phone === selectedParticipantPhone);
         const participantName = participant?.name || selectedParticipantPhone;
