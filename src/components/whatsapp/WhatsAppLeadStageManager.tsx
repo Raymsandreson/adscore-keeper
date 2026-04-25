@@ -284,17 +284,30 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
                       return (
                         <div key={instance.id} className="rounded-md border bg-background/40 p-1.5">
                           {/* Objective header */}
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center gap-1.5 min-w-0">
+                          <div className="flex items-center justify-between mb-1 gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
                               <CheckSquare className="h-3 w-3 text-primary shrink-0" />
                               <span className="text-[11px] font-medium truncate">{info?.name || 'Objetivo'}</span>
                               {info?.is_mandatory && (
                                 <Badge variant="destructive" className="text-[8px] h-3 px-1 shrink-0">Obrigatório</Badge>
                               )}
                             </div>
-                            <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                              {completedCount}/{totalCount}
-                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className="text-[10px] text-muted-foreground tabular-nums">
+                                {completedCount}/{totalCount}
+                              </span>
+                              {!instance.is_readonly && completedCount < totalCount && totalCount > 0 && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 text-muted-foreground hover:text-green-600"
+                                  onClick={(e) => { e.stopPropagation(); handleCompleteAll(instance); }}
+                                  title="Marcar todos os passos como concluídos"
+                                >
+                                  <CheckCheck className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
                           </div>
 
                           {/* Steps */}
