@@ -64,20 +64,23 @@ Deno.serve(async (req) => {
       headers: {
         ...cors,
         'Content-Type': resp.headers.get('content-type') || 'application/json',
+        'x-request-id': requestId,
       },
     });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error('[send-whatsapp proxy] CRITICAL ERROR:', errorMsg);
-    console.error('[send-whatsapp proxy] stack:', err instanceof Error ? err.stack : 'no stack');
+    const ridForError = (req.headers.get('x-request-id')) || 'unknown';
+    console.error(`[send-whatsapp proxy ${ridForError}] CRITICAL ERROR:`, errorMsg);
+    console.error(`[send-whatsapp proxy ${ridForError}] stack:`, err instanceof Error ? err.stack : 'no stack');
     return new Response(
       JSON.stringify({
         error: 'proxy_failed',
         message: errorMsg,
+        request_id: ridForError,
       }),
       {
         status: 502,
-        headers: { ...cors, 'Content-Type': 'application/json' },
+        headers: { ...cors, 'Content-Type': 'application/json', 'x-request-id': ridForError },
       },
     );
   }
