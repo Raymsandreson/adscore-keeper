@@ -4,7 +4,8 @@ const EXT = 'https://kmedldlepwiityjsdahz.supabase.co/functions/v1/send-whatsapp
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+    'authorization, x-client-info, apikey, content-type, x-request-id, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Expose-Headers': 'x-request-id',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 };
 
@@ -19,17 +20,20 @@ Deno.serve(async (req) => {
     const target = EXT + (url.search || '');
 
     // Logs detalhados para diagnóstico de 503
-    const requestId = crypto.randomUUID();
+    // Usa x-request-id do cliente quando presente para correlacionar logs end-to-end
+    const incomingRid = req.headers.get('x-request-id');
+    const requestId = incomingRid || crypto.randomUUID();
     const startTime = Date.now();
-    console.log(`[send-whatsapp ${requestId}] INCOMING → method=${req.method}, querystring=${url.search || '(none)'}, target=${target}`);
+    console.log(`[send-whatsapp ${requestId}] INCOMING → method=${req.method}, querystring=${url.search || '(none)'}, target=${target}, clientRid=${incomingRid || '(none)'}`);
 
     // Lê body apenas em métodos que podem tê-lo
     const body =
       req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.text();
 
-    // Encaminha headers úteis (Authorization + apikey + content-type)
+    // Encaminha headers úteis (Authorization + apikey + content-type + request-id)
     const fwdHeaders: Record<string, string> = {
       'Content-Type': req.headers.get('content-type') || 'application/json',
+      'x-request-id': requestId,
     };
     const auth = req.headers.get('authorization');
     if (auth) fwdHeaders['Authorization'] = auth;
@@ -60,20 +64,23 @@ Deno.serve(async (req) => {
       headers: {
         ...cors,
         'Content-Type': resp.headers.get('content-type') || 'application/json',
+        'x-request-id': requestId,
       },
     });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error('[send-whatsapp proxy] CRITICAL ERROR:', errorMsg);
-    console.error('[send-whatsapp proxy] stack:', err instanceof Error ? err.stack : 'no stack');
+    const ridForError = (req.headers.get('x-request-id')) || 'unknown';
+    console.error(`[send-whatsapp proxy ${ridForError}] CRITICAL ERROR:`, errorMsg);
+    console.error(`[send-whatsapp proxy ${ridForError}] stack:`, err instanceof Error ? err.stack : 'no stack');
     return new Response(
       JSON.stringify({
         error: 'proxy_failed',
         message: errorMsg,
+        request_id: ridForError,
       }),
       {
         status: 502,
-        headers: { ...cors, 'Content-Type': 'application/json' },
+        headers: { ...cors, 'Content-Type': 'application/json', 'x-request-id': ridForError },
       },
     );
   }

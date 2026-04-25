@@ -45,27 +45,39 @@ function getTarget(functionName: string): FunctionTarget {
   return FUNCTION_ROUTES[functionName] || 'cloud';
 }
 
+function generateRequestId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return (crypto as any).randomUUID();
+    }
+  } catch {/* fallback */}
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 async function callCloud<T>(
   functionName: string,
   body?: Record<string, any>,
-  authToken?: string
+  authToken?: string,
+  requestId?: string
 ): Promise<{ data: T | null; error: Error | null }> {
   const url = `${CLOUD_URL}/functions/v1/${functionName}`;
   const bearerToken = authToken || CLOUD_ANON_KEY;
-  
+  const rid = requestId || generateRequestId();
+
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${bearerToken}`,
       'apikey': CLOUD_ANON_KEY,
+      'x-request-id': rid,
     },
     body: body ? JSON.stringify(body) : undefined,
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Cloud function error ${response.status}: ${errorText}`);
+    throw new Error(`Cloud function error ${response.status} [rid=${rid}]: ${errorText}`);
   }
 
   const contentType = response.headers.get('content-type') || '';
@@ -80,16 +92,19 @@ async function callCloud<T>(
 async function callRailway<T>(
   functionName: string,
   body?: Record<string, any>,
-  authToken?: string
+  authToken?: string,
+  requestId?: string
 ): Promise<{ data: T | null; error: Error | null }> {
   if (!RAILWAY_URL) {
     throw new Error('Railway URL not configured');
   }
 
   const url = `${RAILWAY_URL}/functions/${functionName}`;
-  
+  const rid = requestId || generateRequestId();
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'x-request-id': rid,
   };
   
   if (RAILWAY_API_KEY) {
@@ -107,7 +122,7 @@ async function callRailway<T>(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Railway function error ${response.status}: ${errorText}`);
+    throw new Error(`Railway function error ${response.status} [rid=${rid}]: ${errorText}`);
   }
 
   const contentType = response.headers.get('content-type') || '';
@@ -125,10 +140,11 @@ async function callRailway<T>(
  */
 async function invokeFunction<T = any>(
   functionName: string,
-  options?: { body?: any; authToken?: string }
+  options?: { body?: any; authToken?: string; requestId?: string }
 ): Promise<{ data: T | null; error: Error | null }> {
   const body = options?.body;
   const authToken = options?.authToken;
+  const requestId = options?.requestId || generateRequestId();
 
   const target = getTarget(functionName);
   const primary = target === 'railway' ? callRailway : callCloud;
@@ -136,30 +152,30 @@ async function invokeFunction<T = any>(
   const fallbackAvailable = target === 'railway' ? true : !!RAILWAY_URL;
 
   try {
-    const result = await primary<T>(functionName, body, authToken);
+    const result = await primary<T>(functionName, body, authToken, requestId);
     if (import.meta.env.DEV) {
-      console.log(`[Router] ${functionName} → ${target} ✓`);
+      console.log(`[Router] ${functionName} → ${target} ✓ [rid=${requestId}]`);
     }
     return result;
   } catch (err) {
-    console.warn(`[Router] ${functionName} → ${target} FALHOU:`, err);
-    
+    console.warn(`[Router] ${functionName} → ${target} FALHOU [rid=${requestId}]:`, err);
+
     // Fallback: tenta o outro backend
     if (fallbackAvailable) {
       try {
         const fallbackTarget = target === 'railway' ? 'cloud' : 'railway';
-        console.log(`[Router] ${functionName} → fallback para ${fallbackTarget}...`);
-        const result = await fallback<T>(functionName, body, authToken);
-        console.log(`[Router] ${functionName} → ${fallbackTarget} (fallback) ✓`);
+        console.log(`[Router] ${functionName} → fallback para ${fallbackTarget}... [rid=${requestId}]`);
+        const result = await fallback<T>(functionName, body, authToken, requestId);
+        console.log(`[Router] ${functionName} → ${fallbackTarget} (fallback) ✓ [rid=${requestId}]`);
         return result;
       } catch (fallbackErr) {
-        console.error(`[Router] ${functionName} → fallback também falhou:`, fallbackErr);
+        console.error(`[Router] ${functionName} → fallback também falhou [rid=${requestId}]:`, fallbackErr);
       }
     }
-    
-    return { 
-      data: null, 
-      error: err instanceof Error ? err : new Error(String(err)) 
+
+    return {
+      data: null,
+      error: err instanceof Error ? err : new Error(String(err))
     };
   }
 }
