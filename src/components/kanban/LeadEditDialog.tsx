@@ -2371,14 +2371,47 @@ ${scrapeData.content || ''}
           </div>
         </Tabs>
 
-        <Footer className="mt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button onClick={handleSaveClick} disabled={saving}>
-            {saving ? 'Salvando...' : 'Salvar'}
-          </Button>
+        <Footer className="mt-4 flex-row sm:justify-between gap-2">
+          {currentLead ? (
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Excluir Lead
+            </Button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveClick} disabled={saving}>
+              {saving ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </div>
         </Footer>
+
+        <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir lead?</AlertDialogTitle>
+              <AlertDialogDescription>
+                O lead <strong>{currentLead?.lead_name || 'sem nome'}</strong> será arquivado e poderá ser recuperado em "Itens Arquivados". Deseja continuar?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => { e.preventDefault(); handleDeleteLead(); }}
+                disabled={deleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting ? 'Excluindo...' : 'Excluir'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </Content>
     </Wrapper>
 
