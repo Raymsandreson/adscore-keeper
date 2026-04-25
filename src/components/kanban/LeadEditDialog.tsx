@@ -104,7 +104,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Pencil, Trash2 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useLegalCases } from '@/hooks/useLegalCases';
-import { Badge } from '@/components/ui/badge';
 import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDialog';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
 import { useChecklists } from '@/hooks/useChecklists';
