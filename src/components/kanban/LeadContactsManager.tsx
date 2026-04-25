@@ -137,6 +137,8 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
       const digits = trimmed.replace(/\D/g, '');
       if (digits.length >= 17) groupJid = `${digits}@g.us`;
     }
+    const groupName = formName.trim() || null;
+    const leadName = (lead as any)?.lead_name || null;
     try {
       const { data: existing } = await supabase
         .from('lead_whatsapp_groups')
@@ -148,14 +150,31 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
         const { error } = await supabase.from('lead_whatsapp_groups').insert({
           lead_id: lead.id,
           group_jid: groupJid,
-          group_name: formName.trim() || null,
+          group_name: groupName,
         } as any);
         if (error) throw error;
+        await logGroupAudit({
+          action: 'link', group_jid: groupJid, group_name: groupName,
+          lead_id: lead.id, lead_name: leadName, result: 'success',
+          source: 'LeadContactsManager.saveAsWhatsAppGroup',
+        });
+      } else {
+        await logGroupAudit({
+          action: 'link', group_jid: groupJid, group_name: groupName,
+          lead_id: lead.id, lead_name: leadName, result: 'duplicate_skipped',
+          source: 'LeadContactsManager.saveAsWhatsAppGroup',
+        });
       }
       toast.success('Grupo WhatsApp vinculado ao lead (seção "Grupos WhatsApp" na aba Básico)');
       return true;
     } catch (e: any) {
       console.error('Error linking group:', e);
+      await logGroupAudit({
+        action: 'link', group_jid: groupJid, group_name: groupName,
+        lead_id: lead.id, lead_name: leadName, result: 'error',
+        error_message: e?.message || String(e),
+        source: 'LeadContactsManager.saveAsWhatsAppGroup',
+      });
       toast.error('Erro ao vincular grupo: ' + (e.message || 'desconhecido'));
       return false;
     }
