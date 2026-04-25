@@ -4,7 +4,8 @@ const EXT = 'https://kmedldlepwiityjsdahz.supabase.co/functions/v1/send-whatsapp
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+    'authorization, x-client-info, apikey, content-type, x-request-id, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Expose-Headers': 'x-request-id',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 };
 
