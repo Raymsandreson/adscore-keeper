@@ -54,6 +54,8 @@ import { Lead } from '@/hooks/useLeads';
 import { useLeadContacts, LeadContact } from '@/hooks/useLeadContacts';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
+import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface LeadContactsManagerProps {
   lead: Lead | null;
