@@ -1511,12 +1511,6 @@ ${scrapeData.content || ''}
                               <ExternalLink className="h-3 w-3" /> Abrir
                             </Button>
                           )}
-                        </div>
-                        {!canOpen && (g.group_jid || g.group_link) && (
-                          <p className="text-xs text-amber-600">
-                            ⚠ JID de grupo não abre direto. Cole o link de convite (chat.whatsapp.com/…) para habilitar o botão Abrir.
-                          </p>
-                        )}
                           {g.group_jid?.includes('@g.us') && currentLead && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
