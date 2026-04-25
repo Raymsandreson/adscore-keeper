@@ -999,6 +999,8 @@ ${scrapeData.content || ''}
     }
   };
 
+  const { cases: linkedCases } = useLegalCases(currentLead?.id);
+
   if (!currentLead) return null;
 
   const Wrapper = mode === 'sheet' ? Sheet : Dialog;
