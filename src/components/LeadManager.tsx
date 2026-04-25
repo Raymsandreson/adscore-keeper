@@ -48,6 +48,7 @@ import { useContactLeads } from '@/hooks/useContactLeads';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
 import { CampaignInsight } from '@/services/metaAPI';
 import LeadsPipeline from './LeadsPipeline';
+import { LeadEditDialog } from './kanban/LeadEditDialog';
 import { format, differenceInDays, getDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useLeadCustomFields, FieldType } from '@/hooks/useLeadCustomFields';
