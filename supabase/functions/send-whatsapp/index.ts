@@ -18,6 +18,11 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const target = EXT + (url.search || '');
 
+    // Logs detalhados para diagnóstico de 503
+    const requestId = crypto.randomUUID();
+    const startTime = Date.now();
+    console.log(`[send-whatsapp ${requestId}] INCOMING → method=${req.method}, querystring=${url.search || '(none)'}, target=${target}`);
+
     // Lê body apenas em métodos que podem tê-lo
     const body =
       req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.text();
@@ -31,13 +36,25 @@ Deno.serve(async (req) => {
     const apikey = req.headers.get('apikey');
     if (apikey) fwdHeaders['apikey'] = apikey;
 
+    console.log(`[send-whatsapp ${requestId}] PROXYING → headers=${Object.keys(fwdHeaders).join(',')}`);
+
     const resp = await fetch(target, {
       method: req.method,
       headers: fwdHeaders,
       body,
     });
 
+    const duration = Date.now() - startTime;
     const text = await resp.text();
+
+    // Log do status retornado para diagnóstico rápido
+    console.log(`[send-whatsapp ${requestId}] RESPONSE ← status=${resp.status}, statusText="${resp.statusText}", duration=${duration}ms, bodyLength=${text.length}`);
+
+    // Se for erro 5xx ou 4xx, loga o corpo da resposta para debug
+    if (resp.status >= 400) {
+      console.error(`[send-whatsapp ${requestId}] ERROR BODY ← ${text.substring(0, 500)}${text.length > 500 ? '...(truncated)' : ''}`);
+    }
+
     return new Response(text, {
       status: resp.status,
       headers: {
@@ -46,11 +63,13 @@ Deno.serve(async (req) => {
       },
     });
   } catch (err) {
-    console.error('[send-whatsapp proxy] error:', err);
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('[send-whatsapp proxy] CRITICAL ERROR:', errorMsg);
+    console.error('[send-whatsapp proxy] stack:', err instanceof Error ? err.stack : 'no stack');
     return new Response(
       JSON.stringify({
         error: 'proxy_failed',
-        message: err instanceof Error ? err.message : String(err),
+        message: errorMsg,
       }),
       {
         status: 502,
