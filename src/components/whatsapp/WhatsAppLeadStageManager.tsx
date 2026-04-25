@@ -183,13 +183,69 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
     return { done, total, instances: inst, allCompleted: total > 0 && done === total };
   };
 
+  // Find next unchecked step with script — prioritize current stage, then iterate stages in order
+  const findNextStepWithScript = () => {
+    if (!board) return null;
+    const orderedStageIds = [
+      ...(stageId ? [stageId] : []),
+      ...board.stages.map(s => s.id).filter(id => id !== stageId),
+    ];
+    for (const sid of orderedStageIds) {
+      const stageInstances = instances.filter(i => i.stage_id === sid && !i.is_readonly);
+      for (const inst of stageInstances) {
+        const item = inst.items.find(it => !it.checked && it.script);
+        if (item) return { stageId: sid, itemId: item.id };
+      }
+    }
+    return null;
+  };
+
+  const goToNextStep = () => {
+    const next = findNextStepWithScript();
+    if (!next) {
+      toast.info('Nenhum passo pendente com script');
+      return;
+    }
+    setOpenPhase(next.stageId);
+    setExpandedScripts(prev => {
+      const n = new Set(prev);
+      n.add(next.itemId);
+      return n;
+    });
+    // Wait for accordion to open, then scroll the step into view
+    setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[data-step-id="${next.itemId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('ring-2', 'ring-primary', 'ring-offset-1', 'rounded');
+        setTimeout(() => el.classList.remove('ring-2', 'ring-primary', 'ring-offset-1', 'rounded'), 1800);
+      }
+    }, 250);
+  };
+
+  const nextStep = findNextStepWithScript();
+
   return (
     <div className="px-3 py-2 space-y-2">
-      <div className="flex items-center justify-between px-1">
+      <div className="flex items-center justify-between px-1 gap-2">
         <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
           Fases do Funil
         </span>
-        {changing && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+        <div className="flex items-center gap-1.5">
+          {changing && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+          {nextStep && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 text-[10px] gap-1 px-2 border-primary/40 text-primary hover:bg-primary hover:text-primary-foreground"
+              onClick={goToNextStep}
+              title="Ir ao próximo passo pendente com script"
+            >
+              <Sparkles className="h-3 w-3" />
+              Próximo passo
+            </Button>
+          )}
+        </div>
       </div>
 
       <Accordion
