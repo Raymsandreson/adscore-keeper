@@ -1077,7 +1077,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     // Conversa individual ou grupo com participante selecionado: usa fluxo normal
     onLinkToLead(conversation.phone, selectedLeadId);
     // For groups: create/find contact from selected participant and link to lead
-    else if (isGroup && selectedParticipantPhone) {
+    if (isGroup && selectedParticipantPhone) {
       try {
         const participant = groupParticipants.find(p => p.phone === selectedParticipantPhone);
         const participantName = participant?.name || selectedParticipantPhone;
