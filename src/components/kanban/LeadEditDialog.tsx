@@ -1031,6 +1031,37 @@ ${scrapeData.content || ''}
           </div>
         </Header>
 
+        {/* Resumo fixo: Lead + Casos vinculados */}
+        <div className="flex-shrink-0 rounded-md border bg-muted/40 px-3 py-2 space-y-1.5">
+          <div className="flex items-start gap-2">
+            <User className="h-3.5 w-3.5 mt-0.5 text-muted-foreground flex-shrink-0" />
+            <div className="text-sm font-medium leading-tight break-words">
+              {currentLead.lead_name || 'Lead sem nome'}
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Scale className="h-3.5 w-3.5 mt-0.5 text-muted-foreground flex-shrink-0" />
+            {linkedCases && linkedCases.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {linkedCases.map((c) => (
+                  <Badge
+                    key={c.id}
+                    variant="outline"
+                    className="text-[10px] py-0 px-1.5 cursor-pointer hover:bg-accent"
+                    onClick={() => setActiveTab('casos')}
+                    title={c.title}
+                  >
+                    {c.case_number}
+                    {c.title ? ` · ${c.title}` : ''}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <span className="text-xs text-muted-foreground">Nenhum caso vinculado</span>
+            )}
+          </div>
+        </div>
+
         {/* AI Extraction Button - opens dialog directly */}
         <Button 
           type="button" 
