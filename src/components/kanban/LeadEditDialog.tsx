@@ -256,6 +256,8 @@ export function LeadEditDialog({
   const [fieldValues, setFieldValues] = useState<Record<string, CustomFieldValue>>({});
   const [localFieldValues, setLocalFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
   const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [activeTab, setActiveTab] = useState('basic');
   const [viewingContactId, setViewingContactId] = useState<string | null>(null);
   const [viewingContact, setViewingContact] = useState<ContactType | null>(null);
