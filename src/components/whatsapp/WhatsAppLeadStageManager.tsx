@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { CheckSquare, Loader2, MessageSquareText, Copy, CircleDot, CheckCircle2, Circle, ArrowRight, CheckCheck } from 'lucide-react';
+import { CheckSquare, Loader2, MessageSquareText, Copy, CircleDot, CheckCircle2, Circle, ArrowRight, CheckCheck, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, LeadChecklistInstance } from '@/hooks/useChecklists';
@@ -183,13 +183,69 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
     return { done, total, instances: inst, allCompleted: total > 0 && done === total };
   };
 
+  // Find next unchecked step with script — prioritize current stage, then iterate stages in order
+  const findNextStepWithScript = () => {
+    if (!board) return null;
+    const orderedStageIds = [
+      ...(stageId ? [stageId] : []),
+      ...board.stages.map(s => s.id).filter(id => id !== stageId),
+    ];
+    for (const sid of orderedStageIds) {
+      const stageInstances = instances.filter(i => i.stage_id === sid && !i.is_readonly);
+      for (const inst of stageInstances) {
+        const item = inst.items.find(it => !it.checked && it.script);
+        if (item) return { stageId: sid, itemId: item.id };
+      }
+    }
+    return null;
+  };
+
+  const goToNextStep = () => {
+    const next = findNextStepWithScript();
+    if (!next) {
+      toast.info('Nenhum passo pendente com script');
+      return;
+    }
+    setOpenPhase(next.stageId);
+    setExpandedScripts(prev => {
+      const n = new Set(prev);
+      n.add(next.itemId);
+      return n;
+    });
+    // Wait for accordion to open, then scroll the step into view
+    setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[data-step-id="${next.itemId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('ring-2', 'ring-primary', 'ring-offset-1', 'rounded');
+        setTimeout(() => el.classList.remove('ring-2', 'ring-primary', 'ring-offset-1', 'rounded'), 1800);
+      }
+    }, 250);
+  };
+
+  const nextStep = findNextStepWithScript();
+
   return (
     <div className="px-3 py-2 space-y-2">
-      <div className="flex items-center justify-between px-1">
+      <div className="flex items-center justify-between px-1 gap-2">
         <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
           Fases do Funil
         </span>
-        {changing && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+        <div className="flex items-center gap-1.5">
+          {changing && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+          {nextStep && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 text-[10px] gap-1 px-2 border-primary/40 text-primary hover:bg-primary hover:text-primary-foreground"
+              onClick={goToNextStep}
+              title="Ir ao próximo passo pendente com script"
+            >
+              <Sparkles className="h-3 w-3" />
+              Próximo passo
+            </Button>
+          )}
+        </div>
       </div>
 
       <Accordion
@@ -317,7 +373,7 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
                               const showScript = item.script && (isNextUnchecked || expandedScripts.has(item.id));
 
                               return (
-                                <div key={item.id}>
+                                <div key={item.id} data-step-id={item.id}>
                                   <div className="flex items-center gap-1.5 py-0.5 text-xs hover:bg-accent/50 rounded px-1 -mx-1">
                                     <Checkbox
                                       checked={item.checked || false}
