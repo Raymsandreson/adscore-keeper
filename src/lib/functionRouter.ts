@@ -92,16 +92,19 @@ async function callCloud<T>(
 async function callRailway<T>(
   functionName: string,
   body?: Record<string, any>,
-  authToken?: string
+  authToken?: string,
+  requestId?: string
 ): Promise<{ data: T | null; error: Error | null }> {
   if (!RAILWAY_URL) {
     throw new Error('Railway URL not configured');
   }
 
   const url = `${RAILWAY_URL}/functions/${functionName}`;
-  
+  const rid = requestId || generateRequestId();
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'x-request-id': rid,
   };
   
   if (RAILWAY_API_KEY) {
@@ -119,7 +122,7 @@ async function callRailway<T>(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Railway function error ${response.status}: ${errorText}`);
+    throw new Error(`Railway function error ${response.status} [rid=${rid}]: ${errorText}`);
   }
 
   const contentType = response.headers.get('content-type') || '';
@@ -137,10 +140,11 @@ async function callRailway<T>(
  */
 async function invokeFunction<T = any>(
   functionName: string,
-  options?: { body?: any; authToken?: string }
+  options?: { body?: any; authToken?: string; requestId?: string }
 ): Promise<{ data: T | null; error: Error | null }> {
   const body = options?.body;
   const authToken = options?.authToken;
+  const requestId = options?.requestId || generateRequestId();
 
   const target = getTarget(functionName);
   const primary = target === 'railway' ? callRailway : callCloud;
