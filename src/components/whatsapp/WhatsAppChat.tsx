@@ -1190,8 +1190,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           {conversation.lead_id && (
             <Badge
               className="text-[10px] gap-1 px-2 py-0.5 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white border-0 shadow-sm"
-              onClick={() => setShowLeadPanel(true)}
-              title="Clique para ver os detalhes do lead"
+              onClick={handleOpenLeadEdit}
+              title="Clique para abrir o formulário de edição do lead"
             >
               <Link2 className="h-3 w-3" /> Ver Lead
             </Badge>
