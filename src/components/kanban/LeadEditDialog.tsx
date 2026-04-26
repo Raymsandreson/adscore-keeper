@@ -707,11 +707,18 @@ ${scrapeData.content || ''}
         description: 'A instância conectada precisa ser administradora deste grupo para gerar o link. Promova-a a admin no WhatsApp ou cole o link manualmente.',
       };
     }
-    // Grupo não encontrado / participante removido
-    if (msg.includes('not found') || msg.includes('not a participant') || msg.includes('not in group') || msg.includes('group not exist') || msg.includes("doesn't exist") || msg.includes('does not exist')) {
+    // Instância (número conectado) não participa do grupo — diferente do usuário humano!
+    if (msg.includes("you're not participating") || msg.includes('not participating') || msg.includes('not a participant') || msg.includes('not in group')) {
+      return {
+        title: 'Instância não está no grupo',
+        description: 'O número de WhatsApp conectado ao sistema não é membro deste grupo (ainda que você seja). Adicione a instância conectada ao grupo e promova-a a administradora para gerar o link.',
+      };
+    }
+    // Grupo não encontrado
+    if (msg.includes('not found') || msg.includes('group not exist') || msg.includes("doesn't exist") || msg.includes('does not exist')) {
       return {
         title: 'Grupo não encontrado',
-        description: 'A instância não participa mais deste grupo ou o JID está incorreto. Verifique o ID/JID ou peça para readicionar a instância ao grupo.',
+        description: 'O JID está incorreto ou o grupo foi excluído. Confira o identificador do grupo.',
       };
     }
     // JID inválido
