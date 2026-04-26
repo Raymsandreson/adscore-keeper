@@ -98,6 +98,19 @@ Deno.serve(async (req) => {
     const startOffset = Math.max(0, Number(url.searchParams.get("start") || "0"));
     const processLimit = Math.max(1, Math.min(50, Number(url.searchParams.get("limit") || "20")));
     const scanOnly = url.searchParams.get("scan_only") === "true";
+    const inspectToken = url.searchParams.get("inspect_token");
+
+    // Modo inspect: devolve o detalhe bruto de UM doc pra debug
+    if (inspectToken) {
+      const detResp = await fetch(`${ZAPSIGN_BASE}/docs/${inspectToken}/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const raw = await detResp.json();
+      return new Response(
+        JSON.stringify({ success: true, phase: "inspect", http_status: detResp.status, raw }, null, 2),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
