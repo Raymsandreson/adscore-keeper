@@ -102,9 +102,16 @@ export function useTeamMembers() {
       throw new Error('Only admins can invite members');
     }
 
+    const normalizedEmail = (email || '').toLowerCase().trim();
+
+    // Validação de formato
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail) || normalizedEmail.length > 255) {
+      throw new Error('E-mail inválido.');
+    }
+
     const { data: user } = await supabase.auth.getUser();
-    const normalizedEmail = email.toLowerCase().trim();
-    
+
     // Bloqueia se já existe usuário cadastrado com esse e-mail
     const { data: existingProfile } = await supabase
       .from('profiles')
@@ -113,6 +120,18 @@ export function useTeamMembers() {
       .maybeSingle();
     if (existingProfile) {
       throw new Error('Já existe um usuário cadastrado com este e-mail.');
+    }
+
+    // Bloqueia se já existe convite pendente (não aceito e não expirado)
+    const { data: existingInvite } = await supabase
+      .from('team_invitations')
+      .select('id')
+      .ilike('email', normalizedEmail)
+      .is('accepted_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle();
+    if (existingInvite) {
+      throw new Error('Já existe um convite pendente para este e-mail.');
     }
 
     // Insert invitation into database with pre-configured permissions
