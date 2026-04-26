@@ -104,7 +104,7 @@ export function WhatsAppInstanceManager() {
 
   const fetchInstances = useCallback(async () => {
     const [instancesRes, shortcutsRes] = await Promise.all([
-      supabase.from('whatsapp_instances').select('*').order('instance_name'),
+      ext.from('whatsapp_instances').select('*').order('instance_name'),
       supabase.from('wjia_command_shortcuts').select('id, shortcut_name').eq('is_active', true).order('display_order'),
     ]);
     if (!instancesRes.error && instancesRes.data) setInstances(instancesRes.data as Instance[]);
@@ -398,7 +398,7 @@ export function WhatsAppInstanceManager() {
                             onChange={async (e) => {
                               const val = parseInt(e.target.value);
                               setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, notify_start_hour: val } as any : i));
-                              await supabase.from('whatsapp_instances').update({ notify_start_hour: val } as any).eq('id', inst.id);
+                              await ext.from('whatsapp_instances').update({ notify_start_hour: val } as any).eq('id', inst.id);
                             }}
                           >
                             {Array.from({ length: 24 }, (_, h) => (
@@ -412,7 +412,7 @@ export function WhatsAppInstanceManager() {
                             onChange={async (e) => {
                               const val = parseInt(e.target.value);
                               setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, notify_end_hour: val } as any : i));
-                              await supabase.from('whatsapp_instances').update({ notify_end_hour: val } as any).eq('id', inst.id);
+                              await ext.from('whatsapp_instances').update({ notify_end_hour: val } as any).eq('id', inst.id);
                             }}
                           >
                             {Array.from({ length: 24 }, (_, h) => (
@@ -429,7 +429,7 @@ export function WhatsAppInstanceManager() {
                             onChange={async (e) => {
                               const val = e.target.checked;
                               setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, notify_weekdays_only: val } as any : i));
-                              await supabase.from('whatsapp_instances').update({ notify_weekdays_only: val } as any).eq('id', inst.id);
+                              await ext.from('whatsapp_instances').update({ notify_weekdays_only: val } as any).eq('id', inst.id);
                             }}
                           />
                           <label htmlFor={`weekdays-${inst.id}`} className="text-xs text-muted-foreground">
@@ -570,7 +570,7 @@ export function WhatsAppInstanceManager() {
               // Just remove default, keep conversations active
               const { instanceId, oldAgentId } = pendingAgentRemoval;
               setInstances(prev => prev.map(i => i.id === instanceId ? { ...i, default_agent_id: null } : i));
-              await supabase.from('whatsapp_instances').update({ default_agent_id: null } as any).eq('id', instanceId);
+              await ext.from('whatsapp_instances').update({ default_agent_id: null } as any).eq('id', instanceId);
               toast.success('Agente padrão removido (conversas mantidas ativas)');
               setPendingAgentRemoval(null);
             }}>
@@ -583,7 +583,7 @@ export function WhatsAppInstanceManager() {
               try {
                 // Remove default agent
                 setInstances(prev => prev.map(i => i.id === instanceId ? { ...i, default_agent_id: null } : i));
-                await supabase.from('whatsapp_instances').update({ default_agent_id: null } as any).eq('id', instanceId);
+                await ext.from('whatsapp_instances').update({ default_agent_id: null } as any).eq('id', instanceId);
                 
                 // Stop agent in all conversations of this instance
                 const { data: convs, error: fetchErr } = await supabase
