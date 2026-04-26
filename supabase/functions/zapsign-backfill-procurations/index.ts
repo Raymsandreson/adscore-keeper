@@ -105,9 +105,10 @@ Deno.serve(async (req) => {
     const candidates: ZapDocSummary[] = [];
     let page = 1;
     let hasNext = true;
-    let stopped = false;
-    while (hasNext && page <= maxPages && !stopped) {
-      const resp = await fetch(`${ZAPSIGN_BASE}/docs/?page=${page}`, {
+    let totalScanned = 0;
+    let skippedOldDate = 0;
+    while (hasNext && page <= maxPages) {
+      const resp = await fetch(`${ZAPSIGN_BASE}/docs/?page=${page}&sort_order=desc`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!resp.ok) {
@@ -117,6 +118,7 @@ Deno.serve(async (req) => {
       const data = await resp.json();
       const results: ZapDocSummary[] = Array.isArray(data.results) ? data.results : [];
       for (const d of results) {
+        totalScanned++;
         const name = d.name || "";
         const lower = name.toLowerCase();
         if (d.status !== "signed") continue;
@@ -125,9 +127,8 @@ Deno.serve(async (req) => {
         const created = new Date(d.created_at);
         if (isNaN(created.getTime())) continue;
         if (created < CUTOFF_DATE) {
-          // ZapSign retorna mais recentes primeiro; podemos parar
-          stopped = true;
-          break;
+          skippedOldDate++;
+          continue;
         }
         candidates.push(d);
       }
