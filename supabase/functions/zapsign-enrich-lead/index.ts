@@ -325,7 +325,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ ok: true, extracted, applied: update, drive: driveResult }),
+      JSON.stringify({ ok: true, extracted, applied: update, drive: driveResult, group: groupResult, contact: contactResult }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
