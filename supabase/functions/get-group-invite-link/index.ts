@@ -87,15 +87,17 @@ async function fetchGroupInvite(
   groupJid: string,
 ): Promise<{ code: string | null; link: string | null; error?: string }> {
   try {
+    // Validação final do payload antes de chamar a UazAPI — garante groupjid e getInviteLink=true.
+    const uazBody = UazApiBodySchema.parse({
+      groupjid: groupJid,
+      getInviteLink: true,
+      getRequestsParticipants: false,
+      force: false,
+    })
     const res = await fetch(`${baseUrl}/group/info`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', token },
-      body: JSON.stringify({
-        groupjid: groupJid,
-        getInviteLink: true,
-        getRequestsParticipants: false,
-        force: false,
-      }),
+      body: JSON.stringify(uazBody),
     })
     const text = await res.text()
     let data: any = null
