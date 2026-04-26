@@ -266,9 +266,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4b. Auto-criar contato a partir do telefone (se ainda não houver)
+    // 4b. Auto-criar contato a partir do telefone (se ainda não houver vínculo em contact_leads)
     let contactResult: any = null;
-    if (leadPhone && !lead?.contact_id) {
+    if (leadPhone) {
       const cleanedPhone = leadPhone.replace(/\D/g, "");
       const { data: existing } = await ext
         .from("contacts")
@@ -289,7 +289,19 @@ Deno.serve(async (req) => {
         else contactId = newContact?.id || null;
       }
       if (contactId) {
-        await ext.from("leads").update({ contact_id: contactId }).eq("id", lead_id);
+        // Vincula via contact_leads (idempotente)
+        const { data: existingLink } = await ext
+          .from("contact_leads")
+          .select("id")
+          .eq("contact_id", contactId)
+          .eq("lead_id", lead_id)
+          .maybeSingle();
+        if (!existingLink) {
+          const { error: linkErr } = await ext
+            .from("contact_leads")
+            .insert({ contact_id: contactId, lead_id, relationship_to_victim: "titular" });
+          if (linkErr) console.error("[zapsign-enrich-lead] contact_leads insert error:", linkErr);
+        }
         contactResult = { id: contactId, created: !existing };
         console.log(`[zapsign-enrich-lead] lead ${lead_id} linked to contact ${contactId}`);
       }
