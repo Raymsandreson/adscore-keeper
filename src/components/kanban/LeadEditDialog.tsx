@@ -1718,8 +1718,13 @@ ${scrapeData.content || ''}
                                 </DropdownMenuItem>
 
                                 <DropdownMenuItem onClick={async () => {
-                                  try {
-                                    toast.info('Adicionando instâncias do funil ao grupo...');
+                                   try {
+                                     const ls = (currentLead as any)?.lead_status;
+                                     if ((currentLead as any)?.is_blocked || ls === 'refused' || ls === 'inviavel') {
+                                       toast.error('Lead encerrado/bloqueado — não é possível modificar o grupo.');
+                                       return;
+                                     }
+                                     toast.info('Adicionando instâncias do funil ao grupo...');
                                     const { data: { user } } = await supabase.auth.getUser();
                                     let instId: string | null = null;
                                     if (user) {
