@@ -88,16 +88,69 @@ Deno.serve(async (req) => {
     if (!instanceName) {
       const phone = (leadRow?.lead_phone || doc.whatsapp_phone || "").replace(/\D/g, "");
       if (phone) {
-        const { data: msg } = await ext
+        // Brazilian mobile numbers: try both with and without the 9th digit
+        // e.g. 5575988157201 (with 9) <-> 557588157201 (without 9)
+        const variants = new Set<string>([phone]);
+        // Strip leading 55 if present, then DDD = 2 digits, then number
+        const m = phone.match(/^(55)?(\d{2})(\d+)$/);
+        if (m) {
+          const [, cc, ddd, rest] = m;
+          const ccPart = cc || "55";
+          if (rest.length === 9 && rest.startsWith("9")) {
+            // with 9 -> generate without 9
+            variants.add(`${ccPart}${ddd}${rest.slice(1)}`);
+            variants.add(`${ddd}${rest.slice(1)}`);
+          } else if (rest.length === 8) {
+            // without 9 -> generate with 9
+            variants.add(`${ccPart}${ddd}9${rest}`);
+            variants.add(`${ddd}9${rest}`);
+          }
+          // Also include DDD+rest without country code
+          variants.add(`${ddd}${rest}`);
+        }
+        // Also a "last 8 digits" suffix match as final safety net
+        const last8 = phone.slice(-8);
+
+        const phoneList = Array.from(variants);
+        // Try exact-match across variants first (priority: any instance with messages)
+        const { data: msgs } = await ext
           .from("whatsapp_messages")
-          .select("instance_name")
-          .eq("phone", phone)
+          .select("instance_name, phone, created_at")
+          .in("phone", phoneList)
           .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (msg?.instance_name) {
-          instanceName = msg.instance_name;
-          resolvedVia = "whatsapp_messages";
+          .limit(50);
+
+        let pickedInstance: string | null = null;
+        if (msgs && msgs.length > 0) {
+          // Prefer the instance with the most messages for this lead (most active conversation)
+          const counts = new Map<string, number>();
+          for (const r of msgs) {
+            counts.set(r.instance_name, (counts.get(r.instance_name) || 0) + 1);
+          }
+          pickedInstance = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+        }
+
+        // Fallback: suffix match on last 8 digits (handles other normalization quirks)
+        if (!pickedInstance && last8.length === 8) {
+          const { data: msgs2 } = await ext
+            .from("whatsapp_messages")
+            .select("instance_name, phone")
+            .like("phone", `%${last8}`)
+            .order("created_at", { ascending: false })
+            .limit(50);
+          if (msgs2 && msgs2.length > 0) {
+            const counts = new Map<string, number>();
+            for (const r of msgs2) {
+              counts.set(r.instance_name, (counts.get(r.instance_name) || 0) + 1);
+            }
+            pickedInstance = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+          }
+        }
+
+        if (pickedInstance) {
+          instanceName = pickedInstance;
+          resolvedVia = "whatsapp_messages.phone_variants";
+          console.log("[lead-reprocess-procuracao] resolved via phone variants:", { phone, variants: phoneList, picked: pickedInstance });
         }
       }
     }
