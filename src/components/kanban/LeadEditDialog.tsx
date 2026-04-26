@@ -118,6 +118,7 @@ import { Pencil, Trash2 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { logGroupAudit } from '@/lib/groupAuditLog';
 import { useLegalCases } from '@/hooks/useLegalCases';
+import LeadDocumentsTab from '@/components/leads/LeadDocumentsTab';
 import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDialog';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
 import { useChecklists } from '@/hooks/useChecklists';
@@ -1356,6 +1357,10 @@ ${scrapeData.content || ''}
               <TabsTrigger value="legal" className="text-xs py-1.5 px-2.5">
                 <Briefcase className="h-3 w-3 mr-1" />
                 Jurídico
+              </TabsTrigger>
+              <TabsTrigger value="documents" className="text-xs py-1.5 px-2.5">
+                <FileText className="h-3 w-3 mr-1" />
+                Documentos
               </TabsTrigger>
               <TabsTrigger value="history" className="text-xs py-1.5 px-2.5">
                 <History className="h-3 w-3 mr-1" />
@@ -2599,6 +2604,12 @@ ${scrapeData.content || ''}
                 <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
                   <LeadFinancialsTab leadId={lead.id} />
                 </Suspense>
+              )}
+            </TabsContent>
+
+            <TabsContent value="documents" className="mt-0">
+              {activeTab === 'documents' && lead && (
+                <LeadDocumentsTab leadId={lead.id} leadName={(currentLead as any)?.lead_name || lead.lead_name || 'Lead'} />
               )}
             </TabsContent>
 
