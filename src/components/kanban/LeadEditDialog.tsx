@@ -730,13 +730,16 @@ ${scrapeData.content || ''}
   useEffect(() => {
     if (!open || !currentLead?.id) return;
     for (const g of whatsappGroups) {
-      const jid = (g.group_jid || '').trim();
-      if (!jid || !jid.includes('@g.us')) continue;
+      const raw = (g.group_jid || '').trim();
+      if (!raw) continue;
+      const isFullJid = raw.includes('@g.us');
+      const isNumeric = /^\d{15,}$/.test(raw);
+      if (!isFullJid && !isNumeric) continue;
       const link = (g.group_link || '').trim();
       if (link.includes('chat.whatsapp.com')) continue;
-      if (autoFetchedJidsRef.current.has(jid)) continue;
-      autoFetchedJidsRef.current.add(jid);
-      fetchInviteLink(jid, { silent: true });
+      if (autoFetchedJidsRef.current.has(raw)) continue;
+      autoFetchedJidsRef.current.add(raw);
+      fetchInviteLink(raw, { silent: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, currentLead?.id, whatsappGroups]);
