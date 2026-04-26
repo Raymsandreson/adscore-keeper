@@ -81,44 +81,71 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const fetchParticipants = async () => {
     setLoading(true);
     try {
-      // Get instance
-      let instId: string | null = null;
+      // 1) Inst do contexto (preferencial) — sempre tentada primeiro
+      const tried = new Set<string>();
+      const candidates: { id: string; instance_name: string }[] = [];
+
       if (instanceName) {
         const { data: inst } = await supabase
           .from('whatsapp_instances')
-          .select('id')
+          .select('id, instance_name')
           .eq('instance_name', instanceName)
           .eq('is_active', true)
           .maybeSingle();
-        instId = inst?.id || null;
+        if (inst?.id) {
+          candidates.push(inst as any);
+          tried.add(inst.id);
+        }
       }
 
-      // Fetch from API
-      const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
-        body: { action: 'fetch_group_participants', group_id: conversationPhone, instance_id: instId },
-      });
+      // 2) Demais instâncias ativas como fallback (mesma lógica do invite-link).
+      // Motivo: se a inst do contexto não é membro do grupo, a UazAPI devolve
+      // lista vazia e perdemos os membros reais.
+      const { data: others } = await supabase
+        .from('whatsapp_instances')
+        .select('id, instance_name')
+        .eq('is_active', true)
+        .limit(20);
+      for (const o of others || []) {
+        if (!tried.has(o.id)) {
+          candidates.push(o as any);
+          tried.add(o.id);
+        }
+      }
 
-      let apiParticipants: GroupParticipant[] = [];
-      if (!error && data?.success && data.participants) {
-        apiParticipants = data.participants.map((p: any) => {
+      let bestApi: GroupParticipant[] = [];
+      let usedInstance: string | null = null;
+      for (const inst of candidates) {
+        const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
+          body: { action: 'fetch_group_participants', group_id: conversationPhone, instance_id: inst.id },
+        });
+        if (error || !data?.success || !Array.isArray(data?.participants)) continue;
+
+        const mapped: GroupParticipant[] = data.participants.map((p: any) => {
           const rawId = p.id || p.phone || '';
-          // Handle @s.whatsapp.net format
           let phone = rawId.replace('@s.whatsapp.net', '').replace(/\D/g, '');
           const isLid = rawId.includes('@lid');
-          // For @lid entries, extract the numeric part
-          if (isLid) {
-            phone = rawId.replace('@lid', '').replace(/\D/g, '');
-          }
+          if (isLid) phone = rawId.replace('@lid', '').replace(/\D/g, '');
           const name = p.name || p.notify || p.pushName || phone || 'Desconhecido';
           return { phone, name, admin: p.admin || undefined, lid: isLid ? rawId : undefined };
         }).filter((p: GroupParticipant) => p.phone && p.phone.length >= 4);
+
+        // Mantém a maior lista — instância que enxerga mais membros é a "membro do grupo".
+        if (mapped.length > bestApi.length) {
+          bestApi = mapped;
+          usedInstance = inst.instance_name;
+        }
+        // Se já temos uma lista razoavelmente grande, podemos parar para economizar chamadas.
+        if (bestApi.length >= 5) break;
       }
 
-      // Merge with message-extracted participants
-      const merged = new Map<string, GroupParticipant>();
-      for (const p of apiParticipants) {
-        merged.set(p.phone, p);
+      if (usedInstance && usedInstance !== instanceName) {
+        console.info(`[GroupMembers] participants fetched via fallback instance "${usedInstance}" (context: ${instanceName})`);
       }
+
+      // Merge com participantes extraídos das mensagens (cobre @lid e quem só enviou msg).
+      const merged = new Map<string, GroupParticipant>();
+      for (const p of bestApi) merged.set(p.phone, p);
       for (const p of messageParticipants) {
         if (!merged.has(p.phone) && p.phone.length >= 8) {
           merged.set(p.phone, { phone: p.phone, name: p.name });
@@ -139,12 +166,9 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         });
 
       setParticipants(allParticipants);
-
-      // Enrich with contact data
       await enrichWithContactData(allParticipants);
     } catch (e) {
       console.error('Error fetching group participants:', e);
-      // Fallback to message participants
       setParticipants(messageParticipants.filter(p => p.name !== 'Você').map(p => ({ ...p })));
     } finally {
       setLoading(false);
