@@ -145,6 +145,7 @@ export const handler: RequestHandler = async (req, res) => {
       promoted,
       attempted: numbers.length,
       actor_instance: actor.instance_name,
+      promote_details: promote_to_admin ? promoteDetails : undefined,
       message: promote_to_admin
         ? `${promoted} de ${numbers.length} instância(s) promovida(s) a admin (${added} recém-adicionada(s)).`
         : `${added} de ${numbers.length} instância(s) adicionada(s) ao grupo.`,
