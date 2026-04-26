@@ -33,14 +33,24 @@ export function useTeamMembers() {
   const fetchMembers = useCallback(async () => {
     try {
       // Fetch user roles with profile info
-      const { data: roles, error: rolesError } = await supabase
+      const { data: rawRoles, error: rolesError } = await supabase
         .from('user_roles')
         .select('id, user_id, role, created_at, access_profile_id');
 
       if (rolesError) throw rolesError;
 
+      // Deduplicate by user_id — if a user has multiple roles, prefer 'admin'
+      const rolesByUser = new Map<string, typeof rawRoles[number]>();
+      (rawRoles || []).forEach(r => {
+        const existing = rolesByUser.get(r.user_id);
+        if (!existing || r.role === 'admin') {
+          rolesByUser.set(r.user_id, r);
+        }
+      });
+      const roles = Array.from(rolesByUser.values());
+
       // Fetch profiles for these users
-      const userIds = roles?.map(r => r.user_id) || [];
+      const userIds = roles.map(r => r.user_id);
       
       if (userIds.length > 0) {
         const { data: profiles } = await supabase
