@@ -120,15 +120,23 @@ Deno.serve(async (req) => {
       const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
       const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
       const out: Record<string, unknown> = { last8, probe_phone: probePhone };
-      const { data: cloudLeads } = await cloud.from("leads").select("id,lead_name,lead_phone,board_id").ilike("lead_phone", `%${last8}%`).limit(3);
+      const { data: cloudLeads, count: cloudTotal } = await cloud.from("leads").select("id,lead_name,lead_phone,board_id", { count: "exact" }).ilike("lead_phone", `%${last8}%`).limit(3);
       out.cloud_leads = cloudLeads || [];
       out.cloud_count = cloudLeads?.length || 0;
+      const { count: cloudTotalAll } = await cloud.from("leads").select("id", { count: "exact", head: true });
+      out.cloud_total_leads = cloudTotalAll;
       if (extUrl && extKey) {
         const ext = createClient(extUrl, extKey);
         const { data: extLeads, error: extErr } = await ext.from("leads").select("id,lead_name,lead_phone,board_id").ilike("lead_phone", `%${last8}%`).limit(3);
         out.external_leads = extLeads || [];
         out.external_count = extLeads?.length || 0;
         out.external_error = extErr?.message || null;
+        const { count: extTotal, error: extCountErr } = await ext.from("leads").select("id", { count: "exact", head: true });
+        out.external_total_leads = extTotal;
+        out.external_count_error = extCountErr?.message || null;
+        // amostra de 3 lead_phone do externo pra ver formato
+        const { data: extSample } = await ext.from("leads").select("lead_name,lead_phone").not("lead_phone", "is", null).limit(5);
+        out.external_phone_samples = extSample || [];
       } else {
         out.external_error = "EXTERNAL_SUPABASE_URL/KEY ausentes";
       }
