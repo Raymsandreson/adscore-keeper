@@ -149,6 +149,33 @@ export default function LeadDocumentsTab({ leadId, leadName }: Props) {
     }
   }
 
+  async function handleReprocess() {
+    setReprocessing(true);
+    const tId = toast.loading('Reprocessando procuração com IA…');
+    try {
+      const { data, error } = await supabase.functions.invoke('lead-reprocess-procuracao', {
+        body: { lead_id: leadId },
+      });
+      if (error) throw error;
+      if ((data as any)?.ok === false) throw new Error((data as any).error || 'Falha ao reprocessar');
+      const applied = (data as any)?.enrich?.applied || {};
+      const fields = Object.keys(applied);
+      const filesUploaded = (data as any)?.enrich?.drive?.ok ? 1 : 0;
+      toast.success(
+        fields.length
+          ? `Reprocessado: ${fields.length} campo(s) atualizado(s)${filesUploaded ? ' + PDF no Drive' : ''}`
+          : 'Reprocessado (nenhum campo novo)',
+        { id: tId },
+      );
+      await load();
+    } catch (err: any) {
+      console.error('[LeadDocumentsTab] reprocess error', err);
+      toast.error(`Erro ao reprocessar: ${err.message || err}`, { id: tId });
+    } finally {
+      setReprocessing(false);
+    }
+  }
+
   const confidenceVariant = (c?: string) =>
     c === 'alta' ? 'default' : c === 'média' ? 'secondary' : 'outline';
 
