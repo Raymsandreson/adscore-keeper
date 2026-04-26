@@ -129,14 +129,26 @@ Deno.serve(async (req) => {
 
   try {
     const supabase = createClient(resolveSupabaseUrl(), resolveServiceRoleKey())
-    const body = await req.json().catch(() => ({}))
-    const groupJidRaw: string = String(body?.group_jid || '').trim()
-    const leadId: string | null = body?.lead_id ? String(body.lead_id) : null
-    const requestedInstanceId: string | null = body?.instance_id ? String(body.instance_id) : null
-
-    if (!groupJidRaw) {
-      return jsonResponse({ success: false, error: 'group_jid is required' }, 400)
+    const rawBody = await req.json().catch(() => ({}))
+    const parsed = RequestSchema.safeParse(rawBody)
+    if (!parsed.success) {
+      return jsonResponse({
+        success: false,
+        error: 'Invalid request',
+        details: parsed.error.flatten().fieldErrors,
+      }, 400)
     }
+    // get_invite_link é opcional no client, mas SEMPRE forçamos true para a UazAPI;
+    // recusamos chamada se o cliente passar explicitamente false (uso indevido desta função).
+    if (parsed.data.get_invite_link === false) {
+      return jsonResponse({
+        success: false,
+        error: 'This endpoint requires get_invite_link=true (omit the field or set to true).',
+      }, 400)
+    }
+    const groupJidRaw = parsed.data.group_jid
+    const leadId = parsed.data.lead_id ?? null
+    const requestedInstanceId = parsed.data.instance_id ?? null
 
     const groupJid = groupJidRaw.includes('@g.us') ? groupJidRaw : `${groupJidRaw}@g.us`
 
