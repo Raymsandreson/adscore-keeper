@@ -48,16 +48,21 @@ export async function getConversationSummaries(
   if (!instanceNames || instanceNames.length === 0) return [];
 
   const callOne = async (name: string): Promise<ConversationSummary[]> => {
+    // Webhook pode gravar instance_name em caixas diferentes (ex: "KAROLYNE ATENDIMENTO"
+    // vs "Karolyne Atendimento" cadastrado). A RPC usa '=' case-sensitive, então
+    // tentamos múltiplas variantes (original, UPPER, lower) e mesclamos.
+    const variants = Array.from(new Set([name, name.toUpperCase(), name.toLowerCase()]));
     const { data, error } = await (externalSupabase as any)
       .rpc('get_conversation_summaries', {
-        p_instance_names: [name],
+        p_instance_names: variants,
         p_days_back: daysBack,
       });
     if (error) {
       console.warn(`[getConversationSummaries] failed for "${name}":`, error.message);
       return [];
     }
-    return data || [];
+    // Normaliza instance_name de volta para o nome canônico cadastrado
+    return (data || []).map((row: ConversationSummary) => ({ ...row, instance_name: name }));
   };
 
   const results = await Promise.all(instanceNames.map(callOne));
@@ -71,6 +76,10 @@ export async function getConversationSummaries(
   return merged;
 }
 
+function instanceNameVariants(name: string): string[] {
+  return Array.from(new Set([name, name.toUpperCase(), name.toLowerCase()]));
+}
+
 export async function getConversationMessages(
   phone: string,
   instanceName: string,
@@ -80,7 +89,7 @@ export async function getConversationMessages(
     .from('whatsapp_messages')
     .select('*')
     .eq('phone', phone)
-    .eq('instance_name', instanceName)
+    .in('instance_name', instanceNameVariants(instanceName))
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -95,7 +104,7 @@ export async function markMessagesAsRead(
     .from('whatsapp_messages')
     .update({ read_at: new Date().toISOString() })
     .eq('phone', phone)
-    .eq('instance_name', instanceName)
+    .in('instance_name', instanceNameVariants(instanceName))
     .eq('direction', 'inbound')
     .is('read_at', null);
   if (error) throw error;
@@ -110,7 +119,7 @@ export async function linkMessagesToLead(
     .from('whatsapp_messages')
     .update({ lead_id: leadId })
     .eq('phone', phone)
-    .eq('instance_name', instanceName);
+    .in('instance_name', instanceNameVariants(instanceName));
   if (error) throw error;
 }
 
@@ -123,6 +132,6 @@ export async function linkMessagesToContact(
     .from('whatsapp_messages')
     .update({ contact_id: contactId })
     .eq('phone', phone)
-    .eq('instance_name', instanceName);
+    .in('instance_name', instanceNameVariants(instanceName));
   if (error) throw error;
 }

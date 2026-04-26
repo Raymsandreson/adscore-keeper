@@ -5,7 +5,6 @@
 // - Define acolhedor = dono da instância (default_instance_id reverso, fallback owner_name)
 // - Faz upload do PDF assinado na pasta Drive do lead com nome descritivo
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -122,6 +121,44 @@ function cleanDigits(s?: string | null) {
   return s ? s.replace(/\D/g, "") : null;
 }
 
+// Procura no UAZAPI um grupo da instância em que o telefone do lead seja participante.
+async function findGroupByParticipantPhone(
+  baseUrl: string,
+  token: string,
+  participantPhone: string,
+): Promise<{ jid: string; link: string | null; subject: string | null } | null> {
+  if (!baseUrl || !token || !participantPhone) return null;
+  const cleaned = participantPhone.replace(/\D/g, "");
+  if (!cleaned) return null;
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/group/list`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", token },
+      body: JSON.stringify({ getParticipants: true }),
+    });
+    if (!res.ok) { console.warn("[findGroup] list status", res.status); return null; }
+    const data = await res.json().catch(() => null);
+    const groups: any[] = Array.isArray(data) ? data : data?.groups || [];
+    for (const g of groups) {
+      const participants: any[] = g.participants || g.Participants || [];
+      const match = participants.find((p) => {
+        const id = String(p.id || p.jid || p.phone || "").replace(/\D/g, "");
+        return id && (id.endsWith(cleaned) || cleaned.endsWith(id));
+      });
+      if (match) {
+        return {
+          jid: g.id || g.jid || g.JID || null,
+          link: g.invite_link || g.inviteLink || null,
+          subject: g.subject || g.name || null,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn("[findGroup] error:", e);
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -131,7 +168,9 @@ Deno.serve(async (req) => {
     if (!lead_id) throw new Error("lead_id required");
     if (!signed_file_url) throw new Error("signed_file_url required");
 
-    const ext = createClient(resolveSupabaseUrl(), resolveServiceRoleKey());
+    const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL") || "https://kmedldlepwiityjsdahz.supabase.co";
+    const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const ext = createClient(extUrl, extKey);
 
     // 1. Extract from PDF via Vision
     let extracted: Extracted = {};
@@ -198,13 +237,77 @@ Deno.serve(async (req) => {
       else console.log(`[zapsign-enrich-lead] lead ${lead_id} updated with ${Object.keys(update).length} fields`);
     }
 
-    // 4. Get lead name for Drive folder
+    // 4. Get lead name + phone for Drive folder, group resolution, contact
     const { data: lead } = await ext
       .from("leads")
-      .select("lead_name, victim_name")
+      .select("lead_name, victim_name, lead_phone, whatsapp_group_id")
       .eq("id", lead_id)
       .maybeSingle();
     const leadName = lead?.lead_name || lead?.victim_name || extracted.titular_name || "Lead";
+    const leadPhone = lead?.lead_phone || null;
+
+    // 4a. Vincular grupo do WhatsApp ao lead (busca grupo onde o telefone é participante)
+    let groupResult: any = null;
+    if (leadPhone && instance_name && !lead?.whatsapp_group_id) {
+      const { data: instRow } = await ext
+        .from("whatsapp_instances")
+        .select("base_url, instance_token")
+        .ilike("instance_name", instance_name)
+        .maybeSingle();
+      if (instRow?.base_url && instRow?.instance_token) {
+        const grp = await findGroupByParticipantPhone(instRow.base_url, instRow.instance_token, leadPhone);
+        if (grp?.jid) {
+          const groupUpdate: Record<string, any> = { whatsapp_group_id: grp.jid };
+          if (grp.link) groupUpdate.group_link = grp.link;
+          const { error: gErr } = await ext.from("leads").update(groupUpdate).eq("id", lead_id);
+          if (gErr) console.error("[zapsign-enrich-lead] group link update error:", gErr);
+          else console.log(`[zapsign-enrich-lead] lead ${lead_id} linked to group ${grp.jid}`);
+          groupResult = { jid: grp.jid, subject: grp.subject };
+        }
+      }
+    }
+
+    // 4b. Auto-criar contato a partir do telefone (se ainda não houver vínculo em contact_leads)
+    let contactResult: any = null;
+    if (leadPhone) {
+      const cleanedPhone = leadPhone.replace(/\D/g, "");
+      const { data: existing } = await ext
+        .from("contacts")
+        .select("id")
+        .eq("phone", cleanedPhone)
+        .maybeSingle();
+      let contactId = existing?.id || null;
+      if (!contactId) {
+        const { data: newContact, error: cErr } = await ext
+          .from("contacts")
+          .insert({
+            full_name: extracted.titular_name || leadName,
+            phone: cleanedPhone,
+          })
+          .select("id")
+          .maybeSingle();
+        if (cErr) console.error("[zapsign-enrich-lead] contact insert error:", cErr);
+        else contactId = newContact?.id || null;
+      }
+      if (contactId) {
+        // Vincula via contact_leads (idempotente)
+        const { data: existingLink } = await ext
+          .from("contact_leads")
+          .select("id")
+          .eq("contact_id", contactId)
+          .eq("lead_id", lead_id)
+          .maybeSingle();
+        if (!existingLink) {
+          const { error: linkErr } = await ext
+            .from("contact_leads")
+            .insert({ contact_id: contactId, lead_id, relationship_to_victim: "titular" });
+          if (linkErr) console.error("[zapsign-enrich-lead] contact_leads insert error:", linkErr);
+        }
+        contactResult = { id: contactId, created: !existing };
+        console.log(`[zapsign-enrich-lead] lead ${lead_id} linked to contact ${contactId}`);
+      }
+    }
+
 
     // 5. Upload signed PDF to Drive folder via lead-drive
     let driveResult: any = null;
@@ -235,7 +338,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ ok: true, extracted, applied: update, drive: driveResult }),
+      JSON.stringify({ ok: true, extracted, applied: update, drive: driveResult, group: groupResult, contact: contactResult }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
