@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
     // Fetch lead once (need lead_phone + created_by for fallbacks)
     const { data: leadRow } = await ext
       .from("leads")
-      .select("lead_phone, created_by")
+      .select("lead_phone, created_by, assigned_to, acolhedor")
       .eq("id", lead_id)
       .maybeSingle();
 
