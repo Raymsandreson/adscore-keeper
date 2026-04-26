@@ -2607,6 +2607,12 @@ ${scrapeData.content || ''}
               )}
             </TabsContent>
 
+            <TabsContent value="documents" className="mt-0">
+              {activeTab === 'documents' && lead && (
+                <LeadDocumentsTab leadId={lead.id} leadName={(currentLead as any)?.lead_name || lead.lead_name || 'Lead'} />
+              )}
+            </TabsContent>
+
             <TabsContent value="history" className="mt-0 space-y-6">
               {activeTab === 'history' && (
                 <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
