@@ -1679,8 +1679,13 @@ ${scrapeData.content || ''}
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-56">
                                 <DropdownMenuItem onClick={async () => {
-                                  try {
-                                    toast.info('Reparando grupo... Buscando contatos vinculados.');
+                                   try {
+                                     const ls = (currentLead as any)?.lead_status;
+                                     if ((currentLead as any)?.is_blocked || ls === 'refused' || ls === 'inviavel') {
+                                       toast.error('Lead encerrado/bloqueado — não é possível modificar o grupo.');
+                                       return;
+                                     }
+                                     toast.info('Reparando grupo... Buscando contatos vinculados.');
                                     const { data: contactLinks } = await supabase
                                       .from('contact_leads')
                                       .select('contact_id, contacts(phone)')
