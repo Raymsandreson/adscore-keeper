@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Upload, Trash2, FileText, Loader2, RefreshCw, Sparkles } from 'lucide-react';
+import { ExternalLink, Upload, Trash2, FileText, Loader2, RefreshCw, Sparkles, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
