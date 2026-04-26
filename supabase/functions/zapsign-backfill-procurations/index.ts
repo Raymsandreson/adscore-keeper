@@ -139,7 +139,27 @@ Deno.serve(async (req) => {
       page++;
     }
 
-    // 2. Pra cada candidato, buscar detalhe + processar
+    if (scanOnly) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          phase: "scan_only",
+          cutoff_date: CUTOFF_DATE.toISOString(),
+          pages_scanned: page - 1,
+          total_scanned: totalScanned,
+          skipped_old_date: skippedOldDate,
+          total_candidates: candidates.length,
+          first_5: candidates.slice(0, 5).map((c) => ({ token: c.token, name: c.name, created_at: c.created_at })),
+          last_5: candidates.slice(-5).map((c) => ({ token: c.token, name: c.name, created_at: c.created_at })),
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // 2. Slice de processamento
+    const slice = candidates.slice(startOffset, startOffset + processLimit);
+
+    // 3. Pra cada candidato no slice, buscar detalhe + processar
     const stats = {
       total_candidates: candidates.length,
       already_in_db: 0,
