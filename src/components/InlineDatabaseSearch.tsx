@@ -8,6 +8,7 @@ import {
   Users, MessageCircle, Contact, Send, Search, Loader2, User, Calendar, ExternalLink, X,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
@@ -87,40 +88,47 @@ export function InlineDatabaseSearch() {
     setSearching(true);
     try {
       const s = `%${term}%`;
-      const promises: Array<PromiseLike<any>> = [];
+
+      // Helper: query no Cloud + Externo, mescla por id (Cloud ganha em colis\u00e3o)
+      const dual = async (table: string, orFilter: string, orderCol: string, limit: number) => {
+        const cloudP = (supabase as any).from(table).select('*').or(orFilter).order(orderCol, { ascending: false }).limit(limit);
+        const extP = (externalSupabase as any).from(table).select('*').or(orFilter).order(orderCol, { ascending: false }).limit(limit);
+        const [cloudR, extR] = await Promise.allSettled([cloudP, extP]);
+        const cloudData = cloudR.status === 'fulfilled' ? (cloudR.value?.data || []) : [];
+        const extData = extR.status === 'fulfilled' ? (extR.value?.data || []) : [];
+        const seen = new Set<string>();
+        const merged: any[] = [];
+        for (const row of cloudData) { if (row?.id && !seen.has(row.id)) { seen.add(row.id); merged.push(row); } }
+        for (const row of extData) { if (row?.id && !seen.has(row.id)) { seen.add(row.id); merged.push(row); } }
+        return { data: merged };
+      };
+
+      const promises: Array<Promise<{ data: any[] }>> = [];
       const typeOrder: ResultType[] = [];
 
       if (types.has('lead')) {
         typeOrder.push('lead');
-        promises.push(
-          supabase.from('leads').select('*')
-            .or(`lead_name.ilike.${s},victim_name.ilike.${s},lead_phone.ilike.${s},lead_email.ilike.${s},notes.ilike.${s},instagram_username.ilike.${s},city.ilike.${s}`)
-            .order('updated_at', { ascending: false }).limit(15).then(r => r)
-        );
+        promises.push(dual('leads',
+          `lead_name.ilike.${s},victim_name.ilike.${s},lead_phone.ilike.${s},lead_email.ilike.${s},notes.ilike.${s},instagram_username.ilike.${s},city.ilike.${s}`,
+          'updated_at', 15));
       }
       if (types.has('contact')) {
         typeOrder.push('contact');
-        promises.push(
-          supabase.from('contacts').select('*')
-            .or(`full_name.ilike.${s},phone.ilike.${s},email.ilike.${s},instagram_username.ilike.${s},notes.ilike.${s},city.ilike.${s}`)
-            .order('updated_at', { ascending: false }).limit(15).then(r => r)
-        );
+        promises.push(dual('contacts',
+          `full_name.ilike.${s},phone.ilike.${s},email.ilike.${s},instagram_username.ilike.${s},notes.ilike.${s},city.ilike.${s}`,
+          'updated_at', 15));
       }
       if (types.has('comment')) {
         typeOrder.push('comment');
-        promises.push(
-          supabase.from('instagram_comments').select('*')
-            .or(`author_username.ilike.${s},comment_text.ilike.${s},prospect_name.ilike.${s},notes.ilike.${s}`)
-            .order('created_at', { ascending: false }).limit(15).then(r => r)
-        );
+        promises.push(dual('instagram_comments',
+          `author_username.ilike.${s},comment_text.ilike.${s},prospect_name.ilike.${s},notes.ilike.${s}`,
+          'created_at', 15));
       }
       if (types.has('dm')) {
         typeOrder.push('dm');
-        promises.push(
-          supabase.from('dm_history').select('*')
-            .or(`instagram_username.ilike.${s},dm_message.ilike.${s}`)
-            .order('created_at', { ascending: false }).limit(10).then(r => r)
-        );
+        promises.push(dual('dm_history',
+          `instagram_username.ilike.${s},dm_message.ilike.${s}`,
+          'created_at', 10));
       }
 
       const responses = await Promise.all(promises);

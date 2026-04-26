@@ -18,6 +18,7 @@ import {
   ClipboardList, Workflow, LayoutDashboard,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
@@ -79,31 +80,44 @@ export function GlobalDatabaseSearch() {
     try {
       const searchTerm = `%${term}%`;
 
+      // Helper: roda uma query no Cloud e no Externo, mescla resultados, deduplica por id (Cloud ganha)
+      const dual = async (
+        table: string,
+        orFilter: string,
+        orderCol: string,
+        limit: number,
+      ): Promise<{ data: any[] }> => {
+        const cloudP = (supabase as any).from(table).select('*').or(orFilter).order(orderCol, { ascending: false }).limit(limit);
+        const extP = (externalSupabase as any).from(table).select('*').or(orFilter).order(orderCol, { ascending: false }).limit(limit);
+        const [cloudR, extR] = await Promise.allSettled([cloudP, extP]);
+        const cloudData = cloudR.status === 'fulfilled' ? (cloudR.value?.data || []) : [];
+        const extData = extR.status === 'fulfilled' ? (extR.value?.data || []) : [];
+        const seen = new Set<string>();
+        const merged: any[] = [];
+        for (const row of cloudData) { if (row?.id && !seen.has(row.id)) { seen.add(row.id); merged.push(row); } }
+        for (const row of extData) { if (row?.id && !seen.has(row.id)) { seen.add(row.id); merged.push(row); } }
+        return { data: merged };
+      };
+
       const [leadsRes, contactsRes, commentsRes, dmsRes, activitiesRes, workflowsRes] = await Promise.all([
-        supabase.from('leads').select('*')
-          .or(`lead_name.ilike.${searchTerm},victim_name.ilike.${searchTerm},lead_phone.ilike.${searchTerm},lead_email.ilike.${searchTerm},notes.ilike.${searchTerm},instagram_username.ilike.${searchTerm},city.ilike.${searchTerm},cpf.ilike.${searchTerm},state.ilike.${searchTerm},source.ilike.${searchTerm}`)
-          .order('updated_at', { ascending: false })
-          .limit(15),
-        supabase.from('contacts').select('*')
-          .or(`full_name.ilike.${searchTerm},phone.ilike.${searchTerm},email.ilike.${searchTerm},instagram_username.ilike.${searchTerm},notes.ilike.${searchTerm},city.ilike.${searchTerm},state.ilike.${searchTerm},profession.ilike.${searchTerm},neighborhood.ilike.${searchTerm}`)
-          .order('updated_at', { ascending: false })
-          .limit(15),
-        supabase.from('instagram_comments').select('*')
-          .or(`author_username.ilike.${searchTerm},comment_text.ilike.${searchTerm},prospect_name.ilike.${searchTerm},notes.ilike.${searchTerm}`)
-          .order('created_at', { ascending: false })
-          .limit(15),
-        supabase.from('dm_history').select('*')
-          .or(`instagram_username.ilike.${searchTerm},dm_message.ilike.${searchTerm}`)
-          .order('created_at', { ascending: false })
-          .limit(10),
-        supabase.from('lead_activities').select('*')
-          .or(`title.ilike.${searchTerm},description.ilike.${searchTerm},lead_name.ilike.${searchTerm},assigned_to_name.ilike.${searchTerm},activity_type.ilike.${searchTerm}`)
-          .order('updated_at', { ascending: false })
-          .limit(15),
-        supabase.from('kanban_boards').select('*')
-          .or(`name.ilike.${searchTerm},description.ilike.${searchTerm}`)
-          .order('updated_at', { ascending: false })
-          .limit(10),
+        dual('leads',
+          `lead_name.ilike.${searchTerm},victim_name.ilike.${searchTerm},lead_phone.ilike.${searchTerm},lead_email.ilike.${searchTerm},notes.ilike.${searchTerm},instagram_username.ilike.${searchTerm},city.ilike.${searchTerm},cpf.ilike.${searchTerm},state.ilike.${searchTerm},source.ilike.${searchTerm}`,
+          'updated_at', 15),
+        dual('contacts',
+          `full_name.ilike.${searchTerm},phone.ilike.${searchTerm},email.ilike.${searchTerm},instagram_username.ilike.${searchTerm},notes.ilike.${searchTerm},city.ilike.${searchTerm},state.ilike.${searchTerm},profession.ilike.${searchTerm},neighborhood.ilike.${searchTerm}`,
+          'updated_at', 15),
+        dual('instagram_comments',
+          `author_username.ilike.${searchTerm},comment_text.ilike.${searchTerm},prospect_name.ilike.${searchTerm},notes.ilike.${searchTerm}`,
+          'created_at', 15),
+        dual('dm_history',
+          `instagram_username.ilike.${searchTerm},dm_message.ilike.${searchTerm}`,
+          'created_at', 10),
+        dual('lead_activities',
+          `title.ilike.${searchTerm},description.ilike.${searchTerm},lead_name.ilike.${searchTerm},assigned_to_name.ilike.${searchTerm},activity_type.ilike.${searchTerm}`,
+          'updated_at', 15),
+        dual('kanban_boards',
+          `name.ilike.${searchTerm},description.ilike.${searchTerm}`,
+          'updated_at', 10),
       ]);
 
       const mapped: SearchResult[] = [];
