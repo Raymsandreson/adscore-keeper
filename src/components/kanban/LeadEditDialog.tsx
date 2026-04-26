@@ -1744,8 +1744,13 @@ ${scrapeData.content || ''}
                                 </DropdownMenuItem>
 
                                 <DropdownMenuItem onClick={async () => {
-                                  try {
-                                    toast.info('Promovendo todas as instâncias conectadas a administrador...');
+                                   try {
+                                     const ls = (currentLead as any)?.lead_status;
+                                     if ((currentLead as any)?.is_blocked || ls === 'refused' || ls === 'inviavel') {
+                                       toast.error('Lead encerrado/bloqueado — não é possível modificar o grupo.');
+                                       return;
+                                     }
+                                     toast.info('Promovendo todas as instâncias conectadas a administrador...');
                                     const { data: { user } } = await supabase.auth.getUser();
                                     let instId: string | null = null;
                                     if (user) {
