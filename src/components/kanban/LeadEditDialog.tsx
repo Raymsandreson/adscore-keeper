@@ -60,6 +60,7 @@ const LeadStageHistoryPanel = lazy(() => import('@/components/kanban/LeadStageHi
 const LeadFunnelOverview = lazy(() => import('@/components/kanban/LeadFunnelOverview').then(m => ({ default: m.LeadFunnelOverview })));
 import { CloseLeadGroupDialog, CloseLeadContactPayload } from '@/components/leads/CloseLeadGroupDialog';
 const LeadActivitiesTab = lazy(() => import('@/components/leads/LeadActivitiesTab').then(m => ({ default: m.LeadActivitiesTab })));
+import { LinkOrphanWhatsAppButton } from '@/components/leads/LinkOrphanWhatsAppButton';
 const AccidentDataExtractor = lazy(() => import('@/components/leads/AccidentDataExtractor').then(m => ({ default: m.AccidentDataExtractor })));
 import { ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
