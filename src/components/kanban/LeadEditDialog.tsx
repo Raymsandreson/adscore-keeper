@@ -1357,6 +1357,10 @@ ${scrapeData.content || ''}
                 <Briefcase className="h-3 w-3 mr-1" />
                 Jurídico
               </TabsTrigger>
+              <TabsTrigger value="documents" className="text-xs py-1.5 px-2.5">
+                <FileText className="h-3 w-3 mr-1" />
+                Documentos
+              </TabsTrigger>
               <TabsTrigger value="history" className="text-xs py-1.5 px-2.5">
                 <History className="h-3 w-3 mr-1" />
                 Histórico
