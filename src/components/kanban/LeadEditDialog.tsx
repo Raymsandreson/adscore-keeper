@@ -98,6 +98,7 @@ import {
   FileSignature,
   MessageSquare,
   Send,
+  ShieldCheck,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
@@ -1729,6 +1730,34 @@ ${scrapeData.content || ''}
                                   }
                                 }}>
                                   <Users className="h-4 w-4 mr-2" /> Adicionar instâncias do funil
+                                </DropdownMenuItem>
+
+                                <DropdownMenuItem onClick={async () => {
+                                  try {
+                                    toast.info('Promovendo todas as instâncias conectadas a administrador...');
+                                    const { data: { user } } = await supabase.auth.getUser();
+                                    let instId: string | null = null;
+                                    if (user) {
+                                      const { data: profile } = await supabase.from('profiles').select('default_instance_id').eq('user_id', user.id).single();
+                                      instId = (profile as any)?.default_instance_id || null;
+                                    }
+                                    const { data, error } = await supabase.functions.invoke('repair-whatsapp-group', {
+                                      body: {
+                                        group_jid: g.group_jid,
+                                        instance_id: instId,
+                                        action: 'add_instances',
+                                        promote_to_admin: true,
+                                        scope: 'all_active',
+                                      },
+                                    });
+                                    if (error) throw error;
+                                    const promoted = data?.promoted ?? data?.added ?? 0;
+                                    toast.success(data?.message || `${promoted} instância(s) promovida(s) a admin.`);
+                                  } catch (err: any) {
+                                    toast.error('Erro ao promover instâncias: ' + (err.message || 'Erro'));
+                                  }
+                                }}>
+                                  <ShieldCheck className="h-4 w-4 mr-2" /> Promover instâncias a admin
                                 </DropdownMenuItem>
 
                                 <DropdownMenuSeparator />
