@@ -28,6 +28,27 @@ const CUTOFF_DATE = new Date("2026-01-01T00:00:00Z");
 const FUNNEL_MATERNIDADE = "48d6581d-b138-45f9-bb63-84d90ba86ec2";
 const FUNNEL_BPC = "8377ee1b-97a2-4777-9b51-3af9e630b3c6";
 
+// ViaCEP: enriquece bairro quando OCR não capturou.
+// Público, sem auth, ~50ms. Timeout 3s, falha silenciosa (não bloqueia o backfill).
+async function viacepNeighborhood(cep: string | undefined | null): Promise<string | null> {
+  if (!cep) return null;
+  const clean = String(cep).replace(/\D/g, "");
+  if (clean.length !== 8) return null;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 3000);
+    const r = await fetch(`https://viacep.com.br/ws/${clean}/json/`, { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!r.ok) return null;
+    const j = await r.json();
+    if (j?.erro) return null;
+    const bairro = (j?.bairro || "").toString().trim();
+    return bairro || null;
+  } catch (_e) {
+    return null;
+  }
+}
+
 type ZapDocSummary = {
   token: string;
   name: string;
