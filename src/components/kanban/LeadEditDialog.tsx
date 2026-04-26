@@ -776,12 +776,20 @@ ${scrapeData.content || ''}
       if (error) throw error;
       if (data?.success && data?.invite_link) {
         setWhatsappGroups(prev => prev.map(g => (g.group_jid === raw || g.group_jid === jid) ? { ...g, group_link: data.invite_link } : g));
-        if (!opts?.silent) toast.success('Link do grupo obtido!');
+        if (!opts?.silent) {
+          const inst = data?.instance_name ? `Instância: ${data.instance_name}` : 'Link obtido';
+          const tries = typeof data?.attempts_count === 'number' ? ` • ${data.attempts_count} tentativa${data.attempts_count === 1 ? '' : 's'}` : '';
+          toast.success('Link do grupo obtido!', { description: `${inst}${tries}` });
+        }
         return data.invite_link as string;
       } else {
         if (!opts?.silent) {
           const { title, description } = translateInviteError(data?.error);
-          toast.error(title, { description });
+          const attempts = Array.isArray(data?.attempts) ? data.attempts : [];
+          const extra = attempts.length
+            ? ` Tentativas (${attempts.length}): ${attempts.map((a: any) => `${a.instance}${a.error ? ` — ${a.error}` : ''}`).join(' | ')}`
+            : '';
+          toast.error(title, { description: `${description}${extra}` });
         }
         return null;
       }
