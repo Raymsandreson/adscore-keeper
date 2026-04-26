@@ -99,6 +99,7 @@ import {
   MessageSquare,
   Send,
   ShieldCheck,
+  Ban,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
@@ -1678,8 +1679,13 @@ ${scrapeData.content || ''}
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-56">
                                 <DropdownMenuItem onClick={async () => {
-                                  try {
-                                    toast.info('Reparando grupo... Buscando contatos vinculados.');
+                                   try {
+                                     const ls = (currentLead as any)?.lead_status;
+                                     if ((currentLead as any)?.is_blocked || ls === 'refused' || ls === 'inviavel') {
+                                       toast.error('Lead encerrado/bloqueado — não é possível modificar o grupo.');
+                                       return;
+                                     }
+                                     toast.info('Reparando grupo... Buscando contatos vinculados.');
                                     const { data: contactLinks } = await supabase
                                       .from('contact_leads')
                                       .select('contact_id, contacts(phone)')
@@ -1712,8 +1718,13 @@ ${scrapeData.content || ''}
                                 </DropdownMenuItem>
 
                                 <DropdownMenuItem onClick={async () => {
-                                  try {
-                                    toast.info('Adicionando instâncias do funil ao grupo...');
+                                   try {
+                                     const ls = (currentLead as any)?.lead_status;
+                                     if ((currentLead as any)?.is_blocked || ls === 'refused' || ls === 'inviavel') {
+                                       toast.error('Lead encerrado/bloqueado — não é possível modificar o grupo.');
+                                       return;
+                                     }
+                                     toast.info('Adicionando instâncias do funil ao grupo...');
                                     const { data: { user } } = await supabase.auth.getUser();
                                     let instId: string | null = null;
                                     if (user) {
@@ -1733,8 +1744,13 @@ ${scrapeData.content || ''}
                                 </DropdownMenuItem>
 
                                 <DropdownMenuItem onClick={async () => {
-                                  try {
-                                    toast.info('Promovendo todas as instâncias conectadas a administrador...');
+                                   try {
+                                     const ls = (currentLead as any)?.lead_status;
+                                     if ((currentLead as any)?.is_blocked || ls === 'refused' || ls === 'inviavel') {
+                                       toast.error('Lead encerrado/bloqueado — não é possível modificar o grupo.');
+                                       return;
+                                     }
+                                     toast.info('Promovendo todas as instâncias conectadas a administrador...');
                                     const { data: { user } } = await supabase.auth.getUser();
                                     let instId: string | null = null;
                                     if (user) {
@@ -1979,7 +1995,14 @@ ${scrapeData.content || ''}
 
                 {/* Lead Outcome - Fechado/Recusado/Inviável */}
                 <div className="col-span-2 space-y-3 p-3 border rounded-lg bg-muted/20">
-                  <Label className="text-sm font-medium">Resultado do Lead</Label>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <Label className="text-sm font-medium">Resultado do Lead</Label>
+                    {(currentLead as any)?.is_blocked && (
+                      <Badge variant="destructive" className="gap-1">
+                        <Ban className="h-3 w-3" /> Bloqueado pelo cliente
+                      </Badge>
+                    )}
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
