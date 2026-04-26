@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
     // 1) Find latest signed procuração for this lead
     const { data: docs, error: docErr } = await ext
       .from("zapsign_documents")
-      .select("id, doc_token, document_name, signed_file_url, instance_name, whatsapp_phone, signed_at")
+      .select("id, doc_token, document_name, signed_file_url, instance_name, whatsapp_phone, signed_at, created_by")
       .eq("lead_id", lead_id)
       .eq("status", "signed")
       .not("signed_file_url", "is", null)
