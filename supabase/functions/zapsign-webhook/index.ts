@@ -307,6 +307,26 @@ Deno.serve(async (req) => {
     if (isDocFullySigned) {
       console.log(`=== FULLY SIGNED BLOCK === signedFileUrl: ${signedFileUrl || 'NONE'}, whatsapp_phone: ${localDoc.whatsapp_phone || 'NONE'}, send_signed_pdf: ${localDoc.send_signed_pdf}`)
 
+      // Enrich lead via Gemini Vision on the signed PDF + upload to Drive folder (fire-and-forget)
+      if (localDoc.lead_id && signedFileUrl) {
+        try {
+          fetch(`${cloudFunctionsUrl}/functions/v1/zapsign-enrich-lead`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cloudAnonKey}` },
+            body: JSON.stringify({
+              lead_id: localDoc.lead_id,
+              signed_file_url: signedFileUrl,
+              instance_name: localDoc.instance_name || null,
+              doc_token: docToken,
+              document_name: localDoc.document_name || null,
+            }),
+          }).catch((e) => console.error('[zapsign-webhook] enrich invoke error:', e))
+          console.log('[zapsign-webhook] enrich-lead invoked')
+        } catch (enrichErr) {
+          console.error('[zapsign-webhook] enrich error:', enrichErr)
+        }
+      }
+
       // Save signed document as activity attachment (only if lead exists)
       if (localDoc.lead_id && signedFileUrl) {
         try {
