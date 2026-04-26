@@ -95,6 +95,9 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const dryRun = url.searchParams.get("dry_run") !== "false";
     const maxPages = Math.min(Number(url.searchParams.get("max_pages") || "50"), 200);
+    const startOffset = Math.max(0, Number(url.searchParams.get("start") || "0"));
+    const processLimit = Math.max(1, Math.min(50, Number(url.searchParams.get("limit") || "20")));
+    const scanOnly = url.searchParams.get("scan_only") === "true";
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
