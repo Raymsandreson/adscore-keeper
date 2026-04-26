@@ -305,6 +305,43 @@ export function WhatsAppInstanceManager() {
         </div>
       </div>
 
+      {orphanNames.length > 0 && (
+        <Card className="border-amber-500/40 bg-amber-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              Instâncias detectadas em mensagens, mas não cadastradas ({orphanNames.length})
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Clique em "Cadastrar" para criar a instância no banco e tentar vincular automaticamente o dono pelo nome.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="flex flex-wrap gap-2">
+              {orphanNames.map(name => (
+                <div key={name} className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border bg-background">
+                  <span className="text-xs font-medium">{name}</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-[11px] gap-1"
+                    disabled={registeringOrphan === name}
+                    onClick={() => registerOrphanInstance(name)}
+                  >
+                    {registeringOrphan === name ? (
+                      <><Loader2 className="h-3 w-3 animate-spin" /> Cadastrando...</>
+                    ) : (
+                      <><Plus className="h-3 w-3" /> Cadastrar</>
+                    )}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+
       {instances.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="py-12 text-center">
