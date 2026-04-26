@@ -411,6 +411,12 @@ Deno.serve(async (req) => {
         // === EXECUÇÃO REAL ===
         let leadId: string | null = (matched?.id as string) || null;
 
+        // Bairro via ViaCEP quando OCR não capturou
+        let neighborhoodFinal: string | null = ocr?.neighborhood || null;
+        if (!neighborhoodFinal && ocr?.cep) {
+          neighborhoodFinal = await viacepNeighborhood(ocr.cep);
+        }
+
         if (!leadId) {
           // Cria lead novo no externo
           const newLead: Record<string, unknown> = {
@@ -423,7 +429,7 @@ Deno.serve(async (req) => {
             street: ocr?.street,
             street_number: ocr?.street_number,
             complement: ocr?.complement,
-            neighborhood: ocr?.neighborhood,
+            neighborhood: neighborhoodFinal,
             city: ocr?.city,
             state: ocr?.state,
             birth_date: ocr?.birth_date,
@@ -454,7 +460,7 @@ Deno.serve(async (req) => {
           if (ocr?.street && !matched!.street) enrich.street = ocr.street;
           if (ocr?.street_number && !matched!.street_number) enrich.street_number = ocr.street_number;
           if (ocr?.complement && !matched!.complement) enrich.complement = ocr.complement;
-          if (ocr?.neighborhood && !matched!.neighborhood) enrich.neighborhood = ocr.neighborhood;
+          if (neighborhoodFinal && !matched!.neighborhood) enrich.neighborhood = neighborhoodFinal;
           if (ocr?.city && !matched!.city) enrich.city = ocr.city;
           if (ocr?.state && !matched!.state) enrich.state = ocr.state;
           if (ocr?.birth_date && !matched!.birth_date) enrich.birth_date = ocr.birth_date;
@@ -471,29 +477,43 @@ Deno.serve(async (req) => {
         if (targetFunnel === FUNNEL_MATERNIDADE) stats.moved_to_maternidade++;
         else if (targetFunnel === FUNNEL_BPC) stats.moved_to_bpc++;
 
-        // Anexa PDF em process_documents (externo)
+        // Anexa PDF em zapsign_documents (externo) — process_documents NÃO existe lá
         if (det.signed_file && leadId) {
           const { data: existingDoc } = await ext
-            .from("process_documents")
-            .select("id")
-            .eq("zapsign_document_id", cand.token)
+            .from("zapsign_documents")
+            .select("id, lead_id")
+            .eq("doc_token", cand.token)
             .maybeSingle();
           if (!existingDoc) {
-            await ext.from("process_documents").insert({
+            const { error: insErr } = await ext.from("zapsign_documents").insert({
+              doc_token: cand.token,
+              document_name: cand.name,
+              status: "signed",
+              original_file_url: det.original_file || null,
+              signed_file_url: det.signed_file,
               lead_id: leadId,
-              document_type: "procuracao",
-              title: cand.name,
-              source: "zapsign",
-              zapsign_document_id: cand.token,
-              file_url: det.signed_file,
-              original_url: det.signed_file,
-              file_name: cand.name.endsWith(".pdf") ? cand.name : `${cand.name}.pdf`,
-              document_date: signer?.signed_at?.split("T")[0] || cand.created_at.split("T")[0],
-              metadata: { template_name: det.template?.name, signer_name: signer?.name, backfill: true },
+              signer_name: signer?.name || null,
+              signer_email: email || null,
+              signer_phone: signerPhone || null,
+              signer_status: "signed",
+              signed_at: signer?.signed_at || null,
+              template_id: det.template?.token || null,
+              template_name: det.template?.name || null,
             });
-            stats.pdf_attached++;
+            if (insErr) {
+              // Não bloqueia o lote, mas registra erro pra auditoria
+              errors.push({ token: cand.token, name: cand.name, error: `attach pdf: ${insErr.message}` });
+            } else {
+              stats.pdf_attached++;
+            }
+          } else if (!existingDoc.lead_id) {
+            // Já existia mas sem lead vinculado: corrige
+            await ext.from("zapsign_documents")
+              .update({ lead_id: leadId })
+              .eq("id", existingDoc.id);
           }
         }
+
       } catch (e) {
         stats.errors++;
         errors.push({ token: cand.token, name: cand.name, error: e instanceof Error ? e.message : String(e) });
