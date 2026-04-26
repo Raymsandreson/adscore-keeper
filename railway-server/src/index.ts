@@ -39,10 +39,12 @@ app.get('/health', (_req, res) => {
 
 import { handler as whatsappWebhook } from './functions/whatsapp-webhook';
 import { handler as callQueueProcessor } from './functions/call-queue-processor';
+import { handler as repairWhatsappGroup } from './functions/repair-whatsapp-group';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
   'call-queue-processor': callQueueProcessor,
+  'repair-whatsapp-group': repairWhatsappGroup,
 };
 
 // Rota dinâmica para funções
