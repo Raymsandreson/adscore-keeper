@@ -75,8 +75,8 @@ Deno.serve(async (req) => {
     //    a) doc.instance_name
     //    b) latest whatsapp_messages by lead phone
     //    c) created_by -> profiles.default_instance_id -> whatsapp_instances.instance_name (Cloud)
-    let instanceName = doc.instance_name || null;
-    let resolvedVia = doc.instance_name ? "doc" : null;
+    let instanceName = force_instance_name || doc.instance_name || null;
+    let resolvedVia = force_instance_name ? "force" : (doc.instance_name ? "doc" : null);
 
     // Fetch lead once (need lead_phone + created_by for fallbacks)
     const { data: leadRow } = await ext
