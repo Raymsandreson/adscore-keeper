@@ -168,7 +168,9 @@ Deno.serve(async (req) => {
     if (!lead_id) throw new Error("lead_id required");
     if (!signed_file_url) throw new Error("signed_file_url required");
 
-    const ext = createClient(resolveSupabaseUrl(), resolveServiceRoleKey());
+    const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL") || "https://kmedldlepwiityjsdahz.supabase.co";
+    const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const ext = createClient(extUrl, extKey);
 
     // 1. Extract from PDF via Vision
     let extracted: Extracted = {};
