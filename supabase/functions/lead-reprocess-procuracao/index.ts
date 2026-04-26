@@ -17,9 +17,9 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const { lead_id } = body as { lead_id?: string };
-    if (!lead_id) {
-      return new Response(JSON.stringify({ ok: false, error: "lead_id required" }), {
+    const { lead_id: lead_id_in, lead_name } = body as { lead_id?: string; lead_name?: string };
+    if (!lead_id_in && !lead_name) {
+      return new Response(JSON.stringify({ ok: false, error: "lead_id or lead_name required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -30,6 +30,24 @@ Deno.serve(async (req) => {
     if (!extUrl || !extKey) throw new Error("EXTERNAL_SUPABASE_* not configured");
 
     const ext = createClient(extUrl, extKey);
+
+    // Resolve lead_id by name if needed
+    let lead_id = lead_id_in || null;
+    if (!lead_id && lead_name) {
+      const { data: found } = await ext
+        .from("leads")
+        .select("id, lead_name")
+        .ilike("lead_name", `%${lead_name}%`)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      lead_id = found?.id || null;
+      if (!lead_id) {
+        return new Response(JSON.stringify({ ok: false, error: `lead not found by name: ${lead_name}` }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     // 1) Find latest signed procuração for this lead
     const { data: docs, error: docErr } = await ext
