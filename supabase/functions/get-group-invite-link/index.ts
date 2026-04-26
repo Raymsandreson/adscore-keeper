@@ -178,7 +178,7 @@ Deno.serve(async (req) => {
     return jsonResponse({
       success: true,
       group_jid: groupJid,
-      invite_code: code,
+      invite_code: code || inviteLink.split('/').pop() || null,
       invite_link: inviteLink,
       instance_name: chosen.instance_name,
     })
