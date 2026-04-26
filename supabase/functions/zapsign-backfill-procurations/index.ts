@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
     const errors: Array<{ token: string; name: string; error: string }> = [];
     const previewSamples: Array<Record<string, unknown>> = [];
 
-    for (const cand of candidates) {
+    for (const cand of slice) {
       try {
         // Detalhe
         const detResp = await fetch(`${ZAPSIGN_BASE}/docs/${cand.token}/`, {
