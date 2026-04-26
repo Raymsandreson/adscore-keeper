@@ -1980,7 +1980,14 @@ ${scrapeData.content || ''}
 
                 {/* Lead Outcome - Fechado/Recusado/Inviável */}
                 <div className="col-span-2 space-y-3 p-3 border rounded-lg bg-muted/20">
-                  <Label className="text-sm font-medium">Resultado do Lead</Label>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <Label className="text-sm font-medium">Resultado do Lead</Label>
+                    {(currentLead as any)?.is_blocked && (
+                      <Badge variant="destructive" className="gap-1">
+                        <Ban className="h-3 w-3" /> Bloqueado pelo cliente
+                      </Badge>
+                    )}
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
