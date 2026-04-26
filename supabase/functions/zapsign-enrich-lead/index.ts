@@ -181,24 +181,27 @@ Deno.serve(async (req) => {
       console.error("[zapsign-enrich-lead] extraction failed:", e);
     }
 
-    // 2. Resolve acolhedor = dono da instância
+    // 2. Resolve acolhedor = dono da instância (case-insensitive lookup)
     let acolhedor: string | null = null;
     if (instance_name) {
       const { data: inst } = await ext
         .from("whatsapp_instances")
-        .select("id, owner_name")
-        .eq("instance_name", instance_name)
+        .select("id, owner_name, instance_name")
+        .ilike("instance_name", instance_name)
         .maybeSingle();
 
       if (inst?.id) {
         const { data: ownerProfile } = await ext
           .from("profiles")
-          .select("full_name")
+          .select("full_name, email")
           .eq("default_instance_id", inst.id)
           .maybeSingle();
-        acolhedor = ownerProfile?.full_name || inst.owner_name || null;
+        acolhedor = ownerProfile?.email || ownerProfile?.full_name || inst.owner_name || null;
+        console.log("[zapsign-enrich-lead] acolhedor resolved:", { instance_name, matched: inst.instance_name, acolhedor });
       } else if (inst?.owner_name) {
         acolhedor = inst.owner_name;
+      } else {
+        console.log("[zapsign-enrich-lead] no instance found for:", instance_name);
       }
     }
 
