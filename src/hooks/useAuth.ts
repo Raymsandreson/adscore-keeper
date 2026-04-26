@@ -44,7 +44,23 @@ const clearLocalAuthState = async () => {
 
 // Sync user to external DB - sends user data from session
 // Non-blocking: short timeout, falls back to cached profile if slow
+// Dedupe: skips repeated calls for the same user within 5 min to avoid edge runtime saturation
+const SYNC_DEDUPE_MS = 5 * 60 * 1000;
+const syncDedupeCache = new Map<string, { ts: number; promise: Promise<Profile | null> }>();
+
 async function syncUserToExternal(user: User): Promise<Profile | null> {
+  const cached = syncDedupeCache.get(user.id);
+  if (cached && Date.now() - cached.ts < SYNC_DEDUPE_MS) {
+    return cached.promise;
+  }
+  const promise = syncUserToExternalImpl(user);
+  syncDedupeCache.set(user.id, { ts: Date.now(), promise });
+  // On failure, evict so next call retries
+  promise.catch(() => syncDedupeCache.delete(user.id));
+  return promise;
+}
+
+async function syncUserToExternalImpl(user: User): Promise<Profile | null> {
   const CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
   const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38';
 
