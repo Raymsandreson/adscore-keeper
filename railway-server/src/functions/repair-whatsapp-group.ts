@@ -1,12 +1,4 @@
 import type { RequestHandler } from 'express';
-import { createClient } from '@supabase/supabase-js';
-
-const CLOUD_URL = process.env.CLOUD_FUNCTIONS_URL || '';
-const CLOUD_SRK = process.env.CLOUD_SERVICE_ROLE_KEY || '';
-
-const cloud = createClient(CLOUD_URL, CLOUD_SRK, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
 
 interface Instance {
   id: string;
@@ -47,12 +39,12 @@ async function uazUpdateParticipants(
 
 export const handler: RequestHandler = async (req, res) => {
   try {
-    const { action, group_jid, board_id, instance_id, promote_to_admin, scope } = req.body || {};
+    const { action, group_jid, actor, target_numbers, promote_to_admin } = req.body || {};
 
-    if (action !== 'add_instances') {
+    if (action !== 'update_participants') {
       return res.status(400).json({
         success: false,
-        error: `Action '${action}' not implemented on Railway yet. Only 'add_instances' is available.`,
+        error: `Action '${action}' not implemented on Railway yet. Only 'update_participants' is available.`,
       });
     }
 
@@ -60,59 +52,15 @@ export const handler: RequestHandler = async (req, res) => {
       return res.status(400).json({ success: false, error: 'group_jid is required' });
     }
 
-    // 1. Buscar instância "atuadora" (a que vai executar a chamada UazAPI — precisa ser admin do grupo)
-    let actor: Instance | null = null;
-    if (instance_id) {
-      const { data } = await cloud
-        .from('whatsapp_instances')
-        .select('id, instance_name, instance_token, base_url, owner_phone, is_active')
-        .eq('id', instance_id)
-        .maybeSingle();
-      actor = data as Instance | null;
-    }
     if (!actor) {
-      // fallback: primeira ativa
-      const { data } = await cloud
-        .from('whatsapp_instances')
-        .select('id, instance_name, instance_token, base_url, owner_phone, is_active')
-        .eq('is_active', true)
-        .limit(1)
-        .maybeSingle();
-      actor = data as Instance | null;
-    }
-    if (!actor) {
-      return res.status(400).json({ success: false, error: 'No active instance found to act on group' });
+      return res.status(400).json({ success: false, error: 'actor instance is required' });
     }
 
-    // 2. Determinar instâncias-alvo (cujos owner_phone serão adicionados/promovidos)
-    let targets: Instance[] = [];
-    if (scope === 'all_active') {
-      const { data, error } = await cloud
-        .from('whatsapp_instances')
-        .select('id, instance_name, instance_token, base_url, owner_phone, is_active')
-        .eq('is_active', true);
-      if (error) throw error;
-      targets = (data || []) as Instance[];
-    } else if (board_id) {
-      const { data, error } = await cloud
-        .from('board_group_instances')
-        .select('instance_id, whatsapp_instances!inner(id, instance_name, instance_token, base_url, owner_phone, is_active)')
-        .eq('board_id', board_id);
-      if (error) throw error;
-      targets = (data || [])
-        .map((row: any) => row.whatsapp_instances)
-        .filter((i: Instance) => i && i.is_active);
-    } else {
-      return res.status(400).json({ success: false, error: 'board_id or scope=all_active required' });
-    }
-
-    // 3. Coletar números (owner_phone) válidos, deduplicados, excluindo o actor
     const numbers: string[] = [];
     const seen = new Set<string>();
-    for (const t of targets) {
-      const phone = normalizePhone(t.owner_phone);
+    for (const raw of Array.isArray(target_numbers) ? target_numbers : []) {
+      const phone = normalizePhone(String(raw));
       if (!phone) continue;
-      if (t.id === actor.id) continue; // actor já está no grupo
       if (seen.has(phone)) continue;
       seen.add(phone);
       numbers.push(phone);
