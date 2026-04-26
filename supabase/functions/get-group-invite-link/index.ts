@@ -42,39 +42,54 @@ async function isInstanceConnected(inst: any): Promise<boolean> {
   }
 }
 
-async function fetchInviteCode(baseUrl: string, token: string, groupJid: string): Promise<string | null> {
-  // UazAPI param naming varies by version; try the most common variants.
-  const variants: Array<Record<string, string>> = [
-    { groupjid: groupJid },
-    { groupJid: groupJid },
-    { jid: groupJid },
-    { id: groupJid },
-  ]
-  for (const body of variants) {
-    try {
-      const res = await fetch(`${baseUrl}/group/inviteCode`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', token },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) {
-        const errText = await res.text().catch(() => '')
-        console.warn(`[invite] inviteCode failed (${res.status}) with`, body, errText.slice(0, 200))
-        continue
-      }
-      const data = await res.json()
-      const code = data?.inviteCode
-        || data?.code
-        || data?.data?.inviteCode
-        || data?.data?.code
-        || data?.invite_code
-        || null
-      if (code) return String(code).trim()
-    } catch (e) {
-      console.warn(`[invite] inviteCode exception with`, body, e)
+// Extrai código/link de convite a partir de um payload arbitrário do /group/info
+function extractInvite(payload: any): { code: string | null; link: string | null } {
+  const candidates = [payload, payload?.data, payload?.group, payload?.data?.group].filter(Boolean)
+  for (const c of candidates) {
+    const link = c?.inviteLink || c?.invite_link || c?.invitelink || c?.InviteLink || null
+    const code = c?.inviteCode || c?.invite_code || c?.invitecode || c?.InviteCode || c?.code || null
+    if (link || code) {
+      const cleanLink = link ? String(link).trim() : null
+      const cleanCode = code ? String(code).trim() : null
+      return { code: cleanCode, link: cleanLink }
     }
   }
-  return null
+  return { code: null, link: null }
+}
+
+// Chama POST /group/info conforme documentação UazAPI v2 com getInviteLink=true.
+async function fetchGroupInvite(
+  baseUrl: string,
+  token: string,
+  groupJid: string,
+): Promise<{ code: string | null; link: string | null; error?: string }> {
+  try {
+    const res = await fetch(`${baseUrl}/group/info`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', token },
+      body: JSON.stringify({
+        groupjid: groupJid,
+        getInviteLink: true,
+        getRequestsParticipants: false,
+        force: false,
+      }),
+    })
+    const text = await res.text()
+    let data: any = null
+    try { data = text ? JSON.parse(text) : null } catch { /* texto não-JSON */ }
+
+    if (!res.ok) {
+      const msg = data?.message || data?.error || text?.slice(0, 200) || `HTTP ${res.status}`
+      console.warn(`[invite] /group/info failed (${res.status}):`, msg)
+      return { code: null, link: null, error: msg }
+    }
+
+    const { code, link } = extractInvite(data)
+    return { code, link }
+  } catch (e: any) {
+    console.warn('[invite] /group/info exception', e)
+    return { code: null, link: null, error: e?.message || 'request failed' }
+  }
 }
 
 Deno.serve(async (req) => {
