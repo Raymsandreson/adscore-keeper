@@ -1,58 +1,61 @@
-## Problema 1 — Mensagens não aparecem (sincronização)
+## Contexto
 
-### Diagnóstico
-O `useWhatsAppMessages` depende **100% do Realtime** do Supabase externo. Não existe nenhum polling de segurança (`grep` em `setInterval`, `polling` retornou só comentários). Quando:
-- O canal Realtime cai (rede instável, troca de aba, suspend do laptop, limites do servidor),
-- Um INSERT chega antes do canal estar `SUBSCRIBED`,
-- O filtro `instance_name=eq.X` não bate por algum desalinhamento de canonicalização,
+Validei direto no banco externo (`kmedldlepwiityjsdahz`) que o lead da Eloah (`e67b6810-acfa-4440-b427-e1368883c2b4`) ficou correto em nome, telefone, CPF, cidade, UF, CEP, rua e número. Porém:
 
-…a mensagem fica órfã no DB externo. O usuário só descobre quando troca de instância ou aperta refresh manual. Isso explica o "algumas chegam, outras não".
+- **PDF não foi anexado** — a função tenta `ext.from("process_documents").insert(...)`, mas `process_documents` **só existe no Cloud, não no externo**. O insert falha silencioso e o contador `pdf_attached` mente.
+- **Bairro vazio** — OCR não capturou.
+- **Não dá pra gravar `process_documents` no Cloud** — porque `lead_id` tem FK pra `leads(id)` local, e o lead da Eloah só existe no externo.
 
-Existe ainda um sintoma secundário: em `useWhatsAppMessages.ts` linha 241, a contagem de telefones distintos usa `.limit(1000)` — em instâncias com mais de 1000 conversas o contador fica errado (não é o foco aqui, mas anoto).
+A tabela `zapsign_documents` **existe no externo** com os campos certos (`lead_id`, `signer_name`, `signer_phone`, `signed_at`, `document_name`, etc.) e é o lugar nativo pra esse anexo.
 
-### Correção
-1. **Polling de segurança** — adicionar um `setInterval` no hook que dispara `fetchMessages(true)` a cada 30s **somente quando a aba está visível** (`document.visibilityState === 'visible'`). Reduz a janela de perda para 30s no pior caso. Custo: 1 RPC `get_conversation_summaries` por minuto por usuário ativo — aceitável (a função é leve, com índice `idx_wam_inst_phone_created`).
-2. **Refetch ao voltar foco** — listener em `visibilitychange` que dispara `fetchMessages(true)` quando a aba volta de hidden→visible. Cobre o caso "deixei o computador 1h, voltei".
-3. **Refetch ao reconectar Realtime** — no callback `.subscribe((status) => …)` do canal de mensagens, quando `status === 'SUBSCRIBED'` e já houve uma desconexão prévia (`realtimeHealthy` era `false`), dispara um `fetchMessages(true)` para recuperar mensagens perdidas durante a queda.
+---
 
-Nada disso muda a UI — é puramente resiliência. Marcação `silent=true` evita o toast "X conversas carregadas".
+## Mudanças
 
-## Problema 2 — Texto vaza para a direita na lista
+### 1. Corrigir `supabase/functions/zapsign-backfill-procurations/index.ts`
 
-### Diagnóstico
-No `WhatsAppConversationList.tsx` linha 620, o `<button>` que envolve cada cartão tem `flex-1 flex items-start gap-3` mas **não tem `min-w-0`**. O filho interno (linha 639) tem `flex-1 min-w-0`, mas em flex aninhado o `min-w-0` precisa estar em **toda a cadeia de pais flex** para o `truncate` funcionar. Sem `min-w-0` no botão, títulos longos como "Cândido x RPJ Transportes | 21/08/2025" forçam o cartão a ser mais largo que o container `w-80`.
+Substituir o bloco de anexo (linhas ~453–473) para:
+- Inserir em `ext.from("zapsign_documents")` em vez de `process_documents`
+- Mapear campos corretos (`document_name`, `signer_name`, `signer_phone`, `signed_at`, `doc_token`, `signed_file_url`/equivalente conforme schema real da tabela — vou ler `\d zapsign_documents` antes pra acertar nomes)
+- Manter dedup por `doc_token = cand.token`
+- Só incrementar `stats.pdf_attached` se o insert retornar sem erro (sem mais mentira)
 
-### Correção
-Adicionar `min-w-0` no `<button>` (linha 620–629). É uma mudança de uma classe. Também adicionar `overflow-hidden` no wrapper externo da linha 610 como cinto-e-suspensório.
+### 2. Adicionar enriquecimento via ViaCEP
 
-## Problema 3 — Permitir redimensionar a largura da lista
+No mesmo loop de extração, quando `cep` foi extraído mas `bairro` veio vazio:
+- `fetch("https://viacep.com.br/ws/<cep>/json/")` (sem auth, público)
+- Se sucesso e `bairro` presente, preencher `enrich.neighborhood`
+- Se ViaCEP devolver erro ou bairro vazio, segue sem (não bloqueia)
 
-### Diagnóstico
-Hoje em `WhatsAppInbox.tsx` linha 1030–1052, a lista tem largura fixa `md:w-80` (320px) e o chat ocupa `flex-1`. O projeto já tem `src/components/ui/resizable.tsx` (shadcn) instalado — pode ser usado diretamente.
+### 3. Reprocessar SÓ a Eloah em modo real
 
-### Correção
-Substituir o layout flexbox da área principal por `ResizablePanelGroup` horizontal:
-- Painel 1 (lista): `defaultSize={25}`, `minSize={18}`, `maxSize={45}`
-- `ResizableHandle withHandle`
-- Painel 2 (chat): ocupa o resto
+- Chamar a função com `single_token` da procuração da Eloah (mesma usada no dry_run anterior) e `dry_run: false`
+- Validar com SQL direto no externo:
+  - `SELECT * FROM zapsign_documents WHERE lead_id = 'e67b6810...'` — deve retornar 1 linha
+  - `SELECT neighborhood FROM leads WHERE id = 'e67b6810...'` — deve estar preenchido
+- Mostrar evidência antes de seguir pro lote
 
-Persistir a largura escolhida em `localStorage` (`whatsapp_list_panel_size`) para restaurar entre sessões. Comportamento mobile preservado: no mobile já existe a lógica `${selectedPhone ? 'hidden md:flex' : 'flex'}` — usar `ResizablePanelGroup` apenas em `md:` e manter o layout atual em mobile via condicional.
+---
 
-Como `WhatsAppConversationList` já usa `flex-1 min-w-0` corretamente nos cartões (após a correção do Problema 2), os cartões irão se alongar/encurtar conforme o painel for redimensionado.
+## O que NÃO vou mexer
+
+- Outros leads já criados pelo dry_run (não foram, era simulação)
+- Cloud `process_documents` (continua intocado — UI atual do CRM lê de lá, mas pra leads do externo precisaríamos de uma view/sync separado, fora do escopo agora)
+- Lead antigo da Eloah `951978f9...` (Edilan) — fica pendente sua decisão (mesclar/deletar/manter)
+- Função `zapsign-webhook` (fluxo realtime, não tem esse bug)
+
+---
 
 ## Detalhes técnicos
 
-**Arquivos a alterar:**
-- `src/hooks/useWhatsAppMessages.ts` — adicionar `useEffect` com `setInterval` (30s) + listener `visibilitychange` + refetch on reconnect.
-- `src/components/whatsapp/WhatsAppConversationList.tsx` — adicionar `min-w-0` no botão do cartão (linha 620) e `overflow-hidden` no wrapper (linha 610).
-- `src/components/whatsapp/WhatsAppInbox.tsx` — envolver área principal em `ResizablePanelGroup` (em desktop), preservar comportamento mobile, persistir tamanho em `localStorage`.
+- Antes de codar, vou rodar `\d zapsign_documents` no externo pra confirmar nomes exatos das colunas (signed_file_url vs signed_pdf_url etc.) — o `lov-tool-use` anterior já mostrou parte do schema mas não todas as colunas relevantes pro PDF.
+- ViaCEP é gratuita, sem chave, ~50ms latência. Adiciono `try/catch` com timeout de 3s.
+- Após editar a função, deploy com `supabase--deploy_edge_functions`.
+- Teste com `supabase--curl_edge_functions` chamando com `{ single_token: "<token-eloah>", dry_run: false }`.
+- Validação final via `psql "$EXTERNAL_DB_URL" -c "..."`.
 
-**Arquivos NÃO tocados:**
-- Nenhuma mudança em edge functions.
-- Nenhuma migration SQL.
-- Nenhum mexido em `WhatsAppChat.tsx` (só recebe `flex-1` do painel pai, não precisa ajuste).
-- Nenhum mexido na lógica de canonicalização de instâncias ou no handler de Realtime.
+---
 
-**Risco / rollback:** mudanças confinadas a 3 arquivos de UI/hook. Se o polling causar carga excedente, basta remover o `useEffect` novo (10 linhas). Se o resizable quebrar layout, basta reverter o `WhatsAppInbox.tsx`.
+## Próximo passo após aprovação
 
-**Custo:** ~2 chamadas RPC adicionais/min/usuário. Para 50 usuários simultâneos = 100 RPC/min = irrelevante para a função inlineada com índice.
+Reprocessar Eloah, te mostrar print do SQL confirmando PDF anexado + bairro preenchido, e aí você decide a escala do lote (10 / 50 / todos).
