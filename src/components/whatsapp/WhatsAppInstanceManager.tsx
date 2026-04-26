@@ -1,5 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+
+// External DB is the source of truth for whatsapp_instances (per data policy).
+const ext = externalSupabase as any;
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Pencil, Trash2, Smartphone, Wifi, WifiOff, Phone, Globe, Key, CheckCircle2, RefreshCw, Bot, Volume2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Smartphone, Wifi, WifiOff, Phone, Globe, Key, CheckCircle2, RefreshCw, Bot, Volume2, AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
@@ -73,6 +77,8 @@ export function WhatsAppInstanceManager() {
   const [deleteTarget, setDeleteTarget] = useState<Instance | null>(null);
   const [pendingAgentRemoval, setPendingAgentRemoval] = useState<{ instanceId: string; instanceName: string; oldAgentId: string; agentName: string } | null>(null);
   const [stoppingAll, setStoppingAll] = useState(false);
+  const [orphanNames, setOrphanNames] = useState<string[]>([]);
+  const [registeringOrphan, setRegisteringOrphan] = useState<string | null>(null);
 
   const syncPhones = async () => {
     setSyncing(true);
@@ -99,14 +105,57 @@ export function WhatsAppInstanceManager() {
   };
 
   const fetchInstances = useCallback(async () => {
-    const [instancesRes, shortcutsRes] = await Promise.all([
-      supabase.from('whatsapp_instances').select('*').order('instance_name'),
+    await ensureExternalSession().catch(() => {});
+    const [instancesRes, shortcutsRes, msgInstancesRes] = await Promise.all([
+      ext.from('whatsapp_instances').select('*').order('instance_name'),
       supabase.from('wjia_command_shortcuts').select('id, shortcut_name').eq('is_active', true).order('display_order'),
+      // Distinct instance_name values found in whatsapp_messages but possibly missing in whatsapp_instances
+      ext.from('whatsapp_messages').select('instance_name').not('instance_name', 'is', null).limit(5000),
     ]);
-    if (!instancesRes.error && instancesRes.data) setInstances(instancesRes.data as Instance[]);
+    let regNames: string[] = [];
+    if (!instancesRes.error && instancesRes.data) {
+      setInstances(instancesRes.data as Instance[]);
+      regNames = (instancesRes.data as Instance[]).map(i => (i.instance_name || '').toLowerCase().trim());
+    }
     if (!shortcutsRes.error && shortcutsRes.data) setAgents((shortcutsRes.data as any[]).map(s => ({ id: s.id, name: '#' + s.shortcut_name })));
+    if (!msgInstancesRes.error && msgInstancesRes.data) {
+      const seen = new Map<string, string>();
+      for (const row of msgInstancesRes.data as Array<{ instance_name: string }>) {
+        const raw = (row.instance_name || '').trim();
+        if (!raw) continue;
+        const key = raw.toLowerCase();
+        if (!seen.has(key)) seen.set(key, raw);
+      }
+      const orphans = Array.from(seen.entries())
+        .filter(([key]) => !regNames.includes(key))
+        .map(([, original]) => original)
+        .sort((a, b) => a.localeCompare(b));
+      setOrphanNames(orphans);
+    }
     setLoading(false);
   }, []);
+
+  const registerOrphanInstance = useCallback(async (name: string) => {
+    setRegisteringOrphan(name);
+    try {
+      const { data, error } = await supabase.functions.invoke('register-whatsapp-instance', {
+        body: { instance_name: name },
+      });
+      if (error) throw error;
+      const ownerName = (data as any)?.owner_name;
+      toast.success(
+        ownerName
+          ? `Instância "${name}" cadastrada e vinculada a ${ownerName}.`
+          : `Instância "${name}" cadastrada (sem dono auto-vinculado).`
+      );
+      await fetchInstances();
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao cadastrar instância órfã');
+    } finally {
+      setRegisteringOrphan(null);
+    }
+  }, []);
+
 
   // Fetch available voices
   useEffect(() => {
@@ -166,7 +215,7 @@ export function WhatsAppInstanceManager() {
     setSaving(true);
     try {
       if (editingId) {
-        const { error } = await supabase
+        const { error } = await ext
           .from('whatsapp_instances')
           .update({
             instance_name: form.instance_name.trim(),
@@ -179,7 +228,7 @@ export function WhatsAppInstanceManager() {
         if (error) throw error;
         toast.success('Instância atualizada!');
       } else {
-        const { error } = await supabase
+        const { error } = await ext
           .from('whatsapp_instances')
           .insert({
             instance_name: form.instance_name.trim(),
@@ -204,7 +253,7 @@ export function WhatsAppInstanceManager() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      const { error } = await supabase
+      const { error } = await ext
         .from('whatsapp_instances')
         .delete()
         .eq('id', deleteTarget.id);
@@ -220,7 +269,7 @@ export function WhatsAppInstanceManager() {
   const toggleActive = async (inst: Instance) => {
     const newActive = !inst.is_active;
     setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, is_active: newActive } : i));
-    const { error } = await supabase
+    const { error } = await ext
       .from('whatsapp_instances')
       .update({ is_active: newActive } as any)
       .eq('id', inst.id);
@@ -255,6 +304,43 @@ export function WhatsAppInstanceManager() {
           </Button>
         </div>
       </div>
+
+      {orphanNames.length > 0 && (
+        <Card className="border-amber-500/40 bg-amber-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              Instâncias detectadas em mensagens, mas não cadastradas ({orphanNames.length})
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Clique em "Cadastrar" para criar a instância no banco e tentar vincular automaticamente o dono pelo nome.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="flex flex-wrap gap-2">
+              {orphanNames.map(name => (
+                <div key={name} className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border bg-background">
+                  <span className="text-xs font-medium">{name}</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-[11px] gap-1"
+                    disabled={registeringOrphan === name}
+                    onClick={() => registerOrphanInstance(name)}
+                  >
+                    {registeringOrphan === name ? (
+                      <><Loader2 className="h-3 w-3 animate-spin" /> Cadastrando...</>
+                    ) : (
+                      <><Plus className="h-3 w-3" /> Cadastrar</>
+                    )}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
 
       {instances.length === 0 ? (
         <Card className="border-dashed">
@@ -333,7 +419,7 @@ export function WhatsAppInstanceManager() {
                             }
                             
                             setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, default_agent_id: newVal } : i));
-                            const { error } = await supabase
+                            const { error } = await ext
                               .from('whatsapp_instances')
                               .update({ default_agent_id: newVal } as any)
                               .eq('id', inst.id);
@@ -367,7 +453,7 @@ export function WhatsAppInstanceManager() {
                         checked={(inst as any).notify_on_disconnect !== false}
                         onCheckedChange={async (checked) => {
                           setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, notify_on_disconnect: checked } as any : i));
-                          const { error } = await supabase
+                          const { error } = await ext
                             .from('whatsapp_instances')
                             .update({ notify_on_disconnect: checked } as any)
                             .eq('id', inst.id);
@@ -394,7 +480,7 @@ export function WhatsAppInstanceManager() {
                             onChange={async (e) => {
                               const val = parseInt(e.target.value);
                               setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, notify_start_hour: val } as any : i));
-                              await supabase.from('whatsapp_instances').update({ notify_start_hour: val } as any).eq('id', inst.id);
+                              await ext.from('whatsapp_instances').update({ notify_start_hour: val } as any).eq('id', inst.id);
                             }}
                           >
                             {Array.from({ length: 24 }, (_, h) => (
@@ -408,7 +494,7 @@ export function WhatsAppInstanceManager() {
                             onChange={async (e) => {
                               const val = parseInt(e.target.value);
                               setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, notify_end_hour: val } as any : i));
-                              await supabase.from('whatsapp_instances').update({ notify_end_hour: val } as any).eq('id', inst.id);
+                              await ext.from('whatsapp_instances').update({ notify_end_hour: val } as any).eq('id', inst.id);
                             }}
                           >
                             {Array.from({ length: 24 }, (_, h) => (
@@ -425,7 +511,7 @@ export function WhatsAppInstanceManager() {
                             onChange={async (e) => {
                               const val = e.target.checked;
                               setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, notify_weekdays_only: val } as any : i));
-                              await supabase.from('whatsapp_instances').update({ notify_weekdays_only: val } as any).eq('id', inst.id);
+                              await ext.from('whatsapp_instances').update({ notify_weekdays_only: val } as any).eq('id', inst.id);
                             }}
                           />
                           <label htmlFor={`weekdays-${inst.id}`} className="text-xs text-muted-foreground">
@@ -566,7 +652,7 @@ export function WhatsAppInstanceManager() {
               // Just remove default, keep conversations active
               const { instanceId, oldAgentId } = pendingAgentRemoval;
               setInstances(prev => prev.map(i => i.id === instanceId ? { ...i, default_agent_id: null } : i));
-              await supabase.from('whatsapp_instances').update({ default_agent_id: null } as any).eq('id', instanceId);
+              await ext.from('whatsapp_instances').update({ default_agent_id: null } as any).eq('id', instanceId);
               toast.success('Agente padrão removido (conversas mantidas ativas)');
               setPendingAgentRemoval(null);
             }}>
@@ -579,7 +665,7 @@ export function WhatsAppInstanceManager() {
               try {
                 // Remove default agent
                 setInstances(prev => prev.map(i => i.id === instanceId ? { ...i, default_agent_id: null } : i));
-                await supabase.from('whatsapp_instances').update({ default_agent_id: null } as any).eq('id', instanceId);
+                await ext.from('whatsapp_instances').update({ default_agent_id: null } as any).eq('id', instanceId);
                 
                 // Stop agent in all conversations of this instance
                 const { data: convs, error: fetchErr } = await supabase
