@@ -236,13 +236,65 @@ Deno.serve(async (req) => {
       else console.log(`[zapsign-enrich-lead] lead ${lead_id} updated with ${Object.keys(update).length} fields`);
     }
 
-    // 4. Get lead name for Drive folder
+    // 4. Get lead name + phone for Drive folder, group resolution, contact
     const { data: lead } = await ext
       .from("leads")
-      .select("lead_name, victim_name")
+      .select("lead_name, victim_name, lead_phone, whatsapp_group_id, contact_id")
       .eq("id", lead_id)
       .maybeSingle();
     const leadName = lead?.lead_name || lead?.victim_name || extracted.titular_name || "Lead";
+    const leadPhone = lead?.lead_phone || null;
+
+    // 4a. Vincular grupo do WhatsApp ao lead (busca grupo onde o telefone é participante)
+    let groupResult: any = null;
+    if (leadPhone && instance_name && !lead?.whatsapp_group_id) {
+      const { data: instRow } = await ext
+        .from("whatsapp_instances")
+        .select("base_url, instance_token")
+        .ilike("instance_name", instance_name)
+        .maybeSingle();
+      if (instRow?.base_url && instRow?.instance_token) {
+        const grp = await findGroupByParticipantPhone(instRow.base_url, instRow.instance_token, leadPhone);
+        if (grp?.jid) {
+          const groupUpdate: Record<string, any> = { whatsapp_group_id: grp.jid };
+          if (grp.link) groupUpdate.group_link = grp.link;
+          const { error: gErr } = await ext.from("leads").update(groupUpdate).eq("id", lead_id);
+          if (gErr) console.error("[zapsign-enrich-lead] group link update error:", gErr);
+          else console.log(`[zapsign-enrich-lead] lead ${lead_id} linked to group ${grp.jid}`);
+          groupResult = { jid: grp.jid, subject: grp.subject };
+        }
+      }
+    }
+
+    // 4b. Auto-criar contato a partir do telefone (se ainda não houver)
+    let contactResult: any = null;
+    if (leadPhone && !lead?.contact_id) {
+      const cleanedPhone = leadPhone.replace(/\D/g, "");
+      const { data: existing } = await ext
+        .from("contacts")
+        .select("id")
+        .eq("phone", cleanedPhone)
+        .maybeSingle();
+      let contactId = existing?.id || null;
+      if (!contactId) {
+        const { data: newContact, error: cErr } = await ext
+          .from("contacts")
+          .insert({
+            full_name: extracted.titular_name || leadName,
+            phone: cleanedPhone,
+          })
+          .select("id")
+          .maybeSingle();
+        if (cErr) console.error("[zapsign-enrich-lead] contact insert error:", cErr);
+        else contactId = newContact?.id || null;
+      }
+      if (contactId) {
+        await ext.from("leads").update({ contact_id: contactId }).eq("id", lead_id);
+        contactResult = { id: contactId, created: !existing };
+        console.log(`[zapsign-enrich-lead] lead ${lead_id} linked to contact ${contactId}`);
+      }
+    }
+
 
     // 5. Upload signed PDF to Drive folder via lead-drive
     let driveResult: any = null;
