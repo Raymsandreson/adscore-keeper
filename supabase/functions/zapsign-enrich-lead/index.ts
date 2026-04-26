@@ -239,7 +239,7 @@ Deno.serve(async (req) => {
     // 4. Get lead name + phone for Drive folder, group resolution, contact
     const { data: lead } = await ext
       .from("leads")
-      .select("lead_name, victim_name, lead_phone, whatsapp_group_id, contact_id")
+      .select("lead_name, victim_name, lead_phone, whatsapp_group_id")
       .eq("id", lead_id)
       .maybeSingle();
     const leadName = lead?.lead_name || lead?.victim_name || extracted.titular_name || "Lead";
