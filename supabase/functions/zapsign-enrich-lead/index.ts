@@ -5,7 +5,6 @@
 // - Define acolhedor = dono da instância (default_instance_id reverso, fallback owner_name)
 // - Faz upload do PDF assinado na pasta Drive do lead com nome descritivo
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
