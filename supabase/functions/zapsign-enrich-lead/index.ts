@@ -122,6 +122,44 @@ function cleanDigits(s?: string | null) {
   return s ? s.replace(/\D/g, "") : null;
 }
 
+// Procura no UAZAPI um grupo da instância em que o telefone do lead seja participante.
+async function findGroupByParticipantPhone(
+  baseUrl: string,
+  token: string,
+  participantPhone: string,
+): Promise<{ jid: string; link: string | null; subject: string | null } | null> {
+  if (!baseUrl || !token || !participantPhone) return null;
+  const cleaned = participantPhone.replace(/\D/g, "");
+  if (!cleaned) return null;
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/group/list`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", token },
+      body: JSON.stringify({ getParticipants: true }),
+    });
+    if (!res.ok) { console.warn("[findGroup] list status", res.status); return null; }
+    const data = await res.json().catch(() => null);
+    const groups: any[] = Array.isArray(data) ? data : data?.groups || [];
+    for (const g of groups) {
+      const participants: any[] = g.participants || g.Participants || [];
+      const match = participants.find((p) => {
+        const id = String(p.id || p.jid || p.phone || "").replace(/\D/g, "");
+        return id && (id.endsWith(cleaned) || cleaned.endsWith(id));
+      });
+      if (match) {
+        return {
+          jid: g.id || g.jid || g.JID || null,
+          link: g.invite_link || g.inviteLink || null,
+          subject: g.subject || g.name || null,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn("[findGroup] error:", e);
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
