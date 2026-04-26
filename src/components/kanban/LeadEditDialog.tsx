@@ -688,6 +688,54 @@ ${scrapeData.content || ''}
   const [closeGroupDialogOpen, setCloseGroupDialogOpen] = useState(false);
   const [pendingCloseContacts, setPendingCloseContacts] = useState<CloseLeadContactPayload[] | null>(null);
 
+  // Busca link de convite do grupo via UazAPI a partir do JID e atualiza o estado local.
+  const fetchInviteLink = async (groupJid: string, opts?: { silent?: boolean }) => {
+    const jid = (groupJid || '').trim();
+    if (!jid || !jid.includes('@g.us')) return null;
+    if (fetchingInviteJids.has(jid)) return null;
+    setFetchingInviteJids(prev => new Set(prev).add(jid));
+    try {
+      const { data, error } = await supabase.functions.invoke('get-group-invite-link', {
+        body: { group_jid: jid, lead_id: currentLead?.id || null },
+      });
+      if (error) throw error;
+      if (data?.success && data?.invite_link) {
+        setWhatsappGroups(prev => prev.map(g => g.group_jid === jid ? { ...g, group_link: data.invite_link } : g));
+        if (!opts?.silent) toast.success('Link do grupo obtido!');
+        return data.invite_link as string;
+      } else {
+        if (!opts?.silent) {
+          toast.error(data?.error || 'Não foi possível obter o link (a instância precisa ser admin do grupo).');
+        }
+        return null;
+      }
+    } catch (e: any) {
+      if (!opts?.silent) toast.error('Erro ao buscar link: ' + (e?.message || 'desconhecido'));
+      return null;
+    } finally {
+      setFetchingInviteJids(prev => {
+        const next = new Set(prev);
+        next.delete(jid);
+        return next;
+      });
+    }
+  };
+
+  // Auto-busca link de convite para grupos com JID mas sem link de convite válido.
+  useEffect(() => {
+    if (!open || !currentLead?.id) return;
+    for (const g of whatsappGroups) {
+      const jid = (g.group_jid || '').trim();
+      if (!jid || !jid.includes('@g.us')) continue;
+      const link = (g.group_link || '').trim();
+      if (link.includes('chat.whatsapp.com')) continue;
+      if (autoFetchedJidsRef.current.has(jid)) continue;
+      autoFetchedJidsRef.current.add(jid);
+      fetchInviteLink(jid, { silent: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, currentLead?.id, whatsappGroups]);
+
   const handleSaveClick = () => {
     if (!currentLead) return;
     const wasAlreadyClosed = !!(currentLead as any).became_client_date;
