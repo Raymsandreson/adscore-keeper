@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const { lead_id: lead_id_in, lead_name } = body as { lead_id?: string; lead_name?: string };
+    const { lead_id: lead_id_in, lead_name, force_instance_name } = body as { lead_id?: string; lead_name?: string; force_instance_name?: string };
     if (!lead_id_in && !lead_name) {
       return new Response(JSON.stringify({ ok: false, error: "lead_id or lead_name required" }), {
         status: 400,
