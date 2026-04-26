@@ -688,6 +688,69 @@ ${scrapeData.content || ''}
   const [closeGroupDialogOpen, setCloseGroupDialogOpen] = useState(false);
   const [pendingCloseContacts, setPendingCloseContacts] = useState<CloseLeadContactPayload[] | null>(null);
 
+  // Traduz erros técnicos da UazAPI/edge function em mensagens acionáveis para o usuário.
+  // Retorna { title, description } prontos para exibir em um toast.
+  const translateInviteError = (raw: string | undefined | null): { title: string; description: string } => {
+    const msg = String(raw || '').toLowerCase();
+
+    // Sem instância conectada
+    if (msg.includes('no connected whatsapp instance')) {
+      return {
+        title: 'Nenhuma instância WhatsApp conectada',
+        description: 'Conecte ao menos uma instância de WhatsApp em Configurações → WhatsApp antes de buscar o link.',
+      };
+    }
+    // Permissão de admin / não é admin
+    if (msg.includes('admin') || msg.includes('not authorized') || msg.includes('forbidden') || msg.includes('not allowed')) {
+      return {
+        title: 'Sem permissão de administrador',
+        description: 'A instância conectada precisa ser administradora deste grupo para gerar o link. Promova-a a admin no WhatsApp ou cole o link manualmente.',
+      };
+    }
+    // Grupo não encontrado / participante removido
+    if (msg.includes('not found') || msg.includes('not a participant') || msg.includes('not in group') || msg.includes('group not exist') || msg.includes("doesn't exist") || msg.includes('does not exist')) {
+      return {
+        title: 'Grupo não encontrado',
+        description: 'A instância não participa mais deste grupo ou o JID está incorreto. Verifique o ID/JID ou peça para readicionar a instância ao grupo.',
+      };
+    }
+    // JID inválido
+    if (msg.includes('invalid jid') || msg.includes('invalid group') || msg.includes('malformed')) {
+      return {
+        title: 'JID do grupo inválido',
+        description: 'O identificador do grupo está em formato incorreto. Use o JID completo (ex.: 1203…@g.us) ou cole o link de convite.',
+      };
+    }
+    // Token / autenticação da instância
+    if (msg.includes('token') || msg.includes('unauthorized') || msg.includes('401')) {
+      return {
+        title: 'Instância desconectada',
+        description: 'O token da instância expirou ou está inválido. Reconecte a instância em Configurações → WhatsApp e tente novamente.',
+      };
+    }
+    // Rate limit
+    if (msg.includes('rate') || msg.includes('429') || msg.includes('too many')) {
+      return {
+        title: 'Muitas tentativas',
+        description: 'Aguarde alguns segundos antes de tentar novamente.',
+      };
+    }
+    // Timeout / rede
+    if (msg.includes('timeout') || msg.includes('network') || msg.includes('failed to fetch') || msg.includes('econn')) {
+      return {
+        title: 'Falha de conexão com o WhatsApp',
+        description: 'Não foi possível falar com a UazAPI. Verifique sua conexão e tente de novo em instantes.',
+      };
+    }
+    // Fallback genérico
+    return {
+      title: 'Não foi possível obter o link',
+      description: raw
+        ? `Detalhe técnico: ${raw}`
+        : 'A instância precisa ser admin do grupo. Como alternativa, cole o link de convite manualmente.',
+    };
+  };
+
   // Busca link de convite do grupo via UazAPI a partir do JID e atualiza o estado local.
   const fetchInviteLink = async (groupJid: string, opts?: { silent?: boolean }) => {
     const raw = (groupJid || '').trim();
@@ -710,12 +773,16 @@ ${scrapeData.content || ''}
         return data.invite_link as string;
       } else {
         if (!opts?.silent) {
-          toast.error(data?.error || 'Não foi possível obter o link (a instância precisa ser admin do grupo).');
+          const { title, description } = translateInviteError(data?.error);
+          toast.error(title, { description });
         }
         return null;
       }
     } catch (e: any) {
-      if (!opts?.silent) toast.error('Erro ao buscar link: ' + (e?.message || 'desconhecido'));
+      if (!opts?.silent) {
+        const { title, description } = translateInviteError(e?.message);
+        toast.error(title, { description });
+      }
       return null;
     } finally {
       setFetchingInviteJids(prev => {
