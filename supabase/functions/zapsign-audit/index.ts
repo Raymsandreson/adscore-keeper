@@ -19,7 +19,9 @@ Deno.serve(async (req) => {
     if (!token) throw new Error("ZAPSIGN_API_TOKEN ausente");
 
     const url = new URL(req.url);
-    const maxPages = Math.min(Number(url.searchParams.get("max_pages") || "30"), 100);
+    const maxPages = Math.min(Number(url.searchParams.get("max_pages") || "30"), 200);
+    const nameFilter = (url.searchParams.get("name_contains") || "").toLowerCase();
+    const onlySigned = url.searchParams.get("only_signed") === "true";
     const pageSize = 50; // zapsign default
 
     const supabase = createClient(
@@ -55,9 +57,12 @@ Deno.serve(async (req) => {
       totalCountFromApi = data.count ?? totalCountFromApi;
       const results = Array.isArray(data.results) ? data.results : Array.isArray(data) ? data : [];
       for (const d of results) {
+        const name = d.name || "";
+        if (nameFilter && !name.toLowerCase().includes(nameFilter)) continue;
+        if (onlySigned && d.status !== "signed") continue;
         allRemoteDocs.push({
           token: d.token,
-          name: d.name,
+          name,
           status: d.status,
           created_at: d.created_at,
           last_update_at: d.last_update_at,
