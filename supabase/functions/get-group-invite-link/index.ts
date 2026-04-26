@@ -259,7 +259,7 @@ Deno.serve(async (req) => {
       group_jid: groupJid,
       invite_code: code || inviteLink.split('/').pop() || null,
       invite_link: inviteLink,
-      instance_name: chosen.instance_name,
+      instance_name: chosenFinal.instance_name,
     })
   } catch (e: any) {
     console.error('[get-group-invite-link] error', e)
