@@ -24,15 +24,16 @@ export function useUserRole(): UserRole {
     }
 
     const fetchRole = async () => {
+      setLoading(true);
       try {
         const { data, error } = await supabase
           .from('user_roles')
           .select('role')
-          .eq('user_id', user.id)
-          .maybeSingle();
+          .eq('user_id', user.id);
 
         if (!error && data) {
-          setRole((data.role as AppRole) || 'member');
+          const roles = data.map(item => item.role as AppRole);
+          setRole(roles.includes('admin') ? 'admin' : 'member');
         } else {
           console.error('Error fetching user role:', error);
           setRole('member');
@@ -46,7 +47,7 @@ export function useUserRole(): UserRole {
     };
 
     fetchRole();
-  }, [user]);
+  }, [user?.id]);
 
   return {
     role: role || 'member',
