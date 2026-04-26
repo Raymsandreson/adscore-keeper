@@ -85,6 +85,13 @@ async function fetchGroupInvite(
     }
 
     const { code, link } = extractInvite(data)
+    if (!code && !link) {
+      // Doc UazAPI retorna 'invite_link' no nível raiz quando getInviteLink=true e a instância é admin.
+      // Se vier vazio, geralmente significa: instância não é admin, ou getInviteLink foi ignorado.
+      const jid = data?.JID || data?.jid || groupJid
+      console.warn(`[invite] /group/info OK mas sem invite_link para ${jid}. Provável: instância não é admin. Keys:`,
+        data && typeof data === 'object' ? Object.keys(data).slice(0, 20) : typeof data)
+    }
     return { code, link }
   } catch (e: any) {
     console.warn('[invite] /group/info exception', e)
