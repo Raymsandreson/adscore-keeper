@@ -690,9 +690,14 @@ ${scrapeData.content || ''}
 
   // Busca link de convite do grupo via UazAPI a partir do JID e atualiza o estado local.
   const fetchInviteLink = async (groupJid: string, opts?: { silent?: boolean }) => {
-    const jid = (groupJid || '').trim();
-    if (!jid || !jid.includes('@g.us')) return null;
-    if (fetchingInviteJids.has(jid)) return null;
+    const raw = (groupJid || '').trim();
+    // Aceita JID com @g.us ou apenas o número (15+ dígitos), normaliza para @g.us.
+    if (!raw) return null;
+    const isFullJid = raw.includes('@g.us');
+    const isNumeric = /^\d{15,}$/.test(raw);
+    if (!isFullJid && !isNumeric) return null;
+    const jid = isFullJid ? raw : `${raw}@g.us`;
+    if (fetchingInviteJids.has(jid) || fetchingInviteJids.has(raw)) return null;
     setFetchingInviteJids(prev => new Set(prev).add(jid));
     try {
       const { data, error } = await supabase.functions.invoke('get-group-invite-link', {
@@ -700,7 +705,7 @@ ${scrapeData.content || ''}
       });
       if (error) throw error;
       if (data?.success && data?.invite_link) {
-        setWhatsappGroups(prev => prev.map(g => g.group_jid === jid ? { ...g, group_link: data.invite_link } : g));
+        setWhatsappGroups(prev => prev.map(g => (g.group_jid === raw || g.group_jid === jid) ? { ...g, group_link: data.invite_link } : g));
         if (!opts?.silent) toast.success('Link do grupo obtido!');
         return data.invite_link as string;
       } else {
@@ -725,13 +730,16 @@ ${scrapeData.content || ''}
   useEffect(() => {
     if (!open || !currentLead?.id) return;
     for (const g of whatsappGroups) {
-      const jid = (g.group_jid || '').trim();
-      if (!jid || !jid.includes('@g.us')) continue;
+      const raw = (g.group_jid || '').trim();
+      if (!raw) continue;
+      const isFullJid = raw.includes('@g.us');
+      const isNumeric = /^\d{15,}$/.test(raw);
+      if (!isFullJid && !isNumeric) continue;
       const link = (g.group_link || '').trim();
       if (link.includes('chat.whatsapp.com')) continue;
-      if (autoFetchedJidsRef.current.has(jid)) continue;
-      autoFetchedJidsRef.current.add(jid);
-      fetchInviteLink(jid, { silent: true });
+      if (autoFetchedJidsRef.current.has(raw)) continue;
+      autoFetchedJidsRef.current.add(raw);
+      fetchInviteLink(raw, { silent: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, currentLead?.id, whatsappGroups]);
@@ -1549,22 +1557,22 @@ ${scrapeData.content || ''}
                                 <ExternalLink className="h-3 w-3" /> Abrir
                               </Button>
                             </a>
-                          ) : g.group_jid?.includes('@g.us') ? (
+                          ) : (g.group_jid?.includes('@g.us') || /^\d{15,}$/.test((g.group_jid || '').trim())) ? (
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
                               className="gap-1 text-blue-600 border-blue-200 shrink-0"
-                              disabled={fetchingInviteJids.has(g.group_jid)}
+                              disabled={fetchingInviteJids.has(g.group_jid) || fetchingInviteJids.has(`${g.group_jid}@g.us`)}
                               onClick={() => fetchInviteLink(g.group_jid)}
                               title="Buscar link de convite via WhatsApp (a instância precisa ser admin do grupo)"
                             >
-                              {fetchingInviteJids.has(g.group_jid) ? (
+                              {(fetchingInviteJids.has(g.group_jid) || fetchingInviteJids.has(`${g.group_jid}@g.us`)) ? (
                                 <Loader2 className="h-3 w-3 animate-spin" />
                               ) : (
                                 <ExternalLink className="h-3 w-3" />
                               )}
-                              {fetchingInviteJids.has(g.group_jid) ? 'Buscando...' : 'Buscar link'}
+                              {(fetchingInviteJids.has(g.group_jid) || fetchingInviteJids.has(`${g.group_jid}@g.us`)) ? 'Buscando...' : 'Buscar link'}
                             </Button>
                           ) : (
                             <Button
