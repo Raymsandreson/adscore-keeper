@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Upload, Trash2, FileText, Loader2, RefreshCw, Sparkles } from 'lucide-react';
+import { ExternalLink, Upload, Trash2, FileText, Loader2, RefreshCw, Sparkles, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -54,6 +54,7 @@ export default function LeadDocumentsTab({ leadId, leadName }: Props) {
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<{ file: DriveFile; analysis: Analysis } | null>(null);
+  const [reprocessing, setReprocessing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -148,6 +149,33 @@ export default function LeadDocumentsTab({ leadId, leadName }: Props) {
     }
   }
 
+  async function handleReprocess() {
+    setReprocessing(true);
+    const tId = toast.loading('Reprocessando procuração com IA…');
+    try {
+      const { data, error } = await supabase.functions.invoke('lead-reprocess-procuracao', {
+        body: { lead_id: leadId },
+      });
+      if (error) throw error;
+      if ((data as any)?.ok === false) throw new Error((data as any).error || 'Falha ao reprocessar');
+      const applied = (data as any)?.enrich?.applied || {};
+      const fields = Object.keys(applied);
+      const filesUploaded = (data as any)?.enrich?.drive?.ok ? 1 : 0;
+      toast.success(
+        fields.length
+          ? `Reprocessado: ${fields.length} campo(s) atualizado(s)${filesUploaded ? ' + PDF no Drive' : ''}`
+          : 'Reprocessado (nenhum campo novo)',
+        { id: tId },
+      );
+      await load();
+    } catch (err: any) {
+      console.error('[LeadDocumentsTab] reprocess error', err);
+      toast.error(`Erro ao reprocessar: ${err.message || err}`, { id: tId });
+    } finally {
+      setReprocessing(false);
+    }
+  }
+
   const confidenceVariant = (c?: string) =>
     c === 'alta' ? 'default' : c === 'média' ? 'secondary' : 'outline';
 
@@ -167,6 +195,20 @@ export default function LeadDocumentsTab({ leadId, leadName }: Props) {
           )}
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
             <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} /> Atualizar
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleReprocess}
+            disabled={reprocessing}
+            title="Busca a procuração assinada mais recente, extrai dados via IA e sobe o PDF na pasta Drive"
+          >
+            {reprocessing ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+            ) : (
+              <Wand2 className="h-3.5 w-3.5 mr-1" />
+            )}
+            Reprocessar com IA
           </Button>
           <label className="inline-flex">
             <input type="file" hidden onChange={handleUpload} disabled={uploading} />
