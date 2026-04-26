@@ -3,7 +3,30 @@
 // Persiste em leads.group_link e lead_whatsapp_groups.group_link quando lead_id é fornecido.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { z } from 'https://esm.sh/zod@3.23.8'
 import { resolveSupabaseUrl, resolveServiceRoleKey } from '../_shared/supabase-url-resolver.ts'
+
+// Schema de entrada do client. group_jid aceita JID completo (`...@g.us`) ou
+// apenas o número de 15+ dígitos. UUIDs validados quando presentes.
+const RequestSchema = z.object({
+  group_jid: z
+    .string({ required_error: 'group_jid is required' })
+    .trim()
+    .min(15, 'group_jid is too short')
+    .max(64, 'group_jid is too long')
+    .regex(/^(\d{15,}|\d{15,}@g\.us)$/, 'group_jid must be a numeric WhatsApp group ID (optionally suffixed with @g.us)'),
+  lead_id: z.string().uuid('lead_id must be a UUID').optional().nullable(),
+  instance_id: z.string().uuid('instance_id must be a UUID').optional().nullable(),
+  get_invite_link: z.boolean().optional(),
+})
+
+// Body enviado à UazAPI POST /group/info — getInviteLink obrigatoriamente true aqui.
+const UazApiBodySchema = z.object({
+  groupjid: z.string().regex(/^\d{15,}@g\.us$/, 'normalized JID must end with @g.us'),
+  getInviteLink: z.literal(true),
+  getRequestsParticipants: z.boolean(),
+  force: z.boolean(),
+})
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -64,15 +87,17 @@ async function fetchGroupInvite(
   groupJid: string,
 ): Promise<{ code: string | null; link: string | null; error?: string }> {
   try {
+    // Validação final do payload antes de chamar a UazAPI — garante groupjid e getInviteLink=true.
+    const uazBody = UazApiBodySchema.parse({
+      groupjid: groupJid,
+      getInviteLink: true,
+      getRequestsParticipants: false,
+      force: false,
+    })
     const res = await fetch(`${baseUrl}/group/info`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', token },
-      body: JSON.stringify({
-        groupjid: groupJid,
-        getInviteLink: true,
-        getRequestsParticipants: false,
-        force: false,
-      }),
+      body: JSON.stringify(uazBody),
     })
     const text = await res.text()
     let data: any = null
@@ -104,14 +129,26 @@ Deno.serve(async (req) => {
 
   try {
     const supabase = createClient(resolveSupabaseUrl(), resolveServiceRoleKey())
-    const body = await req.json().catch(() => ({}))
-    const groupJidRaw: string = String(body?.group_jid || '').trim()
-    const leadId: string | null = body?.lead_id ? String(body.lead_id) : null
-    const requestedInstanceId: string | null = body?.instance_id ? String(body.instance_id) : null
-
-    if (!groupJidRaw) {
-      return jsonResponse({ success: false, error: 'group_jid is required' }, 400)
+    const rawBody = await req.json().catch(() => ({}))
+    const parsed = RequestSchema.safeParse(rawBody)
+    if (!parsed.success) {
+      return jsonResponse({
+        success: false,
+        error: 'Invalid request',
+        details: parsed.error.flatten().fieldErrors,
+      }, 400)
     }
+    // get_invite_link é opcional no client, mas SEMPRE forçamos true para a UazAPI;
+    // recusamos chamada se o cliente passar explicitamente false (uso indevido desta função).
+    if (parsed.data.get_invite_link === false) {
+      return jsonResponse({
+        success: false,
+        error: 'This endpoint requires get_invite_link=true (omit the field or set to true).',
+      }, 400)
+    }
+    const groupJidRaw = parsed.data.group_jid
+    const leadId = parsed.data.lead_id ?? null
+    const requestedInstanceId = parsed.data.instance_id ?? null
 
     const groupJid = groupJidRaw.includes('@g.us') ? groupJidRaw : `${groupJidRaw}@g.us`
 
