@@ -79,11 +79,14 @@ Deno.serve(async (req) => {
     let resolvedVia = force_instance_name ? "force" : (doc.instance_name ? "doc" : null);
 
     // Fetch lead once (need lead_phone + created_by for fallbacks)
-    const { data: leadRow } = await ext
+    // NOTE: external `leads` table has no `assigned_to` column — do not select it.
+    const { data: leadRow, error: leadErr } = await ext
       .from("leads")
-      .select("lead_phone, created_by, assigned_to, acolhedor")
+      .select("lead_phone, created_by, acolhedor")
       .eq("id", lead_id)
       .maybeSingle();
+    if (leadErr) console.error("[lead-reprocess-procuracao] leadRow query error:", leadErr.message);
+    console.log("[lead-reprocess-procuracao] leadRow:", leadRow);
 
     if (!instanceName) {
       const phone = (leadRow?.lead_phone || doc.whatsapp_phone || "").replace(/\D/g, "");
