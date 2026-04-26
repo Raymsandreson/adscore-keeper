@@ -1,8 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Upload, Trash2, FileText, Loader2, RefreshCw } from 'lucide-react';
+import { ExternalLink, Upload, Trash2, FileText, Loader2, RefreshCw, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
 
 interface DriveFile {
   id: string;
@@ -13,6 +21,15 @@ interface DriveFile {
   webViewLink: string;
   iconLink?: string;
   thumbnailLink?: string;
+}
+
+interface Analysis {
+  document_type?: string;
+  document_subtype?: string | null;
+  holder_name?: string | null;
+  holder_cpf?: string | null;
+  description?: string;
+  confidence?: 'alta' | 'média' | 'baixa' | string;
 }
 
 interface Props {
@@ -34,6 +51,9 @@ export default function LeadDocumentsTab({ leadId, leadName }: Props) {
   const [folderUrl, setFolderUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<{ file: DriveFile; analysis: Analysis } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,7 +85,6 @@ export default function LeadDocumentsTab({ leadId, leadName }: Props) {
     setUploading(true);
     try {
       const buf = await file.arrayBuffer();
-      // Convert to base64 in chunks to avoid stack overflow
       const bytes = new Uint8Array(buf);
       let binary = '';
       const chunk = 0x8000;
@@ -110,6 +129,27 @@ export default function LeadDocumentsTab({ leadId, leadName }: Props) {
       toast.error(`Erro ao excluir: ${err.message || err}`);
     }
   }
+
+  async function handleAnalyze(f: DriveFile) {
+    setAnalyzingId(f.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('lead-drive', {
+        body: { action: 'analyze_file', lead_id: leadId, lead_name: leadName, file_id: f.id },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      setAnalysisResult({ file: f, analysis: (data as any).analysis || {} });
+      setAnalysisOpen(true);
+    } catch (err: any) {
+      console.error('[LeadDocumentsTab] analyze error', err);
+      toast.error(`Erro ao analisar: ${err.message || err}`);
+    } finally {
+      setAnalyzingId(null);
+    }
+  }
+
+  const confidenceVariant = (c?: string) =>
+    c === 'alta' ? 'default' : c === 'média' ? 'secondary' : 'outline';
 
   return (
     <div className="space-y-4">
@@ -172,6 +212,20 @@ export default function LeadDocumentsTab({ leadId, leadName }: Props) {
                   {new Date(f.modifiedTime).toLocaleString('pt-BR')} {f.size && `· ${formatBytes(f.size)}`}
                 </div>
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleAnalyze(f)}
+                disabled={analyzingId === f.id}
+                title="Analisar com IA"
+              >
+                {analyzingId === f.id ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5 mr-1" />
+                )}
+                Analisar com IA
+              </Button>
               <Button variant="ghost" size="icon" onClick={() => handleDelete(f)}>
                 <Trash2 className="h-4 w-4 text-destructive" />
               </Button>
@@ -179,6 +233,68 @@ export default function LeadDocumentsTab({ leadId, leadName }: Props) {
           ))}
         </div>
       )}
+
+      <Dialog open={analysisOpen} onOpenChange={setAnalysisOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Análise IA do documento
+            </DialogTitle>
+            <DialogDescription className="truncate">
+              {analysisResult?.file.name}
+            </DialogDescription>
+          </DialogHeader>
+
+          {analysisResult && (
+            <div className="space-y-4 text-sm">
+              <div className="flex flex-wrap gap-2">
+                {analysisResult.analysis.document_type && (
+                  <Badge variant="default">{analysisResult.analysis.document_type}</Badge>
+                )}
+                {analysisResult.analysis.document_subtype && (
+                  <Badge variant="secondary">{analysisResult.analysis.document_subtype}</Badge>
+                )}
+                {analysisResult.analysis.confidence && (
+                  <Badge variant={confidenceVariant(analysisResult.analysis.confidence) as any}>
+                    Confiança: {analysisResult.analysis.confidence}
+                  </Badge>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <div className="text-xs text-muted-foreground mb-0.5">Titular</div>
+                  <div className="font-medium">
+                    {analysisResult.analysis.holder_name || <span className="text-muted-foreground">— não identificado —</span>}
+                  </div>
+                </div>
+                {analysisResult.analysis.holder_cpf && (
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-0.5">CPF</div>
+                    <div className="font-mono">{analysisResult.analysis.holder_cpf}</div>
+                  </div>
+                )}
+                <div>
+                  <div className="text-xs text-muted-foreground mb-0.5">Descrição</div>
+                  <div className="leading-relaxed">
+                    {analysisResult.analysis.description || <span className="text-muted-foreground">—</span>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" size="sm" asChild>
+                  <a href={analysisResult.file.webViewLink} target="_blank" rel="noreferrer">
+                    <ExternalLink className="h-3.5 w-3.5 mr-1" /> Abrir no Drive
+                  </a>
+                </Button>
+                <Button size="sm" onClick={() => setAnalysisOpen(false)}>Fechar</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
