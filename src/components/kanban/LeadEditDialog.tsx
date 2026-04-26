@@ -1720,9 +1720,16 @@ ${scrapeData.content || ''}
                             <X className="h-3 w-3" />
                           </Button>
                         </div>
-                        {!canOpen && (g.group_jid || g.group_link) && (
+                        {!canOpen && g.group_jid?.includes('@g.us') && (
+                          <p className="text-xs text-muted-foreground">
+                            {fetchingInviteJids.has(g.group_jid)
+                              ? '🔄 Buscando link de convite do grupo automaticamente...'
+                              : '💡 Clique em "Buscar link" para obter o convite (requer instância admin do grupo) ou cole o link manualmente.'}
+                          </p>
+                        )}
+                        {!canOpen && g.group_link && !g.group_jid?.includes('@g.us') && (
                           <p className="text-xs text-amber-600">
-                            ⚠ JID de grupo não abre direto. Cole o link de convite (chat.whatsapp.com/…) para habilitar o botão Abrir.
+                            ⚠ Cole o link de convite (chat.whatsapp.com/…) para habilitar o botão Abrir.
                           </p>
                         )}
                         {g.group_jid?.includes('@g.us') ? (
