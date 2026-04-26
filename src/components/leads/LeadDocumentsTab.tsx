@@ -196,6 +196,20 @@ export default function LeadDocumentsTab({ leadId, leadName }: Props) {
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
             <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} /> Atualizar
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleReprocess}
+            disabled={reprocessing}
+            title="Busca a procuração assinada mais recente, extrai dados via IA e sobe o PDF na pasta Drive"
+          >
+            {reprocessing ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+            ) : (
+              <Wand2 className="h-3.5 w-3.5 mr-1" />
+            )}
+            Reprocessar com IA
+          </Button>
           <label className="inline-flex">
             <input type="file" hidden onChange={handleUpload} disabled={uploading} />
             <Button size="sm" disabled={uploading} asChild>
