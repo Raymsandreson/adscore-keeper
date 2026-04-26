@@ -84,18 +84,19 @@ export function LinkOrphanWhatsAppButton({ leadId, leadPhone }: Props) {
     if (!last8) return;
     setLinking(true);
     try {
-      const { error, count } = await supabase
+      const { data: updated, error } = await supabase
         .from('whatsapp_messages')
         .update({ lead_id: leadId })
         .like('phone', `%${last8}%`)
         .or(`lead_id.is.null,lead_id.neq.${leadId}`)
-        .select('*', { count: 'exact', head: true });
+        .select('id');
 
       if (error) throw error;
 
+      const updatedCount = updated?.length ?? totalOrphans;
       toast({
         title: 'Mensagens vinculadas',
-        description: `${count ?? totalOrphans} mensagem(ns) agora aparecem no histórico do lead.`,
+        description: `${updatedCount} mensagem(ns) agora aparecem no histórico do lead.`,
       });
       await scan();
     } catch (err: any) {
