@@ -17,9 +17,9 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const { lead_id } = body as { lead_id?: string };
-    if (!lead_id) {
-      return new Response(JSON.stringify({ ok: false, error: "lead_id required" }), {
+    const { lead_id: lead_id_in, lead_name, force_instance_name } = body as { lead_id?: string; lead_name?: string; force_instance_name?: string };
+    if (!lead_id_in && !lead_name) {
+      return new Response(JSON.stringify({ ok: false, error: "lead_id or lead_name required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -31,10 +31,28 @@ Deno.serve(async (req) => {
 
     const ext = createClient(extUrl, extKey);
 
+    // Resolve lead_id by name if needed
+    let lead_id = lead_id_in || null;
+    if (!lead_id && lead_name) {
+      const { data: found } = await ext
+        .from("leads")
+        .select("id, lead_name")
+        .ilike("lead_name", `%${lead_name}%`)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      lead_id = found?.id || null;
+      if (!lead_id) {
+        return new Response(JSON.stringify({ ok: false, error: `lead not found by name: ${lead_name}` }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // 1) Find latest signed procuração for this lead
     const { data: docs, error: docErr } = await ext
       .from("zapsign_documents")
-      .select("id, doc_token, document_name, signed_file_url, instance_name, whatsapp_phone, signed_at")
+      .select("id, doc_token, document_name, signed_file_url, instance_name, whatsapp_phone, signed_at, created_by")
       .eq("lead_id", lead_id)
       .eq("status", "signed")
       .not("signed_file_url", "is", null)
@@ -53,15 +71,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 2) Resolve instance_name fallback (lead.lead_phone -> latest message instance)
-    let instanceName = doc.instance_name || null;
+    // 2) Resolve instance_name fallback chain:
+    //    a) doc.instance_name
+    //    b) latest whatsapp_messages by lead phone
+    //    c) created_by -> profiles.default_instance_id -> whatsapp_instances.instance_name (Cloud)
+    let instanceName = force_instance_name || doc.instance_name || null;
+    let resolvedVia = force_instance_name ? "force" : (doc.instance_name ? "doc" : null);
+
+    // Fetch lead once (need lead_phone + created_by for fallbacks)
+    const { data: leadRow } = await ext
+      .from("leads")
+      .select("lead_phone, created_by, assigned_to, acolhedor")
+      .eq("id", lead_id)
+      .maybeSingle();
+
     if (!instanceName) {
-      const { data: lead } = await ext
-        .from("leads")
-        .select("lead_phone")
-        .eq("id", lead_id)
-        .maybeSingle();
-      const phone = (lead?.lead_phone || doc.whatsapp_phone || "").replace(/\D/g, "");
+      const phone = (leadRow?.lead_phone || doc.whatsapp_phone || "").replace(/\D/g, "");
       if (phone) {
         const { data: msg } = await ext
           .from("whatsapp_messages")
@@ -70,9 +95,82 @@ Deno.serve(async (req) => {
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
-        instanceName = msg?.instance_name || null;
+        if (msg?.instance_name) {
+          instanceName = msg.instance_name;
+          resolvedVia = "whatsapp_messages";
+        }
       }
     }
+
+    // Fallback c) created_by/assigned_to/acolhedor -> default_instance_id (Cloud DB)
+    if (!instanceName) {
+      const cloudUrlEarly = Deno.env.get("SUPABASE_URL")!;
+      const cloudSrkEarly = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const cloud = createClient(cloudUrlEarly, cloudSrkEarly);
+
+      // Try in order: doc.created_by, lead.created_by, lead.assigned_to
+      const candidateUserIds = [
+        (doc as any).created_by,
+        leadRow?.created_by,
+        leadRow?.assigned_to,
+      ].filter(Boolean) as string[];
+
+      let resolvedUserId: string | null = null;
+      let resolvedSource: string | null = null;
+
+      for (const uid of candidateUserIds) {
+        const { data: prof } = await cloud
+          .from("profiles")
+          .select("default_instance_id")
+          .eq("user_id", uid)
+          .maybeSingle();
+        if (prof?.default_instance_id) {
+          const { data: inst } = await cloud
+            .from("whatsapp_instances")
+            .select("instance_name")
+            .eq("id", prof.default_instance_id)
+            .maybeSingle();
+          if (inst?.instance_name) {
+            instanceName = inst.instance_name;
+            resolvedUserId = uid;
+            resolvedSource = uid === (doc as any).created_by ? "doc.created_by"
+              : uid === leadRow?.created_by ? "lead.created_by"
+              : "lead.assigned_to";
+            break;
+          }
+        }
+      }
+
+      // Last resort: match acolhedor name -> profile.full_name -> default_instance_id
+      if (!instanceName && leadRow?.acolhedor) {
+        const { data: prof } = await cloud
+          .from("profiles")
+          .select("default_instance_id, user_id")
+          .ilike("full_name", `%${leadRow.acolhedor.trim()}%`)
+          .not("default_instance_id", "is", null)
+          .limit(1)
+          .maybeSingle();
+        if (prof?.default_instance_id) {
+          const { data: inst } = await cloud
+            .from("whatsapp_instances")
+            .select("instance_name")
+            .eq("id", prof.default_instance_id)
+            .maybeSingle();
+          if (inst?.instance_name) {
+            instanceName = inst.instance_name;
+            resolvedUserId = prof.user_id;
+            resolvedSource = "lead.acolhedor.name_match";
+          }
+        }
+      }
+
+      console.log("[lead-reprocess-procuracao] fallback profile lookup:", {
+        candidateUserIds, acolhedor: leadRow?.acolhedor, resolvedUserId, resolvedSource, instanceName,
+      });
+      if (resolvedSource) resolvedVia = resolvedSource;
+    }
+
+    console.log("[lead-reprocess-procuracao] instance resolved:", instanceName, "via", resolvedVia);
 
     // 3) Invoke zapsign-enrich-lead (Cloud function)
     const cloudUrl = Deno.env.get("SUPABASE_URL")!;
