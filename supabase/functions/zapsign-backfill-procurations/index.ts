@@ -332,6 +332,8 @@ Deno.serve(async (req) => {
       }
     }
 
+    const nextStart = startOffset + slice.length;
+    const hasMore = nextStart < candidates.length;
     return new Response(
       JSON.stringify({
         success: true,
@@ -340,6 +342,11 @@ Deno.serve(async (req) => {
         pages_scanned: page - 1,
         total_scanned: totalScanned,
         skipped_old_date: skippedOldDate,
+        total_candidates: candidates.length,
+        processed_in_this_call: slice.length,
+        start_offset: startOffset,
+        next_start: hasMore ? nextStart : null,
+        has_more: hasMore,
         stats,
         preview_samples: dryRun ? previewSamples : undefined,
         errors: errors.slice(0, 20),
