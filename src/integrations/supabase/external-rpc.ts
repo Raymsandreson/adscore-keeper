@@ -76,6 +76,10 @@ export async function getConversationSummaries(
   return merged;
 }
 
+function instanceNameVariants(name: string): string[] {
+  return Array.from(new Set([name, name.toUpperCase(), name.toLowerCase()]));
+}
+
 export async function getConversationMessages(
   phone: string,
   instanceName: string,
@@ -85,7 +89,7 @@ export async function getConversationMessages(
     .from('whatsapp_messages')
     .select('*')
     .eq('phone', phone)
-    .eq('instance_name', instanceName)
+    .in('instance_name', instanceNameVariants(instanceName))
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -100,7 +104,7 @@ export async function markMessagesAsRead(
     .from('whatsapp_messages')
     .update({ read_at: new Date().toISOString() })
     .eq('phone', phone)
-    .eq('instance_name', instanceName)
+    .in('instance_name', instanceNameVariants(instanceName))
     .eq('direction', 'inbound')
     .is('read_at', null);
   if (error) throw error;
@@ -115,7 +119,7 @@ export async function linkMessagesToLead(
     .from('whatsapp_messages')
     .update({ lead_id: leadId })
     .eq('phone', phone)
-    .eq('instance_name', instanceName);
+    .in('instance_name', instanceNameVariants(instanceName));
   if (error) throw error;
 }
 
@@ -128,6 +132,6 @@ export async function linkMessagesToContact(
     .from('whatsapp_messages')
     .update({ contact_id: contactId })
     .eq('phone', phone)
-    .eq('instance_name', instanceName);
+    .in('instance_name', instanceNameVariants(instanceName));
   if (error) throw error;
 }
