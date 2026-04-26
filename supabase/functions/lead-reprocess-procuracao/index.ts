@@ -158,17 +158,16 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Fallback c) created_by/assigned_to/acolhedor -> default_instance_id (Cloud DB)
+    // Fallback c) created_by/acolhedor -> default_instance_id (Cloud DB)
     if (!instanceName) {
       const cloudUrlEarly = Deno.env.get("SUPABASE_URL")!;
       const cloudSrkEarly = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
       const cloud = createClient(cloudUrlEarly, cloudSrkEarly);
 
-      // Try in order: doc.created_by, lead.created_by, lead.assigned_to
+      // Try in order: doc.created_by, lead.created_by
       const candidateUserIds = [
         (doc as any).created_by,
         leadRow?.created_by,
-        leadRow?.assigned_to,
       ].filter(Boolean) as string[];
 
       let resolvedUserId: string | null = null;
@@ -189,9 +188,7 @@ Deno.serve(async (req) => {
           if (inst?.instance_name) {
             instanceName = inst.instance_name;
             resolvedUserId = uid;
-            resolvedSource = uid === (doc as any).created_by ? "doc.created_by"
-              : uid === leadRow?.created_by ? "lead.created_by"
-              : "lead.assigned_to";
+            resolvedSource = uid === (doc as any).created_by ? "doc.created_by" : "lead.created_by";
             break;
           }
         }
