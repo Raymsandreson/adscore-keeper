@@ -170,7 +170,7 @@ export function WhatsAppInstanceManager() {
     setSaving(true);
     try {
       if (editingId) {
-        const { error } = await supabase
+        const { error } = await ext
           .from('whatsapp_instances')
           .update({
             instance_name: form.instance_name.trim(),
@@ -183,7 +183,7 @@ export function WhatsAppInstanceManager() {
         if (error) throw error;
         toast.success('Instância atualizada!');
       } else {
-        const { error } = await supabase
+        const { error } = await ext
           .from('whatsapp_instances')
           .insert({
             instance_name: form.instance_name.trim(),
@@ -208,7 +208,7 @@ export function WhatsAppInstanceManager() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      const { error } = await supabase
+      const { error } = await ext
         .from('whatsapp_instances')
         .delete()
         .eq('id', deleteTarget.id);
@@ -224,7 +224,7 @@ export function WhatsAppInstanceManager() {
   const toggleActive = async (inst: Instance) => {
     const newActive = !inst.is_active;
     setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, is_active: newActive } : i));
-    const { error } = await supabase
+    const { error } = await ext
       .from('whatsapp_instances')
       .update({ is_active: newActive } as any)
       .eq('id', inst.id);
@@ -337,7 +337,7 @@ export function WhatsAppInstanceManager() {
                             }
                             
                             setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, default_agent_id: newVal } : i));
-                            const { error } = await supabase
+                            const { error } = await ext
                               .from('whatsapp_instances')
                               .update({ default_agent_id: newVal } as any)
                               .eq('id', inst.id);
@@ -371,7 +371,7 @@ export function WhatsAppInstanceManager() {
                         checked={(inst as any).notify_on_disconnect !== false}
                         onCheckedChange={async (checked) => {
                           setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, notify_on_disconnect: checked } as any : i));
-                          const { error } = await supabase
+                          const { error } = await ext
                             .from('whatsapp_instances')
                             .update({ notify_on_disconnect: checked } as any)
                             .eq('id', inst.id);
