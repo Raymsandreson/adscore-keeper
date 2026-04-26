@@ -105,6 +105,16 @@ export function useTeamMembers() {
     const { data: user } = await supabase.auth.getUser();
     const normalizedEmail = email.toLowerCase().trim();
     
+    // Bloqueia se já existe usuário cadastrado com esse e-mail
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('user_id')
+      .ilike('email', normalizedEmail)
+      .maybeSingle();
+    if (existingProfile) {
+      throw new Error('Já existe um usuário cadastrado com este e-mail.');
+    }
+
     // Insert invitation into database with pre-configured permissions
     const { error } = await supabase
       .from('team_invitations')
@@ -116,7 +126,12 @@ export function useTeamMembers() {
         whatsapp_instance_ids: whatsappInstanceIds || [],
       } as any);
 
-    if (error) throw error;
+    if (error) {
+      if ((error as any).code === '23505') {
+        throw new Error('Já existe um convite pendente para este e-mail.');
+      }
+      throw error;
+    }
 
     // Get inviter's name for the email
     const { data: profile } = await supabase
