@@ -4,7 +4,7 @@
 // - Match no banco EXTERNO por CPF ou últimos 8 dígitos do telefone
 // - Enriquece lead, marca closed, move funil (maternidade/BPC)
 // - Cria lead novo no externo se não houver match
-// - Anexa PDF em process_documents (externo)
+// - Anexa PDF em zapsign_documents (externo) + enriquece bairro via ViaCEP quando OCR falha
 //
 // Modos:
 //  ?inspect_token=XXXX           -> devolve detalhe bruto ZapSign
