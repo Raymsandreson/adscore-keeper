@@ -179,17 +179,52 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'No connected WhatsApp instance available' }, 200)
     }
 
-    const baseUrl = chosen.base_url || 'https://abraci.uazapi.com'
-    const { code, link, error: apiError } = await fetchGroupInvite(baseUrl, chosen.instance_token, groupJid)
+    // Monta lista de candidatas: a escolhida primeiro, depois TODAS as outras conectadas.
+    // Motivo: a instância preferida pode não ser membro/admin do grupo; tentamos as demais
+    // automaticamente até alguma conseguir retornar o invite_link.
+    const candidates: any[] = [chosen]
+    try {
+      const { data: others } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('is_active', true)
+        .neq('id', chosen.id)
+        .limit(20)
+      for (const inst of others || []) {
+        if (await isInstanceConnected(inst)) candidates.push(inst)
+      }
+    } catch (e) { console.warn('[invite] listing fallback instances failed', e) }
 
-    if (!code && !link) {
+    let used: any = null
+    let code: string | null = null
+    let link: string | null = null
+    let lastError: string | undefined
+    const attempts: Array<{ instance: string; error?: string }> = []
+
+    for (const inst of candidates) {
+      const baseUrl = inst.base_url || 'https://abraci.uazapi.com'
+      const result = await fetchGroupInvite(baseUrl, inst.instance_token, groupJid)
+      attempts.push({ instance: inst.instance_name, error: result.error })
+      if (result.code || result.link) {
+        used = inst
+        code = result.code
+        link = result.link
+        break
+      }
+      lastError = result.error || lastError
+      console.warn(`[invite] instance "${inst.instance_name}" could not fetch link${result.error ? ': ' + result.error : ''}. Trying next…`)
+    }
+
+    if (!used) {
       return jsonResponse({
         success: false,
-        error: apiError
+        error: lastError
           || 'Could not retrieve invite link (admin permission required or group not found)',
+        attempts,
       }, 200)
     }
 
+    const chosenFinal = used
     const inviteLink = link || `https://chat.whatsapp.com/${code}`
 
     // Persist link if a lead is provided (best-effort, non-blocking on errors).
@@ -224,7 +259,7 @@ Deno.serve(async (req) => {
       group_jid: groupJid,
       invite_code: code || inviteLink.split('/').pop() || null,
       invite_link: inviteLink,
-      instance_name: chosen.instance_name,
+      instance_name: chosenFinal.instance_name,
     })
   } catch (e: any) {
     console.error('[get-group-invite-link] error', e)
