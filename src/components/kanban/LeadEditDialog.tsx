@@ -60,6 +60,7 @@ const LeadStageHistoryPanel = lazy(() => import('@/components/kanban/LeadStageHi
 const LeadFunnelOverview = lazy(() => import('@/components/kanban/LeadFunnelOverview').then(m => ({ default: m.LeadFunnelOverview })));
 import { CloseLeadGroupDialog, CloseLeadContactPayload } from '@/components/leads/CloseLeadGroupDialog';
 const LeadActivitiesTab = lazy(() => import('@/components/leads/LeadActivitiesTab').then(m => ({ default: m.LeadActivitiesTab })));
+import { LinkOrphanWhatsAppButton } from '@/components/leads/LinkOrphanWhatsAppButton';
 const AccidentDataExtractor = lazy(() => import('@/components/leads/AccidentDataExtractor').then(m => ({ default: m.AccidentDataExtractor })));
 import { ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
@@ -2604,6 +2605,7 @@ ${scrapeData.content || ''}
             <TabsContent value="history" className="mt-0 space-y-6">
               {activeTab === 'history' && (
                 <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <LinkOrphanWhatsAppButton leadId={lead.id} leadPhone={leadPhone || (currentLead as any)?.lead_phone} />
                   <LeadStageHistoryPanel leadId={lead.id} boards={boards} />
                   <div className="pt-4 border-t">
                     <LeadLinkedComments leadId={lead.id} instagramUsername={instagramUsername} />
