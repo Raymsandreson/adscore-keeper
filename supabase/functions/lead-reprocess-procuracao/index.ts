@@ -102,18 +102,27 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Fallback c) created_by -> default_instance_id (Cloud DB)
+    // Fallback c) created_by/assigned_to/acolhedor -> default_instance_id (Cloud DB)
     if (!instanceName) {
       const cloudUrlEarly = Deno.env.get("SUPABASE_URL")!;
       const cloudSrkEarly = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
       const cloud = createClient(cloudUrlEarly, cloudSrkEarly);
-      const createdBy = leadRow?.created_by || (doc as any).created_by || null;
-      console.log("[lead-reprocess-procuracao] fallback created_by:", createdBy, "leadRow:", JSON.stringify(leadRow), "doc.created_by:", (doc as any).created_by);
-      if (createdBy) {
+
+      // Try in order: doc.created_by, lead.created_by, lead.assigned_to
+      const candidateUserIds = [
+        (doc as any).created_by,
+        leadRow?.created_by,
+        leadRow?.assigned_to,
+      ].filter(Boolean) as string[];
+
+      let resolvedUserId: string | null = null;
+      let resolvedSource: string | null = null;
+
+      for (const uid of candidateUserIds) {
         const { data: prof } = await cloud
           .from("profiles")
           .select("default_instance_id")
-          .eq("user_id", createdBy)
+          .eq("user_id", uid)
           .maybeSingle();
         if (prof?.default_instance_id) {
           const { data: inst } = await cloud
@@ -123,10 +132,42 @@ Deno.serve(async (req) => {
             .maybeSingle();
           if (inst?.instance_name) {
             instanceName = inst.instance_name;
-            resolvedVia = "created_by.default_instance_id";
+            resolvedUserId = uid;
+            resolvedSource = uid === (doc as any).created_by ? "doc.created_by"
+              : uid === leadRow?.created_by ? "lead.created_by"
+              : "lead.assigned_to";
+            break;
           }
         }
       }
+
+      // Last resort: match acolhedor name -> profile.full_name -> default_instance_id
+      if (!instanceName && leadRow?.acolhedor) {
+        const { data: prof } = await cloud
+          .from("profiles")
+          .select("default_instance_id, user_id")
+          .ilike("full_name", `%${leadRow.acolhedor.trim()}%`)
+          .not("default_instance_id", "is", null)
+          .limit(1)
+          .maybeSingle();
+        if (prof?.default_instance_id) {
+          const { data: inst } = await cloud
+            .from("whatsapp_instances")
+            .select("instance_name")
+            .eq("id", prof.default_instance_id)
+            .maybeSingle();
+          if (inst?.instance_name) {
+            instanceName = inst.instance_name;
+            resolvedUserId = prof.user_id;
+            resolvedSource = "lead.acolhedor.name_match";
+          }
+        }
+      }
+
+      console.log("[lead-reprocess-procuracao] fallback profile lookup:", {
+        candidateUserIds, acolhedor: leadRow?.acolhedor, resolvedUserId, resolvedSource, instanceName,
+      });
+      if (resolvedSource) resolvedVia = resolvedSource;
     }
 
     console.log("[lead-reprocess-procuracao] instance resolved:", instanceName, "via", resolvedVia);
