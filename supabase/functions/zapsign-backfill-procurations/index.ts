@@ -436,6 +436,7 @@ Deno.serve(async (req) => {
             ocr_enriched_at: new Date().toISOString(),
             ocr_source: "zapsign_backfill",
             lead_status: "closed",
+            became_client_date: signer?.signed_at ? signer.signed_at.slice(0, 10) : null,
             board_id: targetFunnel || null,
             status: "Procuração assinada (backfill)",
           };
@@ -454,6 +455,8 @@ Deno.serve(async (req) => {
         } else {
           // Enriquece lead existente
           const enrich: Record<string, unknown> = { lead_status: "closed" };
+          // Sempre sobrescreve became_client_date com a data da assinatura (fonte de verdade)
+          if (signer?.signed_at) enrich.became_client_date = signer.signed_at.slice(0, 10);
           if (cpfFinal && !matched!.cpf) enrich.cpf = cpfFinal;
           if (ocr?.rg && !matched!.rg) enrich.rg = ocr.rg;
           if (ocr?.cep && !matched!.cep) enrich.cep = ocr.cep;

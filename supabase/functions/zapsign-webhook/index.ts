@@ -808,8 +808,11 @@ Deno.serve(async (req) => {
               const stages = (boardData?.stages as any[]) || []
               const lastStage = stages.length > 0 ? stages[stages.length - 1] : null
 
-              const updatePayload: any = { status: 'closed' }
+              const updatePayload: any = { status: 'closed', lead_status: 'closed' }
               if (lastStage?.id) updatePayload.stage = lastStage.id
+              // Set closing date = signature date (fonte de verdade ZapSign)
+              const signedAtIso = firstSigner?.signed_at || (isDocFullySigned ? new Date().toISOString() : null)
+              if (signedAtIso) updatePayload.became_client_date = signedAtIso.slice(0, 10)
 
               await supabase
                 .from('leads')
