@@ -436,6 +436,7 @@ Deno.serve(async (req) => {
             ocr_enriched_at: new Date().toISOString(),
             ocr_source: "zapsign_backfill",
             lead_status: "closed",
+            became_client_date: signer?.signed_at ? signer.signed_at.slice(0, 10) : null,
             board_id: targetFunnel || null,
             status: "Procuração assinada (backfill)",
           };
