@@ -108,6 +108,7 @@ Deno.serve(async (req) => {
       const cloudSrkEarly = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
       const cloud = createClient(cloudUrlEarly, cloudSrkEarly);
       const createdBy = leadRow?.created_by || (doc as any).created_by || null;
+      console.log("[lead-reprocess-procuracao] fallback created_by:", createdBy, "leadRow:", JSON.stringify(leadRow), "doc.created_by:", (doc as any).created_by);
       if (createdBy) {
         const { data: prof } = await cloud
           .from("profiles")
