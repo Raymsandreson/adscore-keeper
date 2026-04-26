@@ -1557,22 +1557,22 @@ ${scrapeData.content || ''}
                                 <ExternalLink className="h-3 w-3" /> Abrir
                               </Button>
                             </a>
-                          ) : g.group_jid?.includes('@g.us') ? (
+                          ) : (g.group_jid?.includes('@g.us') || /^\d{15,}$/.test((g.group_jid || '').trim())) ? (
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
                               className="gap-1 text-blue-600 border-blue-200 shrink-0"
-                              disabled={fetchingInviteJids.has(g.group_jid)}
+                              disabled={fetchingInviteJids.has(g.group_jid) || fetchingInviteJids.has(`${g.group_jid}@g.us`)}
                               onClick={() => fetchInviteLink(g.group_jid)}
                               title="Buscar link de convite via WhatsApp (a instância precisa ser admin do grupo)"
                             >
-                              {fetchingInviteJids.has(g.group_jid) ? (
+                              {(fetchingInviteJids.has(g.group_jid) || fetchingInviteJids.has(`${g.group_jid}@g.us`)) ? (
                                 <Loader2 className="h-3 w-3 animate-spin" />
                               ) : (
                                 <ExternalLink className="h-3 w-3" />
                               )}
-                              {fetchingInviteJids.has(g.group_jid) ? 'Buscando...' : 'Buscar link'}
+                              {(fetchingInviteJids.has(g.group_jid) || fetchingInviteJids.has(`${g.group_jid}@g.us`)) ? 'Buscando...' : 'Buscar link'}
                             </Button>
                           ) : (
                             <Button
