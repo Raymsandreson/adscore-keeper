@@ -53,15 +53,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 2) Resolve instance_name fallback (lead.lead_phone -> latest message instance)
+    // 2) Resolve instance_name fallback chain:
+    //    a) doc.instance_name
+    //    b) latest whatsapp_messages by lead phone
+    //    c) created_by -> profiles.default_instance_id -> whatsapp_instances.instance_name (Cloud)
     let instanceName = doc.instance_name || null;
+    let resolvedVia = doc.instance_name ? "doc" : null;
+
+    // Fetch lead once (need lead_phone + created_by for fallbacks)
+    const { data: leadRow } = await ext
+      .from("leads")
+      .select("lead_phone, created_by")
+      .eq("id", lead_id)
+      .maybeSingle();
+
     if (!instanceName) {
-      const { data: lead } = await ext
-        .from("leads")
-        .select("lead_phone")
-        .eq("id", lead_id)
-        .maybeSingle();
-      const phone = (lead?.lead_phone || doc.whatsapp_phone || "").replace(/\D/g, "");
+      const phone = (leadRow?.lead_phone || doc.whatsapp_phone || "").replace(/\D/g, "");
       if (phone) {
         const { data: msg } = await ext
           .from("whatsapp_messages")
@@ -70,9 +77,40 @@ Deno.serve(async (req) => {
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
-        instanceName = msg?.instance_name || null;
+        if (msg?.instance_name) {
+          instanceName = msg.instance_name;
+          resolvedVia = "whatsapp_messages";
+        }
       }
     }
+
+    // Fallback c) created_by -> default_instance_id (Cloud DB)
+    if (!instanceName) {
+      const cloudUrlEarly = Deno.env.get("SUPABASE_URL")!;
+      const cloudSrkEarly = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const cloud = createClient(cloudUrlEarly, cloudSrkEarly);
+      const createdBy = leadRow?.created_by || (doc as any).created_by || null;
+      if (createdBy) {
+        const { data: prof } = await cloud
+          .from("profiles")
+          .select("default_instance_id")
+          .eq("user_id", createdBy)
+          .maybeSingle();
+        if (prof?.default_instance_id) {
+          const { data: inst } = await cloud
+            .from("whatsapp_instances")
+            .select("instance_name")
+            .eq("id", prof.default_instance_id)
+            .maybeSingle();
+          if (inst?.instance_name) {
+            instanceName = inst.instance_name;
+            resolvedVia = "created_by.default_instance_id";
+          }
+        }
+      }
+    }
+
+    console.log("[lead-reprocess-procuracao] instance resolved:", instanceName, "via", resolvedVia);
 
     // 3) Invoke zapsign-enrich-lead (Cloud function)
     const cloudUrl = Deno.env.get("SUPABASE_URL")!;
