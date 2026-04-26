@@ -118,6 +118,7 @@ import { Pencil, Trash2 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { logGroupAudit } from '@/lib/groupAuditLog';
 import { useLegalCases } from '@/hooks/useLegalCases';
+import LeadDocumentsTab from '@/components/leads/LeadDocumentsTab';
 import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDialog';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
 import { useChecklists } from '@/hooks/useChecklists';
