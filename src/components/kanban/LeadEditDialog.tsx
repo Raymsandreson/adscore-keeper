@@ -690,9 +690,14 @@ ${scrapeData.content || ''}
 
   // Busca link de convite do grupo via UazAPI a partir do JID e atualiza o estado local.
   const fetchInviteLink = async (groupJid: string, opts?: { silent?: boolean }) => {
-    const jid = (groupJid || '').trim();
-    if (!jid || !jid.includes('@g.us')) return null;
-    if (fetchingInviteJids.has(jid)) return null;
+    const raw = (groupJid || '').trim();
+    // Aceita JID com @g.us ou apenas o número (15+ dígitos), normaliza para @g.us.
+    if (!raw) return null;
+    const isFullJid = raw.includes('@g.us');
+    const isNumeric = /^\d{15,}$/.test(raw);
+    if (!isFullJid && !isNumeric) return null;
+    const jid = isFullJid ? raw : `${raw}@g.us`;
+    if (fetchingInviteJids.has(jid) || fetchingInviteJids.has(raw)) return null;
     setFetchingInviteJids(prev => new Set(prev).add(jid));
     try {
       const { data, error } = await supabase.functions.invoke('get-group-invite-link', {
@@ -700,7 +705,7 @@ ${scrapeData.content || ''}
       });
       if (error) throw error;
       if (data?.success && data?.invite_link) {
-        setWhatsappGroups(prev => prev.map(g => g.group_jid === jid ? { ...g, group_link: data.invite_link } : g));
+        setWhatsappGroups(prev => prev.map(g => (g.group_jid === raw || g.group_jid === jid) ? { ...g, group_link: data.invite_link } : g));
         if (!opts?.silent) toast.success('Link do grupo obtido!');
         return data.invite_link as string;
       } else {
