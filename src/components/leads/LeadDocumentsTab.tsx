@@ -54,6 +54,7 @@ export default function LeadDocumentsTab({ leadId, leadName }: Props) {
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<{ file: DriveFile; analysis: Analysis } | null>(null);
+  const [reprocessing, setReprocessing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
