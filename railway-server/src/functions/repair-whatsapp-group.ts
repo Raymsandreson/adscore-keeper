@@ -92,20 +92,51 @@ export const handler: RequestHandler = async (req, res) => {
       added = numbers.length;
     }
 
-    // 5. Promover (se solicitado): tenta promover TODOS os números (já membros + recém-adicionados)
+    // 5. Promover (se solicitado): WhatsApp exige que o participante já esteja registrado
+    //    no grupo antes de poder virar admin. Após o `add`, aguardamos e fazemos retries
+    //    apenas para os números que ainda não foram promovidos.
     let promoted = 0;
+    let promoteDetails: any[] = [];
     if (promote_to_admin) {
-      const promoteResult = await uazUpdateParticipants(actor, group_jid, 'promote', numbers);
-      console.log('[repair-whatsapp-group] promote result:', promoteResult.status, JSON.stringify(promoteResult.body));
+      const pendingPromote = new Set<string>(numbers);
+      const promotedSet = new Set<string>();
+      const MAX_ATTEMPTS = 4;
+      const DELAYS_MS = [2500, 4000, 6000, 8000];
 
-      if (Array.isArray(promoteResult.body?.participants)) {
-        for (const p of promoteResult.body.participants) {
-          const status = p?.status ?? p?.code;
-          if (status === 200 || status === '200') promoted++;
+      for (let attempt = 0; attempt < MAX_ATTEMPTS && pendingPromote.size > 0; attempt++) {
+        await new Promise((r) => setTimeout(r, DELAYS_MS[attempt]));
+        const batch = Array.from(pendingPromote);
+        const promoteResult = await uazUpdateParticipants(actor, group_jid, 'promote', batch);
+        console.log(
+          `[repair-whatsapp-group] promote attempt ${attempt + 1}:`,
+          promoteResult.status,
+          JSON.stringify(promoteResult.body)
+        );
+
+        if (Array.isArray(promoteResult.body?.participants)) {
+          for (const p of promoteResult.body.participants) {
+            const status = p?.status ?? p?.code;
+            const jid: string = String(p?.jid || p?.participant || '');
+            const phone = jid.replace(/\D/g, '').replace(/^.*?(\d{10,15})$/, '$1');
+            const matched = batch.find((n) => phone.endsWith(n) || n.endsWith(phone));
+            if (status === 200 || status === '200') {
+              if (matched) {
+                promotedSet.add(matched);
+                pendingPromote.delete(matched);
+              }
+            }
+          }
+          promoteDetails = promoteResult.body.participants;
+        } else if (promoteResult.ok && attempt === MAX_ATTEMPTS - 1) {
+          // Última tentativa sem corpo estruturado: assumimos sucesso para os pendentes
+          for (const n of batch) {
+            promotedSet.add(n);
+            pendingPromote.delete(n);
+          }
         }
-      } else if (promoteResult.ok) {
-        promoted = numbers.length;
       }
+
+      promoted = promotedSet.size;
     }
 
     return res.json({
@@ -114,6 +145,7 @@ export const handler: RequestHandler = async (req, res) => {
       promoted,
       attempted: numbers.length,
       actor_instance: actor.instance_name,
+      promote_details: promote_to_admin ? promoteDetails : undefined,
       message: promote_to_admin
         ? `${promoted} de ${numbers.length} instância(s) promovida(s) a admin (${added} recém-adicionada(s)).`
         : `${added} de ${numbers.length} instância(s) adicionada(s) ao grupo.`,
