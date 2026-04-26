@@ -2702,11 +2702,14 @@ export type Database = {
         Row: {
           action_source: string | null
           action_source_detail: string | null
+          birth_date: string | null
           cep: string | null
           city: string | null
           classification: string | null
           classifications: string[] | null
+          complement: string | null
           converted_to_lead_at: string | null
+          cpf: string | null
           created_at: string
           created_by: string | null
           deleted_at: string | null
@@ -2724,8 +2727,10 @@ export type Database = {
           profession: string | null
           profession_cbo_code: string | null
           relationship_date: string | null
+          rg: string | null
           state: string | null
           street: string | null
+          street_number: string | null
           tags: string[] | null
           updated_at: string
           whatsapp_group_id: string | null
@@ -2733,11 +2738,14 @@ export type Database = {
         Insert: {
           action_source?: string | null
           action_source_detail?: string | null
+          birth_date?: string | null
           cep?: string | null
           city?: string | null
           classification?: string | null
           classifications?: string[] | null
+          complement?: string | null
           converted_to_lead_at?: string | null
+          cpf?: string | null
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
@@ -2755,8 +2763,10 @@ export type Database = {
           profession?: string | null
           profession_cbo_code?: string | null
           relationship_date?: string | null
+          rg?: string | null
           state?: string | null
           street?: string | null
+          street_number?: string | null
           tags?: string[] | null
           updated_at?: string
           whatsapp_group_id?: string | null
@@ -2764,11 +2774,14 @@ export type Database = {
         Update: {
           action_source?: string | null
           action_source_detail?: string | null
+          birth_date?: string | null
           cep?: string | null
           city?: string | null
           classification?: string | null
           classifications?: string[] | null
+          complement?: string | null
           converted_to_lead_at?: string | null
+          cpf?: string | null
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
@@ -2786,8 +2799,10 @@ export type Database = {
           profession?: string | null
           profession_cbo_code?: string | null
           relationship_date?: string | null
+          rg?: string | null
           state?: string | null
           street?: string | null
+          street_number?: string | null
           tags?: string[] | null
           updated_at?: string
           whatsapp_group_id?: string | null
@@ -4543,6 +4558,7 @@ export type Database = {
           product_service_id: string | null
           stages: Json
           updated_at: string
+          zapsign_template_id: string | null
         }
         Insert: {
           ad_account_id?: string | null
@@ -4558,6 +4574,7 @@ export type Database = {
           product_service_id?: string | null
           stages?: Json
           updated_at?: string
+          zapsign_template_id?: string | null
         }
         Update: {
           ad_account_id?: string | null
@@ -4573,6 +4590,7 @@ export type Database = {
           product_service_id?: string | null
           stages?: Json
           updated_at?: string
+          zapsign_template_id?: string | null
         }
         Relationships: [
           {
@@ -5439,19 +5457,23 @@ export type Database = {
           adset_id: string | null
           adset_name: string | null
           became_client_date: string | null
+          birth_date: string | null
           board_id: string | null
           cac: number | null
           campaign_id: string | null
           campaign_name: string | null
           case_number: string | null
           case_type: string | null
+          cep: string | null
           city: string | null
           classification_date: string | null
           client_classification: string | null
           company_size_justification: string | null
+          complement: string | null
           contractor_company: string | null
           conversion_value: number | null
           converted_at: string | null
+          cpf: string | null
           created_at: string
           created_by: string | null
           creative_id: string | null
@@ -5490,10 +5512,13 @@ export type Database = {
           notes: string | null
           product_service_id: string | null
           qualified_at: string | null
+          rg: string | null
           sector: string | null
           source: string | null
           state: string | null
           status: string | null
+          street: string | null
+          street_number: string | null
           sync_status: string | null
           updated_at: string
           updated_by: string | null
@@ -5518,19 +5543,23 @@ export type Database = {
           adset_id?: string | null
           adset_name?: string | null
           became_client_date?: string | null
+          birth_date?: string | null
           board_id?: string | null
           cac?: number | null
           campaign_id?: string | null
           campaign_name?: string | null
           case_number?: string | null
           case_type?: string | null
+          cep?: string | null
           city?: string | null
           classification_date?: string | null
           client_classification?: string | null
           company_size_justification?: string | null
+          complement?: string | null
           contractor_company?: string | null
           conversion_value?: number | null
           converted_at?: string | null
+          cpf?: string | null
           created_at?: string
           created_by?: string | null
           creative_id?: string | null
@@ -5569,10 +5598,13 @@ export type Database = {
           notes?: string | null
           product_service_id?: string | null
           qualified_at?: string | null
+          rg?: string | null
           sector?: string | null
           source?: string | null
           state?: string | null
           status?: string | null
+          street?: string | null
+          street_number?: string | null
           sync_status?: string | null
           updated_at?: string
           updated_by?: string | null
@@ -5597,19 +5629,23 @@ export type Database = {
           adset_id?: string | null
           adset_name?: string | null
           became_client_date?: string | null
+          birth_date?: string | null
           board_id?: string | null
           cac?: number | null
           campaign_id?: string | null
           campaign_name?: string | null
           case_number?: string | null
           case_type?: string | null
+          cep?: string | null
           city?: string | null
           classification_date?: string | null
           client_classification?: string | null
           company_size_justification?: string | null
+          complement?: string | null
           contractor_company?: string | null
           conversion_value?: number | null
           converted_at?: string | null
+          cpf?: string | null
           created_at?: string
           created_by?: string | null
           creative_id?: string | null
@@ -5648,10 +5684,13 @@ export type Database = {
           notes?: string | null
           product_service_id?: string | null
           qualified_at?: string | null
+          rg?: string | null
           sector?: string | null
           source?: string | null
           state?: string | null
           status?: string | null
+          street?: string | null
+          street_number?: string | null
           sync_status?: string | null
           updated_at?: string
           updated_by?: string | null
