@@ -136,16 +136,17 @@ Deno.serve(async (req) => {
     }
 
     const baseUrl = chosen.base_url || 'https://abraci.uazapi.com'
-    const code = await fetchInviteCode(baseUrl, chosen.instance_token, groupJid)
+    const { code, link, error: apiError } = await fetchGroupInvite(baseUrl, chosen.instance_token, groupJid)
 
-    if (!code) {
+    if (!code && !link) {
       return jsonResponse({
         success: false,
-        error: 'Could not retrieve invite code (admin permission required or group not found)',
+        error: apiError
+          || 'Could not retrieve invite link (admin permission required or group not found)',
       }, 200)
     }
 
-    const inviteLink = `https://chat.whatsapp.com/${code}`
+    const inviteLink = link || `https://chat.whatsapp.com/${code}`
 
     // Persist link if a lead is provided (best-effort, non-blocking on errors).
     if (leadId) {
