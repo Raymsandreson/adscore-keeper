@@ -3,7 +3,30 @@
 // Persiste em leads.group_link e lead_whatsapp_groups.group_link quando lead_id é fornecido.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { z } from 'https://esm.sh/zod@3.23.8'
 import { resolveSupabaseUrl, resolveServiceRoleKey } from '../_shared/supabase-url-resolver.ts'
+
+// Schema de entrada do client. group_jid aceita JID completo (`...@g.us`) ou
+// apenas o número de 15+ dígitos. UUIDs validados quando presentes.
+const RequestSchema = z.object({
+  group_jid: z
+    .string({ required_error: 'group_jid is required' })
+    .trim()
+    .min(15, 'group_jid is too short')
+    .max(64, 'group_jid is too long')
+    .regex(/^(\d{15,}|\d{15,}@g\.us)$/, 'group_jid must be a numeric WhatsApp group ID (optionally suffixed with @g.us)'),
+  lead_id: z.string().uuid('lead_id must be a UUID').optional().nullable(),
+  instance_id: z.string().uuid('instance_id must be a UUID').optional().nullable(),
+  get_invite_link: z.boolean().optional(),
+})
+
+// Body enviado à UazAPI POST /group/info — getInviteLink obrigatoriamente true aqui.
+const UazApiBodySchema = z.object({
+  groupjid: z.string().regex(/^\d{15,}@g\.us$/, 'normalized JID must end with @g.us'),
+  getInviteLink: z.literal(true),
+  getRequestsParticipants: z.boolean(),
+  force: z.boolean(),
+})
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
