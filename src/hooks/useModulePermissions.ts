@@ -26,7 +26,7 @@ export const MODULE_DEFINITIONS = [
 
 export function useModulePermissions() {
   const { user } = useAuthContext();
-  const { isAdmin } = useUserRole();
+  const { isAdmin, loading: roleLoading } = useUserRole();
   const [permissions, setPermissions] = useState<ModulePermission[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -97,5 +97,5 @@ export function useModulePermissions() {
     return result;
   }, [permissions]);
 
-  return { permissions, loading, getAccess, canView, canEdit, setPermission, getUserPermissions, fetchPermissions };
+  return { permissions, loading: loading || roleLoading, getAccess, canView, canEdit, setPermission, getUserPermissions, fetchPermissions };
 }
