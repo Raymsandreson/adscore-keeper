@@ -29,6 +29,12 @@ interface SummaryRow {
   group_create_dispatched?: boolean;
   enrich_dispatched?: boolean;
   enrich_skipped_reason?: string | null;
+  doc_upserted?: boolean;
+  doc_upsert_error?: string | null;
+  lead_closed?: boolean;
+  case_created?: boolean;
+  case_number?: string | null;
+  case_error?: string | null;
   reason?: string;
 }
 
@@ -327,8 +333,10 @@ export default function ZapsignBackfillPage() {
                     <th className="py-2 px-2">Status</th>
                     <th className="py-2 px-2">Match</th>
                     <th className="py-2 px-2">Resultado</th>
+                    <th className="py-2 px-2 text-center">Doc</th>
                     <th className="py-2 px-2 text-center">Grupos</th>
                     <th className="py-2 px-2 text-center">Enriquecimento</th>
+                    <th className="py-2 px-2 text-center">Caso</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -365,6 +373,15 @@ export default function ZapsignBackfillPage() {
                           {r.reason && <div className="text-xs text-muted-foreground mt-1">{r.reason}</div>}
                         </td>
                         <td className="py-2 px-2 text-center">
+                          {r.doc_upserted ? (
+                            <Badge variant="default">salvo</Badge>
+                          ) : r.doc_upsert_error ? (
+                            <span className="text-xs text-destructive" title={r.doc_upsert_error}>erro</span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-center">
                           {r.groups_linked ? `${r.groups_linked} vinculado(s)` : r.group_create_dispatched ? "criação disparada" : "—"}
                         </td>
                         <td className="py-2 px-2 text-center">
@@ -374,6 +391,21 @@ export default function ZapsignBackfillPage() {
                             <span className="text-xs text-muted-foreground" title={r.enrich_skipped_reason || ""}>
                               {r.enrich_skipped_reason ? "pulado" : "—"}
                             </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          {r.case_created ? (
+                            <Badge variant="default" title={r.case_number || ""}>
+                              {r.case_number || "criado"}
+                            </Badge>
+                          ) : r.case_number ? (
+                            <span className="text-xs text-muted-foreground" title="já existia">
+                              {r.case_number}
+                            </span>
+                          ) : r.case_error ? (
+                            <span className="text-xs text-destructive" title={r.case_error}>erro</span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
                           )}
                         </td>
                       </tr>
