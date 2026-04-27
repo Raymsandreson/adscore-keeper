@@ -56,6 +56,8 @@ interface SummaryRow {
   lead_id?: string | null;
   groups_linked?: number;
   group_create_dispatched?: boolean;
+  enrich_dispatched?: boolean;
+  enrich_skipped_reason?: string | null;
   reason?: string;
 }
 
@@ -439,10 +441,46 @@ Deno.serve(async (req) => {
           console.warn(`[backfill] group resolution ${docToken}:`, e);
         }
 
+        // ---- Dispara enrich (extrai CPF/RG/endereço/data + sobe PDF no Drive)
+        // Só faz sentido para docs assinados com PDF disponível.
+        let enrichDispatched = false;
+        let enrichSkippedReason: string | null = null;
+        const signedUrl = doc.signed_file || null;
+        const isSigned = (doc.status || "").toLowerCase() === "signed";
+        if (!isSigned) {
+          enrichSkippedReason = `status=${doc.status || "unknown"} (precisa estar signed)`;
+        } else if (!signedUrl) {
+          enrichSkippedReason = "sem signed_file_url";
+        } else {
+          try {
+            // fire-and-forget — enrich pode demorar (Vision + Drive upload)
+            fetch(`${cloudUrl}/functions/v1/zapsign-enrich-lead`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${cloudKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                lead_id: leadId,
+                signed_file_url: signedUrl,
+                instance_name: targetInstanceName,
+                doc_token: docToken,
+                document_name: finalDocName,
+              }),
+            }).catch((e) => console.warn(`[backfill] enrich dispatch ${docToken}:`, e));
+            enrichDispatched = true;
+          } catch (e) {
+            console.warn(`[backfill] enrich dispatch failed ${docToken}:`, e);
+            enrichSkippedReason = (e as any)?.message || String(e);
+          }
+        }
+
         row.outcome = outcome;
         row.lead_id = leadId;
         row.groups_linked = groupsLinked;
         row.group_create_dispatched = groupCreateDispatched;
+        row.enrich_dispatched = enrichDispatched;
+        row.enrich_skipped_reason = enrichSkippedReason;
         summary.push(row);
       } catch (e) {
         const msg = (e as any)?.message || String(e);

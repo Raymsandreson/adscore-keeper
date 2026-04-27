@@ -27,6 +27,8 @@ interface SummaryRow {
   lead_id?: string | null;
   groups_linked?: number;
   group_create_dispatched?: boolean;
+  enrich_dispatched?: boolean;
+  enrich_skipped_reason?: string | null;
   reason?: string;
 }
 
@@ -306,6 +308,7 @@ export default function ZapsignBackfillPage() {
                     <th className="py-2 px-2">Match</th>
                     <th className="py-2 px-2">Resultado</th>
                     <th className="py-2 px-2 text-center">Grupos</th>
+                    <th className="py-2 px-2 text-center">Enriquecimento</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -325,6 +328,15 @@ export default function ZapsignBackfillPage() {
                         </td>
                         <td className="py-2 px-2 text-center">
                           {r.groups_linked ? `${r.groups_linked} vinculado(s)` : r.group_create_dispatched ? "criação disparada" : "—"}
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          {r.enrich_dispatched ? (
+                            <Badge variant="default">disparado</Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground" title={r.enrich_skipped_reason || ""}>
+                              {r.enrich_skipped_reason ? "pulado" : "—"}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );
