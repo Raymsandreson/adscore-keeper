@@ -441,6 +441,7 @@ const ActivitiesPage = () => {
     setLeadCases([]);
     setCaseProcesses([]);
     setFormMatrixQuadrant('');
+    setFormIsSystem(false);
   };
 
   // suggestActivityType moved below routineActivityTypes
