@@ -1,0 +1,2 @@
+ALTER TABLE public.lead_activities ADD COLUMN IF NOT EXISTS is_system boolean NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS idx_lead_activities_is_system ON public.lead_activities(is_system) WHERE is_system = true;
