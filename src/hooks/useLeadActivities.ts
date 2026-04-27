@@ -149,6 +149,7 @@ export function useLeadActivities() {
           case_title: activity.case_title || null,
           process_id: activity.process_id || null,
           process_title: activity.process_title || null,
+          is_system: activity.is_system ?? false,
         } as any)
         .select()
         .single();
