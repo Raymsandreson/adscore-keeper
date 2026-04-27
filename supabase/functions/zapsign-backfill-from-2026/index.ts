@@ -32,20 +32,27 @@ const TARGET_INSTANCE = "Raym"; // case-insensitive lookup
 const FROM_DATE = "2026-01-01";
 const PAGE_SIZE = 50;
 
+interface KeywordRule {
+  keyword: string;
+  board_id: string;
+}
+
 interface SummaryRow {
   doc_token: string;
-  template_name: string | null;
+  doc_name: string | null;
   signer_name: string | null;
   signer_phone: string | null;
   status: string;
   outcome:
     | "skipped_no_phone"
-    | "skipped_no_template_mapping"
+    | "skipped_no_board"
     | "skipped_already_processed"
     | "lead_created"
     | "lead_updated"
     | "lead_linked_existing"
     | "error";
+  matched_keyword?: string | null;
+  board_id?: string | null;
   lead_id?: string | null;
   groups_linked?: number;
   group_create_dispatched?: boolean;
@@ -66,15 +73,17 @@ function authHeaders(token: string) {
 
 async function listZapsignDocs(
   zsToken: string,
-  fromDate: string,
+  fromDateISO: string,
   hardLimit: number,
 ): Promise<any[]> {
-  // ZapSign list endpoint: GET /docs/?created_from=YYYY-MM-DD&page=N
+  // API ZapSign IGNORA created_from/created_after — temos que filtrar client-side.
+  // sort_order=desc retorna do mais novo pro mais antigo, então paramos quando
+  // o created_at de um doc for anterior a fromDateISO.
+  const fromTime = new Date(fromDateISO + "T00:00:00Z").getTime();
   const all: any[] = [];
   let page = 1;
   while (all.length < hardLimit) {
-    const url =
-      `${ZAPSIGN_API_URL}/docs/?created_from=${fromDate}&page=${page}&page_size=${PAGE_SIZE}`;
+    const url = `${ZAPSIGN_API_URL}/docs/?sort_order=desc&page=${page}`;
     const res = await fetch(url, { headers: authHeaders(zsToken) });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
@@ -83,12 +92,37 @@ async function listZapsignDocs(
     const json = await res.json().catch(() => null);
     const results: any[] = json?.results || json?.data || [];
     if (!results.length) break;
-    all.push(...results);
+    let anyOlder = false;
+    for (const r of results) {
+      const ts = new Date(r.created_at || r.last_update_at || 0).getTime();
+      if (ts >= fromTime) {
+        all.push(r);
+        if (all.length >= hardLimit) break;
+      } else {
+        anyOlder = true;
+      }
+    }
+    if (anyOlder) break; // entrou em datas antigas, não tem mais nada útil
     if (!json?.next) break;
     page += 1;
     if (page > 200) break; // safety
   }
   return all.slice(0, hardLimit);
+}
+
+function inferBoardFromName(
+  docName: string,
+  rules: Array<{ keyword: string; board_id: string }>,
+  defaultBoardId: string | null,
+): { boardId: string | null; matchedKeyword: string | null } {
+  const name = (docName || "").toLowerCase();
+  for (const r of rules) {
+    const kw = (r.keyword || "").toLowerCase().trim();
+    if (kw && name.includes(kw)) {
+      return { boardId: r.board_id, matchedKeyword: r.keyword };
+    }
+  }
+  return { boardId: defaultBoardId, matchedKeyword: null };
 }
 
 async function getZapsignDoc(zsToken: string, docToken: string): Promise<any> {
@@ -109,12 +143,13 @@ Deno.serve(async (req) => {
 
   const errors: Array<{ doc_token?: string; error: string }> = [];
   const summary: SummaryRow[] = [];
-  const missingTemplates = new Map<string, { name: string | null; count: number }>();
 
   try {
     const body = await req.json().catch(() => ({}));
     const dryRun: boolean = body?.dry_run === true;
     const limit: number = Math.min(Math.max(Number(body?.limit) || 500, 1), 2000);
+    const keywordRules: KeywordRule[] = Array.isArray(body?.keyword_rules) ? body.keyword_rules : [];
+    const defaultBoardId: string | null = body?.default_board_id || null;
 
     const zsToken = Deno.env.get("ZAPSIGN_API_TOKEN");
     if (!zsToken) {
@@ -132,16 +167,27 @@ Deno.serve(async (req) => {
     const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY")!;
     const ext = createClient(extUrl, extKey);
 
-    // ---- Pré-resolve mapeamento template -> board (External)
-    const { data: boards } = await ext
-      .from("kanban_boards")
-      .select("id, name, zapsign_template_id, product_service_id")
-      .not("zapsign_template_id", "is", null);
-    const templateToBoard = new Map<string, { id: string; name: string }>();
-    for (const b of boards || []) {
-      if (b.zapsign_template_id) templateToBoard.set(b.zapsign_template_id, { id: b.id, name: b.name });
+    // ---- Valida boards usados nas regras (Cloud — kanban_boards está no Cloud)
+    const allBoardIds = Array.from(new Set([
+      ...keywordRules.map((r) => r.board_id).filter(Boolean),
+      ...(defaultBoardId ? [defaultBoardId] : []),
+    ]));
+    if (allBoardIds.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "no keyword_rules nor default_board_id provided",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
-    console.log(`[backfill] template->board mappings: ${templateToBoard.size}`);
+    const { data: boardsData } = await cloud
+      .from("kanban_boards")
+      .select("id, name")
+      .in("id", allBoardIds);
+    const boardMap = new Map<string, { id: string; name: string }>();
+    for (const b of boardsData || []) boardMap.set(b.id, b);
+    console.log(`[backfill] ${boardMap.size}/${allBoardIds.length} boards resolved`);
 
     // ---- Pré-resolve instância Raym (Cloud)
     const { data: inst } = await cloud
@@ -163,18 +209,18 @@ Deno.serve(async (req) => {
     // ---- Pré-resolve acolhedor (dono da instância)
     let acolhedor: string | null = null;
     {
-      const { data: instRow } = await ext
+      const { data: instRow } = await cloud
         .from("whatsapp_instances")
         .select("id, owner_name")
         .ilike("instance_name", targetInstanceName)
         .maybeSingle();
       if (instRow?.id) {
-        const { data: ownerProfile } = await ext
+        const { data: ownerProfile } = await cloud
           .from("profiles")
           .select("full_name, email")
           .eq("default_instance_id", instRow.id)
           .maybeSingle();
-        acolhedor = ownerProfile?.full_name || ownerProfile?.email || instRow.owner_name || null;
+        acolhedor = ownerProfile?.full_name || ownerProfile?.email || (instRow as any).owner_name || null;
       }
     }
 
@@ -186,9 +232,11 @@ Deno.serve(async (req) => {
       const docToken: string = docLite.token || docLite.doc_token;
       if (!docToken) continue;
 
+      const docName: string = docLite.name || docLite.document_name || "";
+
       const row: SummaryRow = {
         doc_token: docToken,
-        template_name: docLite?.template?.name || docLite?.template_name || null,
+        doc_name: docName || null,
         signer_name: null,
         signer_phone: null,
         status: docLite.status || "unknown",
@@ -196,7 +244,7 @@ Deno.serve(async (req) => {
       };
 
       try {
-        // Busca detalhes (signers + template token)
+        // Busca detalhes (signers)
         const doc = await getZapsignDoc(zsToken, docToken);
         const signer = (doc.signers || [])[0] || {};
         const phoneRaw: string = signer.phone_number || signer.phone || "";
@@ -205,33 +253,34 @@ Deno.serve(async (req) => {
           ? digits(phoneRaw)
           : digits(phoneCountry + phoneRaw);
         const signerName: string = signer.name || "Lead";
-        const templateToken: string = doc?.template?.token || doc?.template_id || docLite?.template?.token || "";
-        const templateName: string = doc?.template?.name || row.template_name || "";
+        const finalDocName: string = doc.name || docName;
 
-        row.template_name = templateName || null;
+        row.doc_name = finalDocName || null;
         row.signer_name = signerName;
         row.signer_phone = fullPhone || null;
         row.status = doc.status || row.status;
 
-        if (!fullPhone) {
+        if (!fullPhone || fullPhone.length < 8) {
           row.outcome = "skipped_no_phone";
-          row.reason = "signer has no phone";
+          row.reason = "signer has no valid phone";
           summary.push(row);
           continue;
         }
 
-        // Mapeamento de template
-        const board = templateToken ? templateToBoard.get(templateToken) : null;
-        if (!board) {
-          row.outcome = "skipped_no_template_mapping";
-          row.reason = templateToken ? `template ${templateToken} not mapped` : "doc has no template";
-          if (templateToken) {
-            const cur = missingTemplates.get(templateToken);
-            missingTemplates.set(templateToken, {
-              name: templateName || cur?.name || null,
-              count: (cur?.count || 0) + 1,
-            });
-          }
+        // Inferência por nome do arquivo
+        const { boardId, matchedKeyword } = inferBoardFromName(
+          finalDocName,
+          keywordRules,
+          defaultBoardId,
+        );
+        row.matched_keyword = matchedKeyword;
+        row.board_id = boardId;
+
+        if (!boardId || !boardMap.has(boardId)) {
+          row.outcome = "skipped_no_board";
+          row.reason = boardId
+            ? `board ${boardId} not found`
+            : "no keyword matched and no default_board_id";
           summary.push(row);
           continue;
         }
@@ -269,7 +318,7 @@ Deno.serve(async (req) => {
             outcome = "lead_updated";
             // Atualiza board e acolhedor se vazios
             const upd: Record<string, any> = {};
-            if (!existingLead.board_id) upd.board_id = board.id;
+            if (!existingLead.board_id) upd.board_id = boardId;
             if (acolhedor) upd.acolhedor = acolhedor;
             if (Object.keys(upd).length > 0) {
               await ext.from("leads").update(upd).eq("id", leadId);
@@ -278,7 +327,7 @@ Deno.serve(async (req) => {
             const insertPayload: Record<string, any> = {
               lead_name: signerName,
               lead_phone: fullPhone,
-              board_id: board.id,
+              board_id: boardId,
               acolhedor,
               lead_source: "zapsign_backfill",
             };
@@ -297,9 +346,9 @@ Deno.serve(async (req) => {
         await cloud.from("zapsign_documents").upsert(
           {
             doc_token: docToken,
-            template_id: templateToken || null,
-            template_name: templateName || null,
-            document_name: doc.name || templateName || "Documento ZapSign",
+            template_id: null,
+            template_name: null,
+            document_name: finalDocName || "Documento ZapSign",
             status: doc.status || "pending",
             original_file_url: doc.original_file || null,
             signed_file_url: doc.signed_file || null,
@@ -417,11 +466,8 @@ Deno.serve(async (req) => {
         instance: targetInstanceName,
         scanned: docs.length,
         counts,
-        missing_templates: Array.from(missingTemplates.entries()).map(([token, v]) => ({
-          template_token: token,
-          template_name: v.name,
-          docs_count: v.count,
-        })),
+        keyword_rules_used: keywordRules.length,
+        default_board_used: defaultBoardId || null,
         summary,
         errors,
       }),
