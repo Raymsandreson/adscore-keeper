@@ -1,9 +1,16 @@
-// Import group documents from WhatsApp into process_documents.
+// Import group documents from WhatsApp into process_documents + Google Drive.
 //
-// Two strategies:
-// 1) Recent media: UazAPI /message/download returns a fileURL (already decrypted).
-// 2) Old media (no UazAPI cache): we fetch the .enc from WhatsApp directly and
-//    decrypt it with HKDF + AES-256-CBC using the mediaKey stored in metadata.
+// Body:
+// {
+//   lead_id: string,
+//   lead_name?: string,            // for Drive folder name
+//   documents: [{ message_id: string, document_type: string }],
+//   // legacy: message_ids?: string[], document_type?: string
+// }
+//
+// document_type valores esperados:
+//   "Procuração", "Perícia Social", "Perícia Médica", "RG", "CPF",
+//   "Comprovante de Residência", "Outro"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -16,9 +23,16 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const EXT_URL = Deno.env.get("EXTERNAL_SUPABASE_URL")!;
 const EXT_KEY = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY")!;
 
+interface DocItem {
+  message_id: string;
+  document_type: string;
+}
 interface Body {
   lead_id: string;
-  message_ids: string[];
+  lead_name?: string;
+  documents?: DocItem[];
+  // legacy
+  message_ids?: string[];
   document_type?: string;
 }
 
@@ -34,12 +48,35 @@ Deno.serve(async (req) => {
 
   try {
     const body = (await req.json()) as Body;
-    if (!body.lead_id || !Array.isArray(body.message_ids) || body.message_ids.length === 0) {
-      return json({ error: "lead_id and message_ids[] required" }, 400);
-    }
+    if (!body.lead_id) return json({ error: "lead_id required" }, 400);
+
+    // Normalize legacy
+    const docs: DocItem[] = body.documents
+      ? body.documents
+      : (body.message_ids || []).map((m) => ({
+          message_id: m,
+          document_type: body.document_type || "Outro",
+        }));
+
+    if (docs.length === 0) return json({ error: "documents[] required" }, 400);
 
     const cloud = createClient(SUPABASE_URL, SERVICE_KEY);
     const ext = createClient(EXT_URL, EXT_KEY);
+
+    // Resolve lead_name if not provided (try external leads table)
+    let leadName = body.lead_name || "";
+    if (!leadName) {
+      try {
+        const { data: lead } = await ext
+          .from("leads")
+          .select("lead_name")
+          .eq("id", body.lead_id)
+          .maybeSingle();
+        leadName = lead?.lead_name || "Lead";
+      } catch {
+        leadName = "Lead";
+      }
+    }
 
     const { data: instances } = await cloud
       .from("whatsapp_instances")
@@ -54,7 +91,9 @@ Deno.serve(async (req) => {
 
     const results: any[] = [];
 
-    for (const msgId of body.message_ids) {
+    for (const item of docs) {
+      const msgId = item.message_id;
+      const documentType = item.document_type || "Outro";
       try {
         const { data: msg } = await ext
           .from("whatsapp_messages")
@@ -123,8 +162,7 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Upload
-        const ext2 = (fileName.split(".").pop() || "bin").toLowerCase();
+        // --- Upload to Supabase Storage (backup) ---
         const safeName = fileName.replace(/[^\w.\-]+/g, "_");
         const storagePath = `lead/${body.lead_id}/group-docs/${msgId}-${safeName}`;
         const up = await cloud.storage
@@ -136,15 +174,47 @@ Deno.serve(async (req) => {
         }
         const { data: pub } = cloud.storage.from("whatsapp-media").getPublicUrl(storagePath);
 
+        // --- Upload to Google Drive (typed subfolder) ---
+        let driveFile: any = null;
+        let driveError: string | null = null;
+        try {
+          const driveRes = await fetch(`${SUPABASE_URL}/functions/v1/lead-drive`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${SERVICE_KEY}`,
+              apikey: SERVICE_KEY,
+            },
+            body: JSON.stringify({
+              action: "upload_url_typed",
+              lead_id: body.lead_id,
+              lead_name: leadName,
+              file_name: safeName,
+              source_url: pub.publicUrl,
+              mime_type: mimeType,
+              document_type: documentType,
+            }),
+          });
+          const driveJson = await driveRes.json();
+          if (!driveRes.ok || driveJson.success === false) {
+            driveError = driveJson.error || `drive http ${driveRes.status}`;
+          } else {
+            driveFile = driveJson.file;
+          }
+        } catch (e: any) {
+          driveError = e?.message || String(e);
+        }
+
+        // --- Insert process_documents record ---
         const { data: doc, error: insErr } = await cloud
           .from("process_documents")
           .insert({
             lead_id: body.lead_id,
-            document_type: body.document_type || "outro",
+            document_type: documentType,
             title: fileName,
             description: msg.message_text || `Importado do grupo WhatsApp em ${msg.created_at}`,
             source: "whatsapp_group",
-            file_url: pub.publicUrl,
+            file_url: driveFile?.webViewLink || pub.publicUrl,
             file_name: fileName,
             file_size: bytes.length,
             original_url: msg.media_url,
@@ -153,6 +223,10 @@ Deno.serve(async (req) => {
               external_message_id: msg.external_message_id,
               group_jid: msg.phone,
               import_strategy: strategy,
+              storage_url: pub.publicUrl,
+              drive_file_id: driveFile?.id || null,
+              drive_view_link: driveFile?.webViewLink || null,
+              drive_error: driveError,
               imported_at: new Date().toISOString(),
             },
           })
@@ -166,18 +240,21 @@ Deno.serve(async (req) => {
 
         results.push({
           msgId,
-          status: "ok",
+          status: driveError ? "ok_no_drive" : "ok",
           strategy,
+          document_type: documentType,
           document_id: doc.id,
           file_name: fileName,
           size: bytes.length,
+          drive_link: driveFile?.webViewLink || null,
+          drive_error: driveError,
         });
       } catch (e: any) {
         results.push({ msgId, status: "error", error: e?.message || String(e) });
       }
     }
 
-    return json({ ok: true, lead_id: body.lead_id, results });
+    return json({ ok: true, lead_id: body.lead_id, lead_name: leadName, results });
   } catch (e: any) {
     return json({ error: e?.message || String(e) }, 500);
   }
@@ -197,9 +274,6 @@ async function decryptWhatsAppMedia(
   const expanded = await hkdfSha256(mediaKey, new Uint8Array(32), new TextEncoder().encode(info), 112);
   const iv = expanded.slice(0, 16);
   const cipherKey = expanded.slice(16, 48);
-  // macKey = expanded[48:80] — we skip MAC verification; not strictly required for decrypt.
-
-  // WhatsApp .enc = ciphertext || mac(10 bytes)
   const ciphertext = encBuf.slice(0, encBuf.length - 10);
 
   const key = await crypto.subtle.importKey("raw", cipherKey, { name: "AES-CBC" }, false, [
