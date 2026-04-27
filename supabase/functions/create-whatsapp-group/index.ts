@@ -142,6 +142,16 @@ function extractExistingSequenceFromName(name: string | null | undefined, prefix
   return Number.isFinite(sequence) && sequence > 0 ? sequence : null
 }
 
+function stripExistingSequenceFromName(name: string | null | undefined, prefix: string | null | undefined): string {
+  const trimmedPrefix = prefix?.trim()
+  const trimmedName = name?.trim() || ''
+  if (!trimmedPrefix || !trimmedName) return trimmedName
+
+  return trimmedName
+    .replace(new RegExp(`^${escapeRegExp(trimmedPrefix)}\\s+\\d+\\b\\s*(?:[|\u2013\u2014-]\s*)?`, 'i'), '')
+    .trim()
+}
+
 function isRateLimited(status: number, bodyText: string): boolean {
   return status === 429 || /rate[-_ ]?overlimit|too\s+many\s+requests|429/i.test(bodyText || '')
 }
