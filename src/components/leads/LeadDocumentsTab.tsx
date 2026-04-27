@@ -57,6 +57,7 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<{ file: DriveFile; analysis: Analysis } | null>(null);
   const [reprocessing, setReprocessing] = useState(false);
+  const [importGroupOpen, setImportGroupOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
