@@ -204,7 +204,8 @@ export function useLeadActivities() {
       }
 
       return data;
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message === 'LINK_REQUIRED') throw error;
       console.error('Error creating activity:', error);
       toast.error('Erro ao criar atividade');
       throw error;
