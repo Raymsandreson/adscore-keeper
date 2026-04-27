@@ -167,16 +167,27 @@ Deno.serve(async (req) => {
     const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY")!;
     const ext = createClient(extUrl, extKey);
 
-    // ---- Pré-resolve mapeamento template -> board (External)
-    const { data: boards } = await ext
-      .from("kanban_boards")
-      .select("id, name, zapsign_template_id, product_service_id")
-      .not("zapsign_template_id", "is", null);
-    const templateToBoard = new Map<string, { id: string; name: string }>();
-    for (const b of boards || []) {
-      if (b.zapsign_template_id) templateToBoard.set(b.zapsign_template_id, { id: b.id, name: b.name });
+    // ---- Valida boards usados nas regras (Cloud — kanban_boards está no Cloud)
+    const allBoardIds = Array.from(new Set([
+      ...keywordRules.map((r) => r.board_id).filter(Boolean),
+      ...(defaultBoardId ? [defaultBoardId] : []),
+    ]));
+    if (allBoardIds.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "no keyword_rules nor default_board_id provided",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
-    console.log(`[backfill] template->board mappings: ${templateToBoard.size}`);
+    const { data: boardsData } = await cloud
+      .from("kanban_boards")
+      .select("id, name")
+      .in("id", allBoardIds);
+    const boardMap = new Map<string, { id: string; name: string }>();
+    for (const b of boardsData || []) boardMap.set(b.id, b);
+    console.log(`[backfill] ${boardMap.size}/${allBoardIds.length} boards resolved`);
 
     // ---- Pré-resolve instância Raym (Cloud)
     const { data: inst } = await cloud
