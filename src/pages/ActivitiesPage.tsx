@@ -477,6 +477,7 @@ const ActivitiesPage = () => {
       case_title: formCaseTitle || null,
       process_id: formProcessId || null,
       process_title: formProcessTitle || null,
+      is_system: formIsSystem,
     };
 
     let createdActivityId: string | null = null;
