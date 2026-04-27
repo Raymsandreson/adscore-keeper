@@ -115,7 +115,7 @@ serve(async (req) => {
   }
 
   try {
-    const { accessToken, adAccountId, limit = 50, status } = await req.json();
+    const { accessToken, adAccountId, limit = 50, status, includeInsights = false, includeDestinationPhone = false } = await req.json();
 
     if (!accessToken || !adAccountId) {
       return new Response(
@@ -157,13 +157,39 @@ serve(async (req) => {
 
     const campaigns = campaignData.data || [];
 
+    // FAST PATH: when caller only needs the list (id/name/status) for a selector,
+    // skip per-campaign Graph API lookups (insights + destination phone) which would
+    // explode into 5+ requests per campaign and cause the function to time out.
     const campaignsWithInsights = await Promise.all(
       campaigns.map(async (campaign: any) => {
+        const base = {
+          campaign_id: campaign.id,
+          campaign_name: campaign.name,
+          status: (campaign.effective_status || campaign.status || 'UNKNOWN').toUpperCase(),
+          objective: campaign.objective,
+          daily_budget: campaign.daily_budget ? Number(campaign.daily_budget) / 100 : null,
+          lifetime_budget: campaign.lifetime_budget ? Number(campaign.lifetime_budget) / 100 : null,
+          start_time: campaign.start_time,
+          stop_time: campaign.stop_time,
+          created_time: campaign.created_time,
+          destination_phone: null as string | null,
+          impressions: 0, reach: 0, clicks: 0, spend: 0,
+          cpm: 0, cpc: 0, ctr: 0,
+          followers_gained: 0, comments_count: 0, likes_count: 0,
+        };
+
+        if (!includeInsights && !includeDestinationPhone) {
+          return base;
+        }
+
         try {
-          // Fetch insights and destination phone in parallel
           const [insightData, destinationPhone] = await Promise.all([
-            fetchJson(`https://graph.facebook.com/v21.0/${campaign.id}/insights?fields=${insightFields}&date_preset=maximum&access_token=${accessToken}`),
-            findDestinationPhone(campaign.id, accessToken),
+            includeInsights
+              ? fetchJson(`https://graph.facebook.com/v21.0/${campaign.id}/insights?fields=${insightFields}&date_preset=maximum&access_token=${accessToken}`)
+              : Promise.resolve({ data: [] }),
+            includeDestinationPhone
+              ? findDestinationPhone(campaign.id, accessToken)
+              : Promise.resolve(null),
           ]);
 
           const insights = insightData.data?.[0] || {};
@@ -172,18 +198,8 @@ serve(async (req) => {
           const commentAction = actions.find((a: any) => a.action_type === 'comment');
           const likeAction = actions.find((a: any) => a.action_type === 'post_reaction' || a.action_type === 'like');
 
-          console.log(`Campaign ${campaign.name}: destination_phone=${destinationPhone}`);
-
           return {
-            campaign_id: campaign.id,
-            campaign_name: campaign.name,
-            status: (campaign.effective_status || campaign.status || 'UNKNOWN').toUpperCase(),
-            objective: campaign.objective,
-            daily_budget: campaign.daily_budget ? Number(campaign.daily_budget) / 100 : null,
-            lifetime_budget: campaign.lifetime_budget ? Number(campaign.lifetime_budget) / 100 : null,
-            start_time: campaign.start_time,
-            stop_time: campaign.stop_time,
-            created_time: campaign.created_time,
+            ...base,
             destination_phone: destinationPhone,
             impressions: Number(insights.impressions || 0),
             reach: Number(insights.reach || 0),
@@ -197,18 +213,7 @@ serve(async (req) => {
             likes_count: Number(likeAction?.value || 0),
           };
         } catch {
-          return {
-            campaign_id: campaign.id,
-            campaign_name: campaign.name,
-            status: (campaign.effective_status || campaign.status || 'UNKNOWN').toUpperCase(),
-            objective: campaign.objective,
-            daily_budget: campaign.daily_budget ? Number(campaign.daily_budget) / 100 : null,
-            lifetime_budget: campaign.lifetime_budget ? Number(campaign.lifetime_budget) / 100 : null,
-            destination_phone: null,
-            impressions: 0, reach: 0, clicks: 0, spend: 0,
-            cpm: 0, cpc: 0, ctr: 0,
-            followers_gained: 0, comments_count: 0, likes_count: 0,
-          };
+          return base;
         }
       })
     );
