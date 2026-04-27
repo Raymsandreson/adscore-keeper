@@ -29,6 +29,12 @@ interface SummaryRow {
   group_create_dispatched?: boolean;
   enrich_dispatched?: boolean;
   enrich_skipped_reason?: string | null;
+  doc_upserted?: boolean;
+  doc_upsert_error?: string | null;
+  lead_closed?: boolean;
+  case_created?: boolean;
+  case_number?: string | null;
+  case_error?: string | null;
   reason?: string;
 }
 
