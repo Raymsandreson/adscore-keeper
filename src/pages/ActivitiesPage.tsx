@@ -115,13 +115,21 @@ function extractClientFirstName(raw: string): string {
     if (s.includes(sep)) s = s.split(sep).slice(-1)[0].trim();
   }
   const tokens = s.split(/\s+/);
+  // Remove códigos iniciais tipo "PREV", "123", "PREV291"
   while (tokens.length > 1) {
     const t = tokens[0];
     const looksLikeCode = /^[A-Z]{2,}$/.test(t) || /^\d+$/.test(t) || /^[A-Z]{2,}\d+$/.test(t);
     if (looksLikeCode) tokens.shift(); else break;
   }
-  const first = tokens[0] || '';
-  return first ? first.charAt(0).toUpperCase() + first.slice(1).toLowerCase() : '';
+  // Preserva nome completo (ex: "Carlos Almeida"), aplicando title case
+  const titleCase = (w: string) =>
+    w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '';
+  // Conectivos comuns ficam em minúsculas
+  const lower = new Set(['da', 'de', 'do', 'das', 'dos', 'e']);
+  return tokens
+    .map((w, i) => (i > 0 && lower.has(w.toLowerCase()) ? w.toLowerCase() : titleCase(w)))
+    .join(' ')
+    .trim();
 }
 
 const ActivitiesPage = () => {
