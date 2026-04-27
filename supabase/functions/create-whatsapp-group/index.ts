@@ -126,6 +126,22 @@ function normalizeGroupName(rawName: string): string {
   return shortened
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function extractExistingSequenceFromName(name: string | null | undefined, prefix: string | null | undefined): number | null {
+  const trimmedPrefix = prefix?.trim()
+  const trimmedName = name?.trim()
+  if (!trimmedPrefix || !trimmedName) return null
+
+  const match = trimmedName.match(new RegExp(`^${escapeRegExp(trimmedPrefix)}\\s+(\\d+)\\b`, 'i'))
+  if (!match) return null
+
+  const sequence = Number(match[1])
+  return Number.isFinite(sequence) && sequence > 0 ? sequence : null
+}
+
 function isRateLimited(status: number, bodyText: string): boolean {
   return status === 429 || /rate[-_ ]?overlimit|too\s+many\s+requests|429/i.test(bodyText || '')
 }
