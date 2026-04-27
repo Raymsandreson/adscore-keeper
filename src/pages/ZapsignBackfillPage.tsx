@@ -333,8 +333,10 @@ export default function ZapsignBackfillPage() {
                     <th className="py-2 px-2">Status</th>
                     <th className="py-2 px-2">Match</th>
                     <th className="py-2 px-2">Resultado</th>
+                    <th className="py-2 px-2 text-center">Doc</th>
                     <th className="py-2 px-2 text-center">Grupos</th>
                     <th className="py-2 px-2 text-center">Enriquecimento</th>
+                    <th className="py-2 px-2 text-center">Caso</th>
                   </tr>
                 </thead>
                 <tbody>
