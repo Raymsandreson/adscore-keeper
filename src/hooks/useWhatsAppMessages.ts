@@ -218,40 +218,27 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       await ensureExternalSession().catch(() => {});
       const ext = externalSupabase as any;
 
-      // Use a single lightweight query with counts per instance
-      const stats: InstanceStats[] = [];
+      // Single aggregated RPC call returns stats for ALL instances at once.
+      // Replaces previous N×4 COUNT(*) exact queries that scanned 370k+ rows per call.
+      const { data, error } = await ext.rpc('get_whatsapp_instance_stats');
 
-      for (const inst of instances) {
-        const [totalRes, inboundRes, outboundRes, unreadRes] = await Promise.all([
-          ext.from('whatsapp_messages').select('id', { count: 'exact', head: true })
-            .eq('instance_name', inst.instance_name),
-          ext.from('whatsapp_messages').select('id', { count: 'exact', head: true })
-            .eq('instance_name', inst.instance_name).eq('direction', 'inbound'),
-          ext.from('whatsapp_messages').select('id', { count: 'exact', head: true })
-            .eq('instance_name', inst.instance_name).eq('direction', 'outbound'),
-          ext.from('whatsapp_messages').select('id', { count: 'exact', head: true })
-            .eq('instance_name', inst.instance_name).eq('direction', 'inbound').is('read_at', null),
-        ]);
+      if (error) throw error;
 
-        // Get distinct phone count via a different approach
-        const { data: distinctPhones } = await ext
-          .from('whatsapp_messages')
-          .select('phone')
-          .eq('instance_name', inst.instance_name)
-          .limit(1000);
-        
-        const uniquePhones = new Set(distinctPhones?.map(p => p.phone) || []);
+      const byName = new Map<string, any>();
+      for (const row of (data || [])) byName.set(row.instance_name, row);
 
-        stats.push({
+      const stats: InstanceStats[] = instances.map(inst => {
+        const r = byName.get(inst.instance_name);
+        return {
           instance_name: inst.instance_name,
-          conversation_count: uniquePhones.size,
-          message_count: totalRes.count || 0,
-          inbound_count: inboundRes.count || 0,
-          outbound_count: outboundRes.count || 0,
-          unread_count: unreadRes.count || 0,
-        });
-      }
-      
+          conversation_count: Number(r?.conversation_count || 0),
+          message_count: Number(r?.message_count || 0),
+          inbound_count: Number(r?.inbound_count || 0),
+          outbound_count: Number(r?.outbound_count || 0),
+          unread_count: Number(r?.unread_count || 0),
+        };
+      });
+
       setInstanceStats(stats);
     } catch (error) {
       console.error('Error fetching instance stats:', error);
