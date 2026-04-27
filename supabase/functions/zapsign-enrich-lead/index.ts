@@ -121,42 +121,33 @@ function cleanDigits(s?: string | null) {
   return s ? s.replace(/\D/g, "") : null;
 }
 
-// Procura no UAZAPI um grupo da instância em que o telefone do lead seja participante.
-async function findGroupByParticipantPhone(
-  baseUrl: string,
-  token: string,
-  participantPhone: string,
-): Promise<{ jid: string; link: string | null; subject: string | null } | null> {
-  if (!baseUrl || !token || !participantPhone) return null;
-  const cleaned = participantPhone.replace(/\D/g, "");
-  if (!cleaned) return null;
+// Chama a edge function `find-contact-groups` (Cloud) que faz a busca
+// com cache de 6h e match exato pelos últimos 10 dígitos.
+async function findGroupsViaCloud(
+  phone: string,
+  instance_name: string,
+): Promise<Array<{ jid: string; name: string | null; invite_link: string | null }>> {
   try {
-    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/group/list`, {
+    const cloudUrl = Deno.env.get("SUPABASE_URL")!;
+    const cloudKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY")!;
+    const res = await fetch(`${cloudUrl}/functions/v1/find-contact-groups`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", token },
-      body: JSON.stringify({ getParticipants: true }),
+      headers: {
+        Authorization: `Bearer ${cloudKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ phone, instance_name }),
     });
-    if (!res.ok) { console.warn("[findGroup] list status", res.status); return null; }
-    const data = await res.json().catch(() => null);
-    const groups: any[] = Array.isArray(data) ? data : data?.groups || [];
-    for (const g of groups) {
-      const participants: any[] = g.participants || g.Participants || [];
-      const match = participants.find((p) => {
-        const id = String(p.id || p.jid || p.phone || "").replace(/\D/g, "");
-        return id && (id.endsWith(cleaned) || cleaned.endsWith(id));
-      });
-      if (match) {
-        return {
-          jid: g.id || g.jid || g.JID || null,
-          link: g.invite_link || g.inviteLink || null,
-          subject: g.subject || g.name || null,
-        };
-      }
+    if (!res.ok) {
+      console.warn("[findGroupsViaCloud] status", res.status, await res.text().catch(() => ""));
+      return [];
     }
+    const data = await res.json().catch(() => null);
+    return Array.isArray(data?.groups) ? data.groups : [];
   } catch (e) {
-    console.warn("[findGroup] error:", e);
+    console.warn("[findGroupsViaCloud] error:", e);
+    return [];
   }
-  return null;
 }
 
 Deno.serve(async (req) => {
@@ -249,24 +240,49 @@ Deno.serve(async (req) => {
     const leadName = lead?.lead_name || lead?.victim_name || extracted.titular_name || "Lead";
     const leadPhone = lead?.lead_phone || null;
 
-    // 4a. Vincular grupo do WhatsApp ao lead (busca grupo onde o telefone é participante)
+    // 4a. Vincular grupos do WhatsApp ao lead via find-contact-groups (cache + match exato).
+    // Vincula TODOS os grupos encontrados em lead_whatsapp_groups (Cloud) marcados auto_linked=true.
+    // Também grava whatsapp_group_id (1º match) no lead (External) para compat com o resto do sistema.
     let groupResult: any = null;
-    if (leadPhone && instance_name && !lead?.whatsapp_group_id) {
-      const { data: instRow } = await ext
-        .from("whatsapp_instances")
-        .select("base_url, instance_token")
-        .ilike("instance_name", instance_name)
-        .maybeSingle();
-      if (instRow?.base_url && instRow?.instance_token) {
-        const grp = await findGroupByParticipantPhone(instRow.base_url, instRow.instance_token, leadPhone);
-        if (grp?.jid) {
-          const groupUpdate: Record<string, any> = { whatsapp_group_id: grp.jid };
-          if (grp.link) groupUpdate.group_link = grp.link;
-          const { error: gErr } = await ext.from("leads").update(groupUpdate).eq("id", lead_id);
-          if (gErr) console.error("[zapsign-enrich-lead] group link update error:", gErr);
-          else console.log(`[zapsign-enrich-lead] lead ${lead_id} linked to group ${grp.jid}`);
-          groupResult = { jid: grp.jid, subject: grp.subject };
+    if (leadPhone && instance_name) {
+      try {
+        const found = await findGroupsViaCloud(leadPhone, instance_name);
+        if (found.length > 0) {
+          // Cliente Cloud para gravar em lead_whatsapp_groups
+          const cloudUrl = Deno.env.get("SUPABASE_URL")!;
+          const cloudSrv = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+          const cloud = createClient(cloudUrl, cloudSrv);
+
+          const rows = found.map((g) => ({
+            lead_id,
+            group_jid: g.jid,
+            group_name: g.name,
+            group_link: g.invite_link,
+            instance_name,
+            auto_linked: true,
+          }));
+
+          const { error: lwgErr } = await cloud
+            .from("lead_whatsapp_groups")
+            .upsert(rows, { onConflict: "lead_id,group_jid", ignoreDuplicates: false });
+          if (lwgErr) console.warn("[zapsign-enrich-lead] lead_whatsapp_groups upsert error:", lwgErr);
+          else console.log(`[zapsign-enrich-lead] lead ${lead_id} auto-linked to ${rows.length} group(s)`);
+
+          // Compat: grava primeiro grupo no lead (External) se ainda não houver
+          if (!lead?.whatsapp_group_id) {
+            const first = found[0];
+            const groupUpdate: Record<string, any> = { whatsapp_group_id: first.jid };
+            if (first.invite_link) groupUpdate.group_link = first.invite_link;
+            const { error: gErr } = await ext.from("leads").update(groupUpdate).eq("id", lead_id);
+            if (gErr) console.error("[zapsign-enrich-lead] group link update error:", gErr);
+          }
+
+          groupResult = { count: found.length, groups: found };
+        } else {
+          console.log(`[zapsign-enrich-lead] no groups matched for phone ${leadPhone} on ${instance_name}`);
         }
+      } catch (e) {
+        console.error("[zapsign-enrich-lead] group resolution failed:", e);
       }
     }
 

@@ -5407,29 +5407,35 @@ export type Database = {
       }
       lead_whatsapp_groups: {
         Row: {
+          auto_linked: boolean
           created_at: string
           group_jid: string | null
           group_link: string | null
           group_name: string | null
           id: string
+          instance_name: string | null
           label: string | null
           lead_id: string
         }
         Insert: {
+          auto_linked?: boolean
           created_at?: string
           group_jid?: string | null
           group_link?: string | null
           group_name?: string | null
           id?: string
+          instance_name?: string | null
           label?: string | null
           lead_id: string
         }
         Update: {
+          auto_linked?: boolean
           created_at?: string
           group_jid?: string | null
           group_link?: string | null
           group_name?: string | null
           id?: string
+          instance_name?: string | null
           label?: string | null
           lead_id?: string
         }
@@ -8724,6 +8730,39 @@ export type Database = {
           phone?: string
           shared_by?: string
           shared_with?: string
+        }
+        Relationships: []
+      }
+      whatsapp_groups_cache: {
+        Row: {
+          fetched_at: string
+          group_jid: string
+          group_name: string | null
+          id: string
+          instance_name: string
+          invite_link: string | null
+          participants: Json
+          participants_count: number
+        }
+        Insert: {
+          fetched_at?: string
+          group_jid: string
+          group_name?: string | null
+          id?: string
+          instance_name: string
+          invite_link?: string | null
+          participants?: Json
+          participants_count?: number
+        }
+        Update: {
+          fetched_at?: string
+          group_jid?: string
+          group_name?: string | null
+          id?: string
+          instance_name?: string
+          invite_link?: string | null
+          participants?: Json
+          participants_count?: number
         }
         Relationships: []
       }
