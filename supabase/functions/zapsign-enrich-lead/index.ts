@@ -240,24 +240,49 @@ Deno.serve(async (req) => {
     const leadName = lead?.lead_name || lead?.victim_name || extracted.titular_name || "Lead";
     const leadPhone = lead?.lead_phone || null;
 
-    // 4a. Vincular grupo do WhatsApp ao lead (busca grupo onde o telefone é participante)
+    // 4a. Vincular grupos do WhatsApp ao lead via find-contact-groups (cache + match exato).
+    // Vincula TODOS os grupos encontrados em lead_whatsapp_groups (Cloud) marcados auto_linked=true.
+    // Também grava whatsapp_group_id (1º match) no lead (External) para compat com o resto do sistema.
     let groupResult: any = null;
-    if (leadPhone && instance_name && !lead?.whatsapp_group_id) {
-      const { data: instRow } = await ext
-        .from("whatsapp_instances")
-        .select("base_url, instance_token")
-        .ilike("instance_name", instance_name)
-        .maybeSingle();
-      if (instRow?.base_url && instRow?.instance_token) {
-        const grp = await findGroupByParticipantPhone(instRow.base_url, instRow.instance_token, leadPhone);
-        if (grp?.jid) {
-          const groupUpdate: Record<string, any> = { whatsapp_group_id: grp.jid };
-          if (grp.link) groupUpdate.group_link = grp.link;
-          const { error: gErr } = await ext.from("leads").update(groupUpdate).eq("id", lead_id);
-          if (gErr) console.error("[zapsign-enrich-lead] group link update error:", gErr);
-          else console.log(`[zapsign-enrich-lead] lead ${lead_id} linked to group ${grp.jid}`);
-          groupResult = { jid: grp.jid, subject: grp.subject };
+    if (leadPhone && instance_name) {
+      try {
+        const found = await findGroupsViaCloud(leadPhone, instance_name);
+        if (found.length > 0) {
+          // Cliente Cloud para gravar em lead_whatsapp_groups
+          const cloudUrl = Deno.env.get("SUPABASE_URL")!;
+          const cloudSrv = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+          const cloud = createClient(cloudUrl, cloudSrv);
+
+          const rows = found.map((g) => ({
+            lead_id,
+            group_jid: g.jid,
+            group_name: g.name,
+            group_link: g.invite_link,
+            instance_name,
+            auto_linked: true,
+          }));
+
+          const { error: lwgErr } = await cloud
+            .from("lead_whatsapp_groups")
+            .upsert(rows, { onConflict: "lead_id,group_jid", ignoreDuplicates: false });
+          if (lwgErr) console.warn("[zapsign-enrich-lead] lead_whatsapp_groups upsert error:", lwgErr);
+          else console.log(`[zapsign-enrich-lead] lead ${lead_id} auto-linked to ${rows.length} group(s)`);
+
+          // Compat: grava primeiro grupo no lead (External) se ainda não houver
+          if (!lead?.whatsapp_group_id) {
+            const first = found[0];
+            const groupUpdate: Record<string, any> = { whatsapp_group_id: first.jid };
+            if (first.invite_link) groupUpdate.group_link = first.invite_link;
+            const { error: gErr } = await ext.from("leads").update(groupUpdate).eq("id", lead_id);
+            if (gErr) console.error("[zapsign-enrich-lead] group link update error:", gErr);
+          }
+
+          groupResult = { count: found.length, groups: found };
+        } else {
+          console.log(`[zapsign-enrich-lead] no groups matched for phone ${leadPhone} on ${instance_name}`);
         }
+      } catch (e) {
+        console.error("[zapsign-enrich-lead] group resolution failed:", e);
       }
     }
 
