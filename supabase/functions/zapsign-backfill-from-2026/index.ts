@@ -351,8 +351,10 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Upsert zapsign_documents (Cloud)
-        await cloud.from("zapsign_documents").upsert(
+        // Upsert zapsign_documents (EXTERNAL — leads vivem no externo, FK exige isso)
+        let docUpserted = false;
+        let docUpsertError: string | null = null;
+        const { error: docUpsertErr } = await ext.from("zapsign_documents").upsert(
           {
             doc_token: docToken,
             template_id: null,
@@ -373,8 +375,14 @@ Deno.serve(async (req) => {
           },
           { onConflict: "doc_token" },
         );
+        if (docUpsertErr) {
+          docUpsertError = docUpsertErr.message;
+          console.warn(`[backfill] zapsign_documents upsert ${docToken}:`, docUpsertErr.message);
+        } else {
+          docUpserted = true;
+        }
 
-        // Vincular grupo via find-contact-groups
+        // Vincular grupo via find-contact-groups (gravado no EXTERNAL)
         let groupsLinked = 0;
         let groupCreateDispatched = false;
         try {
@@ -404,7 +412,7 @@ Deno.serve(async (req) => {
               instance_name: targetInstanceName,
               auto_linked: true,
             }));
-            const { error: lwgErr } = await cloud
+            const { error: lwgErr } = await ext
               .from("lead_whatsapp_groups")
               .upsert(rows, { onConflict: "lead_id,group_jid" });
             if (lwgErr) console.warn(`[backfill] lwg upsert ${docToken}:`, lwgErr.message);
