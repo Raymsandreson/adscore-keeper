@@ -323,7 +323,25 @@ export default function ZapsignBackfillPage() {
                         <td className="py-2 px-2">{r.status}</td>
                         <td className="py-2 px-2">{r.matched_keyword || (r.board_id ? "(padrão)" : "—")}</td>
                         <td className="py-2 px-2">
-                          <Badge variant={meta.variant}>{meta.label}</Badge>
+                          {r.lead_id ? (
+                            <a
+                              href={`/leads?tab=kanban&lead=${r.lead_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Abrir lead em nova aba"
+                            >
+                              <Badge variant={meta.variant} className="cursor-pointer hover:opacity-80">
+                                {meta.label} ↗
+                              </Badge>
+                            </a>
+                          ) : (
+                            <Badge variant={meta.variant}>{meta.label}</Badge>
+                          )}
+                          {r.lead_id && (
+                            <div className="text-[10px] text-muted-foreground mt-1 font-mono">
+                              {r.lead_id.slice(0, 8)}…
+                            </div>
+                          )}
                           {r.reason && <div className="text-xs text-muted-foreground mt-1">{r.reason}</div>}
                         </td>
                         <td className="py-2 px-2 text-center">
