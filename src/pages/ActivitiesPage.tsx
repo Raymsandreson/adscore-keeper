@@ -962,6 +962,7 @@ const ActivitiesPage = () => {
     
     setFormLeadId(leadId);
     setFormLeadName(lead?.lead_name || '');
+    setFormClientNameOverride('');
     setFormContactId('');
     setFormContactName('');
     setContactSearch('');
