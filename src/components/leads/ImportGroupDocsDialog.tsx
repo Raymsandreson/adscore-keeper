@@ -102,7 +102,7 @@ export default function ImportGroupDocsDialog({
           message_text: m.message_text,
           media_url: m.media_url,
           created_at: m.created_at,
-          sender_name: m.sender_name,
+          sender_name: m.contact_name,
           file_name: fileName,
           mime_type: mimeType,
         };
