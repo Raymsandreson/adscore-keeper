@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Upload, Trash2, FileText, Loader2, RefreshCw, Sparkles, Wand2 } from 'lucide-react';
+import { ExternalLink, Upload, Trash2, FileText, Loader2, RefreshCw, Sparkles, Wand2, MessagesSquare } from 'lucide-react';
+import ImportGroupDocsDialog from '@/components/leads/ImportGroupDocsDialog';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -35,6 +36,7 @@ interface Analysis {
 interface Props {
   leadId: string;
   leadName: string;
+  whatsappGroupId?: string | null;
 }
 
 function formatBytes(bytes?: string) {
@@ -46,7 +48,7 @@ function formatBytes(bytes?: string) {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export default function LeadDocumentsTab({ leadId, leadName }: Props) {
+export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: Props) {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [folderUrl, setFolderUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,6 +57,7 @@ export default function LeadDocumentsTab({ leadId, leadName }: Props) {
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<{ file: DriveFile; analysis: Analysis } | null>(null);
   const [reprocessing, setReprocessing] = useState(false);
+  const [importGroupOpen, setImportGroupOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -196,6 +199,17 @@ export default function LeadDocumentsTab({ leadId, leadName }: Props) {
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
             <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} /> Atualizar
           </Button>
+          {whatsappGroupId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setImportGroupOpen(true)}
+              title="Importa mídias enviadas no grupo do WhatsApp deste lead, organizando por tipo no Drive"
+            >
+              <MessagesSquare className="h-3.5 w-3.5 mr-1" />
+              Importar do grupo
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -337,6 +351,15 @@ export default function LeadDocumentsTab({ leadId, leadName }: Props) {
           )}
         </DialogContent>
       </Dialog>
+
+      <ImportGroupDocsDialog
+        open={importGroupOpen}
+        onOpenChange={setImportGroupOpen}
+        leadId={leadId}
+        leadName={leadName}
+        whatsappGroupId={whatsappGroupId || null}
+        onImported={load}
+      />
     </div>
   );
 }

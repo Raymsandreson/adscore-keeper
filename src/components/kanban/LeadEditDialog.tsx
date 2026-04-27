@@ -2609,7 +2609,11 @@ ${scrapeData.content || ''}
 
             <TabsContent value="documents" className="mt-0">
               {activeTab === 'documents' && lead && (
-                <LeadDocumentsTab leadId={lead.id} leadName={(currentLead as any)?.lead_name || lead.lead_name || 'Lead'} />
+                <LeadDocumentsTab
+                  leadId={lead.id}
+                  leadName={(currentLead as any)?.lead_name || lead.lead_name || 'Lead'}
+                  whatsappGroupId={(currentLead as any)?.whatsapp_group_id || (lead as any).whatsapp_group_id || null}
+                />
               )}
             </TabsContent>
 

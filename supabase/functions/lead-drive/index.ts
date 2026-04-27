@@ -86,6 +86,30 @@ async function getOrCreateLeadFolder(leadId: string, leadName: string, ext: any)
   return folderId!;
 }
 
+async function getOrCreateSubfolder(parentFolderId: string, name: string): Promise<string> {
+  const safeName = name.replace(/['\\]/g, "").trim() || "Outros";
+  const q = encodeURIComponent(
+    `name='${safeName}' and mimeType='application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed=false`,
+  );
+  const searchRes = await fetch(`${GATEWAY}/files?q=${q}&fields=files(id,name)`, { headers: gwHeaders() });
+  if (searchRes.ok) {
+    const data = await searchRes.json();
+    if (data.files?.length > 0) return data.files[0].id;
+  }
+  const createRes = await fetch(`${GATEWAY}/files`, {
+    method: "POST",
+    headers: gwHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      name: safeName,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [parentFolderId],
+    }),
+  });
+  if (!createRes.ok) throw new Error(`drive create subfolder failed [${createRes.status}]: ${await createRes.text()}`);
+  const created = await createRes.json();
+  return created.id;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -274,6 +298,45 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({ ok: true, file: meta, analysis }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (action === "upload_url_typed") {
+      // Sobe um arquivo de uma URL pública para uma SUBPASTA por tipo de documento dentro da pasta do lead.
+      // Body: { lead_id, lead_name, file_name, source_url, mime_type?, document_type }
+      const { file_name, source_url, mime_type, document_type } = body;
+      if (!file_name || !source_url) throw new Error("file_name and source_url required");
+      if (!document_type) throw new Error("document_type required");
+
+      const leadFolderId = await getOrCreateLeadFolder(lead_id, lead_name, ext);
+      const subFolderId = await getOrCreateSubfolder(leadFolderId, document_type);
+
+      const dl = await fetch(source_url);
+      if (!dl.ok) throw new Error(`source download failed [${dl.status}]: ${source_url}`);
+      const binary = new Uint8Array(await dl.arrayBuffer());
+      const finalMime = mime_type || dl.headers.get("content-type") || "application/octet-stream";
+
+      const boundary = "----lovable-boundary-" + crypto.randomUUID();
+      const metadata = JSON.stringify({ name: file_name, parents: [subFolderId] });
+      const head = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${finalMime}\r\n\r\n`;
+      const tail = `\r\n--${boundary}--`;
+      const headBytes = new TextEncoder().encode(head);
+      const tailBytes = new TextEncoder().encode(tail);
+      const payload = new Uint8Array(headBytes.length + binary.length + tailBytes.length);
+      payload.set(headBytes, 0);
+      payload.set(binary, headBytes.length);
+      payload.set(tailBytes, headBytes.length + binary.length);
+
+      const res = await fetch(`${UPLOAD_GATEWAY}/files?uploadType=multipart&fields=id,name,webViewLink,mimeType,size,modifiedTime`, {
+        method: "POST",
+        headers: gwHeaders({ "Content-Type": `multipart/related; boundary=${boundary}` }),
+        body: payload,
+      });
+      if (!res.ok) throw new Error(`drive upload_url_typed failed [${res.status}]: ${await res.text()}`);
+      const file = await res.json();
+      return new Response(
+        JSON.stringify({ ok: true, file, lead_folder_id: leadFolderId, subfolder_id: subFolderId }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
