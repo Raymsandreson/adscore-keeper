@@ -1295,7 +1295,7 @@ const ActivitiesPage = () => {
         : '';
       const tplVars: Record<string, string> = {
         titulo: formTitle.toUpperCase(),
-        lead_name: extractClientFirstName(formLeadName || ''),
+        lead_name: extractClientFirstName(formClientNameOverride || formLeadName || ''),
         campos_dinamicos: fieldLines,
         responsavel: formAssignedToName || '',
         responsavel_dr: responsavelDr,
@@ -1340,7 +1340,7 @@ const ActivitiesPage = () => {
 
     // Fallback: hardcoded default
     const responsavelDrFb = formAssignedToName ? `Dr. ${formAssignedToName.split(' ').slice(0, 2).join(' ')}` : '';
-    const clientFirstName = extractClientFirstName(formLeadName || '');
+    const clientFirstName = extractClientFirstName(formClientNameOverride || formLeadName || '');
     return `*Boa tarde Sr(a). ${clientFirstName}*\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${responsavelDrFb ? `*${responsavelDrFb} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.*` : ''}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
