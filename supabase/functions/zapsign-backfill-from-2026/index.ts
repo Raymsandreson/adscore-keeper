@@ -318,7 +318,7 @@ Deno.serve(async (req) => {
             outcome = "lead_updated";
             // Atualiza board e acolhedor se vazios
             const upd: Record<string, any> = {};
-            if (!existingLead.board_id) upd.board_id = board.id;
+            if (!existingLead.board_id) upd.board_id = boardId;
             if (acolhedor) upd.acolhedor = acolhedor;
             if (Object.keys(upd).length > 0) {
               await ext.from("leads").update(upd).eq("id", leadId);
@@ -327,7 +327,7 @@ Deno.serve(async (req) => {
             const insertPayload: Record<string, any> = {
               lead_name: signerName,
               lead_phone: fullPhone,
-              board_id: board.id,
+              board_id: boardId,
               acolhedor,
               lead_source: "zapsign_backfill",
             };
@@ -346,9 +346,9 @@ Deno.serve(async (req) => {
         await cloud.from("zapsign_documents").upsert(
           {
             doc_token: docToken,
-            template_id: templateToken || null,
-            template_name: templateName || null,
-            document_name: doc.name || templateName || "Documento ZapSign",
+            template_id: null,
+            template_name: null,
+            document_name: finalDocName || "Documento ZapSign",
             status: doc.status || "pending",
             original_file_url: doc.original_file || null,
             signed_file_url: doc.signed_file || null,
