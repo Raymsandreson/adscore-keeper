@@ -292,7 +292,12 @@ export default function ZapsignBackfillPage() {
                 <strong>{result.instance}</strong>
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
+              {result.dry_run && (
+                <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-900 dark:text-yellow-200">
+                  ⚠ <strong>Modo Simulação ativo</strong> — nenhum lead foi criado de verdade. Desmarque "Simulação" e clique em "Executar de verdade" para criar os leads.
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 {Object.entries(result.counts || {}).map(([k, v]) => {
                   const meta = OUTCOME_LABELS[k] || { label: k, variant: "outline" as const };
