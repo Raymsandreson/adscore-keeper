@@ -34,6 +34,7 @@ interface SummaryRow {
 
 interface BackfillResult {
   success: boolean;
+  dry_run?: boolean;
   from_date?: string;
   instance?: string;
   scanned?: number;
