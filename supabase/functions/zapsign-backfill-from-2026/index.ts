@@ -232,9 +232,11 @@ Deno.serve(async (req) => {
       const docToken: string = docLite.token || docLite.doc_token;
       if (!docToken) continue;
 
+      const docName: string = docLite.name || docLite.document_name || "";
+
       const row: SummaryRow = {
         doc_token: docToken,
-        template_name: docLite?.template?.name || docLite?.template_name || null,
+        doc_name: docName || null,
         signer_name: null,
         signer_phone: null,
         status: docLite.status || "unknown",
@@ -242,7 +244,7 @@ Deno.serve(async (req) => {
       };
 
       try {
-        // Busca detalhes (signers + template token)
+        // Busca detalhes (signers)
         const doc = await getZapsignDoc(zsToken, docToken);
         const signer = (doc.signers || [])[0] || {};
         const phoneRaw: string = signer.phone_number || signer.phone || "";
@@ -251,33 +253,34 @@ Deno.serve(async (req) => {
           ? digits(phoneRaw)
           : digits(phoneCountry + phoneRaw);
         const signerName: string = signer.name || "Lead";
-        const templateToken: string = doc?.template?.token || doc?.template_id || docLite?.template?.token || "";
-        const templateName: string = doc?.template?.name || row.template_name || "";
+        const finalDocName: string = doc.name || docName;
 
-        row.template_name = templateName || null;
+        row.doc_name = finalDocName || null;
         row.signer_name = signerName;
         row.signer_phone = fullPhone || null;
         row.status = doc.status || row.status;
 
-        if (!fullPhone) {
+        if (!fullPhone || fullPhone.length < 8) {
           row.outcome = "skipped_no_phone";
-          row.reason = "signer has no phone";
+          row.reason = "signer has no valid phone";
           summary.push(row);
           continue;
         }
 
-        // Mapeamento de template
-        const board = templateToken ? templateToBoard.get(templateToken) : null;
-        if (!board) {
-          row.outcome = "skipped_no_template_mapping";
-          row.reason = templateToken ? `template ${templateToken} not mapped` : "doc has no template";
-          if (templateToken) {
-            const cur = missingTemplates.get(templateToken);
-            missingTemplates.set(templateToken, {
-              name: templateName || cur?.name || null,
-              count: (cur?.count || 0) + 1,
-            });
-          }
+        // Inferência por nome do arquivo
+        const { boardId, matchedKeyword } = inferBoardFromName(
+          finalDocName,
+          keywordRules,
+          defaultBoardId,
+        );
+        row.matched_keyword = matchedKeyword;
+        row.board_id = boardId;
+
+        if (!boardId || !boardMap.has(boardId)) {
+          row.outcome = "skipped_no_board";
+          row.reason = boardId
+            ? `board ${boardId} not found`
+            : "no keyword matched and no default_board_id";
           summary.push(row);
           continue;
         }
