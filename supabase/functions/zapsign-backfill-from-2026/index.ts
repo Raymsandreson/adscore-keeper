@@ -331,7 +331,8 @@ Deno.serve(async (req) => {
               lead_phone: fullPhone,
               board_id: boardId,
               acolhedor,
-              lead_source: "zapsign_backfill",
+              action_source: "system",
+              action_source_detail: "zapsign_backfill",
             };
             const { data: newLead, error: insErr } = await ext
               .from("leads")
