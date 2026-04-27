@@ -121,42 +121,33 @@ function cleanDigits(s?: string | null) {
   return s ? s.replace(/\D/g, "") : null;
 }
 
-// Procura no UAZAPI um grupo da instância em que o telefone do lead seja participante.
-async function findGroupByParticipantPhone(
-  baseUrl: string,
-  token: string,
-  participantPhone: string,
-): Promise<{ jid: string; link: string | null; subject: string | null } | null> {
-  if (!baseUrl || !token || !participantPhone) return null;
-  const cleaned = participantPhone.replace(/\D/g, "");
-  if (!cleaned) return null;
+// Chama a edge function `find-contact-groups` (Cloud) que faz a busca
+// com cache de 6h e match exato pelos últimos 10 dígitos.
+async function findGroupsViaCloud(
+  phone: string,
+  instance_name: string,
+): Promise<Array<{ jid: string; name: string | null; invite_link: string | null }>> {
   try {
-    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/group/list`, {
+    const cloudUrl = Deno.env.get("SUPABASE_URL")!;
+    const cloudKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY")!;
+    const res = await fetch(`${cloudUrl}/functions/v1/find-contact-groups`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", token },
-      body: JSON.stringify({ getParticipants: true }),
+      headers: {
+        Authorization: `Bearer ${cloudKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ phone, instance_name }),
     });
-    if (!res.ok) { console.warn("[findGroup] list status", res.status); return null; }
-    const data = await res.json().catch(() => null);
-    const groups: any[] = Array.isArray(data) ? data : data?.groups || [];
-    for (const g of groups) {
-      const participants: any[] = g.participants || g.Participants || [];
-      const match = participants.find((p) => {
-        const id = String(p.id || p.jid || p.phone || "").replace(/\D/g, "");
-        return id && (id.endsWith(cleaned) || cleaned.endsWith(id));
-      });
-      if (match) {
-        return {
-          jid: g.id || g.jid || g.JID || null,
-          link: g.invite_link || g.inviteLink || null,
-          subject: g.subject || g.name || null,
-        };
-      }
+    if (!res.ok) {
+      console.warn("[findGroupsViaCloud] status", res.status, await res.text().catch(() => ""));
+      return [];
     }
+    const data = await res.json().catch(() => null);
+    return Array.isArray(data?.groups) ? data.groups : [];
   } catch (e) {
-    console.warn("[findGroup] error:", e);
+    console.warn("[findGroupsViaCloud] error:", e);
+    return [];
   }
-  return null;
 }
 
 Deno.serve(async (req) => {
