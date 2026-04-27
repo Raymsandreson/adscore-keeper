@@ -713,6 +713,7 @@ const ActivitiesPage = () => {
         process_id: formProcessId || null,
         process_title: formProcessTitle || null,
         matrix_quadrant: formMatrixQuadrant || null,
+        is_system: formIsSystem,
       };
 
       // Conclude the current activity without overwriting its existing data
