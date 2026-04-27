@@ -69,6 +69,7 @@ export function WhatsAppActivitySheet({
   const [formAssignedTo, setFormAssignedTo] = useState('');
   const [formAssignedToName, setFormAssignedToName] = useState('');
   const [formLeadId, setFormLeadId] = useState('');
+  const [formIsSystem, setFormIsSystem] = useState(false);
   const [formLeadName, setFormLeadName] = useState('');
   const [formContactId, setFormContactId] = useState('');
   const [formContactName, setFormContactName] = useState('');
