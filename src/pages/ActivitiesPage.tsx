@@ -201,6 +201,7 @@ const ActivitiesPage = () => {
   const [formCaseTitle, setFormCaseTitle] = useState('');
   const [formProcessId, setFormProcessId] = useState('');
   const [formProcessTitle, setFormProcessTitle] = useState('');
+  const [formIsSystem, setFormIsSystem] = useState(false);
   const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string; lead_id: string | null}[]>([]);
   const [caseSearch, setCaseSearch] = useState('');
   const [leadCases, setLeadCases] = useState<{id: string; case_number: string; title: string}[]>([]);
