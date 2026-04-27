@@ -845,6 +845,7 @@ const ActivitiesPage = () => {
     setFormType(activity.activity_type);
     setFormPriority(activity.priority || 'normal');
     setFormLeadId(activity.lead_id || '');
+    setFormIsSystem(!!(activity as any).is_system);
     setFormLeadName(activity.lead_name || '');
     setFormAssignedTo(activity.assigned_to || '');
     setFormAssignedToName(activity.assigned_to_name || '');
