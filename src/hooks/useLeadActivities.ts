@@ -115,6 +115,13 @@ export function useLeadActivities() {
 
   const createActivity = async (activity: Partial<LeadActivity>) => {
     try {
+      // Validação obrigatória: precisa ter vínculo (lead/caso/processo) OU ser marcada como atividade do sistema
+      const hasLink = !!(activity.lead_id || activity.case_id || activity.process_id);
+      if (!hasLink && !activity.is_system) {
+        toast.error('Vincule a atividade a um Lead ou Caso, ou marque como "Atividade do Sistema".');
+        throw new Error('LINK_REQUIRED');
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from('lead_activities')
