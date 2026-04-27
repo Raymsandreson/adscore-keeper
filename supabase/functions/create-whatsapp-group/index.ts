@@ -488,17 +488,25 @@ Deno.serve(async (req) => {
     }
 
     let nextSeq: number | null = null
+    let shouldPersistSequence = false
 
     if (settings) {
-      nextSeq = Math.max(
-        (settings.current_sequence || 0) + 1,
-        settings.sequence_start || 1
-      )
+      const existingLeadSequence = extractExistingSequenceFromName(leadData?.lead_name || lead_name, settings.group_name_prefix)
+      if (existingLeadSequence !== null) {
+        nextSeq = existingLeadSequence
+        shouldPersistSequence = false
+      } else {
+        nextSeq = Math.max(
+          (settings.current_sequence || 0) + 1,
+          settings.sequence_start || 1
+        )
+        shouldPersistSequence = true
+      }
 
       // Build name parts
       const parts: string[] = []
       if (settings.group_name_prefix) parts.push(settings.group_name_prefix)
-      parts.push(String(nextSeq).padStart(4, '0'))
+      parts.push(String(nextSeq).padStart(existingLeadSequence !== null ? String(existingLeadSequence).length : 4, '0'))
 
       const leadFields = settings.lead_fields || ['lead_name']
       for (const field of leadFields) {
@@ -708,7 +716,7 @@ Deno.serve(async (req) => {
     }
 
     // Só confirma incremento de sequência após criação bem-sucedida
-    if (settings && board_id && nextSeq !== null) {
+    if (settings && board_id && nextSeq !== null && shouldPersistSequence) {
       const { error: sequenceError } = await supabase
         .from('board_group_settings')
         .update({ current_sequence: nextSeq, updated_at: new Date().toISOString() })
