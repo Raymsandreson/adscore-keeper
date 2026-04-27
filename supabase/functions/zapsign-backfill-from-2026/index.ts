@@ -66,15 +66,17 @@ function authHeaders(token: string) {
 
 async function listZapsignDocs(
   zsToken: string,
-  fromDate: string,
+  fromDateISO: string,
   hardLimit: number,
 ): Promise<any[]> {
-  // ZapSign list endpoint: GET /docs/?created_from=YYYY-MM-DD&page=N
+  // API ZapSign IGNORA created_from/created_after — temos que filtrar client-side.
+  // sort_order=desc retorna do mais novo pro mais antigo, então paramos quando
+  // o created_at de um doc for anterior a fromDateISO.
+  const fromTime = new Date(fromDateISO + "T00:00:00Z").getTime();
   const all: any[] = [];
   let page = 1;
   while (all.length < hardLimit) {
-    const url =
-      `${ZAPSIGN_API_URL}/docs/?created_from=${fromDate}&page=${page}&page_size=${PAGE_SIZE}`;
+    const url = `${ZAPSIGN_API_URL}/docs/?sort_order=desc&page=${page}`;
     const res = await fetch(url, { headers: authHeaders(zsToken) });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
@@ -83,12 +85,37 @@ async function listZapsignDocs(
     const json = await res.json().catch(() => null);
     const results: any[] = json?.results || json?.data || [];
     if (!results.length) break;
-    all.push(...results);
+    let anyOlder = false;
+    for (const r of results) {
+      const ts = new Date(r.created_at || r.last_update_at || 0).getTime();
+      if (ts >= fromTime) {
+        all.push(r);
+        if (all.length >= hardLimit) break;
+      } else {
+        anyOlder = true;
+      }
+    }
+    if (anyOlder) break; // entrou em datas antigas, não tem mais nada útil
     if (!json?.next) break;
     page += 1;
     if (page > 200) break; // safety
   }
   return all.slice(0, hardLimit);
+}
+
+function inferBoardFromName(
+  docName: string,
+  rules: Array<{ keyword: string; board_id: string }>,
+  defaultBoardId: string | null,
+): { boardId: string | null; matchedKeyword: string | null } {
+  const name = (docName || "").toLowerCase();
+  for (const r of rules) {
+    const kw = (r.keyword || "").toLowerCase().trim();
+    if (kw && name.includes(kw)) {
+      return { boardId: r.board_id, matchedKeyword: r.keyword };
+    }
+  }
+  return { boardId: defaultBoardId, matchedKeyword: null };
 }
 
 async function getZapsignDoc(zsToken: string, docToken: string): Promise<any> {
