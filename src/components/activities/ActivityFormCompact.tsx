@@ -456,31 +456,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         )}
       </div>
 
-      {/* === Nome do cliente (override personalizado para templates) === */}
-      {props.setFormClientNameOverride && (
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider whitespace-nowrap">Nome do cliente</span>
-          <Input
-            value={props.formClientNameOverride || ''}
-            onChange={(e) => props.setFormClientNameOverride?.(e.target.value)}
-            placeholder={props.formLeadName ? `Auto: ${props.formLeadName}` : 'Será preenchido automaticamente do lead'}
-            className="h-7 text-xs flex-1"
-            title="Se vazio, usa automaticamente o nome do lead vinculado. Se preenchido, este nome será usado nos templates de mensagem."
-          />
-          {props.formClientNameOverride && (
-            <button
-              type="button"
-              onClick={() => props.setFormClientNameOverride?.('')}
-              className="text-muted-foreground hover:text-foreground"
-              title="Limpar (voltar ao automático)"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          )}
-        </div>
-      )}
 
-      {/* Aviso de vínculo obrigatório */}
 
       {!props.formLeadId && !props.formCaseId && !props.formProcessId && !props.formIsSystem && (
         <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
@@ -562,6 +538,30 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           );
         })}
       </div>
+
+      {/* === Nome do cliente (override personalizado para templates) === */}
+      {props.setFormClientNameOverride && (
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider whitespace-nowrap">Nome do cliente</span>
+          <Input
+            value={props.formClientNameOverride || ''}
+            onChange={(e) => props.setFormClientNameOverride?.(e.target.value)}
+            placeholder={props.formLeadName ? `Auto: ${props.formLeadName}` : 'Será preenchido automaticamente do lead'}
+            className="h-7 text-xs flex-1"
+            title="Se vazio, usa automaticamente o nome do lead vinculado. Se preenchido, este nome será usado nos templates de mensagem."
+          />
+          {props.formClientNameOverride && (
+            <button
+              type="button"
+              onClick={() => props.setFormClientNameOverride?.('')}
+              className="text-muted-foreground hover:text-foreground"
+              title="Limpar (voltar ao automático)"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* === ROW 4: Dates side by side === */}
       <div className="grid grid-cols-2 gap-3">
