@@ -351,6 +351,15 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
           )}
         </DialogContent>
       </Dialog>
+
+      <ImportGroupDocsDialog
+        open={importGroupOpen}
+        onOpenChange={setImportGroupOpen}
+        leadId={leadId}
+        leadName={leadName}
+        whatsappGroupId={whatsappGroupId || null}
+        onImported={load}
+      />
     </div>
   );
 }
