@@ -490,12 +490,120 @@ Deno.serve(async (req) => {
           }
         }
 
+        // ---- Se assinado: fechar lead + criar caso jurídico (replica zapsign-webhook)
+        let leadClosed = false;
+        let caseCreated = false;
+        let caseNumber: string | null = null;
+        let caseError: string | null = null;
+        if (isSigned) {
+          try {
+            // 1) Mover lead para última stage do board e marcar como closed
+            const { data: boardData } = await cloud
+              .from("kanban_boards")
+              .select("stages")
+              .eq("id", boardId)
+              .maybeSingle();
+            const stages = (boardData?.stages as any[]) || [];
+            const lastStage = stages.length > 0 ? stages[stages.length - 1] : null;
+            const updatePayload: Record<string, any> = {
+              status: lastStage?.id || "closed",
+              lead_status: "closed",
+            };
+            const signedAtIso = signer.signed_at || new Date().toISOString();
+            updatePayload.became_client_date = signedAtIso.slice(0, 10);
+            const { error: leadUpdErr } = await ext.from("leads").update(updatePayload).eq("id", leadId);
+            if (leadUpdErr) {
+              caseError = `lead update: ${leadUpdErr.message}`;
+            } else {
+              leadClosed = true;
+            }
+
+            // 2) Verificar se já existe caso para este lead
+            const { data: existingCase } = await ext
+              .from("legal_cases")
+              .select("id, case_number")
+              .eq("lead_id", leadId)
+              .maybeSingle();
+
+            if (existingCase) {
+              caseCreated = false;
+              caseNumber = existingCase.case_number;
+            } else {
+              const { data: caseNumRpc, error: rpcErr } = await ext.rpc("generate_case_number", {
+                p_nucleus_id: null,
+              });
+              if (rpcErr) throw new Error(`generate_case_number: ${rpcErr.message}`);
+              caseNumber = caseNumRpc as string;
+
+              const { data: createdCase, error: caseInsErr } = await ext
+                .from("legal_cases")
+                .insert({
+                  case_number: caseNumber,
+                  title: `Caso - ${signerName || "Novo"}`,
+                  lead_id: leadId,
+                  status: "em_andamento",
+                  acolhedor,
+                  action_source: "system",
+                  action_source_detail: "zapsign_backfill",
+                })
+                .select("id")
+                .single();
+              if (caseInsErr) throw new Error(`legal_cases insert: ${caseInsErr.message}`);
+              caseCreated = true;
+
+              // 3) case_process_tracking
+              try {
+                await ext.from("case_process_tracking").insert({
+                  case_id: createdCase!.id,
+                  lead_id: leadId,
+                  cliente: signerName || "",
+                  caso: `Caso - ${signerName || "Novo"}`,
+                  acolhedor,
+                  data_criacao: new Date().toISOString().split("T")[0],
+                  import_source: "auto_zapsign_backfill",
+                });
+              } catch (trackErr) {
+                console.warn(`[backfill] case_process_tracking ${docToken}:`, trackErr);
+              }
+
+              // 4) Atividade ONBOARDING (apenas se prefixo CASO-)
+              if (caseNumber && caseNumber.startsWith("CASO")) {
+                try {
+                  await ext.from("lead_activities").insert({
+                    lead_id: leadId,
+                    lead_name: signerName || "Novo",
+                    title: "ONBOARDING CLIENTE",
+                    description: `Atividade de onboarding criada automaticamente para o caso ${caseNumber}`,
+                    activity_type: "tarefa",
+                    status: "pendente",
+                    priority: "alta",
+                    assigned_to: "1f788b8d-e30e-484a-9460-39a881d25128",
+                    assigned_to_name: "Wanessa Vitória Rodrigues de Sousa",
+                    deadline: new Date().toISOString().split("T")[0],
+                  });
+                } catch (onbErr) {
+                  console.warn(`[backfill] onboarding activity ${docToken}:`, onbErr);
+                }
+              }
+            }
+          } catch (e) {
+            caseError = (e as any)?.message || String(e);
+            console.warn(`[backfill] case creation ${docToken}:`, caseError);
+          }
+        }
+
         row.outcome = outcome;
         row.lead_id = leadId;
         row.groups_linked = groupsLinked;
         row.group_create_dispatched = groupCreateDispatched;
         row.enrich_dispatched = enrichDispatched;
         row.enrich_skipped_reason = enrichSkippedReason;
+        row.doc_upserted = docUpserted;
+        row.doc_upsert_error = docUpsertError;
+        row.lead_closed = leadClosed;
+        row.case_created = caseCreated;
+        row.case_number = caseNumber;
+        row.case_error = caseError;
         summary.push(row);
       } catch (e) {
         const msg = (e as any)?.message || String(e);
