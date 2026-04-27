@@ -197,12 +197,12 @@ export default function ZapsignBackfillPage() {
             <label className="text-sm font-medium block mb-2">
               Funil padrão (usado quando nenhuma palavra-chave bater)
             </label>
-            <Select value={defaultBoardId} onValueChange={changeDefault}>
+            <Select value={defaultBoardId || "__none__"} onValueChange={(v) => changeDefault(v === "__none__" ? "" : v)}>
               <SelectTrigger className="w-[420px]">
                 <SelectValue placeholder="(opcional) escolha um funil padrão" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">— Nenhum (ignorar contratos sem match) —</SelectItem>
+                <SelectItem value="__none__">— Nenhum (ignorar contratos sem match) —</SelectItem>
                 {boards.map((b) => (
                   <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                 ))}
