@@ -44,6 +44,7 @@ interface ActivityFormCompactProps {
   formContactId: string; formContactName: string;
   formCaseId: string; formCaseTitle: string;
   formProcessId: string; formProcessTitle: string;
+  formIsSystem?: boolean; setFormIsSystem?: (v: boolean) => void;
   formRepeatWeekDays: number[]; setFormRepeatWeekDays: (v: number[] | ((prev: number[]) => number[])) => void;
   formWhatWasDone: string; setFormWhatWasDone: (v: string) => void;
   formCurrentStatus: string; setFormCurrentStatus: (v: string) => void;
