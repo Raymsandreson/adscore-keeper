@@ -81,7 +81,7 @@ export default function ImportGroupDocsDialog({
       await ensureExternalSession();
       const { data, error } = await externalSupabase
         .from('whatsapp_messages')
-        .select('external_message_id, message_type, message_text, media_url, created_at, metadata, sender_name')
+        .select('external_message_id, message_type, message_text, media_url, created_at, metadata, contact_name')
         .eq('phone', whatsappGroupId)
         .in('message_type', ['image', 'document', 'video', 'audio'])
         .not('media_url', 'is', null)
@@ -102,7 +102,7 @@ export default function ImportGroupDocsDialog({
           message_text: m.message_text,
           media_url: m.media_url,
           created_at: m.created_at,
-          sender_name: m.sender_name,
+          sender_name: m.contact_name,
           file_name: fileName,
           mime_type: mimeType,
         };
