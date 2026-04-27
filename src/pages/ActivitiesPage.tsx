@@ -188,6 +188,7 @@ const ActivitiesPage = () => {
   const [formPriority, setFormPriority] = useState('normal');
   const [formLeadId, setFormLeadId] = useState<string>('');
   const [formLeadName, setFormLeadName] = useState('');
+  const [formClientNameOverride, setFormClientNameOverride] = useState('');
   const [formAssignedTo, setFormAssignedTo] = useState('');
   const [formAssignedToName, setFormAssignedToName] = useState('');
   const [formDeadline, setFormDeadline] = useState('');
