@@ -209,18 +209,18 @@ Deno.serve(async (req) => {
     // ---- Pré-resolve acolhedor (dono da instância)
     let acolhedor: string | null = null;
     {
-      const { data: instRow } = await ext
+      const { data: instRow } = await cloud
         .from("whatsapp_instances")
         .select("id, owner_name")
         .ilike("instance_name", targetInstanceName)
         .maybeSingle();
       if (instRow?.id) {
-        const { data: ownerProfile } = await ext
+        const { data: ownerProfile } = await cloud
           .from("profiles")
           .select("full_name, email")
           .eq("default_instance_id", instRow.id)
           .maybeSingle();
-        acolhedor = ownerProfile?.full_name || ownerProfile?.email || instRow.owner_name || null;
+        acolhedor = ownerProfile?.full_name || ownerProfile?.email || (instRow as any).owner_name || null;
       }
     }
 
