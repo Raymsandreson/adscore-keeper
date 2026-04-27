@@ -67,7 +67,13 @@ export default function ZapsignBackfillPage() {
   const [boards, setBoards] = useState<BoardOption[]>([]);
   const [rules, setRules] = useState<KeywordRule[]>([{ keyword: "", board_id: "" }]);
   const [defaultBoardId, setDefaultBoardId] = useState<string>("");
-  const [result, setResult] = useState<BackfillResult | null>(null);
+  const [result, setResult] = useState<BackfillResult | null>(() => {
+    // Restaura resultado anterior pra sobreviver ao HMR do Vite
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY + "_result");
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
 
   // Carrega boards e estado salvo
   useEffect(() => {
@@ -87,6 +93,14 @@ export default function ZapsignBackfillPage() {
       } catch {/* ignore */}
     }
   }, []);
+
+  // Persiste resultado pra sobreviver ao reload do dev-server
+  useEffect(() => {
+    try {
+      if (result) sessionStorage.setItem(STORAGE_KEY + "_result", JSON.stringify(result));
+      else sessionStorage.removeItem(STORAGE_KEY + "_result");
+    } catch {/* ignore */}
+  }, [result]);
 
   function persist(nextRules: KeywordRule[], nextDefault: string) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ rules: nextRules, defaultBoardId: nextDefault }));
