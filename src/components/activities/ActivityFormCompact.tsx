@@ -8,7 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info } from 'lucide-react';
+import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2 } from 'lucide-react';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityMessageTemplateSettings } from '@/components/activities/ActivityMessageTemplateSettings';
@@ -44,6 +44,7 @@ interface ActivityFormCompactProps {
   formContactId: string; formContactName: string;
   formCaseId: string; formCaseTitle: string;
   formProcessId: string; formProcessTitle: string;
+  formIsSystem?: boolean; setFormIsSystem?: (v: boolean) => void;
   formRepeatWeekDays: number[]; setFormRepeatWeekDays: (v: number[] | ((prev: number[]) => number[])) => void;
   formWhatWasDone: string; setFormWhatWasDone: (v: string) => void;
   formCurrentStatus: string; setFormCurrentStatus: (v: string) => void;
@@ -431,7 +432,37 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             <UserPlus className="h-3 w-3" /> Contato
           </Button>
         )}
+
+        {/* System activity toggle (alternativa ao vínculo obrigatório) */}
+        {props.setFormIsSystem && (
+          <>
+            <span className="text-muted-foreground text-xs">|</span>
+            <Button
+              type="button"
+              variant={props.formIsSystem ? 'default' : 'outline'}
+              size="sm"
+              className={cn(
+                'h-6 px-2 text-[10px] gap-1',
+                props.formIsSystem && 'bg-slate-700 hover:bg-slate-800 text-white'
+              )}
+              onClick={() => props.setFormIsSystem?.(!props.formIsSystem)}
+              title="Marcar como atividade interna do sistema (dispensa vínculo a Lead/Caso)"
+            >
+              <Settings2 className="h-3 w-3" /> {props.formIsSystem ? 'Sistema ✓' : 'Sistema'}
+            </Button>
+          </>
+        )}
       </div>
+
+      {/* Aviso de vínculo obrigatório */}
+      {!props.formLeadId && !props.formCaseId && !props.formProcessId && !props.formIsSystem && (
+        <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
+          <Info className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <span className="text-[11px] text-amber-700 dark:text-amber-300">
+            Vincule esta atividade a um <strong>Lead</strong> ou <strong>Caso</strong>, ou marque como <strong>Sistema</strong>.
+          </span>
+        </div>
+      )}
 
       {/* === ROW 2: Core selects - 4 columns === */}
       <div className="grid grid-cols-4 gap-2">

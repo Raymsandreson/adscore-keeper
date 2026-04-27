@@ -34,6 +34,7 @@ export interface LeadActivity {
   case_title: string | null;
   process_id: string | null;
   process_title: string | null;
+  is_system: boolean | null;
 }
 
 export function useLeadActivities() {
@@ -114,6 +115,13 @@ export function useLeadActivities() {
 
   const createActivity = async (activity: Partial<LeadActivity>) => {
     try {
+      // Validação obrigatória: precisa ter vínculo (lead/caso/processo) OU ser marcada como atividade do sistema
+      const hasLink = !!(activity.lead_id || activity.case_id || activity.process_id);
+      if (!hasLink && !activity.is_system) {
+        toast.error('Vincule a atividade a um Lead ou Caso, ou marque como "Atividade do Sistema".');
+        throw new Error('LINK_REQUIRED');
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from('lead_activities')
@@ -141,6 +149,7 @@ export function useLeadActivities() {
           case_title: activity.case_title || null,
           process_id: activity.process_id || null,
           process_title: activity.process_title || null,
+          is_system: activity.is_system ?? false,
         } as any)
         .select()
         .single();
@@ -195,7 +204,8 @@ export function useLeadActivities() {
       }
 
       return data;
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message === 'LINK_REQUIRED') throw error;
       console.error('Error creating activity:', error);
       toast.error('Erro ao criar atividade');
       throw error;

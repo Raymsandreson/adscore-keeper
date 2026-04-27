@@ -201,6 +201,7 @@ const ActivitiesPage = () => {
   const [formCaseTitle, setFormCaseTitle] = useState('');
   const [formProcessId, setFormProcessId] = useState('');
   const [formProcessTitle, setFormProcessTitle] = useState('');
+  const [formIsSystem, setFormIsSystem] = useState(false);
   const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string; lead_id: string | null}[]>([]);
   const [caseSearch, setCaseSearch] = useState('');
   const [leadCases, setLeadCases] = useState<{id: string; case_number: string; title: string}[]>([]);
@@ -440,6 +441,7 @@ const ActivitiesPage = () => {
     setLeadCases([]);
     setCaseProcesses([]);
     setFormMatrixQuadrant('');
+    setFormIsSystem(false);
   };
 
   // suggestActivityType moved below routineActivityTypes
@@ -475,6 +477,7 @@ const ActivitiesPage = () => {
       case_title: formCaseTitle || null,
       process_id: formProcessId || null,
       process_title: formProcessTitle || null,
+      is_system: formIsSystem,
     };
 
     let createdActivityId: string | null = null;
@@ -524,6 +527,7 @@ const ActivitiesPage = () => {
     setFormType(activity.activity_type);
     setFormPriority(activity.priority || 'normal');
     setFormLeadId(activity.lead_id || '');
+    setFormIsSystem(!!(activity as any).is_system);
     setFormLeadName(activity.lead_name || '');
     setFormAssignedTo(activity.assigned_to || '');
     setFormAssignedToName(activity.assigned_to_name || '');
@@ -710,6 +714,7 @@ const ActivitiesPage = () => {
         process_id: formProcessId || null,
         process_title: formProcessTitle || null,
         matrix_quadrant: formMatrixQuadrant || null,
+        is_system: formIsSystem,
       };
 
       // Conclude the current activity without overwriting its existing data
@@ -840,6 +845,7 @@ const ActivitiesPage = () => {
     setFormType(activity.activity_type);
     setFormPriority(activity.priority || 'normal');
     setFormLeadId(activity.lead_id || '');
+    setFormIsSystem(!!(activity as any).is_system);
     setFormLeadName(activity.lead_name || '');
     setFormAssignedTo(activity.assigned_to || '');
     setFormAssignedToName(activity.assigned_to_name || '');
@@ -1348,6 +1354,7 @@ const ActivitiesPage = () => {
       formContactId={formContactId} formContactName={formContactName}
       formCaseId={formCaseId} formCaseTitle={formCaseTitle}
       formProcessId={formProcessId} formProcessTitle={formProcessTitle}
+      formIsSystem={formIsSystem} setFormIsSystem={setFormIsSystem}
       formRepeatWeekDays={formRepeatWeekDays} setFormRepeatWeekDays={setFormRepeatWeekDays}
       formWhatWasDone={formWhatWasDone} setFormWhatWasDone={setFormWhatWasDone}
       formCurrentStatus={formCurrentStatus} setFormCurrentStatus={setFormCurrentStatus}
