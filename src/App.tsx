@@ -146,6 +146,7 @@ const BugMonitorPage = lazyRetry(() => import("./pages/BugMonitorPage"), "BugMon
 const LandingPage = lazyRetry(() => import("./pages/LandingPage"), "LandingPage");
 const BookingPage = lazyRetry(() => import("./pages/BookingPage"), "BookingPage");
 const ExtensionPage = lazyRetry(() => import("./pages/ExtensionPage"), "ExtensionPage");
+const ZapsignBackfillPage = lazyRetry(() => import("./pages/ZapsignBackfillPage"), "ZapsignBackfillPage");
 const ShareTargetPage = lazyRetry(() => import("./pages/ShareTargetPage"), "ShareTargetPage");
 const ArchivedItemsPage = lazyRetry(() => import("./pages/ArchivedItemsPage"), "ArchivedItemsPage");
 const HookDebugPage = lazyRetry(() => import("./pages/HookDebugPage"), "HookDebugPage");
@@ -242,6 +243,7 @@ function SidebarLayout() {
                 <Route path="/agent-monitor" element={<ProtectedRoute><AgentMonitorPage /></ProtectedRoute>} />
                 <Route path="/bug-monitor" element={<ProtectedRoute><BugMonitorPage /></ProtectedRoute>} />
                 <Route path="/extension" element={<ProtectedRoute><ExtensionPage /></ProtectedRoute>} />
+                <Route path="/settings/zapsign-backfill" element={<ProtectedRoute><ZapsignBackfillPage /></ProtectedRoute>} />
                 <Route path="/cases" element={<ProtectedRoute><CasesPage /></ProtectedRoute>} />
                 <Route path="/processes" element={<ProtectedRoute><ProcessesPage /></ProtectedRoute>} />
                 <Route path="/nuclei" element={<ProtectedRoute><NucleiPage /></ProtectedRoute>} />
