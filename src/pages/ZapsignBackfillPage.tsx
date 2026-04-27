@@ -325,7 +325,7 @@ export default function ZapsignBackfillPage() {
                         <td className="py-2 px-2">
                           {r.lead_id ? (
                             <a
-                              href={`/leads?tab=kanban&lead=${r.lead_id}`}
+                              href={`/leads?tab=kanban&openLead=${r.lead_id}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               title="Abrir lead em nova aba"
