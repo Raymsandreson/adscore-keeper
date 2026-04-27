@@ -126,6 +126,32 @@ function normalizeGroupName(rawName: string): string {
   return shortened
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function extractExistingSequenceFromName(name: string | null | undefined, prefix: string | null | undefined): number | null {
+  const trimmedPrefix = prefix?.trim()
+  const trimmedName = name?.trim()
+  if (!trimmedPrefix || !trimmedName) return null
+
+  const match = trimmedName.match(new RegExp(`^${escapeRegExp(trimmedPrefix)}\\s+(\\d+)\\b`, 'i'))
+  if (!match) return null
+
+  const sequence = Number(match[1])
+  return Number.isFinite(sequence) && sequence > 0 ? sequence : null
+}
+
+function stripExistingSequenceFromName(name: string | null | undefined, prefix: string | null | undefined): string {
+  const trimmedPrefix = prefix?.trim()
+  const trimmedName = name?.trim() || ''
+  if (!trimmedPrefix || !trimmedName) return trimmedName
+
+  return trimmedName
+    .replace(new RegExp(`^${escapeRegExp(trimmedPrefix)}\\s+\\d+\\b\\s*(?:[|\u2013\u2014-]\s*)?`, 'i'), '')
+    .trim()
+}
+
 function isRateLimited(status: number, bodyText: string): boolean {
   return status === 429 || /rate[-_ ]?overlimit|too\s+many\s+requests|429/i.test(bodyText || '')
 }
@@ -472,24 +498,32 @@ Deno.serve(async (req) => {
     }
 
     let nextSeq: number | null = null
+    let shouldPersistSequence = false
 
     if (settings) {
-      nextSeq = Math.max(
-        (settings.current_sequence || 0) + 1,
-        settings.sequence_start || 1
-      )
+      const existingLeadSequence = extractExistingSequenceFromName(leadData?.lead_name || lead_name, settings.group_name_prefix)
+      if (existingLeadSequence !== null) {
+        nextSeq = existingLeadSequence
+        shouldPersistSequence = false
+      } else {
+        nextSeq = Math.max(
+          (settings.current_sequence || 0) + 1,
+          settings.sequence_start || 1
+        )
+        shouldPersistSequence = true
+      }
 
       // Build name parts
       const parts: string[] = []
       if (settings.group_name_prefix) parts.push(settings.group_name_prefix)
-      parts.push(String(nextSeq).padStart(4, '0'))
+      parts.push(String(nextSeq).padStart(existingLeadSequence !== null ? String(existingLeadSequence).length : 4, '0'))
 
       const leadFields = settings.lead_fields || ['lead_name']
       for (const field of leadFields) {
         if (leadData && leadData[field]) {
-          parts.push(String(leadData[field]))
+          parts.push(field === 'lead_name' ? stripExistingSequenceFromName(leadData[field], settings.group_name_prefix) : String(leadData[field]))
         } else if (field === 'lead_name') {
-          parts.push(lead_name)
+          parts.push(stripExistingSequenceFromName(lead_name, settings.group_name_prefix))
         }
       }
 
@@ -692,7 +726,7 @@ Deno.serve(async (req) => {
     }
 
     // Só confirma incremento de sequência após criação bem-sucedida
-    if (settings && board_id && nextSeq !== null) {
+    if (settings && board_id && nextSeq !== null && shouldPersistSequence) {
       const { error: sequenceError } = await supabase
         .from('board_group_settings')
         .update({ current_sequence: nextSeq, updated_at: new Date().toISOString() })
