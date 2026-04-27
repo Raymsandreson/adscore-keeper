@@ -503,7 +503,23 @@ export function WhatsAppActivitySheet({
             )}
           </div>
 
-          {/* Contato */}
+          {/* Atividade do Sistema (alternativa ao vínculo obrigatório) */}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant={formIsSystem ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setFormIsSystem(v => !v)}
+              className="h-7 text-xs"
+            >
+              {formIsSystem ? '✓ Atividade do Sistema' : 'Marcar como Atividade do Sistema'}
+            </Button>
+          </div>
+          {!formLeadId && !formIsSystem && (
+            <div className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-md px-2 py-1.5">
+              Vincule esta atividade a um <strong>Lead</strong> ou marque como <strong>Atividade do Sistema</strong>.
+            </div>
+          )}
           <div>
             <Label>Contato vinculado</Label>
             <div className="relative">
