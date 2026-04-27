@@ -905,6 +905,19 @@ Deno.serve(async (req) => {
         console.log(`[save] Existing contact ${groupContactId} linked to lead ${leadData.id}`)
       }
 
+      // Ensure junction-table link (contact_leads) exists so the new UI sees this contact.
+      // Idempotent: ignore duplicate-key errors.
+      if (groupContactId) {
+        const { error: clErr } = await supabase
+          .from('contact_leads')
+          .insert({ contact_id: groupContactId, lead_id: leadData.id })
+        if (clErr && !`${clErr.message || ''}`.toLowerCase().includes('duplicate')) {
+          console.warn('[save] contact_leads insert warn:', clErr.message)
+        } else if (!clErr) {
+          console.log(`[save] contact_leads link created: ${groupContactId} -> ${leadData.id}`)
+        }
+      }
+
       // Also save to lead_whatsapp_groups table for proper tracking
       // Check if group already exists in lead_whatsapp_groups
       const { data: existingLwg } = await supabase
