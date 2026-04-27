@@ -36,6 +36,7 @@ interface Analysis {
 interface Props {
   leadId: string;
   leadName: string;
+  whatsappGroupId?: string | null;
 }
 
 function formatBytes(bytes?: string) {
