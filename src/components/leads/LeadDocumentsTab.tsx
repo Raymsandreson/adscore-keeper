@@ -199,6 +199,17 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
             <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} /> Atualizar
           </Button>
+          {whatsappGroupId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setImportGroupOpen(true)}
+              title="Importa mídias enviadas no grupo do WhatsApp deste lead, organizando por tipo no Drive"
+            >
+              <MessagesSquare className="h-3.5 w-3.5 mr-1" />
+              Importar do grupo
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
