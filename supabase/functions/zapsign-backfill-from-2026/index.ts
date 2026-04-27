@@ -56,6 +56,8 @@ interface SummaryRow {
   lead_id?: string | null;
   groups_linked?: number;
   group_create_dispatched?: boolean;
+  enrich_dispatched?: boolean;
+  enrich_skipped_reason?: string | null;
   reason?: string;
 }
 
