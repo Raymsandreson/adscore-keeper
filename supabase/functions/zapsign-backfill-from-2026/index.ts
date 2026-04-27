@@ -500,6 +500,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
+        dry_run: dryRun,
         from_date: FROM_DATE,
         instance: targetInstanceName,
         scanned: docs.length,
