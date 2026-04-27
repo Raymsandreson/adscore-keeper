@@ -15,15 +15,33 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Normalize to E.164-ish digits with BR country code
 function normalizePhone(raw: string): string {
-  const digits = raw.replace(/\D/g, "");
+  const digits = (raw || "").replace(/\D/g, "");
+  if (!digits) return "";
   if (digits.startsWith("55") && digits.length >= 12) return digits;
   if (digits.length >= 10 && digits.length <= 11) return "55" + digits;
   return digits;
 }
 
+// Returns the canonical "match key": last 10 digits (DDD + 8 base digits),
+// stripping the optional 9th mobile digit. This is the SAME key for both
+// "5519995705510" (13) and "551995705510" (12).
+function phoneMatchKey(raw: string): string {
+  const digits = (raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  // Drop country code 55 if present
+  let local = digits.startsWith("55") && digits.length >= 12 ? digits.slice(2) : digits;
+  // If 11 digits (DDD + 9 + 8), drop the leading 9 after DDD
+  if (local.length === 11 && local[2] === "9") {
+    local = local.slice(0, 2) + local.slice(3);
+  }
+  // Keep last 10 digits as the canonical key
+  return local.slice(-10);
+}
+
 function extractPhoneFromJid(jid: string): string {
-  return jid.replace(/@.*$/, "").replace(/\D/g, "");
+  return (jid || "").replace(/@.*$/, "").replace(/\D/g, "");
 }
 
 Deno.serve(async (req) => {
@@ -44,8 +62,7 @@ Deno.serve(async (req) => {
     const internalClient = createClient(INTERNAL_SUPABASE_URL, INTERNAL_SERVICE_ROLE_KEY);
     const dataClient = createClient(RESOLVED_SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY);
 
-    // 1. Build ordered list of instances to try:
-    // Priority: user's instance_id > all active instances
+    // 1. Build ordered list of instances to try
     const { data: allActiveInstances } = await internalClient
       .from("whatsapp_instances")
       .select("*")
@@ -59,7 +76,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Put user's preferred instance first
     const orderedInstances: any[] = [];
     if (instance_id) {
       const preferred = allActiveInstances.find((i: any) => i.id === instance_id);
@@ -71,15 +87,45 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 2. Get ALL instance phone numbers (to exclude them from participants)
-    
-    const instancePhones = new Set(
-      orderedInstances
-        .map((i: any) => normalizePhone(i.owner_phone || ""))
-        .filter((p: string) => p.length >= 10)
-    );
+    // 2. Build BLOCKLIST of phone match-keys to ignore (instances + staff)
+    const blocklistKeys = new Set<string>();
 
-    // 3. Fetch group participants from UazAPI - try multiple instances
+    // 2a. Instance owners
+    for (const inst of orderedInstances) {
+      const k = phoneMatchKey(inst.owner_phone || "");
+      if (k.length >= 10) blocklistKeys.add(k);
+    }
+
+    // 2b. Profiles (any system user phone)
+    try {
+      const { data: profiles } = await internalClient
+        .from("profiles")
+        .select("phone");
+      for (const p of profiles || []) {
+        const k = phoneMatchKey((p as any).phone || "");
+        if (k.length >= 10) blocklistKeys.add(k);
+      }
+    } catch (e) {
+      console.log("Could not load profiles for blocklist:", (e as any)?.message);
+    }
+
+    // 2c. Contacts already classified as staff/collaborator/lawyer/attendant
+    try {
+      const { data: staffContacts } = await dataClient
+        .from("contacts")
+        .select("phone, classification")
+        .in("classification", ["staff", "collaborator", "lawyer", "attendant"]);
+      for (const c of staffContacts || []) {
+        const k = phoneMatchKey((c as any).phone || "");
+        if (k.length >= 10) blocklistKeys.add(k);
+      }
+    } catch (e) {
+      console.log("Could not load staff contacts for blocklist:", (e as any)?.message);
+    }
+
+    console.log(`Blocklist size (match-keys): ${blocklistKeys.size}`);
+
+    // 3. Fetch group participants from UazAPI
     let groupJid = (group_jid || "").trim();
     if (!groupJid.includes("@")) {
       groupJid = `${groupJid}@g.us`;
@@ -122,8 +168,8 @@ Deno.serve(async (req) => {
 
     if (!groupData) {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
+        JSON.stringify({
+          success: false,
           error: `Nenhuma instância tem acesso ao grupo. Último erro: ${lastError}`,
           tried_instances: orderedInstances.map((i: any) => i.instance_name),
         }),
@@ -131,64 +177,87 @@ Deno.serve(async (req) => {
       );
     }
 
-    const participants = groupData?.participants || groupData?.Participants || 
+    const participants = groupData?.participants || groupData?.Participants ||
       groupData?.data?.participants || [];
     console.log(`Group ${groupJid}: ${participants.length} participants found via ${usedInstanceName}`);
 
-    // 4. Extract phone numbers from participants (exclude instances)
-    // Log raw participant data to understand the structure
-    console.log(`Raw participants sample:`, JSON.stringify(participants.slice(0, 3)));
-    
-    const participantPhones: string[] = [];
+    // 4. Extract participant phones, deduped by match-key, blocklist applied
+    type ParticipantPhone = { full: string; key: string };
+    const participantPhones: ParticipantPhone[] = [];
+    const seenKeys = new Set<string>();
+    let blockedCount = 0;
+
     for (const p of participants) {
-      // UazAPI returns: JID (LID format), PhoneNumber (with @s.whatsapp.net), LID, etc.
       const phoneJid = p.PhoneNumber || p.phoneNumber || p.phone_number || "";
       const jid = p.id || p.JID || p.jid || "";
-      
-      // Skip group JIDs
-      if (jid.includes("@g.us")) continue;
-      
+
+      if (jid && jid.includes("@g.us")) continue;
+
       let phone = "";
-      // Priority 1: PhoneNumber field (e.g. "558999924118@s.whatsapp.net")
       if (phoneJid && phoneJid.includes("@")) {
         phone = extractPhoneFromJid(phoneJid);
       } else if (phoneJid) {
         phone = phoneJid.replace(/\D/g, "");
       }
-      // Priority 2: JID if it's @s.whatsapp.net format
       if (!phone && jid && jid.includes("@s.whatsapp.net")) {
         phone = extractPhoneFromJid(jid);
       }
-      // Priority 3: raw digits from JID (not @lid)
       if (!phone && jid && !jid.includes("@lid")) {
         phone = jid.replace(/\D/g, "");
       }
-      
-      if (phone && phone.length >= 10 && !instancePhones.has(phone)) {
-        participantPhones.push(phone);
-        console.log(`Participant phone extracted: ${phone} from JID: ${jid}`);
-      } else if (jid) {
-        console.log(`Skipped participant: jid=${jid} phone=${phone} isInstance=${instancePhones.has(phone)}`);
+
+      if (!phone || phone.length < 10) {
+        if (jid) console.log(`Skipped: invalid phone jid=${jid}`);
+        continue;
+      }
+
+      const fullNorm = normalizePhone(phone);
+      const key = phoneMatchKey(phone);
+
+      if (!key || key.length < 10) continue;
+
+      if (blocklistKeys.has(key)) {
+        blockedCount++;
+        console.log(`Blocked (staff/instance): ${fullNorm} key=${key}`);
+        continue;
+      }
+
+      if (seenKeys.has(key)) continue; // dedupe
+      seenKeys.add(key);
+
+      participantPhones.push({ full: fullNorm, key });
+      console.log(`Participant accepted: ${fullNorm} key=${key}`);
+    }
+
+    console.log(`After filtering: ${participantPhones.length} kept, ${blockedCount} blocked, ${participants.length} total`);
+
+    // 5. Find existing contacts by EXACT match-key (no LIKE collisions)
+    const allKeys = participantPhones.map((p) => p.key);
+    const contactsByKey = new Map<string, any>();
+
+    if (allKeys.length > 0) {
+      // Pull contacts whose normalized phone ends with any of the keys.
+      // We do this by fetching candidates per key with eq on the right-trimmed value.
+      // Simpler: fetch all contacts whose phone digits end with one of the keys,
+      // then filter in memory using phoneMatchKey for exactness.
+      const orFilter = allKeys.map((k) => `phone.ilike.%${k}`).join(",");
+      const { data: candidates } = await dataClient
+        .from("contacts")
+        .select("id, phone, full_name, classification")
+        .or(orFilter)
+        .is("deleted_at", null);
+
+      for (const c of candidates || []) {
+        const ckey = phoneMatchKey(c.phone || "");
+        if (!ckey) continue;
+        // Only set if key matches one of the participants (avoids stray hits)
+        if (allKeys.includes(ckey) && !contactsByKey.has(ckey)) {
+          contactsByKey.set(ckey, c);
+        }
       }
     }
 
-    console.log(`After filtering: ${participantPhones.length} participant phones from ${participants.length} total`);
-
-    // 5. Find existing contacts by phone
-    const { data: existingContacts } = await dataClient
-      .from("contacts")
-      .select("id, phone, full_name")
-      .or(participantPhones.map(p => `phone.like.%${p.slice(-8)}%`).join(","));
-
-    const contactsByPhone = new Map<string, any>();
-    for (const c of existingContacts || []) {
-      const cPhone = normalizePhone(c.phone || "");
-      if (cPhone) contactsByPhone.set(cPhone, c);
-      // Also map by last 8 digits
-      if (cPhone.length >= 8) contactsByPhone.set(cPhone.slice(-8), c);
-    }
-
-    // 6. Get already linked contacts for this lead
+    // 6. Existing links for this lead
     const { data: existingLinks } = await dataClient
       .from("contact_leads")
       .select("contact_id")
@@ -200,57 +269,55 @@ Deno.serve(async (req) => {
       linked_existing: 0,
       needs_creation: [] as { phone: string; jid: string }[],
       already_linked: 0,
-      skipped_instances: instancePhones.size,
+      skipped_blocklist: blockedCount,
     };
 
-    for (const phone of participantPhones) {
-      // Check if contact exists (by full phone or last 8 digits)
-      const existing = contactsByPhone.get(phone) || contactsByPhone.get(phone.slice(-8));
+    for (const pp of participantPhones) {
+      const existing = contactsByKey.get(pp.key);
 
       if (existing) {
         if (linkedContactIds.has(existing.id)) {
           results.already_linked++;
           continue;
         }
-        // Link existing contact to lead
         const { error } = await dataClient
           .from("contact_leads")
           .insert({ contact_id: existing.id, lead_id });
         if (!error) {
           results.linked_existing++;
           linkedContactIds.add(existing.id);
+        } else {
+          console.log(`Link error for ${existing.id}:`, error.message);
         }
       } else {
-        // Need to create - collect conversation data
-        results.needs_creation.push({ phone, jid: `${phone}@s.whatsapp.net` });
+        results.needs_creation.push({ phone: pp.full, jid: `${pp.full}@s.whatsapp.net` });
       }
     }
 
-    // 8. For contacts that need creation, fetch conversation summaries to suggest names
+    // 8. Build name suggestions for needs_creation by looking at recent messages
     const contactSuggestions = [];
     for (const nc of results.needs_creation) {
-      // Look up recent messages across ALL instances for this phone
+      const ncKey = phoneMatchKey(nc.phone);
+      // Pull a wider candidate set then filter in memory by exact match-key.
       const { data: recentMessages } = await dataClient
         .from("whatsapp_messages")
-        .select("contact_name, message_text, direction, instance_name, created_at")
-        .like("phone", `%${nc.phone.slice(-8)}%`)
+        .select("contact_name, message_text, direction, instance_name, created_at, phone")
+        .ilike("phone", `%${ncKey}`)
         .order("created_at", { ascending: false })
-        .limit(30);
+        .limit(60);
 
-      // Extract best contact name from messages
-      const names = (recentMessages || [])
+      const matched = (recentMessages || []).filter((m: any) => phoneMatchKey(m.phone || "") === ncKey).slice(0, 30);
+
+      const names = matched
         .map((m: any) => m.contact_name)
         .filter((n: string) => n && n.trim() && n !== "unknown" && n !== nc.phone);
-      
+
       const nameFreq: Record<string, number> = {};
-      for (const n of names) {
-        nameFreq[n] = (nameFreq[n] || 0) + 1;
-      }
+      for (const n of names) nameFreq[n] = (nameFreq[n] || 0) + 1;
       const bestName = Object.entries(nameFreq)
         .sort(([, a], [, b]) => (b as number) - (a as number))[0]?.[0] || "";
 
-      // Gather conversation context for AI analysis
-      const messagesSample = (recentMessages || [])
+      const messagesSample = matched
         .slice(0, 15)
         .map((m: any) => `[${m.direction}] ${m.message_text || ""}`.substring(0, 200))
         .join("\n");
@@ -258,8 +325,8 @@ Deno.serve(async (req) => {
       contactSuggestions.push({
         phone: nc.phone,
         suggested_name: bestName,
-        message_count: recentMessages?.length || 0,
-        instances_seen: [...new Set((recentMessages || []).map((m: any) => m.instance_name))],
+        message_count: matched.length,
+        instances_seen: [...new Set(matched.map((m: any) => m.instance_name))],
         conversation_preview: messagesSample.substring(0, 1000),
       });
     }
