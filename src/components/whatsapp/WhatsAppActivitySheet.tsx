@@ -298,6 +298,7 @@ export function WhatsAppActivitySheet({
         current_status_notes: formCurrentStatus || null,
         next_steps: formNextSteps || null,
         notes: formNotes || null,
+        is_system: formIsSystem,
       });
       onActivityCreated?.(formTitle, formType, formLeadName || undefined);
       onOpenChange(false);
