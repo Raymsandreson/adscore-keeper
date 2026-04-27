@@ -521,9 +521,9 @@ Deno.serve(async (req) => {
       const leadFields = settings.lead_fields || ['lead_name']
       for (const field of leadFields) {
         if (leadData && leadData[field]) {
-          parts.push(String(leadData[field]))
+          parts.push(field === 'lead_name' ? stripExistingSequenceFromName(leadData[field], settings.group_name_prefix) : String(leadData[field]))
         } else if (field === 'lead_name') {
-          parts.push(lead_name)
+          parts.push(stripExistingSequenceFromName(lead_name, settings.group_name_prefix))
         }
       }
 
