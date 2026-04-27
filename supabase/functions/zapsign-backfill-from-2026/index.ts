@@ -466,11 +466,8 @@ Deno.serve(async (req) => {
         instance: targetInstanceName,
         scanned: docs.length,
         counts,
-        missing_templates: Array.from(missingTemplates.entries()).map(([token, v]) => ({
-          template_token: token,
-          template_name: v.name,
-          docs_count: v.count,
-        })),
+        keyword_rules_used: keywordRules.length,
+        default_board_used: defaultBoardId || null,
         summary,
         errors,
       }),
