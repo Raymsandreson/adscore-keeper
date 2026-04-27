@@ -32,20 +32,27 @@ const TARGET_INSTANCE = "Raym"; // case-insensitive lookup
 const FROM_DATE = "2026-01-01";
 const PAGE_SIZE = 50;
 
+interface KeywordRule {
+  keyword: string;
+  board_id: string;
+}
+
 interface SummaryRow {
   doc_token: string;
-  template_name: string | null;
+  doc_name: string | null;
   signer_name: string | null;
   signer_phone: string | null;
   status: string;
   outcome:
     | "skipped_no_phone"
-    | "skipped_no_template_mapping"
+    | "skipped_no_board"
     | "skipped_already_processed"
     | "lead_created"
     | "lead_updated"
     | "lead_linked_existing"
     | "error";
+  matched_keyword?: string | null;
+  board_id?: string | null;
   lead_id?: string | null;
   groups_linked?: number;
   group_create_dispatched?: boolean;
