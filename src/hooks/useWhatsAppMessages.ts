@@ -1284,7 +1284,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   useEffect(() => {
     if (!hasLoaded || selectedInstanceId === null || selectedInstanceId === undefined) return;
 
-    const POLL_INTERVAL_MS = 30_000;
+    // Fallback poll a cada 15s. Cobre casos em que o Realtime perde mensagens
+    // silenciosamente (canal sobe sem erro mas não entrega eventos durante picos
+    // de tráfego). Reduzido de 30s pra 15s pra que o pior caso de atraso percebido
+    // seja ~15s em vez de ~30s.
+    const POLL_INTERVAL_MS = 15_000;
 
     const safeRefetch = () => {
       if (document.visibilityState !== 'visible') return;

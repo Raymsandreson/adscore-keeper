@@ -12,7 +12,12 @@ export const externalSupabase = createClient<Database>(EXTERNAL_URL, EXTERNAL_AN
     autoRefreshToken: true,
   },
   realtime: {
-    params: { eventsPerSecond: 10 },
+    // Volume real: ~30+ mensagens/min entre múltiplas instâncias, com picos
+    // bem acima disso. Com eventsPerSecond=10 (default), o servidor passa
+    // a "throttle" eventos durante picos e o cliente vê mensagens chegando
+    // com atraso ou simplesmente não chegando até o próximo poll de 30s.
+    // 200 evt/s é o máximo aceito por cliente Supabase Realtime.
+    params: { eventsPerSecond: 200 },
   },
 });
 
