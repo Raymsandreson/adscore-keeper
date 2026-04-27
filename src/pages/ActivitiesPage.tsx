@@ -1358,6 +1358,8 @@ const ActivitiesPage = () => {
       formContactId={formContactId} formContactName={formContactName}
       formCaseId={formCaseId} formCaseTitle={formCaseTitle}
       formProcessId={formProcessId} formProcessTitle={formProcessTitle}
+      formClientNameOverride={formClientNameOverride}
+      setFormClientNameOverride={setFormClientNameOverride}
       formIsSystem={formIsSystem} setFormIsSystem={setFormIsSystem}
       formRepeatWeekDays={formRepeatWeekDays} setFormRepeatWeekDays={setFormRepeatWeekDays}
       formWhatWasDone={formWhatWasDone} setFormWhatWasDone={setFormWhatWasDone}
