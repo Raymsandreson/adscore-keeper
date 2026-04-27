@@ -86,6 +86,30 @@ async function getOrCreateLeadFolder(leadId: string, leadName: string, ext: any)
   return folderId!;
 }
 
+async function getOrCreateSubfolder(parentFolderId: string, name: string): Promise<string> {
+  const safeName = name.replace(/['\\]/g, "").trim() || "Outros";
+  const q = encodeURIComponent(
+    `name='${safeName}' and mimeType='application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed=false`,
+  );
+  const searchRes = await fetch(`${GATEWAY}/files?q=${q}&fields=files(id,name)`, { headers: gwHeaders() });
+  if (searchRes.ok) {
+    const data = await searchRes.json();
+    if (data.files?.length > 0) return data.files[0].id;
+  }
+  const createRes = await fetch(`${GATEWAY}/files`, {
+    method: "POST",
+    headers: gwHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      name: safeName,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [parentFolderId],
+    }),
+  });
+  if (!createRes.ok) throw new Error(`drive create subfolder failed [${createRes.status}]: ${await createRes.text()}`);
+  const created = await createRes.json();
+  return created.id;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
