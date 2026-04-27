@@ -422,6 +422,7 @@ const ActivitiesPage = () => {
     setFormPriority('normal');
     setFormLeadId('');
     setFormLeadName('');
+    setFormClientNameOverride('');
     const currentUser = teamMembers.find(m => m.user_id === user?.id);
     setFormAssignedTo(user?.id || '');
     setFormAssignedToName(currentUser?.full_name || '');
@@ -1014,6 +1015,7 @@ const ActivitiesPage = () => {
   const handleClearLead = async () => {
     setFormLeadId('');
     setFormLeadName('');
+    setFormClientNameOverride('');
     setFormContactId('');
     setFormContactName('');
     setFormCaseId('');
