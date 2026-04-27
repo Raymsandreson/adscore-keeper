@@ -143,12 +143,13 @@ Deno.serve(async (req) => {
 
   const errors: Array<{ doc_token?: string; error: string }> = [];
   const summary: SummaryRow[] = [];
-  const missingTemplates = new Map<string, { name: string | null; count: number }>();
 
   try {
     const body = await req.json().catch(() => ({}));
     const dryRun: boolean = body?.dry_run === true;
     const limit: number = Math.min(Math.max(Number(body?.limit) || 500, 1), 2000);
+    const keywordRules: KeywordRule[] = Array.isArray(body?.keyword_rules) ? body.keyword_rules : [];
+    const defaultBoardId: string | null = body?.default_board_id || null;
 
     const zsToken = Deno.env.get("ZAPSIGN_API_TOKEN");
     if (!zsToken) {
