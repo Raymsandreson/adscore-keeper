@@ -20,8 +20,8 @@ async function loadCache(): Promise<Map<string, string>> {
   if (cachePromise) return cachePromise;
 
   cachePromise = (async () => {
-    const { data, error } = await externalSupabase
-      .from('auth_uuid_mapping' as any)
+    const { data, error } = await (externalSupabase as any)
+      .from('auth_uuid_mapping')
       .select('cloud_uuid, ext_uuid');
 
     if (error) {
@@ -31,7 +31,7 @@ async function loadCache(): Promise<Map<string, string>> {
     }
 
     const map = new Map<string, string>();
-    for (const row of (data || []) as Array<{ cloud_uuid: string; ext_uuid: string }>) {
+    for (const row of ((data as Array<{ cloud_uuid: string; ext_uuid: string }>) || [])) {
       map.set(row.cloud_uuid, row.ext_uuid);
     }
     cache = map;
