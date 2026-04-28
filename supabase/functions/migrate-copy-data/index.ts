@@ -27,6 +27,8 @@ const DEFAULT_TABLES = [
   "team_conversations",        // pais antes de filhas
   "team_conversation_members",
   "team_messages",
+  "team_chat_messages",
+  "team_chat_mentions",
   "whatsapp_groups_cache",
   "whatsapp_muted_chats",
 ];
