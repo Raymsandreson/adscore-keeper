@@ -103,7 +103,8 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
       if (savedProcess) {
         try {
           const { data: { user } } = await supabase.auth.getUser();
-          await supabase.from('lead_activities').insert({
+          const extUserId = await remapToExternal(user?.id);
+          await externalSupabase.from('lead_activities').insert({
             lead_id: leadId,
             lead_name: title.trim(),
             title: 'Dar andamento',
@@ -111,8 +112,8 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
             activity_type: 'tarefa',
             status: 'pendente',
             priority: 'normal',
-            assigned_to: user?.id,
-            created_by: user?.id,
+            assigned_to: extUserId,
+            created_by: extUserId,
             deadline: new Date().toISOString().slice(0, 10),
             process_id: savedProcess.id,
           } as any);

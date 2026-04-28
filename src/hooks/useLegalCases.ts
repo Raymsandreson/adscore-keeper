@@ -141,7 +141,9 @@ export function useLegalCases(leadId?: string) {
         try {
           const WANESSA_USER_ID = '1f788b8d-e30e-484a-9460-39a881d25128';
           const WANESSA_NAME = 'Wanessa Vitória Rodrigues de Sousa';
-          await supabase.from('lead_activities').insert({
+          const extAssignedTo = await remapToExternal(WANESSA_USER_ID);
+          const extCreatedBy = await remapToExternal(user?.id);
+          await externalSupabase.from('lead_activities').insert({
             lead_id: caseData.lead_id || null,
             lead_name: caseData.title,
             title: 'ONBOARDING CLIENTE',
@@ -149,9 +151,9 @@ export function useLegalCases(leadId?: string) {
             activity_type: 'tarefa',
             status: 'pendente',
             priority: 'alta',
-            assigned_to: WANESSA_USER_ID,
+            assigned_to: extAssignedTo,
             assigned_to_name: WANESSA_NAME,
-            created_by: user?.id,
+            created_by: extCreatedBy,
             deadline: new Date().toISOString().split('T')[0],
           } as any);
         } catch (onboardingError) {

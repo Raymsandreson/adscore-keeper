@@ -596,7 +596,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
         if (error) throw error;
         toast.success('Contato criado com sucesso!');
       } else if (targetType === 'activity') {
-        const { error } = await supabase.from('lead_activities').insert({
+        const { error } = await externalSupabase.from('lead_activities').insert({
           title: formData.lead_name || `Atividade via ${detectPlatform(url)}`,
           description: formData.notes || null,
           activity_type: 'tarefa',

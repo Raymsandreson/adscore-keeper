@@ -404,7 +404,7 @@ export function DynamicKanbanBoard({
     const lead = activityDialog.lead;
     if (!lead) return;
     try {
-      const { error } = await supabase.from('lead_activities').insert({
+      const { error } = await externalSupabase.from('lead_activities').insert({
         lead_id: lead.id,
         lead_name: lead.lead_name,
         title: activityTitle.trim() || 'Dar andamento',

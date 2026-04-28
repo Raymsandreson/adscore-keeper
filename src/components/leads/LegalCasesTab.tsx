@@ -156,16 +156,18 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
         if (CASO_PROCESS_ASSIGNMENTS[title]) {
           const assignment = CASO_PROCESS_ASSIGNMENTS[title];
           try {
-            await supabase.from('lead_activities').insert({
+            const extAssignedTo = await remapToExternal(assignment.userId);
+            const extCreatedBy = await remapToExternal(user?.id);
+            await externalSupabase.from('lead_activities').insert({
               lead_id: caseLeadId,
               title: `Dar andamento - ${title}`,
               description: `Atividade criada automaticamente para o processo: ${title}`,
               activity_type: 'tarefa',
               status: 'pendente',
               priority: 'normal',
-              assigned_to: assignment.userId,
+              assigned_to: extAssignedTo,
               assigned_to_name: assignment.userName,
-              created_by: user?.id,
+              created_by: extCreatedBy,
               deadline: new Date().toISOString().slice(0, 10),
               process_id: savedProcess?.id || null,
             } as any);
@@ -504,7 +506,8 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
       if (savedProcess) {
         try {
           const { data: { user } } = await supabase.auth.getUser();
-          await supabase.from('lead_activities').insert({
+          const extUserId = await remapToExternal(user?.id);
+          await externalSupabase.from('lead_activities').insert({
             lead_id: legalCase.lead_id,
             lead_name: processTitle.trim(),
             title: 'Dar andamento',
@@ -512,8 +515,8 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
             activity_type: 'tarefa',
             status: 'pendente',
             priority: 'normal',
-            assigned_to: user?.id,
-            created_by: user?.id,
+            assigned_to: extUserId,
+            created_by: extUserId,
             deadline: new Date().toISOString().slice(0, 10),
           } as any);
           toast.success('Atividade "Dar andamento" criada automaticamente');

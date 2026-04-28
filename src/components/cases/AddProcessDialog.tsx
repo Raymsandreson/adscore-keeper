@@ -351,7 +351,8 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           
           // Auto-create "Dar andamento" activity
           try {
-            await supabase.from('lead_activities').insert({
+            const extUserId = await remapToExternal(user?.id);
+            await externalSupabase.from('lead_activities').insert({
               lead_id: leadId,
               lead_name: title,
               title: 'Dar andamento',
@@ -359,8 +360,8 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
               activity_type: 'tarefa',
               status: 'pendente',
               priority: 'normal',
-              assigned_to: user?.id,
-              created_by: user?.id,
+              assigned_to: extUserId,
+              created_by: extUserId,
               deadline: new Date().toISOString().slice(0, 10),
             } as any);
           } catch (actErr) {
@@ -439,7 +440,8 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
       // Auto-create "Dar andamento" activity
       try {
         const { data: { user: currentUser } } = await supabase.auth.getUser();
-        await supabase.from('lead_activities').insert({
+        const extUserId = await remapToExternal(currentUser?.id);
+        await externalSupabase.from('lead_activities').insert({
           lead_id: leadId,
           lead_name: manualForm.title.trim(),
           title: 'Dar andamento',
@@ -447,8 +449,8 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           activity_type: 'tarefa',
           status: 'pendente',
           priority: 'normal',
-          assigned_to: currentUser?.id,
-          created_by: currentUser?.id,
+          assigned_to: extUserId,
+          created_by: extUserId,
           deadline: new Date().toISOString().slice(0, 10),
         } as any);
         toast.success('Processo adicionado e atividade "Dar andamento" criada');
