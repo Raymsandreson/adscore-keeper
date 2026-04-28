@@ -1,12 +1,9 @@
 // Cria schema (CREATE TABLE + indexes + triggers + RLS) das tabelas Cloud-only no Externo,
-// extraindo DDL do Cloud via information_schema/pg_catalog e aplicando no Externo via postgres direto.
+// extraindo DDL do Cloud via pg_catalog (conexão direta postgres) e aplicando no Externo idem.
 //
-// POST { tables: string[], dry_run?: boolean }
-//   -> retorna { results: [{table, ddl, applied, errors}] }
-// POST { table: string, dry_run?: boolean }  (atalho single-table)
+// POST { tables?: string[], table?: string, dry_run?: boolean }
 // POST { list_default: true }  -> retorna lista padrão das 18 tabelas-alvo
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import postgres from "https://deno.land/x/postgresjs@v3.4.4/mod.js";
 
 const corsHeaders = {
@@ -15,11 +12,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const CLOUD_URL = Deno.env.get("SUPABASE_URL")!;
-const CLOUD_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const CLOUD_DB_URL = Deno.env.get("SUPABASE_DB_URL")!;
 const EXTERNAL_DB_URL = Deno.env.get("EXTERNAL_DB_URL")!;
-
-const cloud = createClient(CLOUD_URL, CLOUD_KEY, { auth: { persistSession: false } });
 
 const DEFAULT_TABLES = [
   "field_variable_aliases", "agent_reply_locks",
@@ -31,100 +25,88 @@ const DEFAULT_TABLES = [
   "activity_message_templates",
 ];
 
-// Extrai DDL via SQL no Cloud usando uma sequência de queries em information_schema
-async function extractDDL(tableName: string): Promise<{ ddl: string; hasUpdatedAt: boolean; errors: string[] }> {
-  const errors: string[] = [];
-  let hasUpdatedAt = false;
+interface ExtractedDDL {
+  ddl: string;
+  hasUpdatedAt: boolean;
+  indexes: string[];
+}
 
-  // 1) Colunas
-  const { data: cols, error: colErr } = await cloud
-    .schema("information_schema" as any)
-    .from("columns" as any)
-    .select("column_name, data_type, udt_name, is_nullable, column_default, character_maximum_length, numeric_precision, numeric_scale")
-    .eq("table_schema", "public")
-    .eq("table_name", tableName)
-    .order("ordinal_position", { ascending: true });
+// Extrai DDL completo via conexão direta no Cloud
+async function extractDDL(cloudSql: any, tableName: string): Promise<ExtractedDDL> {
+  // 1) Colunas com formato/default
+  const cols = await cloudSql`
+    SELECT 
+      a.attname AS column_name,
+      pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
+      a.attnotnull AS not_null,
+      pg_get_expr(d.adbin, d.adrelid) AS default_expr
+    FROM pg_attribute a
+    LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+    WHERE a.attrelid = ('public.' || ${tableName})::regclass
+      AND a.attnum > 0
+      AND NOT a.attisdropped
+    ORDER BY a.attnum
+  `;
 
-  if (colErr || !cols || cols.length === 0) {
-    return { ddl: "", hasUpdatedAt: false, errors: [`columns: ${colErr?.message || "no columns found"}`] };
+  if (!cols || cols.length === 0) {
+    throw new Error(`No columns found for ${tableName}`);
   }
 
   // 2) Primary key
-  // PostgREST não permite query direta em pg_catalog facilmente; usamos um approach: tentar via tc/kcu em information_schema
-  const { data: pkRows } = await cloud
-    .schema("information_schema" as any)
-    .from("table_constraints" as any)
-    .select("constraint_name, constraint_type")
-    .eq("table_schema", "public")
-    .eq("table_name", tableName)
-    .eq("constraint_type", "PRIMARY KEY");
-
-  let pkColumns: string[] = [];
-  if (pkRows && pkRows.length > 0) {
-    const pkName = (pkRows[0] as any).constraint_name;
-    const { data: pkCols } = await cloud
-      .schema("information_schema" as any)
-      .from("key_column_usage" as any)
-      .select("column_name, ordinal_position")
-      .eq("table_schema", "public")
-      .eq("table_name", tableName)
-      .eq("constraint_name", pkName)
-      .order("ordinal_position", { ascending: true });
-    pkColumns = (pkCols || []).map((r: any) => r.column_name);
-  }
+  const pk = await cloudSql`
+    SELECT a.attname AS column_name
+    FROM pg_constraint c
+    JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+    WHERE c.conrelid = ('public.' || ${tableName})::regclass
+      AND c.contype = 'p'
+    ORDER BY array_position(c.conkey, a.attnum)
+  `;
+  const pkCols: string[] = pk.map((r: any) => r.column_name);
 
   // 3) Build CREATE TABLE
+  let hasUpdatedAt = false;
   const colDefs: string[] = [];
-  for (const c of cols as any[]) {
+  for (const c of cols) {
     if (c.column_name === "updated_at") hasUpdatedAt = true;
-
-    let typeStr = c.data_type;
-    // Mapeia para tipo nativo Postgres correto
-    if (c.data_type === "USER-DEFINED" || c.data_type === "ARRAY") {
-      typeStr = c.udt_name === "_text" ? "text[]" : (c.udt_name || c.data_type);
-    } else if (c.data_type === "character varying") {
-      typeStr = c.character_maximum_length ? `varchar(${c.character_maximum_length})` : "text";
-    } else if (c.data_type === "timestamp with time zone") {
-      typeStr = "timestamptz";
-    } else if (c.data_type === "timestamp without time zone") {
-      typeStr = "timestamp";
-    } else if (c.data_type === "numeric" && c.numeric_precision) {
-      typeStr = `numeric(${c.numeric_precision},${c.numeric_scale || 0})`;
-    }
-
-    let line = `  "${c.column_name}" ${typeStr}`;
-    if (c.column_default !== null && c.column_default !== undefined) {
-      line += ` DEFAULT ${c.column_default}`;
-    }
-    if (c.is_nullable === "NO") {
-      line += ` NOT NULL`;
-    }
+    let line = `  "${c.column_name}" ${c.data_type}`;
+    if (c.default_expr) line += ` DEFAULT ${c.default_expr}`;
+    if (c.not_null) line += ` NOT NULL`;
     colDefs.push(line);
   }
-
-  if (pkColumns.length > 0) {
-    colDefs.push(`  PRIMARY KEY (${pkColumns.map((c) => `"${c}"`).join(", ")})`);
+  if (pkCols.length > 0) {
+    colDefs.push(`  PRIMARY KEY (${pkCols.map((c) => `"${c}"`).join(", ")})`);
   }
 
   const ddl = `CREATE TABLE IF NOT EXISTS public."${tableName}" (\n${colDefs.join(",\n")}\n);`;
-  return { ddl, hasUpdatedAt, errors };
+
+  // 4) Indexes (excluindo PK que já vem no CREATE TABLE)
+  const idx = await cloudSql`
+    SELECT indexdef
+    FROM pg_indexes
+    WHERE schemaname = 'public' AND tablename = ${tableName}
+      AND indexname NOT IN (
+        SELECT conname FROM pg_constraint 
+        WHERE conrelid = ('public.' || ${tableName})::regclass AND contype = 'p'
+      )
+  `;
+  const indexes: string[] = idx.map((r: any) => 
+    r.indexdef.replace(/^CREATE /i, "CREATE ").replace(/INDEX (\w+)/i, "INDEX IF NOT EXISTS $1")
+  );
+
+  return { ddl, hasUpdatedAt, indexes };
 }
 
 function buildAuxDDL(tableName: string, hasUpdatedAt: boolean): string[] {
   const stmts: string[] = [];
-
-  // RLS aberta para authenticated (escolha do usuário)
   stmts.push(`ALTER TABLE public."${tableName}" ENABLE ROW LEVEL SECURITY;`);
   stmts.push(`DROP POLICY IF EXISTS "${tableName}_authenticated_all" ON public."${tableName}";`);
   stmts.push(`CREATE POLICY "${tableName}_authenticated_all" ON public."${tableName}" FOR ALL TO authenticated USING (true) WITH CHECK (true);`);
 
-  // Trigger updated_at se aplicável
   if (hasUpdatedAt) {
     stmts.push(`DROP TRIGGER IF EXISTS update_${tableName}_updated_at ON public."${tableName}";`);
     stmts.push(`CREATE TRIGGER update_${tableName}_updated_at BEFORE UPDATE ON public."${tableName}" FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();`);
   }
 
-  // Trigger especial para agent_reply_locks
   if (tableName === "agent_reply_locks") {
     stmts.push(`
 CREATE OR REPLACE FUNCTION public.cleanup_expired_reply_locks() 
@@ -168,50 +150,54 @@ Deno.serve(async (req) => {
     const tables: string[] = body.tables || (body.table ? [body.table] : DEFAULT_TABLES);
     const dryRun = !!body.dry_run;
 
-    // Conecta no Externo via postgres direto
-    const sql = postgres(EXTERNAL_DB_URL, { max: 1, idle_timeout: 20, prepare: false });
+    const cloudSql = postgres(CLOUD_DB_URL, { max: 1, idle_timeout: 20, prepare: false });
+    const extSql = dryRun ? null : postgres(EXTERNAL_DB_URL, { max: 1, idle_timeout: 20, prepare: false });
 
     const results: any[] = [];
     try {
-      if (!dryRun) await ensureUpdatedAtFunction(sql);
+      if (!dryRun && extSql) await ensureUpdatedAtFunction(extSql);
 
       for (const tableName of tables) {
-        const r: any = { table: tableName, ddl: "", aux_count: 0, applied: false, errors: [] as string[] };
-
-        const { ddl, hasUpdatedAt, errors } = await extractDDL(tableName);
-        if (errors.length > 0) {
-          r.errors.push(...errors);
-          results.push(r);
-          continue;
-        }
-        r.ddl = ddl;
-        const aux = buildAuxDDL(tableName, hasUpdatedAt);
-        r.aux_count = aux.length;
-
-        if (dryRun) {
-          r.aux_preview = aux;
-          results.push(r);
-          continue;
-        }
+        const r: any = { table: tableName, ddl: "", indexes: [] as string[], aux_count: 0, applied: false, errors: [] as string[] };
 
         try {
-          await sql.unsafe(ddl);
-          for (const stmt of aux) {
+          const { ddl, hasUpdatedAt, indexes } = await extractDDL(cloudSql, tableName);
+          r.ddl = ddl;
+          r.indexes = indexes;
+          const aux = buildAuxDDL(tableName, hasUpdatedAt);
+          r.aux_count = aux.length;
+
+          if (dryRun) {
+            r.aux_preview = aux;
+            results.push(r);
+            continue;
+          }
+
+          if (extSql) {
             try {
-              await sql.unsafe(stmt);
+              await extSql.unsafe(ddl);
+              for (const idxStmt of indexes) {
+                try { await extSql.unsafe(idxStmt); } 
+                catch (e: any) { r.errors.push(`index: ${String(e?.message || e).slice(0, 200)}`); }
+              }
+              for (const stmt of aux) {
+                try { await extSql.unsafe(stmt); } 
+                catch (e: any) { r.errors.push(`aux: ${String(e?.message || e).slice(0, 200)}`); }
+              }
+              r.applied = true;
             } catch (e: any) {
-              r.errors.push(`aux: ${String(e?.message || e).slice(0, 200)}`);
+              r.errors.push(`create: ${String(e?.message || e).slice(0, 200)}`);
             }
           }
-          r.applied = true;
         } catch (e: any) {
-          r.errors.push(`create: ${String(e?.message || e).slice(0, 200)}`);
+          r.errors.push(`extract: ${String(e?.message || e).slice(0, 200)}`);
         }
 
         results.push(r);
       }
     } finally {
-      await sql.end();
+      await cloudSql.end();
+      if (extSql) await extSql.end();
     }
 
     return new Response(JSON.stringify({ success: true, dry_run: dryRun, results }), {
