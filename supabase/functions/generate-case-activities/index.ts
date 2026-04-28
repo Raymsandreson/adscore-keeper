@@ -60,7 +60,7 @@ serve(async (req) => {
 
     // If regenerating, delete previous AI activities
     if (regenerate && existingActivities && existingActivities.length > 0) {
-      await sb.from("lead_activities").delete()
+      await extClient.from("lead_activities").delete()
         .eq("lead_id", lead_id)
         .eq("created_by_ai", true);
     }
