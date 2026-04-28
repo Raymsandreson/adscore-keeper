@@ -20,6 +20,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { usePostMetadata } from '@/hooks/usePostMetadata';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -595,7 +596,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
         if (error) throw error;
         toast.success('Contato criado com sucesso!');
       } else if (targetType === 'activity') {
-        const { error } = await supabase.from('lead_activities').insert({
+        const { error } = await externalSupabase.from('lead_activities').insert({
           title: formData.lead_name || `Atividade via ${detectPlatform(url)}`,
           description: formData.notes || null,
           activity_type: 'tarefa',

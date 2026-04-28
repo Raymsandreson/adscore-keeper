@@ -57,6 +57,7 @@ import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
 import { differenceInDays, differenceInHours } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { LeadContactsManager } from './LeadContactsManager';
 import { LeadCardChecklists } from './LeadCardChecklists';
 import { ProfessionBadgePopover } from '@/components/instagram/ProfessionBadgePopover';
@@ -403,7 +404,7 @@ export function DynamicKanbanBoard({
     const lead = activityDialog.lead;
     if (!lead) return;
     try {
-      const { error } = await supabase.from('lead_activities').insert({
+      const { error } = await externalSupabase.from('lead_activities').insert({
         lead_id: lead.id,
         lead_name: lead.lead_name,
         title: activityTitle.trim() || 'Dar andamento',

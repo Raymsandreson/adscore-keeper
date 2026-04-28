@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -407,16 +409,18 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
             if (CASO_PROCESS_ASSIGNMENTS[title]) {
               const assignment = CASO_PROCESS_ASSIGNMENTS[title];
               try {
-                await supabase.from('lead_activities').insert({
+                const extAssignedTo = await remapToExternal(assignment.userId);
+                const extCreatedBy = await remapToExternal(user?.id);
+                await externalSupabase.from('lead_activities').insert({
                   lead_id: legalCase.lead_id,
                   title: `Dar andamento - ${title}`,
                   description: `Atividade criada automaticamente para o processo: ${title}`,
                   activity_type: 'tarefa',
                   status: 'pendente',
                   priority: 'normal',
-                  assigned_to: assignment.userId,
+                  assigned_to: extAssignedTo,
                   assigned_to_name: assignment.userName,
-                  created_by: user?.id,
+                  created_by: extCreatedBy,
                   deadline: new Date().toISOString().slice(0, 10),
                   process_id: savedProcess?.id || null,
                 } as any);

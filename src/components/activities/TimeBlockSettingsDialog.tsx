@@ -13,6 +13,7 @@ import {
   Sparkles, Loader2, Wand2, GripVertical, CheckCircle2, Circle,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { useActivityTypes, ActivityType } from '@/hooks/useActivityTypes';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -308,7 +309,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
   const handleDeleteCheck = async (type: ActivityType) => {
     // Check if there are activities or routine blocks linked to this type
     const [activitiesRes, blocksRes] = await Promise.all([
-      supabase.from('lead_activities').select('id', { count: 'exact', head: true }).eq('activity_type', type.key),
+      externalSupabase.from('lead_activities').select('id', { count: 'exact', head: true }).eq('activity_type', type.key),
       supabase.from('user_timeblock_settings').select('id', { count: 'exact', head: true }).eq('activity_type', type.key),
     ]);
     const total = (activitiesRes.count || 0) + (blocksRes.count || 0);
@@ -325,7 +326,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
     setDeletingType(true);
     try {
       // Migrate activities
-      await supabase.from('lead_activities').update({ activity_type: migrateToKey } as any).eq('activity_type', deleteConfirm.type.key);
+      await externalSupabase.from('lead_activities').update({ activity_type: migrateToKey } as any).eq('activity_type', deleteConfirm.type.key);
       // Migrate routine blocks
       await supabase.from('user_timeblock_settings').update({ activity_type: migrateToKey } as any).eq('activity_type', deleteConfirm.type.key);
       // Delete the type

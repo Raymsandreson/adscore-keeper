@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -101,7 +103,8 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
       if (savedProcess) {
         try {
           const { data: { user } } = await supabase.auth.getUser();
-          await supabase.from('lead_activities').insert({
+          const extUserId = await remapToExternal(user?.id);
+          await externalSupabase.from('lead_activities').insert({
             lead_id: leadId,
             lead_name: title.trim(),
             title: 'Dar andamento',
@@ -109,8 +112,8 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
             activity_type: 'tarefa',
             status: 'pendente',
             priority: 'normal',
-            assigned_to: user?.id,
-            created_by: user?.id,
+            assigned_to: extUserId,
+            created_by: extUserId,
             deadline: new Date().toISOString().slice(0, 10),
             process_id: savedProcess.id,
           } as any);

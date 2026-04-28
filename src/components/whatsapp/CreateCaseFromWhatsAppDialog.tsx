@@ -13,6 +13,8 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { Loader2, Scale, Sparkles, CalendarIcon, AlertTriangle, CheckSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
@@ -647,7 +649,9 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
             // Auto-create activity for all cases with predefined process assignments
             if (proc.assignedTo && savedProcess?.id) {
               try {
-                await supabase.from('lead_activities').insert({
+                const extAssignedTo = await remapToExternal(proc.assignedTo);
+                const extCreatedBy = await remapToExternal(user?.id);
+                await externalSupabase.from('lead_activities').insert({
                   lead_id: finalLeadId || null,
                   lead_name: title.trim(),
                   title: `Dar andamento - ${proc.title}`,
@@ -655,9 +659,9 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
                   activity_type: 'tarefa',
                   status: 'pendente',
                   priority: 'normal',
-                  assigned_to: proc.assignedTo,
+                  assigned_to: extAssignedTo,
                   assigned_to_name: proc.assignedToName,
-                  created_by: user?.id,
+                  created_by: extCreatedBy,
                   deadline: new Date().toISOString().slice(0, 10),
                   process_id: savedProcess.id,
                 } as any);
