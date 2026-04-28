@@ -15,6 +15,7 @@ import { ActivityMessageTemplateSettings } from '@/components/activities/Activit
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
 
@@ -156,8 +157,12 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
           }
         } else {
           // Fallback: send via internal Team Chat
-          const { data: convId, error: convError } = await supabase
-            .rpc('start_team_direct_conversation', { _other_user_id: formAssignedTo });
+          await ensureExternalSession();
+          const { data: { user } } = await supabase.auth.getUser();
+          const { data: convId, error: convError } = await (externalSupabase.rpc as any)('start_team_direct_conversation', {
+            _other_user_id: formAssignedTo,
+            _self_user_id: user?.id,
+          });
 
           if (convError || !convId) {
             toast.error('Erro ao abrir conversa no Chat da Equipe');
@@ -165,14 +170,13 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
             return;
           }
 
-          const { data: { user } } = await supabase.auth.getUser();
           const { data: senderProfile } = user ? await supabase
             .from('profiles')
             .select('full_name')
             .eq('user_id', user.id)
             .maybeSingle() : { data: null };
 
-          const { error: msgError } = await supabase.from('team_messages').insert({
+          const { error: msgError } = await externalSupabase.from('team_messages').insert({
             conversation_id: convId,
             sender_id: user?.id,
             sender_name: senderProfile?.full_name || null,

@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { AtSign, MessageCircle } from 'lucide-react';
@@ -96,7 +97,10 @@ export function TeamChatNotifications() {
 
     console.log('[TeamChatNotifications] Subscribing for user:', user.id);
 
+    void ensureExternalSession();
+
     const loadCurrentUserName = async () => {
+      // profiles continua no Cloud
       const { data } = await supabase
         .from('profiles')
         .select('full_name')
@@ -107,7 +111,7 @@ export function TeamChatNotifications() {
     };
 
     const loadTeamConversationContext = async () => {
-      const { data: memberships, error: membershipsError } = await supabase
+      const { data: memberships, error: membershipsError } = await externalSupabase
         .from('team_conversation_members')
         .select('conversation_id')
         .eq('user_id', user.id);
@@ -125,7 +129,7 @@ export function TeamChatNotifications() {
         return;
       }
 
-      const { data: conversations, error: conversationsError } = await supabase
+      const { data: conversations, error: conversationsError } = await externalSupabase
         .from('team_conversations')
         .select('id, type, name')
         .in('id', conversationIds);
@@ -147,7 +151,7 @@ export function TeamChatNotifications() {
       const cached = teamConversationLabelsRef.current.get(conversationId);
       if (cached) return cached;
 
-      const { data } = await supabase
+      const { data } = await externalSupabase
         .from('team_conversations')
         .select('type, name')
         .eq('id', conversationId)
@@ -161,7 +165,7 @@ export function TeamChatNotifications() {
     const isUserConversationMember = async (conversationId: string) => {
       if (teamConversationIdsRef.current.has(conversationId)) return true;
 
-      const { data } = await supabase
+      const { data } = await externalSupabase
         .from('team_conversation_members')
         .select('conversation_id')
         .eq('conversation_id', conversationId)
@@ -189,7 +193,7 @@ export function TeamChatNotifications() {
       entityName?: string | null;
       content: string;
     }) => {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('team_chat_messages')
         .insert({
           entity_type: entityType,
@@ -204,7 +208,7 @@ export function TeamChatNotifications() {
     };
 
     const replyToConversation = async (conversationId: string, content: string) => {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('team_messages')
         .insert({
           conversation_id: conversationId,
@@ -216,7 +220,7 @@ export function TeamChatNotifications() {
 
       if (error) throw error;
 
-      const { error: updateError } = await supabase
+      const { error: updateError } = await externalSupabase
         .from('team_conversations')
         .update({ updated_at: new Date().toISOString() })
         .eq('id', conversationId);
@@ -272,7 +276,7 @@ export function TeamChatNotifications() {
     void Promise.all([loadTeamConversationContext(), loadCurrentUserName()]);
 
     // Listen for new mentions directed at this user
-    const mentionsChannel = supabase
+    const mentionsChannel = externalSupabase
       .channel('notification-mentions-' + user.id)
       .on('postgres_changes', {
         event: 'INSERT',
@@ -284,7 +288,7 @@ export function TeamChatNotifications() {
         if (isMuted()) return;
         const mention = payload.new as any;
 
-        const { data: msg } = await supabase
+        const { data: msg } = await externalSupabase
           .from('team_chat_messages')
           .select('content, sender_name, entity_name, entity_type')
           .eq('id', mention.message_id)
@@ -322,7 +326,7 @@ export function TeamChatNotifications() {
     // Mentions are already handled by mentionsChannel above.
 
     // Listen for team direct/group chat messages used by the Chat da Equipe panel
-    const teamMessagesChannel = supabase
+    const teamMessagesChannel = externalSupabase
       .channel('notification-team-messages-' + user.id)
       .on('postgres_changes', {
         event: 'INSERT',
@@ -358,7 +362,7 @@ export function TeamChatNotifications() {
         console.log('[TeamChatNotifications] Team messages channel status:', status);
       });
 
-    const teamMembershipsChannel = supabase
+    const teamMembershipsChannel = externalSupabase
       .channel('notification-team-memberships-' + user.id)
       .on('postgres_changes', {
         event: '*',
@@ -374,9 +378,9 @@ export function TeamChatNotifications() {
       });
 
     return () => {
-      supabase.removeChannel(mentionsChannel);
-      supabase.removeChannel(teamMessagesChannel);
-      supabase.removeChannel(teamMembershipsChannel);
+      externalSupabase.removeChannel(mentionsChannel);
+      externalSupabase.removeChannel(teamMessagesChannel);
+      externalSupabase.removeChannel(teamMembershipsChannel);
     };
   }, [user]);
 

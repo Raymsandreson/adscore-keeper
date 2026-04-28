@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Share2, Trash2, UserPlus, Link2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { toast } from 'sonner';
@@ -112,7 +113,8 @@ export function WhatsAppConversationShareDialog({ phone, instanceName }: Props) 
       const recipientName = recipientProfile?.full_name || recipientProfile?.email || '';
 
       // Create a system message for the share notification
-      const { data: sysMsg, error: sysMsgError } = await supabase
+      await ensureExternalSession();
+      const { data: sysMsg, error: sysMsgError } = await externalSupabase
         .from('team_chat_messages')
         .insert({
           entity_type: 'whatsapp',
@@ -128,7 +130,7 @@ export function WhatsAppConversationShareDialog({ phone, instanceName }: Props) 
       if (sysMsgError) {
         console.error('Error creating share system message:', sysMsgError);
       } else if (sysMsg) {
-        const { error: mentionError } = await supabase.from('team_chat_mentions').insert({
+        const { error: mentionError } = await externalSupabase.from('team_chat_mentions').insert({
           message_id: sysMsg.id,
           mentioned_user_id: selectedUserId,
           entity_type: 'whatsapp',

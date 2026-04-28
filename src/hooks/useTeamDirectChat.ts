@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
@@ -47,7 +48,9 @@ export function useTeamDirectChat() {
     setLoading(true);
 
     try {
-      const { data: memberships, error: membershipsError } = await supabase
+      await ensureExternalSession();
+
+      const { data: memberships, error: membershipsError } = await externalSupabase
         .from('team_conversation_members')
         .select('conversation_id, last_read_at')
         .eq('user_id', user.id);
@@ -69,7 +72,7 @@ export function useTeamDirectChat() {
         lastReadMap[m.conversation_id] = m.last_read_at || '';
       });
 
-      const { data: convs, error: conversationsError } = await supabase
+      const { data: convs, error: conversationsError } = await externalSupabase
         .from('team_conversations')
         .select('*')
         .in('id', convIds)
@@ -81,7 +84,7 @@ export function useTeamDirectChat() {
         return;
       }
 
-      const { data: allMembers, error: membersError } = await supabase
+      const { data: allMembers, error: membersError } = await externalSupabase
         .from('team_conversation_members')
         .select('conversation_id, user_id')
         .in('conversation_id', convIds);
@@ -91,6 +94,7 @@ export function useTeamDirectChat() {
       }
 
       const memberUserIds = [...new Set((allMembers || []).map((m) => m.user_id))];
+      // Profiles still live in Cloud (Auth/Metadata)
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('user_id, full_name')
@@ -107,7 +111,7 @@ export function useTeamDirectChat() {
 
       const enriched: TeamConversation[] = await Promise.all(
         convs.map(async (conv) => {
-          const { data: lastMsg } = await supabase
+          const { data: lastMsg } = await externalSupabase
             .from('team_messages')
             .select('content, created_at')
             .eq('conversation_id', conv.id)
@@ -116,7 +120,7 @@ export function useTeamDirectChat() {
             .maybeSingle();
 
           const lastRead = lastReadMap[conv.id] || '1970-01-01';
-          const { count } = await supabase
+          const { count } = await externalSupabase
             .from('team_messages')
             .select('id', { count: 'exact', head: true })
             .eq('conversation_id', conv.id)
@@ -162,7 +166,9 @@ export function useTeamDirectChat() {
   }, [fetchConversations]);
 
   const fetchMessages = useCallback(async (conversationId: string) => {
-    const { data, error } = await supabase
+    await ensureExternalSession();
+
+    const { data, error } = await externalSupabase
       .from('team_messages')
       .select('*')
       .eq('conversation_id', conversationId)
@@ -178,14 +184,14 @@ export function useTeamDirectChat() {
     setMessages((data as TeamMessage[]) || []);
 
     if (user?.id) {
-      await supabase
+      await externalSupabase
         .from('team_conversation_members')
         .update({ last_read_at: new Date().toISOString() })
         .eq('conversation_id', conversationId)
         .eq('user_id', user.id);
 
       // Fetch other members' last_read_at
-      const { data: members } = await supabase
+      const { data: members } = await externalSupabase
         .from('team_conversation_members')
         .select('last_read_at')
         .eq('conversation_id', conversationId)
@@ -206,7 +212,7 @@ export function useTeamDirectChat() {
   useEffect(() => {
     if (!activeConversationId) return;
 
-    const channel = supabase
+    const channel = externalSupabase
       .channel(`team-chat-${activeConversationId}`)
       .on(
         'postgres_changes',
@@ -221,7 +227,7 @@ export function useTeamDirectChat() {
           setMessages((prev) => [...prev, newMsg]);
 
           if (user?.id && newMsg.sender_id !== user.id) {
-            supabase
+            externalSupabase
               .from('team_conversation_members')
               .update({ last_read_at: new Date().toISOString() })
               .eq('conversation_id', activeConversationId)
@@ -250,7 +256,7 @@ export function useTeamDirectChat() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      externalSupabase.removeChannel(channel);
     };
   }, [activeConversationId, user?.id]);
 
@@ -271,13 +277,15 @@ export function useTeamDirectChat() {
     setSendingMessage(true);
 
     try {
+      await ensureExternalSession();
+
       const { data: profile } = await supabase
         .from('profiles')
         .select('full_name')
         .eq('user_id', user.id)
         .maybeSingle();
 
-      const { error } = await supabase.from('team_messages').insert({
+      const { error } = await externalSupabase.from('team_messages').insert({
         conversation_id: activeConversationId,
         sender_id: user.id,
         sender_name: profile?.full_name || user.email || 'Anônimo',
@@ -296,7 +304,7 @@ export function useTeamDirectChat() {
         return;
       }
 
-      await supabase
+      await externalSupabase
         .from('team_conversations')
         .update({ updated_at: new Date().toISOString() })
         .eq('id', activeConversationId);
@@ -321,8 +329,11 @@ export function useTeamDirectChat() {
     }
 
     try {
-      const { data: conversationId, error } = await supabase.rpc('start_team_direct_conversation', {
+      await ensureExternalSession();
+
+      const { data: conversationId, error } = await (externalSupabase.rpc as any)('start_team_direct_conversation', {
         _other_user_id: otherUserId,
+        _self_user_id: user.id,
       });
 
       if (error || !conversationId) {
@@ -332,8 +343,8 @@ export function useTeamDirectChat() {
       }
 
       await fetchConversations();
-      setActiveConversationId(conversationId);
-      return conversationId;
+      setActiveConversationId(conversationId as string);
+      return conversationId as string;
     } catch (e) {
       console.error('Error starting direct chat:', e);
       toast.error('Não foi possível abrir a conversa.');
@@ -345,7 +356,11 @@ export function useTeamDirectChat() {
     if (!user?.id) return null;
 
     try {
-      const { data: conversationId, error } = await supabase.rpc('ensure_team_general_conversation');
+      await ensureExternalSession();
+
+      const { data: conversationId, error } = await (externalSupabase.rpc as any)('ensure_team_general_conversation', {
+        _self_user_id: user.id,
+      });
 
       if (error || !conversationId) {
         console.error('Error opening general chat:', error);
@@ -354,8 +369,8 @@ export function useTeamDirectChat() {
       }
 
       await fetchConversations();
-      setActiveConversationId(conversationId);
-      return conversationId;
+      setActiveConversationId(conversationId as string);
+      return conversationId as string;
     } catch (e) {
       console.error('Error opening general chat:', e);
       toast.error('Não foi possível abrir o chat geral.');

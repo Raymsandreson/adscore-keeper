@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -40,6 +41,7 @@ export function useTeamMembers() {
   const [members, setMembers] = useState<TeamMember[]>([]);
 
   useEffect(() => {
+    // profiles continua no Cloud
     supabase.from('profiles').select('user_id, full_name, email').then(({ data }) => {
       if (data) setMembers(data);
     });
@@ -55,7 +57,8 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
 
   const loadMessages = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
+    await ensureExternalSession();
+    const { data } = await externalSupabase
       .from('team_chat_messages')
       .select('*')
       .eq('entity_type', entityType)
@@ -70,7 +73,7 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
   useEffect(() => {
     loadMessages();
 
-    const channel = supabase
+    const channel = externalSupabase
       .channel(`team-chat-${entityType}-${entityId}`)
       .on('postgres_changes', {
         event: 'INSERT',
@@ -85,11 +88,13 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { externalSupabase.removeChannel(channel); };
   }, [entityType, entityId, loadMessages]);
 
   const sendMessage = useCallback(async (content: string, mentionedUserIds: string[]) => {
     if (!user) return;
+
+    await ensureExternalSession();
 
     const profileRes = await supabase
       .from('profiles')
@@ -99,7 +104,7 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
 
     const senderName = profileRes.data?.full_name || user.email || 'Usuário';
 
-    const { data: msg, error } = await supabase
+    const { data: msg, error } = await externalSupabase
       .from('team_chat_messages')
       .insert({
         entity_type: entityType,
@@ -127,7 +132,7 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
         entity_name: entityName || null,
       }));
 
-      await supabase.from('team_chat_mentions').insert(mentions);
+      await externalSupabase.from('team_chat_mentions').insert(mentions);
 
       // Send WhatsApp notification to mentioned users (using sender's instance)
       cloudFunctions.invoke('notify-team-mention', {
@@ -155,13 +160,15 @@ export function useUnreadMentionsCount() {
     if (!user) return;
 
     const load = async () => {
+      await ensureExternalSession();
+
       const [{ count: mentionsCount }, { data: memberships, error: membershipsError }] = await Promise.all([
-        supabase
+        externalSupabase
           .from('team_chat_mentions')
           .select('*', { count: 'exact', head: true })
           .eq('mentioned_user_id', user.id)
           .eq('is_read', false),
-        supabase
+        externalSupabase
           .from('team_conversation_members')
           .select('conversation_id, last_read_at')
           .eq('user_id', user.id),
@@ -174,7 +181,7 @@ export function useUnreadMentionsCount() {
       } else if (memberships?.length) {
         const unreadResults = await Promise.all(
           memberships.map((membership) =>
-            supabase
+            externalSupabase
               .from('team_messages')
               .select('id', { count: 'exact', head: true })
               .eq('conversation_id', membership.conversation_id)
@@ -191,7 +198,7 @@ export function useUnreadMentionsCount() {
 
     load();
 
-    const mentionsChannel = supabase
+    const mentionsChannel = externalSupabase
       .channel(`mentions-count-${user.id}`)
       .on('postgres_changes', {
         event: '*',
@@ -201,7 +208,7 @@ export function useUnreadMentionsCount() {
       }, () => { load(); })
       .subscribe();
 
-    const teamMessagesChannel = supabase
+    const teamMessagesChannel = externalSupabase
       .channel(`team-messages-count-${user.id}`)
       .on('postgres_changes', {
         event: 'INSERT',
@@ -210,7 +217,7 @@ export function useUnreadMentionsCount() {
       }, () => { load(); })
       .subscribe();
 
-    const membershipsChannel = supabase
+    const membershipsChannel = externalSupabase
       .channel(`team-memberships-count-${user.id}`)
       .on('postgres_changes', {
         event: '*',
@@ -221,9 +228,9 @@ export function useUnreadMentionsCount() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(mentionsChannel);
-      supabase.removeChannel(teamMessagesChannel);
-      supabase.removeChannel(membershipsChannel);
+      externalSupabase.removeChannel(mentionsChannel);
+      externalSupabase.removeChannel(teamMessagesChannel);
+      externalSupabase.removeChannel(membershipsChannel);
     };
   }, [user]);
 
@@ -239,7 +246,9 @@ export function useMyMentions() {
     if (!user) return;
     setLoading(true);
 
-    const { data: mentionData } = await supabase
+    await ensureExternalSession();
+
+    const { data: mentionData } = await externalSupabase
       .from('team_chat_mentions')
       .select('*')
       .eq('mentioned_user_id', user.id)
@@ -253,7 +262,7 @@ export function useMyMentions() {
     }
 
     const msgIds = mentionData.map(m => m.message_id);
-    const { data: msgData } = await supabase
+    const { data: msgData } = await externalSupabase
       .from('team_chat_messages')
       .select('*')
       .in('id', msgIds);
@@ -276,7 +285,7 @@ export function useMyMentions() {
   // Realtime: listen for new mentions or updates
   useEffect(() => {
     if (!user) return;
-    const channel = supabase
+    const channel = externalSupabase
       .channel(`mentions-${user.id}`)
       .on(
         'postgres_changes',
@@ -292,11 +301,11 @@ export function useMyMentions() {
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { externalSupabase.removeChannel(channel); };
   }, [user, load]);
 
   const markAsRead = useCallback(async (mentionId: string) => {
-    await supabase
+    await externalSupabase
       .from('team_chat_mentions')
       .update({ is_read: true, read_at: new Date().toISOString() })
       .eq('id', mentionId);
@@ -305,7 +314,7 @@ export function useMyMentions() {
 
   const markAllAsRead = useCallback(async () => {
     if (!user) return;
-    await supabase
+    await externalSupabase
       .from('team_chat_mentions')
       .update({ is_read: true, read_at: new Date().toISOString() })
       .eq('mentioned_user_id', user.id)
