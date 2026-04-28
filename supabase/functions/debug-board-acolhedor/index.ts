@@ -14,56 +14,30 @@ serve(async (req) => {
     const supabase = createClient(url, key);
 
     const ABDER_OLD = "7f41a35e-7d98-4ade-8270-52d727433e6a";
-    const ABDER_NEW = "b68dab6e-007f-45fc-ba27-eb378a711124";
 
-    // All activities in the last 30 days assigned to either Abderaman id, but created by SOMEONE ELSE
-    const since = new Date(Date.now() - 30*24*60*60*1000).toISOString();
-    const { data: cross } = await supabase
-      .from("lead_activities")
-      .select("id, title, activity_type, created_at, created_by, assigned_to, assigned_to_name, lead_id, action_source, action_source_detail, description")
-      .in("assigned_to", [ABDER_OLD, ABDER_NEW])
-      .gte("created_at", since)
-      .order("created_at", { ascending: false })
-      .limit(50);
+    // Search ALL relevant config tables for that ID
+    const tablesToScan = [
+      "routine_processes","routine_process_goals","workflow_steps","workflow_objectives","workflow_phases",
+      "workflows","activity_message_templates","activity_types","agent_stage_assignments",
+      "card_assignments","field_stage_requirements","kanban_boards","board_group_settings",
+      "ad_set_geo_rules","module_permissions","instance_permissions","access_profiles",
+      "team_members","profiles","analysis_criteria","kanban_stage_assignments","stage_field_settings",
+      "lead_followups_config","activity_field_settings","specialized_nuclei","products_services",
+      "specialized_assignments","case_assignments","process_default_assignees",
+      "auto_activity_rules","auto_assignment_rules"
+    ];
 
-    const filteredCross = (cross || []).filter((a: any) => 
-      a.created_by !== ABDER_OLD && a.created_by !== ABDER_NEW
-    );
+    const hits: any = {};
+    for (const t of tablesToScan) {
+      try {
+        const { data, error } = await supabase.from(t).select("*").limit(2000);
+        if (error) { hits[t] = `ERR: ${error.message}`; continue; }
+        const matches = (data||[]).filter((r: any) => JSON.stringify(r).includes(ABDER_OLD));
+        if (matches.length) hits[t] = { count: matches.length, samples: matches };
+      } catch (e) { hits[t] = `EXC: ${String(e)}`; }
+    }
 
-    // Find user_ids of Maria, Gisele, Maria Lydia, Maria Clara
-    const { data: women } = await supabase
-      .from("profiles")
-      .select("user_id, full_name, email")
-      .or("full_name.ilike.%maria%,full_name.ilike.%gisele%,full_name.ilike.%lydia%,full_name.ilike.%clara%");
-
-    // Get lead board for each
-    const leadIds = Array.from(new Set(filteredCross.map((a: any) => a.lead_id).filter(Boolean)));
-    const { data: leads } = leadIds.length
-      ? await supabase.from("leads").select("id, lead_name, board_id, status, created_by, acolhedor").in("id", leadIds)
-      : { data: [] };
-    const { data: boards } = await supabase.from("kanban_boards").select("id, name");
-    const bMap = new Map((boards||[]).map((b: any)=>[b.id, b.name]));
-    const leadMap = new Map((leads||[]).map((l: any)=>[l.id, { ...l, board_name: bMap.get(l.board_id) }]));
-
-    // Get profile names of all involved created_by
-    const creatorIds = Array.from(new Set((cross||[]).map((a: any) => a.created_by).filter(Boolean)));
-    const { data: creators } = creatorIds.length
-      ? await supabase.from("profiles").select("user_id, full_name").in("user_id", creatorIds)
-      : { data: [] };
-    const cMap = new Map((creators||[]).map((p: any)=>[p.user_id, p.full_name]));
-
-    return new Response(JSON.stringify({
-      summary: {
-        total_to_abder_30d: cross?.length || 0,
-        created_by_others_30d: filteredCross.length,
-      },
-      activities_to_abder_created_by_others: filteredCross.map((a: any) => ({
-        ...a,
-        created_by_name: cMap.get(a.created_by),
-        lead: leadMap.get(a.lead_id),
-      })),
-      women_profiles: women,
-    }, null, 2), {
+    return new Response(JSON.stringify({ hits }, null, 2), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
