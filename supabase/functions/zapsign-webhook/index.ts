@@ -57,6 +57,7 @@ Deno.serve(async (req) => {
     const cloudAnonKey = RESOLVED_ANON_KEY
     const zapsignToken = Deno.env.get('ZAPSIGN_API_TOKEN')!
     const supabase = createClient(supabaseUrl, supabaseKey)
+    const extClient = getExternalClient()
 
     const body = await req.json()
     console.log('ZapSign webhook received:', JSON.stringify(body))
