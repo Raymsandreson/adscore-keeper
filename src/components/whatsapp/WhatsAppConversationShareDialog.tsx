@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Share2, Trash2, UserPlus, Link2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { toast } from 'sonner';
