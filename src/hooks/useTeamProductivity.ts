@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { ensureRemapCache, remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { useUserRole } from './useUserRole';
 import { startOfDay, endOfDay, format } from 'date-fns';
 
@@ -154,12 +156,12 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         supabase.from('cat_lead_contacts').select('id, contacted_by, contact_channel, created_at')
           .gte('created_at', startDate).lte('created_at', endDate)
           .not('contacted_by', 'is', null),
-        // Lead activities - completed
-        supabase.from('lead_activities').select('id, assigned_to, status, deadline, completed_at, completed_by')
+        // Lead activities - completed (External DB)
+        (externalSupabase as any).from('lead_activities').select('id, assigned_to, status, deadline, completed_at, completed_by')
           .eq('status', 'concluida')
           .gte('completed_at', startDate).lte('completed_at', endDate),
-        // Lead activities - overdue (pendente with deadline before now)
-        supabase.from('lead_activities').select('id, assigned_to, status, deadline')
+        // Lead activities - overdue (External DB)
+        (externalSupabase as any).from('lead_activities').select('id, assigned_to, status, deadline')
           .eq('status', 'pendente')
           .lt('deadline', format(new Date(), 'yyyy-MM-dd'))
           .not('deadline', 'is', null),
