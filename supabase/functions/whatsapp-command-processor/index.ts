@@ -1097,7 +1097,7 @@ Retorne APENAS o JSON, sem markdown.` },
       // ── Attach to existing activity ──
       if (parsed.attach_to_activity) {
         const att = parsed.attach_to_activity;
-        let query = supabase.from("lead_activities").select("id, title").order("created_at", { ascending: false }).limit(5);
+        let query = extClient.from("lead_activities").select("id, title").order("created_at", { ascending: false }).limit(5);
         if (att.activity_title_search) {
           query = query.ilike("title", `%${att.activity_title_search}%`);
         }
