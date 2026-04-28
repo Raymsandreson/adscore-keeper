@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,43 +11,59 @@ serve(async (req) => {
   try {
     const url = (Deno.env.get("EXTERNAL_SUPABASE_URL") || "").trim();
     const key = (Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || "").trim();
-    if (!url || !key) {
-      return new Response(JSON.stringify({ success: false, error: "EXTERNAL_SUPABASE creds missing", url_set: !!url, key_set: !!key }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
     const supabase = createClient(url, key);
 
+    // 1. Find Abderaman profile
+    const { data: abder } = await supabase
+      .from("profiles")
+      .select("user_id, full_name, email")
+      .or("full_name.ilike.%abderam%,full_name.ilike.%abdera%");
+
+    const abderIds = (abder || []).map((a: any) => a.user_id);
+
+    // 2. List ALL kanban boards
     const { data: boards } = await supabase
       .from("kanban_boards")
       .select("id, name");
 
+    // 3. List ALL board_group_settings (no filter)
     const { data: settings } = await supabase
       .from("board_group_settings")
-      .select("board_id, post_sign_mode, processual_acolhedor_id, auto_close_lead_on_sign, auto_create_group_on_sign");
+      .select("*");
 
-    // Get profiles for all processual_acolhedor_ids
-    const ids = (settings || []).map((s: any) => s.processual_acolhedor_id).filter(Boolean);
-    const { data: profiles } = ids.length
-      ? await supabase.from("profiles").select("user_id, full_name").in("user_id", ids)
+    // 4. Recent leads assigned to Abderaman
+    const { data: recentLeads } = abderIds.length
+      ? await supabase
+          .from("leads")
+          .select("id, lead_name, board_id, created_by, assigned_to, acolhedor, created_at, action_source, action_source_detail")
+          .in("assigned_to", abderIds)
+          .order("created_at", { ascending: false })
+          .limit(20)
       : { data: [] };
 
-    const profMap = new Map((profiles || []).map((p: any) => [p.user_id, p.full_name]));
-    const boardMap = new Map((boards || []).map((b: any) => [b.id, b.name]));
+    // 5. Recent activities assigned to Abderaman
+    const { data: recentActs } = abderIds.length
+      ? await supabase
+          .from("lead_activities")
+          .select("id, lead_id, lead_name, title, assigned_to, assigned_to_name, created_by, created_at")
+          .in("assigned_to", abderIds)
+          .order("created_at", { ascending: false })
+          .limit(20)
+      : { data: [] };
 
-    const result = (settings || []).map((s: any) => ({
-      board_id: s.board_id,
-      board_name: boardMap.get(s.board_id) || "(unknown)",
-      post_sign_mode: s.post_sign_mode,
-      processual_acolhedor_id: s.processual_acolhedor_id,
-      processual_acolhedor_name: s.processual_acolhedor_id ? profMap.get(s.processual_acolhedor_id) : null,
-      auto_close_lead_on_sign: s.auto_close_lead_on_sign,
-      auto_create_group_on_sign: s.auto_create_group_on_sign,
-    }));
-
-    return new Response(JSON.stringify({ success: true, boards_with_settings: result }, null, 2), {
+    return new Response(JSON.stringify({
+      abderaman: abder,
+      total_boards: boards?.length || 0,
+      boards: boards,
+      total_settings: settings?.length || 0,
+      settings_with_processual: (settings || []).filter((s: any) => s.processual_acolhedor_id),
+      recent_leads_to_abder: recentLeads,
+      recent_activities_to_abder: recentActs,
+    }, null, 2), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ success: false, error: String(err) }), {
+    return new Response(JSON.stringify({ error: String(err) }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
