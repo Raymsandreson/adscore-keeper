@@ -276,7 +276,7 @@ export function TeamChatNotifications() {
     void Promise.all([loadTeamConversationContext(), loadCurrentUserName()]);
 
     // Listen for new mentions directed at this user
-    const mentionsChannel = supabase
+    const mentionsChannel = externalSupabase
       .channel('notification-mentions-' + user.id)
       .on('postgres_changes', {
         event: 'INSERT',
@@ -288,7 +288,7 @@ export function TeamChatNotifications() {
         if (isMuted()) return;
         const mention = payload.new as any;
 
-        const { data: msg } = await supabase
+        const { data: msg } = await externalSupabase
           .from('team_chat_messages')
           .select('content, sender_name, entity_name, entity_type')
           .eq('id', mention.message_id)
