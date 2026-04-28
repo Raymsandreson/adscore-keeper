@@ -161,19 +161,20 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const fetchMessages = useCallback(async () => {
     const scope = getConversationScope();
     if (!scope.activity_id && !scope.lead_id && !scope.isGeneralChat) return;
+    if (!extUserId) return; // aguarda mapping carregar
     setLoading(true);
     try {
       let query = externalSupabase.from('activity_chat_messages').select('*').order('created_at', { ascending: true });
       if (scope.isGeneralChat) {
         // General chat: messages with both IDs null, belonging to this user (or from AI)
         query = query.is('activity_id', null).is('lead_id', null)
-          .or(`sender_id.eq.${user?.id},sender_id.is.null`);
+          .or(`sender_id.eq.${extUserId},sender_id.is.null`);
       } else if (scope.activity_id) {
         query = query.eq('activity_id', scope.activity_id)
-          .or(`sender_id.eq.${user?.id},sender_id.is.null`);
+          .or(`sender_id.eq.${extUserId},sender_id.is.null`);
       } else if (scope.lead_id) {
         query = query.eq('lead_id', scope.lead_id)
-          .or(`sender_id.eq.${user?.id},sender_id.is.null`);
+          .or(`sender_id.eq.${extUserId},sender_id.is.null`);
       }
 
       const { data, error } = await query;
