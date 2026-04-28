@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useCallFieldSuggestions, CallFieldSuggestion } from '@/hooks/useCallFieldSuggestions';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -78,7 +80,8 @@ export function CallFieldSuggestionsBanner() {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
 
-      const { error } = await supabase.from('lead_activities').insert({
+      const extUserId = await remapToExternal(user.id);
+      const { error } = await externalSupabase.from('lead_activities').insert({
         lead_id: leadId,
         lead_name: leadName,
         title: nextStep.length > 100 ? nextStep.substring(0, 100) + '...' : nextStep,
@@ -86,8 +89,8 @@ export function CallFieldSuggestionsBanner() {
         activity_type: 'tarefa',
         status: 'pendente',
         priority: 'normal',
-        assigned_to: user.id,
-        created_by: user.id,
+        assigned_to: extUserId,
+        created_by: extUserId,
         deadline: tomorrow.toISOString().split('T')[0],
       } as any);
 

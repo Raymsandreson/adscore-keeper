@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,7 +54,7 @@ const loadLeadActivities = async (leadId: string, force = false): Promise<LeadAc
 
   const request = (async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('lead_activities')
         .select('id, title, description, activity_type, status, priority, deadline, assigned_to, assigned_to_name, created_at, completed_at, what_was_done, current_status_notes, next_steps, notes, matrix_quadrant')
         .eq('lead_id', leadId)
@@ -131,7 +133,9 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     setNewSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const { data, error } = await supabase.from('lead_activities').insert({
+      const extCreatedBy = await remapToExternal(user?.id);
+      const extAssignedTo = await remapToExternal(newAssignedTo || user?.id || null);
+      const { data, error } = await externalSupabase.from('lead_activities').insert({
         title: newTitle,
         lead_id: leadId,
         lead_name: leadName,
@@ -140,9 +144,9 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
         priority: newPriority,
         deadline: newDeadline || null,
         description: newDescription || null,
-        assigned_to: newAssignedTo || user?.id || null,
+        assigned_to: extAssignedTo,
         assigned_to_name: newAssignedToName || null,
-        created_by: user?.id || null,
+        created_by: extCreatedBy,
       } as any).select().single();
       if (error) throw error;
 
@@ -202,7 +206,8 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   const handleCreateFromChat = async (activityData: any) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from('lead_activities').insert({
+      const extCreatedBy = await remapToExternal(user?.id);
+      const { error } = await externalSupabase.from('lead_activities').insert({
         title: activityData.title,
         lead_id: leadId,
         lead_name: leadName,
@@ -216,7 +221,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
         current_status_notes: activityData.current_status_notes || null,
         next_steps: activityData.next_steps || null,
         matrix_quadrant: activityData.matrix_quadrant || null,
-        created_by: user?.id || null,
+        created_by: extCreatedBy,
       } as any);
       if (error) throw error;
       toast.success('Atividade criada pela IA!');
@@ -228,10 +233,11 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
 
   const handleComplete = async (id: string) => {
     const { data: { user } } = await supabase.auth.getUser();
-    const { error } = await supabase.from('lead_activities').update({
+    const extCompletedBy = await remapToExternal(user?.id);
+    const { error } = await externalSupabase.from('lead_activities').update({
       status: 'concluida',
       completed_at: new Date().toISOString(),
-      completed_by: user?.id || null,
+      completed_by: extCompletedBy,
     }).eq('id', id);
 
     if (!error) {
