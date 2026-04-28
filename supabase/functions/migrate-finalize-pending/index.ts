@@ -24,8 +24,28 @@ async function migrate(table: string, conflictKey: string) {
   if (error) return { table, success: false, error: error.message, read: 0, upserted: 0 };
   if (!data || data.length === 0) return { table, success: true, read: 0, upserted: 0, note: "empty" };
 
+  // Tenta bulk primeiro; se 522/timeout, cai para linha-a-linha
+  let upserted = 0;
+  let lastErr: string | null = null;
   const { error: upErr } = await ext.from(table).upsert(data, { onConflict: conflictKey });
-  if (upErr) return { table, success: false, error: upErr.message, read: data.length, upserted: 0 };
+  if (upErr) {
+    lastErr = upErr.message.slice(0, 200);
+    // Fallback: uma linha por vez
+    for (const row of data) {
+      try {
+        const { error: e2 } = await ext.from(table).upsert(row, { onConflict: conflictKey });
+        if (!e2) { upserted++; }
+        else { lastErr = e2.message.slice(0, 200); }
+      } catch (e) {
+        lastErr = String(e).slice(0, 200);
+      }
+    }
+    if (upserted === 0) {
+      return { table, success: false, error: lastErr, read: data.length, upserted };
+    }
+  } else {
+    upserted = data.length;
+  }
 
   // Marca como done no progress
   await cloud.from("migration_progress").update({
