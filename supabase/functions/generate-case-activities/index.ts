@@ -25,6 +25,7 @@ serve(async (req) => {
     }
 
     const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const extClient = getExternalClient();
 
     // 1. Fetch lead data
     const { data: lead, error: leadErr } = await sb
