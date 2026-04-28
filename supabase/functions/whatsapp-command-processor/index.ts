@@ -1376,16 +1376,19 @@ Retorne APENAS o JSON, sem markdown.` },
         const showAll = evaluatedMetrics.size === 0;
         const hasMetric = (key: string) => showAll || evaluatedMetrics.has(key);
 
+        // Remap targetUserId for External DB queries (lead_activities lives there)
+        const targetUserExtId = await remapToExternal(extClient, targetUserId);
+
         // Fetch ALL data sources in parallel
         const [
           overdueRes, goalsRes, sessionsRes, allActivitiesRes, snapshotsRes,
           contactsRes, dmsRes, repliesRes, stageHistoryRes, followupsRes,
           leadsRes, catContactsRes, completedActsRes, activityLogRes,
         ] = await Promise.all([
-          // Overdue tasks
-          supabase.from("lead_activities")
+          // Overdue tasks (External DB)
+          extClient.from("lead_activities")
             .select("id, title, deadline, priority, lead_name")
-            .eq("assigned_to", targetUserId).eq("status", "pendente")
+            .eq("assigned_to", targetUserExtId).eq("status", "pendente")
             .lt("deadline", new Date().toISOString())
             .order("deadline", { ascending: true }).limit(10),
           // Goals
