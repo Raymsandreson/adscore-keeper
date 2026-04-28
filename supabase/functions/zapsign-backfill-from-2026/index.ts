@@ -20,6 +20,7 @@
 // ============================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { remapToExternal } from "../_shared/uuid-remap.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
