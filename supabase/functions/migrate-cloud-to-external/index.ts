@@ -66,45 +66,48 @@ async function getColumns(url: string, key: string, table: string): Promise<Set<
   return new Set();
 }
 
-async function migrateTable(table: string, batchSize = 500, maxBatches = 9999, dryRun = false) {
-  const result: any = { table, total_read: 0, total_upserted: 0, batches: 0, errors: [] as string[] };
+async function migrateTable(table: string, batchSize = 500, maxBatches = 9999, dryRun = false, afterId: string | null = null) {
+  const result: any = { table, total_read: 0, total_upserted: 0, batches: 0, errors: [] as string[], last_id: afterId, done: false };
 
-  // Colunas em comum
   const cloudCols = await getColumns(CLOUD_URL, CLOUD_KEY, table);
   const extCols = await getColumns(EXT_URL, EXT_KEY, table);
   if (extCols.size === 0) {
-    result.errors.push(`Tabela não existe no External (ou sem colunas detectáveis)`);
+    result.errors.push(`Tabela não existe no External`);
+    result.done = true;
     return result;
   }
   const commonCols = [...cloudCols].filter((c) => extCols.has(c));
   if (!commonCols.includes("id")) {
-    result.errors.push(`Sem coluna 'id' em comum, pulando`);
+    result.errors.push(`Sem coluna 'id' em comum`);
+    result.done = true;
     return result;
   }
   result.common_cols = commonCols.length;
 
-  let from = 0;
+  let cursor = afterId;
   for (let b = 0; b < maxBatches; b++) {
-    const { data, error } = await cloud
-      .from(table)
-      .select(commonCols.join(","))
-      .order("id", { ascending: true })
-      .range(from, from + batchSize - 1);
+    let q = cloud.from(table).select(commonCols.join(",")).order("id", { ascending: true }).limit(batchSize);
+    if (cursor) q = q.gt("id", cursor);
+    const { data, error } = await q;
 
     if (error) {
       result.errors.push(`read batch ${b}: ${error.message}`);
       break;
     }
-    if (!data || data.length === 0) break;
+    if (!data || data.length === 0) {
+      result.done = true;
+      break;
+    }
 
     result.total_read += data.length;
     result.batches++;
+    cursor = (data[data.length - 1] as any).id;
+    result.last_id = cursor;
 
     if (!dryRun) {
       const { error: upErr } = await ext.from(table).upsert(data, { onConflict: "id", ignoreDuplicates: false });
       if (upErr) {
-        result.errors.push(`upsert batch ${b}: ${upErr.message}`);
-        // tenta inserir um a um pra identificar o problema
+        result.errors.push(`upsert batch ${b}: ${upErr.message.slice(0, 150)}`);
         let ok = 0;
         for (const row of data) {
           const { error: e2 } = await ext.from(table).upsert(row, { onConflict: "id" });
@@ -116,8 +119,10 @@ async function migrateTable(table: string, batchSize = 500, maxBatches = 9999, d
       }
     }
 
-    if (data.length < batchSize) break;
-    from += batchSize;
+    if (data.length < batchSize) {
+      result.done = true;
+      break;
+    }
   }
   return result;
 }
