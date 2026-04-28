@@ -268,6 +268,8 @@ Regras:
         deadline.setDate(deadline.getDate() + 1);
       }
 
+      const assignedExtId = await remapToExternal(extClient, member.user_id);
+
       const activityData = {
         lead_id: lead.id,
         lead_name: lead.lead_name,
@@ -276,7 +278,7 @@ Regras:
         activity_type: act.activity_type,
         status: "pendente",
         priority: act.priority,
-        assigned_to: member.user_id,
+        assigned_to: assignedExtId,
         assigned_to_name: member.full_name,
         deadline: deadline.toISOString().split("T")[0],
         next_steps: act.next_steps || null,
@@ -289,7 +291,7 @@ Regras:
         },
       };
 
-      const { data: inserted, error: insertErr } = await sb
+      const { data: inserted, error: insertErr } = await extClient
         .from("lead_activities")
         .insert(activityData)
         .select()
