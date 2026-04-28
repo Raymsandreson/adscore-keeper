@@ -173,6 +173,7 @@ Deno.serve(async (req) => {
 
   try {
     const supabase = createClient(RESOLVED_SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY);
+    const extClient = getExternalClient();
     const body = await req.json();
     const {
       agent_id, trigger_type, phone, instance_name, contact_name,
