@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useExternalUserId } from '@/hooks/useExternalUserId';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -84,6 +85,7 @@ interface ActivityChatSheetProps {
 
 export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, activityTitle, onApplySuggestion, onApplyLeadFields, onApplyContactFields, onCreateActivity }: ActivityChatSheetProps) {
   const { user } = useAuthContext();
+  const extUserId = useExternalUserId();
   
   // Get stable conversation scope IDs - general chat uses null IDs + sender_id filter
   const getConversationScope = useCallback(() => {
