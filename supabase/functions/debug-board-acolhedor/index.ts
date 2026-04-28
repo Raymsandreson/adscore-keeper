@@ -13,59 +13,61 @@ serve(async (req) => {
     const key = (Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || "").trim();
     const supabase = createClient(url, key);
 
-    const ABDER_ID = "b68dab6e-007f-45fc-ba27-eb378a711124";
-    const ABDER_NAME_LIKE = "%Abderam%";
+    const MYSTERY_ID = "7f41a35e-7d98-4ade-8270-52d727433e6a";
+    const REAL_ABDER = "b68dab6e-007f-45fc-ba27-eb378a711124";
 
-    // Activities assigned to Abderaman by assigned_to OR by name
-    const { data: actsById, error: e1 } = await supabase
-      .from("lead_activities")
-      .select("id, lead_id, lead_name, title, activity_type, assigned_to, assigned_to_name, created_by, created_at, description")
-      .eq("assigned_to", ABDER_ID)
-      .order("created_at", { ascending: false })
-      .limit(15);
+    // Profile lookup for the mystery ID
+    const { data: mysteryProfile } = await supabase
+      .from("profiles").select("*").eq("user_id", MYSTERY_ID).maybeSingle();
 
-    const { data: actsByName, error: e2 } = await supabase
-      .from("lead_activities")
-      .select("id, lead_id, lead_name, title, activity_type, assigned_to, assigned_to_name, created_by, created_at, description")
-      .ilike("assigned_to_name", ABDER_NAME_LIKE)
-      .order("created_at", { ascending: false })
-      .limit(15);
+    // Search ALL Abderaman profiles
+    const { data: allAbder } = await supabase
+      .from("profiles")
+      .select("user_id, full_name, email, created_at")
+      .ilike("full_name", "%abderam%");
 
-    // Get the leads behind those activities, including board_id and creator
-    const leadIds = Array.from(new Set([...(actsById||[]), ...(actsByName||[])].map((a: any) => a.lead_id).filter(Boolean)));
-    const { data: leadsInfo } = leadIds.length
-      ? await supabase.from("leads").select("id, lead_name, board_id, status, created_by, assigned_to, acolhedor, action_source, action_source_detail, created_at").in("id", leadIds)
-      : { data: [] };
+    // Search team_members 
+    const { data: tm1 } = await supabase
+      .from("team_members")
+      .select("*")
+      .or(`user_id.eq.${MYSTERY_ID},user_id.eq.${REAL_ABDER}`).limit(10);
 
-    // Profiles for created_by
-    const userIds = Array.from(new Set([
-      ...(leadsInfo||[]).map((l: any) => l.created_by),
-      ...(actsById||[]).map((a: any) => a.created_by),
-      ...(actsByName||[]).map((a: any) => a.created_by),
-    ].filter(Boolean)));
-    const { data: profiles } = userIds.length
-      ? await supabase.from("profiles").select("user_id, full_name").in("user_id", userIds)
-      : { data: [] };
-    const pMap = new Map((profiles||[]).map((p: any)=>[p.user_id, p.full_name]));
+    // Counts of activities by assigned_to per id
+    const { count: actsMystery } = await supabase
+      .from("lead_activities").select("id", { count: "exact", head: true })
+      .eq("assigned_to", MYSTERY_ID);
+    const { count: actsReal } = await supabase
+      .from("lead_activities").select("id", { count: "exact", head: true })
+      .eq("assigned_to", REAL_ABDER);
 
-    const { data: boards } = await supabase.from("kanban_boards").select("id, name");
-    const bMap = new Map((boards||[]).map((b: any)=>[b.id, b.name]));
+    // Where is mystery used as created_by in activities?
+    const { count: createdByMystery } = await supabase
+      .from("lead_activities").select("id", { count: "exact", head: true })
+      .eq("created_by", MYSTERY_ID);
 
-    const enrichLead = (l: any) => l && ({
-      ...l,
-      board_name: bMap.get(l.board_id),
-      created_by_name: pMap.get(l.created_by),
-    });
-    const enrichAct = (a: any) => ({
-      ...a,
-      created_by_name: pMap.get(a.created_by),
-      lead: enrichLead((leadsInfo||[]).find((l: any)=>l.id===a.lead_id)),
-    });
+    // Activity types related to "previdenc" 
+    const { data: actTypes } = await supabase
+      .from("activity_types")
+      .select("*")
+      .or("name.ilike.%previd%,key.ilike.%previd%,category.ilike.%previd%");
+
+    // Look for any default_assignee or default_user setting
+    const { data: settings } = await supabase
+      .from("activity_field_settings")
+      .select("*").limit(50);
 
     return new Response(JSON.stringify({
-      errors: { e1: e1?.message, e2: e2?.message },
-      activities_assigned_to_abder_by_id: (actsById||[]).map(enrichAct),
-      activities_assigned_to_abder_by_name: (actsByName||[]).map(enrichAct),
+      mystery_id: MYSTERY_ID,
+      mystery_profile_lookup: mysteryProfile,
+      all_abderaman_profiles: allAbder,
+      team_members_match: tm1,
+      counts: {
+        activities_assigned_to_mystery: actsMystery,
+        activities_assigned_to_real_abder: actsReal,
+        activities_created_by_mystery: createdByMystery,
+      },
+      activity_types_previdenc: actTypes,
+      activity_field_settings_sample: settings,
     }, null, 2), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
