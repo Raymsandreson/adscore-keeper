@@ -79,7 +79,25 @@ Deno.serve(async (req) => {
       } as any);
 
       if (createErr) {
-        result.errors.push({ id: u.id, email: u.email, error: createErr.message.slice(0, 200) });
+        // Lookup por email no External pra ver se existe com UUID diferente
+        let extUuid: string | null = null;
+        try {
+          let p = 1;
+          while (true) {
+            const { data: lst } = await ext.auth.admin.listUsers({ page: p, perPage: 1000 });
+            const found = lst?.users?.find((x: any) => x.email?.toLowerCase() === u.email.toLowerCase());
+            if (found) { extUuid = found.id; break; }
+            if (!lst?.users || lst.users.length < 1000) break;
+            p++;
+          }
+        } catch (_) { /* ignore */ }
+        result.errors.push({
+          id: u.id,
+          email: u.email,
+          error: createErr.message.slice(0, 200),
+          ext_uuid_found: extUuid,
+          uuid_mismatch: extUuid && extUuid !== u.id ? true : false,
+        } as any);
       } else {
         result.created++;
         result.created_users.push({ id: u.id, email: u.email });
