@@ -97,7 +97,10 @@ export function TeamChatNotifications() {
 
     console.log('[TeamChatNotifications] Subscribing for user:', user.id);
 
+    void ensureExternalSession();
+
     const loadCurrentUserName = async () => {
+      // profiles continua no Cloud
       const { data } = await supabase
         .from('profiles')
         .select('full_name')
