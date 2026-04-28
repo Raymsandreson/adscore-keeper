@@ -54,7 +54,7 @@ async function migrate(table: string, conflictKey: string) {
     last_error: null,
   }).eq("table_name", table);
 
-  return { table, success: true, read: data.length, upserted: data.length };
+  return { table, success: true, read: data.length, upserted, last_err: lastErr };
 }
 
 Deno.serve(async (req) => {
