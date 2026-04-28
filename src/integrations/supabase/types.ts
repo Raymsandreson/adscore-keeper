@@ -1037,6 +1037,27 @@ export type Database = {
         }
         Relationships: []
       }
+      auth_uuid_mapping: {
+        Row: {
+          cloud_uuid: string
+          created_at: string
+          email: string
+          ext_uuid: string
+        }
+        Insert: {
+          cloud_uuid: string
+          created_at?: string
+          email: string
+          ext_uuid: string
+        }
+        Update: {
+          cloud_uuid?: string
+          created_at?: string
+          email?: string
+          ext_uuid?: string
+        }
+        Relationships: []
+      }
       bank_transactions: {
         Row: {
           amount: number

@@ -23,11 +23,39 @@ const ext = createClient(EXT_URL, EXT_KEY, { auth: { persistSession: false } });
 const NEVER_MIGRATE = new Set<string>([
   "user_activity_log",
   "user_sessions",
-  "webhook_logs", // já vai pro externo via Railway; histórico Cloud é leakage
+  "webhook_logs",
   "audit_logs",
   "changelog_acknowledgments",
-  "cbo_professions", // dataset estático
+  "cbo_professions",
+  "auth_uuid_mapping", // tabela auxiliar Cloud-only para reescrita de FKs
 ]);
+
+// Colunas que referenciam auth.users e exigem remapeamento (cloud_uuid -> ext_uuid)
+const FK_AUTH_COLUMNS = new Set<string>([
+  "created_by", "user_id", "assigned_to", "updated_by", "owner_id",
+  "deleted_by", "uploaded_by", "sent_by", "completed_by", "approved_by", "reviewed_by",
+]);
+
+// Cache do mapping cloud->ext
+let UUID_MAP: Map<string, string> | null = null;
+async function loadUuidMap(): Promise<Map<string, string>> {
+  if (UUID_MAP) return UUID_MAP;
+  const { data, error } = await cloud.from("auth_uuid_mapping").select("cloud_uuid, ext_uuid");
+  if (error) throw new Error(`load uuid_map: ${error.message}`);
+  UUID_MAP = new Map((data || []).map((r: any) => [r.cloud_uuid, r.ext_uuid]));
+  return UUID_MAP;
+}
+
+function remapRow(row: any, fkCols: string[], map: Map<string, string>): any {
+  if (fkCols.length === 0) return row;
+  const out: any = { ...row };
+  for (const c of fkCols) {
+    if (c in out && typeof out[c] === "string" && map.has(out[c])) {
+      out[c] = map.get(out[c]);
+    }
+  }
+  return out;
+}
 
 async function listTables(client: ReturnType<typeof createClient>): Promise<string[]> {
   const { data, error } = await client.rpc("pg_tables_public" as any).select("*").maybeSingle();
@@ -83,6 +111,9 @@ async function migrateTable(table: string, batchSize = 500, maxBatches = 9999, d
     return result;
   }
   result.common_cols = commonCols.length;
+  const fkColsInTable = commonCols.filter((c) => FK_AUTH_COLUMNS.has(c));
+  result.fk_auth_columns = fkColsInTable;
+  const uuidMap = fkColsInTable.length > 0 ? await loadUuidMap() : new Map();
 
   let cursor = afterId;
   for (let b = 0; b < maxBatches; b++) {
@@ -104,18 +135,23 @@ async function migrateTable(table: string, batchSize = 500, maxBatches = 9999, d
     cursor = (data[data.length - 1] as any).id;
     result.last_id = cursor;
 
+    // Remap FK auth columns ANTES de upsert
+    const remapped = fkColsInTable.length > 0
+      ? data.map((row: any) => remapRow(row, fkColsInTable, uuidMap))
+      : data;
+
     if (!dryRun) {
-      const { error: upErr } = await ext.from(table).upsert(data, { onConflict: "id", ignoreDuplicates: false });
+      const { error: upErr } = await ext.from(table).upsert(remapped, { onConflict: "id", ignoreDuplicates: false });
       if (upErr) {
         result.errors.push(`upsert batch ${b}: ${upErr.message.slice(0, 150)}`);
         let ok = 0;
-        for (const row of data) {
+        for (const row of remapped) {
           const { error: e2 } = await ext.from(table).upsert(row, { onConflict: "id" });
           if (!e2) ok++;
         }
         result.total_upserted += ok;
       } else {
-        result.total_upserted += data.length;
+        result.total_upserted += remapped.length;
       }
     }
 
