@@ -185,7 +185,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     } finally {
       setLoading(false);
     }
-  }, [getConversationScope, user?.id]);
+  }, [getConversationScope, extUserId]);
 
   // Fetch AI action suggestions
   const fetchActionSuggestions = useCallback(async (actData: any, leadData: any, contactData: any) => {
@@ -375,7 +375,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         file_name: fileName || null,
         file_size: fileSize || null,
         audio_duration: audioDuration || null,
-        sender_id: user?.id || null,
+        sender_id: extUserId || null,
         sender_name: userName || null,
       } as any);
       if (error) throw error;
@@ -893,7 +893,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   };
 
   const renderMessage = (msg: ChatMessage) => {
-    const isOwn = msg.sender_id === user?.id;
+    const isOwn = msg.sender_id === extUserId;
     const isAI = msg.message_type === 'ai_suggestion';
     const isDeleted = !!msg.deleted_at;
 
