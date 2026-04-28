@@ -13,52 +13,59 @@ serve(async (req) => {
     const key = (Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || "").trim();
     const supabase = createClient(url, key);
 
-    // 1. Find Abderaman profile
-    const { data: abder } = await supabase
-      .from("profiles")
-      .select("user_id, full_name, email")
-      .or("full_name.ilike.%abderam%,full_name.ilike.%abdera%");
+    const ABDER_ID = "b68dab6e-007f-45fc-ba27-eb378a711124";
+    const ABDER_NAME_LIKE = "%Abderam%";
 
-    const abderIds = (abder || []).map((a: any) => a.user_id);
+    // Activities assigned to Abderaman by assigned_to OR by name
+    const { data: actsById, error: e1 } = await supabase
+      .from("lead_activities")
+      .select("id, lead_id, lead_name, title, activity_type, assigned_to, assigned_to_name, created_by, created_at, description")
+      .eq("assigned_to", ABDER_ID)
+      .order("created_at", { ascending: false })
+      .limit(15);
 
-    // 2. List ALL kanban boards
-    const { data: boards } = await supabase
-      .from("kanban_boards")
-      .select("id, name");
+    const { data: actsByName, error: e2 } = await supabase
+      .from("lead_activities")
+      .select("id, lead_id, lead_name, title, activity_type, assigned_to, assigned_to_name, created_by, created_at, description")
+      .ilike("assigned_to_name", ABDER_NAME_LIKE)
+      .order("created_at", { ascending: false })
+      .limit(15);
 
-    // 3. List ALL board_group_settings (no filter)
-    const { data: settings } = await supabase
-      .from("board_group_settings")
-      .select("*");
-
-    // 4. Recent leads assigned to Abderaman
-    const { data: recentLeads } = abderIds.length
-      ? await supabase
-          .from("leads")
-          .select("id, lead_name, board_id, created_by, assigned_to, acolhedor, created_at, action_source, action_source_detail")
-          .in("assigned_to", abderIds)
-          .order("created_at", { ascending: false })
-          .limit(20)
+    // Get the leads behind those activities, including board_id and creator
+    const leadIds = Array.from(new Set([...(actsById||[]), ...(actsByName||[])].map((a: any) => a.lead_id).filter(Boolean)));
+    const { data: leadsInfo } = leadIds.length
+      ? await supabase.from("leads").select("id, lead_name, board_id, status, created_by, assigned_to, acolhedor, action_source, action_source_detail, created_at").in("id", leadIds)
       : { data: [] };
 
-    // 5. Recent activities assigned to Abderaman
-    const { data: recentActs } = abderIds.length
-      ? await supabase
-          .from("lead_activities")
-          .select("id, lead_id, lead_name, title, assigned_to, assigned_to_name, created_by, created_at")
-          .in("assigned_to", abderIds)
-          .order("created_at", { ascending: false })
-          .limit(20)
+    // Profiles for created_by
+    const userIds = Array.from(new Set([
+      ...(leadsInfo||[]).map((l: any) => l.created_by),
+      ...(actsById||[]).map((a: any) => a.created_by),
+      ...(actsByName||[]).map((a: any) => a.created_by),
+    ].filter(Boolean)));
+    const { data: profiles } = userIds.length
+      ? await supabase.from("profiles").select("user_id, full_name").in("user_id", userIds)
       : { data: [] };
+    const pMap = new Map((profiles||[]).map((p: any)=>[p.user_id, p.full_name]));
+
+    const { data: boards } = await supabase.from("kanban_boards").select("id, name");
+    const bMap = new Map((boards||[]).map((b: any)=>[b.id, b.name]));
+
+    const enrichLead = (l: any) => l && ({
+      ...l,
+      board_name: bMap.get(l.board_id),
+      created_by_name: pMap.get(l.created_by),
+    });
+    const enrichAct = (a: any) => ({
+      ...a,
+      created_by_name: pMap.get(a.created_by),
+      lead: enrichLead((leadsInfo||[]).find((l: any)=>l.id===a.lead_id)),
+    });
 
     return new Response(JSON.stringify({
-      abderaman: abder,
-      total_boards: boards?.length || 0,
-      boards: boards,
-      total_settings: settings?.length || 0,
-      settings_with_processual: (settings || []).filter((s: any) => s.processual_acolhedor_id),
-      recent_leads_to_abder: recentLeads,
-      recent_activities_to_abder: recentActs,
+      errors: { e1: e1?.message, e2: e2?.message },
+      activities_assigned_to_abder_by_id: (actsById||[]).map(enrichAct),
+      activities_assigned_to_abder_by_name: (actsByName||[]).map(enrichAct),
     }, null, 2), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
