@@ -358,9 +358,9 @@ export function useTeamDirectChat() {
     try {
       await ensureExternalSession();
 
-      const { data: conversationId, error } = await externalSupabase.rpc('ensure_team_general_conversation', {
+      const { data: conversationId, error } = await (externalSupabase.rpc as any)('ensure_team_general_conversation', {
         _self_user_id: user.id,
-      } as any);
+      });
 
       if (error || !conversationId) {
         console.error('Error opening general chat:', error);
