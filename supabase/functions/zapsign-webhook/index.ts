@@ -885,7 +885,9 @@ Deno.serve(async (req) => {
                 // Auto-create ONBOARDING activity for CASO-prefixed cases
                 if (caseNumber && caseNumber.startsWith('CASO')) {
                   try {
-                    await supabase.from('lead_activities').insert({
+                    const wanessaCloudUuid = '1f788b8d-e30e-484a-9460-39a881d25128'
+                    const wanessaExtUuid = await remapToExternal(extClient, wanessaCloudUuid)
+                    await extClient.from('lead_activities').insert({
                       lead_id: localDoc.lead_id,
                       lead_name: leadForBoard.lead_name || 'Novo',
                       title: 'ONBOARDING CLIENTE',
@@ -893,7 +895,7 @@ Deno.serve(async (req) => {
                       activity_type: 'tarefa',
                       status: 'pendente',
                       priority: 'alta',
-                      assigned_to: '1f788b8d-e30e-484a-9460-39a881d25128',
+                      assigned_to: wanessaExtUuid,
                       assigned_to_name: 'Wanessa Vitória Rodrigues de Sousa',
                       deadline: new Date().toISOString().split('T')[0],
                     })
