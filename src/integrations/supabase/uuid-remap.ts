@@ -13,6 +13,7 @@
 import { externalSupabase } from './external-client';
 
 let cache: Map<string, string> | null = null;
+let reverseCache: Map<string, string> | null = null;
 let cachePromise: Promise<Map<string, string>> | null = null;
 
 async function loadCache(): Promise<Map<string, string>> {
@@ -31,10 +32,13 @@ async function loadCache(): Promise<Map<string, string>> {
     }
 
     const map = new Map<string, string>();
+    const reverse = new Map<string, string>();
     for (const row of ((data as Array<{ cloud_uuid: string; ext_uuid: string }>) || [])) {
       map.set(row.cloud_uuid, row.ext_uuid);
+      reverse.set(row.ext_uuid, row.cloud_uuid);
     }
     cache = map;
+    reverseCache = reverse;
     return map;
   })();
 
