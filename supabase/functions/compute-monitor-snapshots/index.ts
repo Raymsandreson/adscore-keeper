@@ -43,6 +43,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+    const extClient = getExternalClient();
 
     // Target date: today in UTC-3 (Brazil)
     const now = new Date();
