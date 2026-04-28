@@ -24,6 +24,7 @@ serve(async (req) => {
     const supabaseUrl = RESOLVED_SUPABASE_URL;
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
     const supabase = createClient(supabaseUrl, supabaseKey);
+    const extClient = getExternalClient();
 
     let body: any = {};
     try { body = await req.json(); } catch { /* empty body ok */ }
