@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useExternalUserId } from '@/hooks/useExternalUserId';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -58,6 +59,7 @@ export function EntityAIChat({
   className,
 }: EntityAIChatProps) {
   const { user } = useAuthContext();
+  const extUserId = useExternalUserId();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -85,14 +87,14 @@ export function EntityAIChat({
   const conversationField = leadId ? 'lead_id' : 'activity_id';
 
   const fetchMessages = useCallback(async () => {
-    if (!conversationKey || !user?.id) return;
+    if (!conversationKey || !user?.id || !extUserId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('activity_chat_messages')
         .select('*')
         .eq(conversationField, conversationKey)
-        .or(`sender_id.eq.${user.id},sender_id.is.null`)
+        .or(`sender_id.eq.${extUserId},sender_id.is.null`)
         .order('created_at', { ascending: true });
       if (error) throw error;
       setMessages((data || []) as ChatMessage[]);
