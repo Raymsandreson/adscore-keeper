@@ -23,6 +23,7 @@ const DEFAULT_TABLES = [
   "agent_group_redirections", "agent_filter_settings", "meta_ad_accounts",
   "adset_geo_rules", "process_documents", "onboarding_meeting_configs",
   "activity_message_templates",
+  "team_chat_messages", "team_chat_mentions",
 ];
 
 interface ExtractedDDL {
