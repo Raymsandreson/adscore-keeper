@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Bot, MessageCircle, UserPlus, Zap, Phone, PhoneCall, FileText, Activity, ClipboardList } from 'lucide-react';
 import { format } from 'date-fns';
@@ -135,7 +136,7 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
             .select('id, phone, direction, message_text, contact_name, instance_name, created_at, lead_id')
             .gte('created_at', since).in('instance_name', instFilter)
             .order('created_at', { ascending: false }).limit(200),
-          supabase.from('lead_activities')
+          (externalSupabase as any).from('lead_activities')
             .select('id, title, description, activity_type, lead_name, created_at, lead_id')
             .gte('created_at', since)
             .order('created_at', { ascending: false }).limit(50),

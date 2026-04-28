@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -108,7 +109,7 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
   };
 
   const fetchActivityTypes = async () => {
-    const { data } = await supabase.from('activity_types').select('key, label').eq('is_active', true);
+    const { data } = await (externalSupabase as any).from('activity_types').select('key, label').eq('is_active', true);
     setActivityTypes(data || []);
   };
 

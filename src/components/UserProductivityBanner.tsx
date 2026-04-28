@@ -7,6 +7,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { MemberProductivitySheet } from '@/components/team/MemberProductivitySheet';
 import { DailyReportDialog } from '@/components/team/DailyReportDialog';
 import type { UserProductivity } from '@/hooks/useTeamProductivity';

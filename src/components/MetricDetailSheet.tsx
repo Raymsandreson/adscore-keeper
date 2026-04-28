@@ -16,6 +16,8 @@ import {
   Check, X, ChevronRight, TrendingUp, History,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
 import {
   startOfDay, endOfDay, format, subDays, startOfWeek, endOfWeek, startOfMonth,
@@ -367,12 +369,13 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
           break;
         }
         case 'activitiesCompleted': {
-          const { data } = await supabase.from('lead_activities')
+          const extUserId = (await remapToExternal(userId)) || userId;
+          const { data } = await (externalSupabase as any).from('lead_activities')
             .select('id, title, lead_name, completed_at')
-            .eq('completed_by', userId).eq('status', 'concluida')
+            .eq('completed_by', extUserId).eq('status', 'concluida')
             .gte('completed_at', startDate).lte('completed_at', endDate)
             .order('completed_at', { ascending: false });
-          result = (data || []).map(a => ({
+          result = (data || []).map((a: any) => ({
             id: a.id, title: a.title || 'Atividade', subtitle: a.lead_name || undefined,
             badge: a.completed_at ? format(new Date(a.completed_at), 'HH:mm') : undefined,
             date: a.completed_at ? format(new Date(a.completed_at), 'yyyy-MM-dd') : undefined,
@@ -381,13 +384,14 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
         }
         case 'activitiesOverdue': {
           const now = new Date();
-          const { data } = await supabase.from('lead_activities')
+          const extUserId = (await remapToExternal(userId)) || userId;
+          const { data } = await (externalSupabase as any).from('lead_activities')
             .select('id, title, lead_name, deadline')
-            .eq('assigned_to', userId).eq('status', 'pendente')
+            .eq('assigned_to', extUserId).eq('status', 'pendente')
             .lt('deadline', format(now, 'yyyy-MM-dd'))
             .not('deadline', 'is', null)
             .order('deadline', { ascending: true });
-          result = (data || []).map(a => ({
+          result = (data || []).map((a: any) => ({
             id: a.id, title: a.title || 'Atividade', subtitle: a.lead_name || undefined,
             badge: a.deadline || undefined, badgeVariant: 'destructive' as const,
             date: a.deadline || undefined,

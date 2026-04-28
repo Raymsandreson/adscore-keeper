@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import {
   BarChart3,
   Trophy,
@@ -103,7 +104,7 @@ export function TeamProductivityDashboard() {
         supabase.from('teams').select('id, name, color').order('name'),
         supabase.from('team_members').select('team_id, user_id, evaluated_metrics'),
         supabase.from('user_timeblock_settings').select('user_id, activity_type, start_hour, start_minute, end_hour, end_minute'),
-        supabase.from('activity_types').select('key, label').eq('is_active', true),
+        (externalSupabase as any).from('activity_types').select('key, label').eq('is_active', true),
       ]);
       setTeams(teamsRes.data || []);
       setTeamMembers((membersRes.data || []).map(m => ({
