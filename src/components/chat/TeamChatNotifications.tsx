@@ -111,7 +111,7 @@ export function TeamChatNotifications() {
     };
 
     const loadTeamConversationContext = async () => {
-      const { data: memberships, error: membershipsError } = await supabase
+      const { data: memberships, error: membershipsError } = await externalSupabase
         .from('team_conversation_members')
         .select('conversation_id')
         .eq('user_id', user.id);
@@ -129,7 +129,7 @@ export function TeamChatNotifications() {
         return;
       }
 
-      const { data: conversations, error: conversationsError } = await supabase
+      const { data: conversations, error: conversationsError } = await externalSupabase
         .from('team_conversations')
         .select('id, type, name')
         .in('id', conversationIds);
@@ -151,7 +151,7 @@ export function TeamChatNotifications() {
       const cached = teamConversationLabelsRef.current.get(conversationId);
       if (cached) return cached;
 
-      const { data } = await supabase
+      const { data } = await externalSupabase
         .from('team_conversations')
         .select('type, name')
         .eq('id', conversationId)
@@ -165,7 +165,7 @@ export function TeamChatNotifications() {
     const isUserConversationMember = async (conversationId: string) => {
       if (teamConversationIdsRef.current.has(conversationId)) return true;
 
-      const { data } = await supabase
+      const { data } = await externalSupabase
         .from('team_conversation_members')
         .select('conversation_id')
         .eq('conversation_id', conversationId)
