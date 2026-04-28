@@ -10,7 +10,12 @@ const corsHeaders = {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const supabase = createClient(resolveSupabaseUrl(), resolveServiceRoleKey());
+    const url = (Deno.env.get("EXTERNAL_SUPABASE_URL") || "").trim();
+    const key = (Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || "").trim();
+    if (!url || !key) {
+      return new Response(JSON.stringify({ success: false, error: "EXTERNAL_SUPABASE creds missing", url_set: !!url, key_set: !!key }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const supabase = createClient(url, key);
 
     const { data: boards } = await supabase
       .from("kanban_boards")
