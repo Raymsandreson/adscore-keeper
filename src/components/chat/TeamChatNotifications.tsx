@@ -326,7 +326,7 @@ export function TeamChatNotifications() {
     // Mentions are already handled by mentionsChannel above.
 
     // Listen for team direct/group chat messages used by the Chat da Equipe panel
-    const teamMessagesChannel = supabase
+    const teamMessagesChannel = externalSupabase
       .channel('notification-team-messages-' + user.id)
       .on('postgres_changes', {
         event: 'INSERT',
@@ -362,7 +362,7 @@ export function TeamChatNotifications() {
         console.log('[TeamChatNotifications] Team messages channel status:', status);
       });
 
-    const teamMembershipsChannel = supabase
+    const teamMembershipsChannel = externalSupabase
       .channel('notification-team-memberships-' + user.id)
       .on('postgres_changes', {
         event: '*',
@@ -378,9 +378,9 @@ export function TeamChatNotifications() {
       });
 
     return () => {
-      supabase.removeChannel(mentionsChannel);
-      supabase.removeChannel(teamMessagesChannel);
-      supabase.removeChannel(teamMembershipsChannel);
+      externalSupabase.removeChannel(mentionsChannel);
+      externalSupabase.removeChannel(teamMessagesChannel);
+      externalSupabase.removeChannel(teamMembershipsChannel);
     };
   }, [user]);
 
