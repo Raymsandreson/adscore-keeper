@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -159,7 +161,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     if (!scope.activity_id && !scope.lead_id && !scope.isGeneralChat) return;
     setLoading(true);
     try {
-      let query = supabase.from('activity_chat_messages').select('*').order('created_at', { ascending: true });
+      let query = externalSupabase.from('activity_chat_messages').select('*').order('created_at', { ascending: true });
       if (scope.isGeneralChat) {
         // General chat: messages with both IDs null, belonging to this user (or from AI)
         query = query.is('activity_id', null).is('lead_id', null)
@@ -278,7 +280,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       if (error) throw error;
       if (data?.description) {
         const scope = getConversationScope();
-        await supabase.from('activity_chat_messages').insert({
+        await externalSupabase.from('activity_chat_messages').insert({
           activity_id: scope.activity_id,
           lead_id: scope.lead_id,
           message_type: 'ai_suggestion',
@@ -322,7 +324,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       if (error) throw error;
       if (data?.description) {
         // Update existing AI message
-        await supabase.from('activity_chat_messages').update({ content: data.description } as any).eq('id', regenerateConfig.msgId);
+        await externalSupabase.from('activity_chat_messages').update({ content: data.description } as any).eq('id', regenerateConfig.msgId);
         await fetchMessages();
         toast.success('Resumo regenerado!');
       }
@@ -339,7 +341,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
   const handleDeleteMessage = async (msgId: string) => {
     try {
-      await supabase.from('activity_chat_messages').update({
+      await externalSupabase.from('activity_chat_messages').update({
         deleted_at: new Date().toISOString(),
         deleted_by_name: userName || 'Usuário',
       } as any).eq('id', msgId);
@@ -361,7 +363,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     }
     setSending(true);
     try {
-      const { error } = await supabase.from('activity_chat_messages').insert({
+      const { error } = await externalSupabase.from('activity_chat_messages').insert({
         activity_id: scope.activity_id,
         lead_id: scope.lead_id,
         message_type: type,
@@ -486,7 +488,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       ));
 
       // Save AI response as chat message using stable IDs
-      await supabase.from('activity_chat_messages').insert({
+      await externalSupabase.from('activity_chat_messages').insert({
         activity_id: scope.activity_id,
         lead_id: scope.lead_id,
         message_type: 'ai_suggestion',
@@ -806,7 +808,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       if (data?.suggestion) {
         setPendingSuggestion(data.suggestion);
         // Save AI suggestion as a message
-        await supabase.from('activity_chat_messages').insert({
+        await externalSupabase.from('activity_chat_messages').insert({
           activity_id: getConversationScope().activity_id,
           lead_id: getConversationScope().lead_id,
           message_type: 'ai_suggestion',
@@ -1783,7 +1785,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                 
                 // Send follow-up message asking if user wants to open it
                 const scope = getConversationScope();
-                await supabase.from('activity_chat_messages').insert({
+                await externalSupabase.from('activity_chat_messages').insert({
                   activity_id: scope.activity_id,
                   lead_id: scope.lead_id,
                   message_type: 'ai_suggestion',

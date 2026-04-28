@@ -5,6 +5,8 @@ import { RichTextEditor } from '@/components/ui/RichTextEditor';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
 import {
   Paperclip,
@@ -226,7 +228,7 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
   const handleRemoveAttachment = async (idx: number) => {
     const att = attachments[idx];
     if (att.id) {
-      await supabase.from('activity_attachments').delete().eq('id', att.id);
+      await externalSupabase.from('activity_attachments').delete().eq('id', att.id);
     }
     setAttachments(prev => prev.filter((_, i) => i !== idx));
   };
