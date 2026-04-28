@@ -1447,10 +1447,10 @@ Retorne APENAS o JSON, sem markdown.` },
             .select("id, contact_channel")
             .eq("contacted_by", targetUserId)
             .gte("created_at", todayStart).lte("created_at", todayEnd),
-          // Completed activities today
-          supabase.from("lead_activities")
+          // Completed activities today (External DB)
+          extClient.from("lead_activities")
             .select("id")
-            .eq("completed_by", targetUserId).eq("status", "concluida")
+            .eq("completed_by", targetUserExtId).eq("status", "concluida")
             .gte("completed_at", todayStart).lte("completed_at", todayEnd),
           // Activity log today (page visits, checklist)
           supabase.from("user_activity_log")
