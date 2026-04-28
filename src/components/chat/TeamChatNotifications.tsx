@@ -193,7 +193,7 @@ export function TeamChatNotifications() {
       entityName?: string | null;
       content: string;
     }) => {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('team_chat_messages')
         .insert({
           entity_type: entityType,
@@ -208,7 +208,7 @@ export function TeamChatNotifications() {
     };
 
     const replyToConversation = async (conversationId: string, content: string) => {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('team_messages')
         .insert({
           conversation_id: conversationId,
@@ -220,7 +220,7 @@ export function TeamChatNotifications() {
 
       if (error) throw error;
 
-      const { error: updateError } = await supabase
+      const { error: updateError } = await externalSupabase
         .from('team_conversations')
         .update({ updated_at: new Date().toISOString() })
         .eq('id', conversationId);
