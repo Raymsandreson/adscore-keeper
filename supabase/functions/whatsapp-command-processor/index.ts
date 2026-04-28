@@ -1082,7 +1082,7 @@ Retorne APENAS o JSON, sem markdown.` },
                   }
 
                   if (Object.keys(updateFields).length > 0) {
-                    await supabase.from("lead_activities").update(updateFields).eq("id", newAct.id);
+                    await extClient.from("lead_activities").update(updateFields).eq("id", newAct.id);
                     responseText += `\n🔍 Informações extraídas da imagem e salvas na atividade`;
                   }
                 }
