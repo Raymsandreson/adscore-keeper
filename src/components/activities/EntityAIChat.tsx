@@ -136,7 +136,7 @@ export function EntityAIChat({
         file_name: fileName || null,
         file_size: fileSize || null,
         audio_duration: audioDuration || null,
-        sender_id: user?.id || null,
+        sender_id: extUserId || null,
         sender_name: userName || null,
       } as any);
       await fetchMessages();
@@ -396,7 +396,7 @@ export function EntityAIChat({
   };
 
   const renderMessage = (msg: ChatMessage) => {
-    const isOwn = msg.sender_id === user?.id;
+    const isOwn = msg.sender_id === extUserId;
     const isAI = msg.message_type === 'ai_suggestion';
     const isDeleted = !!msg.deleted_at;
 
