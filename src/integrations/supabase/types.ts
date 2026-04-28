@@ -9986,10 +9986,6 @@ export type Database = {
       cleanup_old_webhook_logs: { Args: never; Returns: undefined }
       cleanup_old_whatsapp_messages: { Args: never; Returns: undefined }
       ensure_team_general_conversation: { Args: never; Returns: string }
-      execute_and_cleanup_followup: {
-        Args: { p_job_name: string; p_session_id: string }
-        Returns: undefined
-      }
       generate_case_number: { Args: { p_nucleus_id: string }; Returns: string }
       get_conversation_summaries: {
         Args: { p_instance_names: string[] }
@@ -10025,10 +10021,6 @@ export type Database = {
           p_change_description?: string
           p_changed_by: string
         }
-        Returns: undefined
-      }
-      schedule_followup_for_session: {
-        Args: { p_delay_minutes: number; p_session_id: string }
         Returns: undefined
       }
       show_limit: { Args: never; Returns: number }
