@@ -268,6 +268,7 @@ serve(async (req) => {
     const supabaseUrl = RESOLVED_SUPABASE_URL;
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
     const supabase = createClient(supabaseUrl, supabaseKey);
+    const extClient = getExternalClient();
     const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!GOOGLE_AI_API_KEY && !LOVABLE_API_KEY) {
