@@ -331,10 +331,10 @@ export function useTeamDirectChat() {
     try {
       await ensureExternalSession();
 
-      const { data: conversationId, error } = await externalSupabase.rpc('start_team_direct_conversation', {
+      const { data: conversationId, error } = await (externalSupabase.rpc as any)('start_team_direct_conversation', {
         _other_user_id: otherUserId,
         _self_user_id: user.id,
-      } as any);
+      });
 
       if (error || !conversationId) {
         console.error('Error starting direct chat:', error);
