@@ -142,22 +142,16 @@ async function migrateTable(table: string, batchSize = 500, maxBatches = 9999, d
 
     if (!dryRun) {
       const { error: upErr } = await ext.from(table).upsert(remapped, { onConflict: "id", ignoreDuplicates: false });
-    result.batches++;
-    cursor = (data[data.length - 1] as any).id;
-    result.last_id = cursor;
-
-    if (!dryRun) {
-      const { error: upErr } = await ext.from(table).upsert(data, { onConflict: "id", ignoreDuplicates: false });
       if (upErr) {
         result.errors.push(`upsert batch ${b}: ${upErr.message.slice(0, 150)}`);
         let ok = 0;
-        for (const row of data) {
+        for (const row of remapped) {
           const { error: e2 } = await ext.from(table).upsert(row, { onConflict: "id" });
           if (!e2) ok++;
         }
         result.total_upserted += ok;
       } else {
-        result.total_upserted += data.length;
+        result.total_upserted += remapped.length;
       }
     }
 
