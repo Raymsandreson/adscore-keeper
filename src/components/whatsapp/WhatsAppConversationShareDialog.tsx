@@ -113,7 +113,8 @@ export function WhatsAppConversationShareDialog({ phone, instanceName }: Props) 
       const recipientName = recipientProfile?.full_name || recipientProfile?.email || '';
 
       // Create a system message for the share notification
-      const { data: sysMsg, error: sysMsgError } = await supabase
+      await ensureExternalSession();
+      const { data: sysMsg, error: sysMsgError } = await externalSupabase
         .from('team_chat_messages')
         .insert({
           entity_type: 'whatsapp',
@@ -129,7 +130,7 @@ export function WhatsAppConversationShareDialog({ phone, instanceName }: Props) 
       if (sysMsgError) {
         console.error('Error creating share system message:', sysMsgError);
       } else if (sysMsg) {
-        const { error: mentionError } = await supabase.from('team_chat_mentions').insert({
+        const { error: mentionError } = await externalSupabase.from('team_chat_mentions').insert({
           message_id: sysMsg.id,
           mentioned_user_id: selectedUserId,
           entity_type: 'whatsapp',
