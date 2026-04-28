@@ -229,12 +229,13 @@ serve(async (req) => {
             const { data: profile } = await supabase.from("profiles").select("full_name").eq("user_id", assignedTo).maybeSingle();
             assignedName = profile?.full_name || null;
           }
-          await supabase.from("lead_activities").insert({
+          const assignedExtId = assignedTo ? await remapToExternal(extClient, assignedTo) : null;
+          await extClient.from("lead_activities").insert({
             lead_id: session.lead_id || null,
             title: `Cobrar assinatura: ${session.template_name}`,
             description: `O cliente ainda não assinou o documento "${session.template_name}".\nLink: ${session.sign_url || "N/A"}\nTelefone: ${session.phone}`,
             activity_type: step.activity_type || "tarefa", status: "pendente", priority: step.priority || "alta",
-            assigned_to: assignedTo, assigned_to_name: assignedName,
+            assigned_to: assignedExtId, assigned_to_name: assignedName,
             deadline: new Date().toISOString().split("T")[0],
           });
         }
