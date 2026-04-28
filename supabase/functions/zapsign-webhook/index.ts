@@ -1,6 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
+import { getExternalClient } from "../_shared/external-client.ts";
+import { remapToExternal } from "../_shared/uuid-remap.ts";
 
 // Use external Supabase project when configured (hybrid architecture)
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
@@ -55,6 +57,7 @@ Deno.serve(async (req) => {
     const cloudAnonKey = RESOLVED_ANON_KEY
     const zapsignToken = Deno.env.get('ZAPSIGN_API_TOKEN')!
     const supabase = createClient(supabaseUrl, supabaseKey)
+    const extClient = getExternalClient()
 
     const body = await req.json()
     console.log('ZapSign webhook received:', JSON.stringify(body))
@@ -283,7 +286,8 @@ Deno.serve(async (req) => {
         const signerName = justSignedSigner.name || 'Signatário'
         const docName = localDoc.document_name || 'Documento'
 
-        await supabase.from('lead_activities').insert({
+        const createdByExtId = localDoc.created_by ? await remapToExternal(extClient, localDoc.created_by) : null
+        await extClient.from('lead_activities').insert({
           lead_id: localDoc.lead_id,
           lead_name: localDoc.signer_name || 'Documento',
           title: `Assinatura: ${signerName} assinou "${docName}"`,
@@ -291,7 +295,7 @@ Deno.serve(async (req) => {
           activity_type: 'documento',
           status: isDocFullySigned ? 'concluida' : 'pendente',
           priority: 'normal',
-          created_by: localDoc.created_by || null,
+          created_by: createdByExtId,
           deadline: new Date().toISOString().slice(0, 10),
           completed_at: isDocFullySigned ? new Date().toISOString() : null,
         })
@@ -881,7 +885,9 @@ Deno.serve(async (req) => {
                 // Auto-create ONBOARDING activity for CASO-prefixed cases
                 if (caseNumber && caseNumber.startsWith('CASO')) {
                   try {
-                    await supabase.from('lead_activities').insert({
+                    const wanessaCloudUuid = '1f788b8d-e30e-484a-9460-39a881d25128'
+                    const wanessaExtUuid = await remapToExternal(extClient, wanessaCloudUuid)
+                    await extClient.from('lead_activities').insert({
                       lead_id: localDoc.lead_id,
                       lead_name: leadForBoard.lead_name || 'Novo',
                       title: 'ONBOARDING CLIENTE',
@@ -889,7 +895,7 @@ Deno.serve(async (req) => {
                       activity_type: 'tarefa',
                       status: 'pendente',
                       priority: 'alta',
-                      assigned_to: '1f788b8d-e30e-484a-9460-39a881d25128',
+                      assigned_to: wanessaExtUuid,
                       assigned_to_name: 'Wanessa Vitória Rodrigues de Sousa',
                       deadline: new Date().toISOString().split('T')[0],
                     })

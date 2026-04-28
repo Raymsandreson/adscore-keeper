@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
+import { getExternalClient } from "../_shared/external-client.ts";
+import { remapToExternal } from "../_shared/uuid-remap.ts";
 
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
@@ -22,6 +24,7 @@ serve(async (req) => {
     const supabaseUrl = RESOLVED_SUPABASE_URL;
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
     const supabase = createClient(supabaseUrl, supabaseKey);
+    const extClient = getExternalClient();
 
     let body: any = {};
     try { body = await req.json(); } catch { /* empty body ok */ }
@@ -226,12 +229,13 @@ serve(async (req) => {
             const { data: profile } = await supabase.from("profiles").select("full_name").eq("user_id", assignedTo).maybeSingle();
             assignedName = profile?.full_name || null;
           }
-          await supabase.from("lead_activities").insert({
+          const assignedExtId = assignedTo ? await remapToExternal(extClient, assignedTo) : null;
+          await extClient.from("lead_activities").insert({
             lead_id: session.lead_id || null,
             title: `Cobrar assinatura: ${session.template_name}`,
             description: `O cliente ainda não assinou o documento "${session.template_name}".\nLink: ${session.sign_url || "N/A"}\nTelefone: ${session.phone}`,
             activity_type: step.activity_type || "tarefa", status: "pendente", priority: step.priority || "alta",
-            assigned_to: assignedTo, assigned_to_name: assignedName,
+            assigned_to: assignedExtId, assigned_to_name: assignedName,
             deadline: new Date().toISOString().split("T")[0],
           });
         }
@@ -603,14 +607,15 @@ async function processAgentConversationFollowups(supabase: any, targetPhone?: st
         .not("lead_id", "is", null)
         .order("created_at", { ascending: false }).limit(1).maybeSingle();
 
-      await supabase.from("lead_activities").insert({
+      const assignedExtId = assignedTo ? await remapToExternal(extClient, assignedTo) : null;
+      await extClient.from("lead_activities").insert({
         lead_id: msgWithLead?.lead_id || null,
         title: `Follow-up pendente: ${conv.phone}`,
         description: `O cliente ${conv.phone} não respondeu após as tentativas automáticas de follow-up via agente ${config.shortcut_name}.`,
         activity_type: step.activity_type || "tarefa",
         status: "pendente",
         priority: step.priority || "alta",
-        assigned_to: assignedTo,
+        assigned_to: assignedExtId,
         assigned_to_name: assignedName,
         deadline: new Date().toISOString().split("T")[0],
       });

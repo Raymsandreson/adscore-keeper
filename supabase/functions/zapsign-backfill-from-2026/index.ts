@@ -20,6 +20,7 @@
 // ============================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { remapToExternal } from "../_shared/uuid-remap.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -569,6 +570,8 @@ Deno.serve(async (req) => {
               // 4) Atividade ONBOARDING (apenas se prefixo CASO-)
               if (caseNumber && caseNumber.startsWith("CASO")) {
                 try {
+                  const wanessaCloudUuid = "1f788b8d-e30e-484a-9460-39a881d25128";
+                  const wanessaExtUuid = await remapToExternal(ext, wanessaCloudUuid);
                   await ext.from("lead_activities").insert({
                     lead_id: leadId,
                     lead_name: signerName || "Novo",
@@ -577,7 +580,7 @@ Deno.serve(async (req) => {
                     activity_type: "tarefa",
                     status: "pendente",
                     priority: "alta",
-                    assigned_to: "1f788b8d-e30e-484a-9460-39a881d25128",
+                    assigned_to: wanessaExtUuid,
                     assigned_to_name: "Wanessa Vitória Rodrigues de Sousa",
                     deadline: new Date().toISOString().split("T")[0],
                   });
