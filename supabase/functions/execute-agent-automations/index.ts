@@ -361,7 +361,7 @@ Deno.serve(async (req) => {
               .eq('id', createdLeadId)
               .single();
 
-            const { error } = await supabase.from('lead_activities').insert({
+            const { error } = await extClient.from('lead_activities').insert({
               lead_id: createdLeadId,
               lead_name: leadData?.lead_name || '',
               title: action.config?.title || 'Dar andamento',
