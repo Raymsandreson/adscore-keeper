@@ -111,6 +111,9 @@ async function migrateTable(table: string, batchSize = 500, maxBatches = 9999, d
     return result;
   }
   result.common_cols = commonCols.length;
+  const fkColsInTable = commonCols.filter((c) => FK_AUTH_COLUMNS.has(c));
+  result.fk_auth_columns = fkColsInTable;
+  const uuidMap = fkColsInTable.length > 0 ? await loadUuidMap() : new Map();
 
   let cursor = afterId;
   for (let b = 0; b < maxBatches; b++) {
@@ -128,6 +131,17 @@ async function migrateTable(table: string, batchSize = 500, maxBatches = 9999, d
     }
 
     result.total_read += data.length;
+    result.batches++;
+    cursor = (data[data.length - 1] as any).id;
+    result.last_id = cursor;
+
+    // Remap FK auth columns ANTES de upsert
+    const remapped = fkColsInTable.length > 0
+      ? data.map((row: any) => remapRow(row, fkColsInTable, uuidMap))
+      : data;
+
+    if (!dryRun) {
+      const { error: upErr } = await ext.from(table).upsert(remapped, { onConflict: "id", ignoreDuplicates: false });
     result.batches++;
     cursor = (data[data.length - 1] as any).id;
     result.last_id = cursor;
