@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { startOfDay, endOfDay, format } from 'date-fns';
 
@@ -62,6 +64,7 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
     const startDate = startOfDay(now).toISOString();
     const endDate = endOfDay(now).toISOString();
     const userId = user.id;
+    const extUserId = (await remapToExternal(userId)) || userId;
 
     try {
       const [
@@ -91,10 +94,10 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
           .gte('created_at', startDate).lte('created_at', endDate),
         supabase.from('cat_lead_contacts').select('id, contact_channel').eq('contacted_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
-        supabase.from('lead_activities').select('id').eq('completed_by', userId)
+        (externalSupabase as any).from('lead_activities').select('id').eq('completed_by', extUserId)
           .not('completed_at', 'is', null)
           .gte('completed_at', startDate).lte('completed_at', endDate),
-        supabase.from('lead_activities').select('id').eq('assigned_to', userId)
+        (externalSupabase as any).from('lead_activities').select('id').eq('assigned_to', extUserId)
           .eq('status', 'pendente')
           .lt('deadline', format(now, 'yyyy-MM-dd'))
           .not('deadline', 'is', null),
