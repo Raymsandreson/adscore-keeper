@@ -2,6 +2,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { geminiChat } from '../_shared/gemini.ts'
 
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
+import { getExternalClient } from "../_shared/external-client.ts";
+import { remapToExternal } from "../_shared/uuid-remap.ts";
 
 // Use external Supabase project when configured (hybrid architecture)
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
@@ -1247,7 +1249,10 @@ Deno.serve(async (req) => {
           const deadline = new Date()
           deadline.setDate(deadline.getDate() + (act.deadline_days || 1))
           
-          await supabase.from('lead_activities').insert({
+          const extClient = getExternalClient();
+          const assignedExtId = act.assigned_to ? await remapToExternal(extClient, act.assigned_to) : null;
+
+          await extClient.from('lead_activities').insert({
             lead_id: leadData.id,
             lead_name: leadData.lead_name || lead_name,
             title: act.title,
@@ -1255,7 +1260,7 @@ Deno.serve(async (req) => {
             activity_type: act.activity_type || 'tarefa',
             status: 'pendente',
             priority: act.priority || 'normal',
-            assigned_to: act.assigned_to || null,
+            assigned_to: assignedExtId,
             assigned_to_name: assignedName,
             deadline: deadline.toISOString().split('T')[0],
           })

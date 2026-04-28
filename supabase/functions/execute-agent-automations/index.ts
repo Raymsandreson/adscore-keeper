@@ -1,6 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 import { getLocationFromDDD } from "../_shared/ddd-mapping.ts";
+import { getExternalClient } from "../_shared/external-client.ts";
+import { remapToExternal } from "../_shared/uuid-remap.ts";
 
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
@@ -171,6 +173,7 @@ Deno.serve(async (req) => {
 
   try {
     const supabase = createClient(RESOLVED_SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY);
+    const extClient = getExternalClient();
     const body = await req.json();
     const {
       agent_id, trigger_type, phone, instance_name, contact_name,
@@ -358,7 +361,7 @@ Deno.serve(async (req) => {
               .eq('id', createdLeadId)
               .single();
 
-            const { error } = await supabase.from('lead_activities').insert({
+            const { error } = await extClient.from('lead_activities').insert({
               lead_id: createdLeadId,
               lead_name: leadData?.lead_name || '',
               title: action.config?.title || 'Dar andamento',
@@ -420,7 +423,9 @@ Deno.serve(async (req) => {
 
             if (caseNumber && caseNumber.startsWith('CASO')) {
               try {
-                await supabase.from('lead_activities').insert({
+                const wanessaCloudUuid = '1f788b8d-e30e-484a-9460-39a881d25128';
+                const wanessaExtUuid = await remapToExternal(extClient, wanessaCloudUuid);
+                await extClient.from('lead_activities').insert({
                   lead_id: createdLeadId,
                   lead_name: leadData?.lead_name || 'Novo',
                   title: 'ONBOARDING CLIENTE',
@@ -428,7 +433,7 @@ Deno.serve(async (req) => {
                   activity_type: 'tarefa',
                   status: 'pendente',
                   priority: 'alta',
-                  assigned_to: '1f788b8d-e30e-484a-9460-39a881d25128',
+                  assigned_to: wanessaExtUuid,
                   assigned_to_name: 'Wanessa Vitória Rodrigues de Sousa',
                   deadline: new Date().toISOString().split('T')[0],
                 });

@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { geminiChat } from "../_shared/gemini.ts";
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
+import { getExternalClient } from "../_shared/external-client.ts";
+import { remapToExternal } from "../_shared/uuid-remap.ts";
 
 const SUPABASE_URL = resolveSupabaseUrl();
 const SERVICE_ROLE_KEY = resolveServiceRoleKey();
@@ -23,6 +25,7 @@ serve(async (req) => {
     }
 
     const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const extClient = getExternalClient();
 
     // 1. Fetch lead data
     const { data: lead, error: leadErr } = await sb
@@ -38,7 +41,7 @@ serve(async (req) => {
     }
 
     // 2. Check for existing AI activities
-    const { data: existingActivities } = await sb
+    const { data: existingActivities } = await extClient
       .from("lead_activities")
       .select("id, title, status, assigned_to_name, created_at")
       .eq("lead_id", lead_id)
@@ -57,7 +60,7 @@ serve(async (req) => {
 
     // If regenerating, delete previous AI activities
     if (regenerate && existingActivities && existingActivities.length > 0) {
-      await sb.from("lead_activities").delete()
+      await extClient.from("lead_activities").delete()
         .eq("lead_id", lead_id)
         .eq("created_by_ai", true);
     }
@@ -265,6 +268,8 @@ Regras:
         deadline.setDate(deadline.getDate() + 1);
       }
 
+      const assignedExtId = await remapToExternal(extClient, member.user_id);
+
       const activityData = {
         lead_id: lead.id,
         lead_name: lead.lead_name,
@@ -273,7 +278,7 @@ Regras:
         activity_type: act.activity_type,
         status: "pendente",
         priority: act.priority,
-        assigned_to: member.user_id,
+        assigned_to: assignedExtId,
         assigned_to_name: member.full_name,
         deadline: deadline.toISOString().split("T")[0],
         next_steps: act.next_steps || null,
@@ -286,7 +291,7 @@ Regras:
         },
       };
 
-      const { data: inserted, error: insertErr } = await sb
+      const { data: inserted, error: insertErr } = await extClient
         .from("lead_activities")
         .insert(activityData)
         .select()

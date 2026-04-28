@@ -3,6 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { geminiChat } from "../_shared/gemini.ts";
 
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
+import { getExternalClient } from "../_shared/external-client.ts";
+import { remapToExternal } from "../_shared/uuid-remap.ts";
 
 // Use external Supabase project when configured (hybrid architecture)
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
@@ -266,6 +268,7 @@ serve(async (req) => {
     const supabaseUrl = RESOLVED_SUPABASE_URL;
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
     const supabase = createClient(supabaseUrl, supabaseKey);
+    const extClient = getExternalClient();
     const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!GOOGLE_AI_API_KEY && !LOVABLE_API_KEY) {
@@ -984,16 +987,18 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
           }
         }
 
-        const { data: newAct, error: actErr } = await supabase
+        const assignedExtId = await remapToExternal(extClient, act.assigned_to || config.user_id);
+        const createdByExtId = await remapToExternal(extClient, config.user_id);
+        const { data: newAct, error: actErr } = await extClient
           .from("lead_activities")
           .insert({
             title: act.title,
             activity_type: validatedType,
             priority: act.priority || "normal",
             status: "pendente",
-            assigned_to: act.assigned_to || config.user_id,
+            assigned_to: assignedExtId,
             assigned_to_name: act.assigned_to_name || config.user_name,
-            created_by: config.user_id,
+            created_by: createdByExtId,
             deadline: act.deadline,
             notification_date: act.notification_date,
             notes: act.notes || null,
@@ -1077,7 +1082,7 @@ Retorne APENAS o JSON, sem markdown.` },
                   }
 
                   if (Object.keys(updateFields).length > 0) {
-                    await supabase.from("lead_activities").update(updateFields).eq("id", newAct.id);
+                    await extClient.from("lead_activities").update(updateFields).eq("id", newAct.id);
                     responseText += `\n🔍 Informações extraídas da imagem e salvas na atividade`;
                   }
                 }
@@ -1092,7 +1097,7 @@ Retorne APENAS o JSON, sem markdown.` },
       // ── Attach to existing activity ──
       if (parsed.attach_to_activity) {
         const att = parsed.attach_to_activity;
-        let query = supabase.from("lead_activities").select("id, title").order("created_at", { ascending: false }).limit(5);
+        let query = extClient.from("lead_activities").select("id, title").order("created_at", { ascending: false }).limit(5);
         if (att.activity_title_search) {
           query = query.ilike("title", `%${att.activity_title_search}%`);
         }
@@ -1326,7 +1331,7 @@ Retorne APENAS o JSON, sem markdown.` },
           const { data } = await supabase.from("leads").select("id, lead_name, status, stage_id, lead_phone, victim_name").ilike("lead_name", `%${sq.query}%`).limit(5);
           results = data || [];
         } else if (sq.search_type === "activity") {
-          const { data } = await supabase.from("lead_activities").select("id, title, status, priority, deadline, assigned_to_name").or(`title.ilike.%${sq.query}%,notes.ilike.%${sq.query}%`).order("created_at", { ascending: false }).limit(5);
+          const { data } = await extClient.from("lead_activities").select("id, title, status, priority, deadline, assigned_to_name").or(`title.ilike.%${sq.query}%,notes.ilike.%${sq.query}%`).order("created_at", { ascending: false }).limit(5);
           results = data || [];
         } else if (sq.search_type === "contact") {
           const { data } = await supabase.from("contacts").select("id, full_name, phone, email").ilike("full_name", `%${sq.query}%`).limit(5);
@@ -1371,16 +1376,19 @@ Retorne APENAS o JSON, sem markdown.` },
         const showAll = evaluatedMetrics.size === 0;
         const hasMetric = (key: string) => showAll || evaluatedMetrics.has(key);
 
+        // Remap targetUserId for External DB queries (lead_activities lives there)
+        const targetUserExtId = await remapToExternal(extClient, targetUserId);
+
         // Fetch ALL data sources in parallel
         const [
           overdueRes, goalsRes, sessionsRes, allActivitiesRes, snapshotsRes,
           contactsRes, dmsRes, repliesRes, stageHistoryRes, followupsRes,
           leadsRes, catContactsRes, completedActsRes, activityLogRes,
         ] = await Promise.all([
-          // Overdue tasks
-          supabase.from("lead_activities")
+          // Overdue tasks (External DB)
+          extClient.from("lead_activities")
             .select("id, title, deadline, priority, lead_name")
-            .eq("assigned_to", targetUserId).eq("status", "pendente")
+            .eq("assigned_to", targetUserExtId).eq("status", "pendente")
             .lt("deadline", new Date().toISOString())
             .order("deadline", { ascending: true }).limit(10),
           // Goals
@@ -1395,10 +1403,10 @@ Retorne APENAS o JSON, sem markdown.` },
             .eq("user_id", targetUserId)
             .gte("started_at", todayStart)
             .order("started_at", { ascending: false }),
-          // Activities this month
-          supabase.from("lead_activities")
+          // Activities this month (External DB)
+          extClient.from("lead_activities")
             .select("id, status, activity_type, completed_at")
-            .eq("assigned_to", targetUserId)
+            .eq("assigned_to", targetUserExtId)
             .gte("created_at", monthStart + "T00:00:00"),
           // Daily goal snapshots
           supabase.from("daily_goal_snapshots")
@@ -1439,10 +1447,10 @@ Retorne APENAS o JSON, sem markdown.` },
             .select("id, contact_channel")
             .eq("contacted_by", targetUserId)
             .gte("created_at", todayStart).lte("created_at", todayEnd),
-          // Completed activities today
-          supabase.from("lead_activities")
+          // Completed activities today (External DB)
+          extClient.from("lead_activities")
             .select("id")
-            .eq("completed_by", targetUserId).eq("status", "concluida")
+            .eq("completed_by", targetUserExtId).eq("status", "concluida")
             .gte("completed_at", todayStart).lte("completed_at", todayEnd),
           // Activity log today (page visits, checklist)
           supabase.from("user_activity_log")

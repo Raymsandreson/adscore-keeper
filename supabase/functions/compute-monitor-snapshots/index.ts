@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.4';
+import { getExternalClient } from "../_shared/external-client.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -42,6 +43,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+    const extClient = getExternalClient();
 
     // Target date: today in UTC-3 (Brazil)
     const now = new Date();
@@ -336,7 +338,7 @@ Deno.serve(async (req) => {
     if (processIds.length > 0) {
       for (let i = 0; i < processIds.length; i += 100) {
         const batch = processIds.slice(i, i + 100);
-        const { data } = await supabase.from('lead_activities').select('process_id').in('process_id', batch);
+        const { data } = await extClient.from('lead_activities').select('process_id').in('process_id', batch);
         (data || []).forEach((a: any) => { if (a.process_id) processesWithActivities.add(a.process_id); });
       }
     }
