@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useExternalUserId } from '@/hooks/useExternalUserId';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -82,6 +85,7 @@ interface ActivityChatSheetProps {
 
 export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, activityTitle, onApplySuggestion, onApplyLeadFields, onApplyContactFields, onCreateActivity }: ActivityChatSheetProps) {
   const { user } = useAuthContext();
+  const extUserId = useExternalUserId();
   
   // Get stable conversation scope IDs - general chat uses null IDs + sender_id filter
   const getConversationScope = useCallback(() => {
@@ -157,19 +161,20 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const fetchMessages = useCallback(async () => {
     const scope = getConversationScope();
     if (!scope.activity_id && !scope.lead_id && !scope.isGeneralChat) return;
+    if (!extUserId) return; // aguarda mapping carregar
     setLoading(true);
     try {
-      let query = supabase.from('activity_chat_messages').select('*').order('created_at', { ascending: true });
+      let query = externalSupabase.from('activity_chat_messages').select('*').order('created_at', { ascending: true });
       if (scope.isGeneralChat) {
         // General chat: messages with both IDs null, belonging to this user (or from AI)
         query = query.is('activity_id', null).is('lead_id', null)
-          .or(`sender_id.eq.${user?.id},sender_id.is.null`);
+          .or(`sender_id.eq.${extUserId},sender_id.is.null`);
       } else if (scope.activity_id) {
         query = query.eq('activity_id', scope.activity_id)
-          .or(`sender_id.eq.${user?.id},sender_id.is.null`);
+          .or(`sender_id.eq.${extUserId},sender_id.is.null`);
       } else if (scope.lead_id) {
         query = query.eq('lead_id', scope.lead_id)
-          .or(`sender_id.eq.${user?.id},sender_id.is.null`);
+          .or(`sender_id.eq.${extUserId},sender_id.is.null`);
       }
 
       const { data, error } = await query;
@@ -180,7 +185,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     } finally {
       setLoading(false);
     }
-  }, [getConversationScope, user?.id]);
+  }, [getConversationScope, extUserId]);
 
   // Fetch AI action suggestions
   const fetchActionSuggestions = useCallback(async (actData: any, leadData: any, contactData: any) => {
@@ -278,7 +283,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       if (error) throw error;
       if (data?.description) {
         const scope = getConversationScope();
-        await supabase.from('activity_chat_messages').insert({
+        await externalSupabase.from('activity_chat_messages').insert({
           activity_id: scope.activity_id,
           lead_id: scope.lead_id,
           message_type: 'ai_suggestion',
@@ -322,7 +327,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       if (error) throw error;
       if (data?.description) {
         // Update existing AI message
-        await supabase.from('activity_chat_messages').update({ content: data.description } as any).eq('id', regenerateConfig.msgId);
+        await externalSupabase.from('activity_chat_messages').update({ content: data.description } as any).eq('id', regenerateConfig.msgId);
         await fetchMessages();
         toast.success('Resumo regenerado!');
       }
@@ -339,7 +344,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
   const handleDeleteMessage = async (msgId: string) => {
     try {
-      await supabase.from('activity_chat_messages').update({
+      await externalSupabase.from('activity_chat_messages').update({
         deleted_at: new Date().toISOString(),
         deleted_by_name: userName || 'Usuário',
       } as any).eq('id', msgId);
@@ -361,7 +366,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     }
     setSending(true);
     try {
-      const { error } = await supabase.from('activity_chat_messages').insert({
+      const { error } = await externalSupabase.from('activity_chat_messages').insert({
         activity_id: scope.activity_id,
         lead_id: scope.lead_id,
         message_type: type,
@@ -370,7 +375,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         file_name: fileName || null,
         file_size: fileSize || null,
         audio_duration: audioDuration || null,
-        sender_id: user?.id || null,
+        sender_id: extUserId || null,
         sender_name: userName || null,
       } as any);
       if (error) throw error;
@@ -486,7 +491,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       ));
 
       // Save AI response as chat message using stable IDs
-      await supabase.from('activity_chat_messages').insert({
+      await externalSupabase.from('activity_chat_messages').insert({
         activity_id: scope.activity_id,
         lead_id: scope.lead_id,
         message_type: 'ai_suggestion',
@@ -806,7 +811,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       if (data?.suggestion) {
         setPendingSuggestion(data.suggestion);
         // Save AI suggestion as a message
-        await supabase.from('activity_chat_messages').insert({
+        await externalSupabase.from('activity_chat_messages').insert({
           activity_id: getConversationScope().activity_id,
           lead_id: getConversationScope().lead_id,
           message_type: 'ai_suggestion',
@@ -888,7 +893,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   };
 
   const renderMessage = (msg: ChatMessage) => {
-    const isOwn = msg.sender_id === user?.id;
+    const isOwn = msg.sender_id === extUserId;
     const isAI = msg.message_type === 'ai_suggestion';
     const isDeleted = !!msg.deleted_at;
 
@@ -1783,7 +1788,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                 
                 // Send follow-up message asking if user wants to open it
                 const scope = getConversationScope();
-                await supabase.from('activity_chat_messages').insert({
+                await externalSupabase.from('activity_chat_messages').insert({
                   activity_id: scope.activity_id,
                   lead_id: scope.lead_id,
                   message_type: 'ai_suggestion',

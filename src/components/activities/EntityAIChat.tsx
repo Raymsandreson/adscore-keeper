@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useExternalUserId } from '@/hooks/useExternalUserId';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -56,6 +59,7 @@ export function EntityAIChat({
   className,
 }: EntityAIChatProps) {
   const { user } = useAuthContext();
+  const extUserId = useExternalUserId();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -83,14 +87,14 @@ export function EntityAIChat({
   const conversationField = leadId ? 'lead_id' : 'activity_id';
 
   const fetchMessages = useCallback(async () => {
-    if (!conversationKey || !user?.id) return;
+    if (!conversationKey || !user?.id || !extUserId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('activity_chat_messages')
         .select('*')
         .eq(conversationField, conversationKey)
-        .or(`sender_id.eq.${user.id},sender_id.is.null`)
+        .or(`sender_id.eq.${extUserId},sender_id.is.null`)
         .order('created_at', { ascending: true });
       if (error) throw error;
       setMessages((data || []) as ChatMessage[]);
@@ -116,14 +120,14 @@ export function EntityAIChat({
       .channel(`entity_chat_${conversationKey}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_chat_messages', filter: `${conversationField}=eq.${conversationKey}` }, () => fetchMessages())
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { externalSupabase.removeChannel(channel); };
   }, [conversationKey, conversationField, fetchMessages]);
 
   const sendMessage = async (type: string, content?: string, fileUrl?: string, fileName?: string, fileSize?: number, audioDuration?: number) => {
     if (!conversationKey) return;
     setSending(true);
     try {
-      await supabase.from('activity_chat_messages').insert({
+      await externalSupabase.from('activity_chat_messages').insert({
         activity_id: activityId || null,
         lead_id: leadId,
         message_type: type,
@@ -132,7 +136,7 @@ export function EntityAIChat({
         file_name: fileName || null,
         file_size: fileSize || null,
         audio_duration: audioDuration || null,
-        sender_id: user?.id || null,
+        sender_id: extUserId || null,
         sender_name: userName || null,
       } as any);
       await fetchMessages();
@@ -206,7 +210,7 @@ export function EntityAIChat({
       }
 
       if (activityId) {
-        const { data: ad } = await supabase.from('lead_activities').select('*').eq('id', activityId).single();
+        const { data: ad } = await externalSupabase.from('lead_activities').select('*').eq('id', activityId).single();
         activityData = ad;
         if (ad?.contact_id && !contactData) {
           const { data: cd } = await supabase.from('contacts').select('*').eq('id', (ad as any).contact_id).single();
@@ -244,7 +248,7 @@ export function EntityAIChat({
         i <= 2 ? { ...s, status: 'done' } : i === 3 ? { ...s, status: 'active' } : s
       ));
 
-      await supabase.from('activity_chat_messages').insert({
+      await externalSupabase.from('activity_chat_messages').insert({
         activity_id: activityId || null,
         lead_id: leadId || null,
         message_type: 'ai_suggestion',
@@ -392,7 +396,7 @@ export function EntityAIChat({
   };
 
   const renderMessage = (msg: ChatMessage) => {
-    const isOwn = msg.sender_id === user?.id;
+    const isOwn = msg.sender_id === extUserId;
     const isAI = msg.message_type === 'ai_suggestion';
     const isDeleted = !!msg.deleted_at;
 
