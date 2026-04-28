@@ -1331,7 +1331,7 @@ Retorne APENAS o JSON, sem markdown.` },
           const { data } = await supabase.from("leads").select("id, lead_name, status, stage_id, lead_phone, victim_name").ilike("lead_name", `%${sq.query}%`).limit(5);
           results = data || [];
         } else if (sq.search_type === "activity") {
-          const { data } = await supabase.from("lead_activities").select("id, title, status, priority, deadline, assigned_to_name").or(`title.ilike.%${sq.query}%,notes.ilike.%${sq.query}%`).order("created_at", { ascending: false }).limit(5);
+          const { data } = await extClient.from("lead_activities").select("id, title, status, priority, deadline, assigned_to_name").or(`title.ilike.%${sq.query}%,notes.ilike.%${sq.query}%`).order("created_at", { ascending: false }).limit(5);
           results = data || [];
         } else if (sq.search_type === "contact") {
           const { data } = await supabase.from("contacts").select("id, full_name, phone, email").ilike("full_name", `%${sq.query}%`).limit(5);
