@@ -1403,10 +1403,10 @@ Retorne APENAS o JSON, sem markdown.` },
             .eq("user_id", targetUserId)
             .gte("started_at", todayStart)
             .order("started_at", { ascending: false }),
-          // Activities this month
-          supabase.from("lead_activities")
+          // Activities this month (External DB)
+          extClient.from("lead_activities")
             .select("id, status, activity_type, completed_at")
-            .eq("assigned_to", targetUserId)
+            .eq("assigned_to", targetUserExtId)
             .gte("created_at", monthStart + "T00:00:00"),
           // Daily goal snapshots
           supabase.from("daily_goal_snapshots")
