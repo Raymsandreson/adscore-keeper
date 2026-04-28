@@ -286,7 +286,8 @@ Deno.serve(async (req) => {
         const signerName = justSignedSigner.name || 'Signatário'
         const docName = localDoc.document_name || 'Documento'
 
-        await supabase.from('lead_activities').insert({
+        const createdByExtId = localDoc.created_by ? await remapToExternal(extClient, localDoc.created_by) : null
+        await extClient.from('lead_activities').insert({
           lead_id: localDoc.lead_id,
           lead_name: localDoc.signer_name || 'Documento',
           title: `Assinatura: ${signerName} assinou "${docName}"`,
@@ -294,7 +295,7 @@ Deno.serve(async (req) => {
           activity_type: 'documento',
           status: isDocFullySigned ? 'concluida' : 'pendente',
           priority: 'normal',
-          created_by: localDoc.created_by || null,
+          created_by: createdByExtId,
           deadline: new Date().toISOString().slice(0, 10),
           completed_at: isDocFullySigned ? new Date().toISOString() : null,
         })
