@@ -180,7 +180,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const res = await migrateTable(body.table, body.batch_size || 500, body.max_batches || 9999, !!body.dry_run);
+    const res = await migrateTable(body.table, body.batch_size || 500, body.max_batches || 9999, !!body.dry_run, body.after_id || null);
     return new Response(JSON.stringify({ success: true, ...res }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
