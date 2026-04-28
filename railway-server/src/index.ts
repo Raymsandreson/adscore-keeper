@@ -23,6 +23,28 @@ app.use('/functions', (req, res, next) => {
   next();
 });
 
+// ============================================================
+// ROTA PÚBLICA — UazAPI webhook (sem x-api-key)
+// UazAPI não envia headers customizados; esta rota é exposta
+// para receber webhooks diretamente das instâncias.
+// O handler valida instance_name contra o banco antes de persistir.
+// ============================================================
+app.post('/webhooks/uazapi/:instance_name', async (req, res) => {
+  const { whatsappWebhookHandler } = { whatsappWebhookHandler: undefined as any };
+  try {
+    // Reaproveita o mesmo handler usado em /functions/whatsapp-webhook
+    await functionHandlers['whatsapp-webhook'](req, res, () => {});
+  } catch (err) {
+    console.error('[uazapi-webhook] Error:', err);
+    if (!res.headersSent) {
+      res.status(200).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'Unknown error',
+      });
+    }
+  }
+});
+
 // Health check
 app.get('/health', (_req, res) => {
   res.json({ 
