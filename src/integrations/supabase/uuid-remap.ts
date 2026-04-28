@@ -13,6 +13,7 @@
 import { externalSupabase } from './external-client';
 
 let cache: Map<string, string> | null = null;
+let reverseCache: Map<string, string> | null = null;
 let cachePromise: Promise<Map<string, string>> | null = null;
 
 async function loadCache(): Promise<Map<string, string>> {
@@ -31,10 +32,13 @@ async function loadCache(): Promise<Map<string, string>> {
     }
 
     const map = new Map<string, string>();
+    const reverse = new Map<string, string>();
     for (const row of ((data as Array<{ cloud_uuid: string; ext_uuid: string }>) || [])) {
       map.set(row.cloud_uuid, row.ext_uuid);
+      reverse.set(row.ext_uuid, row.cloud_uuid);
     }
     cache = map;
+    reverseCache = reverse;
     return map;
   })();
 
@@ -69,5 +73,23 @@ export async function ensureRemapCache(): Promise<void> {
 /** Força reload do cache (após signup de novo usuário, por exemplo). */
 export function invalidateRemapCache(): void {
   cache = null;
+  reverseCache = null;
   cachePromise = null;
+}
+
+/**
+ * Converte UUID do Externo de volta para Cloud (para agregar dashboards
+ * que misturam IDs de Cloud e Externo). Fallback: retorna o próprio uuid
+ * (caso de identidade).
+ */
+export async function remapToCloud(extUuid: string | null | undefined): Promise<string | null> {
+  if (!extUuid) return null;
+  await loadCache();
+  return reverseCache?.get(extUuid) ?? extUuid;
+}
+
+export function remapToCloudSync(extUuid: string | null | undefined): string | null {
+  if (!extUuid) return null;
+  if (!reverseCache) return extUuid;
+  return reverseCache.get(extUuid) ?? extUuid;
 }

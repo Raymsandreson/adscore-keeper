@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -91,9 +93,9 @@ export function DailyReportDialog({
           .eq('replied_by', userId)
           .gte('replied_at', startDate).lte('replied_at', endDate)
           .order('replied_at', { ascending: false }),
-        supabase.from('lead_activities')
+        (externalSupabase as any).from('lead_activities')
           .select('id, title, lead_name, completed_at')
-          .eq('completed_by', userId)
+          .eq('completed_by', (await remapToExternal(userId)) || userId)
           .eq('status', 'concluida')
           .gte('completed_at', startDate).lte('completed_at', endDate)
           .order('completed_at', { ascending: false }),

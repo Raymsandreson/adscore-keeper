@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { ensureRemapCache, remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { useUserRole } from './useUserRole';
 import { startOfDay, endOfDay, format } from 'date-fns';
 
@@ -102,6 +104,9 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       const startDate = startOfDay(dateRange.start).toISOString();
       const endDate = endOfDay(dateRange.end).toISOString();
 
+      // Garante que cache de mapeamento UUID Cloud<->External esteja pronto
+      await ensureRemapCache();
+
       // Fetch all data sources in parallel
       const [
         contactsRes,
@@ -154,12 +159,12 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         supabase.from('cat_lead_contacts').select('id, contacted_by, contact_channel, created_at')
           .gte('created_at', startDate).lte('created_at', endDate)
           .not('contacted_by', 'is', null),
-        // Lead activities - completed
-        supabase.from('lead_activities').select('id, assigned_to, status, deadline, completed_at, completed_by')
+        // Lead activities - completed (External DB)
+        (externalSupabase as any).from('lead_activities').select('id, assigned_to, status, deadline, completed_at, completed_by')
           .eq('status', 'concluida')
           .gte('completed_at', startDate).lte('completed_at', endDate),
-        // Lead activities - overdue (pendente with deadline before now)
-        supabase.from('lead_activities').select('id, assigned_to, status, deadline')
+        // Lead activities - overdue (External DB)
+        (externalSupabase as any).from('lead_activities').select('id, assigned_to, status, deadline')
           .eq('status', 'pendente')
           .lt('deadline', format(new Date(), 'yyyy-MM-dd'))
           .not('deadline', 'is', null),
@@ -193,8 +198,8 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       activities.forEach(a => allUserIds.add(a.user_id));
       catContacts.forEach(c => c.contacted_by && allUserIds.add(c.contacted_by));
       stageHistory.forEach(s => (s as any).changed_by && allUserIds.add((s as any).changed_by));
-      completedActivities.forEach(a => a.completed_by && allUserIds.add(a.completed_by));
-      overdueActivities.forEach(a => a.assigned_to && allUserIds.add(a.assigned_to));
+      completedActivities.forEach((a: any) => { const cb = remapToCloudSync(a.completed_by); if (cb) { a.completed_by = cb; allUserIds.add(cb); } });
+      overdueActivities.forEach((a: any) => { const at = remapToCloudSync(a.assigned_to); if (at) { a.assigned_to = at; allUserIds.add(at); } });
       metaDailyMetrics.forEach(m => m.user_id && allUserIds.add(m.user_id));
 
       // Fetch profiles

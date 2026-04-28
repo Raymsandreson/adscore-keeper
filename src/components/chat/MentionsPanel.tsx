@@ -11,6 +11,7 @@ import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { TeamDirectChatPanel } from './TeamDirectChatPanel';
 import { subscribeToTeamChatConversation, type TeamChatOpenIntent } from '@/lib/teamChatPanelEvents';
 
@@ -66,7 +67,7 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
     try {
       let entityExists = true;
       if (mention.entity_type === 'activity') {
-        const { data } = await supabase.from('lead_activities').select('id').eq('id', mention.entity_id).maybeSingle();
+        const { data } = await (externalSupabase as any).from('lead_activities').select('id').eq('id', mention.entity_id).maybeSingle();
         entityExists = !!data;
       } else if (mention.entity_type === 'lead') {
         const { data } = await supabase.from('leads').select('id').eq('id', mention.entity_id).maybeSingle();

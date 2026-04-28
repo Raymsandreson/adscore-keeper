@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useTeamProductivity } from '@/hooks/useTeamProductivity';
 import { toast } from 'sonner';
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, format } from 'date-fns';
@@ -458,13 +460,14 @@ export function CommissionGoals() {
           break;
         }
         case 'activities_completed': {
-          const { data } = await supabase.from('lead_activities')
+          const extUserId = (await remapToExternal(userId)) || userId;
+          const { data } = await (externalSupabase as any).from('lead_activities')
             .select('id, title, lead_name, completed_at')
-            .eq('completed_by', userId)
+            .eq('completed_by', extUserId)
             .eq('status', 'concluida')
             .gte('completed_at', startDate).lte('completed_at', endDate)
             .order('completed_at', { ascending: false });
-          items = (data || []).map(a => ({ id: a.id, label: a.title, sublabel: a.lead_name, date: a.completed_at }));
+          items = (data || []).map((a: any) => ({ id: a.id, label: a.title, sublabel: a.lead_name, date: a.completed_at }));
           break;
         }
         case 'stages':

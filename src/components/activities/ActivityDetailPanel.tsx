@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -208,7 +209,7 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
         supabase.from('leads').select('*').eq('id', leadId).single(),
         supabase.from('contact_leads').select('contact_id, relationship_to_victim').eq('lead_id', leadId),
         supabase.from('lead_stage_history').select('*').eq('lead_id', leadId).order('changed_at', { ascending: false }),
-        supabase.from('lead_activities').select('id, title, activity_type, status, deadline, created_at, assigned_to_name, completed_at').eq('lead_id', leadId).order('created_at', { ascending: false }),
+        (externalSupabase as any).from('lead_activities').select('id, title, activity_type, status, deadline, created_at, assigned_to_name, completed_at').eq('lead_id', leadId).order('created_at', { ascending: false }),
       ]);
 
       if (leadRes.data) setLead(leadRes.data as LeadData);
