@@ -15,6 +15,7 @@ import { ActivityMessageTemplateSettings } from '@/components/activities/Activit
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
 
