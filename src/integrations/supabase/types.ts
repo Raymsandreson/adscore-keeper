@@ -6346,6 +6346,51 @@ export type Database = {
           },
         ]
       }
+      migration_progress: {
+        Row: {
+          attempts: number
+          batches: number
+          finished_at: string | null
+          last_error: string | null
+          last_id: string | null
+          ordering: number
+          started_at: string | null
+          status: string
+          table_name: string
+          total_read: number
+          total_upserted: number
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          batches?: number
+          finished_at?: string | null
+          last_error?: string | null
+          last_id?: string | null
+          ordering: number
+          started_at?: string | null
+          status?: string
+          table_name: string
+          total_read?: number
+          total_upserted?: number
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          batches?: number
+          finished_at?: string | null
+          last_error?: string | null
+          last_id?: string | null
+          ordering?: number
+          started_at?: string | null
+          status?: string
+          table_name?: string
+          total_read?: number
+          total_upserted?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       monitor_kpi_snapshots: {
         Row: {
           closed_aggregates: Json
