@@ -607,14 +607,15 @@ async function processAgentConversationFollowups(supabase: any, targetPhone?: st
         .not("lead_id", "is", null)
         .order("created_at", { ascending: false }).limit(1).maybeSingle();
 
-      await supabase.from("lead_activities").insert({
+      const assignedExtId = assignedTo ? await remapToExternal(extClient, assignedTo) : null;
+      await extClient.from("lead_activities").insert({
         lead_id: msgWithLead?.lead_id || null,
         title: `Follow-up pendente: ${conv.phone}`,
         description: `O cliente ${conv.phone} não respondeu após as tentativas automáticas de follow-up via agente ${config.shortcut_name}.`,
         activity_type: step.activity_type || "tarefa",
         status: "pendente",
         priority: step.priority || "alta",
-        assigned_to: assignedTo,
+        assigned_to: assignedExtId,
         assigned_to_name: assignedName,
         deadline: new Date().toISOString().split("T")[0],
       });
