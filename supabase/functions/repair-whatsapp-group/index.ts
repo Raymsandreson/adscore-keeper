@@ -6,7 +6,7 @@ const RAILWAY = 'https://adscore-keeper-production.up.railway.app/functions/repa
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id',
 };
 
 interface Instance {
