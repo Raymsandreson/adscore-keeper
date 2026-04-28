@@ -120,7 +120,7 @@ export function EntityAIChat({
       .channel(`entity_chat_${conversationKey}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_chat_messages', filter: `${conversationField}=eq.${conversationKey}` }, () => fetchMessages())
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { externalSupabase.removeChannel(channel); };
   }, [conversationKey, conversationField, fetchMessages]);
 
   const sendMessage = async (type: string, content?: string, fileUrl?: string, fileName?: string, fileSize?: number, audioDuration?: number) => {
@@ -210,7 +210,7 @@ export function EntityAIChat({
       }
 
       if (activityId) {
-        const { data: ad } = await supabase.from('lead_activities').select('*').eq('id', activityId).single();
+        const { data: ad } = await externalSupabase.from('lead_activities').select('*').eq('id', activityId).single();
         activityData = ad;
         if (ad?.contact_id && !contactData) {
           const { data: cd } = await supabase.from('contacts').select('*').eq('id', (ad as any).contact_id).single();
