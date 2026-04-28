@@ -106,7 +106,8 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
         };
 
         if (activityId) {
-          const { data, error } = await supabase
+          const extUserId = await remapToExternal(user?.id || null);
+          const { data, error } = await externalSupabase
             .from('activity_attachments')
             .insert({
               activity_id: activityId,
@@ -115,7 +116,7 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
               file_type: file.type,
               file_size: file.size,
               attachment_type: attachmentType,
-              created_by: user?.id,
+              created_by: extUserId,
             })
             .select()
             .single();
@@ -202,7 +203,8 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
     };
 
     if (activityId) {
-      const { data, error } = await supabase
+      const extUserId = await remapToExternal(user?.id || null);
+      const { data, error } = await externalSupabase
         .from('activity_attachments')
         .insert({
           activity_id: activityId,
@@ -212,7 +214,7 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
           attachment_type: 'link',
           link_url: linkUrl,
           link_title: linkTitle || null,
-          created_by: user?.id,
+          created_by: extUserId,
         })
         .select()
         .single();
