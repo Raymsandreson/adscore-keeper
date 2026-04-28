@@ -987,16 +987,18 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
           }
         }
 
-        const { data: newAct, error: actErr } = await supabase
+        const assignedExtId = await remapToExternal(extClient, act.assigned_to || config.user_id);
+        const createdByExtId = await remapToExternal(extClient, config.user_id);
+        const { data: newAct, error: actErr } = await extClient
           .from("lead_activities")
           .insert({
             title: act.title,
             activity_type: validatedType,
             priority: act.priority || "normal",
             status: "pendente",
-            assigned_to: act.assigned_to || config.user_id,
+            assigned_to: assignedExtId,
             assigned_to_name: act.assigned_to_name || config.user_name,
-            created_by: config.user_id,
+            created_by: createdByExtId,
             deadline: act.deadline,
             notification_date: act.notification_date,
             notes: act.notes || null,
