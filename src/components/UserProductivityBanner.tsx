@@ -364,9 +364,10 @@ export function UserProductivityBanner() {
 
     const todayDateStr = new Date().toISOString().split('T')[0];
 
+    const extUserId = (await remapToExternal(userId)) || userId;
     const [activitiesRes, callsRes, leadsRes, contactsRes, dmsRes, commentsRes, stageRes, checklistRes, completedRes, trafficRes] = await Promise.all([
-      supabase.from('lead_activities').select('title, status, lead_name')
-        .eq('assigned_to', userId).eq('activity_type', activityType)
+      (externalSupabase as any).from('lead_activities').select('title, status, lead_name')
+        .eq('assigned_to', extUserId).eq('activity_type', activityType)
         .gte('created_at', todayStart).lte('created_at', todayEnd)
         .order('created_at', { ascending: false }).limit(20),
       supabase.from('call_records').select('id, call_result')
@@ -385,8 +386,8 @@ export function UserProductivityBanner() {
       supabase.from('user_activity_log').select('id')
         .eq('user_id', userId).eq('action_type', 'checklist_item_checked')
         .gte('created_at', bStart).lte('created_at', bEnd),
-      supabase.from('lead_activities').select('id')
-        .eq('status', 'concluida').eq('completed_by', userId)
+      (externalSupabase as any).from('lead_activities').select('id')
+        .eq('status', 'concluida').eq('completed_by', extUserId)
         .gte('completed_at', bStart).lte('completed_at', bEnd),
       supabase.from('meta_daily_metrics').select('leads_received, leads_qualified, creatives_active, spend, clicks, impressions')
         .eq('user_id', userId).eq('metric_date', todayDateStr),
