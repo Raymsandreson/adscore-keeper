@@ -41,7 +41,7 @@ serve(async (req) => {
     }
 
     // 2. Check for existing AI activities
-    const { data: existingActivities } = await sb
+    const { data: existingActivities } = await extClient
       .from("lead_activities")
       .select("id, title, status, assigned_to_name, created_at")
       .eq("lead_id", lead_id)
