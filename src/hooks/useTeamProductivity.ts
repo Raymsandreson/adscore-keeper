@@ -104,6 +104,9 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       const startDate = startOfDay(dateRange.start).toISOString();
       const endDate = endOfDay(dateRange.end).toISOString();
 
+      // Garante que cache de mapeamento UUID Cloud<->External esteja pronto
+      await ensureRemapCache();
+
       // Fetch all data sources in parallel
       const [
         contactsRes,
@@ -195,8 +198,8 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       activities.forEach(a => allUserIds.add(a.user_id));
       catContacts.forEach(c => c.contacted_by && allUserIds.add(c.contacted_by));
       stageHistory.forEach(s => (s as any).changed_by && allUserIds.add((s as any).changed_by));
-      completedActivities.forEach(a => a.completed_by && allUserIds.add(a.completed_by));
-      overdueActivities.forEach(a => a.assigned_to && allUserIds.add(a.assigned_to));
+      completedActivities.forEach((a: any) => { const cb = remapToCloudSync(a.completed_by); if (cb) { a.completed_by = cb; allUserIds.add(cb); } });
+      overdueActivities.forEach((a: any) => { const at = remapToCloudSync(a.assigned_to); if (at) { a.assigned_to = at; allUserIds.add(at); } });
       metaDailyMetrics.forEach(m => m.user_id && allUserIds.add(m.user_id));
 
       // Fetch profiles
