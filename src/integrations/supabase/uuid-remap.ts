@@ -73,5 +73,23 @@ export async function ensureRemapCache(): Promise<void> {
 /** Força reload do cache (após signup de novo usuário, por exemplo). */
 export function invalidateRemapCache(): void {
   cache = null;
+  reverseCache = null;
   cachePromise = null;
+}
+
+/**
+ * Converte UUID do Externo de volta para Cloud (para agregar dashboards
+ * que misturam IDs de Cloud e Externo). Fallback: retorna o próprio uuid
+ * (caso de identidade).
+ */
+export async function remapToCloud(extUuid: string | null | undefined): Promise<string | null> {
+  if (!extUuid) return null;
+  await loadCache();
+  return reverseCache?.get(extUuid) ?? extUuid;
+}
+
+export function remapToCloudSync(extUuid: string | null | undefined): string | null {
+  if (!extUuid) return null;
+  if (!reverseCache) return extUuid;
+  return reverseCache.get(extUuid) ?? extUuid;
 }
