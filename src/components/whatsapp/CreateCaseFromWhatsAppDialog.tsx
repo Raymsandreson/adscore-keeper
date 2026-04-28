@@ -13,6 +13,8 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { Loader2, Scale, Sparkles, CalendarIcon, AlertTriangle, CheckSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';

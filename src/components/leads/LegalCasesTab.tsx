@@ -33,6 +33,8 @@ import { useProcessParties, partyRoleLabels, PartyRole } from '@/hooks/useProces
 import { autoCreatePartiesFromEnvolvidos } from '@/utils/escavadorPartyUtils';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import {
   Plus, Scale, Gavel, FileText, Trash2, Edit3, Archive, CheckCircle,
   ChevronDown, ChevronRight, FolderOpen, Users, Briefcase, XCircle, RefreshCw, Loader2, ScrollText, Upload, Sparkles, Bell, BellOff, BellRing,

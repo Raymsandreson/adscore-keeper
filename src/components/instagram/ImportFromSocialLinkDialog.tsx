@@ -20,6 +20,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { usePostMetadata } from '@/hooks/usePostMetadata';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
 import { useAuthContext } from '@/contexts/AuthContext';

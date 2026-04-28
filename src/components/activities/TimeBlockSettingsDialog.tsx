@@ -13,6 +13,7 @@ import {
   Sparkles, Loader2, Wand2, GripVertical, CheckCircle2, Circle,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { useActivityTypes, ActivityType } from '@/hooks/useActivityTypes';
 import { useUserRole } from '@/hooks/useUserRole';

@@ -57,6 +57,7 @@ import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
 import { differenceInDays, differenceInHours } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { LeadContactsManager } from './LeadContactsManager';
 import { LeadCardChecklists } from './LeadCardChecklists';
 import { ProfessionBadgePopover } from '@/components/instagram/ProfessionBadgePopover';

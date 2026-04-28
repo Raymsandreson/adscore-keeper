@@ -17,6 +17,8 @@ import {
 import { Search, Gavel, FileText, Loader2, AlertCircle, CheckCircle2, ClipboardList, Plus } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { autoCreatePartiesFromEnvolvidos } from '@/utils/escavadorPartyUtils';
