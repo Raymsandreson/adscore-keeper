@@ -481,8 +481,8 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           </Select>
         </div>
         <div>
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-            Tipo *{props.aiSuggestingType && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider inline-flex items-center gap-1 leading-none h-[14px]">
+            <span>Tipo *</span>{props.aiSuggestingType && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
           </span>
           <Select value={props.formType} onValueChange={props.setFormType}>
             <SelectTrigger className="h-8 text-xs mt-0.5"><SelectValue /></SelectTrigger>
