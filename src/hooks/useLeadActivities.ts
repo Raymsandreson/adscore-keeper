@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { supabase as cloudSupabase } from '@/integrations/supabase/client';
+import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -51,7 +53,9 @@ export function useLeadActivities() {
   }) => {
     setLoading(true);
     try {
-      let query = supabase
+      await ensureRemapCache();
+
+      let query = externalSupabase
         .from('lead_activities')
         .select('*')
         .is('deleted_at', null)
@@ -73,16 +77,19 @@ export function useLeadActivities() {
         const vals = Array.isArray(filters.assigned_to) ? filters.assigned_to : [filters.assigned_to];
         const filtered = vals.filter(v => v !== 'all');
         const hasUnassigned = filtered.includes('__unassigned__');
-        const userIds = filtered.filter(v => v !== '__unassigned__');
-        
-        if (hasUnassigned && userIds.length > 0) {
-          query = query.or(`assigned_to.in.(${userIds.join(',')}),assigned_to.is.null`);
+        const cloudUserIds = filtered.filter(v => v !== '__unassigned__');
+        // Remapear cloud → ext para casar com o que está no Externo
+        const userIds = await Promise.all(cloudUserIds.map(id => remapToExternal(id)));
+        const validIds = userIds.filter(Boolean) as string[];
+
+        if (hasUnassigned && validIds.length > 0) {
+          query = query.or(`assigned_to.in.(${validIds.join(',')}),assigned_to.is.null`);
         } else if (hasUnassigned) {
           query = query.is('assigned_to', null);
-        } else if (userIds.length === 1) {
-          query = query.eq('assigned_to', userIds[0]);
-        } else if (userIds.length > 1) {
-          query = query.in('assigned_to', userIds);
+        } else if (validIds.length === 1) {
+          query = query.eq('assigned_to', validIds[0]);
+        } else if (validIds.length > 1) {
+          query = query.in('assigned_to', validIds);
         }
       }
       if (filters?.lead_id) {
@@ -98,7 +105,6 @@ export function useLeadActivities() {
         else if (filtered.length > 1) query = query.in('contact_id', filtered);
       }
 
-      // Apply limit to prevent loading too many records at once
       const maxRows = filters?.limit ?? 500;
       query = query.limit(maxRows);
 
@@ -115,15 +121,18 @@ export function useLeadActivities() {
 
   const createActivity = async (activity: Partial<LeadActivity>) => {
     try {
-      // Validação obrigatória: precisa ter vínculo (lead/caso/processo) OU ser marcada como atividade do sistema
       const hasLink = !!(activity.lead_id || activity.case_id || activity.process_id);
       if (!hasLink && !activity.is_system) {
         toast.error('Vincule a atividade a um Lead ou Caso, ou marque como "Atividade do Sistema".');
         throw new Error('LINK_REQUIRED');
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data, error } = await supabase
+      const { data: { user } } = await cloudSupabase.auth.getUser();
+      const cloudUserId = user?.id || null;
+      const extUserId = await remapToExternal(cloudUserId);
+      const extAssignedTo = await remapToExternal(activity.assigned_to || cloudUserId);
+
+      const { data, error } = await externalSupabase
         .from('lead_activities')
         .insert({
           title: activity.title || 'Nova Atividade',
@@ -133,12 +142,12 @@ export function useLeadActivities() {
           activity_type: activity.activity_type || 'tarefa',
           status: 'pendente',
           priority: activity.priority || 'normal',
-          assigned_to: activity.assigned_to || user?.id || null,
+          assigned_to: extAssignedTo,
           assigned_to_name: activity.assigned_to_name || null,
           deadline: activity.deadline || null,
           notification_date: activity.notification_date || null,
           notes: activity.notes || null,
-          created_by: user?.id || null,
+          created_by: extUserId,
           contact_id: activity.contact_id || null,
           contact_name: activity.contact_name || null,
           what_was_done: activity.what_was_done || null,
@@ -177,7 +186,6 @@ export function useLeadActivities() {
 
       toast.success('Atividade criada!');
 
-      // Send WhatsApp notification to assigned user (best-effort, silent)
       if (data) {
         cloudFunctions.invoke('notify-activity-created', {
           body: {
@@ -187,9 +195,10 @@ export function useLeadActivities() {
             activity_type: activity.activity_type,
             status: 'pendente',
             priority: activity.priority,
-            assigned_to: activity.assigned_to || user?.id,
+            // Notificações usam Cloud UUID (continuam batendo no Cloud auth)
+            assigned_to: activity.assigned_to || cloudUserId,
             assigned_to_name: activity.assigned_to_name,
-            created_by: user?.id,
+            created_by: cloudUserId,
             deadline: activity.deadline,
             lead_name: activity.lead_name,
             lead_id: activity.lead_id,
@@ -214,17 +223,25 @@ export function useLeadActivities() {
 
   const updateActivity = async (id: string, updates: Partial<LeadActivity>) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase
+      const { data: { user } } = await cloudSupabase.auth.getUser();
+      const extUserId = await remapToExternal(user?.id || null);
+
+      // Remap assigned_to se estiver sendo atualizado (UI passa Cloud UUID)
+      const patch: any = { ...updates, updated_by: extUserId };
+      if ('assigned_to' in updates) {
+        patch.assigned_to = await remapToExternal(updates.assigned_to || null);
+      }
+
+      const { error } = await externalSupabase
         .from('lead_activities')
-        .update({ ...updates, updated_by: user?.id || null } as any)
+        .update(patch)
         .eq('id', id);
 
       if (error) throw error;
 
       // If linking a lead, migrate orphan chat messages from activity_id to lead_id
       if (updates.lead_id) {
-        await supabase
+        await externalSupabase
           .from('activity_chat_messages')
           .update({ lead_id: updates.lead_id } as any)
           .eq('activity_id', id)
@@ -240,20 +257,33 @@ export function useLeadActivities() {
 
   const completeActivity = async (id: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: profile } = await supabase
+      const { data: { user } } = await cloudSupabase.auth.getUser();
+      const extUserId = await remapToExternal(user?.id || null);
+
+      // Profile pode estar no Cloud ou no Externo — tentar Externo primeiro
+      let fullName: string | null = null;
+      const { data: extProfile } = await externalSupabase
         .from('profiles')
         .select('full_name')
-        .eq('user_id', user?.id || '')
-        .single();
+        .eq('user_id', extUserId || '')
+        .maybeSingle();
+      fullName = extProfile?.full_name || null;
+      if (!fullName) {
+        const { data: cloudProfile } = await cloudSupabase
+          .from('profiles')
+          .select('full_name')
+          .eq('user_id', user?.id || '')
+          .maybeSingle();
+        fullName = cloudProfile?.full_name || null;
+      }
 
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('lead_activities')
         .update({
           status: 'concluida',
           completed_at: new Date().toISOString(),
-          completed_by: user?.id || null,
-          completed_by_name: profile?.full_name || null,
+          completed_by: extUserId,
+          completed_by_name: fullName,
         })
         .eq('id', id);
 
@@ -267,14 +297,12 @@ export function useLeadActivities() {
 
   const deleteActivity = async (id: string) => {
     try {
-      // Fetch full snapshot before archiving
-      const { data: snapshot } = await supabase
+      const { data: snapshot } = await externalSupabase
         .from('lead_activities')
         .select('*')
         .eq('id', id)
         .single();
 
-      // Save snapshot to audit log
       if (snapshot) {
         await logAudit({
           action: 'delete',
@@ -285,8 +313,7 @@ export function useLeadActivities() {
         });
       }
 
-      // Soft delete
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('lead_activities')
         .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', id);
