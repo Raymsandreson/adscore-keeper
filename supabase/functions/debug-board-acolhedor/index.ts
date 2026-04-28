@@ -13,61 +13,43 @@ serve(async (req) => {
     const key = (Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || "").trim();
     const supabase = createClient(url, key);
 
-    const MYSTERY_ID = "7f41a35e-7d98-4ade-8270-52d727433e6a";
-    const REAL_ABDER = "b68dab6e-007f-45fc-ba27-eb378a711124";
+    const OLD = "7f41a35e-7d98-4ade-8270-52d727433e6a";
 
-    // Profile lookup for the mystery ID
-    const { data: mysteryProfile } = await supabase
-      .from("profiles").select("*").eq("user_id", MYSTERY_ID).maybeSingle();
-
-    // Search ALL Abderaman profiles
-    const { data: allAbder } = await supabase
-      .from("profiles")
-      .select("user_id, full_name, email, created_at")
-      .ilike("full_name", "%abderam%");
-
-    // Search team_members 
-    const { data: tm1 } = await supabase
-      .from("team_members")
+    // Inspect a couple of activities created_by OLD to see what produced them
+    const { data: created } = await supabase
+      .from("lead_activities")
       .select("*")
-      .or(`user_id.eq.${MYSTERY_ID},user_id.eq.${REAL_ABDER}`).limit(10);
+      .eq("created_by", OLD)
+      .order("created_at", { ascending: false })
+      .limit(15);
 
-    // Counts of activities by assigned_to per id
-    const { count: actsMystery } = await supabase
-      .from("lead_activities").select("id", { count: "exact", head: true })
-      .eq("assigned_to", MYSTERY_ID);
-    const { count: actsReal } = await supabase
-      .from("lead_activities").select("id", { count: "exact", head: true })
-      .eq("assigned_to", REAL_ABDER);
+    // Check workflow / process / routine references
+    const tables = [
+      "workflow_steps", "workflow_objectives", "workflow_phases", 
+      "routine_processes", "routine_process_goals", "routine_member_assignments",
+      "activity_message_templates", "activity_types",
+      "agent_stage_assignments", "agent_role_assignments",
+      "card_assignments", "checklists", "checklist_items",
+      "field_stage_requirements", "module_permissions", "access_profiles",
+      "kanban_boards", "module_assignments", "instance_assignments",
+    ];
 
-    // Where is mystery used as created_by in activities?
-    const { count: createdByMystery } = await supabase
-      .from("lead_activities").select("id", { count: "exact", head: true })
-      .eq("created_by", MYSTERY_ID);
-
-    // Activity types related to "previdenc" 
-    const { data: actTypes } = await supabase
-      .from("activity_types")
-      .select("*")
-      .or("name.ilike.%previd%,key.ilike.%previd%,category.ilike.%previd%");
-
-    // Look for any default_assignee or default_user setting
-    const { data: settings } = await supabase
-      .from("activity_field_settings")
-      .select("*").limit(50);
+    const hits: Record<string, any> = {};
+    for (const t of tables) {
+      try {
+        const { data, error } = await supabase.from(t).select("*").limit(1000);
+        if (error) { hits[t] = { error: error.message }; continue; }
+        const matches = (data || []).filter((row: any) => JSON.stringify(row).includes(OLD));
+        if (matches.length) hits[t] = { count: matches.length, samples: matches.slice(0, 3) };
+      } catch (e) {
+        hits[t] = { error: String(e) };
+      }
+    }
 
     return new Response(JSON.stringify({
-      mystery_id: MYSTERY_ID,
-      mystery_profile_lookup: mysteryProfile,
-      all_abderaman_profiles: allAbder,
-      team_members_match: tm1,
-      counts: {
-        activities_assigned_to_mystery: actsMystery,
-        activities_assigned_to_real_abder: actsReal,
-        activities_created_by_mystery: createdByMystery,
-      },
-      activity_types_previdenc: actTypes,
-      activity_field_settings_sample: settings,
+      old_id: OLD,
+      activities_created_by_old: created,
+      tables_referencing_old_id: hits,
     }, null, 2), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
