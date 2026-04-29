@@ -596,7 +596,7 @@ export const useLeads = (adAccountId?: string) => {
 
   const toggleFollower = async (leadId: string, isFollower: boolean) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('leads')
         .update({ is_follower: isFollower })
         .eq('id', leadId);
