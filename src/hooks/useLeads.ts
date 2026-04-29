@@ -524,7 +524,7 @@ export const useLeads = (adAccountId?: string) => {
 
     try {
       // Atualiza status local para "syncing"
-      await supabase
+      await externalSupabase
         .from('leads')
         .update({ sync_status: 'syncing' })
         .eq('id', leadId);
@@ -542,7 +542,7 @@ export const useLeads = (adAccountId?: string) => {
 
       if (data.success) {
         // Atualiza status de sincronização
-        await supabase
+        await externalSupabase
           .from('leads')
           .update({ 
             sync_status: 'synced',
@@ -554,7 +554,7 @@ export const useLeads = (adAccountId?: string) => {
         fetchLeads();
         return { success: true };
       } else {
-        await supabase
+        await externalSupabase
           .from('leads')
           .update({ sync_status: 'error' })
           .eq('id', leadId);
@@ -564,7 +564,7 @@ export const useLeads = (adAccountId?: string) => {
     } catch (error) {
       console.error('Erro ao sincronizar com Facebook:', error);
       
-      await supabase
+      await externalSupabase
         .from('leads')
         .update({ sync_status: 'error' })
         .eq('id', leadId);
