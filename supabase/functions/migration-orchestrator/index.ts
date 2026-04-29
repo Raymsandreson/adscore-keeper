@@ -201,62 +201,79 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Modo padrão: processa um passo
-    const batchSize: number = body.batch_size || 200;
-    let row: any = null;
+    // Modo padrão: self-loop interno (processa N batches dentro da mesma invocação)
+    const batchSize: number = body.batch_size || 500;
+    const maxBatchesPerCall: number = body.max_batches_per_call || 40;
+    const softTimeoutMs: number = body.soft_timeout_ms || 110_000; // CPU wall ~150s no edge
+    const startedAt = Date.now();
+    const steps: any[] = [];
 
-    if (body.table) {
-      const { data } = await cloud.from("migration_progress").select("*").eq("table_name", body.table).maybeSingle();
-      row = data;
-    } else {
-      row = await pickNextTable();
-    }
+    for (let i = 0; i < maxBatchesPerCall; i++) {
+      if (Date.now() - startedAt > softTimeoutMs) {
+        steps.push({ aborted: "soft_timeout", at_iter: i });
+        break;
+      }
 
-    if (!row) {
-      return new Response(JSON.stringify({ success: true, finished: true, message: "no pending tables" }), {
-        headers: { ...cors, "Content-Type": "application/json" },
+      let row: any = null;
+      if (body.table && i === 0) {
+        const { data } = await cloud.from("migration_progress").select("*").eq("table_name", body.table).maybeSingle();
+        row = data;
+      } else {
+        row = await pickNextTable();
+      }
+      if (!row) {
+        steps.push({ finished: true });
+        break;
+      }
+
+      await cloud.from("migration_progress").update({
+        status: "running",
+        attempts: (row.attempts || 0) + 1,
+        started_at: row.started_at || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq("table_name", row.table_name);
+
+      const res = await processOneBatch(row.table_name, row.last_id, batchSize);
+
+      const newTotalRead = (row.total_read || 0) + res.batch_read;
+      const newTotalUp = (row.total_upserted || 0) + res.batch_upserted;
+      const newBatches = (row.batches || 0) + (res.batch_read > 0 ? 1 : 0);
+
+      await cloud.from("migration_progress").update({
+        status: res.done ? (res.error && newTotalRead === 0 ? "error" : "done") : "running",
+        last_id: res.last_id,
+        total_read: newTotalRead,
+        total_upserted: newTotalUp,
+        batches: newBatches,
+        last_error: res.error,
+        finished_at: res.done ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
+      }).eq("table_name", row.table_name);
+
+      steps.push({
+        table: row.table_name, batch_read: res.batch_read,
+        batch_upserted: res.batch_upserted, table_done: res.done,
+        total_read: newTotalRead, error: res.error,
       });
+
+      // Se nada foi lido e marcou done com erro -> evita loop infinito mas continua próxima tabela
+      if (res.batch_read === 0 && !res.done) break;
     }
 
-    // Marca como running e incrementa attempts
-    await cloud.from("migration_progress").update({
-      status: "running",
-      attempts: (row.attempts || 0) + 1,
-      started_at: row.started_at || new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }).eq("table_name", row.table_name);
-
-    const res = await processOneBatch(row.table_name, row.last_id, batchSize);
-
-    const newTotalRead = (row.total_read || 0) + res.batch_read;
-    const newTotalUp = (row.total_upserted || 0) + res.batch_upserted;
-    const newBatches = (row.batches || 0) + (res.batch_read > 0 ? 1 : 0);
-
-    await cloud.from("migration_progress").update({
-      status: res.done ? (res.error && newTotalRead === 0 ? "error" : "done") : "running",
-      last_id: res.last_id,
-      total_read: newTotalRead,
-      total_upserted: newTotalUp,
-      batches: newBatches,
-      last_error: res.error,
-      finished_at: res.done ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    }).eq("table_name", row.table_name);
-
-    // Se ainda há trabalho, re-dispara
-    const willContinue = !body.no_chain;
-    if (willContinue) fireAndForget();
+    // Re-dispara fire-and-forget se ainda há pending/running (a não ser que body.no_chain)
+    if (!body.no_chain) {
+      const { count } = await cloud
+        .from("migration_progress")
+        .select("*", { count: "exact", head: true })
+        .in("status", ["pending", "running"]);
+      if ((count || 0) > 0) fireAndForget();
+    }
 
     return new Response(JSON.stringify({
       success: true,
-      processed_table: row.table_name,
-      batch_read: res.batch_read,
-      batch_upserted: res.batch_upserted,
-      table_done: res.done,
-      total_read: newTotalRead,
-      total_upserted: newTotalUp,
-      error: res.error,
-      chained: willContinue,
+      iterations: steps.length,
+      elapsed_ms: Date.now() - startedAt,
+      steps,
     }), { headers: { ...cors, "Content-Type": "application/json" } });
   } catch (e) {
     return new Response(JSON.stringify({ success: false, error: String(e) }), {
