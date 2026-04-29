@@ -34,6 +34,8 @@ const LEAD_SELECT_COLUMNS = [
 
 const PAGE_SIZE = 1000;
 const LEAD_DELETED_EVENT = 'adscore:lead-deleted';
+const isAlreadyMissingLeadError = (error?: string) =>
+  String(error || '').toLowerCase().includes('lead não encontrado no banco externo');
 
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'not_qualified' | 'converted' | 'lost' | 'comment';
 export type LeadBusinessStatus = 'active' | 'closed' | 'refused' | 'inviavel';
@@ -470,7 +472,9 @@ export const useLeads = (adAccountId?: string) => {
       });
 
       if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Exclusão permanente não confirmada');
+      if (!data?.success && !isAlreadyMissingLeadError(data?.error)) {
+        throw new Error(data?.error || 'Exclusão permanente não confirmada');
+      }
 
       // Snapshot + audit log (best-effort, não bloqueia exclusão)
       try {
