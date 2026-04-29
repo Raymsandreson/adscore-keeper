@@ -660,7 +660,7 @@ export const useLeads = (adAccountId?: string) => {
   useEffect(() => {
     fetchLeads();
 
-    const channel = supabase
+    const channel = externalSupabase
       .channel('leads-realtime')
       .on(
         'postgres_changes',
