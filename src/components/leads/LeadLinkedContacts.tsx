@@ -249,7 +249,8 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
     setCreating(true);
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
-      const { data: newContact, error: createError } = await supabase
+      await ensureExternalSession().catch(() => {});
+      const { data: newContact, error: createError } = await externalSupabase
         .from('contacts')
         .insert({
           full_name: newName.trim(),
@@ -263,7 +264,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
       if (createError) throw createError;
 
       if (newContact) {
-        await (supabase as any)
+        await (externalSupabase as any)
           .from('contact_leads')
           .insert({ contact_id: newContact.id, lead_id: leadId });
 
@@ -284,7 +285,8 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
 
   const handleUpdateRelationship = async (linkId: string, value: string) => {
     try {
-      const { error } = await (supabase as any)
+      await ensureExternalSession().catch(() => {});
+      const { error } = await (externalSupabase as any)
         .from('contact_leads')
         .update({ relationship_to_victim: value || null })
         .eq('id', linkId);
@@ -297,7 +299,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
   };
 
   const handleOpenContact = async (contact: any) => {
-    const { data } = await supabase
+    const { data } = await externalSupabase
       .from('contacts')
       .select('*')
       .eq('id', contact.id)
