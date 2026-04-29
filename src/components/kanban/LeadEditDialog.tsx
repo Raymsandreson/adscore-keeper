@@ -131,6 +131,7 @@ interface LeadEditDialogProps {
   onOpenChange: (open: boolean) => void;
   lead: Lead | null;
   onSave: (leadId: string, updates: Partial<Lead>) => Promise<void>;
+  onDeleted?: (leadId: string) => void;
   adAccountId?: string;
   boards?: KanbanBoard[];
   mode?: 'dialog' | 'sheet';
@@ -197,6 +198,7 @@ export function LeadEditDialog({
   onOpenChange,
   lead,
   onSave,
+  onDeleted,
   adAccountId,
   boards = [],
   mode = 'dialog',
@@ -853,7 +855,9 @@ ${scrapeData.content || ''}
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Exclusão permanente não confirmada');
-      toast.success('Lead excluído permanentemente');
+      onDeleted?.(currentLead.id);
+      window.dispatchEvent(new CustomEvent('adscore:lead-deleted', { detail: { leadId: currentLead.id } }));
+      toast.success(data?.alreadyDeleted ? 'Lead removido da tela; ele já não existia no banco externo' : 'Lead excluído permanentemente');
       setShowDeleteConfirm(false);
       onOpenChange(false);
     } catch (err: any) {
