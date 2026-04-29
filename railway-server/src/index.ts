@@ -25,27 +25,6 @@ const API_KEY = process.env.RAILWAY_API_KEY || '';
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// ============================================================
-// ROTA PÚBLICA — UazAPI webhook (sem x-api-key)
-// UazAPI não envia headers customizados; esta rota é exposta
-// para receber webhooks diretamente das instâncias.
-// O handler valida instance_name contra o banco antes de persistir.
-// IMPORTANTE: registrada ANTES do middleware de auth de /functions.
-// ============================================================
-app.post('/webhooks/uazapi/:instance_name', async (req, res) => {
-  try {
-    await whatsappWebhook(req, res, () => {});
-  } catch (err) {
-    console.error('[uazapi-webhook] Error:', err);
-    if (!res.headersSent) {
-      res.status(200).json({
-        success: false,
-        error: err instanceof Error ? err.message : 'Unknown error',
-      });
-    }
-  }
-});
-
 // Autenticação via API key — protege apenas /functions/*
 app.use('/functions', (req, res, next) => {
   if (API_KEY) {
