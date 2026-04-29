@@ -109,6 +109,24 @@ async function detailedSample(
   return { rows: fb.data ?? [], columns: ['id', 'created_at'], error: null as string | null };
 }
 
+async function enrichLeadNames(client: ReturnType<typeof createClient>, sample: { rows: any[]; columns: string[]; error: string | null }) {
+  const leadIds = [...new Set((sample.rows || []).map((row) => row.lead_id).filter(Boolean))];
+  if (leadIds.length === 0) return sample;
+
+  const { data, error } = await client
+    .from('leads')
+    .select('id, lead_name')
+    .in('id', leadIds);
+  if (error) return sample;
+
+  const names = new Map((data || []).map((lead: any) => [lead.id, lead.lead_name || 'Lead sem nome']));
+  return {
+    ...sample,
+    columns: sample.columns.includes('lead_name') ? sample.columns : [...sample.columns, 'lead_name'],
+    rows: sample.rows.map((row) => ({ ...row, lead_name: row.lead_id ? names.get(row.lead_id) || null : row.lead_name })),
+  };
+}
+
 async function triggersFor(client: ReturnType<typeof createClient>, table: string) {
   const { data, error } = await client
     .schema('information_schema' as any)
@@ -134,7 +152,7 @@ Deno.serve(async (req) => {
     const results = await Promise.all(
       TABLES.map(async (table) => {
         const cols = TABLE_KEYS[table];
-        const [c, e, tc, te, dc, de] = await Promise.all([
+        const [c, e, tc, te, dcRaw, deRaw] = await Promise.all([
           statsFor(cloud, table),
           statsFor(ext, table),
           triggersFor(cloud, table),
@@ -142,6 +160,9 @@ Deno.serve(async (req) => {
           detail ? detailedSample(cloud, table, cols) : Promise.resolve({ rows: [], columns: [], error: null }),
           detail ? detailedSample(ext, table, cols) : Promise.resolve({ rows: [], columns: [], error: null }),
         ]);
+        const [dc, de] = detail
+          ? await Promise.all([enrichLeadNames(cloud, dcRaw), enrichLeadNames(ext, deRaw)])
+          : [dcRaw, deRaw];
         const cloudSet = new Set(c.last_ids);
         const extSet = new Set(e.last_ids);
         const in_both = c.last_ids.filter((id) => extSet.has(id)).length;
