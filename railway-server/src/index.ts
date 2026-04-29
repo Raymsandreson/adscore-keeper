@@ -43,7 +43,6 @@ app.get('/health', (_req, res) => {
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     functions: Object.keys(functionHandlers),
-    public_routes: ['/webhooks/uazapi/:instance_name'],
   });
 });
 
