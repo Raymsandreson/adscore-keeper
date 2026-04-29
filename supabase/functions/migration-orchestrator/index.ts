@@ -31,6 +31,8 @@ const ext = createClient(EXT_URL, EXT_KEY, { auth: { persistSession: false } });
 const FK_AUTH_COLUMNS = new Set<string>([
   "created_by", "user_id", "assigned_to", "updated_by", "owner_id",
   "deleted_by", "uploaded_by", "sent_by", "completed_by", "approved_by", "reviewed_by",
+  "changed_by", "performed_by", "actor_id", "author_id", "from_user_id", "to_user_id",
+  "transferred_by", "closed_by", "opened_by", "assigned_by", "mentioned_by",
 ]);
 
 let UUID_MAP: Map<string, string> | null = null;
