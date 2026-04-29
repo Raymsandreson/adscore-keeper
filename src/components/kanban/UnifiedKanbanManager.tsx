@@ -914,6 +914,10 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
             await updateLead(leadId, updates);
             fetchLeads();
           }}
+          onDeleted={() => {
+            setEditingLeadId(null);
+            fetchLeads();
+          }}
           adAccountId={adAccountId}
           boards={boards}
           initialTab={initialLeadTab}

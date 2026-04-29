@@ -48,7 +48,10 @@ Deno.serve(async (req) => {
 
     const { data: snapshot, error: snapshotError } = await ext.from("leads").select("*").eq("id", leadId).maybeSingle();
     if (snapshotError) return json({ success: false, error: snapshotError.message });
-    if (!snapshot) return json({ success: false, error: "Lead não encontrado no banco externo" });
+    if (!snapshot) {
+      cleanup.push({ action: "delete leads.id", count: 0, error: "already missing" });
+      return json({ success: true, leadId, alreadyDeleted: true, snapshot: null, cleanup });
+    }
 
     const idsFrom = async (table: string, column = "lead_id") => {
       const { data, error } = await ext.from(table).select("id").eq(column, leadId);
