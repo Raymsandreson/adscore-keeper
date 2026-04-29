@@ -196,7 +196,7 @@ export const useLeads = (adAccountId?: string) => {
         const from = page * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
 
-        let query = supabase
+        let query = externalSupabase
           .from('leads')
           .select(LEAD_SELECT_COLUMNS)
           .is('deleted_at', null)
