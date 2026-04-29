@@ -8,6 +8,11 @@ const corsHeaders = {
 
 type CleanupResult = { action: string; count?: number | null; error?: string };
 
+function isMissingTableError(error: unknown) {
+  const message = String((error as { message?: string } | null)?.message || error || "");
+  return message.includes("Could not find the table") || message.includes("schema cache") || message.includes("relation") && message.includes("does not exist");
+}
+
 function json(body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -48,6 +53,10 @@ Deno.serve(async (req) => {
     const idsFrom = async (table: string, column = "lead_id") => {
       const { data, error } = await ext.from(table).select("id").eq(column, leadId);
       if (error) {
+        if (isMissingTableError(error)) {
+          cleanup.push({ action: `skip missing ${table}`, error: error.message });
+          return [] as string[];
+        }
         cleanup.push({ action: `select ${table}`, error: error.message });
         return [] as string[];
       }
@@ -55,23 +64,39 @@ Deno.serve(async (req) => {
     };
     const runDelete = async (table: string, column = "lead_id") => {
       const { count, error } = await ext.from(table).delete({ count: "exact" }).eq(column, leadId);
+      if (error && isMissingTableError(error)) {
+        cleanup.push({ action: `skip missing ${table}.${column}`, count, error: error.message });
+        return;
+      }
       cleanup.push({ action: `delete ${table}.${column}`, count, error: error?.message });
       if (error) throw error;
     };
     const runUpdateNull = async (table: string, values: Record<string, null>, column = "lead_id") => {
       const { count, error } = await ext.from(table).update(values, { count: "exact" }).eq(column, leadId);
+      if (error && isMissingTableError(error)) {
+        cleanup.push({ action: `skip missing ${table}.${column}`, count, error: error.message });
+        return;
+      }
       cleanup.push({ action: `unlink ${table}.${column}`, count, error: error?.message });
       if (error) throw error;
     };
     const deleteIn = async (table: string, column: string, ids: string[]) => {
       if (ids.length === 0) return;
       const { count, error } = await ext.from(table).delete({ count: "exact" }).in(column, ids);
+      if (error && isMissingTableError(error)) {
+        cleanup.push({ action: `skip missing ${table}.${column}`, count, error: error.message });
+        return;
+      }
       cleanup.push({ action: `delete ${table}.${column}`, count, error: error?.message });
       if (error) throw error;
     };
     const updateNullIn = async (table: string, values: Record<string, null>, column: string, ids: string[]) => {
       if (ids.length === 0) return;
       const { count, error } = await ext.from(table).update(values, { count: "exact" }).in(column, ids);
+      if (error && isMissingTableError(error)) {
+        cleanup.push({ action: `skip missing ${table}.${column}`, count, error: error.message });
+        return;
+      }
       cleanup.push({ action: `unlink ${table}.${column}`, count, error: error?.message });
       if (error) throw error;
     };
