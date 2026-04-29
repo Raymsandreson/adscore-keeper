@@ -7,15 +7,17 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import {
   Loader2, RefreshCw, AlertTriangle, CheckCircle2, ArrowDown, ArrowUp,
-  Microscope, ChevronDown, ChevronRight,
+  Microscope, ChevronDown, ChevronRight, Copy,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toast } from '@/hooks/use-toast';
 
 type Trigger = { name: string; when: string; fn: string };
 type SideStats = { total: number | null; last_at: string | null; error: string | null };
 type Detail = {
-  columns: string[];
+  cloud_columns: string[];
+  ext_columns: string[];
   cloud_rows: any[];
   ext_rows: any[];
   cloud_error: string | null;
@@ -112,6 +114,37 @@ export default function DbDriftPage() {
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
+  const copyJson = async () => {
+    const payload = {
+      generated_at: generatedAt,
+      detail_mode: detailMode,
+      table_count: rows.length,
+      summary: rows.map((r) => ({
+        table: r.table,
+        cloud_total: r.cloud.total,
+        ext_total: r.ext.total,
+        delta: r.delta,
+        cloud_last_at: r.cloud.last_at,
+        ext_last_at: r.ext.last_at,
+        in_both_last50: r.sample.in_both,
+        only_cloud_last50: r.sample.only_cloud,
+        only_ext_last50: r.sample.only_ext,
+        triggers_cloud: r.triggers.cloud.map((t) => t.name),
+        triggers_ext: r.triggers.ext.map((t) => t.name),
+        cloud_error: r.cloud.error,
+        ext_error: r.ext.error,
+      })),
+      full: rows,
+    };
+    const text = JSON.stringify(payload, null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: 'JSON copiado', description: `${rows.length} tabelas · ${(text.length / 1024).toFixed(1)} KB` });
+    } catch (e: any) {
+      toast({ title: 'Falha ao copiar', description: String(e?.message ?? e), variant: 'destructive' });
+    }
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6 max-w-6xl">
       <header className="flex items-start justify-between gap-4 flex-wrap">
@@ -130,6 +163,9 @@ export default function DbDriftPage() {
             <Label htmlFor="detail-mode" className="text-xs cursor-pointer">Modo diagnóstico</Label>
             <Switch id="detail-mode" checked={detailMode} onCheckedChange={setDetailMode} />
           </div>
+          <Button variant="outline" onClick={copyJson} disabled={loading || rows.length === 0}>
+            <Copy className="h-4 w-4 mr-2" /> Copiar JSON
+          </Button>
           <Button onClick={load} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
             Atualizar
@@ -271,13 +307,13 @@ export default function DbDriftPage() {
                       <div className="space-y-3">
                         <SamplesTable
                           title="Cloud"
-                          columns={r.detail.columns}
+                          columns={r.detail.cloud_columns}
                           rows={r.detail.cloud_rows}
                           error={r.detail.cloud_error}
                         />
                         <SamplesTable
                           title="Externo"
-                          columns={r.detail.columns}
+                          columns={r.detail.ext_columns}
                           rows={r.detail.ext_rows}
                           error={r.detail.ext_error}
                         />
