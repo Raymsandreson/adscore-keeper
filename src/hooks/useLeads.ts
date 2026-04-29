@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
 import { facebookCAPI } from '@/services/facebookCAPI';
@@ -195,7 +196,7 @@ export const useLeads = (adAccountId?: string) => {
         const from = page * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
 
-        let query = supabase
+        let query = externalSupabase
           .from('leads')
           .select(LEAD_SELECT_COLUMNS)
           .is('deleted_at', null)
@@ -294,7 +295,7 @@ export const useLeads = (adAccountId?: string) => {
 
   const addLead = async (lead: Partial<Lead>, testEventCode?: string) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('leads')
         .insert([{
           ...lead,
@@ -402,7 +403,7 @@ export const useLeads = (adAccountId?: string) => {
         timestampUpdates.last_edit_summary = editSummary;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('leads')
         .update(timestampUpdates)
         .eq('id', id)
@@ -461,7 +462,7 @@ export const useLeads = (adAccountId?: string) => {
   const deleteLead = async (id: string) => {
     try {
       // Fetch full snapshot before archiving
-      const { data: snapshot } = await supabase
+      const { data: snapshot } = await externalSupabase
         .from('leads')
         .select('*')
         .eq('id', id)
@@ -479,7 +480,7 @@ export const useLeads = (adAccountId?: string) => {
       }
 
       // Soft delete
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('leads')
         .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', id);
@@ -523,7 +524,7 @@ export const useLeads = (adAccountId?: string) => {
 
     try {
       // Atualiza status local para "syncing"
-      await supabase
+      await externalSupabase
         .from('leads')
         .update({ sync_status: 'syncing' })
         .eq('id', leadId);
@@ -541,7 +542,7 @@ export const useLeads = (adAccountId?: string) => {
 
       if (data.success) {
         // Atualiza status de sincronização
-        await supabase
+        await externalSupabase
           .from('leads')
           .update({ 
             sync_status: 'synced',
@@ -553,7 +554,7 @@ export const useLeads = (adAccountId?: string) => {
         fetchLeads();
         return { success: true };
       } else {
-        await supabase
+        await externalSupabase
           .from('leads')
           .update({ sync_status: 'error' })
           .eq('id', leadId);
@@ -563,7 +564,7 @@ export const useLeads = (adAccountId?: string) => {
     } catch (error) {
       console.error('Erro ao sincronizar com Facebook:', error);
       
-      await supabase
+      await externalSupabase
         .from('leads')
         .update({ sync_status: 'error' })
         .eq('id', leadId);
@@ -595,7 +596,7 @@ export const useLeads = (adAccountId?: string) => {
 
   const toggleFollower = async (leadId: string, isFollower: boolean) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('leads')
         .update({ is_follower: isFollower })
         .eq('id', leadId);
@@ -617,7 +618,7 @@ export const useLeads = (adAccountId?: string) => {
 
   const updateClientClassification = async (leadId: string, classification: ClientClassification) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('leads')
         .update({ client_classification: classification })
         .eq('id', leadId);
@@ -657,9 +658,14 @@ export const useLeads = (adAccountId?: string) => {
   }, [fetchLeads]);
 
   useEffect(() => {
+    // Ensure anon session on the External DB before reads/realtime subscribe
+    ensureExternalSession().catch((err) => {
+      console.warn('[useLeads] ensureExternalSession failed (continuing):', err?.message || err);
+    });
+
     fetchLeads();
 
-    const channel = supabase
+    const channel = externalSupabase
       .channel('leads-realtime')
       .on(
         'postgres_changes',
@@ -729,7 +735,7 @@ export const useLeads = (adAccountId?: string) => {
     return () => {
       if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
       if (statsDebounceRef.current) clearTimeout(statsDebounceRef.current);
-      supabase.removeChannel(channel);
+      externalSupabase.removeChannel(channel);
     };
   }, [fetchLeads, adAccountId, realtimeRefetchHandler_legacy, calculateStatsDebounced]);
 
