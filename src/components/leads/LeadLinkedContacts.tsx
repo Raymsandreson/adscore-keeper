@@ -96,7 +96,7 @@ const loadLinkedContacts = async (leadId: string, force = false) => {
       const contactIds = mapped.map(c => c.contact_id);
       let stats: Record<string, ContactCallStats> = {};
       if (contactIds.length > 0) {
-        const { data: callData } = await supabase
+        const { data: callData } = await externalSupabase
           .from('call_records')
           .select('contact_id, call_result, duration_seconds, created_at')
           .in('contact_id', contactIds)
@@ -182,7 +182,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
       setSearching(true);
       try {
         const linkedIds = contacts.map(c => c.contact_id);
-        const { data } = await supabase
+        const { data } = await externalSupabase
           .from('contacts')
           .select('id, full_name, instagram_username, phone, email')
           .or(`full_name.ilike.%${searchQuery}%,instagram_username.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%`)
@@ -203,7 +203,8 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
   const handleLinkContact = async (contactId: string) => {
     setLinking(true);
     try {
-      const { error } = await (supabase as any)
+      await ensureExternalSession().catch(() => {});
+      const { error } = await (externalSupabase as any)
         .from('contact_leads')
         .insert({ contact_id: contactId, lead_id: leadId });
 
@@ -226,7 +227,8 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
 
   const handleUnlinkContact = async (linkId: string) => {
     try {
-      const { error } = await (supabase as any)
+      await ensureExternalSession().catch(() => {});
+      const { error } = await (externalSupabase as any)
         .from('contact_leads')
         .delete()
         .eq('id', linkId);
