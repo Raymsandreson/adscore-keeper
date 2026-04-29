@@ -1,6 +1,6 @@
-// Compara Cloud vs Externo nas 6 tabelas críticas.
-// Retorna totais, última escrita, amostra dos últimos 50 ids, triggers ativos
-// e (modo diagnóstico) amostra detalhada das últimas 10 linhas com colunas-chave.
+// Compara Cloud vs Externo em 19 tabelas críticas.
+// Resiliente a colunas inexistentes: se o select falha, tenta apenas (id, created_at).
+// Modo diagnóstico (?detail=1) retorna últimas 10 linhas com colunas-chave.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 const corsHeaders = {
@@ -9,36 +9,40 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 };
 
-// Colunas-chave por tabela: usadas para identificar origem da escrita
-// (instance_name, source, created_by, webhook_type, etc.)
+// Colunas-chave por tabela (usadas só no modo diagnóstico).
+// Se alguma coluna não existir em um dos bancos, o sample faz fallback gracioso.
 const TABLE_KEYS: Record<string, string[]> = {
-  whatsapp_messages: [
-    'id', 'created_at', 'phone', 'instance_name', 'direction',
-    'message_type', 'lead_id', 'contact_id', 'external_id',
-  ],
-  webhook_logs: [
-    'id', 'created_at', 'instance_name', 'event_type', 'source',
-    'phone', 'status',
-  ],
-  contacts: [
-    'id', 'created_at', 'updated_at', 'phone', 'instance_name',
-    'full_name', 'created_by', 'source',
-  ],
-  whatsapp_command_history: [
-    'id', 'created_at', 'phone', 'instance_name', 'command',
-    'executed_by', 'source',
-  ],
-  leads: [
-    'id', 'created_at', 'updated_at', 'lead_name', 'lead_phone',
-    'created_by', 'assigned_to', 'board_id', 'status', 'source',
-  ],
-  lead_activities: [
-    'id', 'created_at', 'updated_at', 'lead_id', 'activity_type',
-    'created_by', 'assigned_to', 'status', 'title',
-  ],
+  // Núcleo CRM
+  leads: ['id','created_at','updated_at','lead_name','lead_phone','created_by','board_id','status','source'],
+  lead_activities: ['id','created_at','updated_at','lead_id','activity_type','created_by','status','title'],
+  lead_processes: ['id','created_at','lead_id','workflow_id','status'],
+  lead_followups: ['id','created_at','lead_id','followup_type','followup_date'],
+  lead_stage_history: ['id','created_at','lead_id','stage_id','changed_by'],
+  contact_leads: ['id','created_at','contact_id','lead_id','relationship_type'],
+
+  // WhatsApp
+  whatsapp_messages: ['id','created_at','phone','instance_name','direction','message_type','lead_id','contact_id','external_id'],
+  webhook_logs: ['id','created_at','instance_name','event_type','source','phone','status'],
+  whatsapp_command_history: ['id','created_at','phone','instance_name','executed_by','source'],
+  whatsapp_conversation_agents: ['id','created_at','phone','instance_name','agent_id','is_active','activated_by'],
+  whatsapp_instances: ['id','created_at','instance_name','status','owner_id'],
+  lead_whatsapp_groups: ['id','created_at','lead_id','group_jid','instance_name'],
+
+  // Jurídico
+  legal_cases: ['id','created_at','case_number','lead_id','nucleus_id','status','closed_at'],
+  process_parties: ['id','created_at','process_id','party_type','name','document'],
+  process_movements: ['id','created_at','process_id','movement_date','description'],
+
+  // Contatos
+  contacts: ['id','created_at','updated_at','phone','full_name','created_by','source'],
+
+  // Equipe / Auth
+  profiles: ['id','created_at','user_id','full_name','email'],
+  user_roles: ['id','created_at','user_id','role'],
+  auth_uuid_mapping: ['cloud_uuid','ext_uuid','created_at','email'],
 };
 
-const TABLES = Object.keys(TABLE_KEYS) as Array<keyof typeof TABLE_KEYS>;
+const TABLES = Object.keys(TABLE_KEYS);
 
 const cloud = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -65,32 +69,44 @@ async function statsFor(client: ReturnType<typeof createClient>, table: string) 
   return {
     total: count ?? 0,
     last_at: data?.[0]?.created_at ?? null,
-    last_ids: (data ?? []).map((r: any) => String(r.id)),
+    last_ids: (data ?? []).map((r: any) => String(r.id ?? r.cloud_uuid ?? '')),
     error: null as string | null,
   };
 }
 
+// Tenta colunas-chave; se falhar (coluna inexistente), retira a coluna problemática
+// e tenta de novo. Em último caso, cai para id+created_at SEM marcar erro.
 async function detailedSample(
   client: ReturnType<typeof createClient>,
   table: string,
   cols: string[],
   limit = 10,
 ) {
-  // Tenta com todas as colunas; se alguma não existir, faz fallback pra id+created_at
-  const { data, error } = await client
-    .from(table)
-    .select(cols.join(','))
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  if (error) {
-    const fb = await client
+  let currentCols = [...cols];
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const { data, error } = await client
       .from(table)
-      .select('id, created_at')
+      .select(currentCols.join(','))
       .order('created_at', { ascending: false })
       .limit(limit);
-    return { rows: fb.data ?? [], error: error.message };
+    if (!error) return { rows: data ?? [], columns: currentCols, error: null as string | null };
+
+    // Extrai nome da coluna inexistente do erro do Postgres
+    const m = error.message.match(/column [^.]+\.(\w+) does not exist/i);
+    if (m && currentCols.includes(m[1]) && currentCols.length > 2) {
+      currentCols = currentCols.filter((c) => c !== m[1]);
+      continue;
+    }
+    // Não é "column does not exist": fallback final
+    break;
   }
-  return { rows: data ?? [], error: null as string | null };
+  // Fallback final silencioso
+  const fb = await client
+    .from(table)
+    .select('id, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  return { rows: fb.data ?? [], columns: ['id', 'created_at'], error: null as string | null };
 }
 
 async function triggersFor(client: ReturnType<typeof createClient>, table: string) {
@@ -123,8 +139,8 @@ Deno.serve(async (req) => {
           statsFor(ext, table),
           triggersFor(cloud, table),
           triggersFor(ext, table),
-          detail ? detailedSample(cloud, table, cols) : Promise.resolve({ rows: [], error: null }),
-          detail ? detailedSample(ext, table, cols) : Promise.resolve({ rows: [], error: null }),
+          detail ? detailedSample(cloud, table, cols) : Promise.resolve({ rows: [], columns: [], error: null }),
+          detail ? detailedSample(ext, table, cols) : Promise.resolve({ rows: [], columns: [], error: null }),
         ]);
         const cloudSet = new Set(c.last_ids);
         const extSet = new Set(e.last_ids);
@@ -140,7 +156,8 @@ Deno.serve(async (req) => {
           triggers: { cloud: tc, ext: te },
           detail: detail
             ? {
-                columns: cols,
+                cloud_columns: dc.columns,
+                ext_columns: de.columns,
                 cloud_rows: dc.rows,
                 ext_rows: de.rows,
                 cloud_error: dc.error,
