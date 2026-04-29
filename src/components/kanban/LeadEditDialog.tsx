@@ -178,6 +178,9 @@ const liabilityTypes = [
   'A Definir',
 ];
 
+const isAlreadyMissingLeadError = (error?: string) =>
+  String(error || '').toLowerCase().includes('lead não encontrado no banco externo');
+
 const sectors = [
   'Construção Civil',
   'Mineração',
@@ -854,10 +857,11 @@ ${scrapeData.content || ''}
         authToken: sessionData.session?.access_token,
       });
       if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Exclusão permanente não confirmada');
+      const alreadyDeleted = data?.alreadyDeleted || isAlreadyMissingLeadError(data?.error);
+      if (!data?.success && !alreadyDeleted) throw new Error(data?.error || 'Exclusão permanente não confirmada');
       onDeleted?.(currentLead.id);
       window.dispatchEvent(new CustomEvent('adscore:lead-deleted', { detail: { leadId: currentLead.id } }));
-      toast.success(data?.alreadyDeleted ? 'Lead removido da tela; ele já não existia no banco externo' : 'Lead excluído permanentemente');
+      toast.success(alreadyDeleted ? 'Lead removido da tela; ele já não existia no banco externo' : 'Lead excluído permanentemente');
       setShowDeleteConfirm(false);
       onOpenChange(false);
     } catch (err: any) {
