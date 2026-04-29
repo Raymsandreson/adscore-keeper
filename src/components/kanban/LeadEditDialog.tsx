@@ -847,21 +847,19 @@ ${scrapeData.content || ''}
     if (!currentLead) return;
     setDeleting(true);
     try {
-      await ensureExternalSession().catch(() => {});
-      const deletedAt = new Date().toISOString();
-      const { data: updated, error } = await externalSupabase
-        .from('leads')
-        .update({ deleted_at: deletedAt } as any)
-        .eq('id', currentLead.id)
-        .select('id, lead_name, deleted_at');
+      const { data: sessionData } = await supabase.auth.getSession();
+      const { data, error } = await cloudFunctions.invoke('permanent-delete-lead', {
+        body: { leadId: currentLead.id },
+        authToken: sessionData.session?.access_token,
+      });
       if (error) throw error;
-      if (!updated || updated.length === 0) throw new Error('Nenhuma linha atualizada no banco externo');
-      toast.success('Lead arquivado com sucesso');
+      if (!data?.success) throw new Error(data?.error || 'Exclusão permanente não confirmada');
+      toast.success('Lead excluído permanentemente');
       setShowDeleteConfirm(false);
       onOpenChange(false);
     } catch (err: any) {
       console.error('Error deleting lead:', err);
-      toast.error('Erro ao arquivar lead');
+      toast.error(`Erro ao excluir lead: ${err?.message || 'desconhecido'}`);
     } finally {
       setDeleting(false);
     }
@@ -2713,7 +2711,7 @@ ${scrapeData.content || ''}
             <AlertDialogHeader>
               <AlertDialogTitle>Excluir lead?</AlertDialogTitle>
               <AlertDialogDescription>
-                O lead <strong>{currentLead?.lead_name || 'sem nome'}</strong> será arquivado e poderá ser recuperado em "Itens Arquivados". Deseja continuar?
+                O lead <strong>{currentLead?.lead_name || 'sem nome'}</strong> será excluído permanentemente. Esta ação não pode ser desfeita.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
