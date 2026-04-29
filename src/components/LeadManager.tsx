@@ -1160,7 +1160,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
         }}
         onDeleted={(leadId) => {
           setEditingLead(null);
-          deleteLead(leadId).catch(() => undefined);
+          fetchLeads();
         }}
         adAccountId={adAccountId}
       />
