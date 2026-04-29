@@ -462,7 +462,7 @@ export const useLeads = (adAccountId?: string) => {
   const deleteLead = async (id: string) => {
     try {
       // Fetch full snapshot before archiving
-      const { data: snapshot } = await supabase
+      const { data: snapshot } = await externalSupabase
         .from('leads')
         .select('*')
         .eq('id', id)
@@ -480,7 +480,7 @@ export const useLeads = (adAccountId?: string) => {
       }
 
       // Soft delete
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('leads')
         .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', id);
