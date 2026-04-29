@@ -151,6 +151,7 @@ const ShareTargetPage = lazyRetry(() => import("./pages/ShareTargetPage"), "Shar
 const ArchivedItemsPage = lazyRetry(() => import("./pages/ArchivedItemsPage"), "ArchivedItemsPage");
 const HookDebugPage = lazyRetry(() => import("./pages/HookDebugPage"), "HookDebugPage");
 const GroupAuditLogPage = lazyRetry(() => import("./pages/GroupAuditLogPage"), "GroupAuditLogPage");
+const DbDriftPage = lazyRetry(() => import("./pages/DbDriftPage"), "DbDriftPage");
 
 const queryClient = new QueryClient();
 
