@@ -216,6 +216,21 @@ export default function DbDriftPage() {
                       </Badge>
                     )}
                   </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      const text = JSON.stringify(r, null, 2);
+                      try {
+                        await navigator.clipboard.writeText(text);
+                        toast({ title: `JSON de ${r.table} copiado`, description: `${(text.length / 1024).toFixed(1)} KB` });
+                      } catch (e: any) {
+                        toast({ title: 'Falha ao copiar', description: String(e?.message ?? e), variant: 'destructive' });
+                      }
+                    }}
+                  >
+                    <Copy className="h-3 w-3 mr-1" /> Copiar JSON
+                  </Button>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
