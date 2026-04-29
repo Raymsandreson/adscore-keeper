@@ -35,6 +35,20 @@ const FK_AUTH_COLUMNS = new Set<string>([
   "transferred_by", "closed_by", "opened_by", "assigned_by", "mentioned_by",
 ]);
 
+// Tabelas a serem puladas (views, sem PK id, ou Cloud-only)
+const SKIP_TABLES = new Set<string>([
+  "whatsapp_ai_agents",  // view no External
+  "system_settings",     // sem coluna id
+  "auth_uuid_mapping",   // Cloud-only
+]);
+
+// onConflict customizado por tabela (default: "id")
+const CONFLICT_KEYS: Record<string, string> = {
+  user_roles: "user_id,role",
+  contact_leads: "contact_id,lead_id",
+  profiles: "user_id",
+};
+
 let UUID_MAP: Map<string, string> | null = null;
 async function loadUuidMap(): Promise<Map<string, string>> {
   if (UUID_MAP) return UUID_MAP;
