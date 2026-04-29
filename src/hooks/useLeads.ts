@@ -618,7 +618,7 @@ export const useLeads = (adAccountId?: string) => {
 
   const updateClientClassification = async (leadId: string, classification: ClientClassification) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('leads')
         .update({ client_classification: classification })
         .eq('id', leadId);
