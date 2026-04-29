@@ -295,7 +295,7 @@ export const useLeads = (adAccountId?: string) => {
 
   const addLead = async (lead: Partial<Lead>, testEventCode?: string) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('leads')
         .insert([{
           ...lead,
