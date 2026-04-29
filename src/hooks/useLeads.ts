@@ -658,6 +658,11 @@ export const useLeads = (adAccountId?: string) => {
   }, [fetchLeads]);
 
   useEffect(() => {
+    // Ensure anon session on the External DB before reads/realtime subscribe
+    ensureExternalSession().catch((err) => {
+      console.warn('[useLeads] ensureExternalSession failed (continuing):', err?.message || err);
+    });
+
     fetchLeads();
 
     const channel = externalSupabase
