@@ -74,5 +74,4 @@ app.listen(PORT, () => {
   console.log(`🚀 RMP Functions Server running on port ${PORT}`);
   console.log(`📋 Registered functions: ${Object.keys(functionHandlers).join(', ') || 'none yet'}`);
   console.log(`🔐 API Key protection on /functions/*: ${API_KEY ? 'enabled' : 'DISABLED'}`);
-  console.log(`🌐 Public webhook route: POST /webhooks/uazapi/:instance_name`);
 });
