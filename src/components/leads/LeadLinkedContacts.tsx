@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -63,20 +64,33 @@ const loadLinkedContacts = async (leadId: string, force = false) => {
 
   const request = (async () => {
     try {
-      const { data, error } = await (supabase as any)
+      await ensureExternalSession().catch(() => {});
+      const { data, error } = await (externalSupabase as any)
         .from('contact_leads')
-        .select('id, contact_id, relationship_to_victim, contacts:contact_id(id, full_name, instagram_username, phone, email, classification, classifications)')
+        .select('id, contact_id, relationship_to_victim')
         .eq('lead_id', leadId);
 
       if (error) throw error;
 
-      const mapped: LinkedContact[] = (data || [])
-        .filter((d: any) => d.contacts)
+      const linkRows = data || [];
+      const linkedContactIds = [...new Set(linkRows.map((d: any) => d.contact_id).filter(Boolean))];
+      const { data: contactRows, error: contactsError } = linkedContactIds.length > 0
+        ? await (externalSupabase as any)
+          .from('contacts')
+          .select('id, full_name, instagram_username, phone, email, classification, classifications')
+          .in('id', linkedContactIds)
+        : { data: [], error: null };
+
+      if (contactsError) throw contactsError;
+      const contactById = new Map((contactRows || []).map((contact: any) => [contact.id, contact]));
+
+      const mapped: LinkedContact[] = linkRows
+        .filter((d: any) => contactById.has(d.contact_id))
         .map((d: any) => ({
           id: d.id,
           contact_id: d.contact_id,
           relationship_to_victim: d.relationship_to_victim || null,
-          contact: d.contacts,
+          contact: contactById.get(d.contact_id),
         }));
 
       const contactIds = mapped.map(c => c.contact_id);
