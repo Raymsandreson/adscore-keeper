@@ -6,6 +6,7 @@ import {
   getConversationMessages,
   markMessagesAsRead,
   linkMessagesToLead,
+  linkConversationContactToLead,
   linkMessagesToContact,
 } from '@/integrations/supabase/external-rpc';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -877,11 +878,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     try {
       await ensureExternalSession().catch(() => {});
       await linkMessagesToLead(phone, instanceName, leadId);
+      const linkedContactId = await linkConversationContactToLead(phone, instanceName, leadId);
       toast.success('Conversa vinculada ao lead!');
       const targetConversationKey = getConversationKey(phone, instanceName);
       setConversations(prev => prev.map(c =>
         getConversationKey(c.phone, c.instance_name) === targetConversationKey
-          ? { ...c, lead_id: leadId }
+          ? { ...c, lead_id: leadId, contact_id: c.contact_id || linkedContactId }
           : c
       ));
     } catch (error) { console.error(error); toast.error('Erro ao vincular ao lead'); }

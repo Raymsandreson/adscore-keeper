@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { safeSelectValue } from '@/utils/selectValue';
 import { sendLeadConversionEvent } from '@/utils/metaConversionTracking';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
@@ -846,11 +847,15 @@ ${scrapeData.content || ''}
     if (!currentLead) return;
     setDeleting(true);
     try {
-      const { error } = await supabase
+      await ensureExternalSession().catch(() => {});
+      const deletedAt = new Date().toISOString();
+      const { data: updated, error } = await externalSupabase
         .from('leads')
-        .update({ deleted_at: new Date().toISOString() } as any)
-        .eq('id', currentLead.id);
+        .update({ deleted_at: deletedAt } as any)
+        .eq('id', currentLead.id)
+        .select('id, lead_name, deleted_at');
       if (error) throw error;
+      if (!updated || updated.length === 0) throw new Error('Nenhuma linha atualizada no banco externo');
       toast.success('Lead arquivado com sucesso');
       setShowDeleteConfirm(false);
       onOpenChange(false);
