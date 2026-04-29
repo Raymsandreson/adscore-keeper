@@ -403,7 +403,7 @@ export const useLeads = (adAccountId?: string) => {
         timestampUpdates.last_edit_summary = editSummary;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('leads')
         .update(timestampUpdates)
         .eq('id', id)
