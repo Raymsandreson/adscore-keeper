@@ -33,6 +33,7 @@ const LEAD_SELECT_COLUMNS = [
 ].join(',');
 
 const PAGE_SIZE = 1000;
+const LEAD_DELETED_EVENT = 'adscore:lead-deleted';
 
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'not_qualified' | 'converted' | 'lost' | 'comment';
 export type LeadBusinessStatus = 'active' | 'closed' | 'refused' | 'inviavel';
@@ -489,6 +490,7 @@ export const useLeads = (adAccountId?: string) => {
 
       // Atualiza estado local imediatamente para feedback instantâneo
       setLeads((prev) => prev.filter((l) => l.id !== id));
+      window.dispatchEvent(new CustomEvent(LEAD_DELETED_EVENT, { detail: { leadId: id } }));
       toast.success('Lead excluído permanentemente');
       // Refetch em background para reconciliar
       fetchLeads();
@@ -661,6 +663,18 @@ export const useLeads = (adAccountId?: string) => {
   }, [fetchLeads]);
 
   useEffect(() => {
+    const handleLocalLeadDeleted = (event: Event) => {
+      const leadId = (event as CustomEvent<{ leadId?: string }>).detail?.leadId;
+      if (!leadId) return;
+      setLeads(prev => {
+        const next = prev.filter(l => l.id !== leadId);
+        if (next.length !== prev.length) calculateStatsDebounced(next);
+        return next;
+      });
+    };
+
+    window.addEventListener(LEAD_DELETED_EVENT, handleLocalLeadDeleted);
+
     // Ensure anon session on the External DB before reads/realtime subscribe
     ensureExternalSession().catch((err) => {
       console.warn('[useLeads] ensureExternalSession failed (continuing):', err?.message || err);
@@ -736,6 +750,7 @@ export const useLeads = (adAccountId?: string) => {
       .subscribe();
 
     return () => {
+      window.removeEventListener(LEAD_DELETED_EVENT, handleLocalLeadDeleted);
       if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
       if (statsDebounceRef.current) clearTimeout(statsDebounceRef.current);
       externalSupabase.removeChannel(channel);
