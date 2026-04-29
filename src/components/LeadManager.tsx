@@ -1158,6 +1158,10 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
           await updateLead(leadId, updates);
           logAudit({ action: 'update', entityType: 'lead', entityId: leadId, entityName: updates.lead_name || editingLead?.lead_name });
         }}
+        onDeleted={(leadId) => {
+          setEditingLead(null);
+          deleteLead(leadId).catch(() => undefined);
+        }}
         adAccountId={adAccountId}
       />
       <ConfirmDeleteDialog />
