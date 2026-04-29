@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
 import { facebookCAPI } from '@/services/facebookCAPI';
