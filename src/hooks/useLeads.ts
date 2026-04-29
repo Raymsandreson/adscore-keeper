@@ -462,49 +462,25 @@ export const useLeads = (adAccountId?: string) => {
   const deleteLead = async (id: string) => {
     console.log('[deleteLead] start', { id });
     try {
-      // Garante sessão anônima no Externo antes de qualquer operação
-      try {
-        await ensureExternalSession();
-      } catch (e) {
-        console.warn('[deleteLead] ensureExternalSession warn:', e);
-      }
+      const { data: sessionData } = await supabase.auth.getSession();
+      const { data, error } = await cloudFunctions.invoke('permanent-delete-lead', {
+        body: { leadId: id },
+        authToken: sessionData.session?.access_token,
+      });
 
-      // Soft delete PRIMEIRO (operação crítica) — depois auditoria
-      const nowIso = new Date().toISOString();
-      console.log('[deleteLead] applying soft-delete', { id, deleted_at: nowIso });
-      const { data: updated, error: updErr, status } = await externalSupabase
-        .from('leads')
-        .update({ deleted_at: nowIso } as any)
-        .eq('id', id)
-        .select('id, lead_name, deleted_at');
-
-      console.log('[deleteLead] soft-delete result', { status, updErr, rows: updated?.length, updated });
-
-      if (updErr) {
-        console.error('[deleteLead] update error:', updErr);
-        throw updErr;
-      }
-      if (!updated || updated.length === 0) {
-        const msg = 'Nenhuma linha foi atualizada (RLS ou id inexistente)';
-        console.error('[deleteLead]', msg, { id });
-        toast.error('Não foi possível arquivar: registro não encontrado ou sem permissão');
-        return;
-      }
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Exclusão permanente não confirmada');
 
       // Snapshot + audit log (best-effort, não bloqueia exclusão)
       try {
-        const { data: snapshot } = await externalSupabase
-          .from('leads')
-          .select('*')
-          .eq('id', id)
-          .maybeSingle();
+        const snapshot = data.snapshot;
         if (snapshot) {
           await logAudit({
             action: 'delete',
             entityType: 'lead',
             entityId: id,
             entityName: (snapshot as any).lead_name || 'Lead',
-            details: { snapshot, soft_delete: true },
+            details: { snapshot, permanent_delete: true, cleanup: data.cleanup },
           });
         }
       } catch (auditErr) {
@@ -513,12 +489,12 @@ export const useLeads = (adAccountId?: string) => {
 
       // Atualiza estado local imediatamente para feedback instantâneo
       setLeads((prev) => prev.filter((l) => l.id !== id));
-      toast.success('Lead arquivado com sucesso');
+      toast.success('Lead excluído permanentemente');
       // Refetch em background para reconciliar
       fetchLeads();
     } catch (error: any) {
       console.error('[deleteLead] fatal error:', error);
-      toast.error(`Erro ao arquivar lead: ${error?.message || 'desconhecido'}`);
+      toast.error(`Erro ao excluir lead: ${error?.message || 'desconhecido'}`);
       throw error;
     }
   };
