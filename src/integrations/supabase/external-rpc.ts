@@ -131,17 +131,40 @@ export async function linkConversationContactToLead(
   const variants = instanceNameVariants(instanceName);
   const { data: msg, error: msgError } = await (externalSupabase as any)
     .from('whatsapp_messages')
-    .select('contact_id')
+    .select('contact_id, contact_name, phone')
     .eq('phone', phone)
     .in('instance_name', variants)
-    .not('contact_id', 'is', null)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (msgError) throw msgError;
-  const contactId = msg?.contact_id || null;
-  if (!contactId) return null;
+  let contactId = msg?.contact_id || null;
+  if (!contactId) {
+    const normalizedPhone = (msg?.phone || phone || '').replace(/\D/g, '');
+    const last8 = normalizedPhone.slice(-8);
+    const { data: existingContact, error: contactLookupError } = await (externalSupabase as any)
+      .from('contacts')
+      .select('id')
+      .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
+      .limit(1)
+      .maybeSingle();
+    if (contactLookupError) throw contactLookupError;
+
+    if (existingContact?.id) {
+      contactId = existingContact.id;
+      await linkMessagesToContact(phone, instanceName, contactId);
+    } else {
+      const { data: createdContact, error: createContactError } = await (externalSupabase as any)
+        .from('contacts')
+        .insert({ full_name: msg?.contact_name || phone, phone })
+        .select('id')
+        .single();
+      if (createContactError) throw createContactError;
+      contactId = createdContact.id;
+      await linkMessagesToContact(phone, instanceName, contactId);
+    }
+  }
 
   const { data: existing, error: existingError } = await (externalSupabase as any)
     .from('contact_leads')
