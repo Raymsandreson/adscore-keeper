@@ -169,7 +169,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
   }, [leadId]);
 
   useEffect(() => {
-    if (leadId) fetchContacts(false);
+    if (leadId) fetchContacts(true);
   }, [leadId, fetchContacts]);
 
   // Search contacts
