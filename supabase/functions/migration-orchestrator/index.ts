@@ -35,6 +35,20 @@ const FK_AUTH_COLUMNS = new Set<string>([
   "transferred_by", "closed_by", "opened_by", "assigned_by", "mentioned_by",
 ]);
 
+// Tabelas a serem puladas (views, sem PK id, ou Cloud-only)
+const SKIP_TABLES = new Set<string>([
+  "whatsapp_ai_agents",  // view no External
+  "system_settings",     // sem coluna id
+  "auth_uuid_mapping",   // Cloud-only
+]);
+
+// onConflict customizado por tabela (default: "id")
+const CONFLICT_KEYS: Record<string, string> = {
+  user_roles: "user_id,role",
+  contact_leads: "contact_id,lead_id",
+  profiles: "user_id",
+};
+
 let UUID_MAP: Map<string, string> | null = null;
 async function loadUuidMap(): Promise<Map<string, string>> {
   if (UUID_MAP) return UUID_MAP;
@@ -74,6 +88,15 @@ async function processOneBatch(table: string, afterId: string | null, batchSize:
     last_id: afterId as string | null, error: null as string | null,
   };
 
+  if (SKIP_TABLES.has(table)) {
+    result.error = "skipped (view/no-pk/cloud-only)";
+    result.done = true;
+    return result;
+  }
+
+  const conflictKey = CONFLICT_KEYS[table] || "id";
+  const orderCol = conflictKey.includes(",") ? conflictKey.split(",")[0] : conflictKey;
+
   const cloudCols = await getColumns(CLOUD_URL, CLOUD_KEY, table);
   const extCols = await getColumns(EXT_URL, EXT_KEY, table);
   if (extCols.size === 0) {
@@ -82,16 +105,16 @@ async function processOneBatch(table: string, afterId: string | null, batchSize:
     return result;
   }
   const commonCols = [...cloudCols].filter((c) => extCols.has(c));
-  if (!commonCols.includes("id")) {
-    result.error = "no id column";
+  if (!commonCols.includes(orderCol)) {
+    result.error = `no ${orderCol} column`;
     result.done = true;
     return result;
   }
   const fkCols = commonCols.filter((c) => FK_AUTH_COLUMNS.has(c));
   const map = fkCols.length > 0 ? await loadUuidMap() : new Map();
 
-  let q = cloud.from(table).select(commonCols.join(",")).order("id", { ascending: true }).limit(batchSize);
-  if (afterId) q = q.gt("id", afterId);
+  let q = cloud.from(table).select(commonCols.join(",")).order(orderCol, { ascending: true }).limit(batchSize);
+  if (afterId) q = q.gt(orderCol, afterId);
   const { data, error } = await q;
   if (error) {
     result.error = `read: ${error.message.slice(0, 200)}`;
@@ -102,15 +125,15 @@ async function processOneBatch(table: string, afterId: string | null, batchSize:
     return result;
   }
   result.batch_read = data.length;
-  result.last_id = (data[data.length - 1] as any).id;
+  result.last_id = String((data[data.length - 1] as any)[orderCol]);
 
   const remapped = data.map((r: any) => remapRow(r, fkCols, map));
-  const { error: upErr } = await ext.from(table).upsert(remapped, { onConflict: "id" });
+  const { error: upErr } = await ext.from(table).upsert(remapped, { onConflict: conflictKey });
   if (upErr) {
     // fallback row-by-row
     let ok = 0;
     for (const r of remapped) {
-      const { error: e2 } = await ext.from(table).upsert(r, { onConflict: "id" });
+      const { error: e2 } = await ext.from(table).upsert(r, { onConflict: conflictKey });
       if (!e2) ok++;
     }
     result.batch_upserted = ok;
