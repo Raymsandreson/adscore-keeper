@@ -23,6 +23,12 @@ const ALLOWED_TABLES = new Set([
   "lead_activities",
   "activity_chat_messages",
   "activity_attachments",
+  "legal_cases",
+  "lead_processes",
+  "lead_stage_history",
+  "process_parties",
+  "team_chat_messages",
+  "team_chat_mentions",
 ]);
 
 // Colunas FK auth que precisam remap cloud_uuid -> ext_uuid
