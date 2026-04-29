@@ -123,6 +123,45 @@ export async function linkMessagesToLead(
   if (error) throw error;
 }
 
+export async function linkConversationContactToLead(
+  phone: string,
+  instanceName: string,
+  leadId: string
+): Promise<string | null> {
+  const variants = instanceNameVariants(instanceName);
+  const { data: msg, error: msgError } = await (externalSupabase as any)
+    .from('whatsapp_messages')
+    .select('contact_id')
+    .eq('phone', phone)
+    .in('instance_name', variants)
+    .not('contact_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (msgError) throw msgError;
+  const contactId = msg?.contact_id || null;
+  if (!contactId) return null;
+
+  const { data: existing, error: existingError } = await (externalSupabase as any)
+    .from('contact_leads')
+    .select('id')
+    .eq('contact_id', contactId)
+    .eq('lead_id', leadId)
+    .limit(1)
+    .maybeSingle();
+
+  if (existingError) throw existingError;
+  if (!existing) {
+    const { error: insertError } = await (externalSupabase as any)
+      .from('contact_leads')
+      .insert({ contact_id: contactId, lead_id: leadId, relationship_to_victim: 'Vítima' });
+    if (insertError) throw insertError;
+  }
+
+  return contactId;
+}
+
 export async function linkMessagesToContact(
   phone: string,
   instanceName: string,
