@@ -47,8 +47,13 @@ Deno.serve(async (req) => {
     for (let i = 0; i < maxBatches; i++) {
       if (Date.now() - startedAt > softTimeoutMs) break;
 
-      let q = cloud.from(table).select("*").order("id", { ascending: true }).limit(batchSize);
-      if (afterId) q = q.gt("id", afterId);
+      // Ordena por created_at (indexado) + id como tiebreaker
+      let q = cloud.from(table).select("*").order("created_at", { ascending: true }).order("id", { ascending: true }).limit(batchSize);
+      if (afterId) {
+        // afterId aqui vira "created_at|id" pra cursor composto
+        const [ts, idPart] = afterId.split("|");
+        q = q.or(`created_at.gt.${ts},and(created_at.eq.${ts},id.gt.${idPart})`);
+      }
       const { data, error } = await q;
       if (error) {
         lastError = `read: ${error.message}`;
