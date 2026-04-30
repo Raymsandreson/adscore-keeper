@@ -1,78 +1,68 @@
+// Proxy → Supabase Externo (kmedldlepwiityjsdahz)
+// Migrado em 2026-04-30. Função self-contained (Sentry API, sem DB).
+// MOTIVO EXTRA: SENTRY_AUTH_TOKEN no Cloud está expirado/inválido (401).
+// Externo já tem token válido — proxy CONSERTA a função.
+// Rollback: git restore deste arquivo + redeploy.
+const EXT = 'https://kmedldlepwiityjsdahz.supabase.co/functions/v1/sentry-issues';
+
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id',
+  'Access-Control-Expose-Headers': 'x-request-id',
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 };
 
-const ORG_SLUG = 'prudencio-advogados';
-const PROJECT_SLUG = 'javascript-react';
-
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: cors });
-
-  const SENTRY_AUTH_TOKEN = Deno.env.get('SENTRY_AUTH_TOKEN');
-  if (!SENTRY_AUTH_TOKEN) {
-    return new Response(JSON.stringify({ error: 'SENTRY_AUTH_TOKEN not configured' }), {
-      status: 500,
-      headers: { ...cors, 'Content-Type': 'application/json' },
-    });
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: cors });
   }
 
-  const url = new URL(req.url);
-  const endpoint = url.searchParams.get('endpoint') || 'issues';
-  const query = url.searchParams.get('query') || 'is:unresolved';
-  const statsPeriod = url.searchParams.get('statsPeriod') || '14d';
-
-  let sentryUrl: string;
-
-  if (endpoint === 'issues') {
-    sentryUrl = `https://sentry.io/api/0/projects/${ORG_SLUG}/${PROJECT_SLUG}/issues/?statsPeriod=${encodeURIComponent(statsPeriod)}&query=${encodeURIComponent(query)}`;
-  } else if (endpoint === 'events' || endpoint === 'issue-events') {
-    const issueId = url.searchParams.get('issueId');
-    if (!issueId) {
-      return new Response(JSON.stringify({ error: 'issueId is required' }), {
-        status: 400,
-        headers: { ...cors, 'Content-Type': 'application/json' },
-      });
-    }
-    sentryUrl = `https://sentry.io/api/0/issues/${issueId}/events/`;
-  } else if (endpoint === 'issue-details') {
-    const issueId = url.searchParams.get('issueId');
-    if (!issueId) {
-      return new Response(JSON.stringify({ error: 'issueId is required' }), {
-        status: 400,
-        headers: { ...cors, 'Content-Type': 'application/json' },
-      });
-    }
-    sentryUrl = `https://sentry.io/api/0/issues/${issueId}/`;
-  } else {
-    sentryUrl = `https://sentry.io/api/0/projects/${ORG_SLUG}/${PROJECT_SLUG}/${endpoint}/`;
-  }
+  const incomingRid = req.headers.get('x-request-id');
+  const requestId = incomingRid || crypto.randomUUID();
+  const startTime = Date.now();
 
   try {
-    const resp = await fetch(sentryUrl, {
+    // Preserva querystring (?endpoint=, ?statsPeriod=, ?issueId=, etc.)
+    const url = new URL(req.url);
+    const target = EXT + (url.search || '');
+
+    const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.text();
+
+    console.log(`[sentry-issues ${requestId}] PROXY → ${url.search || '(no qs)'}`);
+
+    const fwdHeaders: Record<string, string> = {
+      'Content-Type': req.headers.get('content-type') || 'application/json',
+      'x-request-id': requestId,
+    };
+    const auth = req.headers.get('authorization');
+    if (auth) fwdHeaders['Authorization'] = auth;
+    const apikey = req.headers.get('apikey');
+    if (apikey) fwdHeaders['apikey'] = apikey;
+
+    const resp = await fetch(target, {
+      method: req.method,
+      headers: fwdHeaders,
+      body,
+    });
+
+    const text = await resp.text();
+    const duration = Date.now() - startTime;
+    console.log(`[sentry-issues ${requestId}] ← status=${resp.status} duration=${duration}ms bytes=${text.length}`);
+
+    return new Response(text, {
+      status: resp.status,
       headers: {
-        'Authorization': `Bearer ${SENTRY_AUTH_TOKEN}`,
-        'Content-Type': 'application/json',
+        ...cors,
+        'Content-Type': resp.headers.get('content-type') || 'application/json',
+        'x-request-id': requestId,
       },
     });
-
-    const body = await resp.text();
-
-    if (!resp.ok) {
-      return new Response(JSON.stringify({ error: 'Sentry API error', status: resp.status, details: body }), {
-        status: resp.status,
-        headers: { ...cors, 'Content-Type': 'application/json' },
-      });
-    }
-
-    return new Response(body, {
-      status: 200,
-      headers: { ...cors, 'Content-Type': 'application/json' },
-    });
   } catch (err) {
-    return new Response(JSON.stringify({ error: 'Failed to fetch from Sentry', details: String(err) }), {
-      status: 500,
-      headers: { ...cors, 'Content-Type': 'application/json' },
-    });
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[sentry-issues proxy ${requestId}] CRITICAL:`, errorMsg);
+    return new Response(
+      JSON.stringify({ error: 'proxy_failed', details: errorMsg, request_id: requestId }),
+      { status: 502, headers: { ...cors, 'Content-Type': 'application/json', 'x-request-id': requestId } },
+    );
   }
 });
