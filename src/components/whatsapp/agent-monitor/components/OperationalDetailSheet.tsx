@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Loader2, FileSignature, Users, Briefcase, Scale, ExternalLink, MessageSquare, UsersRound, Radio, UserPlus, Send } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { startOfDay, endOfDay, format, parseISO } from 'date-fns';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { toast } from 'sonner';
@@ -93,7 +94,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
               .limit(20);
             
             // Also find contacts linked via contact_leads
-            const { data: linkedContacts } = await supabase
+            const { data: linkedContacts } = await externalSupabase
               .from('contact_leads')
               .select('contact_id, contacts:contact_id(id, full_name, phone, city, state, created_by)')
               .eq('lead_id', item.id)
@@ -111,14 +112,14 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
           
           setItems(enrichedItems);
         } else if (metricType === 'cases') {
-          const { data } = await supabase
+          const { data } = await externalSupabase
             .from('legal_cases')
             .select('id, case_number, title, status, acolhedor, lead_id, created_at')
             .gte('created_at', start).lte('created_at', end)
             .order('created_at', { ascending: false });
           setItems(data || []);
         } else if (metricType === 'processes') {
-          const { data } = await supabase
+          const { data } = await externalSupabase
             .from('case_process_tracking')
             .select('id, cliente, caso, tipo, acolhedor, status_processo, numero_processo, created_at')
             .gte('created_at', start).lte('created_at', end)

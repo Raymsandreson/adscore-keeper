@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 
 export type PartyRole = 'autor' | 'reu' | 'testemunha' | 'advogado' | 'dependente' | 'perito' | 'outro';
@@ -35,7 +36,7 @@ export function useProcessParties(processId?: string) {
     if (!targetId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('process_parties')
         .select('*, contacts(full_name, phone)')
         .eq('process_id', targetId)
@@ -56,7 +57,7 @@ export function useProcessParties(processId?: string) {
 
   const addParty = useCallback(async (party: { process_id: string; contact_id: string; role: PartyRole; notes?: string }) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('process_parties')
         .insert(party as any)
         .select('*, contacts(full_name, phone)')
@@ -85,7 +86,7 @@ export function useProcessParties(processId?: string) {
 
   const removeParty = useCallback(async (id: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('process_parties')
         .delete()
         .eq('id', id);

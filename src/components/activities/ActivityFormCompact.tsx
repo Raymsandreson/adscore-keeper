@@ -850,7 +850,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                             if (lead) props.handleSelectLead(lead.id);
                           }
                         }
-                        const { data: procs } = await props.supabase
+                        const { data: procs } = await props.externalSupabase
                           .from('lead_processes')
                           .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, envolvidos')
                           .eq('case_id', c.id);

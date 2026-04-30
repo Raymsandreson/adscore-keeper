@@ -61,6 +61,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { MultiClassificationSelect } from './MultiClassificationSelect';
 import { ContactInteractionHistory } from './ContactInteractionHistory';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -205,7 +206,7 @@ export function ContactDetailSheet({
   useEffect(() => {
     if (contact?.id && open) {
       (async () => {
-        const { data } = await supabase
+        const { data } = await externalSupabase
           .from('process_parties')
           .select('role, notes, lead_processes(id, process_number, polo_ativo, polo_passivo, status, case_id, legal_cases(case_number, title))')
           .eq('contact_id', contact.id);
@@ -399,10 +400,10 @@ export function ContactDetailSheet({
         await supabase.from('leads').update(updates).eq('id', selectedExistingLeadId);
 
         // Create link if not already linked
-        const { data: existingLink } = await supabase.from('contact_leads')
+        const { data: existingLink } = await externalSupabase.from('contact_leads')
           .select('id').eq('contact_id', contact.id).eq('lead_id', selectedExistingLeadId).maybeSingle();
         if (!existingLink) {
-          await supabase.from('contact_leads').insert({ contact_id: contact.id, lead_id: selectedExistingLeadId });
+          await externalSupabase.from('contact_leads').insert({ contact_id: contact.id, lead_id: selectedExistingLeadId });
         }
 
         await supabase.from('contacts').update({
@@ -455,7 +456,7 @@ export function ContactDetailSheet({
 
         if (leadError) throw leadError;
 
-        await supabase.from('contact_leads').insert({
+        await externalSupabase.from('contact_leads').insert({
           contact_id: contact.id,
           lead_id: leadResult.id,
         });

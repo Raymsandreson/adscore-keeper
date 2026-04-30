@@ -713,7 +713,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
                   became_client_date: new Date().toISOString().slice(0, 10),
                 } as any).eq('id', leadId);
 
-                const { data: existingCases } = await supabase
+                const { data: existingCases } = await externalSupabase
                   .from('legal_cases')
                   .select('id')
                   .eq('lead_id', leadId)
@@ -752,7 +752,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
                   const { data: caseNumber } = await supabase
                     .rpc('generate_case_number', { p_nucleus_id: matchedNucleusId });
 
-                  const { data: createdCase } = await supabase.from('legal_cases').insert({
+                  const { data: createdCase } = await externalSupabase.from('legal_cases').insert({
                     lead_id: leadId,
                     nucleus_id: matchedNucleusId,
                     case_number: caseNumber || 'CASO-0001',
@@ -764,7 +764,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
                   // Auto-create process tracking record
                   if (createdCase?.id) {
                     try {
-                      await supabase.from('case_process_tracking').insert({
+                      await externalSupabase.from('case_process_tracking').insert({
                         case_id: createdCase.id,
                         lead_id: leadId,
                         cliente: currentLead?.lead_name || '',

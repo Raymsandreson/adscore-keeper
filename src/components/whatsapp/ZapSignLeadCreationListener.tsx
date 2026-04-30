@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -179,7 +180,7 @@ export function ZapSignLeadCreationListener() {
 
       // 3. Link contact to lead (idempotent via unique constraint)
       if (contactId && newLead) {
-        await supabase
+        await externalSupabase
           .from('contact_leads')
           .upsert(
             { contact_id: contactId, lead_id: newLead.id },

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Badge } from '@/components/ui/badge';
 import { UsersRound, ExternalLink } from 'lucide-react';
 
@@ -66,7 +67,7 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
 
         // 3) For each group JID, get lead info
         const jidArray = Array.from(groupJids);
-        const { data: leadGroups } = await supabase
+        const { data: leadGroups } = await externalSupabase
           .from('lead_whatsapp_groups')
           .select('group_jid, group_name, lead_id, leads(lead_name, lead_status)')
           .in('group_jid', jidArray);

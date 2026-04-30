@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { MultiProfessionSelector } from './MultiProfessionSelector';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { Loader2, Link2, Plus, UserPlus, UserMinus, Users2, UserCheck, Users, Handshake, Package, X } from 'lucide-react';
 import type { ContactClassification, FollowerStatus } from '@/hooks/useContacts';
@@ -199,7 +200,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
       // 2. Handle lead linking
       if (leadLinkMode === 'existing' && selectedLeadId) {
         // Link contact to existing lead via contact_leads with relationship
-        await supabase.from('contact_leads').insert({
+        await externalSupabase.from('contact_leads').insert({
           contact_id: contact.id,
           lead_id: selectedLeadId,
           ...(selectedRelationship ? { relationship_to_victim: selectedRelationship } : {}),
@@ -222,7 +223,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
           .single();
 
         if (!leadError && lead) {
-          await supabase.from('contact_leads').insert({
+          await externalSupabase.from('contact_leads').insert({
             contact_id: contact.id,
             lead_id: lead.id,
             ...(selectedRelationship ? { relationship_to_victim: selectedRelationship } : {}),

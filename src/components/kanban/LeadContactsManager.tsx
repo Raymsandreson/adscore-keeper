@@ -57,6 +57,7 @@ import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { logGroupAudit } from '@/lib/groupAuditLog';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 
 interface LeadContactsManagerProps {
   lead: Lead | null;
@@ -140,14 +141,14 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
     const groupName = formName.trim() || null;
     const leadName = (lead as any)?.lead_name || null;
     try {
-      const { data: existing } = await supabase
+      const { data: existing } = await externalSupabase
         .from('lead_whatsapp_groups')
         .select('id')
         .eq('lead_id', lead.id)
         .eq('group_jid', groupJid)
         .maybeSingle();
       if (!existing) {
-        const { error } = await supabase.from('lead_whatsapp_groups').insert({
+        const { error } = await externalSupabase.from('lead_whatsapp_groups').insert({
           lead_id: lead.id,
           group_jid: groupJid,
           group_name: groupName,

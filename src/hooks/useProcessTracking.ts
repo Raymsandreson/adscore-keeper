@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 
 export interface ProcessTracking {
@@ -41,7 +42,7 @@ export function useProcessTracking() {
   const fetchRecords = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('case_process_tracking')
         .select('*')
         .order('caso', { ascending: true, nullsFirst: false });
@@ -57,7 +58,7 @@ export function useProcessTracking() {
   const upsertRecord = useCallback(async (record: Partial<ProcessTracking> & { id?: string }) => {
     try {
       if (record.id) {
-        const { data, error } = await supabase
+        const { data, error } = await externalSupabase
           .from('case_process_tracking')
           .update(record as any)
           .eq('id', record.id)
@@ -67,7 +68,7 @@ export function useProcessTracking() {
         setRecords(prev => prev.map(r => r.id === record.id ? data as ProcessTracking : r));
         return data;
       } else {
-        const { data, error } = await supabase
+        const { data, error } = await externalSupabase
           .from('case_process_tracking')
           .insert(record as any)
           .select()
@@ -84,7 +85,7 @@ export function useProcessTracking() {
 
   const bulkInsert = useCallback(async (rows: Partial<ProcessTracking>[]) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('case_process_tracking')
         .insert(rows.map(r => ({ ...r, imported_at: new Date().toISOString() })) as any)
         .select();
@@ -99,7 +100,7 @@ export function useProcessTracking() {
 
   const deleteRecord = useCallback(async (id: string) => {
     try {
-      const { error } = await supabase.from('case_process_tracking').delete().eq('id', id);
+      const { error } = await externalSupabase.from('case_process_tracking').delete().eq('id', id);
       if (error) throw error;
       setRecords(prev => prev.filter(r => r.id !== id));
     } catch (e) {

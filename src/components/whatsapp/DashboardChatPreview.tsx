@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from '@/components/ui/dropdown-menu';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, Volume2, VolumeX, BellOff, Trash2, FastForward } from 'lucide-react';
@@ -214,7 +215,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
 
       if (isGroup) {
         // For group conversations, find lead via lead_whatsapp_groups or leads.whatsapp_group_id
-        const { data: groupLink } = await supabase
+        const { data: groupLink } = await externalSupabase
           .from('lead_whatsapp_groups')
           .select('lead_id, group_name')
           .eq('group_jid', phone)
@@ -259,7 +260,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
 
       // Fetch contact: for groups, use linked lead's contacts; for individual, use phone
       if (isGroup && leadData) {
-        const { data: contactLink } = await supabase
+        const { data: contactLink } = await externalSupabase
           .from('contact_leads')
           .select('contact_id')
           .eq('lead_id', leadData.id)
@@ -690,7 +691,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         contactId = newContact.id;
       }
 
-      await supabase.from('contact_leads').insert({
+      await externalSupabase.from('contact_leads').insert({
         contact_id: contactId,
         lead_id: newLead.id,
         relationship_to_victim: 'Vítima',

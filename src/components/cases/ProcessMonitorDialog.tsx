@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { BellRing, Plus, Trash2, Loader2, Phone, Clock } from 'lucide-react';
 
@@ -59,7 +60,7 @@ export function ProcessMonitorDialog({ open, onOpenChange, processId, processNum
     setAdding(true);
     try {
       // Get current movement count
-      const { data: proc } = await supabase
+      const { data: proc } = await externalSupabase
         .from('lead_processes')
         .select('movimentacoes')
         .eq('id', processId)

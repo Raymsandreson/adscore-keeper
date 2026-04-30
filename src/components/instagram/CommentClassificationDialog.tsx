@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { useContactClassifications, classificationColors } from "@/hooks/useContactClassifications";
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
 import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from "sonner";
 import { RELATIONSHIP_KEYWORDS, isRelationshipClassification } from "./RelationshipPromptDialog";
 
@@ -574,7 +575,7 @@ export const CommentClassificationDialog = ({
 
         // Link contact to the new lead via contact_leads junction table
         if (authorContactId) {
-          const { error: linkError } = await supabase
+          const { error: linkError } = await externalSupabase
             .from('contact_leads')
             .insert({
               contact_id: authorContactId,
@@ -585,7 +586,7 @@ export const CommentClassificationDialog = ({
         }
 
         // Also link the related contact to the lead
-        const { error: relatedLinkError } = await supabase
+        const { error: relatedLinkError } = await externalSupabase
           .from('contact_leads')
           .insert({
             contact_id: selectedRelatedContact.id,
@@ -624,7 +625,7 @@ export const CommentClassificationDialog = ({
 
         // Link contact to the new lead
         if (authorContactId) {
-          const { error: linkError } = await supabase
+          const { error: linkError } = await externalSupabase
             .from('contact_leads')
             .insert({
               contact_id: authorContactId,

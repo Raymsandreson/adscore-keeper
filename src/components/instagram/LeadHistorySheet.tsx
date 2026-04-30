@@ -117,7 +117,7 @@ export function LeadHistorySheet({
         setStageHistory((historyData || []) as StageHistoryEntry[]);
 
         // Fetch followups
-        const { data: followupsData } = await supabase
+        const { data: followupsData } = await externalSupabase
           .from('lead_followups')
           .select('*')
           .eq('lead_id', lead.id)

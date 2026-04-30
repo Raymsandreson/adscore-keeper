@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 
 export type FollowupType = 'whatsapp' | 'call' | 'email' | 'visit' | 'meeting';
@@ -48,7 +49,7 @@ export const useLeadFollowups = () => {
   const fetchFollowupsForLead = useCallback(async (leadId: string) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('lead_followups')
         .select('*')
         .eq('lead_id', leadId)
@@ -72,7 +73,7 @@ export const useLeadFollowups = () => {
     notes?: string
   ) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('lead_followups')
         .insert([{
           lead_id: leadId,
@@ -87,7 +88,7 @@ export const useLeadFollowups = () => {
       if (error) throw error;
 
       // Update lead's followup_count and last_followup_at
-      const { data: countData } = await supabase
+      const { data: countData } = await externalSupabase
         .from('lead_followups')
         .select('id', { count: 'exact' })
         .eq('lead_id', leadId);
@@ -115,7 +116,7 @@ export const useLeadFollowups = () => {
 
   const deleteFollowup = async (followupId: string, leadId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('lead_followups')
         .delete()
         .eq('id', followupId);
@@ -123,12 +124,12 @@ export const useLeadFollowups = () => {
       if (error) throw error;
 
       // Update lead's followup_count
-      const { data: countData } = await supabase
+      const { data: countData } = await externalSupabase
         .from('lead_followups')
         .select('id', { count: 'exact' })
         .eq('lead_id', leadId);
 
-      const { data: lastFollowup } = await supabase
+      const { data: lastFollowup } = await externalSupabase
         .from('lead_followups')
         .select('followup_date')
         .eq('lead_id', leadId)
@@ -170,7 +171,7 @@ export const useFollowupAnalytics = () => {
     setLoading(true);
     try {
       // Fetch all followups with lead data
-      const { data: followupsData, error: followupsError } = await supabase
+      const { data: followupsData, error: followupsError } = await externalSupabase
         .from('lead_followups')
         .select('*')
         .order('followup_date', { ascending: true });

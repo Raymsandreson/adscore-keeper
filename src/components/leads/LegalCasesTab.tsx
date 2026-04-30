@@ -142,7 +142,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     const { data: { user } } = await supabase.auth.getUser();
     for (const title of selectedProcesses) {
       try {
-        const { data: savedProcess } = await supabase.from('lead_processes').insert({
+        const { data: savedProcess } = await externalSupabase.from('lead_processes').insert({
           lead_id: caseLeadId,
           case_id: caseId,
           process_type: 'administrativo',
@@ -897,7 +897,7 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
         if (!existingVictim?.length) {
           const { data: newContact } = await supabase.from('contacts').insert(victimData as any).select('id').single();
           if (newContact) {
-            await supabase.from('process_parties').insert({
+            await externalSupabase.from('process_parties').insert({
               process_id: process.id,
               contact_id: newContact.id,
               role: 'autor',
@@ -942,7 +942,7 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
                      parte.tipo?.includes('reu') ? 'reu' : 
                      parte.tipo?.includes('autor') ? 'autor' : 'outro';
         
-        await supabase.from('process_parties').insert({
+        await externalSupabase.from('process_parties').insert({
           process_id: process.id,
           contact_id: contactId,
           role,

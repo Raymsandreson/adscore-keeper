@@ -140,7 +140,7 @@ export function DynamicKanbanBoard({
       if (leadIds.length === 0) return;
 
       // Fetch from contact_leads junction table
-      const { data: junctionData, error: junctionError } = await supabase
+      const { data: junctionData, error: junctionError } = await externalSupabase
         .from('contact_leads')
         .select('lead_id, contact_id')
         .in('lead_id', leadIds);

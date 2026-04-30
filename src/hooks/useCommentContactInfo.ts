@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 
 interface ContactInfo {
   id: string;
@@ -104,7 +105,7 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
       // Fetch linked leads for these contacts
       let leadsByContact: Record<string, LeadInfo[]> = {};
       if (contactIds.length > 0) {
-        const { data: contactLeads, error: leadsError } = await supabase
+        const { data: contactLeads, error: leadsError } = await externalSupabase
           .from('contact_leads')
           .select('contact_id, lead_id')
           .in('contact_id', contactIds);

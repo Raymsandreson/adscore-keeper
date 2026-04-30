@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, UserPlus, Users, Phone, MapPin, Mail, Briefcase, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
 
@@ -300,7 +301,7 @@ export function GroupContactSyncDialog({
           continue;
         }
 
-        const { error: linkError } = await supabase
+        const { error: linkError } = await externalSupabase
           .from('contact_leads')
           .insert({ contact_id: newContact.id, lead_id: leadId });
 
