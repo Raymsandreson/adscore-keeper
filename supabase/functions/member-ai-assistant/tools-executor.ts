@@ -514,8 +514,10 @@ async function changeLeadStage(supabase: any, args: any, userId: string) {
 
   if (updateErr) return { error: updateErr.message }
 
-  // Record stage history
-  await supabase.from('lead_stage_history').insert({
+  // Record stage history (External DB - business data)
+  const { getExternalClient } = await import('../_shared/external-client.ts')
+  const extClient = getExternalClient()
+  await extClient.from('lead_stage_history').insert({
     lead_id: args.lead_id,
     from_stage: lead.current_stage,
     to_stage: targetStage.id,
