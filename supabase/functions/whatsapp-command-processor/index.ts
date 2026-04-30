@@ -1428,8 +1428,8 @@ Retorne APENAS o JSON, sem markdown.` },
             .select("id")
             .eq("replied_by", targetUserId)
             .gte("replied_at", todayStart).lte("replied_at", todayEnd),
-          // Stage changes today
-          supabase.from("lead_stage_history")
+          // Stage changes today (External DB)
+          extClient.from("lead_stage_history")
             .select("id, lead_id, to_stage")
             .eq("changed_by", targetUserId)
             .gte("changed_at", todayStart).lte("changed_at", todayEnd),
