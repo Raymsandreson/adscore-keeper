@@ -23,7 +23,7 @@ const CLOUD_ANON_KEY = process.env.CLOUD_ANON_KEY || '';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id',
 };
 
 // ============================================================
@@ -1096,7 +1096,7 @@ export const handler: RequestHandler = async (req, res) => {
 
       try {
         const { data: cmdConfigs } = await supabase
-          .from('whatsapp_command_configs').select('id, authorized_phone, instance_name')
+          .from('whatsapp_command_config').select('id, authorized_phone, instance_name')
           .eq('is_active', true).limit(50);
 
         const isAuthorized = (cmdConfigs || []).some((cfg: any) => {
