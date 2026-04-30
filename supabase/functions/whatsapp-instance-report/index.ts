@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
+import { getExternalClient } from "../_shared/external-client.ts";
 // Use external Supabase project when configured (hybrid architecture)
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
@@ -23,6 +24,7 @@ Deno.serve(async (req) => {
     const supabaseUrl = RESOLVED_SUPABASE_URL;
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
     const supabase = createClient(supabaseUrl, supabaseKey);
+    const extClient = getExternalClient();
 
     // Load config
     const { data: configData } = await supabase
@@ -254,13 +256,13 @@ Deno.serve(async (req) => {
 
       if (metrics.followups) {
         // Follow-ups registered in the period
-        const { count: followupCount } = await supabase
+        const { count: followupCount } = await extClient
           .from("lead_followups")
           .select("*", { count: "exact", head: true })
           .gte("created_at", periodStart.toISOString());
 
         // Follow-ups by type
-        const { data: followupsByType } = await supabase
+        const { data: followupsByType } = await extClient
           .from("lead_followups")
           .select("followup_type")
           .gte("created_at", periodStart.toISOString());
@@ -278,7 +280,7 @@ Deno.serve(async (req) => {
         });
 
         // Follow-ups by outcome
-        const { data: followupsByOutcome } = await supabase
+        const { data: followupsByOutcome } = await extClient
           .from("lead_followups")
           .select("outcome")
           .gte("created_at", periodStart.toISOString())

@@ -79,7 +79,7 @@ serve(async (req) => {
     }
 
     // 4. Fetch process tracking data
-    const { data: caseData } = await sb
+    const { data: caseData } = await extClient
       .from("legal_cases")
       .select("id, case_number, description, nucleus_id")
       .eq("lead_id", lead_id)
@@ -88,7 +88,7 @@ serve(async (req) => {
     let processData: any[] = [];
     if (caseData && caseData.length > 0) {
       const caseIds = caseData.map((c: any) => c.id);
-      const { data: procs } = await sb
+      const { data: procs } = await extClient
         .from("case_process_tracking")
         .select("tipo, status_processo, observacao, pendencia, numero_processo")
         .in("case_id", caseIds);

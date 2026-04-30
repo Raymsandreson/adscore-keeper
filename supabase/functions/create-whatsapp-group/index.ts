@@ -944,7 +944,7 @@ Deno.serve(async (req) => {
       // Ensure junction-table link (contact_leads) exists so the new UI sees this contact.
       // Idempotent: ignore duplicate-key errors.
       if (groupContactId) {
-        const { error: clErr } = await supabase
+        const { error: clErr } = await extClient
           .from('contact_leads')
           .insert({ contact_id: groupContactId, lead_id: leadData.id })
         if (clErr && !`${clErr.message || ''}`.toLowerCase().includes('duplicate')) {
@@ -956,7 +956,7 @@ Deno.serve(async (req) => {
 
       // Also save to lead_whatsapp_groups table for proper tracking
       // Check if group already exists in lead_whatsapp_groups
-      const { data: existingLwg } = await supabase
+      const { data: existingLwg } = await extClient
         .from('lead_whatsapp_groups')
         .select('id')
         .eq('lead_id', leadData.id)
@@ -964,7 +964,7 @@ Deno.serve(async (req) => {
         .maybeSingle()
 
       if (!existingLwg) {
-        const { error: lwgError } = await supabase
+        const { error: lwgError } = await extClient
           .from('lead_whatsapp_groups')
           .insert({
             lead_id: leadData.id,
@@ -979,7 +979,7 @@ Deno.serve(async (req) => {
         }
       } else {
         // Update group_name if it changed
-        await supabase
+        await extClient
           .from('lead_whatsapp_groups')
           .update({ group_name: groupName, group_link: groupInviteLink || null })
           .eq('id', existingLwg.id)
@@ -1215,7 +1215,7 @@ Deno.serve(async (req) => {
 
         const caseTitle = `${leadData.lead_name || lead_name} - ${workflowName}`
         
-        const { data: newCase, error: caseError } = await supabase
+        const { data: newCase, error: caseError } = await extClient
           .from('legal_cases')
           .insert({
             case_number: caseNumber,

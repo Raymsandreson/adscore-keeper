@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
+import { getExternalClient } from "../_shared/external-client.ts";
 // Use external Supabase project when configured (hybrid architecture)
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
@@ -68,6 +69,7 @@ serve(async (req) => {
       RESOLVED_ANON_KEY,
       { global: { headers: { Authorization: authHeader! } } }
     );
+    const extClient = getExternalClient();
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) throw new Error("Não autenticado");
@@ -157,7 +159,7 @@ serve(async (req) => {
     }
 
     // Get existing tracking data for conflict detection
-    const { data: existing } = await supabase
+    const { data: existing } = await extClient
       .from("case_process_tracking")
       .select("id, cliente, caso, cpf");
 

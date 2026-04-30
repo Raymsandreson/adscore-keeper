@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
+import { getExternalClient } from "../_shared/external-client.ts";
 // Use external Supabase project when configured (hybrid architecture)
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
@@ -24,6 +25,7 @@ serve(async (req) => {
   const supabaseUrl = RESOLVED_SUPABASE_URL;
   const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
   const supabase = createClient(supabaseUrl, supabaseKey);
+    const extClient = getExternalClient();
 
   try {
     // Get all active monitors
@@ -163,7 +165,7 @@ serve(async (req) => {
 
           // Also update lead_processes movimentacoes
           if (movements.length > 0) {
-            await supabase
+            await extClient
               .from('lead_processes')
               .update({ movimentacoes: movements })
               .eq('id', monitor.process_id);

@@ -783,7 +783,7 @@ Deno.serve(async (req) => {
 
               // 6. Link contact to lead
               if (contactId) {
-                await supabase.from('contact_leads').insert({
+                await extClient.from('contact_leads').insert({
                   contact_id: contactId,
                   lead_id: newLead.id,
                 })
@@ -844,7 +844,7 @@ Deno.serve(async (req) => {
                 .eq('id', localDoc.lead_id)
 
               // Create legal case if none exists
-              const { data: existingCase } = await supabase
+              const { data: existingCase } = await extClient
                 .from('legal_cases')
                 .select('id')
                 .eq('lead_id', localDoc.lead_id)
@@ -855,7 +855,7 @@ Deno.serve(async (req) => {
                   p_nucleus_id: null,
                 })
 
-                const { data: createdCase } = await supabase.from('legal_cases').insert({
+                const { data: createdCase } = await extClient.from('legal_cases').insert({
                   case_number: caseNumber,
                   title: `Caso - ${leadForBoard.lead_name || 'Novo'}`,
                   lead_id: localDoc.lead_id,
@@ -867,7 +867,7 @@ Deno.serve(async (req) => {
                 // Auto-create process tracking record
                 if (createdCase?.id) {
                   try {
-                    await supabase.from('case_process_tracking').insert({
+                    await extClient.from('case_process_tracking').insert({
                       case_id: createdCase.id,
                       lead_id: localDoc.lead_id,
                       cliente: leadForBoard.lead_name || '',

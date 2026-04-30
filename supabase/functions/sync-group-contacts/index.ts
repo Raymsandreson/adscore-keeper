@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getExternalClient } from "../_shared/external-client.ts";
 import {
   resolveServiceRoleKey,
   resolveSupabaseUrl,
@@ -60,6 +61,7 @@ Deno.serve(async (req) => {
     }
 
     const internalClient = createClient(INTERNAL_SUPABASE_URL, INTERNAL_SERVICE_ROLE_KEY);
+    const extClient = getExternalClient();
     const dataClient = createClient(RESOLVED_SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY);
 
     // 1. Build ordered list of instances to try

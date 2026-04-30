@@ -342,7 +342,7 @@ Deno.serve(async (req) => {
             createdLeadId = newLead.id;
 
             if (createdContactId) {
-              await supabase.from('contact_leads').insert({
+              await extClient.from('contact_leads').insert({
                 contact_id: createdContactId,
                 lead_id: newLead.id,
               });
@@ -393,7 +393,7 @@ Deno.serve(async (req) => {
               .eq('id', createdLeadId)
               .single();
 
-            const { data: createdCase, error } = await supabase.from('legal_cases').insert({
+            const { data: createdCase, error } = await extClient.from('legal_cases').insert({
               case_number: caseNumber,
               title: `Caso - ${leadData?.lead_name || 'Novo'}`,
               lead_id: createdLeadId,
@@ -408,7 +408,7 @@ Deno.serve(async (req) => {
             // Auto-create process tracking record
             if (createdCase?.id) {
               try {
-                await supabase.from('case_process_tracking').insert({
+                await extClient.from('case_process_tracking').insert({
                   case_id: createdCase.id,
                   lead_id: createdLeadId,
                   cliente: leadData?.lead_name || '',
