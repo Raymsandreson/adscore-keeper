@@ -966,20 +966,11 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Log GET events to webhook_logs for debugging
-      try {
-        await supabase.from("webhook_logs").insert({
-          source: "whatsapp",
-          event_type: "GET_" +
-            (body.EventType || body.event || body.type || "unknown"),
-          instance_name: body.instanceName || body.instance_name || null,
-          phone: (body.phone || body.from || "").replace(/\D/g, "").slice(0, 20),
-          direction: "inbound",
-          status: "received_get",
-          payload: body,
-          processing_ms: Date.now() - startTime,
-        });
-      } catch { /* ignore */ }
+      // webhook_logs disabled — console-only
+      console.log("[whatsapp-webhook][GET]", {
+        event_type: "GET_" + (body.EventType || body.event || body.type || "unknown"),
+        instance_name: body.instanceName || body.instance_name || null,
+      });
     } else {
       body = await req.json();
     }
@@ -1014,30 +1005,19 @@ Deno.serve(async (req) => {
       messageTypeHint.includes("call") ||
       hasCallPayload;
 
-    // Helper to log webhook payload to DB (fire-and-forget)
+    // webhook_logs disabled — console-only no-op (preserva interface)
     const logWebhook = async (
       status: string,
-      responseData?: any,
+      _responseData?: any,
       errorMsg?: string,
     ) => {
-      try {
-        const phone = body.chat?.phone ||
-          body.message?.chatid?.replace("@s.whatsapp.net", "") || "";
-        await supabase.from("webhook_logs").insert({
-          source: "whatsapp",
-          event_type: eventType || bodyType || bodyEventStr || "unknown",
-          instance_name: webhookInstanceName,
-          phone: phone.replace(/\D/g, "").slice(0, 20),
-          direction: body.message?.fromMe ? "outbound" : "inbound",
-          status,
-          payload: body,
-          response: responseData || null,
-          error_message: errorMsg || null,
-          processing_ms: Date.now() - startTime,
-        });
-      } catch (e) {
-        // Silent fail — logging should never break webhook
-      }
+      console.log("[whatsapp-webhook]", {
+        status,
+        event_type: eventType || bodyType || bodyEventStr || "unknown",
+        instance_name: webhookInstanceName,
+        ms: Date.now() - startTime,
+        ...(errorMsg ? { error: errorMsg } : {}),
+      });
     };
 
     // ========== EARLY SKIP: Filter high-volume noise events BEFORE logging ==========
@@ -3977,19 +3957,8 @@ Deno.serve(async (req) => {
     const errorMessage = error instanceof Error
       ? error.message
       : "Unknown error";
-    // Try to log the error
-    try {
-      const supabaseUrl = RESOLVED_SUPABASE_URL;
-      const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
-      const supabase = createClient(supabaseUrl, supabaseKey);
-      await supabase.from("webhook_logs").insert({
-        source: "whatsapp",
-        event_type: "error",
-        status: "error",
-        error_message: errorMessage,
-        payload: null,
-      });
-    } catch (_) {}
+    // webhook_logs disabled — console-only
+    console.error("[whatsapp-webhook][error]", errorMessage);
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
       {

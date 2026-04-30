@@ -500,14 +500,11 @@ export const handler: RequestHandler = async (req, res) => {
       if (Object.keys(body).length === 0) {
         return res.json({ success: true, method: 'GET', message: 'Webhook active' });
       }
-      try {
-        await supabase.from('webhook_logs').insert({
-          source: 'whatsapp', event_type: 'GET_' + (body.EventType || body.event || body.type || 'unknown'),
-          instance_name: body.instanceName || body.instance_name || null,
-          phone: (body.phone || body.from || '').replace(/\D/g, '').slice(0, 20),
-          direction: 'inbound', status: 'received_get', payload: body, processing_ms: Date.now() - startTime,
-        });
-      } catch (_) { /* ignore log failures */ }
+      // webhook_logs disabled — console-only
+      console.log('[whatsapp-webhook][GET]', {
+        event_type: 'GET_' + (body.EventType || body.event || body.type || 'unknown'),
+        instance_name: body.instanceName || body.instance_name || null,
+      });
     } else {
       body = req.body;
     }
@@ -527,18 +524,15 @@ export const handler: RequestHandler = async (req, res) => {
     const isCallEvent = ['call', 'calls', 'call_log'].includes(eventType)
       || bodyEventStr === 'call' || bodyType.includes('call') || messageTypeHint.includes('call') || hasCallPayload;
 
-    const logWebhook = async (status: string, responseData?: any, errorMsg?: string) => {
-      try {
-        const phone = body.chat?.phone || body.message?.chatid?.replace('@s.whatsapp.net', '') || '';
-        await supabase.from('webhook_logs').insert({
-          source: 'whatsapp', event_type: eventType || bodyType || bodyEventStr || 'unknown',
-          instance_name: webhookInstanceName,
-          phone: phone.replace(/\D/g, '').slice(0, 20),
-          direction: body.message?.fromMe ? 'outbound' : 'inbound',
-          status, payload: body, response: responseData || null, error_message: errorMsg || null,
-          processing_ms: Date.now() - startTime,
-        });
-      } catch (e) { /* Silent */ }
+    // webhook_logs disabled — console-only no-op
+    const logWebhook = async (status: string, _responseData?: any, errorMsg?: string) => {
+      console.log('[whatsapp-webhook]', {
+        status,
+        event_type: eventType || bodyType || bodyEventStr || 'unknown',
+        instance_name: webhookInstanceName,
+        ms: Date.now() - startTime,
+        ...(errorMsg ? { error: errorMsg } : {}),
+      });
     };
 
     // Skip noise events
@@ -1533,12 +1527,8 @@ export const handler: RequestHandler = async (req, res) => {
   } catch (error) {
     console.error('Webhook error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    try {
-      const supabase = createClient(RESOLVED_SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY);
-      await supabase.from('webhook_logs').insert({
-        source: 'whatsapp', event_type: 'error', status: 'error', error_message: errorMessage, payload: null,
-      });
-    } catch (_) {}
+    // webhook_logs disabled — console-only
+    console.error('[whatsapp-webhook][error]', errorMessage);
     return res.status(500).json({ success: false, error: errorMessage });
   }
 };
