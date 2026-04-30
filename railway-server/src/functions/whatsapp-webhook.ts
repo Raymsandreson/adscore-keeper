@@ -23,7 +23,7 @@ const CLOUD_ANON_KEY = process.env.CLOUD_ANON_KEY || '';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id',
 };
 
 // ============================================================
@@ -935,6 +935,19 @@ export const handler: RequestHandler = async (req, res) => {
 
     console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName);
 
+    // ========== AUTO-ENRICH LEAD/CONTACT (parity with Cloud) ==========
+    if (!isGroup && direction === 'inbound' && instanceName && phone && (leadId || contactId) && CLOUD_FUNCTIONS_URL && CLOUD_ANON_KEY) {
+      // Fire and forget — don't block webhook response
+      fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/auto-enrich-lead`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${CLOUD_ANON_KEY}`,
+        },
+        body: JSON.stringify({ phone, instance_name: instanceName, lead_id: leadId, contact_id: contactId }),
+      }).catch((e) => console.error('[auto-enrich] fire-and-forget error:', e));
+    }
+
     // ========== PROGRESSIVE CONTACT DATA UPDATE ==========
     if (contactId && direction === 'inbound' && !isGroup) {
       try {
@@ -1096,7 +1109,7 @@ export const handler: RequestHandler = async (req, res) => {
 
       try {
         const { data: cmdConfigs } = await supabase
-          .from('whatsapp_command_configs').select('id, authorized_phone, instance_name')
+          .from('whatsapp_command_config').select('id, authorized_phone, instance_name')
           .eq('is_active', true).limit(50);
 
         const isAuthorized = (cmdConfigs || []).some((cfg: any) => {
