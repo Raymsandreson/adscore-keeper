@@ -65,7 +65,8 @@ Deno.serve(async (req) => {
       }
 
       totalRead += data.length;
-      afterId = String((data[data.length - 1] as any).id);
+      const last = data[data.length - 1] as any;
+      afterId = `${last.created_at}|${last.id}`;
 
       // Upsert REAL: sobrescreve se existir
       const { error: upErr } = await ext.from(table).upsert(data, {
