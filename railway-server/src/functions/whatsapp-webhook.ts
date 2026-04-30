@@ -935,6 +935,19 @@ export const handler: RequestHandler = async (req, res) => {
 
     console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName);
 
+    // ========== AUTO-ENRICH LEAD/CONTACT (parity with Cloud) ==========
+    if (!isGroup && direction === 'inbound' && instanceName && phone && (leadId || contactId) && CLOUD_FUNCTIONS_URL && CLOUD_ANON_KEY) {
+      // Fire and forget — don't block webhook response
+      fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/auto-enrich-lead`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${CLOUD_ANON_KEY}`,
+        },
+        body: JSON.stringify({ phone, instance_name: instanceName, lead_id: leadId, contact_id: contactId }),
+      }).catch((e) => console.error('[auto-enrich] fire-and-forget error:', e));
+    }
+
     // ========== PROGRESSIVE CONTACT DATA UPDATE ==========
     if (contactId && direction === 'inbound' && !isGroup) {
       try {
