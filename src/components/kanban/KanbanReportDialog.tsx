@@ -18,6 +18,7 @@ import {
   User
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
@@ -97,7 +98,7 @@ export function KanbanReportDialog({
       }
 
       // Fetch stage history
-      const { data: historyData, error: historyError } = await supabase
+      const { data: historyData, error: historyError } = await externalSupabase
         .from("lead_stage_history")
         .select("*")
         .gte("changed_at", startDate.toISOString())

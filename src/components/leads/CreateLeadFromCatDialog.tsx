@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { UserPlus, CheckCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { generateLeadName } from '@/utils/generateLeadName';
@@ -135,7 +136,7 @@ export function CreateLeadFromCatDialog({
 
       // Record stage history
       if (selectedStage) {
-        await supabase.from('lead_stage_history').insert([{
+        await externalSupabase.from('lead_stage_history').insert([{
           lead_id: lead.id,
           to_stage: selectedStage.name,
           to_board_id: selectedBoardId,

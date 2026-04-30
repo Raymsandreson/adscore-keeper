@@ -11,6 +11,7 @@ import {
   Check
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useChecklists } from '@/hooks/useChecklists';
@@ -99,7 +100,7 @@ export const LeadStatusPopover: React.FC<LeadStatusPopoverProps> = ({
       if (updateError) throw updateError;
 
       // Record history
-      await supabase
+      await externalSupabase
         .from('lead_stage_history')
         .insert({
           lead_id: leadId,

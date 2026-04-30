@@ -208,7 +208,7 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
       const [leadRes, contactLinksRes, historyRes, activitiesRes] = await Promise.all([
         supabase.from('leads').select('*').eq('id', leadId).single(),
         supabase.from('contact_leads').select('contact_id, relationship_to_victim').eq('lead_id', leadId),
-        supabase.from('lead_stage_history').select('*').eq('lead_id', leadId).order('changed_at', { ascending: false }),
+        externalSupabase.from('lead_stage_history').select('*').eq('lead_id', leadId).order('changed_at', { ascending: false }),
         (externalSupabase as any).from('lead_activities').select('id, title, activity_type, status, deadline, created_at, assigned_to_name, completed_at').eq('lead_id', leadId).order('created_at', { ascending: false }),
       ]);
 

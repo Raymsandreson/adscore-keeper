@@ -232,7 +232,7 @@ export function DynamicKanbanBoard({
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('lead_stage_history')
         .select('lead_id, to_stage, changed_at')
         .in('lead_id', leadIds)

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -476,7 +477,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
 
       if (!leadsData) return;
 
-      const { data: stageHistory } = await supabase
+      const { data: stageHistory } = await externalSupabase
         .from('lead_stage_history')
         .select('lead_id, to_stage, to_board_id, changed_at')
         .in('lead_id', uniqueLeadIds)

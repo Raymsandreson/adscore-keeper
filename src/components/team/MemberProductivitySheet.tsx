@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -112,7 +113,7 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
           .in('contact_channel', ['phone', 'ligacao'])
           .gte('created_at', startDate).lte('created_at', endDate)
           .order('created_at', { ascending: false }),
-        supabase.from('lead_stage_history')
+        externalSupabase.from('lead_stage_history')
           .select('id, lead_id, from_stage, to_stage, changed_at, changed_by')
           .eq('changed_by', userId)
           .gte('changed_at', startDate).lte('changed_at', endDate)

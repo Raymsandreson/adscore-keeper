@@ -687,7 +687,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
               await supabase.from('leads').update(updatePayload).eq('id', leadId);
 
               // Record in lead_stage_history so productivity metrics track it
-              await supabase.from('lead_stage_history').insert({
+              await externalSupabase.from('lead_stage_history').insert({
                 lead_id: leadId,
                 from_stage: (currentLead as any)?.lead_status || 'active',
                 to_stage: newStatus,

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { safeSelectValue } from '@/utils/selectValue';
 import { sendLeadConversionEvent } from '@/utils/metaConversionTracking';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
@@ -1070,7 +1071,7 @@ ${scrapeData.content || ''}
           changed_by_type: 'manual',
         });
         // Also record in lead_stage_history so metrics/ranking can track who closed
-         await supabase.from('lead_stage_history').insert({
+         await externalSupabase.from('lead_stage_history').insert({
            lead_id: currentLead.id,
            from_stage: (currentLead as any).status || previousOutcome,
            to_stage: leadOutcome,

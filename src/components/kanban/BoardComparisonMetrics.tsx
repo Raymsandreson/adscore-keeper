@@ -19,6 +19,7 @@ import {
   Target,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { differenceInHours } from 'date-fns';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
@@ -73,7 +74,7 @@ export function BoardComparisonMetrics({ boards, allLeads }: BoardComparisonMetr
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('lead_stage_history')
         .select('*')
         .in('lead_id', leadIds)
