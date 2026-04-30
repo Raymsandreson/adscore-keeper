@@ -81,7 +81,7 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
           .select('id, comment_type, replied_by, replied_at, created_at')
           .or(`replied_by.eq.${userId},and(comment_type.eq.sent,created_at.gte.${startDate},created_at.lte.${endDate})`)
           .order('created_at', { ascending: false }),
-        supabase.from('lead_stage_history').select('id, lead_id, to_stage')
+        externalSupabase.from('lead_stage_history').select('id, lead_id, to_stage')
           .eq('changed_by', userId)
           .gte('changed_at', startDate).lte('changed_at', endDate),
         supabase.from('leads').select('id, status').eq('created_by', userId)

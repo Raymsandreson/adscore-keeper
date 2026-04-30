@@ -224,7 +224,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
         if (!result) continue;
 
         // Check duplicate
-        const { data: existing } = await supabase
+        const { data: existing } = await externalSupabase
           .from('lead_processes')
           .select('id, case_id')
           .eq('process_number', result.numero_cnj)
@@ -268,7 +268,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
         const unidadeOrigem = (fullResult as any).unidade_origem || (result as any).unidade_origem;
         const valorCausa = capa?.valor_causa || {};
 
-        const { data: insertedProcess, error } = await supabase
+        const { data: insertedProcess, error } = await externalSupabase
           .from('lead_processes')
           .insert({
             lead_id: leadId,
@@ -397,7 +397,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     setSaving(true);
     try {
       if (manualForm.process_number) {
-        const { data: existing } = await supabase
+        const { data: existing } = await externalSupabase
           .from('lead_processes')
           .select('id, case_id')
           .eq('process_number', manualForm.process_number)
@@ -413,7 +413,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
 
       const { data: { user } } = await supabase.auth.getUser();
 
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('lead_processes')
         .insert({
           lead_id: leadId,

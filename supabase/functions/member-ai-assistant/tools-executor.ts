@@ -514,8 +514,10 @@ async function changeLeadStage(supabase: any, args: any, userId: string) {
 
   if (updateErr) return { error: updateErr.message }
 
-  // Record stage history
-  await supabase.from('lead_stage_history').insert({
+  // Record stage history (External DB - business data)
+  const { getExternalClient } = await import('../_shared/external-client.ts')
+  const extClient = getExternalClient()
+  await extClient.from('lead_stage_history').insert({
     lead_id: args.lead_id,
     from_stage: lead.current_stage,
     to_stage: targetStage.id,
@@ -588,7 +590,7 @@ async function createContact(supabase: any, args: any, userId: string) {
 }
 
 async function linkContactToLead(supabase: any, args: any) {
-  const { error } = await supabase
+  const { error } = await extClient
     .from('contact_leads')
     .insert({
       contact_id: args.contact_id,
@@ -659,7 +661,7 @@ async function getLeadsByLocation(supabase: any, args: any) {
   if (cErr) return { error: cErr.message }
 
   // Also search leads directly via contact_leads table
-  let clQuery = supabase
+  let clQuery = extClient
     .from('contact_leads')
     .select('lead_id, contact_id, contacts(full_name, city, state, phone)')
     .limit(limit * 2)
@@ -809,7 +811,7 @@ async function getLeadContactsSummary(supabase: any, args: any) {
   if (!leadId) return { error: 'Informe lead_id ou lead_name' }
 
   // Get linked contacts
-  const { data: links, error } = await supabase
+  const { data: links, error } = await extClient
     .from('contact_leads')
     .select('relationship_to_victim, notes, contacts(id, full_name, phone, email, city, state, classification, notes, profession)')
     .eq('lead_id', leadId)

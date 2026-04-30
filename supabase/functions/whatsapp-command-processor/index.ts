@@ -1205,7 +1205,7 @@ Retorne APENAS o JSON, sem markdown.` },
 
           // 3) Generate case number and create case
           const { data: caseNumber } = await supabase.rpc("generate_case_number", { p_nucleus_id: cs.nucleus_id || null });
-          const { data: newCase, error: caseErr } = await supabase
+          const { data: newCase, error: caseErr } = await extClient
             .from("legal_cases")
             .insert({
               lead_id: newLead.id,
@@ -1228,7 +1228,7 @@ Retorne APENAS o JSON, sem markdown.` },
           if (cs.processes && Array.isArray(cs.processes) && cs.processes.length > 0) {
             let procCount = 0;
             for (const proc of cs.processes) {
-              const { error: procErr } = await supabase.from("lead_processes").insert({
+              const { error: procErr } = await extClient.from("lead_processes").insert({
                 case_id: newCase.id,
                 lead_id: newLead.id,
                 title: proc.title || `Processo ${procCount + 1}`,
@@ -1274,7 +1274,7 @@ Retorne APENAS o JSON, sem markdown.` },
 
               // Link contact to lead
               if (contactId) {
-                await supabase.from("contact_leads").insert({
+                await extClient.from("contact_leads").insert({
                   contact_id: contactId,
                   lead_id: newLead.id,
                   relationship_to_victim: party.role === "autor" ? "Vítima" : party.role,
@@ -1282,7 +1282,7 @@ Retorne APENAS o JSON, sem markdown.` },
 
                 // Link to first process if exists
                 if (cs.processes?.length > 0) {
-                  const { data: firstProc } = await supabase
+                  const { data: firstProc } = await extClient
                     .from("lead_processes")
                     .select("id")
                     .eq("case_id", newCase.id)
@@ -1290,7 +1290,7 @@ Retorne APENAS o JSON, sem markdown.` },
                     .limit(1)
                     .maybeSingle();
                   if (firstProc) {
-                    await supabase.from("process_parties").insert({
+                    await extClient.from("process_parties").insert({
                       process_id: firstProc.id,
                       contact_id: contactId,
                       role: party.role || "outro",
@@ -1428,13 +1428,13 @@ Retorne APENAS o JSON, sem markdown.` },
             .select("id")
             .eq("replied_by", targetUserId)
             .gte("replied_at", todayStart).lte("replied_at", todayEnd),
-          // Stage changes today
-          supabase.from("lead_stage_history")
+          // Stage changes today (External DB)
+          extClient.from("lead_stage_history")
             .select("id, lead_id, to_stage")
             .eq("changed_by", targetUserId)
             .gte("changed_at", todayStart).lte("changed_at", todayEnd),
           // Followups today
-          supabase.from("lead_followups")
+          extClient.from("lead_followups")
             .select("id")
             .gte("created_at", todayStart).lte("created_at", todayEnd),
           // Leads created today

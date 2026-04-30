@@ -116,7 +116,7 @@ export default function CasesPage() {
   const fetchCases = useCallback(async () => {
     setLoading(true);
     try {
-      let query = supabase
+      let query = externalSupabase
         .from('legal_cases')
         .select('*, specialized_nuclei(name, prefix, color), leads(lead_name)')
         .order('created_at', { ascending: false });
@@ -334,7 +334,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
     if (!expanded) return;
     setLoadingDetails(true);
     Promise.all([
-      supabase.from('lead_processes').select('*').eq('case_id', legalCase.id).order('created_at'),
+      externalSupabase.from('lead_processes').select('*').eq('case_id', legalCase.id).order('created_at'),
       legalCase.lead_id
         ? supabase.from('leads').select('id, lead_name, lead_phone, status, board_id, became_client_date').eq('id', legalCase.lead_id).maybeSingle()
         : Promise.resolve({ data: null }),
@@ -354,7 +354,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       if (newStatus === 'encerrado') {
         updates.outcome_date = new Date().toISOString().slice(0, 10);
       }
-      const { error } = await supabase.from('legal_cases').update(updates).eq('id', legalCase.id);
+      const { error } = await externalSupabase.from('legal_cases').update(updates).eq('id', legalCase.id);
       if (error) throw error;
       toast.success(`Status alterado para ${statusLabels[newStatus]}`);
       onCaseUpdated();
@@ -372,7 +372,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       }
       // Check uniqueness if changed
       if (trimmedNumber !== legalCase.case_number) {
-        const { data: existing } = await supabase
+        const { data: existing } = await externalSupabase
           .from('legal_cases')
           .select('id')
           .eq('case_number', trimmedNumber)
@@ -383,7 +383,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
           return;
         }
       }
-      const { error } = await supabase.from('legal_cases').update({
+      const { error } = await externalSupabase.from('legal_cases').update({
         case_number: trimmedNumber,
         title: editTitle.trim(),
         description: editDescription || null,
@@ -395,7 +395,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
         const { data: { user } } = await supabase.auth.getUser();
         for (const title of selectedProcesses) {
           try {
-            const { data: savedProcess } = await supabase.from('lead_processes').insert({
+            const { data: savedProcess } = await externalSupabase.from('lead_processes').insert({
               lead_id: legalCase.lead_id,
               case_id: legalCase.id,
               process_type: 'administrativo',
@@ -451,7 +451,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const handleDelete = async () => {
     if (!confirm('Tem certeza que deseja excluir este caso?')) return;
     try {
-      const { error } = await supabase.from('legal_cases').delete().eq('id', legalCase.id);
+      const { error } = await externalSupabase.from('legal_cases').delete().eq('id', legalCase.id);
       if (error) throw error;
       toast.success('Caso excluído');
       onCaseUpdated();
@@ -588,7 +588,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                           onClick={async (e) => {
                             e.stopPropagation();
                             if (!confirm(`Excluir o processo "${p.title}"?`)) return;
-                            await supabase.from('lead_processes').delete().eq('id', p.id);
+                            await externalSupabase.from('lead_processes').delete().eq('id', p.id);
                             toast.success('Processo excluído');
                             loadDetails();
                           }}

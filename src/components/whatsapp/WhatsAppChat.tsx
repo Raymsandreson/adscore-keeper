@@ -32,6 +32,7 @@ import { WhatsAppMediaGallery } from './WhatsAppMediaGallery';
 import { cn } from '@/lib/utils';
 import { canonicalizeChatTarget } from '@/lib/whatsappPhone';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -171,7 +172,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         setContactLinkedLeadIds([]);
         return;
       }
-      const { data } = await supabase
+      const { data } = await externalSupabase
         .from('contact_leads' as any)
         .select('lead_id')
         .eq('contact_id', conversation.contact_id);
@@ -1052,14 +1053,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       const groupName = conversation.contact_name || null;
       const leadName = leads.find(l => l.id === selectedLeadId)?.lead_name || null;
       try {
-        const { data: existingGroup } = await supabase
+        const { data: existingGroup } = await externalSupabase
           .from('lead_whatsapp_groups')
           .select('id')
           .eq('lead_id', selectedLeadId)
           .eq('group_jid', groupJid)
           .maybeSingle();
         if (!existingGroup) {
-          const { error: insertErr } = await supabase.from('lead_whatsapp_groups').insert({
+          const { error: insertErr } = await externalSupabase.from('lead_whatsapp_groups').insert({
             lead_id: selectedLeadId,
             group_jid: groupJid,
             group_name: groupName,
@@ -1126,7 +1127,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         }
         
         if (contactId) {
-          const { data: existing } = await supabase
+          const { data: existing } = await externalSupabase
             .from('contact_leads')
             .select('id')
             .eq('contact_id', contactId)
@@ -1134,7 +1135,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             .maybeSingle();
           
           if (!existing) {
-            await supabase.from('contact_leads').insert({
+            await externalSupabase.from('contact_leads').insert({
               contact_id: contactId,
               lead_id: selectedLeadId,
               relationship_to_victim: selectedRelationship || null,
@@ -1153,7 +1154,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     } else if (conversation.contact_id && selectedRelationship) {
       // Non-group: existing flow
       try {
-        const { data: existing } = await supabase
+        const { data: existing } = await externalSupabase
           .from('contact_leads')
           .select('id')
           .eq('contact_id', conversation.contact_id)
@@ -1161,11 +1162,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           .maybeSingle();
         
         if (existing) {
-          await supabase.from('contact_leads')
+          await externalSupabase.from('contact_leads')
             .update({ relationship_to_victim: selectedRelationship } as any)
             .eq('id', existing.id);
         } else {
-          await supabase.from('contact_leads').insert({
+          await externalSupabase.from('contact_leads').insert({
             contact_id: conversation.contact_id,
             lead_id: selectedLeadId,
             relationship_to_victim: selectedRelationship,

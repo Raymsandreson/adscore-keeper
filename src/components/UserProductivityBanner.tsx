@@ -381,7 +381,7 @@ export function UserProductivityBanner() {
         .gte('created_at', bStart).lte('created_at', bEnd),
       supabase.from('instagram_comments').select('id')
         .eq('replied_by', userId).gte('replied_at', bStart).lte('replied_at', bEnd),
-      supabase.from('lead_stage_history').select('id')
+      externalSupabase.from('lead_stage_history').select('id')
         .eq('changed_by', userId).gte('changed_at', bStart).lte('changed_at', bEnd),
       supabase.from('user_activity_log').select('id')
         .eq('user_id', userId).eq('action_type', 'checklist_item_checked')

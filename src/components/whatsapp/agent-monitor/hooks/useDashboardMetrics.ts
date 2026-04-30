@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { monitorData } from '@/utils/monitorData';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { format } from 'date-fns';
 
 export interface DashboardMetrics {
@@ -93,11 +94,11 @@ export function useDashboardMetrics() {
           .select('id, lead_name, acolhedor, lead_phone, created_at')
           .not('whatsapp_group_id', 'is', null)
           .gte('created_at', startISO).lte('created_at', endISO),
-        supabase
+        externalSupabase
           .from('legal_cases')
           .select('id, title, acolhedor, lead_id, created_at')
           .gte('created_at', startISO).lte('created_at', endISO),
-        supabase
+        externalSupabase
           .from('case_process_tracking')
           .select('id, cliente, acolhedor, created_at')
           .gte('created_at', startISO).lte('created_at', endISO),

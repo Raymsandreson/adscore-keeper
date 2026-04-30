@@ -3,6 +3,7 @@ import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { useCallRecords, CallRecord } from '@/hooks/useCallRecords';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -131,7 +132,7 @@ export default function CallsPage() {
     setContactSearching(true);
     const fetchContacts = async () => {
       try {
-        const { data: links } = await supabase
+        const { data: links } = await externalSupabase
           .from('contact_leads')
           .select('contact_id')
           .eq('lead_id', newCall.lead_id);

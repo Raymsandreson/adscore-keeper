@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -155,7 +156,7 @@ export function RealTimeActivityFeed() {
         supabase.from('contacts').select('id, full_name, created_by, created_at').gte('created_at', since).order('created_at', { ascending: false }).limit(50),
         supabase.from('call_records').select('id, user_id, contact_name, lead_name, call_result, created_at').gte('created_at', since).order('created_at', { ascending: false }).limit(50),
         supabase.from('user_activity_log').select('id, user_id, action_type, entity_type, metadata, created_at').gte('created_at', since).in('action_type', ['checklist_item_checked', 'comment_reply', 'dm_sent', 'lead_moved', 'lead_created', 'lead_updated', 'contact_created']).order('created_at', { ascending: false }).limit(50),
-        supabase.from('case_process_tracking').select('id, acolhedor, cliente, status_processo, created_at, updated_at').gte('created_at', since).order('created_at', { ascending: false }).limit(30),
+        externalSupabase.from('case_process_tracking').select('id, acolhedor, cliente, status_processo, created_at, updated_at').gte('created_at', since).order('created_at', { ascending: false }).limit(30),
       ]);
 
       // For bot-created leads, batch-fetch instance names

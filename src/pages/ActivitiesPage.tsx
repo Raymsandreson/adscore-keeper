@@ -339,7 +339,7 @@ const ActivitiesPage = () => {
         supabase.from('leads').select('id, lead_name').order('lead_name').limit(500),
         supabase.from('profiles').select('user_id, full_name'),
         supabase.from('contacts').select('id, full_name').order('full_name').limit(500),
-        supabase.from('legal_cases').select('id, case_number, title, lead_id').order('created_at', { ascending: false }).limit(500),
+        externalSupabase.from('legal_cases').select('id, case_number, title, lead_id').order('created_at', { ascending: false }).limit(500),
       ]);
       setLeads(leadsRes.data || []);
       setTeamMembers(membersRes.data || []);
@@ -561,8 +561,8 @@ const ActivitiesPage = () => {
     if (activity.lead_id) {
       promises.push(
         Promise.all([
-          supabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id),
-          supabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
+          externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id),
+          externalSupabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
           supabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status').eq('id', activity.lead_id).maybeSingle(),
         ]).then(async ([casesRes, linkedRes, leadPreviewRes]) => {
           setLeadCases(casesRes.data || []);
@@ -592,7 +592,7 @@ const ActivitiesPage = () => {
 
     if ((activity as any).case_id) {
       promises.push(
-        Promise.resolve(supabase.from('lead_processes').select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, envolvidos').eq('case_id', (activity as any).case_id)).then(({ data }) => {
+        Promise.resolve(externalSupabase.from('lead_processes').select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, envolvidos').eq('case_id', (activity as any).case_id)).then(({ data }) => {
           setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, envolvidos: p.envolvidos })));
         })
       );
@@ -870,7 +870,7 @@ const ActivitiesPage = () => {
     if (activity.lead_id) {
       try {
         const [linkedData, leadPreviewRes] = await Promise.all([
-          supabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
+          externalSupabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
           supabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status').eq('id', activity.lead_id).maybeSingle(),
         ]);
         let boardName: string | null = null;
@@ -981,7 +981,7 @@ const ActivitiesPage = () => {
     setFormProcessTitle('');
     setCaseProcesses([]);
     // Load cases for this lead
-    supabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).then(({ data }) => {
+    externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).then(({ data }) => {
       setLeadCases(data || []);
     });
     // Auto-set activity type based on lead's workflow step
@@ -996,7 +996,7 @@ const ActivitiesPage = () => {
     }
     // Fetch contacts linked to this lead
     try {
-      const { data: linkedData } = await supabase
+      const { data: linkedData } = await externalSupabase
         .from('contact_leads')
         .select('contact_id')
         .eq('lead_id', leadId);

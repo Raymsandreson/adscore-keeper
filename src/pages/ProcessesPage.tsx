@@ -1,6 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -51,7 +52,7 @@ export default function ProcessesPage() {
 
   const loadProcesses = async () => {
     setLoading(true);
-    const { data } = await supabase
+    const { data } = await externalSupabase
       .from("lead_processes")
       .select("*, legal_cases(case_number, title)")
       .order("created_at", { ascending: false });

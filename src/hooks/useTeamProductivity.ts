@@ -128,7 +128,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
           .gte('created_at', startDate).lte('created_at', endDate)
           .not('created_by', 'is', null),
         // Contacts linked to leads
-        supabase.from('contact_leads').select('id, created_at')
+        externalSupabase.from('contact_leads').select('id, created_at')
           .gte('created_at', startDate).lte('created_at', endDate),
         // DMs sent (has user_id)
         supabase.from('dm_history').select('id, user_id, action_type, created_at')
@@ -138,10 +138,10 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
           .gte('replied_at', startDate).lte('replied_at', endDate)
           .not('replied_by', 'is', null),
         // Stage changes (now with changed_by for per-user tracking)
-        supabase.from('lead_stage_history').select('id, lead_id, changed_at, to_stage, changed_by')
+        externalSupabase.from('lead_stage_history').select('id, lead_id, changed_at, to_stage, changed_by')
           .gte('changed_at', startDate).lte('changed_at', endDate),
         // Followups
-        supabase.from('lead_followups').select('id, created_at, followup_type, outcome')
+        externalSupabase.from('lead_followups').select('id, created_at, followup_type, outcome')
           .gte('created_at', startDate).lte('created_at', endDate),
         // Leads created (has created_by)
         supabase.from('leads').select('id, created_by, created_at, status, lead_name')

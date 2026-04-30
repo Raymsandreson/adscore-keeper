@@ -26,6 +26,7 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface LeadInfo {
@@ -107,7 +108,7 @@ export function LeadHistorySheet({
         }
 
         // Fetch stage history
-        const { data: historyData } = await supabase
+        const { data: historyData } = await externalSupabase
           .from('lead_stage_history')
           .select('*')
           .eq('lead_id', lead.id)
@@ -116,7 +117,7 @@ export function LeadHistorySheet({
         setStageHistory((historyData || []) as StageHistoryEntry[]);
 
         // Fetch followups
-        const { data: followupsData } = await supabase
+        const { data: followupsData } = await externalSupabase
           .from('lead_followups')
           .select('*')
           .eq('lead_id', lead.id)

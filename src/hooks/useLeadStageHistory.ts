@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 
 export interface LeadStageHistory {
   id: string;
@@ -20,7 +21,7 @@ export function useLeadStageHistory() {
   const fetchHistory = useCallback(async (leadId: string) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('lead_stage_history')
         .select('*')
         .eq('lead_id', leadId)
@@ -48,7 +49,7 @@ export function useLeadStageHistory() {
       // Get current user for changed_by attribution
       const { data: { user } } = await supabase.auth.getUser();
       
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('lead_stage_history')
         .insert({
           lead_id: leadId,

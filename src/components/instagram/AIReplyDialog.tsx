@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Bot, RefreshCw, Sparkles, Copy, Check, MessageCircle, FileText, AlertTriangle, CheckCircle2, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -118,7 +119,7 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
       .eq('instagram_username', username)
       .maybeSingle();
     if (contact) {
-      const { data: contactLead } = await supabase
+      const { data: contactLead } = await externalSupabase
         .from('contact_leads')
         .select('lead_id')
         .eq('contact_id', contact.id)
@@ -170,7 +171,7 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
       if (username) {
         const leadId = await findLeadByUsername(username);
         if (leadId) {
-          await supabase.from('lead_followups').insert({
+          await externalSupabase.from('lead_followups').insert({
             lead_id: leadId,
             followup_type: 'instagram_comment',
             notes: `Comentário feito no post: ${comment.post_url || 'N/A'}\n\nTexto: ${editedReply.slice(0, 500)}`,
@@ -222,7 +223,7 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
       if (username) {
         const leadId = await findLeadByUsername(username);
         if (leadId) {
-          await supabase.from('lead_followups').insert({
+          await externalSupabase.from('lead_followups').insert({
             lead_id: leadId,
             followup_type: 'instagram_dm',
             notes: `DM enviada via Instagram para @${username}\n\nTexto: ${editedDm.slice(0, 500)}`,

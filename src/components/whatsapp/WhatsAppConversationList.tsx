@@ -11,6 +11,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 
 interface LeadInfo {
@@ -96,7 +97,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
 
       const [leadsRes, stageRes, checklistInstancesRes, templatesRes, docsRes] = await Promise.all([
         supabase.from('leads').select('id, board_id').in('id', leadIds),
-        supabase.from('lead_stage_history')
+        externalSupabase.from('lead_stage_history')
           .select('lead_id, to_stage, changed_at')
           .in('lead_id', leadIds)
           .order('changed_at', { ascending: false }),

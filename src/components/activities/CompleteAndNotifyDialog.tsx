@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Volume2, Send, MessageCircle, Sparkles, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
 
@@ -54,7 +55,7 @@ export function CompleteAndNotifyDialog({ open, onClose, onConfirm, leadId, buil
     if (!open || !leadId) return;
     setLoading(true);
     (async () => {
-      const { data } = await supabase
+      const { data } = await externalSupabase
         .from('lead_whatsapp_groups')
         .select('id, label, group_jid, group_name')
         .eq('lead_id', leadId);

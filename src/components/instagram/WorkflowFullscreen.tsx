@@ -39,6 +39,7 @@ import {
   PanelLeft
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { InstagramProfileHoverCard } from "./InstagramProfileHoverCard";
@@ -278,7 +279,7 @@ export const WorkflowFullscreen = ({
     
     let linkedLeadIdFromContact: string | null = null;
     if (contact?.id) {
-      const { data: linkedLeads } = await supabase
+      const { data: linkedLeads } = await externalSupabase
         .from('contact_leads')
         .select('lead_id')
         .eq('contact_id', contact.id)

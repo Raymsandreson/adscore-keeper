@@ -37,6 +37,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 
@@ -310,7 +311,7 @@ export const MergeDuplicatesDialog: React.FC<MergeDuplicatesDialogProps> = ({
 
         // Move contact_leads from duplicates to primary
         const duplicateIds = duplicatesToMerge.map(d => d.id);
-        await supabase
+        await externalSupabase
           .from('contact_leads')
           .update({ contact_id: primary.id })
           .in('contact_id', duplicateIds);

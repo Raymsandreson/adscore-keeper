@@ -140,7 +140,7 @@ export function DynamicKanbanBoard({
       if (leadIds.length === 0) return;
 
       // Fetch from contact_leads junction table
-      const { data: junctionData, error: junctionError } = await supabase
+      const { data: junctionData, error: junctionError } = await externalSupabase
         .from('contact_leads')
         .select('lead_id, contact_id')
         .in('lead_id', leadIds);
@@ -232,7 +232,7 @@ export function DynamicKanbanBoard({
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('lead_stage_history')
         .select('lead_id, to_stage, changed_at')
         .in('lead_id', leadIds)

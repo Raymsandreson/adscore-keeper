@@ -67,7 +67,7 @@ export function DailyReportDialog({
 
     try {
       const [stageRes, contactsRes, leadsRes, dmsRes, commentsRes, activitiesRes, callsRes, callRecordsRes] = await Promise.all([
-        supabase.from('lead_stage_history')
+        externalSupabase.from('lead_stage_history')
           .select('id, lead_id, from_stage, to_stage, changed_at')
           .eq('changed_by', userId)
           .gte('changed_at', startDate).lte('changed_at', endDate)

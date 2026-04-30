@@ -6,6 +6,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { z } from 'https://esm.sh/zod@3.23.8'
 import { resolveSupabaseUrl, resolveServiceRoleKey } from '../_shared/supabase-url-resolver.ts'
 
+import { getExternalClient } from "../_shared/external-client.ts";
 // Schema de entrada do client. group_jid aceita JID completo (`...@g.us`) ou
 // apenas o número de 15+ dígitos. UUIDs validados quando presentes.
 const RequestSchema = z.object({
@@ -139,6 +140,7 @@ Deno.serve(async (req) => {
       }, 400)
     }
     // get_invite_link é opcional no client, mas SEMPRE forçamos true para a UazAPI;
+    const extClient = getExternalClient();
     // recusamos chamada se o cliente passar explicitamente false (uso indevido desta função).
     if (parsed.data.get_invite_link === false) {
       return jsonResponse({
@@ -230,7 +232,7 @@ Deno.serve(async (req) => {
     // Persist link if a lead is provided (best-effort, non-blocking on errors).
     if (leadId) {
       try {
-        await supabase
+        await extClient
           .from('lead_whatsapp_groups')
           .update({ group_link: inviteLink })
           .eq('lead_id', leadId)

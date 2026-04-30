@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 
 export type PartyRole = 'autor' | 'reu' | 'testemunha' | 'advogado' | 'dependente' | 'perito' | 'outro';
 
@@ -225,7 +226,7 @@ const createContactAndParty = async (
   // Create process_party link
   const role = mapParticipationToRole(env);
   const tipoLabel = env.tipo_normalizado || env.tipo || env.tipo_participacao || null;
-  const { error: partyError } = await supabase
+  const { error: partyError } = await externalSupabase
     .from('process_parties')
     .insert({
       process_id: processId,

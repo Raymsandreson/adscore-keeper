@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 
 export interface LeadProcess {
@@ -48,7 +49,7 @@ export function useLeadProcesses(caseId?: string) {
     if (!targetId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('lead_processes')
         .select('*')
         .eq('case_id', targetId)
@@ -65,7 +66,7 @@ export function useLeadProcesses(caseId?: string) {
   const addProcess = useCallback(async (process: Partial<LeadProcess>) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('lead_processes')
         .insert({ ...process, created_by: user?.id } as any)
         .select()
@@ -83,7 +84,7 @@ export function useLeadProcesses(caseId?: string) {
 
   const updateProcess = useCallback(async (id: string, updates: Partial<LeadProcess>) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('lead_processes')
         .update(updates as any)
         .eq('id', id)
@@ -102,7 +103,7 @@ export function useLeadProcesses(caseId?: string) {
 
   const deleteProcess = useCallback(async (id: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('lead_processes')
         .delete()
         .eq('id', id);

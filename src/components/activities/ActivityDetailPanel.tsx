@@ -127,7 +127,7 @@ function LinkContactButton({ leadId, onLinked }: { leadId: string; onLinked: () 
   const handleLink = async (contactId: string) => {
     setLinking(contactId);
     try {
-      const { error } = await supabase.from('contact_leads').insert({ contact_id: contactId, lead_id: leadId });
+      const { error } = await externalSupabase.from('contact_leads').insert({ contact_id: contactId, lead_id: leadId });
       if (error) {
         if (error.code === '23505') { toast.error('Contato já vinculado'); return; }
         throw error;
@@ -207,8 +207,8 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
     try {
       const [leadRes, contactLinksRes, historyRes, activitiesRes] = await Promise.all([
         supabase.from('leads').select('*').eq('id', leadId).single(),
-        supabase.from('contact_leads').select('contact_id, relationship_to_victim').eq('lead_id', leadId),
-        supabase.from('lead_stage_history').select('*').eq('lead_id', leadId).order('changed_at', { ascending: false }),
+        externalSupabase.from('contact_leads').select('contact_id, relationship_to_victim').eq('lead_id', leadId),
+        externalSupabase.from('lead_stage_history').select('*').eq('lead_id', leadId).order('changed_at', { ascending: false }),
         (externalSupabase as any).from('lead_activities').select('id, title, activity_type, status, deadline, created_at, assigned_to_name, completed_at').eq('lead_id', leadId).order('created_at', { ascending: false }),
       ]);
 

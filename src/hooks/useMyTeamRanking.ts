@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { startOfDay, endOfDay, format } from 'date-fns';
 
@@ -100,7 +101,7 @@ export function useMyTeamRanking() {
         supabase.from('user_activity_log').select('user_id, action_type')
           .in('user_id', memberIds)
           .gte('created_at', startDate).lte('created_at', endDate),
-        supabase.from('lead_stage_history').select('id, lead_id, changed_by, to_stage')
+        externalSupabase.from('lead_stage_history').select('id, lead_id, changed_by, to_stage')
           .in('changed_by', memberIds)
           .gte('changed_at', startDate).lte('changed_at', endDate),
         supabase.from('call_records').select('id, user_id')

@@ -472,7 +472,7 @@ export function CommissionGoals() {
         }
         case 'stages':
         case 'leads_progressed': {
-          const { data } = await supabase.from('lead_stage_history')
+          const { data } = await externalSupabase.from('lead_stage_history')
             .select('id, lead_id, from_stage, to_stage, changed_at')
             .eq('changed_by', userId)
             .gte('changed_at', startDate).lte('changed_at', endDate)

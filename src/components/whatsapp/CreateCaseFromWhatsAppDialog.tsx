@@ -455,7 +455,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
 
     try {
       // Search by similar title or same lead
-      let query = supabase
+      let query = externalSupabase
         .from('legal_cases')
         .select('id, case_number, title, status, created_at')
         .ilike('title', `%${searchTitle}%`)
@@ -466,7 +466,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       // Also search by lead_id if available
       let byLead: any[] = [];
       if (leadId) {
-        const { data } = await supabase
+        const { data } = await externalSupabase
           .from('legal_cases')
           .select('id, case_number, title, status, created_at')
           .eq('lead_id', leadId);
@@ -573,7 +573,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
 
         // Link contact to lead
         if (finalContactId) {
-          await supabase.from('contact_leads').insert({
+          await externalSupabase.from('contact_leads').insert({
             contact_id: finalContactId,
             lead_id: finalLeadId,
             relationship_to_victim: 'Vítima',
@@ -631,7 +631,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         let failedProcesses = 0;
         for (const proc of allProcessesToCreate) {
           try {
-            const { data: savedProcess, error: processError } = await supabase.from('lead_processes').insert({
+            const { data: savedProcess, error: processError } = await externalSupabase.from('lead_processes').insert({
               case_id: result.id,
               lead_id: finalLeadId || null,
               title: proc.title,
@@ -687,7 +687,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
 
       // Link contact as party if not already linked
       if (finalContactId && finalLeadId && leadId) {
-        await supabase.from('contact_leads').insert({
+        await externalSupabase.from('contact_leads').insert({
           contact_id: finalContactId,
           lead_id: finalLeadId,
           relationship_to_victim: 'Vítima',

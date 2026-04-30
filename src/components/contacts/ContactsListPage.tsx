@@ -3,6 +3,7 @@ import { useContacts, Contact } from '@/hooks/useContacts';
 import { ContactDetailSheet } from './ContactDetailSheet';
 import { useBroadcastLists, BroadcastList, BroadcastListMember } from '@/hooks/useBroadcastLists';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -87,7 +88,7 @@ export function ContactsListPage() {
   const fetchGroups = async () => {
     setGroupsLoading(true);
     try {
-      const { data } = await supabase
+      const { data } = await externalSupabase
         .from('lead_whatsapp_groups')
         .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status)')
         .order('created_at', { ascending: false });
@@ -151,7 +152,7 @@ export function ContactsListPage() {
     setClassifyingClients(true);
     try {
       // Get group JIDs from closed leads
-      const { data: closedGroups } = await supabase
+      const { data: closedGroups } = await externalSupabase
         .from('lead_whatsapp_groups')
         .select('group_jid, leads!lead_whatsapp_groups_lead_id_fkey(lead_status)')
         .not('group_jid', 'is', null);

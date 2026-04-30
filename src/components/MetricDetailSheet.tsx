@@ -300,7 +300,7 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
           break;
         }
         case 'stageChanges': {
-          const { data } = await supabase.from('lead_stage_history')
+          const { data } = await externalSupabase.from('lead_stage_history')
             .select('id, lead_id, from_stage, to_stage, changed_at')
             .eq('changed_by', userId).gte('changed_at', startDate).lte('changed_at', endDate)
             .order('changed_at', { ascending: false });
@@ -320,7 +320,7 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
           break;
         }
         case 'leadsProgressed': {
-          const { data } = await supabase.from('lead_stage_history')
+          const { data } = await externalSupabase.from('lead_stage_history')
             .select('lead_id, changed_at')
             .eq('changed_by', userId).gte('changed_at', startDate).lte('changed_at', endDate)
             .order('changed_at', { ascending: false });

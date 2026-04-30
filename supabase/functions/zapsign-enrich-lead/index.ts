@@ -262,7 +262,7 @@ Deno.serve(async (req) => {
             auto_linked: true,
           }));
 
-          const { error: lwgErr } = await cloud
+          const { error: lwgErr } = await ext
             .from("lead_whatsapp_groups")
             .upsert(rows, { onConflict: "lead_id,group_jid", ignoreDuplicates: false });
           if (lwgErr) console.warn("[zapsign-enrich-lead] lead_whatsapp_groups upsert error:", lwgErr);

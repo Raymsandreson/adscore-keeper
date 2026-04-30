@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Volume2, Loader2, Send, ChevronDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import {
   DropdownMenu,
@@ -49,7 +50,7 @@ export function ActivityTTSButton({ messageText, leadId, contactId }: ActivityTT
 
       if (leadId) {
         // Get contacts linked to this lead
-        const { data: linkedContacts } = await supabase
+        const { data: linkedContacts } = await externalSupabase
           .from('contact_leads')
           .select('contact_id, contacts(full_name, phone)')
           .eq('lead_id', leadId);

@@ -4,6 +4,7 @@ import { geminiChat } from "../_shared/gemini.ts";
 
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
+import { getExternalClient } from "../_shared/external-client.ts";
 // Use external Supabase project when configured (hybrid architecture)
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
@@ -28,6 +29,7 @@ serve(async (req) => {
       RESOLVED_SUPABASE_URL,
       RESOLVED_SERVICE_ROLE_KEY
     );
+    const extClient = getExternalClient();
 
     // 1. Get all unique phones from this campaign
     const { data: allMsgs } = await supabase
@@ -219,7 +221,7 @@ Extraia os dados disponíveis desta conversa.`,
 
         // 7. Create contact_lead link
         if (newContact && !contactErr) {
-          await supabase.from("contact_leads").insert({
+          await extClient.from("contact_leads").insert({
             contact_id: newContact.id,
             lead_id: newLead.id,
             notes: extracted.conversation_summary || "Criado via análise de campanha CTWA",

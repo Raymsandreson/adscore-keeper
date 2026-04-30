@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
+import { getExternalClient } from "../_shared/external-client.ts";
 // Use external Supabase project when configured (hybrid architecture)
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
@@ -77,6 +78,7 @@ serve(async (req) => {
       RESOLVED_SUPABASE_URL,
       RESOLVED_ANON_KEY,
     );
+    const extClient = getExternalClient();
 
     const { spreadsheet_id, sheet_name, nucleus_filter } = await req.json();
     if (!spreadsheet_id) {
@@ -93,7 +95,7 @@ serve(async (req) => {
     const serviceAccountKey = JSON.parse(serviceAccountKeyRaw);
 
     // Fetch cases with related data
-    let query = supabase
+    let query = extClient
       .from("legal_cases")
       .select(`
         id, case_number, title, description, status, benefit_type, acolhedor, notes, created_at,
@@ -134,7 +136,7 @@ serve(async (req) => {
       let senhaGov = "";
       if (c.lead_id) {
         // Get contacts linked to this lead
-        const { data: contactLinks } = await supabase
+        const { data: contactLinks } = await extClient
           .from("contact_leads")
           .select("contacts(full_name, phone)")
           .eq("lead_id", c.lead_id)

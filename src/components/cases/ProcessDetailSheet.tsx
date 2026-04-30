@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
@@ -357,7 +358,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         escavador_raw: result,
       };
 
-      await supabase.from('lead_processes').update(updates).eq('id', process.id);
+      await externalSupabase.from('lead_processes').update(updates).eq('id', process.id);
       setForm(prev => ({ ...prev, ...updates }));
       setDirty(false);
       onUpdated?.();
@@ -452,7 +453,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
     setSaving(true);
     try {
-      const { error } = await supabase.from('lead_processes').update(updates).eq('id', process.id);
+      const { error } = await externalSupabase.from('lead_processes').update(updates).eq('id', process.id);
       if (error) throw error;
       setForm(prev => ({ ...prev, ...updates }));
       toast.success(`${count} campos atualizados a partir dos dados do Escavador`);
@@ -499,7 +500,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         return;
       }
 
-      const { error } = await supabase.from('lead_processes').update(payload).eq('id', process.id);
+      const { error } = await externalSupabase.from('lead_processes').update(payload).eq('id', process.id);
       if (error) throw error;
       toast.success('Processo atualizado');
       setDirty(false);

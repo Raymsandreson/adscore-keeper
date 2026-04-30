@@ -5,6 +5,7 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { 
   Clock, 
@@ -52,7 +53,7 @@ export function StageTimeMetrics({ board, leadIds }: StageTimeMetricsProps) {
       
       setLoading(true);
       try {
-        const { data, error } = await supabase
+        const { data, error } = await externalSupabase
           .from('lead_stage_history')
           .select('id, lead_id, from_stage, to_stage, changed_at')
           .in('lead_id', leadIds)

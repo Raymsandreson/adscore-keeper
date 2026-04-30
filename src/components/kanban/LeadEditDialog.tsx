@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { safeSelectValue } from '@/utils/selectValue';
 import { sendLeadConversionEvent } from '@/utils/metaConversionTracking';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
@@ -445,7 +446,7 @@ export function LeadEditDialog({
   };
 
   const loadLeadGroups = async (leadId: string, leadSnapshot: any) => {
-    const { data: groups } = await supabase
+    const { data: groups } = await externalSupabase
       .from('lead_whatsapp_groups')
       .select('*')
       .eq('lead_id', leadId)
@@ -885,12 +886,12 @@ ${scrapeData.content || ''}
     try {
       // Save WhatsApp groups to new table
       // First fetch existing groups (for audit), delete all, then insert current ones
-      const { data: existingGroups } = await supabase
+      const { data: existingGroups } = await externalSupabase
         .from('lead_whatsapp_groups')
         .select('group_jid, group_name')
         .eq('lead_id', currentLead.id);
 
-      const { error: deleteErr } = await supabase
+      const { error: deleteErr } = await externalSupabase
         .from('lead_whatsapp_groups')
         .delete()
         .eq('lead_id', currentLead.id);
@@ -935,7 +936,7 @@ ${scrapeData.content || ''}
       }
       
       if (resolvedGroups.length > 0) {
-        const { error: insertErr } = await supabase.from('lead_whatsapp_groups').insert(
+        const { error: insertErr } = await externalSupabase.from('lead_whatsapp_groups').insert(
           resolvedGroups.map(g => ({
             lead_id: currentLead.id,
             group_link: g.group_link || null,
@@ -1070,7 +1071,7 @@ ${scrapeData.content || ''}
           changed_by_type: 'manual',
         });
         // Also record in lead_stage_history so metrics/ranking can track who closed
-         await supabase.from('lead_stage_history').insert({
+         await externalSupabase.from('lead_stage_history').insert({
            lead_id: currentLead.id,
            from_stage: (currentLead as any).status || previousOutcome,
            to_stage: leadOutcome,
@@ -1111,7 +1112,7 @@ ${scrapeData.content || ''}
          }
 
         try {
-             const { data: existingCases } = await supabase
+             const { data: existingCases } = await externalSupabase
              .from('legal_cases')
              .select('id')
              .eq('lead_id', currentLead.id)
@@ -1159,7 +1160,7 @@ ${scrapeData.content || ''}
               finalCaseNumber = generatedNumber || 'CASO-0001';
             }
             
-            const { data: insertedCase, error: insertError } = await supabase
+            const { data: insertedCase, error: insertError } = await externalSupabase
               .from('legal_cases')
                 .insert({
                  lead_id: currentLead.id,
@@ -1702,7 +1703,7 @@ ${scrapeData.content || ''}
                                        return;
                                      }
                                      toast.info('Reparando grupo... Buscando contatos vinculados.');
-                                    const { data: contactLinks } = await supabase
+                                    const { data: contactLinks } = await externalSupabase
                                       .from('contact_leads')
                                       .select('contact_id, contacts(phone)')
                                       .eq('lead_id', currentLead.id);

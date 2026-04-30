@@ -25,6 +25,7 @@ import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, List
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Lead } from '@/hooks/useLeads';
@@ -192,7 +193,7 @@ export function WhatsAppInbox() {
       searchParams.delete('contactId');
       setSearchParams(searchParams, { replace: true });
     } else if (leadId) {
-      supabase.from('contact_leads').select('contact_id, contacts(phone)').eq('lead_id', leadId).limit(1).single().then(({ data }) => {
+      externalSupabase.from('contact_leads').select('contact_id, contacts(phone)').eq('lead_id', leadId).limit(1).single().then(({ data }) => {
         const phone = (data as any)?.contacts?.phone;
         if (phone) {
           const normalized = phone.replace(/\D/g, '');
@@ -555,7 +556,7 @@ export function WhatsAppInbox() {
       }
 
       // Link contact to lead
-      await supabase.from('contact_leads').insert({
+      await externalSupabase.from('contact_leads').insert({
         contact_id: contactId,
         lead_id: data.id,
         relationship_to_victim: 'Vítima',

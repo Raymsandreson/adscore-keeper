@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -64,7 +65,7 @@ export function CaseWorkflowBoard({ caseId, processes, onProcessUpdated }: CaseW
       }));
       setWorkflowBoards(parsed);
 
-      const { data: caseData } = await supabase
+      const { data: caseData } = await externalSupabase
         .from('legal_cases')
         .select('workflow_board_id')
         .eq('id', caseId)
@@ -88,7 +89,7 @@ export function CaseWorkflowBoard({ caseId, processes, onProcessUpdated }: CaseW
 
   const handleSelectBoard = async (boardId: string) => {
     setSelectedBoardId(boardId);
-    await supabase
+    await externalSupabase
       .from('legal_cases')
       .update({ workflow_board_id: boardId })
       .eq('id', caseId);
@@ -98,7 +99,7 @@ export function CaseWorkflowBoard({ caseId, processes, onProcessUpdated }: CaseW
 
   const handleMoveProcess = async (processId: string, newStageId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('lead_processes')
         .update({ workflow_stage_id: newStageId } as any)
         .eq('id', processId);

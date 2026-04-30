@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -136,7 +137,7 @@ export const useContacts = () => {
       let linkedIds: string[] | null = null;
       let notLinkedIds: string[] | null = null;
       if (filters?.leadLinked === 'linked') {
-        const { data: linkedData } = await supabase.from('contact_leads').select('contact_id');
+        const { data: linkedData } = await externalSupabase.from('contact_leads').select('contact_id');
         linkedIds = [...new Set((linkedData || []).map((d: any) => d.contact_id))];
         if (linkedIds.length === 0) {
           setContacts([]);
@@ -145,7 +146,7 @@ export const useContacts = () => {
           return;
         }
       } else if (filters?.leadLinked === 'not_linked') {
-        const { data: linkedData } = await supabase.from('contact_leads').select('contact_id');
+        const { data: linkedData } = await externalSupabase.from('contact_leads').select('contact_id');
         notLinkedIds = [...new Set((linkedData || []).map((d: any) => d.contact_id))];
       }
 
@@ -412,7 +413,7 @@ export const useContacts = () => {
       if (leadError) throw leadError;
 
       // Create link in contact_leads junction table
-      const { error: linkError } = await supabase
+      const { error: linkError } = await externalSupabase
         .from('contact_leads')
         .insert({
           contact_id: contactId,
@@ -843,7 +844,7 @@ export const useContacts = () => {
 
           // Move contact_leads from duplicates to primary
           const duplicateIds = duplicatesToMerge.map(d => d.id);
-          await supabase
+          await externalSupabase
             .from('contact_leads')
             .update({ contact_id: primary.id })
             .in('contact_id', duplicateIds);

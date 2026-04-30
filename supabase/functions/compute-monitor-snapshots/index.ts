@@ -299,7 +299,7 @@ Deno.serve(async (req) => {
     if (withGroupIds.length > 0) {
       for (let i = 0; i < withGroupIds.length; i += 100) {
         const batch = withGroupIds.slice(i, i + 100);
-        const { data } = await supabase.from('legal_cases').select('lead_id').in('lead_id', batch);
+        const { data } = await extClient.from('legal_cases').select('lead_id').in('lead_id', batch);
         (data || []).forEach((c: any) => { if (c.lead_id) leadsWithCases.add(c.lead_id); });
       }
     }
@@ -313,7 +313,7 @@ Deno.serve(async (req) => {
     if (caseIds.length > 0) {
       for (let i = 0; i < caseIds.length; i += 100) {
         const batch = caseIds.slice(i, i + 100);
-        const { data } = await supabase.from('lead_processes').select('case_id').in('case_id', batch);
+        const { data } = await extClient.from('lead_processes').select('case_id').in('case_id', batch);
         (data || []).forEach((p: any) => { if (p.case_id) casesWithProcesses.add(p.case_id); });
       }
     }

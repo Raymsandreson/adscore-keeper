@@ -37,7 +37,7 @@ export function useLegalCases(leadId?: string) {
     if (!targetId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('legal_cases')
         .select('*, specialized_nuclei(name, prefix, color)')
         .eq('lead_id', targetId)
@@ -66,7 +66,7 @@ export function useLegalCases(leadId?: string) {
       
       // If user provided a case_number, check uniqueness
       if (caseNumber) {
-        const { data: existing } = await supabase
+        const { data: existing } = await externalSupabase
           .from('legal_cases')
           .select('id')
           .eq('case_number', caseNumber)
@@ -83,7 +83,7 @@ export function useLegalCases(leadId?: string) {
         caseNumber = generated;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('legal_cases')
         .insert({
           lead_id: caseData.lead_id || null,
@@ -122,7 +122,7 @@ export function useLegalCases(leadId?: string) {
           leadData = ld;
         }
 
-        await supabase.from('case_process_tracking').insert({
+        await externalSupabase.from('case_process_tracking').insert({
           case_id: enriched.id,
           lead_id: caseData.lead_id || null,
           cliente: leadData?.lead_name || caseData.title,
@@ -172,7 +172,7 @@ export function useLegalCases(leadId?: string) {
 
   const updateCase = useCallback(async (id: string, updates: Partial<LegalCase>) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('legal_cases')
         .update(updates as any)
         .eq('id', id)
@@ -199,7 +199,7 @@ export function useLegalCases(leadId?: string) {
 
   const deleteCase = useCallback(async (id: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('legal_cases')
         .delete()
         .eq('id', id);
