@@ -5,13 +5,14 @@ import {
   resolveServiceRoleKey,
   resolveSupabaseUrl,
 } from "../_shared/supabase-url-resolver.ts";
+import {
+  CLOUD_ANON_KEY as cloudAnonKey,
+  CLOUD_FUNCTIONS_URL as cloudFunctionsUrl,
+} from "../_shared/cloud-functions-url.ts";
 
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
 const RESOLVED_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
-  "https://gliigkupoebmlbwyvijp.supabase.co";
-const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
