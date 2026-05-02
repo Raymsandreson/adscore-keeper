@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { monitorData } from '@/utils/monitorData';
 import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { format } from 'date-fns';
 
 export interface DashboardMetrics {
@@ -78,6 +78,7 @@ export function useDashboardMetrics() {
     setMetricsLoading(true);
     setMetricsProgress(30);
     try {
+      await ensureExternalSession().catch((e) => console.warn('[Monitor IA metrics] external session:', e?.message));
       const startISO = new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate()).toISOString();
       const endISO = new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate(), 23, 59, 59, 999).toISOString();
 

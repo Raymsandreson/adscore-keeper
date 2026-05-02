@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { endOfDay } from 'date-fns';
 import type { AgentData, ConversationDetail, AgentStats, ReferralData, BoardData, RedirectionData, UserData } from '../types';
 
@@ -29,6 +29,7 @@ export function useMonitorData() {
   const fetchData = useCallback(async (dateRange: { from: Date; to: Date }, _selectedPeriod?: string) => {
     setLoading(true);
     try {
+      await ensureExternalSession().catch((e) => console.warn('[Monitor IA] external session:', e?.message));
       const startISO = dateRange.from.toISOString();
       const endISO = endOfDay(dateRange.to).toISOString();
 
