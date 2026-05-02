@@ -927,6 +927,7 @@ const ActivitiesPage = () => {
       assigned_to_name: formAssignedToName || null, deadline: formDeadline || null,
       notification_date: formNotificationDate || null, notes: formNotes || null,
       status: formStatus, contact_id: formContactId || null, contact_name: formContactName || null,
+      client_name_override: formClientNameOverride || null,
     } as any);
     await completeActivity(selectedActivity.id);
     const timeSpent = getActivityTimeSpent();
