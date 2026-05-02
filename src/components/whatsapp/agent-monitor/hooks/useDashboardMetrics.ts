@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { monitorData } from '@/utils/monitorData';
 import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { format } from 'date-fns';
 
 export interface DashboardMetrics {
@@ -78,18 +78,20 @@ export function useDashboardMetrics() {
     setMetricsLoading(true);
     setMetricsProgress(30);
     try {
+      await ensureExternalSession().catch((e) => console.warn('[Monitor IA metrics] external session:', e?.message));
       const startISO = new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate()).toISOString();
       const endISO = new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate(), 23, 59, 59, 999).toISOString();
 
-      // Fetch KPIs from edge function
+      // Fetch KPIs from edge function (header rápido) + dados detalhados direto do EXTERNO
+      // (memory: hybrid-routing-persistence-policy — dados de negócio vivem no Externo)
       const period = selectedPeriod || 'today';
       const [kpiRes, docsResult, groupsResult, casesResult, processesResult, contactsResult, contactsCountResult] = await Promise.all([
         monitorData('kpis', { period }),
-        supabase
+        externalSupabase
           .from('zapsign_documents')
           .select('id, document_name, signer_name, signer_status, lead_id, instance_name, created_at')
           .gte('created_at', startISO).lte('created_at', endISO),
-        supabase
+        externalSupabase
           .from('leads')
           .select('id, lead_name, acolhedor, lead_phone, created_at')
           .not('whatsapp_group_id', 'is', null)
@@ -102,12 +104,12 @@ export function useDashboardMetrics() {
           .from('case_process_tracking')
           .select('id, cliente, acolhedor, created_at')
           .gte('created_at', startISO).lte('created_at', endISO),
-        supabase
+        externalSupabase
           .from('contacts')
           .select('id, full_name, created_by, created_at')
           .gte('created_at', startISO).lte('created_at', endISO)
           .limit(5000),
-        supabase
+        externalSupabase
           .from('contacts')
           .select('*', { count: 'exact', head: true })
           .gte('created_at', startISO).lte('created_at', endISO),
@@ -176,7 +178,7 @@ export function useDashboardMetrics() {
       // Enrich docs with lead acolhedor
       const docLeadIds = docs.map(d => d.lead_id).filter(Boolean) as string[];
       if (docLeadIds.length > 0) {
-        const { data: leads } = await supabase.from('leads').select('id, acolhedor').in('id', [...new Set(docLeadIds)]);
+        const { data: leads } = await externalSupabase.from('leads').select('id, acolhedor').in('id', [...new Set(docLeadIds)]);
         const acolhedorMap = Object.fromEntries((leads || []).map(l => [l.id, l.acolhedor]));
         for (const d of [...signedDocsDetails, ...pendingDocsDetails]) {
           if (d.lead_id) d.acolhedor = acolhedorMap[d.lead_id] || null;
