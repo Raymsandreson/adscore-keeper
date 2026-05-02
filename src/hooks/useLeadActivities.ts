@@ -37,6 +37,7 @@ export interface LeadActivity {
   process_id: string | null;
   process_title: string | null;
   is_system: boolean | null;
+  client_name_override: string | null;
 }
 
 export function useLeadActivities() {
