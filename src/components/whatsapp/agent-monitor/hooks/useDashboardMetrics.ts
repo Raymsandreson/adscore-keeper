@@ -113,6 +113,13 @@ export function useDashboardMetrics() {
           .from('contacts')
           .select('*', { count: 'exact', head: true })
           .gte('created_at', startISO).lte('created_at', endISO),
+        // 1ª resposta: pegar mensagens inbound+outbound do período pra calcular tempo médio até a 1ª outbound
+        externalSupabase
+          .from('whatsapp_messages')
+          .select('phone, instance_name, direction, created_at')
+          .gte('created_at', startISO).lte('created_at', endISO)
+          .order('created_at', { ascending: true })
+          .limit(20000),
       ]);
 
       setMetricsProgress(50);
