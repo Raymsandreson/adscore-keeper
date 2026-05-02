@@ -15,11 +15,18 @@ export function onUpdateAvailable(cb: () => void) {
   };
 }
 
-/** Tell the waiting SW to activate */
+/** Tell the waiting SW to activate AND reload the page once it takes control. */
 export function applyUpdate() {
-  if (waitingWorker) {
-    waitingWorker.postMessage({ type: 'SKIP_WAITING' });
-  }
+  if (!waitingWorker) return;
+  // Quando o novo SW assumir controle, recarregamos — mas só porque o usuário pediu.
+  const onControllerChange = () => {
+    if (refreshing) return;
+    refreshing = true;
+    navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+    window.location.reload();
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+  waitingWorker.postMessage({ type: 'SKIP_WAITING' });
 }
 
 /**
@@ -98,11 +105,14 @@ export async function forceHardRefresh() {
 export function initPWAUpdater() {
   if (!('serviceWorker' in navigator)) return;
 
+  // IMPORTANTE: NÃO recarregar automaticamente em 'controllerchange'.
+  // Antes, qualquer SW novo assumindo controle disparava window.location.reload(),
+  // o que descartava formulários sendo preenchidos no meio do trabalho.
+  // Agora apenas notificamos via onUpdateAvailable; o usuário decide quando aplicar
+  // (botão "Atualizar" no FloatingNav/AppSidebar chama applyUpdate()).
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!refreshing) {
-      refreshing = true;
-      window.location.reload();
-    }
+    // no-op intencional. Mantemos o listener apenas para futuro debug/telemetria.
+    if (refreshing) return;
   });
 
   navigator.serviceWorker.getRegistration().then(async (reg) => {
