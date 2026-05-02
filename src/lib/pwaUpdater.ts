@@ -15,11 +15,18 @@ export function onUpdateAvailable(cb: () => void) {
   };
 }
 
-/** Tell the waiting SW to activate */
+/** Tell the waiting SW to activate AND reload the page once it takes control. */
 export function applyUpdate() {
-  if (waitingWorker) {
-    waitingWorker.postMessage({ type: 'SKIP_WAITING' });
-  }
+  if (!waitingWorker) return;
+  // Quando o novo SW assumir controle, recarregamos — mas só porque o usuário pediu.
+  const onControllerChange = () => {
+    if (refreshing) return;
+    refreshing = true;
+    navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+    window.location.reload();
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+  waitingWorker.postMessage({ type: 'SKIP_WAITING' });
 }
 
 /**
