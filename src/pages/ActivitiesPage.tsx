@@ -489,6 +489,7 @@ const ActivitiesPage = () => {
       process_id: formProcessId || null,
       process_title: formProcessTitle || null,
       is_system: formIsSystem,
+      client_name_override: formClientNameOverride || null,
     };
 
     let createdActivityId: string | null = null;
@@ -553,6 +554,7 @@ const ActivitiesPage = () => {
     setFormProcessId((activity as any).process_id || '');
     setFormProcessTitle((activity as any).process_title || '');
     setFormMatrixQuadrant((activity as any).matrix_quadrant || '');
+    setFormClientNameOverride((activity as any).client_name_override || '');
     setSheetMode('edit');
 
     // Fire all DB queries in parallel (non-blocking)
@@ -676,6 +678,7 @@ const ActivitiesPage = () => {
       process_id: formProcessId || null,
       process_title: formProcessTitle || null,
       matrix_quadrant: formMatrixQuadrant || null,
+      client_name_override: formClientNameOverride || null,
     } as any);
     closeSheet();
     fetchActivities(getFilterParams());
@@ -726,6 +729,7 @@ const ActivitiesPage = () => {
         process_title: formProcessTitle || null,
         matrix_quadrant: formMatrixQuadrant || null,
         is_system: formIsSystem,
+        client_name_override: formClientNameOverride || null,
       };
 
       // Conclude the current activity without overwriting its existing data
@@ -866,6 +870,7 @@ const ActivitiesPage = () => {
     setFormStatus(activity.status || 'pendente');
     setFormContactId(activity.contact_id || '');
     setFormContactName(activity.contact_name || '');
+    setFormClientNameOverride((activity as any).client_name_override || '');
     setFormMatrixQuadrant((activity as any).matrix_quadrant || '');
     if (activity.lead_id) {
       try {
