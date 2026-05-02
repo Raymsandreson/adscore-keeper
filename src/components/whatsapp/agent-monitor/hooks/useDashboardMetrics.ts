@@ -81,15 +81,16 @@ export function useDashboardMetrics() {
       const startISO = new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate()).toISOString();
       const endISO = new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate(), 23, 59, 59, 999).toISOString();
 
-      // Fetch KPIs from edge function
+      // Fetch KPIs from edge function (header rápido) + dados detalhados direto do EXTERNO
+      // (memory: hybrid-routing-persistence-policy — dados de negócio vivem no Externo)
       const period = selectedPeriod || 'today';
       const [kpiRes, docsResult, groupsResult, casesResult, processesResult, contactsResult, contactsCountResult] = await Promise.all([
         monitorData('kpis', { period }),
-        supabase
+        externalSupabase
           .from('zapsign_documents')
           .select('id, document_name, signer_name, signer_status, lead_id, instance_name, created_at')
           .gte('created_at', startISO).lte('created_at', endISO),
-        supabase
+        externalSupabase
           .from('leads')
           .select('id, lead_name, acolhedor, lead_phone, created_at')
           .not('whatsapp_group_id', 'is', null)
@@ -102,12 +103,12 @@ export function useDashboardMetrics() {
           .from('case_process_tracking')
           .select('id, cliente, acolhedor, created_at')
           .gte('created_at', startISO).lte('created_at', endISO),
-        supabase
+        externalSupabase
           .from('contacts')
           .select('id, full_name, created_by, created_at')
           .gte('created_at', startISO).lte('created_at', endISO)
           .limit(5000),
-        supabase
+        externalSupabase
           .from('contacts')
           .select('*', { count: 'exact', head: true })
           .gte('created_at', startISO).lte('created_at', endISO),
