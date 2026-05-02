@@ -930,13 +930,28 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     }
   }, [instances, fetchInstanceStats, fetchMessages, hasLoaded]);
 
-  // If conversations were already loaded, re-fetch when instance filter changes
+  // If conversations were already loaded, re-fetch when instance filter changes.
+  // IMPORTANT: only react to a real change of selectedInstanceId. We intentionally
+  // ignore changes to `fetchMessages` (callback identity) and `hasLoaded` so that
+  // re-renders, tab refocus, or unrelated state updates don't re-trigger the
+  // "Carregando conversas..." overlay on top of an already-loaded inbox.
+  const lastInstanceIdRef = useRef<string | null>(null);
   useEffect(() => {
     traceHook('useWhatsAppMessages.effect:onInstanceFilterChange', {
       selectedInstanceId,
       hasLoaded,
     });
     if (!hasLoaded) return;
+
+    // First run after load: just record the current instance, don't refetch.
+    if (lastInstanceIdRef.current === null) {
+      lastInstanceIdRef.current = selectedInstanceId;
+      return;
+    }
+    // Same instance — nothing to do (avoid spurious overlays on re-renders).
+    if (lastInstanceIdRef.current === selectedInstanceId) return;
+    lastInstanceIdRef.current = selectedInstanceId;
+
     // Clear caches so stale data from previous instance doesn't leak
     fullConvCacheRef.current = {};
     activeConversationKeyRef.current = null;
@@ -966,7 +981,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       clearTimeout(progressTimer2);
       clearTimeout(progressTimer3);
     };
-  }, [selectedInstanceId, hasLoaded, fetchMessages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedInstanceId, hasLoaded]);
 
   // Realtime subscription with reconnection resilience
   useEffect(() => {
