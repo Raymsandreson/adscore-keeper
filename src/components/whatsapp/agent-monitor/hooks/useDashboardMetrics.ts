@@ -85,7 +85,7 @@ export function useDashboardMetrics() {
       // Fetch KPIs from edge function (header rápido) + dados detalhados direto do EXTERNO
       // (memory: hybrid-routing-persistence-policy — dados de negócio vivem no Externo)
       const period = selectedPeriod || 'today';
-      const [kpiRes, docsResult, groupsResult, casesResult, processesResult, contactsResult, contactsCountResult] = await Promise.all([
+      const [kpiRes, docsResult, groupsResult, casesResult, processesResult, contactsResult, contactsCountResult, firstMsgsResult] = await Promise.all([
         monitorData('kpis', { period }),
         externalSupabase
           .from('zapsign_documents')
@@ -113,6 +113,13 @@ export function useDashboardMetrics() {
           .from('contacts')
           .select('*', { count: 'exact', head: true })
           .gte('created_at', startISO).lte('created_at', endISO),
+        // 1ª resposta: pegar mensagens inbound+outbound do período pra calcular tempo médio até a 1ª outbound
+        externalSupabase
+          .from('whatsapp_messages')
+          .select('phone, instance_name, direction, created_at')
+          .gte('created_at', startISO).lte('created_at', endISO)
+          .order('created_at', { ascending: true })
+          .limit(20000),
       ]);
 
       setMetricsProgress(50);
@@ -120,32 +127,62 @@ export function useDashboardMetrics() {
       // Parse KPI response
       const kpiData = kpiRes?.data || {};
 
+      // === Cálculo de Tempo Médio de 1ª Resposta (a partir de whatsapp_messages do período) ===
+      // Para cada (phone+instance): pegar a 1ª inbound e a 1ª outbound POSTERIOR. Diferença = tempo de resposta.
+      const firstMsgs = (firstMsgsResult.data || []) as { phone: string; instance_name: string | null; direction: string; created_at: string }[];
+      const firstInboundByConv = new Map<string, number>();
+      const firstOutboundByConv = new Map<string, number>();
+      for (const m of firstMsgs) {
+        const k = `${m.phone}::${(m.instance_name || '').toLowerCase()}`;
+        const t = new Date(m.created_at).getTime();
+        if (m.direction === 'inbound') {
+          if (!firstInboundByConv.has(k)) firstInboundByConv.set(k, t);
+        } else if (m.direction === 'outbound') {
+          if (!firstOutboundByConv.has(k)) firstOutboundByConv.set(k, t);
+        }
+      }
+      const responseTimes: number[] = [];
+      let respondedCount = 0;
+      let totalNewConvs = 0;
+      for (const [k, inT] of firstInboundByConv.entries()) {
+        totalNewConvs++;
+        const outT = firstOutboundByConv.get(k);
+        if (outT && outT >= inT) {
+          respondedCount++;
+          responseTimes.push(Math.floor((outT - inT) / 60000));
+        }
+      }
+      const avgResponseTimeMin = responseTimes.length > 0
+        ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
+        : 0;
+      const responseRate = totalNewConvs > 0 ? Math.round((respondedCount / totalNewConvs) * 100) : 0;
+
       // Build conversation/closed metrics from KPI snapshot data
       const convAndClosedMetrics: Partial<DashboardMetrics> = {
-        newConversations: kpiData.conversas_ativas || 0,
-        responseRate: 0,
-        avgResponseTimeMin: 0,
-        respondedCount: 0,
-        totalInbound: kpiData.msgs_inbound || 0,
+        newConversations: kpiData.conversas_ativas || totalNewConvs || 0,
+        responseRate,
+        avgResponseTimeMin,
+        respondedCount,
+        totalInbound: totalNewConvs || (kpiData.msgs_inbound || 0),
         closedByAgent: [],
         closedByAgentDetailed: [],
         closedByCampaign: [],
         closedByAI: 0,
         closedAssisted: 0,
         closedWithHuman: 0,
-        closedNoInteraction: 0,
-        closedTotal: 0,
+        closedNoInteraction: kpiData.leads_fechados || 0,
+        closedTotal: kpiData.leads_fechados || 0,
         closedLeadDetails: [],
         newConvDetails: [],
       };
 
-      // If KPI response contains snapshot-level aggregates, use them
+      // If KPI response contains snapshot-level aggregates, use them (override fallback)
       if (kpiRes?.conversation_metrics) {
         const cm = kpiRes.conversation_metrics;
         convAndClosedMetrics.newConversations = cm.newConversations || convAndClosedMetrics.newConversations;
-        convAndClosedMetrics.responseRate = cm.responseRate || 0;
-        convAndClosedMetrics.avgResponseTimeMin = cm.avgResponseTimeMin || 0;
-        convAndClosedMetrics.respondedCount = cm.respondedCount || 0;
+        convAndClosedMetrics.responseRate = cm.responseRate ?? convAndClosedMetrics.responseRate;
+        convAndClosedMetrics.avgResponseTimeMin = cm.avgResponseTimeMin ?? convAndClosedMetrics.avgResponseTimeMin;
+        convAndClosedMetrics.respondedCount = cm.respondedCount ?? convAndClosedMetrics.respondedCount;
         convAndClosedMetrics.totalInbound = cm.totalInbound || convAndClosedMetrics.totalInbound;
       }
       if (kpiRes?.closed_aggregates) {
