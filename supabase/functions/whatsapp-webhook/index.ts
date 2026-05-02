@@ -5,13 +5,14 @@ import {
   resolveServiceRoleKey,
   resolveSupabaseUrl,
 } from "../_shared/supabase-url-resolver.ts";
+import {
+  CLOUD_ANON_KEY as cloudAnonKey,
+  CLOUD_FUNCTIONS_URL as cloudFunctionsUrl,
+} from "../_shared/cloud-functions-url.ts";
 
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
 const RESOLVED_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
-  "https://gliigkupoebmlbwyvijp.supabase.co";
-const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -903,9 +904,7 @@ async function handleCallEvent(supabase: any, body: any) {
   ) {
     const supabaseUrl = RESOLVED_SUPABASE_URL;
     const anonKey = RESOLVED_ANON_KEY;
-    const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
-      "https://gliigkupoebmlbwyvijp.supabase.co";
-    const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+    // cloudFunctionsUrl/cloudAnonKey importados do helper _shared/cloud-functions-url.ts
     fetch(`${cloudFunctionsUrl}/functions/v1/analyze-activity-chat`, {
       method: "POST",
       headers: {
@@ -2435,14 +2434,11 @@ Deno.serve(async (req) => {
             );
 
             // Execute agent automation rules (on_activation trigger)
-            const cloudFnUrlAuto = Deno.env.get("SUPABASE_URL") ||
-              "https://gliigkupoebmlbwyvijp.supabase.co";
-            const cloudAnonKeyAuto = Deno.env.get("SUPABASE_ANON_KEY") || "";
-            fetch(`${cloudFnUrlAuto}/functions/v1/execute-agent-automations`, {
+            fetch(`${cloudFunctionsUrl}/functions/v1/execute-agent-automations`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${cloudAnonKeyAuto}`,
+                "Authorization": `Bearer ${cloudAnonKey}`,
               },
               body: JSON.stringify({
                 agent_id: shortcut.id,
@@ -2507,14 +2503,11 @@ Deno.serve(async (req) => {
               .maybeSingle();
 
             if (lastInbound) {
-              const cloudFnUrl = Deno.env.get("SUPABASE_URL") ||
-                "https://gliigkupoebmlbwyvijp.supabase.co";
-              const cloudAnonKeyVal = Deno.env.get("SUPABASE_ANON_KEY") || "";
-              fetch(`${cloudFnUrl}/functions/v1/whatsapp-ai-agent-reply`, {
+              fetch(`${cloudFunctionsUrl}/functions/v1/whatsapp-ai-agent-reply`, {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
-                  "Authorization": `Bearer ${cloudAnonKeyVal}`,
+                  "Authorization": `Bearer ${cloudAnonKey}`,
                 },
                 body: JSON.stringify({
                   phone,
@@ -2771,9 +2764,7 @@ Deno.serve(async (req) => {
             );
             const supabaseUrl = RESOLVED_SUPABASE_URL;
             const supabaseAnonKey = RESOLVED_ANON_KEY;
-            const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
-              "https://gliigkupoebmlbwyvijp.supabase.co";
-            const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+            // cloudFunctionsUrl/cloudAnonKey importados do helper _shared/cloud-functions-url.ts
             // Fire-and-forget — pass the actual sender phone and group context
             fetch(
               `${cloudFunctionsUrl}/functions/v1/whatsapp-command-processor`,
@@ -2835,9 +2826,7 @@ Deno.serve(async (req) => {
         try {
           const supabaseUrl = RESOLVED_SUPABASE_URL;
           const supabaseAnonKey = RESOLVED_ANON_KEY;
-          const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
-            "https://gliigkupoebmlbwyvijp.supabase.co";
-          const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+          // cloudFunctionsUrl/cloudAnonKey importados do helper _shared/cloud-functions-url.ts
 
           // Resolve instance_name to get instance details
           const { data: instData } = await supabase
@@ -3034,9 +3023,7 @@ Deno.serve(async (req) => {
 
             const supabaseUrl = RESOLVED_SUPABASE_URL;
             const supabaseAnonKey = RESOLVED_ANON_KEY;
-            const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
-              "https://gliigkupoebmlbwyvijp.supabase.co";
-            const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+            // cloudFunctionsUrl/cloudAnonKey importados do helper _shared/cloud-functions-url.ts
 
             // Route to command processor preserving full command text
             fetch(
@@ -3193,9 +3180,7 @@ Deno.serve(async (req) => {
 
             const supabaseUrl = RESOLVED_SUPABASE_URL;
             const supabaseAnonKey = RESOLVED_ANON_KEY;
-            const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
-              "https://gliigkupoebmlbwyvijp.supabase.co";
-            const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+            // cloudFunctionsUrl/cloudAnonKey importados do helper _shared/cloud-functions-url.ts
 
             // Route to unified wjia-agent with the #name as command
             fetch(`${cloudFunctionsUrl}/functions/v1/wjia-agent`, {
@@ -3288,9 +3273,7 @@ Deno.serve(async (req) => {
           );
           const supabaseUrl = RESOLVED_SUPABASE_URL;
           const supabaseAnonKey = RESOLVED_ANON_KEY;
-          const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
-            "https://gliigkupoebmlbwyvijp.supabase.co";
-          const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+          // cloudFunctionsUrl/cloudAnonKey importados do helper _shared/cloud-functions-url.ts
           fetch(`${cloudFunctionsUrl}/functions/v1/wjia-agent`, {
             method: "POST",
             headers: {
@@ -3853,9 +3836,7 @@ Deno.serve(async (req) => {
 
                 const supabaseUrl = RESOLVED_SUPABASE_URL;
                 const supabaseAnonKey = RESOLVED_ANON_KEY;
-                const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
-                  "https://gliigkupoebmlbwyvijp.supabase.co";
-                const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+                // cloudFunctionsUrl/cloudAnonKey importados do helper _shared/cloud-functions-url.ts
 
                 // Fire-and-forget to member assistant
                 fetch(`${cloudFunctionsUrl}/functions/v1/member-ai-assistant`, {
@@ -3912,9 +3893,7 @@ Deno.serve(async (req) => {
       try {
         const supabaseUrl = RESOLVED_SUPABASE_URL;
         const supabaseAnonKey = RESOLVED_ANON_KEY;
-        const cloudFunctionsUrl = Deno.env.get("SUPABASE_URL") ||
-          "https://gliigkupoebmlbwyvijp.supabase.co";
-        const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+        // cloudFunctionsUrl/cloudAnonKey importados do helper _shared/cloud-functions-url.ts
         // Fire-and-forget: don't await to avoid delaying webhook response
         fetch(`${cloudFunctionsUrl}/functions/v1/whatsapp-ai-agent-reply`, {
           method: "POST",
