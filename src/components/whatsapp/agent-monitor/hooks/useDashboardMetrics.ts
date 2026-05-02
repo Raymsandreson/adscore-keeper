@@ -85,7 +85,7 @@ export function useDashboardMetrics() {
       // Fetch KPIs from edge function (header rápido) + dados detalhados direto do EXTERNO
       // (memory: hybrid-routing-persistence-policy — dados de negócio vivem no Externo)
       const period = selectedPeriod || 'today';
-      const [kpiRes, docsResult, groupsResult, casesResult, processesResult, contactsResult, contactsCountResult] = await Promise.all([
+      const [kpiRes, docsResult, groupsResult, casesResult, processesResult, contactsResult, contactsCountResult, firstMsgsResult] = await Promise.all([
         monitorData('kpis', { period }),
         externalSupabase
           .from('zapsign_documents')
