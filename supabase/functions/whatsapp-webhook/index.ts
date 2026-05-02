@@ -2438,7 +2438,7 @@ Deno.serve(async (req) => {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${cloudAnonKeyAuto}`,
+                "Authorization": `Bearer ${cloudAnonKey}`,
               },
               body: JSON.stringify({
                 agent_id: shortcut.id,
@@ -2507,7 +2507,7 @@ Deno.serve(async (req) => {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
-                  "Authorization": `Bearer ${cloudAnonKeyVal}`,
+                  "Authorization": `Bearer ${cloudAnonKey}`,
                 },
                 body: JSON.stringify({
                   phone,
