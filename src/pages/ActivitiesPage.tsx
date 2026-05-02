@@ -3102,6 +3102,7 @@ const ActivitiesPage = () => {
                               contact_name: formContactName || null,
                               deadline: formDeadline || null,
                               notification_date: formNotificationDate || null,
+                              client_name_override: formClientNameOverride || null,
                             });
                             if (result) {
                               const createdActivity = result as LeadActivity;
