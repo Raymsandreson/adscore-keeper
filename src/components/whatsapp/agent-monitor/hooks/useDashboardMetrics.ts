@@ -177,7 +177,7 @@ export function useDashboardMetrics() {
       // Enrich docs with lead acolhedor
       const docLeadIds = docs.map(d => d.lead_id).filter(Boolean) as string[];
       if (docLeadIds.length > 0) {
-        const { data: leads } = await supabase.from('leads').select('id, acolhedor').in('id', [...new Set(docLeadIds)]);
+        const { data: leads } = await externalSupabase.from('leads').select('id, acolhedor').in('id', [...new Set(docLeadIds)]);
         const acolhedorMap = Object.fromEntries((leads || []).map(l => [l.id, l.acolhedor]));
         for (const d of [...signedDocsDetails, ...pendingDocsDetails]) {
           if (d.lead_id) d.acolhedor = acolhedorMap[d.lead_id] || null;
