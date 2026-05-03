@@ -54,7 +54,8 @@ async function fetchGroupsFromUazapi(
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", token },
-    body: JSON.stringify({ getParticipants: true }),
+    // force: true => pede ao UazAPI para buscar a lista completa direto do WhatsApp
+    body: JSON.stringify({ getParticipants: true, force: true }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
