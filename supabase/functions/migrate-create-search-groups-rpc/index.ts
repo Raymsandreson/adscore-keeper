@@ -89,6 +89,17 @@ Deno.serve(async (req) => {
     }
     const sql = postgres(EXTERNAL_DB_URL, { max: 1, idle_timeout: 20, prepare: false });
     try {
+      if (body.test) {
+        const tokens: string[] = body.tokens || ["prev", "372"];
+        const limit: number = body.limit || 10;
+        const rows = await sql`
+          SELECT group_jid, contact_name, instance_name, last_seen, message_count
+          FROM public.search_whatsapp_groups_by_tokens(${tokens}::text[], NULL, ${limit}::int)
+        `;
+        return new Response(JSON.stringify({ success: true, test: true, tokens, count: rows.length, rows }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       await sql.unsafe(RPC_SQL);
       await sql.unsafe(
         `GRANT EXECUTE ON FUNCTION public.search_whatsapp_groups_by_tokens(text[], text[], int) TO authenticated, anon, service_role;`
