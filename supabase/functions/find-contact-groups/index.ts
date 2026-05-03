@@ -77,6 +77,12 @@ Deno.serve(async (req) => {
     const name_query: string | undefined = body?.name_query;
     const instance_name: string | undefined = body?.instance_name;
     const force_refresh: boolean = body?.force_refresh === true;
+    // Por padrão, se houver name_query, busca em TODAS as instâncias do tenant.
+    // Se vier explicitamente false, restringe à instance_name.
+    const search_all_instances: boolean =
+      body?.search_all_instances !== undefined
+        ? body.search_all_instances === true
+        : !!name_query;
 
     if (!instance_name || (!phone && !name_query)) {
       return new Response(
@@ -103,83 +109,106 @@ Deno.serve(async (req) => {
     const cloudKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const cloud = createClient(cloudUrl, cloudKey);
 
-    // 1) Verificar cache
-    let fromCache = true;
-    let fetchedAt: string | null = null;
-    let cachedRows: any[] = [];
-
-    if (!force_refresh) {
-      const { data: rows } = await cloud
-        .from("whatsapp_groups_cache")
-        .select("group_jid, group_name, invite_link, participants, participants_count, fetched_at")
-        .ilike("instance_name", instance_name);
-
-      if (rows && rows.length > 0) {
-        const newest = rows.reduce((acc, r) =>
-          new Date(r.fetched_at) > new Date(acc.fetched_at) ? r : acc,
+    // Determina instâncias a varrer
+    let targetInstances: string[] = [instance_name];
+    if (search_all_instances) {
+      const { data: allInst } = await cloud
+        .from("whatsapp_instances")
+        .select("instance_name");
+      if (allInst && allInst.length > 0) {
+        targetInstances = Array.from(
+          new Set(allInst.map((r: any) => r.instance_name).filter(Boolean)),
         );
-        const age = Date.now() - new Date(newest.fetched_at).getTime();
-        if (age < CACHE_TTL_MS) {
-          cachedRows = rows;
-          fetchedAt = newest.fetched_at;
+      }
+    }
+
+    // Para cada instância: tenta cache, faz fetch se necessário
+    let fromCacheAll = true;
+    let fetchedAt: string | null = null;
+    const cachedRows: any[] = [];
+
+    for (const inst of targetInstances) {
+      let rowsForInst: any[] = [];
+      let usedCache = false;
+
+      if (!force_refresh) {
+        const { data: rows } = await cloud
+          .from("whatsapp_groups_cache")
+          .select("group_jid, group_name, invite_link, participants, participants_count, fetched_at, instance_name")
+          .ilike("instance_name", inst);
+
+        if (rows && rows.length > 0) {
+          const newest = rows.reduce((acc, r) =>
+            new Date(r.fetched_at) > new Date(acc.fetched_at) ? r : acc,
+          );
+          const age = Date.now() - new Date(newest.fetched_at).getTime();
+          if (age < CACHE_TTL_MS) {
+            rowsForInst = rows;
+            usedCache = true;
+            if (!fetchedAt || new Date(newest.fetched_at) > new Date(fetchedAt)) {
+              fetchedAt = newest.fetched_at;
+            }
+          }
         }
       }
-    }
 
-    // 2) Cache miss / expirado / force => buscar no UazAPI
-    if (cachedRows.length === 0) {
-      fromCache = false;
-      const { data: instRow, error: instErr } = await cloud
-        .from("whatsapp_instances")
-        .select("base_url, instance_token, instance_name")
-        .ilike("instance_name", instance_name)
-        .maybeSingle();
+      if (rowsForInst.length === 0) {
+        fromCacheAll = false;
+        const { data: instRow } = await cloud
+          .from("whatsapp_instances")
+          .select("base_url, instance_token, instance_name")
+          .ilike("instance_name", inst)
+          .maybeSingle();
 
-      if (instErr) throw instErr;
-      if (!instRow?.base_url || !instRow?.instance_token) {
-        return new Response(
-          JSON.stringify({ error: "instance not found or missing credentials", instance_name }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+        if (!instRow?.base_url || !instRow?.instance_token) {
+          console.warn(`[find-contact-groups] skip ${inst}: no creds`);
+          continue;
+        }
+
+        let groups: any[] = [];
+        try {
+          groups = await fetchGroupsFromUazapi(instRow.base_url, instRow.instance_token);
+        } catch (e) {
+          console.warn(`[find-contact-groups] fetch failed for ${inst}:`, (e as any)?.message);
+          continue;
+        }
+
+        const now = new Date().toISOString();
+        fetchedAt = now;
+        const upsertRows = groups
+          .map((g) => {
+            const jid = g.id || g.jid || g.JID || null;
+            if (!jid) return null;
+            const participants = (g.participants || g.Participants || []).map((p: any) => {
+              const id = String(p?.id || p?.jid || p?.phone || p || "");
+              return { id, key: phoneMatchKey(id) };
+            });
+            return {
+              instance_name: instRow.instance_name,
+              group_jid: jid,
+              group_name: g.subject || g.name || null,
+              invite_link: g.invite_link || g.inviteLink || null,
+              participants,
+              participants_count: participants.length,
+              fetched_at: now,
+            };
+          })
+          .filter(Boolean) as any[];
+
+        if (upsertRows.length > 0) {
+          const { error: upErr } = await cloud
+            .from("whatsapp_groups_cache")
+            .upsert(upsertRows, { onConflict: "instance_name,group_jid" });
+          if (upErr) console.warn("[find-contact-groups] cache upsert error:", upErr);
+        }
+        rowsForInst = upsertRows;
       }
 
-      const groups = await fetchGroupsFromUazapi(
-        instRow.base_url,
-        instRow.instance_token,
-      );
-
-      // Upsert no cache
-      const now = new Date().toISOString();
-      fetchedAt = now;
-      const upsertRows = groups
-        .map((g) => {
-          const jid = g.id || g.jid || g.JID || null;
-          if (!jid) return null;
-          const participants = (g.participants || g.Participants || []).map((p: any) => {
-            const id = String(p?.id || p?.jid || p?.phone || p || "");
-            return { id, key: phoneMatchKey(id) };
-          });
-          return {
-            instance_name: instRow.instance_name,
-            group_jid: jid,
-            group_name: g.subject || g.name || null,
-            invite_link: g.invite_link || g.inviteLink || null,
-            participants,
-            participants_count: participants.length,
-            fetched_at: now,
-          };
-        })
-        .filter(Boolean) as any[];
-
-      if (upsertRows.length > 0) {
-        const { error: upErr } = await cloud
-          .from("whatsapp_groups_cache")
-          .upsert(upsertRows, { onConflict: "instance_name,group_jid" });
-        if (upErr) console.warn("[find-contact-groups] cache upsert error:", upErr);
-      }
-
-      cachedRows = upsertRows;
+      if (!usedCache) fromCacheAll = false;
+      cachedRows.push(...rowsForInst);
     }
+
+    const fromCache = fromCacheAll;
 
     // 3) Filtrar grupos por participante (phone) OU por nome (name_query, fuzzy por tokens)
     const STOP = new Set(["de", "da", "do", "das", "dos", "e", "a", "o", "para", "com", "the"]);
