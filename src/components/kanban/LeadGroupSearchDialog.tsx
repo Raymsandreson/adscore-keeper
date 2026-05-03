@@ -86,7 +86,7 @@ export function LeadGroupSearchDialog({
       setGroups(found);
       if (found.length === 0) {
         toast.info(
-          usingName
+          nameQuery.trim()
             ? 'Nenhum grupo encontrado com esse nome.'
             : 'Nenhum grupo encontrado com esse contato como participante.',
         );
