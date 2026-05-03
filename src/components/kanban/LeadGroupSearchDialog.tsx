@@ -222,7 +222,9 @@ export function LeadGroupSearchDialog({
                   <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{g.name || '(sem nome)'}</div>
-                    <div className="text-xs text-muted-foreground font-mono truncate">{g.jid}</div>
+                    <div className="text-xs text-muted-foreground font-mono truncate">
+                      {g.instance_name ? `[${g.instance_name}] ` : ''}{g.jid}
+                    </div>
                   </div>
                   <span className="text-xs text-muted-foreground shrink-0">
                     {g.participants_count} part.
