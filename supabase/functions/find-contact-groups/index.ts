@@ -135,6 +135,10 @@ Deno.serve(async (req) => {
     const cloudKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const cloud = createClient(cloudUrl, cloudKey);
 
+    const externalUrl = Deno.env.get("EXTERNAL_SUPABASE_URL") || "";
+    const externalKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || "";
+    const external = externalUrl && externalKey ? createClient(externalUrl, externalKey) : null;
+
     // Determina instâncias a varrer
     let targetInstances: string[] = [instance_name];
     if (search_all_instances) {
@@ -145,6 +149,39 @@ Deno.serve(async (req) => {
         targetInstances = Array.from(
           new Set(allInst.map((r: any) => r.instance_name).filter(Boolean)),
         );
+      }
+    }
+
+    const queryTokens = name_query ? tokenize(name_query) : [];
+    const conversationMatches: Array<any & { _score?: number }> = [];
+    if (external && queryTokens.length > 0) {
+      const variants = Array.from(
+        new Set(targetInstances.flatMap((inst) => [inst, inst.toUpperCase(), inst.toLowerCase()])),
+      );
+      const { data: conversations, error: convErr } = await external
+        .from("conversations")
+        .select("phone, contact_name, instance_name, message_count")
+        .in("instance_name", variants)
+        .like("phone", "%@g.us")
+        .limit(2000);
+
+      if (convErr) {
+        console.warn("[find-contact-groups] conversations lookup error:", convErr.message);
+      } else {
+        for (const c of conversations || []) {
+          const score = scoreName(String(c.contact_name || ""), queryTokens);
+          const threshold = queryTokens.length === 1 ? 1 : 0.5;
+          if (score >= threshold) {
+            conversationMatches.push({
+              jid: c.phone,
+              name: c.contact_name || c.phone,
+              invite_link: null,
+              participants_count: 0,
+              instance_name: c.instance_name,
+              _score: score,
+            });
+          }
+        }
       }
     }
 
