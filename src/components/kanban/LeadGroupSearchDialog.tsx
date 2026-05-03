@@ -177,25 +177,21 @@ export function LeadGroupSearchDialog({
           </DialogTitle>
           <DialogDescription>
             {step === 'groups'
-              ? hasPhone
-                ? `Procura grupos da instância ${instanceName || '(?)'} em que ${contactPhone} é participante.`
-                : `Lead sem telefone — buscando por nome do grupo na instância ${instanceName || '(?)'}.`
+              ? `Busca grupos da instância ${instanceName || '(?)'}${hasPhone ? ` em que ${contactPhone} é participante` : ''}${hasPhone ? ' e/ou' : ''} pelo nome.`
               : 'Escolha quem deseja importar como contato e vincular ao lead. UF/cidade são preenchidos pelo DDD.'}
           </DialogDescription>
         </DialogHeader>
 
         {step === 'groups' && (
           <div className="space-y-3">
-            {!hasPhone && (
-              <input
-                type="text"
-                value={nameQuery}
-                onChange={(e) => setNameQuery(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(false); }}
-                placeholder="Nome (ou parte do nome) do grupo"
-                className="w-full px-3 py-2 border rounded-md text-sm bg-background"
-              />
-            )}
+            <input
+              type="text"
+              value={nameQuery}
+              onChange={(e) => setNameQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(false); }}
+              placeholder="Nome (ou parte do nome) do grupo"
+              className="w-full px-3 py-2 border rounded-md text-sm bg-background"
+            />
             <div className="flex gap-2">
               <Button
                 onClick={() => handleSearch(false)}
