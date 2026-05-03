@@ -178,7 +178,7 @@ export function LeadGroupSearchDialog({
           </DialogTitle>
           <DialogDescription>
             {step === 'groups'
-              ? `Busca grupos da instância ${instanceName || '(?)'}${hasPhone ? ` em que ${contactPhone} é participante` : ''}${hasPhone ? ' e/ou' : ''} pelo nome.`
+              ? `Busca por nome varre TODAS as instâncias conectadas. Busca por participante usa a instância ${instanceName || '(?)'}${hasPhone ? ` (${contactPhone})` : ''}.`
               : 'Escolha quem deseja importar como contato e vincular ao lead. UF/cidade são preenchidos pelo DDD.'}
           </DialogDescription>
         </DialogHeader>
