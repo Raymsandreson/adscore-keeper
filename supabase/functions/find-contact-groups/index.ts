@@ -274,30 +274,8 @@ Deno.serve(async (req) => {
     const fromCache = fromCacheAll;
 
     // 3) Filtrar grupos por participante (phone) OU por nome (name_query, fuzzy por tokens)
-    const STOP = new Set(["de", "da", "do", "das", "dos", "e", "a", "o", "para", "com", "the"]);
-    const tokenize = (s: string) =>
-      normalizeForMatch(s)
-        .replace(/[^a-z0-9\s]/g, " ")
-        .split(/\s+/)
-        .filter((t) => t.length >= 2 && !STOP.has(t));
-    const queryTokens = nameNeedle ? tokenize(nameNeedle) : [];
-
-    const scoreName = (name: string): number => {
-      if (!queryTokens.length) return 0;
-      const nameNorm = normalizeForMatch(name);
-      const nameTokens = tokenize(name);
-      let hits = 0;
-      for (const qt of queryTokens) {
-        // match exato no token, prefixo do token (>=3 chars), ou substring direta
-        const found = nameTokens.some(
-          (nt) => nt === qt || (qt.length >= 3 && (nt.startsWith(qt) || qt.startsWith(nt))),
-        );
-        if (found || (qt.length >= 4 && nameNorm.includes(qt))) hits++;
-      }
-      return hits / queryTokens.length;
-    };
-
-    const matched: Array<any & { _score?: number }> = [];
+    const matched: Array<any & { _score?: number }> = [...conversationMatches];
+    const matchedKeys = new Set(matched.map((m) => `${String(m.instance_name || "").toLowerCase()}|${m.jid}`));
     for (const r of cachedRows) {
       let isMatch = false;
       let score = 0;
@@ -314,13 +292,16 @@ Deno.serve(async (req) => {
       }
 
       if (!isMatch && queryTokens.length && r.group_name) {
-        score = scoreName(String(r.group_name));
+        score = scoreName(String(r.group_name), queryTokens);
         // limiar: pelo menos 50% dos tokens da query batem (ou 1 token único)
         const threshold = queryTokens.length === 1 ? 1 : 0.5;
         if (score >= threshold) isMatch = true;
       }
 
       if (isMatch) {
+        const key = `${String(r.instance_name || "").toLowerCase()}|${r.group_jid}`;
+        if (matchedKeys.has(key)) continue;
+        matchedKeys.add(key);
         matched.push({
           jid: r.group_jid,
           name: r.group_name,
