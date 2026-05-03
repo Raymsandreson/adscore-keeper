@@ -66,8 +66,7 @@ export function LeadGroupSearchDialog({
       toast.error('Instância WhatsApp não definida para este lead.');
       return;
     }
-    const usingName = !hasPhone;
-    if (usingName && !nameQuery.trim()) {
+    if (!hasPhone && !nameQuery.trim()) {
       toast.error('Informe um nome para buscar (ex: nome do lead).');
       return;
     }
@@ -78,7 +77,7 @@ export function LeadGroupSearchDialog({
         force_refresh: forceRefresh,
       };
       if (hasPhone) body.phone = contactPhone;
-      else body.name_query = nameQuery.trim();
+      if (nameQuery.trim()) body.name_query = nameQuery.trim();
 
       const { data, error } = await supabase.functions.invoke('find-contact-groups', { body });
       if (error) throw error;
