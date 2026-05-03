@@ -180,23 +180,51 @@ Deno.serve(async (req) => {
       cachedRows = upsertRows;
     }
 
-    // 3) Filtrar grupos por participante (phone) OU por nome (name_query)
-    const matched: any[] = [];
+    // 3) Filtrar grupos por participante (phone) OU por nome (name_query, fuzzy por tokens)
+    const STOP = new Set(["de", "da", "do", "das", "dos", "e", "a", "o", "para", "com", "the"]);
+    const tokenize = (s: string) =>
+      normalizeForMatch(s)
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter((t) => t.length >= 2 && !STOP.has(t));
+    const queryTokens = nameNeedle ? tokenize(nameNeedle) : [];
+
+    const scoreName = (name: string): number => {
+      if (!queryTokens.length) return 0;
+      const nameNorm = normalizeForMatch(name);
+      const nameTokens = tokenize(name);
+      let hits = 0;
+      for (const qt of queryTokens) {
+        // match exato no token, prefixo do token (>=3 chars), ou substring direta
+        const found = nameTokens.some(
+          (nt) => nt === qt || (qt.length >= 3 && (nt.startsWith(qt) || qt.startsWith(nt))),
+        );
+        if (found || (qt.length >= 4 && nameNorm.includes(qt))) hits++;
+      }
+      return hits / queryTokens.length;
+    };
+
+    const matched: Array<any & { _score?: number }> = [];
     for (const r of cachedRows) {
       let isMatch = false;
+      let score = 0;
 
       if (matchKey) {
         const parts: any[] = Array.isArray(r.participants) ? r.participants : [];
         const keys = parts
           .map((p) => p?.key || phoneMatchKey(p?.id || p))
           .filter(Boolean);
-        if (keys.includes(matchKey)) isMatch = true;
+        if (keys.includes(matchKey)) {
+          isMatch = true;
+          score = 1;
+        }
       }
 
-      if (!isMatch && nameNeedle && r.group_name) {
-        if (normalizeForMatch(String(r.group_name)).includes(nameNeedle)) {
-          isMatch = true;
-        }
+      if (!isMatch && queryTokens.length && r.group_name) {
+        score = scoreName(String(r.group_name));
+        // limiar: pelo menos 50% dos tokens da query batem (ou 1 token único)
+        const threshold = queryTokens.length === 1 ? 1 : 0.5;
+        if (score >= threshold) isMatch = true;
       }
 
       if (isMatch) {
@@ -205,9 +233,14 @@ Deno.serve(async (req) => {
           name: r.group_name,
           invite_link: r.invite_link,
           participants_count: r.participants_count,
+          _score: score,
         });
       }
     }
+
+    // ordena por score desc (melhores matches primeiro)
+    matched.sort((a, b) => (b._score || 0) - (a._score || 0));
+    matched.forEach((m) => delete m._score);
 
     return new Response(
       JSON.stringify({
