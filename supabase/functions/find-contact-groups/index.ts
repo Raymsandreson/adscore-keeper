@@ -150,16 +150,16 @@ Deno.serve(async (req) => {
     const queryTokens = name_query ? tokenize(name_query) : [];
     const conversationMatches: Array<any & { _score?: number }> = [];
     if (external && name_query && name_query.trim().length >= 2) {
-      // Busca direto em whatsapp_messages (grupos = phone @g.us). Usa ILIKE
-      // por cada token (AND) para imitar o comportamento do filtro do WhatsJUD.
-      // Depois deduplica por (instance_name, phone) e ranqueia por score.
+      // Busca direto em whatsapp_messages. No banco real, grupos chegam com
+      // `phone` numérico (ex: 120363...) e o JID completo fica no metadata
+      // (`chat.wa_chatid` / `message.chatid`). Por isso NÃO filtramos mais
+      // `phone LIKE %@g.us`; filtramos o nome no SQL e confirmamos grupo via metadata.
       let q = external
         .from("whatsapp_messages")
-        .select("phone, contact_name, instance_name, created_at")
-        .like("phone", "%@g.us")
+        .select("phone, contact_name, instance_name, created_at, metadata")
         .not("contact_name", "is", null)
         .order("created_at", { ascending: false })
-        .limit(500);
+        .limit(1000);
 
       for (const tok of queryTokens.length ? queryTokens : [name_query.trim()]) {
         // escapa % e _ pra ILIKE
@@ -173,14 +173,24 @@ Deno.serve(async (req) => {
       } else {
         const seen = new Set<string>();
         for (const m of msgs || []) {
-          const key = `${String(m.instance_name || "").toLowerCase()}|${m.phone}`;
+          const chatId = String(
+            m.metadata?.chat?.wa_chatid ||
+              m.metadata?.message?.chatid ||
+              m.metadata?.chat?.id ||
+              "",
+          );
+          const isGroup = m.metadata?.chat?.wa_isGroup === true || chatId.includes("@g.us");
+          if (!isGroup) continue;
+
+          const groupJid = chatId.includes("@g.us") ? chatId : `${m.phone}@g.us`;
+          const key = `${String(m.instance_name || "").toLowerCase()}|${groupJid}`;
           if (seen.has(key)) continue;
           seen.add(key);
           const score = queryTokens.length
             ? scoreName(String(m.contact_name || ""), queryTokens)
             : 1;
           conversationMatches.push({
-            jid: m.phone,
+            jid: groupJid,
             name: m.contact_name || m.phone,
             invite_link: null,
             participants_count: 0,
