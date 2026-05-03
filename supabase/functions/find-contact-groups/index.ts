@@ -112,16 +112,16 @@ Deno.serve(async (req) => {
 
     if (!instance_name || (!phone && !name_query)) {
       return new Response(
-        JSON.stringify({ error: "instance_name and one of (phone | name_query) are required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify({ success: false, error: "instance_name and one of (phone | name_query) are required" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     const matchKey = phone ? phoneMatchKey(phone) : null;
     if (phone && (!matchKey || matchKey.length < 8)) {
       return new Response(
-        JSON.stringify({ error: "phone has too few digits", matchKey }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify({ success: false, error: "phone has too few digits", matchKey }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -344,8 +344,8 @@ Deno.serve(async (req) => {
   } catch (e) {
     console.error("[find-contact-groups] error:", e);
     return new Response(
-      JSON.stringify({ error: String((e as any)?.message || e) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      JSON.stringify({ success: false, error: String((e as any)?.message || e) }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
