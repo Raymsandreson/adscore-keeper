@@ -149,34 +149,45 @@ Deno.serve(async (req) => {
 
     const queryTokens = name_query ? tokenize(name_query) : [];
     const conversationMatches: Array<any & { _score?: number }> = [];
-    if (external && queryTokens.length > 0) {
-      const variants = Array.from(
-        new Set(targetInstances.flatMap((inst) => [inst, inst.toUpperCase(), inst.toLowerCase()])),
-      );
-      const { data: conversations, error: convErr } = await external
-        .from("conversations")
-        .select("phone, contact_name, instance_name, message_count")
-        .in("instance_name", variants)
+    if (external && name_query && name_query.trim().length >= 2) {
+      // Busca direto em whatsapp_messages (grupos = phone @g.us). Usa ILIKE
+      // por cada token (AND) para imitar o comportamento do filtro do WhatsJUD.
+      // Depois deduplica por (instance_name, phone) e ranqueia por score.
+      let q = external
+        .from("whatsapp_messages")
+        .select("phone, contact_name, instance_name, created_at")
         .like("phone", "%@g.us")
-        .limit(2000);
+        .not("contact_name", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(500);
 
-      if (convErr) {
-        console.warn("[find-contact-groups] conversations lookup error:", convErr.message);
+      for (const tok of queryTokens.length ? queryTokens : [name_query.trim()]) {
+        // escapa % e _ pra ILIKE
+        const safe = tok.replace(/[\\%_]/g, (m) => `\\${m}`);
+        q = q.ilike("contact_name", `%${safe}%`);
+      }
+
+      const { data: msgs, error: msgErr } = await q;
+      if (msgErr) {
+        console.warn("[find-contact-groups] whatsapp_messages lookup error:", msgErr.message);
       } else {
-        for (const c of conversations || []) {
-          const score = scoreName(String(c.contact_name || ""), queryTokens);
-          const threshold = queryTokens.length === 1 ? 1 : 0.5;
-          if (score >= threshold) {
-            conversationMatches.push({
-              jid: c.phone,
-              name: c.contact_name || c.phone,
-              invite_link: null,
-              participants_count: 0,
-              instance_name: c.instance_name,
-              source: "conversations",
-              _score: score,
-            });
-          }
+        const seen = new Set<string>();
+        for (const m of msgs || []) {
+          const key = `${String(m.instance_name || "").toLowerCase()}|${m.phone}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const score = queryTokens.length
+            ? scoreName(String(m.contact_name || ""), queryTokens)
+            : 1;
+          conversationMatches.push({
+            jid: m.phone,
+            name: m.contact_name || m.phone,
+            invite_link: null,
+            participants_count: 0,
+            instance_name: m.instance_name,
+            source: "whatsapp_messages",
+            _score: score || 0.5,
+          });
         }
       }
     }
