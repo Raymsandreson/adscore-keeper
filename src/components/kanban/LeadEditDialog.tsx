@@ -2840,6 +2840,7 @@ ${scrapeData.content || ''}
           leadId={currentLead.id}
           contactPhone={leadPhone}
           instanceName={groupSearchInstance}
+          leadName={currentLead.lead_name || ''}
           onGroupSelected={(g) => {
             setWhatsappGroups((prev) => {
               const exists = prev.find((x) => x.group_jid === g.jid);
