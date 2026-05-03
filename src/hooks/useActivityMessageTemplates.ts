@@ -13,7 +13,7 @@ export interface ActivityMessageTemplate {
   updated_at: string;
 }
 
-const DEFAULT_TEMPLATE = `*Boa tarde Sr(a). {{lead_name}}*
+const DEFAULT_TEMPLATE = `*{{saudacao}} Sr(a). {{lead_name}}*
 
 *Assunto da atividade:* {{titulo}}
 
