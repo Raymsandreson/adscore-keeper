@@ -62,21 +62,35 @@ export function LeadGroupSearchDialog({
   };
 
   const handleSearch = async (forceRefresh = false) => {
-    if (!contactPhone || !instanceName) {
-      toast.error('Lead sem telefone de contato ou instância WhatsApp definida.');
+    if (!instanceName) {
+      toast.error('Instância WhatsApp não definida para este lead.');
+      return;
+    }
+    const usingName = !hasPhone;
+    if (usingName && !nameQuery.trim()) {
+      toast.error('Informe um nome para buscar (ex: nome do lead).');
       return;
     }
     setLoadingGroups(true);
     try {
-      const { data, error } = await supabase.functions.invoke('find-contact-groups', {
-        body: { phone: contactPhone, instance_name: instanceName, force_refresh: forceRefresh },
-      });
+      const body: Record<string, unknown> = {
+        instance_name: instanceName,
+        force_refresh: forceRefresh,
+      };
+      if (hasPhone) body.phone = contactPhone;
+      else body.name_query = nameQuery.trim();
+
+      const { data, error } = await supabase.functions.invoke('find-contact-groups', { body });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       const found: FoundGroup[] = data?.groups || [];
       setGroups(found);
       if (found.length === 0) {
-        toast.info('Nenhum grupo encontrado com esse contato como participante.');
+        toast.info(
+          usingName
+            ? 'Nenhum grupo encontrado com esse nome.'
+            : 'Nenhum grupo encontrado com esse contato como participante.',
+        );
       } else {
         toast.success(`${found.length} grupo(s) encontrado(s)${data.from_cache ? ' (cache)' : ''}.`);
       }
