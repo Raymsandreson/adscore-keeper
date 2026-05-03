@@ -115,12 +115,13 @@ import { ptBR } from 'date-fns/locale';
 import { useLeadSources } from '@/hooks/useLeadSources';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, Search } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { logGroupAudit } from '@/lib/groupAuditLog';
 import { useLegalCases } from '@/hooks/useLegalCases';
 import LeadDocumentsTab from '@/components/leads/LeadDocumentsTab';
 import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDialog';
+import { LeadGroupSearchDialog } from '@/components/kanban/LeadGroupSearchDialog';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
 import { useChecklists } from '@/hooks/useChecklists';
 
@@ -226,6 +227,8 @@ export function LeadEditDialog({
   const [fetchingInviteJids, setFetchingInviteJids] = useState<Set<string>>(new Set());
   const autoFetchedJidsRef = useRef<Set<string>>(new Set());
   const [syncGroupData, setSyncGroupData] = useState<{ jid: string; name: string; instanceId?: string } | null>(null);
+  const [groupSearchOpen, setGroupSearchOpen] = useState(false);
+  const [groupSearchInstance, setGroupSearchInstance] = useState<string | undefined>(undefined);
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
   const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress' | 'inviavel'>('');
@@ -1613,7 +1616,63 @@ ${scrapeData.content || ''}
                 </div>
 
                 <div className="col-span-2">
-                  <Label>Grupos WhatsApp</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>Grupos WhatsApp</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 h-7"
+                      onClick={async () => {
+                        if (!currentLead?.id) {
+                          toast.error('Salve o lead antes de buscar grupos.');
+                          return;
+                        }
+                        let instName: string | undefined;
+                        try {
+                          const { data: instMsg } = await externalSupabase
+                            .from('whatsapp_messages')
+                            .select('instance_name')
+                            .eq('lead_id', currentLead.id)
+                            .not('instance_name', 'is', null)
+                            .order('created_at', { ascending: false })
+                            .limit(1);
+                          instName = (instMsg?.[0] as any)?.instance_name || undefined;
+                        } catch {}
+                        if (!instName) {
+                          const { data: { user } } = await supabase.auth.getUser();
+                          if (user) {
+                            const { data: profile } = await supabase
+                              .from('profiles')
+                              .select('default_instance_id')
+                              .eq('user_id', user.id)
+                              .single();
+                            const defaultId = (profile as any)?.default_instance_id;
+                            if (defaultId) {
+                              const { data: inst } = await supabase
+                                .from('whatsapp_instances')
+                                .select('instance_name')
+                                .eq('id', defaultId)
+                                .maybeSingle();
+                              instName = (inst as any)?.instance_name || undefined;
+                            }
+                          }
+                        }
+                        if (!instName) {
+                          toast.error('Não consegui descobrir a instância WhatsApp deste lead.');
+                          return;
+                        }
+                        if (!leadPhone || leadPhone.replace(/\D/g, '').length < 10) {
+                          toast.error('O lead precisa ter telefone preenchido para buscar grupos.');
+                          return;
+                        }
+                        setGroupSearchInstance(instName);
+                        setGroupSearchOpen(true);
+                      }}
+                    >
+                      <Search className="h-3 w-3" /> Buscar grupos
+                    </Button>
+                  </div>
                   <div className="space-y-2 mt-1">
                     {whatsappGroups.map((g, idx) => {
                       // Computa URL final clicável: prioriza group_link se for chat.whatsapp.com,
@@ -2772,6 +2831,31 @@ ${scrapeData.content || ''}
           groupJid={syncGroupData.jid}
           groupName={syncGroupData.name}
           instanceId={syncGroupData.instanceId}
+        />
+      )}
+      {currentLead?.id && (
+        <LeadGroupSearchDialog
+          open={groupSearchOpen}
+          onOpenChange={setGroupSearchOpen}
+          leadId={currentLead.id}
+          contactPhone={leadPhone}
+          instanceName={groupSearchInstance}
+          onGroupSelected={(g) => {
+            setWhatsappGroups((prev) => {
+              const exists = prev.find((x) => x.group_jid === g.jid);
+              if (exists) return prev;
+              return [
+                ...prev.filter((x) => x.group_jid || x.group_link || x.group_name),
+                {
+                  group_jid: g.jid,
+                  group_link: g.invite_link || '',
+                  group_name: g.name || '',
+                  label: '',
+                },
+              ];
+            });
+            toast.success('Grupo vinculado ao lead. Lembre de salvar.');
+          }}
         />
       )}
     </>
