@@ -181,7 +181,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (queryTokens.length > 0 && !force_refresh) {
+    if (queryTokens.length > 0 && conversationMatches.length > 0 && !force_refresh) {
       conversationMatches.sort((a, b) => (b._score || 0) - (a._score || 0));
       conversationMatches.forEach((m) => delete m._score);
       return new Response(
