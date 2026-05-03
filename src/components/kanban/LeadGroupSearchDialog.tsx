@@ -78,7 +78,14 @@ export function LeadGroupSearchDialog({
         force_refresh: forceRefresh,
       };
       if (hasPhone) body.phone = contactPhone;
-      if (nameQuery.trim()) body.name_query = nameQuery.trim();
+      // Remove emojis e símbolos — eles quebram o ILIKE no backend
+      // (group_name e contact_name podem ou não ter o mesmo emoji).
+      const cleanQuery = nameQuery
+        .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\u200d\uFE0F]/gu, ' ')
+        .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (cleanQuery) body.name_query = cleanQuery;
 
       const { data, error } = await supabase.functions.invoke('find-contact-groups', { body });
       if (error) throw error;
