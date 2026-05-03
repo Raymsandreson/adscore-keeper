@@ -1662,10 +1662,7 @@ ${scrapeData.content || ''}
                           toast.error('Não consegui descobrir a instância WhatsApp deste lead.');
                           return;
                         }
-                        if (!leadPhone || leadPhone.replace(/\D/g, '').length < 10) {
-                          toast.error('O lead precisa ter telefone preenchido para buscar grupos.');
-                          return;
-                        }
+                        // Sem telefone: o dialog abre em modo "busca por nome do lead"
                         setGroupSearchInstance(instName);
                         setGroupSearchOpen(true);
                       }}
@@ -2840,6 +2837,7 @@ ${scrapeData.content || ''}
           leadId={currentLead.id}
           contactPhone={leadPhone}
           instanceName={groupSearchInstance}
+          leadName={currentLead.lead_name || ''}
           onGroupSelected={(g) => {
             setWhatsappGroups((prev) => {
               const exists = prev.find((x) => x.group_jid === g.jid);

@@ -24,6 +24,8 @@ interface Props {
   leadId: string;
   contactPhone: string | undefined;
   instanceName: string | undefined;
+  /** Nome do lead — usado como fallback de busca quando não há telefone de contato. */
+  leadName?: string;
   /** Callback when user picks a group (to write back into the form). */
   onGroupSelected: (group: FoundGroup) => void;
 }
@@ -36,8 +38,11 @@ export function LeadGroupSearchDialog({
   leadId,
   contactPhone,
   instanceName,
+  leadName,
   onGroupSelected,
 }: Props) {
+  const hasPhone = !!contactPhone;
+  const [nameQuery, setNameQuery] = useState<string>(leadName || '');
   const [step, setStep] = useState<Step>('groups');
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [groups, setGroups] = useState<FoundGroup[]>([]);
@@ -57,21 +62,35 @@ export function LeadGroupSearchDialog({
   };
 
   const handleSearch = async (forceRefresh = false) => {
-    if (!contactPhone || !instanceName) {
-      toast.error('Lead sem telefone de contato ou instância WhatsApp definida.');
+    if (!instanceName) {
+      toast.error('Instância WhatsApp não definida para este lead.');
+      return;
+    }
+    const usingName = !hasPhone;
+    if (usingName && !nameQuery.trim()) {
+      toast.error('Informe um nome para buscar (ex: nome do lead).');
       return;
     }
     setLoadingGroups(true);
     try {
-      const { data, error } = await supabase.functions.invoke('find-contact-groups', {
-        body: { phone: contactPhone, instance_name: instanceName, force_refresh: forceRefresh },
-      });
+      const body: Record<string, unknown> = {
+        instance_name: instanceName,
+        force_refresh: forceRefresh,
+      };
+      if (hasPhone) body.phone = contactPhone;
+      else body.name_query = nameQuery.trim();
+
+      const { data, error } = await supabase.functions.invoke('find-contact-groups', { body });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       const found: FoundGroup[] = data?.groups || [];
       setGroups(found);
       if (found.length === 0) {
-        toast.info('Nenhum grupo encontrado com esse contato como participante.');
+        toast.info(
+          usingName
+            ? 'Nenhum grupo encontrado com esse nome.'
+            : 'Nenhum grupo encontrado com esse contato como participante.',
+        );
       } else {
         toast.success(`${found.length} grupo(s) encontrado(s)${data.from_cache ? ' (cache)' : ''}.`);
       }
@@ -159,15 +178,30 @@ export function LeadGroupSearchDialog({
           </DialogTitle>
           <DialogDescription>
             {step === 'groups'
-              ? `Procura grupos da instância ${instanceName || '(?)'} em que ${contactPhone || '(?)'} é participante.`
+              ? hasPhone
+                ? `Procura grupos da instância ${instanceName || '(?)'} em que ${contactPhone} é participante.`
+                : `Lead sem telefone — buscando por nome do grupo na instância ${instanceName || '(?)'}.`
               : 'Escolha quem deseja importar como contato e vincular ao lead. UF/cidade são preenchidos pelo DDD.'}
           </DialogDescription>
         </DialogHeader>
 
         {step === 'groups' && (
           <div className="space-y-3">
+            {!hasPhone && (
+              <input
+                type="text"
+                value={nameQuery}
+                onChange={(e) => setNameQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(false); }}
+                placeholder="Nome (ou parte do nome) do grupo"
+                className="w-full px-3 py-2 border rounded-md text-sm bg-background"
+              />
+            )}
             <div className="flex gap-2">
-              <Button onClick={() => handleSearch(false)} disabled={loadingGroups || !contactPhone || !instanceName}>
+              <Button
+                onClick={() => handleSearch(false)}
+                disabled={loadingGroups || !instanceName || (!hasPhone && !nameQuery.trim())}
+              >
                 {loadingGroups ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Search className="h-4 w-4 mr-2" />}
                 Buscar
               </Button>

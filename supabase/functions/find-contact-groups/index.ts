@@ -73,23 +73,29 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const phone: string | undefined = body?.phone;
+    const name_query: string | undefined = body?.name_query;
     const instance_name: string | undefined = body?.instance_name;
     const force_refresh: boolean = body?.force_refresh === true;
 
-    if (!phone || !instance_name) {
+    if (!instance_name || (!phone && !name_query)) {
       return new Response(
-        JSON.stringify({ error: "phone and instance_name are required" }),
+        JSON.stringify({ error: "instance_name and one of (phone | name_query) are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const matchKey = phoneMatchKey(phone);
-    if (!matchKey || matchKey.length < 8) {
+    const matchKey = phone ? phoneMatchKey(phone) : null;
+    if (phone && (!matchKey || matchKey.length < 8)) {
       return new Response(
         JSON.stringify({ error: "phone has too few digits", matchKey }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+
+    // Normaliza string para match por nome (lowercase + remove acentos + colapsa espaços)
+    const normalizeForMatch = (s: string) =>
+      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+    const nameNeedle = name_query ? normalizeForMatch(name_query) : null;
 
     // Cloud client (cache + whatsapp_instances vivem no Cloud)
     const cloudUrl = Deno.env.get("SUPABASE_URL")!;
@@ -174,14 +180,26 @@ Deno.serve(async (req) => {
       cachedRows = upsertRows;
     }
 
-    // 3) Filtrar grupos onde matchKey aparece nos participantes
+    // 3) Filtrar grupos por participante (phone) OU por nome (name_query)
     const matched: any[] = [];
     for (const r of cachedRows) {
-      const parts: any[] = Array.isArray(r.participants) ? r.participants : [];
-      const keys = parts
-        .map((p) => p?.key || phoneMatchKey(p?.id || p))
-        .filter(Boolean);
-      if (keys.includes(matchKey)) {
+      let isMatch = false;
+
+      if (matchKey) {
+        const parts: any[] = Array.isArray(r.participants) ? r.participants : [];
+        const keys = parts
+          .map((p) => p?.key || phoneMatchKey(p?.id || p))
+          .filter(Boolean);
+        if (keys.includes(matchKey)) isMatch = true;
+      }
+
+      if (!isMatch && nameNeedle && r.group_name) {
+        if (normalizeForMatch(String(r.group_name)).includes(nameNeedle)) {
+          isMatch = true;
+        }
+      }
+
+      if (isMatch) {
         matched.push({
           jid: r.group_jid,
           name: r.group_name,
@@ -198,6 +216,7 @@ Deno.serve(async (req) => {
         fetched_at: fetchedAt,
         scanned: cachedRows.length,
         match_key: matchKey,
+        name_query: name_query || null,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
