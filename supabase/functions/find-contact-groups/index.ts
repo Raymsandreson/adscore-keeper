@@ -46,6 +46,32 @@ function extractParticipantKeys(group: any): string[] {
   return keys;
 }
 
+// Normaliza string para match por nome (lowercase + remove acentos + colapsa espaços)
+const normalizeForMatch = (s: string) =>
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+
+const STOP = new Set(["de", "da", "do", "das", "dos", "e", "a", "o", "para", "com", "the"]);
+
+const tokenize = (s: string) =>
+  normalizeForMatch(s)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length >= 2 && !STOP.has(t));
+
+const scoreName = (name: string, queryTokens: string[]): number => {
+  if (!queryTokens.length) return 0;
+  const nameNorm = normalizeForMatch(name);
+  const nameTokens = tokenize(name);
+  let hits = 0;
+  for (const qt of queryTokens) {
+    const found = nameTokens.some(
+      (nt) => nt === qt || (qt.length >= 3 && (nt.startsWith(qt) || qt.startsWith(nt))),
+    );
+    if (found || (qt.length >= 4 && nameNorm.includes(qt))) hits++;
+  }
+  return hits / queryTokens.length;
+};
+
 async function fetchGroupsFromUazapi(
   baseUrl: string,
   token: string,
