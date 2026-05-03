@@ -125,11 +125,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Normaliza string para match por nome (lowercase + remove acentos + colapsa espaços)
-    const normalizeForMatch = (s: string) =>
-      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
-    const nameNeedle = name_query ? normalizeForMatch(name_query) : null;
-
     // Cloud client (cache + whatsapp_instances vivem no Cloud)
     const cloudUrl = Deno.env.get("SUPABASE_URL")!;
     const cloudKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -183,6 +178,23 @@ Deno.serve(async (req) => {
           }
         }
       }
+    }
+
+    if (queryTokens.length > 0 && !force_refresh) {
+      conversationMatches.sort((a, b) => (b._score || 0) - (a._score || 0));
+      conversationMatches.forEach((m) => delete m._score);
+      return new Response(
+        JSON.stringify({
+          groups: conversationMatches,
+          from_cache: false,
+          fetched_at: null,
+          scanned: conversationMatches.length,
+          match_key: matchKey,
+          name_query: name_query || null,
+          source: "conversations",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     // Para cada instância: tenta cache, faz fetch se necessário
