@@ -11,6 +11,7 @@ interface FoundGroup {
   name: string | null;
   invite_link: string | null;
   participants_count: number;
+  instance_name?: string;
 }
 
 interface Participant {
@@ -103,12 +104,13 @@ export function LeadGroupSearchDialog({
   const handlePickGroup = async (g: FoundGroup) => {
     setChosenGroup(g);
     onGroupSelected(g);
-    if (!instanceName) return;
+    const useInstance = g.instance_name || instanceName;
+    if (!useInstance) return;
     setStep('participants');
     setLoadingParticipants(true);
     try {
       const { data, error } = await supabase.functions.invoke('get-group-participants', {
-        body: { group_jid: g.jid, instance_name: instanceName },
+        body: { group_jid: g.jid, instance_name: useInstance },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Falha ao listar participantes');
@@ -177,7 +179,7 @@ export function LeadGroupSearchDialog({
           </DialogTitle>
           <DialogDescription>
             {step === 'groups'
-              ? `Busca grupos da instância ${instanceName || '(?)'}${hasPhone ? ` em que ${contactPhone} é participante` : ''}${hasPhone ? ' e/ou' : ''} pelo nome.`
+              ? `Busca por nome varre TODAS as instâncias conectadas. Busca por participante usa a instância ${instanceName || '(?)'}${hasPhone ? ` (${contactPhone})` : ''}.`
               : 'Escolha quem deseja importar como contato e vincular ao lead. UF/cidade são preenchidos pelo DDD.'}
           </DialogDescription>
         </DialogHeader>
@@ -221,7 +223,9 @@ export function LeadGroupSearchDialog({
                   <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{g.name || '(sem nome)'}</div>
-                    <div className="text-xs text-muted-foreground font-mono truncate">{g.jid}</div>
+                    <div className="text-xs text-muted-foreground font-mono truncate">
+                      {g.instance_name ? `[${g.instance_name}] ` : ''}{g.jid}
+                    </div>
                   </div>
                   <span className="text-xs text-muted-foreground shrink-0">
                     {g.participants_count} part.
