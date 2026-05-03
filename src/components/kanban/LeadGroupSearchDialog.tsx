@@ -11,6 +11,7 @@ interface FoundGroup {
   name: string | null;
   invite_link: string | null;
   participants_count: number;
+  instance_name?: string;
 }
 
 interface Participant {
