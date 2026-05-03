@@ -104,12 +104,13 @@ export function LeadGroupSearchDialog({
   const handlePickGroup = async (g: FoundGroup) => {
     setChosenGroup(g);
     onGroupSelected(g);
-    if (!instanceName) return;
+    const useInstance = g.instance_name || instanceName;
+    if (!useInstance) return;
     setStep('participants');
     setLoadingParticipants(true);
     try {
       const { data, error } = await supabase.functions.invoke('get-group-participants', {
-        body: { group_jid: g.jid, instance_name: instanceName },
+        body: { group_jid: g.jid, instance_name: useInstance },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Falha ao listar participantes');
