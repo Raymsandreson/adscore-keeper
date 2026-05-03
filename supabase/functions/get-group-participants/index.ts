@@ -18,6 +18,20 @@ function digits(s: string): string {
   return String(s || "").replace(/\D/g, "");
 }
 
+async function fetchGroupParticipantsFromUazapi(baseUrl: string, token: string, groupJid: string): Promise<any[]> {
+  const res = await fetch(`${baseUrl.replace(/\/$/, "")}/group/info`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", token },
+    body: JSON.stringify({ groupjid: groupJid, jid: groupJid, getParticipants: true }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`uazapi /group/info ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const data = await res.json().catch(() => null);
+  return data?.participants || data?.Participants || data?.group?.participants || [];
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -40,6 +54,26 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (error) throw error;
     if (!data) {
+      const { data: instRow } = await cloud
+        .from("whatsapp_instances")
+        .select("base_url, instance_token")
+        .ilike("instance_name", instance_name)
+        .maybeSingle();
+
+      if (instRow?.base_url && instRow?.instance_token) {
+        const liveParts = await fetchGroupParticipantsFromUazapi(instRow.base_url, instRow.instance_token, group_jid);
+        const phones = liveParts
+          .map((p: any) => {
+            const raw = String(p?.id || p?.jid || p?.phone || p?.participant || p || "");
+            const ph = digits(raw);
+            return ph ? { phone: ph, raw } : null;
+          })
+          .filter(Boolean);
+        return new Response(
+          JSON.stringify({ success: true, group_jid, group_name: null, fetched_at: new Date().toISOString(), participants: phones }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
       return new Response(
         JSON.stringify({ success: false, error: "group not found in cache; run find-contact-groups first" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },

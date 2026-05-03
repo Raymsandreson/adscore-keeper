@@ -46,6 +46,32 @@ function extractParticipantKeys(group: any): string[] {
   return keys;
 }
 
+// Normaliza string para match por nome (lowercase + remove acentos + colapsa espaços)
+const normalizeForMatch = (s: string) =>
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+
+const STOP = new Set(["de", "da", "do", "das", "dos", "e", "a", "o", "para", "com", "the"]);
+
+const tokenize = (s: string) =>
+  normalizeForMatch(s)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length >= 2 && !STOP.has(t));
+
+const scoreName = (name: string, queryTokens: string[]): number => {
+  if (!queryTokens.length) return 0;
+  const nameNorm = normalizeForMatch(name);
+  const nameTokens = tokenize(name);
+  let hits = 0;
+  for (const qt of queryTokens) {
+    const found = nameTokens.some(
+      (nt) => nt === qt || (qt.length >= 3 && (nt.startsWith(qt) || qt.startsWith(nt))),
+    );
+    if (found || (qt.length >= 4 && nameNorm.includes(qt))) hits++;
+  }
+  return hits / queryTokens.length;
+};
+
 async function fetchGroupsFromUazapi(
   baseUrl: string,
   token: string,
@@ -86,28 +112,27 @@ Deno.serve(async (req) => {
 
     if (!instance_name || (!phone && !name_query)) {
       return new Response(
-        JSON.stringify({ error: "instance_name and one of (phone | name_query) are required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify({ success: false, error: "instance_name and one of (phone | name_query) are required" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     const matchKey = phone ? phoneMatchKey(phone) : null;
     if (phone && (!matchKey || matchKey.length < 8)) {
       return new Response(
-        JSON.stringify({ error: "phone has too few digits", matchKey }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify({ success: false, error: "phone has too few digits", matchKey }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-
-    // Normaliza string para match por nome (lowercase + remove acentos + colapsa espaços)
-    const normalizeForMatch = (s: string) =>
-      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
-    const nameNeedle = name_query ? normalizeForMatch(name_query) : null;
 
     // Cloud client (cache + whatsapp_instances vivem no Cloud)
     const cloudUrl = Deno.env.get("SUPABASE_URL")!;
     const cloudKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const cloud = createClient(cloudUrl, cloudKey);
+
+    const externalUrl = Deno.env.get("EXTERNAL_SUPABASE_URL") || "";
+    const externalKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || "";
+    const external = externalUrl && externalKey ? createClient(externalUrl, externalKey) : null;
 
     // Determina instâncias a varrer
     let targetInstances: string[] = [instance_name];
@@ -120,6 +145,57 @@ Deno.serve(async (req) => {
           new Set(allInst.map((r: any) => r.instance_name).filter(Boolean)),
         );
       }
+    }
+
+    const queryTokens = name_query ? tokenize(name_query) : [];
+    const conversationMatches: Array<any & { _score?: number }> = [];
+    if (external && queryTokens.length > 0) {
+      const variants = Array.from(
+        new Set(targetInstances.flatMap((inst) => [inst, inst.toUpperCase(), inst.toLowerCase()])),
+      );
+      const { data: conversations, error: convErr } = await external
+        .from("conversations")
+        .select("phone, contact_name, instance_name, message_count")
+        .in("instance_name", variants)
+        .like("phone", "%@g.us")
+        .limit(2000);
+
+      if (convErr) {
+        console.warn("[find-contact-groups] conversations lookup error:", convErr.message);
+      } else {
+        for (const c of conversations || []) {
+          const score = scoreName(String(c.contact_name || ""), queryTokens);
+          const threshold = queryTokens.length === 1 ? 1 : 0.5;
+          if (score >= threshold) {
+            conversationMatches.push({
+              jid: c.phone,
+              name: c.contact_name || c.phone,
+              invite_link: null,
+              participants_count: 0,
+              instance_name: c.instance_name,
+              source: "conversations",
+              _score: score,
+            });
+          }
+        }
+      }
+    }
+
+    if (queryTokens.length > 0 && conversationMatches.length > 0 && !force_refresh) {
+      conversationMatches.sort((a, b) => (b._score || 0) - (a._score || 0));
+      conversationMatches.forEach((m) => delete m._score);
+      return new Response(
+        JSON.stringify({
+          groups: conversationMatches,
+          from_cache: false,
+          fetched_at: null,
+          scanned: conversationMatches.length,
+          match_key: matchKey,
+          name_query: name_query || null,
+          source: "conversations",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     // Para cada instância: tenta cache, faz fetch se necessário
@@ -211,30 +287,8 @@ Deno.serve(async (req) => {
     const fromCache = fromCacheAll;
 
     // 3) Filtrar grupos por participante (phone) OU por nome (name_query, fuzzy por tokens)
-    const STOP = new Set(["de", "da", "do", "das", "dos", "e", "a", "o", "para", "com", "the"]);
-    const tokenize = (s: string) =>
-      normalizeForMatch(s)
-        .replace(/[^a-z0-9\s]/g, " ")
-        .split(/\s+/)
-        .filter((t) => t.length >= 2 && !STOP.has(t));
-    const queryTokens = nameNeedle ? tokenize(nameNeedle) : [];
-
-    const scoreName = (name: string): number => {
-      if (!queryTokens.length) return 0;
-      const nameNorm = normalizeForMatch(name);
-      const nameTokens = tokenize(name);
-      let hits = 0;
-      for (const qt of queryTokens) {
-        // match exato no token, prefixo do token (>=3 chars), ou substring direta
-        const found = nameTokens.some(
-          (nt) => nt === qt || (qt.length >= 3 && (nt.startsWith(qt) || qt.startsWith(nt))),
-        );
-        if (found || (qt.length >= 4 && nameNorm.includes(qt))) hits++;
-      }
-      return hits / queryTokens.length;
-    };
-
-    const matched: Array<any & { _score?: number }> = [];
+    const matched: Array<any & { _score?: number }> = [...conversationMatches];
+    const matchedKeys = new Set(matched.map((m) => `${String(m.instance_name || "").toLowerCase()}|${m.jid}`));
     for (const r of cachedRows) {
       let isMatch = false;
       let score = 0;
@@ -251,13 +305,16 @@ Deno.serve(async (req) => {
       }
 
       if (!isMatch && queryTokens.length && r.group_name) {
-        score = scoreName(String(r.group_name));
+        score = scoreName(String(r.group_name), queryTokens);
         // limiar: pelo menos 50% dos tokens da query batem (ou 1 token único)
         const threshold = queryTokens.length === 1 ? 1 : 0.5;
         if (score >= threshold) isMatch = true;
       }
 
       if (isMatch) {
+        const key = `${String(r.instance_name || "").toLowerCase()}|${r.group_jid}`;
+        if (matchedKeys.has(key)) continue;
+        matchedKeys.add(key);
         matched.push({
           jid: r.group_jid,
           name: r.group_name,
@@ -287,8 +344,8 @@ Deno.serve(async (req) => {
   } catch (e) {
     console.error("[find-contact-groups] error:", e);
     return new Response(
-      JSON.stringify({ error: String((e as any)?.message || e) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      JSON.stringify({ success: false, error: String((e as any)?.message || e) }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
