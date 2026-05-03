@@ -31,6 +31,7 @@ Estamos à disposição para quaisquer dúvidas.
 Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
 
 export const TEMPLATE_VARIABLES = [
+  { var: '{{saudacao}}', label: 'Saudação dinâmica (Bom dia/Boa tarde/Boa noite)' },
   { var: '{{titulo}}', label: 'Título da atividade' },
   { var: '{{lead_name}}', label: 'Nome do lead' },
   { var: '{{campos_dinamicos}}', label: 'Campos configurados (O que foi feito, etc.)' },
