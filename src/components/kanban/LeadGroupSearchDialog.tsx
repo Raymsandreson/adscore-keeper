@@ -24,6 +24,8 @@ interface Props {
   leadId: string;
   contactPhone: string | undefined;
   instanceName: string | undefined;
+  /** Nome do lead — usado como fallback de busca quando não há telefone de contato. */
+  leadName?: string;
   /** Callback when user picks a group (to write back into the form). */
   onGroupSelected: (group: FoundGroup) => void;
 }
@@ -36,8 +38,11 @@ export function LeadGroupSearchDialog({
   leadId,
   contactPhone,
   instanceName,
+  leadName,
   onGroupSelected,
 }: Props) {
+  const hasPhone = !!contactPhone;
+  const [nameQuery, setNameQuery] = useState<string>(leadName || '');
   const [step, setStep] = useState<Step>('groups');
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [groups, setGroups] = useState<FoundGroup[]>([]);
