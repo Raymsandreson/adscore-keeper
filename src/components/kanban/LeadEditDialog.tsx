@@ -1662,10 +1662,7 @@ ${scrapeData.content || ''}
                           toast.error('Não consegui descobrir a instância WhatsApp deste lead.');
                           return;
                         }
-                        if (!leadPhone || leadPhone.replace(/\D/g, '').length < 10) {
-                          toast.error('O lead precisa ter telefone preenchido para buscar grupos.');
-                          return;
-                        }
+                        // Sem telefone: o dialog abre em modo "busca por nome do lead"
                         setGroupSearchInstance(instName);
                         setGroupSearchOpen(true);
                       }}
