@@ -1308,7 +1308,10 @@ const ActivitiesPage = () => {
       const responsavelDr = formAssignedToName
         ? `Dr. ${formAssignedToName.split(' ').slice(0, 2).join(' ')}`
         : '';
+      const _hour = new Date().getHours();
+      const saudacao = _hour < 12 ? 'Bom dia' : _hour < 18 ? 'Boa tarde' : 'Boa noite';
       const tplVars: Record<string, string> = {
+        saudacao,
         titulo: formTitle.toUpperCase(),
         lead_name: extractClientFirstName(formClientNameOverride || formLeadName || ''),
         campos_dinamicos: fieldLines,
@@ -1356,7 +1359,9 @@ const ActivitiesPage = () => {
     // Fallback: hardcoded default
     const responsavelDrFb = formAssignedToName ? `Dr. ${formAssignedToName.split(' ').slice(0, 2).join(' ')}` : '';
     const clientFirstName = extractClientFirstName(formClientNameOverride || formLeadName || '');
-    return `*Boa tarde Sr(a). ${clientFirstName}*\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${responsavelDrFb ? `*${responsavelDrFb} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.*` : ''}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    const hourFb = new Date().getHours();
+    const saudacaoFb = hourFb < 12 ? 'Bom dia' : hourFb < 18 ? 'Boa tarde' : 'Boa noite';
+    return `*${saudacaoFb} Sr(a). ${clientFirstName}*\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${responsavelDrFb ? `*${responsavelDrFb} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.*` : ''}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
   const activityFormContent = (
