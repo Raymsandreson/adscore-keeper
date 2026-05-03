@@ -73,23 +73,29 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const phone: string | undefined = body?.phone;
+    const name_query: string | undefined = body?.name_query;
     const instance_name: string | undefined = body?.instance_name;
     const force_refresh: boolean = body?.force_refresh === true;
 
-    if (!phone || !instance_name) {
+    if (!instance_name || (!phone && !name_query)) {
       return new Response(
-        JSON.stringify({ error: "phone and instance_name are required" }),
+        JSON.stringify({ error: "instance_name and one of (phone | name_query) are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const matchKey = phoneMatchKey(phone);
-    if (!matchKey || matchKey.length < 8) {
+    const matchKey = phone ? phoneMatchKey(phone) : null;
+    if (phone && (!matchKey || matchKey.length < 8)) {
       return new Response(
         JSON.stringify({ error: "phone has too few digits", matchKey }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+
+    // Normaliza string para match por nome (lowercase + remove acentos + colapsa espaços)
+    const normalizeForMatch = (s: string) =>
+      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+    const nameNeedle = name_query ? normalizeForMatch(name_query) : null;
 
     // Cloud client (cache + whatsapp_instances vivem no Cloud)
     const cloudUrl = Deno.env.get("SUPABASE_URL")!;
