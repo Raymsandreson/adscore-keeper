@@ -263,6 +263,7 @@ Deno.serve(async (req) => {
           name: r.group_name,
           invite_link: r.invite_link,
           participants_count: r.participants_count,
+          instance_name: r.instance_name,
           _score: score,
         });
       }
