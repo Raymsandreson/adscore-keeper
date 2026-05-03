@@ -126,11 +126,16 @@ Deno.serve(async (req) => {
 
     let q = cloud
       .from("whatsapp_instances")
-      .select("instance_name, base_url, token")
-      .eq("status", "connected")
-      .not("token", "is", null);
+      .select("instance_name, base_url, instance_token")
+      .eq("is_active", true)
+      .not("instance_token", "is", null);
     if (onlyInstance) q = q.ilike("instance_name", onlyInstance);
-    const { data: instances, error: instErr } = await q;
+    const { data: rawInstances, error: instErr } = await q;
+    const instances = (rawInstances || []).map((r: any) => ({
+      instance_name: r.instance_name,
+      base_url: r.base_url,
+      token: r.instance_token,
+    }));
     if (instErr) throw new Error(`load instances: ${instErr.message}`);
     if (!instances || instances.length === 0) {
       return new Response(
