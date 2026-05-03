@@ -1616,7 +1616,63 @@ ${scrapeData.content || ''}
                 </div>
 
                 <div className="col-span-2">
-                  <Label>Grupos WhatsApp</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>Grupos WhatsApp</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 h-7"
+                      onClick={async () => {
+                        if (!currentLead?.id) {
+                          toast.error('Salve o lead antes de buscar grupos.');
+                          return;
+                        }
+                        let instName: string | undefined;
+                        try {
+                          const { data: instMsg } = await externalSupabase
+                            .from('whatsapp_messages')
+                            .select('instance_name')
+                            .eq('lead_id', currentLead.id)
+                            .not('instance_name', 'is', null)
+                            .order('created_at', { ascending: false })
+                            .limit(1);
+                          instName = (instMsg?.[0] as any)?.instance_name || undefined;
+                        } catch {}
+                        if (!instName) {
+                          const { data: { user } } = await supabase.auth.getUser();
+                          if (user) {
+                            const { data: profile } = await supabase
+                              .from('profiles')
+                              .select('default_instance_id')
+                              .eq('user_id', user.id)
+                              .single();
+                            const defaultId = (profile as any)?.default_instance_id;
+                            if (defaultId) {
+                              const { data: inst } = await supabase
+                                .from('whatsapp_instances')
+                                .select('instance_name')
+                                .eq('id', defaultId)
+                                .maybeSingle();
+                              instName = (inst as any)?.instance_name || undefined;
+                            }
+                          }
+                        }
+                        if (!instName) {
+                          toast.error('Não consegui descobrir a instância WhatsApp deste lead.');
+                          return;
+                        }
+                        if (!leadPhone || leadPhone.replace(/\D/g, '').length < 10) {
+                          toast.error('O lead precisa ter telefone preenchido para buscar grupos.');
+                          return;
+                        }
+                        setGroupSearchInstance(instName);
+                        setGroupSearchOpen(true);
+                      }}
+                    >
+                      <Search className="h-3 w-3" /> Buscar grupos
+                    </Button>
+                  </div>
                   <div className="space-y-2 mt-1">
                     {whatsappGroups.map((g, idx) => {
                       // Computa URL final clicável: prioriza group_link se for chat.whatsapp.com,
