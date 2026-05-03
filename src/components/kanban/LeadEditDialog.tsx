@@ -227,6 +227,8 @@ export function LeadEditDialog({
   const [fetchingInviteJids, setFetchingInviteJids] = useState<Set<string>>(new Set());
   const autoFetchedJidsRef = useRef<Set<string>>(new Set());
   const [syncGroupData, setSyncGroupData] = useState<{ jid: string; name: string; instanceId?: string } | null>(null);
+  const [groupSearchOpen, setGroupSearchOpen] = useState(false);
+  const [groupSearchInstance, setGroupSearchInstance] = useState<string | undefined>(undefined);
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
   const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress' | 'inviavel'>('');
