@@ -180,14 +180,26 @@ Deno.serve(async (req) => {
       cachedRows = upsertRows;
     }
 
-    // 3) Filtrar grupos onde matchKey aparece nos participantes
+    // 3) Filtrar grupos por participante (phone) OU por nome (name_query)
     const matched: any[] = [];
     for (const r of cachedRows) {
-      const parts: any[] = Array.isArray(r.participants) ? r.participants : [];
-      const keys = parts
-        .map((p) => p?.key || phoneMatchKey(p?.id || p))
-        .filter(Boolean);
-      if (keys.includes(matchKey)) {
+      let isMatch = false;
+
+      if (matchKey) {
+        const parts: any[] = Array.isArray(r.participants) ? r.participants : [];
+        const keys = parts
+          .map((p) => p?.key || phoneMatchKey(p?.id || p))
+          .filter(Boolean);
+        if (keys.includes(matchKey)) isMatch = true;
+      }
+
+      if (!isMatch && nameNeedle && r.group_name) {
+        if (normalizeForMatch(String(r.group_name)).includes(nameNeedle)) {
+          isMatch = true;
+        }
+      }
+
+      if (isMatch) {
         matched.push({
           jid: r.group_jid,
           name: r.group_name,
@@ -204,6 +216,7 @@ Deno.serve(async (req) => {
         fetched_at: fetchedAt,
         scanned: cachedRows.length,
         match_key: matchKey,
+        name_query: name_query || null,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
