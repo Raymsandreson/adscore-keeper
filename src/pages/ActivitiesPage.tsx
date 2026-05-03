@@ -1308,7 +1308,10 @@ const ActivitiesPage = () => {
       const responsavelDr = formAssignedToName
         ? `Dr. ${formAssignedToName.split(' ').slice(0, 2).join(' ')}`
         : '';
+      const _hour = new Date().getHours();
+      const saudacao = _hour < 12 ? 'Bom dia' : _hour < 18 ? 'Boa tarde' : 'Boa noite';
       const tplVars: Record<string, string> = {
+        saudacao,
         titulo: formTitle.toUpperCase(),
         lead_name: extractClientFirstName(formClientNameOverride || formLeadName || ''),
         campos_dinamicos: fieldLines,
