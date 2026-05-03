@@ -173,6 +173,7 @@ Deno.serve(async (req) => {
               invite_link: null,
               participants_count: 0,
               instance_name: c.instance_name,
+              source: "conversations",
               _score: score,
             });
           }
