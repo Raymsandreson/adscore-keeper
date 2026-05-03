@@ -2833,6 +2833,31 @@ ${scrapeData.content || ''}
           instanceId={syncGroupData.instanceId}
         />
       )}
+      {currentLead?.id && (
+        <LeadGroupSearchDialog
+          open={groupSearchOpen}
+          onOpenChange={setGroupSearchOpen}
+          leadId={currentLead.id}
+          contactPhone={leadPhone}
+          instanceName={groupSearchInstance}
+          onGroupSelected={(g) => {
+            setWhatsappGroups((prev) => {
+              const exists = prev.find((x) => x.group_jid === g.jid);
+              if (exists) return prev;
+              return [
+                ...prev.filter((x) => x.group_jid || x.group_link || x.group_name),
+                {
+                  group_jid: g.jid,
+                  group_link: g.invite_link || '',
+                  group_name: g.name || '',
+                  label: '',
+                },
+              ];
+            });
+            toast.success('Grupo vinculado ao lead. Lembre de salvar.');
+          }}
+        />
+      )}
     </>
   );
 }
