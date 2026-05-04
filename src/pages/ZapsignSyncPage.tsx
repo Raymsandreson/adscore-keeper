@@ -68,6 +68,16 @@ export default function ZapsignSyncPage() {
   const [boards, setBoards] = useState<any[]>([]);
   const [editingRule, setEditingRule] = useState<any | null>(null);
 
+  // KPI drill-down state
+  const [kpiSheet, setKpiSheet] = useState<OperationalMetricType | null>(null);
+  const [errorsSheetOpen, setErrorsSheetOpen] = useState(false);
+  const dateRange = useMemo(() => {
+    const to = new Date();
+    const from = new Date();
+    from.setDate(from.getDate() - 7);
+    return { from, to };
+  }, []);
+
   async function loadRules() {
     try {
       await ensureExternalSession();
