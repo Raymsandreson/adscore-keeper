@@ -19,6 +19,7 @@ interface FoundGroup {
 interface Participant {
   phone: string;
   raw: string;
+  lid?: string | null;
   is_admin?: boolean;
   name?: string | null;
   image?: string | null;
@@ -42,6 +43,14 @@ interface Props {
 
 type Step = 'groups' | 'participants';
 
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message?: unknown }).message || error);
+  }
+  return String(error);
+};
+
 export function LeadGroupSearchDialog({
   open,
   onOpenChange,
@@ -62,6 +71,7 @@ export function LeadGroupSearchDialog({
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
+  const [participantStats, setParticipantStats] = useState<{ enriched: number; unresolved: number }>({ enriched: 0, unresolved: 0 });
 
   const reset = () => {
     setStep('groups');
@@ -69,6 +79,7 @@ export function LeadGroupSearchDialog({
     setChosenGroup(null);
     setParticipants([]);
     setSelected(new Set());
+    setParticipantStats({ enriched: 0, unresolved: 0 });
   };
 
   const handleSearch = async (forceRefresh = false) => {
@@ -90,7 +101,9 @@ export function LeadGroupSearchDialog({
       // Remove emojis e símbolos — eles quebram o ILIKE no backend
       // (group_name e contact_name podem ou não ter o mesmo emoji).
       const cleanQuery = nameQuery
-        .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\u200d\uFE0F]/gu, ' ')
+        .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu, ' ')
+        .replace(/\u200d/g, ' ')
+        .replace(/\uFE0F/g, ' ')
         .replace(/[^\p{L}\p{N}\s]/gu, ' ')
         .replace(/\s+/g, ' ')
         .trim();
@@ -110,31 +123,32 @@ export function LeadGroupSearchDialog({
       } else {
         toast.success(`${found.length} grupo(s) encontrado(s)${data.from_cache ? ' (cache)' : ''}.`);
       }
-    } catch (e: any) {
-      toast.error('Erro ao buscar grupos: ' + (e.message || e));
+    } catch (e: unknown) {
+      toast.error('Erro ao buscar grupos: ' + getErrorMessage(e));
     } finally {
       setLoadingGroups(false);
     }
   };
 
-  const handlePickGroup = async (g: FoundGroup) => {
+  const handlePickGroup = async (g: FoundGroup, refreshParticipants = false) => {
     setChosenGroup(g);
-    onGroupSelected(g);
+    if (!refreshParticipants) onGroupSelected(g);
     const useInstance = g.instance_name || instanceName;
     if (!useInstance) return;
     setStep('participants');
     setLoadingParticipants(true);
     try {
       const { data, error } = await supabase.functions.invoke('get-group-participants', {
-        body: { group_jid: g.jid, instance_name: useInstance },
+        body: { group_jid: g.jid, instance_name: useInstance, refresh: refreshParticipants },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Falha ao listar participantes');
       const parts: Participant[] = data.participants || [];
       setParticipants(parts);
       setSelected(new Set(parts.map((p) => p.phone)));
-    } catch (e: any) {
-      toast.error('Erro ao listar participantes: ' + (e.message || e));
+      setParticipantStats({ enriched: data.enriched_count || 0, unresolved: data.unresolved_count || 0 });
+    } catch (e: unknown) {
+      toast.error('Erro ao listar participantes: ' + getErrorMessage(e));
     } finally {
       setLoadingParticipants(false);
     }
@@ -175,8 +189,8 @@ export function LeadGroupSearchDialog({
       );
       onOpenChange(false);
       reset();
-    } catch (e: any) {
-      toast.error('Erro ao importar: ' + (e.message || e));
+    } catch (e: unknown) {
+      toast.error('Erro ao importar: ' + getErrorMessage(e));
     } finally {
       setImporting(false);
     }
@@ -266,10 +280,29 @@ export function LeadGroupSearchDialog({
                   <button type="button" className="text-primary hover:underline" onClick={toggleAll}>
                     {selected.size === participants.length ? 'Desmarcar todos' : 'Marcar todos'}
                   </button>
-                  <span className="text-muted-foreground">
-                    {selected.size} de {participants.length} selecionado(s)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">
+                      {selected.size} de {participants.length} selecionado(s)
+                      {participantStats.enriched ? ` · ${participantStats.enriched} com nome` : ''}
+                    </span>
+                    {chosenGroup && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePickGroup(chosenGroup, true)}
+                        disabled={loadingParticipants || importing}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5 mr-1" /> Atualizar dados
+                      </Button>
+                    )}
+                  </div>
                 </div>
+                {participantStats.unresolved > 0 && (
+                  <div className="text-xs text-muted-foreground rounded-md border bg-muted/30 px-3 py-2">
+                    {participantStats.unresolved} participante(s) vieram da API apenas como ID interno, sem telefone público. Clique em Atualizar dados para forçar nova leitura pela instância.
+                  </div>
+                )}
                 <div className="max-h-[28rem] overflow-y-auto border rounded-md divide-y">
                   {participants.map((p) => {
                     const initials = (p.name || p.phone).slice(0, 2).toUpperCase();

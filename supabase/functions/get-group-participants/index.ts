@@ -25,6 +25,73 @@ function digits(s: string): string {
   return String(s || "").replace(/\D/g, "");
 }
 
+function firstText(...values: any[]): string | null {
+  for (const v of values) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  }
+  return null;
+}
+
+function phoneFromPhoneField(value: any): string {
+  const d = digits(String(value || ""));
+  return d.length >= 8 && d.length <= 15 ? d : "";
+}
+
+function phoneFromJid(value: any): string {
+  const s = String(value || "");
+  if (!s || /@lid\b|@g\.us\b/i.test(s)) return "";
+  const d = digits(s);
+  if (!d) return "";
+  if (/@s\.whatsapp\.net\b/i.test(s)) return d.length >= 8 && d.length <= 15 ? d : "";
+  // Bare 14–16 digit IDs from @lid caches were being shown as phones.
+  // For bare values, accept BR-like numbers; otherwise require a real WhatsApp phone JID.
+  if (d.startsWith("55") && d.length >= 12 && d.length <= 13) return d;
+  if (d.length >= 8 && d.length <= 11) return d;
+  return "";
+}
+
+function extractParticipant(p: any) {
+  const phone =
+    phoneFromPhoneField(firstText(
+      p?.PhoneNumber,
+      p?.phoneNumber,
+      p?.Phone,
+      p?.phone,
+      p?.Number,
+      p?.number,
+      p?.participantPn,
+      p?.sender_pn,
+      p?.Contact?.PhoneNumber,
+      p?.contact?.phone,
+    )) ||
+    phoneFromJid(firstText(p?.JID, p?.jid, p?.id, p?.participant, typeof p === "string" ? p : null));
+  const jid = firstText(p?.JID, p?.jid, p?.id, p?.participant, typeof p === "string" ? p : null);
+  const lid = firstText(p?.LID, p?.lid, jid && /@lid\b/i.test(jid) ? jid : null);
+  const display_name = firstText(
+    p?.DisplayName,
+    p?.displayName,
+    p?.Name,
+    p?.name,
+    p?.PushName,
+    p?.pushName,
+    p?.ContactName,
+    p?.contactName,
+    p?.NotifyName,
+    p?.notifyName,
+    p?.VerifiedName,
+    p?.verifiedName,
+    p?.Contact?.Name,
+    p?.contact?.name,
+  );
+  const is_admin = !!(p?.IsAdmin || p?.isAdmin || p?.admin || p?.IsSuperAdmin || p?.superAdmin);
+  return { phone, jid, lid, display_name, is_admin };
+}
+
+function hasRealPhoneParticipants(list: any[]): boolean {
+  return list.some((p) => !!extractParticipant(p).phone);
+}
+
 async function fetchGroupInfoFromUazapi(baseUrl: string, token: string, groupJid: string) {
   const res = await fetch(`${baseUrl.replace(/\/$/, "")}/group/info`, {
     method: "POST",
@@ -76,6 +143,21 @@ function pickName(d: any): string | null {
   );
 }
 
+async function fetchChatDetailsAcrossInstances(instances: any[], preferredName: string, number: string) {
+  const ordered = [
+    ...instances.filter((i) => String(i.instance_name || "").toLowerCase() === preferredName.toLowerCase()),
+    ...instances.filter((i) => String(i.instance_name || "").toLowerCase() !== preferredName.toLowerCase()),
+  ].filter((i) => i?.base_url && i?.instance_token);
+
+  for (const inst of ordered) {
+    const details = await fetchChatDetails(inst.base_url, inst.instance_token, number);
+    if (details && (pickName(details) || details?.image || details?.imagePreview || details?.lead_email || details?.common_groups)) {
+      return { details, source_instance: inst.instance_name };
+    }
+  }
+  return null;
+}
+
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let i = 0;
@@ -114,7 +196,8 @@ Deno.serve(async (req) => {
     // Filtra phones que pertencem a instâncias da org
     const { data: allInst } = await cloud
       .from("whatsapp_instances")
-      .select("owner_phone");
+      .select("owner_phone, base_url, instance_token, instance_name");
+    const allInstances = (allInst || []).filter((r: any) => r?.base_url && r?.instance_token);
     const ownerKeys = new Set(
       (allInst || [])
         .map((r: any) => digits(r.owner_phone || "").slice(-10))
@@ -145,7 +228,7 @@ Deno.serve(async (req) => {
     let groupName: string | null = null;
     let fetchedAt = new Date().toISOString();
 
-    if (cacheRow && Array.isArray(cacheRow.participants) && cacheRow.participants.length > 0 && !refresh) {
+    if (cacheRow && Array.isArray(cacheRow.participants) && cacheRow.participants.length > 0 && !refresh && hasRealPhoneParticipants(cacheRow.participants)) {
       rawParts = cacheRow.participants;
       groupName = cacheRow.group_name;
       fetchedAt = cacheRow.fetched_at;
@@ -170,11 +253,15 @@ Deno.serve(async (req) => {
     // 2) extrai phones + admin flag
     const baseList = rawParts
       .map((p: any) => {
-        const raw = String(p?.JID || p?.PhoneNumber || p?.id || p?.jid || p?.phone || p?.participant || p || "");
-        const phone = digits(raw);
-        if (!phone) return null;
-        const isAdmin = !!(p?.IsAdmin || p?.isAdmin || p?.admin || p?.IsSuperAdmin || p?.superAdmin);
-        return { phone, raw, is_admin: isAdmin };
+        const extracted = extractParticipant(p);
+        if (!extracted.phone) return null;
+        return {
+          phone: extracted.phone,
+          raw: extracted.jid || extracted.phone,
+          lid: extracted.lid,
+          display_name: extracted.display_name,
+          is_admin: extracted.is_admin,
+        };
       })
       .filter(Boolean) as Array<{ phone: string; raw: string; is_admin: boolean }>;
 
@@ -209,12 +296,13 @@ Deno.serve(async (req) => {
     }
     const fetchTargets = refresh ? filtered : missing;
     const newDetails = await mapWithConcurrency(fetchTargets, CONCURRENCY, async (p) => {
-      const d = await fetchChatDetails(instRow.base_url, instRow.instance_token, p.phone);
+      const found = await fetchChatDetailsAcrossInstances(allInstances.length ? allInstances : [instRow], instRow.instance_name, p.phone);
+      const d = found?.details;
       if (!d) return null;
       const row = {
         instance_name: instRow.instance_name,
         phone: p.phone,
-        name: pickName(d),
+        name: pickName(d) || (p as any).display_name || null,
         image: d?.image || d?.imagePreview || null,
         is_group: false,
         lead_email: d?.lead_email || null,
@@ -225,7 +313,7 @@ Deno.serve(async (req) => {
         lead_tags: Array.isArray(d?.lead_tags) ? d.lead_tags : null,
         lead_notes: d?.lead_notes || null,
         common_groups: parseCommonGroups(d?.common_groups),
-        raw: d,
+        raw: { ...d, __source_instance: found?.source_instance || instRow.instance_name },
         fetched_at: new Date().toISOString(),
       };
       try {
@@ -243,8 +331,9 @@ Deno.serve(async (req) => {
       return {
         phone: p.phone,
         raw: p.raw,
+        lid: (p as any).lid || null,
         is_admin: p.is_admin,
-        name: d.name || null,
+        name: d.name || (p as any).display_name || null,
         image: d.image || null,
         lead_email: d.lead_email || null,
         lead_personalid: d.lead_personalid || null,
@@ -262,6 +351,8 @@ Deno.serve(async (req) => {
         participants,
         excluded_instances_count: excluded,
         enriched_count: participants.filter((p) => p.name).length,
+        unresolved_count: rawParts.length - baseList.length,
+        unresolved_lid_count: rawParts.length - baseList.length,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
