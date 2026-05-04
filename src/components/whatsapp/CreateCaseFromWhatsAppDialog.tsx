@@ -523,7 +523,9 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         if (existingContact) {
           finalContactId = existingContact.id;
         } else {
-          const { data: newContact, error: cErr } = await supabase
+          // FIX: contact deve ser criado no Externo. legal_cases (no Externo) tem
+          // FK para contacts; criar no Cloud causaria FK violation downstream.
+          const { data: newContact, error: cErr } = await externalSupabase
             .from('contacts')
             .insert([{
               full_name: contactName || 'Contato WhatsApp',
