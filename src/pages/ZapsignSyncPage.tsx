@@ -113,7 +113,7 @@ export default function ZapsignSyncPage() {
     }
   }
 
-  useEffect(() => { loadState(); }, []);
+  useEffect(() => { loadState(); loadRules(); }, []);
 
   async function run() {
     setRunning(true); setResult(null);
