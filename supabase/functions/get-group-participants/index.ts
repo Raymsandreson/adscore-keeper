@@ -300,7 +300,7 @@ Deno.serve(async (req) => {
       const d = found?.details;
       if (!d) return null;
       const row = {
-        instance_name: found?.source_instance || instRow.instance_name,
+        instance_name: instRow.instance_name,
         phone: p.phone,
         name: pickName(d) || (p as any).display_name || null,
         image: d?.image || d?.imagePreview || null,
@@ -313,7 +313,7 @@ Deno.serve(async (req) => {
         lead_tags: Array.isArray(d?.lead_tags) ? d.lead_tags : null,
         lead_notes: d?.lead_notes || null,
         common_groups: parseCommonGroups(d?.common_groups),
-        raw: d,
+        raw: { ...d, __source_instance: found?.source_instance || instRow.instance_name },
         fetched_at: new Date().toISOString(),
       };
       try {
