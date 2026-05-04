@@ -18,18 +18,22 @@ function digits(s: string): string {
   return String(s || "").replace(/\D/g, "");
 }
 
-async function fetchGroupParticipantsFromUazapi(baseUrl: string, token: string, groupJid: string): Promise<any[]> {
+async function fetchGroupInfoFromUazapi(baseUrl: string, token: string, groupJid: string): Promise<{ participants: any[]; name: string | null; raw: any }> {
   const res = await fetch(`${baseUrl.replace(/\/$/, "")}/group/info`, {
     method: "POST",
     headers: { "Content-Type": "application/json", token },
-    body: JSON.stringify({ groupjid: groupJid, jid: groupJid, getParticipants: true }),
+    body: JSON.stringify({ groupjid: groupJid, force: true }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`uazapi /group/info ${res.status}: ${text.slice(0, 200)}`);
   }
   const data = await res.json().catch(() => null);
-  return data?.participants || data?.Participants || data?.group?.participants || [];
+  const participants =
+    data?.Participants || data?.participants ||
+    data?.group?.Participants || data?.group?.participants || [];
+  const name = data?.Name || data?.name || data?.subject || null;
+  return { participants, name, raw: data };
 }
 
 Deno.serve(async (req) => {
@@ -81,7 +85,7 @@ Deno.serve(async (req) => {
     } else {
       const { data: instRow } = await cloud
         .from("whatsapp_instances")
-        .select("base_url, instance_token")
+        .select("base_url, instance_token, instance_name")
         .ilike("instance_name", instance_name)
         .maybeSingle();
       if (!instRow?.base_url || !instRow?.instance_token) {
@@ -90,16 +94,36 @@ Deno.serve(async (req) => {
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      parts = await fetchGroupParticipantsFromUazapi(
+      const info = await fetchGroupInfoFromUazapi(
         instRow.base_url,
         instRow.instance_token,
         group_jid,
       );
+      parts = info.participants;
+      groupName = info.name;
+
+      // Popula cache pra próximas chamadas
+      try {
+        const cacheParts = parts.map((p: any) => {
+          const id = String(p?.JID || p?.PhoneNumber || p?.id || p?.jid || p?.phone || p || "");
+          return { id, key: digits(id).slice(-10) };
+        });
+        await cloud.from("whatsapp_groups_cache").upsert({
+          instance_name: instRow.instance_name,
+          group_jid,
+          group_name: groupName,
+          participants: cacheParts,
+          participants_count: cacheParts.length,
+          fetched_at: fetchedAt,
+        }, { onConflict: "instance_name,group_jid" });
+      } catch (e) {
+        console.warn("[get-group-participants] cache upsert failed:", (e as any)?.message);
+      }
     }
 
     const phones = parts
       .map((p: any) => {
-        const raw = String(p?.id || p?.jid || p?.phone || p?.participant || p || "");
+        const raw = String(p?.JID || p?.PhoneNumber || p?.id || p?.jid || p?.phone || p?.participant || p || "");
         const ph = digits(raw);
         return ph ? { phone: ph, raw } : null;
       })
