@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { externalSupabase, ensureExternalSession } from "@/integrations/supabase/external-client";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Play, RefreshCw, FileSearch, Target, AlertTriangle, CheckCircle2, Link2 } from "lucide-react";
 import { toast } from "sonner";
+import { OperationalDetailSheet, type OperationalMetricType } from "@/components/whatsapp/agent-monitor/components/OperationalDetailSheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface SyncState {
   last_page: number;
@@ -64,6 +67,16 @@ export default function ZapsignSyncPage() {
   const [rules, setRules] = useState<any[]>([]);
   const [boards, setBoards] = useState<any[]>([]);
   const [editingRule, setEditingRule] = useState<any | null>(null);
+
+  // KPI drill-down state
+  const [kpiSheet, setKpiSheet] = useState<OperationalMetricType | null>(null);
+  const [errorsSheetOpen, setErrorsSheetOpen] = useState(false);
+  const dateRange = useMemo(() => {
+    const to = new Date();
+    const from = new Date();
+    from.setDate(from.getDate() - 7);
+    return { from, to };
+  }, []);
 
   async function loadRules() {
     try {
@@ -189,11 +202,11 @@ export default function ZapsignSyncPage() {
         {/* DASHBOARD ---- */}
         <TabsContent value="dashboard" className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <Kpi label="Docs (7d)" value={totalDocs} icon={<FileSearch className="h-4 w-4" />} />
-            <Kpi label="Contatos" value={totalLinked} icon={<Link2 className="h-4 w-4" />} />
-            <Kpi label="Leads enriq." value={totalEnriched} icon={<CheckCircle2 className="h-4 w-4" />} />
-            <Kpi label="Grupos WA" value={totalGroups} icon={<Link2 className="h-4 w-4" />} />
-            <Kpi label="Erros" value={totalErrors} icon={<AlertTriangle className="h-4 w-4" />} variant="destructive" />
+            <Kpi label="Docs (7d)" value={totalDocs} icon={<FileSearch className="h-4 w-4" />} onClick={() => setKpiSheet('signed_docs')} />
+            <Kpi label="Contatos" value={totalLinked} icon={<Link2 className="h-4 w-4" />} onClick={() => setKpiSheet('contacts')} />
+            <Kpi label="Leads enriq." value={totalEnriched} icon={<CheckCircle2 className="h-4 w-4" />} onClick={() => setKpiSheet('cases')} />
+            <Kpi label="Grupos WA" value={totalGroups} icon={<Link2 className="h-4 w-4" />} onClick={() => setKpiSheet('groups')} />
+            <Kpi label="Erros" value={totalErrors} icon={<AlertTriangle className="h-4 w-4" />} variant="destructive" onClick={() => setErrorsSheetOpen(true)} />
           </div>
 
           <Card>
@@ -530,13 +543,66 @@ export default function ZapsignSyncPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Drill-down dos KPIs reusando o mesmo padrão do Monitor IA */}
+      <OperationalDetailSheet
+        open={kpiSheet !== null}
+        onClose={() => setKpiSheet(null)}
+        metricType={kpiSheet ?? 'signed_docs'}
+        dateRange={dateRange}
+      />
+
+      {/* Sheet de Erros (lista runs[].errors dos últimos 7 runs) */}
+      <Sheet open={errorsSheetOpen} onOpenChange={setErrorsSheetOpen}>
+        <SheetContent className="w-full sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Erros e pulos (últimos 7 runs)
+              <Badge variant="secondary" className="ml-auto">
+                {last7.reduce((acc, r) => acc + (r.errors?.length || 0), 0)}
+              </Badge>
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-120px)] mt-4">
+            <div className="space-y-2 pr-2">
+              {last7.flatMap((r) =>
+                (r.errors || []).map((e: any, idx: number) => (
+                  <div key={`${r.id}-${idx}`} className="border rounded-lg p-3 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <Badge variant="destructive" className="text-[10px]">{e?.stage || 'unknown'}</Badge>
+                      <span className="text-[10px] text-muted-foreground">
+                        {new Date(r.started_at).toLocaleString('pt-BR')}
+                      </span>
+                    </div>
+                    <p className="text-xs break-words">{e?.error || e?.message || JSON.stringify(e)}</p>
+                    {e?.doc_token && (
+                      <p className="text-[10px] font-mono text-muted-foreground">{String(e.doc_token).slice(0, 16)}…</p>
+                    )}
+                    {e?.signer_phone && (
+                      <p className="text-[10px] text-muted-foreground">{e.signer_phone}</p>
+                    )}
+                  </div>
+                ))
+              )}
+              {last7.every((r) => !r.errors || r.errors.length === 0) && (
+                <div className="text-center py-12 text-muted-foreground text-sm">Nenhum erro registrado nos últimos 7 runs ✅</div>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
 
-function Kpi({ label, value, icon, variant }: { label: string; value: number; icon?: React.ReactNode; variant?: "destructive" }) {
+function Kpi({ label, value, icon, variant, onClick }: { label: string; value: number; icon?: React.ReactNode; variant?: "destructive"; onClick?: () => void }) {
   return (
-    <Card>
+    <Card
+      onClick={onClick}
+      className={onClick ? "cursor-pointer hover:bg-muted/40 hover:border-primary/40 transition-colors" : undefined}
+      role={onClick ? "button" : undefined}
+    >
       <CardContent className="p-4">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">{icon} {label}</div>
         <div className={`text-2xl font-bold mt-1 ${variant === "destructive" && value > 0 ? "text-destructive" : ""}`}>

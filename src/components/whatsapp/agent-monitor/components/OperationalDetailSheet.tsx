@@ -9,8 +9,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { startOfDay, endOfDay, format, parseISO } from 'date-fns';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { toast } from 'sonner';
 import type { Lead } from '@/hooks/useLeads';
+import type { Contact } from '@/hooks/useContacts';
 
 export type OperationalMetricType = 'signed_docs' | 'groups' | 'cases' | 'processes' | 'contacts';
 
@@ -45,6 +47,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
   const [items, setItems] = useState<any[]>([]);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
+  const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [docStatusFilter, setDocStatusFilter] = useState<'all' | 'signed' | 'pending'>('all');
   const [sendingFollowup, setSendingFollowup] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
@@ -222,6 +225,12 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
       setEditingLead(data as Lead);
       setShowLeadEdit(true);
     }
+  };
+
+  const handleOpenContact = async (contactId: string) => {
+    if (!contactId) return;
+    const { data } = await supabase.from('contacts').select('*').eq('id', contactId).maybeSingle();
+    if (data) setEditingContact(data as Contact);
   };
 
   const handleOpenChat = (phone: string, instanceName?: string, contactName?: string) => {
@@ -481,7 +490,12 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
               ))}
 
               {metricType === 'contacts' && filteredItems.map(item => (
-                <div key={item.id} className="border rounded-lg p-3 space-y-1">
+                <div
+                  key={item.id}
+                  className="border rounded-lg p-3 space-y-1 cursor-pointer hover:bg-muted/40 transition-colors"
+                  onClick={() => handleOpenContact(item.id)}
+                  role="button"
+                >
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium truncate flex-1">{item.full_name || 'Contato'}</p>
                     {item.classification && <Badge variant="outline" className="text-[9px]">{item.classification}</Badge>}
@@ -500,7 +514,12 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
                     <p className="text-[9px] text-muted-foreground truncate">{item.action_source_detail}</p>
                   )}
                   {item.phone && (
-                    <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => handleOpenChat(item.phone)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-[10px]"
+                      onClick={(e) => { e.stopPropagation(); handleOpenChat(item.phone); }}
+                    >
                       <MessageSquare className="h-3 w-3 mr-1" /> Chat
                     </Button>
                   )}
@@ -528,6 +547,11 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
         mode="sheet"
       />
     )}
+    <ContactDetailSheet
+      contact={editingContact}
+      open={!!editingContact}
+      onOpenChange={(open) => { if (!open) setEditingContact(null); }}
+    />
     </>
   );
 }
