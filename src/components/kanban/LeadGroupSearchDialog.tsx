@@ -158,12 +158,14 @@ export function LeadGroupSearchDialog({
     if (!chosenGroup || selected.size === 0) return;
     setImporting(true);
     try {
+      const selectedParts = participants.filter((p) => selected.has(p.phone));
       const { data, error } = await supabase.functions.invoke('import-group-participants', {
         body: {
           lead_id: leadId,
           group_jid: chosenGroup.jid,
           group_name: chosenGroup.name,
           phones: Array.from(selected),
+          participants: selectedParts,
         },
       });
       if (error) throw error;
