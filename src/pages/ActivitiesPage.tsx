@@ -346,6 +346,7 @@ const ActivitiesPage = () => {
       setTeamMembers(membersRes.data || []);
       setAvailableContacts(contactsRes.data || []);
       setAvailableCases(casesRes.data || []);
+      ensureRemapCache();
     };
     loadSupport();
   }, []);
