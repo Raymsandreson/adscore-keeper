@@ -4,7 +4,8 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { ArrowRightLeft, ClipboardList, Heart, LayoutDashboard, Loader2 } from 'lucide-react';
+import { ArrowRightLeft, ClipboardList, FileSignature, Heart, LayoutDashboard, Loader2 } from 'lucide-react';
+import ZapsignSyncPage from '@/pages/ZapsignSyncPage';
 import { subDays, startOfDay } from 'date-fns';
 
 import { useMonitorData } from './agent-monitor/hooks/useMonitorData';
