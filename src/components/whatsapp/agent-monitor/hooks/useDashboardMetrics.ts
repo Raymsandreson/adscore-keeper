@@ -205,11 +205,14 @@ export function useDashboardMetrics() {
 
       // Operational metrics from direct queries
       const docs = docsResult.data || [];
+      // Fonte única de verdade: tabela zapsign_documents filtrada pelo período do header.
+      // Card e sheet devem mostrar números IDÊNTICOS (memory: kpi-snapshot-architecture).
+      // Usamos `status` (estado do documento) e NÃO `signer_status` (estado do signatário individual).
       const signedDocsDetails: OperationalDetail[] = docs
-        .filter(d => d.signer_status === 'signed')
+        .filter(d => d.status === 'signed')
         .map(d => ({ id: d.id, name: d.signer_name || d.document_name || '', acolhedor: null, instance_name: d.instance_name, lead_id: d.lead_id, created_at: d.created_at }));
       const pendingDocsDetails: OperationalDetail[] = docs
-        .filter(d => d.signer_status !== 'signed')
+        .filter(d => d.status !== 'signed')
         .map(d => ({ id: d.id, name: d.signer_name || d.document_name || '', acolhedor: null, instance_name: d.instance_name, lead_id: d.lead_id, created_at: d.created_at }));
 
       // Enrich docs with lead acolhedor
