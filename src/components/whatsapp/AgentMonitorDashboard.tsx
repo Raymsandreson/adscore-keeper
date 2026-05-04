@@ -443,7 +443,7 @@ export function AgentMonitorDashboard() {
         </TabsContent>
         <TabsContent value="referrals" className="space-y-4"><ReferralsTab referrals={referrals} loading={isLoading} /></TabsContent>
         <TabsContent value="redirections" className="space-y-4"><RedirectionsTab redirections={redirections} loading={isLoading} /></TabsContent>
-        <TabsContent value="documents" className="space-y-4"><ZapsignSyncPage /></TabsContent>
+        <TabsContent value="documents" className="space-y-4"><ZapsignSyncPage externalDateRange={dateRange} externalPeriodLabel={selectedPeriod === 'today' ? 'hoje' : selectedPeriod} /></TabsContent>
       </Tabs>
 
       <CaseListSheet
