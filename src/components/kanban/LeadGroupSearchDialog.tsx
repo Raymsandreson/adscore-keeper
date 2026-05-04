@@ -72,6 +72,46 @@ export function LeadGroupSearchDialog({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
   const [participantStats, setParticipantStats] = useState<{ enriched: number; unresolved: number }>({ enriched: 0, unresolved: 0 });
+  const [refreshingPhone, setRefreshingPhone] = useState<string | null>(null);
+
+  const refreshParticipant = async (phone: string) => {
+    if (!chosenGroup) return;
+    const useInstance = chosenGroup.instance_name || instanceName;
+    if (!useInstance) return;
+    setRefreshingPhone(phone);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-group-participants', {
+        body: { group_jid: chosenGroup.jid, instance_name: useInstance, refresh: true },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao atualizar');
+      const fresh: Participant | undefined = (data.participants || []).find((p: Participant) => p.phone === phone);
+      if (!fresh) {
+        toast.warning('Participante não encontrado no retorno atualizado.');
+        return;
+      }
+      setParticipants((prev) => prev.map((p) => (p.phone === phone ? { ...p, ...fresh } : p)));
+      // Sync silencioso pra atualizar contato existente (nome/foto/email/CPF)
+      if (fresh.name || fresh.image || fresh.lead_email || fresh.lead_personalid) {
+        supabase.functions
+          .invoke('import-group-participants', {
+            body: {
+              sync_only: true,
+              group_jid: chosenGroup.jid,
+              group_name: chosenGroup.name,
+              phones: [fresh.phone],
+              participants: [fresh],
+            },
+          })
+          .catch((err) => console.warn('[refresh-participant sync] falhou:', err));
+      }
+      toast.success(`Dados de ${fresh.name || `+${phone}`} atualizados.`);
+    } catch (e: unknown) {
+      toast.error('Erro ao atualizar: ' + getErrorMessage(e));
+    } finally {
+      setRefreshingPhone(null);
+    }
+  };
 
   const reset = () => {
     setStep('groups');
