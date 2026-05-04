@@ -228,7 +228,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   useEffect(() => {
     if (activeTab !== 'documentos' || !process?.id) return;
     setLoadingDocuments(true);
-    supabase
+    externalSupabase
       .from('process_documents')
       .select('*')
       .eq('process_id', process.id)
