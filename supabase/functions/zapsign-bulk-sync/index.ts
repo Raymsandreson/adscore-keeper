@@ -231,7 +231,7 @@ Deno.serve(async (req) => {
           }
           row.instance_name = inferredInstance;
 
-          // ---- resolve owner (created_by) via instance -> profile.default_instance_id
+          // ---- resolve owner (created_by) via instance -> profile.default_instance_id, fallback to executor
           let createdByUserId: string | null = null;
           if (inferredInstance) {
             const { data: instRow } = await sb.from("whatsapp_instances")
@@ -242,6 +242,7 @@ Deno.serve(async (req) => {
               createdByUserId = ownerProfile?.user_id || null;
             }
           }
+          if (!createdByUserId) createdByUserId = executorUserId;
           row.owner_user_id = createdByUserId;
 
           if (instanceFilter && (inferredInstance || "").toLowerCase() !== instanceFilter.toLowerCase()) {
