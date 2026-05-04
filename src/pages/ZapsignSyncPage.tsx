@@ -48,7 +48,14 @@ interface RunResult {
 
 const TARGET_LINK_RATE = 95;
 
-export default function ZapsignSyncPage() {
+interface ZapsignSyncPageProps {
+  /** Quando fornecido (ex.: vindo do Monitor de IA), sobrescreve o período interno (default 7d). */
+  externalDateRange?: { from: Date; to: Date };
+  /** Rótulo do período (ex.: "hoje", "7d", "30d"). Usado no label dos KPIs. */
+  externalPeriodLabel?: string;
+}
+
+export default function ZapsignSyncPage({ externalDateRange, externalPeriodLabel }: ZapsignSyncPageProps = {}) {
   const [tab, setTab] = useState("dashboard");
   const [state, setState] = useState<SyncState | null>(null);
   const [runs, setRuns] = useState<SyncRun[]>([]);
@@ -72,11 +79,12 @@ export default function ZapsignSyncPage() {
   const [kpiSheet, setKpiSheet] = useState<OperationalMetricType | null>(null);
   const [errorsSheetOpen, setErrorsSheetOpen] = useState(false);
   const dateRange = useMemo(() => {
+    if (externalDateRange?.from && externalDateRange?.to) return externalDateRange;
     const to = new Date();
     const from = new Date();
     from.setDate(from.getDate() - 7);
     return { from, to };
-  }, []);
+  }, [externalDateRange?.from, externalDateRange?.to]);
 
   async function loadRules() {
     try {
@@ -159,8 +167,17 @@ export default function ZapsignSyncPage() {
     }
   }
 
-  // KPIs derivados dos últimos 7 runs
-  const last7 = runs.filter((r) => !r.dry_run).slice(0, 7);
+  // KPIs derivados dos runs no período (default = últimos 7 runs; quando filtrado externamente, usa janela do dateRange)
+  const last7 = useMemo(() => {
+    const base = runs.filter((r) => !r.dry_run);
+    if (!externalDateRange?.from || !externalDateRange?.to) return base.slice(0, 7);
+    const fromMs = externalDateRange.from.getTime();
+    const toMs = externalDateRange.to.getTime();
+    return base.filter((r) => {
+      const t = r.started_at ? new Date(r.started_at).getTime() : 0;
+      return t >= fromMs && t <= toMs;
+    });
+  }, [runs, externalDateRange?.from, externalDateRange?.to]);
   const totalDocs = last7.reduce((a, r) => a + (r.docs_scanned || 0), 0);
   const totalLinked = last7.reduce((a, r) => a + (r.counts?.contacts_created || 0) + (r.counts?.contacts_updated || 0), 0);
   const totalGroups = last7.reduce((a, r) => a + (r.counts?.groups_linked || 0), 0);
@@ -202,7 +219,7 @@ export default function ZapsignSyncPage() {
         {/* DASHBOARD ---- */}
         <TabsContent value="dashboard" className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <Kpi label="Docs (7d)" value={totalDocs} icon={<FileSearch className="h-4 w-4" />} onClick={() => setKpiSheet('signed_docs')} />
+            <Kpi label={`Docs (${externalPeriodLabel || '7d'})`} value={totalDocs} icon={<FileSearch className="h-4 w-4" />} onClick={() => setKpiSheet('signed_docs')} />
             <Kpi label="Contatos" value={totalLinked} icon={<Link2 className="h-4 w-4" />} onClick={() => setKpiSheet('contacts')} />
             <Kpi label="Leads enriq." value={totalEnriched} icon={<CheckCircle2 className="h-4 w-4" />} onClick={() => setKpiSheet('cases')} />
             <Kpi label="Grupos WA" value={totalGroups} icon={<Link2 className="h-4 w-4" />} onClick={() => setKpiSheet('groups')} />
