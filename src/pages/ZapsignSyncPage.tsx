@@ -543,13 +543,66 @@ export default function ZapsignSyncPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Drill-down dos KPIs reusando o mesmo padrão do Monitor IA */}
+      <OperationalDetailSheet
+        open={kpiSheet !== null}
+        onClose={() => setKpiSheet(null)}
+        metricType={kpiSheet ?? 'signed_docs'}
+        dateRange={dateRange}
+      />
+
+      {/* Sheet de Erros (lista runs[].errors dos últimos 7 runs) */}
+      <Sheet open={errorsSheetOpen} onOpenChange={setErrorsSheetOpen}>
+        <SheetContent className="w-full sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Erros e pulos (últimos 7 runs)
+              <Badge variant="secondary" className="ml-auto">
+                {last7.reduce((acc, r) => acc + (r.errors?.length || 0), 0)}
+              </Badge>
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-120px)] mt-4">
+            <div className="space-y-2 pr-2">
+              {last7.flatMap((r) =>
+                (r.errors || []).map((e: any, idx: number) => (
+                  <div key={`${r.id}-${idx}`} className="border rounded-lg p-3 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <Badge variant="destructive" className="text-[10px]">{e?.stage || 'unknown'}</Badge>
+                      <span className="text-[10px] text-muted-foreground">
+                        {new Date(r.started_at).toLocaleString('pt-BR')}
+                      </span>
+                    </div>
+                    <p className="text-xs break-words">{e?.error || e?.message || JSON.stringify(e)}</p>
+                    {e?.doc_token && (
+                      <p className="text-[10px] font-mono text-muted-foreground">{String(e.doc_token).slice(0, 16)}…</p>
+                    )}
+                    {e?.signer_phone && (
+                      <p className="text-[10px] text-muted-foreground">{e.signer_phone}</p>
+                    )}
+                  </div>
+                ))
+              )}
+              {last7.every((r) => !r.errors || r.errors.length === 0) && (
+                <div className="text-center py-12 text-muted-foreground text-sm">Nenhum erro registrado nos últimos 7 runs ✅</div>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
 
-function Kpi({ label, value, icon, variant }: { label: string; value: number; icon?: React.ReactNode; variant?: "destructive" }) {
+function Kpi({ label, value, icon, variant, onClick }: { label: string; value: number; icon?: React.ReactNode; variant?: "destructive"; onClick?: () => void }) {
   return (
-    <Card>
+    <Card
+      onClick={onClick}
+      className={onClick ? "cursor-pointer hover:bg-muted/40 hover:border-primary/40 transition-colors" : undefined}
+      role={onClick ? "button" : undefined}
+    >
       <CardContent className="p-4">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">{icon} {label}</div>
         <div className={`text-2xl font-bold mt-1 ${variant === "destructive" && value > 0 ? "text-destructive" : ""}`}>
