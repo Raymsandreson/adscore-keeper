@@ -164,7 +164,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
       }
     };
     fetchDetails();
-  }, [open, metricType, dateRange]);
+  }, [open, metricType, dateRange, fromDate, toDate]);
 
   const hasActiveFilter = filters && (
     filters.instanceFilter !== 'all' || filters.acolhedorFilter !== 'all' ||
