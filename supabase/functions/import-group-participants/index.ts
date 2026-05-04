@@ -35,6 +35,9 @@ Deno.serve(async (req) => {
     const lead_id: string = body?.lead_id;
     const group_jid: string = body?.group_jid;
     const group_name: string | undefined = body?.group_name;
+    // Modo sync_only: apenas atualiza contatos existentes (não cria, não vincula).
+    // Usado para sincronização automática silenciosa ao abrir o modal/selecionar grupo.
+    const syncOnly: boolean = body?.sync_only === true;
     // Suporta dois formatos: phones[] (legado) OU participants[] (enriquecido)
     const participantsIn: Array<any> = Array.isArray(body?.participants) ? body.participants : [];
     const phones: string[] = participantsIn.length > 0
