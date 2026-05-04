@@ -180,16 +180,26 @@ Deno.serve(async (req) => {
 
     if (queryTokens.length > 0 && conversationMatches.length > 0 && !force_refresh) {
       conversationMatches.sort((a, b) => (b._score || 0) - (a._score || 0));
-      conversationMatches.forEach((m) => delete m._score);
+      // Dedup por JID — mantém só 1 entrada por grupo, preferindo a instância do lead.
+      const preferred = String(instance_name || "").toLowerCase();
+      const byJid = new Map<string, any>();
+      for (const m of conversationMatches) {
+        const cur = byJid.get(m.jid);
+        if (!cur) { byJid.set(m.jid, m); continue; }
+        const curIsPreferred = String(cur.instance_name || "").toLowerCase() === preferred;
+        const newIsPreferred = String(m.instance_name || "").toLowerCase() === preferred;
+        if (newIsPreferred && !curIsPreferred) byJid.set(m.jid, m);
+      }
+      const deduped = Array.from(byJid.values()).map((m) => { delete m._score; return m; });
       return new Response(
         JSON.stringify({
-          groups: conversationMatches,
+          groups: deduped,
           from_cache: false,
           fetched_at: null,
-          scanned: conversationMatches.length,
+          scanned: deduped.length,
           match_key: matchKey,
           name_query: name_query || null,
-          source: "conversations",
+          source: "groups_index",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
