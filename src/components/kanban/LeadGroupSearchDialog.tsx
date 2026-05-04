@@ -19,6 +19,7 @@ interface FoundGroup {
 interface Participant {
   phone: string;
   raw: string;
+  lid?: string | null;
   is_admin?: boolean;
   name?: string | null;
   image?: string | null;
@@ -62,6 +63,7 @@ export function LeadGroupSearchDialog({
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
+  const [participantStats, setParticipantStats] = useState<{ enriched: number; unresolved: number }>({ enriched: 0, unresolved: 0 });
 
   const reset = () => {
     setStep('groups');
@@ -69,6 +71,7 @@ export function LeadGroupSearchDialog({
     setChosenGroup(null);
     setParticipants([]);
     setSelected(new Set());
+    setParticipantStats({ enriched: 0, unresolved: 0 });
   };
 
   const handleSearch = async (forceRefresh = false) => {
@@ -117,22 +120,23 @@ export function LeadGroupSearchDialog({
     }
   };
 
-  const handlePickGroup = async (g: FoundGroup) => {
+  const handlePickGroup = async (g: FoundGroup, refreshParticipants = false) => {
     setChosenGroup(g);
-    onGroupSelected(g);
+    if (!refreshParticipants) onGroupSelected(g);
     const useInstance = g.instance_name || instanceName;
     if (!useInstance) return;
     setStep('participants');
     setLoadingParticipants(true);
     try {
       const { data, error } = await supabase.functions.invoke('get-group-participants', {
-        body: { group_jid: g.jid, instance_name: useInstance },
+        body: { group_jid: g.jid, instance_name: useInstance, refresh: refreshParticipants },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Falha ao listar participantes');
       const parts: Participant[] = data.participants || [];
       setParticipants(parts);
       setSelected(new Set(parts.map((p) => p.phone)));
+      setParticipantStats({ enriched: data.enriched_count || 0, unresolved: data.unresolved_count || 0 });
     } catch (e: any) {
       toast.error('Erro ao listar participantes: ' + (e.message || e));
     } finally {
