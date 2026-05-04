@@ -35,7 +35,16 @@ Deno.serve(async (req) => {
     const lead_id: string = body?.lead_id;
     const group_jid: string = body?.group_jid;
     const group_name: string | undefined = body?.group_name;
-    const phones: string[] = Array.isArray(body?.phones) ? body.phones : [];
+    // Suporta dois formatos: phones[] (legado) OU participants[] (enriquecido)
+    const participantsIn: Array<any> = Array.isArray(body?.participants) ? body.participants : [];
+    const phones: string[] = participantsIn.length > 0
+      ? participantsIn.map((p: any) => String(p?.phone || ""))
+      : (Array.isArray(body?.phones) ? body.phones : []);
+    const detailsByPhone = new Map<string, any>();
+    participantsIn.forEach((p: any) => {
+      const ph = normalizePhone(String(p?.phone || ""));
+      if (ph) detailsByPhone.set(ph, p);
+    });
     if (!lead_id || !group_jid || phones.length === 0) {
       return new Response(
         JSON.stringify({ success: false, error: "lead_id, group_jid and non-empty phones[] are required" }),
