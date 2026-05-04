@@ -57,6 +57,47 @@ export default function ZapsignSyncPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | "signed" | "pending" | "refused">("");
+  const [templateFilter, setTemplateFilter] = useState("");
+  const [instanceFilter, setInstanceFilter] = useState("");
+
+  // Funnel rules state
+  const [rules, setRules] = useState<any[]>([]);
+  const [boards, setBoards] = useState<any[]>([]);
+  const [editingRule, setEditingRule] = useState<any | null>(null);
+
+  async function loadRules() {
+    try {
+      await ensureExternalSession();
+      const [rs, bs] = await Promise.all([
+        externalSupabase.from("zapsign_funnel_rules" as any).select("*").order("priority", { ascending: true }),
+        externalSupabase.from("kanban_boards" as any).select("id, name, stages").order("name"),
+      ]);
+      if (rs.data) setRules(rs.data as any);
+      if (bs.data) setBoards(bs.data as any);
+    } catch (e) { console.warn("loadRules", e); }
+  }
+
+  async function saveRule(r: any) {
+    try {
+      await ensureExternalSession();
+      const payload = { ...r };
+      delete payload.id;
+      if (r.id) {
+        await externalSupabase.from("zapsign_funnel_rules" as any).update(payload).eq("id", r.id);
+      } else {
+        await externalSupabase.from("zapsign_funnel_rules" as any).insert(payload);
+      }
+      toast.success("Regra salva");
+      setEditingRule(null);
+      loadRules();
+    } catch (e: any) { toast.error(e?.message || "Erro ao salvar"); }
+  }
+
+  async function deleteRule(id: string) {
+    if (!confirm("Excluir regra?")) return;
+    await externalSupabase.from("zapsign_funnel_rules" as any).delete().eq("id", id);
+    loadRules();
+  }
 
   async function loadState() {
     try {
