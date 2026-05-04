@@ -270,10 +270,29 @@ export function LeadGroupSearchDialog({
                   <button type="button" className="text-primary hover:underline" onClick={toggleAll}>
                     {selected.size === participants.length ? 'Desmarcar todos' : 'Marcar todos'}
                   </button>
-                  <span className="text-muted-foreground">
-                    {selected.size} de {participants.length} selecionado(s)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">
+                      {selected.size} de {participants.length} selecionado(s)
+                      {participantStats.enriched ? ` · ${participantStats.enriched} com nome` : ''}
+                    </span>
+                    {chosenGroup && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePickGroup(chosenGroup, true)}
+                        disabled={loadingParticipants || importing}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5 mr-1" /> Atualizar dados
+                      </Button>
+                    )}
+                  </div>
                 </div>
+                {participantStats.unresolved > 0 && (
+                  <div className="text-xs text-muted-foreground rounded-md border bg-muted/30 px-3 py-2">
+                    {participantStats.unresolved} participante(s) vieram da API apenas como ID interno, sem telefone público. Clique em Atualizar dados para forçar nova leitura pela instância.
+                  </div>
+                )}
                 <div className="max-h-[28rem] overflow-y-auto border rounded-md divide-y">
                   {participants.map((p) => {
                     const initials = (p.name || p.phone).slice(0, 2).toUpperCase();
