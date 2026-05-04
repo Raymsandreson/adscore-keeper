@@ -35,7 +35,16 @@ Deno.serve(async (req) => {
     const lead_id: string = body?.lead_id;
     const group_jid: string = body?.group_jid;
     const group_name: string | undefined = body?.group_name;
-    const phones: string[] = Array.isArray(body?.phones) ? body.phones : [];
+    // Suporta dois formatos: phones[] (legado) OU participants[] (enriquecido)
+    const participantsIn: Array<any> = Array.isArray(body?.participants) ? body.participants : [];
+    const phones: string[] = participantsIn.length > 0
+      ? participantsIn.map((p: any) => String(p?.phone || ""))
+      : (Array.isArray(body?.phones) ? body.phones : []);
+    const detailsByPhone = new Map<string, any>();
+    participantsIn.forEach((p: any) => {
+      const ph = normalizePhone(String(p?.phone || ""));
+      if (ph) detailsByPhone.set(ph, p);
+    });
     if (!lead_id || !group_jid || phones.length === 0) {
       return new Response(
         JSON.stringify({ success: false, error: "lead_id, group_jid and non-empty phones[] are required" }),
@@ -58,24 +67,36 @@ Deno.serve(async (req) => {
       const phone = normalizePhone(raw);
       if (!phone || phone.length < 12) { skipped++; continue; }
       try {
+        const det = detailsByPhone.get(phone) || {};
+        const enrichName: string | null = det?.name || null;
+        const enrichEmail: string | null = det?.lead_email || null;
+        const enrichCpfRaw: string | null = det?.lead_personalid || null;
+        const enrichCpf = enrichCpfRaw ? String(enrichCpfRaw).replace(/\D/g, "").slice(0, 11) : null;
+        const enrichAvatar: string | null = det?.image || null;
+        const enrichNotes: string | null = det?.lead_notes || null;
+
         // 1) procurar contato existente pelo telefone (match por dígitos)
         const last10 = phone.slice(-10);
         const { data: existing } = await ext
           .from("contacts")
-          .select("id, full_name, state, city")
+          .select("id, full_name, state, city, email, cpf, avatar_url")
           .ilike("phone", `%${last10}`)
           .is("deleted_at", null)
           .limit(1);
 
         let contactId: string | null = existing?.[0]?.id || null;
+        const loc = getLocationFromDDD(phone);
 
         if (!contactId) {
-          const loc = getLocationFromDDD(phone);
           const { data: ins, error: insErr } = await ext
             .from("contacts")
             .insert({
-              full_name: `Participante ${phone.slice(-4)}`,
+              full_name: enrichName || `Participante ${phone.slice(-4)}`,
               phone,
+              email: enrichEmail,
+              cpf: enrichCpf && enrichCpf.length === 11 ? enrichCpf : null,
+              avatar_url: enrichAvatar,
+              notes: enrichNotes,
               state: loc?.state || null,
               city: loc?.city || null,
               classification: "prospect",
@@ -83,12 +104,25 @@ Deno.serve(async (req) => {
               action_source: "group_import",
               action_source_detail: group_name || group_jid,
               tags: ["importado-grupo"],
+              wa_synced_at: new Date().toISOString(),
             })
             .select("id")
             .single();
           if (insErr) throw insErr;
           contactId = ins.id;
           created++;
+        } else {
+          // Enriquece campos vazios sem sobrescrever dados existentes
+          const exRow: any = existing![0];
+          const patch: Record<string, any> = {};
+          if (enrichName && (!exRow.full_name || exRow.full_name.startsWith("Participante "))) patch.full_name = enrichName;
+          if (enrichEmail && !exRow.email) patch.email = enrichEmail;
+          if (enrichCpf && enrichCpf.length === 11 && !exRow.cpf) patch.cpf = enrichCpf;
+          if (enrichAvatar && !exRow.avatar_url) patch.avatar_url = enrichAvatar;
+          if (Object.keys(patch).length > 0) {
+            patch.wa_synced_at = new Date().toISOString();
+            await ext.from("contacts").update(patch).eq("id", contactId);
+          }
         }
 
         // 2) vincular ao lead se ainda não estiver
