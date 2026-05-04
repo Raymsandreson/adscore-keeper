@@ -296,12 +296,13 @@ Deno.serve(async (req) => {
     }
     const fetchTargets = refresh ? filtered : missing;
     const newDetails = await mapWithConcurrency(fetchTargets, CONCURRENCY, async (p) => {
-      const d = await fetchChatDetails(instRow.base_url, instRow.instance_token, p.phone);
+      const found = await fetchChatDetailsAcrossInstances(allInstances.length ? allInstances : [instRow], instRow.instance_name, p.phone);
+      const d = found?.details;
       if (!d) return null;
       const row = {
-        instance_name: instRow.instance_name,
+        instance_name: found?.source_instance || instRow.instance_name,
         phone: p.phone,
-        name: pickName(d),
+        name: pickName(d) || (p as any).display_name || null,
         image: d?.image || d?.imagePreview || null,
         is_group: false,
         lead_email: d?.lead_email || null,
@@ -330,8 +331,9 @@ Deno.serve(async (req) => {
       return {
         phone: p.phone,
         raw: p.raw,
+        lid: (p as any).lid || null,
         is_admin: p.is_admin,
-        name: d.name || null,
+        name: d.name || (p as any).display_name || null,
         image: d.image || null,
         lead_email: d.lead_email || null,
         lead_personalid: d.lead_personalid || null,
