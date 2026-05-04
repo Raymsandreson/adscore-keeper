@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
     } else {
       const { data: instRow } = await cloud
         .from("whatsapp_instances")
-        .select("base_url, instance_token")
+        .select("base_url, instance_token, instance_name")
         .ilike("instance_name", instance_name)
         .maybeSingle();
       if (!instRow?.base_url || !instRow?.instance_token) {
@@ -94,16 +94,36 @@ Deno.serve(async (req) => {
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      parts = await fetchGroupParticipantsFromUazapi(
+      const info = await fetchGroupInfoFromUazapi(
         instRow.base_url,
         instRow.instance_token,
         group_jid,
       );
+      parts = info.participants;
+      groupName = info.name;
+
+      // Popula cache pra próximas chamadas
+      try {
+        const cacheParts = parts.map((p: any) => {
+          const id = String(p?.JID || p?.PhoneNumber || p?.id || p?.jid || p?.phone || p || "");
+          return { id, key: digits(id).slice(-10) };
+        });
+        await cloud.from("whatsapp_groups_cache").upsert({
+          instance_name: instRow.instance_name,
+          group_jid,
+          group_name: groupName,
+          participants: cacheParts,
+          participants_count: cacheParts.length,
+          fetched_at: fetchedAt,
+        }, { onConflict: "instance_name,group_jid" });
+      } catch (e) {
+        console.warn("[get-group-participants] cache upsert failed:", (e as any)?.message);
+      }
     }
 
     const phones = parts
       .map((p: any) => {
-        const raw = String(p?.id || p?.jid || p?.phone || p?.participant || p || "");
+        const raw = String(p?.JID || p?.PhoneNumber || p?.id || p?.jid || p?.phone || p?.participant || p || "");
         const ph = digits(raw);
         return ph ? { phone: ph, raw } : null;
       })
