@@ -45,6 +45,26 @@ async function fetchDocWithRetry(docToken: string, zapsignToken: string, retries
   return null
 }
 
+async function resolveOwnerByInstance(supabase: any, instanceName?: string | null): Promise<string | null> {
+  if (!instanceName) return null
+  const { data: instRow } = await supabase
+    .from('whatsapp_instances')
+    .select('id')
+    .ilike('instance_name', instanceName)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (!instRow?.id) return null
+
+  const { data: ownerProfile } = await supabase
+    .from('profiles')
+    .select('user_id')
+    .eq('default_instance_id', instRow.id)
+    .maybeSingle()
+
+  return ownerProfile?.user_id || null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -168,6 +188,34 @@ Deno.serve(async (req) => {
       } else {
         console.log(`[zapsign-webhook] No lead found for phone ${cleanPhone}`)
       }
+    }
+
+    let resolvedOwnerId: string | null = localDoc.created_by || null
+    if (!resolvedOwnerId && localDoc.contact_id) {
+      const { data: ownerContact } = await supabase
+        .from('contacts')
+        .select('created_by')
+        .eq('id', localDoc.contact_id)
+        .maybeSingle()
+      resolvedOwnerId = ownerContact?.created_by || null
+    }
+    if (!resolvedOwnerId && localDoc.lead_id) {
+      const { data: ownerLead } = await supabase
+        .from('leads')
+        .select('created_by')
+        .eq('id', localDoc.lead_id)
+        .maybeSingle()
+      resolvedOwnerId = ownerLead?.created_by || null
+    }
+    if (!resolvedOwnerId) {
+      resolvedOwnerId = await resolveOwnerByInstance(supabase, localDoc.instance_name)
+    }
+    if (resolvedOwnerId && localDoc.created_by !== resolvedOwnerId) {
+      localDoc.created_by = resolvedOwnerId
+      await supabase
+        .from('zapsign_documents')
+        .update({ created_by: resolvedOwnerId })
+        .eq('id', localDoc.id)
     }
 
     // ====================================================
@@ -643,6 +691,7 @@ Deno.serve(async (req) => {
                 notes: extractedData.notes || null,
                 action_source: 'system',
                 action_source_detail: 'Criado automaticamente ao assinar documento (ZapSign)',
+                created_by: resolvedOwnerId,
               })
               .select('id')
               .single()
@@ -761,6 +810,7 @@ Deno.serve(async (req) => {
                 news_link: extractedData.news_link || null,
                 campaign_id: campaignId || null,
                 campaign_name: campaignName || null,
+                created_by: resolvedOwnerId,
                 action_source: 'system',
                 action_source_detail: campaignId 
                   ? `Lead criado automaticamente ao assinar documento (ZapSign) - Campanha: ${campaignName || campaignId}`
@@ -860,6 +910,8 @@ Deno.serve(async (req) => {
                   title: `Caso - ${leadForBoard.lead_name || 'Novo'}`,
                   lead_id: localDoc.lead_id,
                   status: 'em_andamento',
+                  created_by: localDoc.created_by || null,
+                  assigned_to: localDoc.created_by || null,
                 }).select('id').single()
 
                 console.log(`[zapsign-webhook] Legal case created: ${caseNumber}`)

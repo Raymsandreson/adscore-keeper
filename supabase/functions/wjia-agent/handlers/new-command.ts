@@ -29,6 +29,24 @@ import {
 } from "../../_shared/wjia-utils.ts";
 import { corsHeaders, errorResponse, jsonResponse } from "./shared.ts";
 
+async function resolveOwnerByInstance(supabase: any, instanceName?: string | null): Promise<string | null> {
+  if (!instanceName) return null;
+  const { data: instRow } = await supabase
+    .from("whatsapp_instances")
+    .select("id")
+    .ilike("instance_name", instanceName)
+    .maybeSingle();
+  if (!instRow?.id) return null;
+
+  const { data: ownerProfile } = await supabase
+    .from("profiles")
+    .select("user_id")
+    .eq("default_instance_id", instRow.id)
+    .maybeSingle();
+
+  return ownerProfile?.user_id || null;
+}
+
 export async function handleNewCommand(opts: {
   supabase: any;
   zapsignToken: string | undefined;
@@ -833,6 +851,8 @@ async function generateImmediate(opts: {
   const signer = docData.signers?.[0];
   const signUrl = signer ? `https://app.zapsign.co/verificar/${signer.token}` : null;
 
+  const createdByUserId = await resolveOwnerByInstance(supabase, instance_name);
+
   if (signer?.token && zapsignToken) {
     await updateSignerSettings(signer.token, zapsignToken, zapsignSettings, {
       cpfValue: cpfFieldMain?.para || undefined,
@@ -858,6 +878,7 @@ async function generateImmediate(opts: {
     notify_on_signature: notifyOnSignature,
     send_signed_pdf: sendSignedPdf,
     instance_name: instance_name,
+    created_by: createdByUserId,
   });
 
   // Update active session if exists
