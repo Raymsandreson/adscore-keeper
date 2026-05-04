@@ -126,6 +126,8 @@ export default function ZapsignSyncPage() {
           date_from: dateFrom || undefined,
           date_to: dateTo || undefined,
           status: statusFilter || undefined,
+          template_id: templateFilter || undefined,
+          instance_name: instanceFilter || undefined,
         },
       });
       if (error) throw error;
