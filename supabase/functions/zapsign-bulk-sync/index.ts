@@ -403,6 +403,7 @@ Deno.serve(async (req) => {
               instance_name: inferredInstance,
               sent_via_whatsapp: false,
               whatsapp_phone: digits(signerPhone) || null,
+              created_by: createdByUserId,
             };
             const { error: de } = await sb.from("zapsign_documents").upsert(docRow, { onConflict: "doc_token" });
             if (de) errors.push({ doc: docToken, stage: "doc_upsert", error: de.message });
