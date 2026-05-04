@@ -51,14 +51,26 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [docStatusFilter, setDocStatusFilter] = useState<'all' | 'signed' | 'pending'>('all');
   const [sendingFollowup, setSendingFollowup] = useState<Set<string>>(new Set());
+  // Local date filter inside the sheet — defaults to the range passed by the dashboard
+  const [fromDate, setFromDate] = useState<string>(format(dateRange.from, 'yyyy-MM-dd'));
+  const [toDate, setToDate] = useState<string>(format(dateRange.to, 'yyyy-MM-dd'));
   const navigate = useNavigate();
+
+  // Re-sync local range whenever the sheet opens with a new external dateRange
+  useEffect(() => {
+    if (!open) return;
+    setFromDate(format(dateRange.from, 'yyyy-MM-dd'));
+    setToDate(format(dateRange.to, 'yyyy-MM-dd'));
+  }, [open, dateRange.from, dateRange.to]);
 
   useEffect(() => {
     if (!open) return;
     const fetchDetails = async () => {
       setLoading(true);
-      const start = startOfDay(dateRange.from).toISOString();
-      const end = endOfDay(dateRange.to).toISOString();
+      const fromD = fromDate ? new Date(fromDate + 'T00:00:00') : dateRange.from;
+      const toD = toDate ? new Date(toDate + 'T00:00:00') : dateRange.to;
+      const start = startOfDay(fromD).toISOString();
+      const end = endOfDay(toD).toISOString();
 
       try {
         if (metricType === 'signed_docs') {
