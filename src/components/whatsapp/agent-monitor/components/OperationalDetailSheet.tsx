@@ -4,10 +4,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Loader2, FileSignature, Users, Briefcase, Scale, ExternalLink, MessageSquare, UsersRound, Radio, UserPlus, Send } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Loader2, FileSignature, Users, Briefcase, Scale, ExternalLink, MessageSquare, UsersRound, Radio, UserPlus, Send, CalendarRange } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
-import { startOfDay, endOfDay, format, parseISO } from 'date-fns';
+import { startOfDay, endOfDay, format, parseISO, subDays } from 'date-fns';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { toast } from 'sonner';
@@ -50,14 +51,26 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [docStatusFilter, setDocStatusFilter] = useState<'all' | 'signed' | 'pending'>('all');
   const [sendingFollowup, setSendingFollowup] = useState<Set<string>>(new Set());
+  // Local date filter inside the sheet — defaults to the range passed by the dashboard
+  const [fromDate, setFromDate] = useState<string>(format(dateRange.from, 'yyyy-MM-dd'));
+  const [toDate, setToDate] = useState<string>(format(dateRange.to, 'yyyy-MM-dd'));
   const navigate = useNavigate();
+
+  // Re-sync local range whenever the sheet opens with a new external dateRange
+  useEffect(() => {
+    if (!open) return;
+    setFromDate(format(dateRange.from, 'yyyy-MM-dd'));
+    setToDate(format(dateRange.to, 'yyyy-MM-dd'));
+  }, [open, dateRange.from, dateRange.to]);
 
   useEffect(() => {
     if (!open) return;
     const fetchDetails = async () => {
       setLoading(true);
-      const start = startOfDay(dateRange.from).toISOString();
-      const end = endOfDay(dateRange.to).toISOString();
+      const fromD = fromDate ? new Date(fromDate + 'T00:00:00') : dateRange.from;
+      const toD = toDate ? new Date(toDate + 'T00:00:00') : dateRange.to;
+      const start = startOfDay(fromD).toISOString();
+      const end = endOfDay(toD).toISOString();
 
       try {
         if (metricType === 'signed_docs') {
@@ -151,7 +164,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
       }
     };
     fetchDetails();
-  }, [open, metricType, dateRange]);
+  }, [open, metricType, dateRange, fromDate, toDate]);
 
   const hasActiveFilter = filters && (
     filters.instanceFilter !== 'all' || filters.acolhedorFilter !== 'all' ||
@@ -316,6 +329,47 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
             <Badge variant="secondary" className="ml-auto">{filteredItems.length}</Badge>
           </SheetTitle>
         </SheetHeader>
+
+        {/* Date range filter */}
+        <div className="flex items-center gap-2 mt-3 flex-wrap">
+          <CalendarRange className="h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            type="date"
+            value={fromDate}
+            max={toDate || undefined}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="h-7 text-xs w-[140px]"
+          />
+          <span className="text-xs text-muted-foreground">até</span>
+          <Input
+            type="date"
+            value={toDate}
+            min={fromDate || undefined}
+            onChange={(e) => setToDate(e.target.value)}
+            className="h-7 text-xs w-[140px]"
+          />
+          {[
+            { label: 'Hoje', days: 0 },
+            { label: '7d', days: 6 },
+            { label: '30d', days: 29 },
+            { label: '90d', days: 89 },
+          ].map(p => (
+            <Button
+              key={p.label}
+              variant="outline"
+              size="sm"
+              className="h-7 text-[10px] px-2"
+              onClick={() => {
+                const to = new Date();
+                const from = subDays(to, p.days);
+                setFromDate(format(from, 'yyyy-MM-dd'));
+                setToDate(format(to, 'yyyy-MM-dd'));
+              }}
+            >
+              {p.label}
+            </Button>
+          ))}
+        </div>
 
         {/* Doc status filter tabs */}
         {metricType === 'signed_docs' && !loading && items.length > 0 && (
