@@ -182,6 +182,7 @@ export default function ZapsignSyncPage() {
         <TabsList>
           <TabsTrigger value="dashboard">📊 Dashboard</TabsTrigger>
           <TabsTrigger value="execute">⚡ Executar Lote</TabsTrigger>
+          <TabsTrigger value="rules">🎯 Regras de Funil</TabsTrigger>
           <TabsTrigger value="history">📜 Histórico</TabsTrigger>
         </TabsList>
 
