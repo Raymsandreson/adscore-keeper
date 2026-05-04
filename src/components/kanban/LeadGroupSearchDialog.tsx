@@ -270,19 +270,77 @@ export function LeadGroupSearchDialog({
                     {selected.size} de {participants.length} selecionado(s)
                   </span>
                 </div>
-                <div className="max-h-72 overflow-y-auto border rounded-md divide-y">
-                  {participants.map((p) => (
-                    <label
-                      key={p.phone}
-                      className="flex items-center gap-3 p-2 hover:bg-muted/50 cursor-pointer"
-                    >
-                      <Checkbox
-                        checked={selected.has(p.phone)}
-                        onCheckedChange={() => toggle(p.phone)}
-                      />
-                      <span className="font-mono text-sm">{p.phone}</span>
-                    </label>
-                  ))}
+                <div className="max-h-[28rem] overflow-y-auto border rounded-md divide-y">
+                  {participants.map((p) => {
+                    const initials = (p.name || p.phone).slice(0, 2).toUpperCase();
+                    return (
+                      <label
+                        key={p.phone}
+                        className="flex items-start gap-3 p-3 hover:bg-muted/50 cursor-pointer"
+                      >
+                        <Checkbox
+                          className="mt-1"
+                          checked={selected.has(p.phone)}
+                          onCheckedChange={() => toggle(p.phone)}
+                        />
+                        <Avatar className="h-9 w-9 shrink-0">
+                          {p.image ? <AvatarImage src={p.image} alt={p.name || p.phone} /> : null}
+                          <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm truncate">
+                              {p.name || `+${p.phone}`}
+                            </span>
+                            {p.is_admin && (
+                              <Badge variant="secondary" className="text-[10px] gap-1">
+                                <Crown className="h-3 w-3" /> admin
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="font-mono text-xs text-muted-foreground">+{p.phone}</div>
+                          {(p.lead_email || p.lead_personalid) && (
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                              {p.lead_email && (
+                                <span className="inline-flex items-center gap-1">
+                                  <Mail className="h-3 w-3" /> {p.lead_email}
+                                </span>
+                              )}
+                              {p.lead_personalid && (
+                                <span className="inline-flex items-center gap-1">
+                                  <IdCard className="h-3 w-3" /> {p.lead_personalid}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {p.common_groups && p.common_groups.length > 0 && (
+                            <div className="flex flex-wrap gap-1 pt-1">
+                              {p.common_groups.slice(0, 4).map((g) => (
+                                <a
+                                  key={g.jid}
+                                  href={`https://wa.me/${g.jid.replace(/@.*/, '')}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted text-[10px] hover:bg-muted/70"
+                                  title={g.jid}
+                                >
+                                  <Users className="h-3 w-3" />
+                                  <span className="truncate max-w-[110px]">{g.name}</span>
+                                  <ExternalLink className="h-2.5 w-2.5" />
+                                </a>
+                              ))}
+                              {p.common_groups.length > 4 && (
+                                <span className="text-[10px] text-muted-foreground self-center">
+                                  +{p.common_groups.length - 4}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
                   {participants.length === 0 && (
                     <div className="p-4 text-sm text-muted-foreground text-center">
                       Nenhum participante visível no cache. Tente "Forçar atualização" no passo anterior.
