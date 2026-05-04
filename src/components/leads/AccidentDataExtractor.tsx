@@ -1249,15 +1249,16 @@ export function AccidentDataExtractor({
               </div>
             )}
 
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setExtractedData(null)}>
+            <DialogFooter className="sticky bottom-0 -mx-6 -mb-6 px-6 py-4 bg-background border-t flex-col-reverse sm:flex-row gap-2 sm:gap-2 z-10">
+              <Button variant="outline" onClick={() => setExtractedData(null)} className="w-full sm:w-auto">
                 Tentar Novamente
               </Button>
               <Button
                 onClick={handleConfirm}
                 disabled={selectedCount === 0}
+                className="w-full sm:w-auto sm:ml-auto"
               >
-                Usar Dados Selecionados
+                Usar Dados Selecionados {selectedCount > 0 && `(${selectedCount})`}
               </Button>
             </DialogFooter>
           </div>
