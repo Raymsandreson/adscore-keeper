@@ -64,6 +64,7 @@ Deno.serve(async (req) => {
     let created = 0;
     let linked = 0;
     let skipped = 0;
+    let updated = 0;
     const errors: Array<{ phone: string; error: string }> = [];
 
     for (const raw of phones) {
