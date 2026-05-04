@@ -564,7 +564,10 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
           board_id: selectedBoardId,
           status: closedStageId || 'closed',
         };
-        const { data: newLead, error: leadErr } = await supabase
+        // FIX: lead deve ser criado no Externo. A FK legal_cases.lead_id (no Externo)
+        // procura o lead no Externo; criar no Cloud causa erro 23503 ("Key is not
+        // present in table 'leads'") pois não existe trigger de bridge para `leads`.
+        const { data: newLead, error: leadErr } = await externalSupabase
           .from('leads')
           .insert(leadInsert)
           .select('id')
