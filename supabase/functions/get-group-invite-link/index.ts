@@ -24,7 +24,7 @@ const RequestSchema = z.object({
 
 // Body enviado à UazAPI POST /group/info — getInviteLink obrigatoriamente true aqui.
 const UazApiBodySchema = z.object({
-  groupjid: z.string().regex(/^\d{15,}@g\.us$/, 'normalized JID must end with @g.us'),
+  groupjid: z.string().regex(/^\d{10,}(-\d{5,})?@g\.us$/, 'normalized JID must end with @g.us'),
   getInviteLink: z.literal(true),
   getRequestsParticipants: z.boolean(),
   force: z.boolean(),
