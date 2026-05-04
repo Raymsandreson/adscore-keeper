@@ -167,8 +167,17 @@ export default function ZapsignSyncPage({ externalDateRange, externalPeriodLabel
     }
   }
 
-  // KPIs derivados dos últimos 7 runs
-  const last7 = runs.filter((r) => !r.dry_run).slice(0, 7);
+  // KPIs derivados dos runs no período (default = últimos 7 runs; quando filtrado externamente, usa janela do dateRange)
+  const last7 = useMemo(() => {
+    const base = runs.filter((r) => !r.dry_run);
+    if (!externalDateRange?.from || !externalDateRange?.to) return base.slice(0, 7);
+    const fromMs = externalDateRange.from.getTime();
+    const toMs = externalDateRange.to.getTime();
+    return base.filter((r) => {
+      const t = r.started_at ? new Date(r.started_at).getTime() : 0;
+      return t >= fromMs && t <= toMs;
+    });
+  }, [runs, externalDateRange?.from, externalDateRange?.to]);
   const totalDocs = last7.reduce((a, r) => a + (r.docs_scanned || 0), 0);
   const totalLinked = last7.reduce((a, r) => a + (r.counts?.contacts_created || 0) + (r.counts?.contacts_updated || 0), 0);
   const totalGroups = last7.reduce((a, r) => a + (r.counts?.groups_linked || 0), 0);
