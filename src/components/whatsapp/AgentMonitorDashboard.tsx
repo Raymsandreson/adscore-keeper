@@ -406,7 +406,7 @@ export function AgentMonitorDashboard() {
       )}
 
       <Tabs defaultValue="monitor" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 max-w-lg">
+        <TabsList className="grid w-full grid-cols-5 max-w-2xl">
           <TabsTrigger value="monitor" className="text-xs flex items-center gap-1.5"><LayoutDashboard className="h-3.5 w-3.5" /> Monitor</TabsTrigger>
           <TabsTrigger value="ai-activities" className="text-xs flex items-center gap-1.5">
             <ClipboardList className="h-3.5 w-3.5" /> Atividades IA
@@ -414,6 +414,7 @@ export function AgentMonitorDashboard() {
           </TabsTrigger>
           <TabsTrigger value="referrals" className="text-xs flex items-center gap-1.5"><Heart className="h-3.5 w-3.5" /> Indicações</TabsTrigger>
           <TabsTrigger value="redirections" className="text-xs flex items-center gap-1.5"><ArrowRightLeft className="h-3.5 w-3.5" /> Redirecionamentos</TabsTrigger>
+          <TabsTrigger value="documents" className="text-xs flex items-center gap-1.5"><FileSignature className="h-3.5 w-3.5" /> Documentos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="monitor" className="space-y-4">
@@ -442,6 +443,7 @@ export function AgentMonitorDashboard() {
         </TabsContent>
         <TabsContent value="referrals" className="space-y-4"><ReferralsTab referrals={referrals} loading={isLoading} /></TabsContent>
         <TabsContent value="redirections" className="space-y-4"><RedirectionsTab redirections={redirections} loading={isLoading} /></TabsContent>
+        <TabsContent value="documents" className="space-y-4"><ZapsignSyncPage /></TabsContent>
       </Tabs>
 
       <CaseListSheet
