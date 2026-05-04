@@ -399,20 +399,29 @@ export function LeadGroupSearchDialog({
                                 <Crown className="h-3 w-3" /> admin
                               </Badge>
                             )}
+                            {p.enriched_from === 'chat' && (
+                              <Badge variant="outline" className="text-[10px] gap-1 border-green-500/40 text-green-700 dark:text-green-400">
+                                📱 chat{p.source_instance ? ` · ${p.source_instance}` : ''}
+                              </Badge>
+                            )}
                           </div>
                           <div className="font-mono text-xs text-muted-foreground">+{p.phone}</div>
-                          {(p.lead_email || p.lead_personalid) && (
+                          {(p.lead_email || p.lead_personalid || p.lead_field12 || p.lead_field13 || p.lead_field14 || p.lead_field15 || p.lead_field16) && (
                             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                               {p.lead_email && (
                                 <span className="inline-flex items-center gap-1">
                                   <Mail className="h-3 w-3" /> {p.lead_email}
                                 </span>
                               )}
-                              {p.lead_personalid && (
+                              {(p.lead_personalid || p.lead_field12) && (
                                 <span className="inline-flex items-center gap-1">
-                                  <IdCard className="h-3 w-3" /> {p.lead_personalid}
+                                  <IdCard className="h-3 w-3" /> CPF {p.lead_personalid || p.lead_field12}
                                 </span>
                               )}
+                              {p.lead_field13 && <span>RG {p.lead_field13}</span>}
+                              {p.lead_field14 && <span>📍 {p.lead_field14}</span>}
+                              {p.lead_field15 && <span>· {p.lead_field15}</span>}
+                              {p.lead_field16 && <span>CEP {p.lead_field16}</span>}
                             </div>
                           )}
                           {p.common_groups && p.common_groups.length > 0 && (
