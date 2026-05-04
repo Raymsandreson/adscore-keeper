@@ -344,7 +344,14 @@ Deno.serve(async (req) => {
         lead_email: d.lead_email || null,
         lead_personalid: d.lead_personalid || null,
         lead_notes: d.lead_notes || null,
+        lead_field12: d.lead_field12 || null,
+        lead_field13: d.lead_field13 || null,
+        lead_field14: d.lead_field14 || null,
+        lead_field15: d.lead_field15 || null,
+        lead_field16: d.lead_field16 || null,
         common_groups: d.common_groups || [],
+        source_instance: (d.raw as any)?.__source_instance || null,
+        enriched_from: d.name || d.image || d.lead_personalid ? 'chat' : null,
       };
     });
 
