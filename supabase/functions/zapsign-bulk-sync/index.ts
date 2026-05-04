@@ -217,6 +217,19 @@ Deno.serve(async (req) => {
           }
           row.instance_name = inferredInstance;
 
+          // ---- resolve owner (created_by) via instance -> profile.default_instance_id
+          let createdByUserId: string | null = null;
+          if (inferredInstance) {
+            const { data: instRow } = await sb.from("whatsapp_instances")
+              .select("id").eq("instance_name", inferredInstance).maybeSingle();
+            if (instRow?.id) {
+              const { data: ownerProfile } = await sb.from("profiles")
+                .select("user_id").eq("default_instance_id", instRow.id).maybeSingle();
+              createdByUserId = ownerProfile?.user_id || null;
+            }
+          }
+          row.owner_user_id = createdByUserId;
+
           if (instanceFilter && (inferredInstance || "").toLowerCase() !== instanceFilter.toLowerCase()) {
             row.outcome = "filtered_instance";
             summary.push(row);
@@ -266,6 +279,7 @@ Deno.serve(async (req) => {
                   phone: phoneNorm,
                   ...contactPatch,
                   action_source: "zapsign_bulk_sync",
+                  created_by: createdByUserId,
                 }).select("id").single();
                 if (ce) { errors.push({ doc: docToken, stage: "contact_insert", error: ce.message }); }
                 else { contactId = newC.id; counts.contacts_created++; }
@@ -346,6 +360,7 @@ Deno.serve(async (req) => {
                     contact_id: contactId,
                     source: "zapsign_funnel_rule",
                     lead_status: "active",
+                    created_by: createdByUserId,
                   };
                   if (matchedRule.inherit_lead_fields) Object.assign(newLead, leadPatch);
                   const { data: createdLead, error: lcerr } = await sb.from("leads")
@@ -388,6 +403,7 @@ Deno.serve(async (req) => {
               instance_name: inferredInstance,
               sent_via_whatsapp: false,
               whatsapp_phone: digits(signerPhone) || null,
+              created_by: createdByUserId,
             };
             const { error: de } = await sb.from("zapsign_documents").upsert(docRow, { onConflict: "doc_token" });
             if (de) errors.push({ doc: docToken, stage: "doc_upsert", error: de.message });
