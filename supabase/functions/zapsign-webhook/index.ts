@@ -691,6 +691,7 @@ Deno.serve(async (req) => {
                 notes: extractedData.notes || null,
                 action_source: 'system',
                 action_source_detail: 'Criado automaticamente ao assinar documento (ZapSign)',
+                created_by: resolvedOwnerId,
               })
               .select('id')
               .single()
@@ -809,6 +810,7 @@ Deno.serve(async (req) => {
                 news_link: extractedData.news_link || null,
                 campaign_id: campaignId || null,
                 campaign_name: campaignName || null,
+                created_by: resolvedOwnerId,
                 action_source: 'system',
                 action_source_detail: campaignId 
                   ? `Lead criado automaticamente ao assinar documento (ZapSign) - Campanha: ${campaignName || campaignId}`
@@ -908,6 +910,8 @@ Deno.serve(async (req) => {
                   title: `Caso - ${leadForBoard.lead_name || 'Novo'}`,
                   lead_id: localDoc.lead_id,
                   status: 'em_andamento',
+                  created_by: localDoc.created_by || null,
+                  assigned_to: localDoc.created_by || null,
                 }).select('id').single()
 
                 console.log(`[zapsign-webhook] Legal case created: ${caseNumber}`)
