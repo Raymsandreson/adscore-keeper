@@ -208,10 +208,11 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const fetchActivities = useCallback(async () => {
     if (!process?.id) return;
     setLoadingActivities(true);
-    const { data } = await supabase
+    const { data } = await externalSupabase
       .from('lead_activities')
       .select('id, title, description, activity_type, status, priority, deadline, assigned_to_name, completed_at, created_at')
       .eq('process_id', process.id)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
     setActivities((data || []) as ProcessActivity[]);
     setLoadingActivities(false);
@@ -227,7 +228,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   useEffect(() => {
     if (activeTab !== 'documentos' || !process?.id) return;
     setLoadingDocuments(true);
-    supabase
+    externalSupabase
       .from('process_documents')
       .select('*')
       .eq('process_id', process.id)
