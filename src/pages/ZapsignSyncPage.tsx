@@ -635,7 +635,7 @@ export default function ZapsignSyncPage({ externalDateRange, externalPeriodLabel
   );
 }
 
-function Kpi({ label, value, icon, variant, onClick }: { label: string; value: number; icon?: React.ReactNode; variant?: "destructive"; onClick?: () => void }) {
+function Kpi({ label, value, icon, variant, onClick, sublines }: { label: string; value: number; icon?: React.ReactNode; variant?: "destructive"; onClick?: () => void; sublines?: { label: string; value: number; tone?: 'success' | 'warning' | 'destructive' }[] }) {
   return (
     <Card
       onClick={onClick}
@@ -647,6 +647,21 @@ function Kpi({ label, value, icon, variant, onClick }: { label: string; value: n
         <div className={`text-2xl font-bold mt-1 ${variant === "destructive" && value > 0 ? "text-destructive" : ""}`}>
           {value}
         </div>
+        {sublines && sublines.length > 0 && (
+          <div className="mt-2 space-y-0.5">
+            {sublines.map((s, i) => (
+              <div key={i} className="flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">{s.label}</span>
+                <span className={
+                  s.tone === 'success' ? 'font-semibold text-green-600' :
+                  s.tone === 'warning' ? 'font-semibold text-orange-600' :
+                  s.tone === 'destructive' ? 'font-semibold text-destructive' :
+                  'font-semibold'
+                }>{s.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
