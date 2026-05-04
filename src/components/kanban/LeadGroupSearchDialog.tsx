@@ -26,6 +26,13 @@ interface Participant {
   lead_email?: string | null;
   lead_personalid?: string | null;
   lead_notes?: string | null;
+  lead_field12?: string | null; // CPF
+  lead_field13?: string | null; // RG
+  lead_field14?: string | null; // Endereço
+  lead_field15?: string | null; // Bairro
+  lead_field16?: string | null; // CEP
+  source_instance?: string | null;
+  enriched_from?: string | null; // 'chat' | null
   common_groups?: Array<{ name: string; jid: string }>;
 }
 
