@@ -50,6 +50,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
   const [showLeadEdit, setShowLeadEdit] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [docStatusFilter, setDocStatusFilter] = useState<'all' | 'signed' | 'pending'>('all');
+  const [docInstanceFilter, setDocInstanceFilter] = useState<string>('all');
   const [sendingFollowup, setSendingFollowup] = useState<Set<string>>(new Set());
   // Local date filter inside the sheet — defaults to the range passed by the dashboard
   const [fromDate, setFromDate] = useState<string>(format(dateRange.from, 'yyyy-MM-dd'));
@@ -74,25 +75,82 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
 
       try {
         if (metricType === 'signed_docs') {
-          const { data } = await supabase
-            .from('zapsign_documents')
-            .select('id, document_name, status, signer_name, signer_status, lead_id, whatsapp_phone, instance_name, created_at')
+          // Fonte de verdade: Externo (Cloud está dessincronizado)
+          const { data } = await externalSupabase
+            .from('zapsign_documents' as any)
+            .select('id, document_name, status, signer_name, signer_status, lead_id, whatsapp_phone, instance_name, created_at, signed_at')
             .gte('created_at', start).lte('created_at', end)
             .order('created_at', { ascending: false });
-          
-          const leadIds = (data || []).map(d => d.lead_id).filter(Boolean);
+
+          const docs = (data || []) as any[];
+          const leadIds = docs.map((d: any) => d.lead_id).filter(Boolean);
           let leadMap: Record<string, { lead_name: string; whatsapp_group_id: string | null; acolhedor: string | null }> = {};
           if (leadIds.length > 0) {
-            const { data: leads } = await supabase
-              .from('leads')
+            const { data: leads } = await externalSupabase
+              .from('leads' as any)
               .select('id, lead_name, whatsapp_group_id, acolhedor')
               .in('id', leadIds);
             if (leads) {
-              leadMap = Object.fromEntries(leads.map(l => [l.id, { lead_name: l.lead_name, whatsapp_group_id: l.whatsapp_group_id, acolhedor: l.acolhedor }]));
+              leadMap = Object.fromEntries((leads as any[]).map((l: any) => [l.id, { lead_name: l.lead_name, whatsapp_group_id: l.whatsapp_group_id, acolhedor: l.acolhedor }]));
             }
           }
-          
-          setItems((data || []).map(d => ({ ...d, _lead: d.lead_id ? leadMap[d.lead_id] : null })));
+
+          // Fallback: docs sem instance_name → resolver via whatsapp_messages.phone
+          const phoneVariants = (raw: string): string[] => {
+            const phone = (raw || '').replace(/\D/g, '');
+            if (!phone) return [];
+            const set = new Set<string>([phone]);
+            const m = phone.match(/^(55)?(\d{2})(\d+)$/);
+            if (m) {
+              const [, cc, ddd, rest] = m;
+              const ccPart = cc || '55';
+              if (rest.length === 9 && rest.startsWith('9')) {
+                set.add(`${ccPart}${ddd}${rest.slice(1)}`); set.add(`${ddd}${rest.slice(1)}`);
+              } else if (rest.length === 8) {
+                set.add(`${ccPart}${ddd}9${rest}`); set.add(`${ddd}9${rest}`);
+              }
+              set.add(`${ddd}${rest}`);
+            }
+            return Array.from(set);
+          };
+          const resolveMap = new Map<string, string>(); // raw phone -> resolved instance
+          const docsSemInst = docs.filter((d: any) => !d.instance_name && d.whatsapp_phone);
+          if (docsSemInst.length > 0) {
+            const allPhones = Array.from(new Set(docsSemInst.flatMap((d: any) => phoneVariants(d.whatsapp_phone))));
+            if (allPhones.length > 0) {
+              const { data: msgs } = await externalSupabase
+                .from('whatsapp_messages' as any)
+                .select('phone, instance_name')
+                .in('phone', allPhones)
+                .not('instance_name', 'is', null)
+                .limit(5000);
+              const counts = new Map<string, Map<string, number>>(); // phone -> instance -> count
+              for (const r of (msgs || []) as any[]) {
+                if (!counts.has(r.phone)) counts.set(r.phone, new Map());
+                const inner = counts.get(r.phone)!;
+                inner.set(r.instance_name, (inner.get(r.instance_name) || 0) + 1);
+              }
+              for (const d of docsSemInst) {
+                const variants = phoneVariants(d.whatsapp_phone);
+                const merged = new Map<string, number>();
+                for (const v of variants) {
+                  const inner = counts.get(v);
+                  if (!inner) continue;
+                  for (const [inst, c] of inner) merged.set(inst, (merged.get(inst) || 0) + c);
+                }
+                if (merged.size > 0) {
+                  const picked = [...merged.entries()].sort((a, b) => b[1] - a[1])[0][0];
+                  resolveMap.set(d.whatsapp_phone, picked);
+                }
+              }
+            }
+          }
+
+          setItems(docs.map((d: any) => ({
+            ...d,
+            _lead: d.lead_id ? leadMap[d.lead_id] : null,
+            _resolved_instance: !d.instance_name && d.whatsapp_phone ? (resolveMap.get(d.whatsapp_phone) || null) : null,
+          })));
         } else if (metricType === 'groups') {
           const { data } = await supabase
             .from('leads')
