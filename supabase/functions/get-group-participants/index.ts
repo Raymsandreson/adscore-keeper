@@ -196,7 +196,8 @@ Deno.serve(async (req) => {
     // Filtra phones que pertencem a instâncias da org
     const { data: allInst } = await cloud
       .from("whatsapp_instances")
-      .select("owner_phone");
+      .select("owner_phone, base_url, instance_token, instance_name");
+    const allInstances = (allInst || []).filter((r: any) => r?.base_url && r?.instance_token);
     const ownerKeys = new Set(
       (allInst || [])
         .map((r: any) => digits(r.owner_phone || "").slice(-10))
@@ -227,7 +228,7 @@ Deno.serve(async (req) => {
     let groupName: string | null = null;
     let fetchedAt = new Date().toISOString();
 
-    if (cacheRow && Array.isArray(cacheRow.participants) && cacheRow.participants.length > 0 && !refresh) {
+    if (cacheRow && Array.isArray(cacheRow.participants) && cacheRow.participants.length > 0 && !refresh && hasRealPhoneParticipants(cacheRow.participants)) {
       rawParts = cacheRow.participants;
       groupName = cacheRow.group_name;
       fetchedAt = cacheRow.fetched_at;
