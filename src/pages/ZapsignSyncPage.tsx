@@ -79,11 +79,12 @@ export default function ZapsignSyncPage({ externalDateRange, externalPeriodLabel
   const [kpiSheet, setKpiSheet] = useState<OperationalMetricType | null>(null);
   const [errorsSheetOpen, setErrorsSheetOpen] = useState(false);
   const dateRange = useMemo(() => {
+    if (externalDateRange?.from && externalDateRange?.to) return externalDateRange;
     const to = new Date();
     const from = new Date();
     from.setDate(from.getDate() - 7);
     return { from, to };
-  }, []);
+  }, [externalDateRange?.from, externalDateRange?.to]);
 
   async function loadRules() {
     try {
