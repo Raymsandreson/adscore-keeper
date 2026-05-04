@@ -18,18 +18,22 @@ function digits(s: string): string {
   return String(s || "").replace(/\D/g, "");
 }
 
-async function fetchGroupParticipantsFromUazapi(baseUrl: string, token: string, groupJid: string): Promise<any[]> {
+async function fetchGroupInfoFromUazapi(baseUrl: string, token: string, groupJid: string): Promise<{ participants: any[]; name: string | null; raw: any }> {
   const res = await fetch(`${baseUrl.replace(/\/$/, "")}/group/info`, {
     method: "POST",
     headers: { "Content-Type": "application/json", token },
-    body: JSON.stringify({ groupjid: groupJid, jid: groupJid, getParticipants: true }),
+    body: JSON.stringify({ groupjid: groupJid, force: true }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`uazapi /group/info ${res.status}: ${text.slice(0, 200)}`);
   }
   const data = await res.json().catch(() => null);
-  return data?.participants || data?.Participants || data?.group?.participants || [];
+  const participants =
+    data?.Participants || data?.participants ||
+    data?.group?.Participants || data?.group?.participants || [];
+  const name = data?.Name || data?.name || data?.subject || null;
+  return { participants, name, raw: data };
 }
 
 Deno.serve(async (req) => {
