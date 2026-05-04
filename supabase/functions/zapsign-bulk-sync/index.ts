@@ -217,6 +217,19 @@ Deno.serve(async (req) => {
           }
           row.instance_name = inferredInstance;
 
+          // ---- resolve owner (created_by) via instance -> profile.default_instance_id
+          let createdByUserId: string | null = null;
+          if (inferredInstance) {
+            const { data: instRow } = await sb.from("whatsapp_instances")
+              .select("id").eq("instance_name", inferredInstance).maybeSingle();
+            if (instRow?.id) {
+              const { data: ownerProfile } = await sb.from("profiles")
+                .select("user_id").eq("default_instance_id", instRow.id).maybeSingle();
+              createdByUserId = ownerProfile?.user_id || null;
+            }
+          }
+          row.owner_user_id = createdByUserId;
+
           if (instanceFilter && (inferredInstance || "").toLowerCase() !== instanceFilter.toLowerCase()) {
             row.outcome = "filtered_instance";
             summary.push(row);
