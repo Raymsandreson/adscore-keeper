@@ -449,11 +449,12 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
 
         {/* Doc status filter tabs */}
         {metricType === 'signed_docs' && !loading && items.length > 0 && (
-          <div className="flex items-center gap-2 mt-3">
+          <>
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
             {([
               { key: 'all' as const, label: 'Todos', count: dashboardFilteredItems.length },
-              { key: 'signed' as const, label: 'Assinados', count: dashboardFilteredItems.filter(i => i.signer_status === 'signed').length },
-              { key: 'pending' as const, label: 'Pendentes', count: dashboardFilteredItems.filter(i => i.signer_status !== 'signed').length },
+              { key: 'signed' as const, label: 'Assinados', count: dashboardFilteredItems.filter(i => i.status === 'signed' || i.signer_status === 'signed').length },
+              { key: 'pending' as const, label: 'Pendentes', count: dashboardFilteredItems.filter(i => !(i.status === 'signed' || i.signer_status === 'signed')).length },
             ]).map(tab => (
               <Button
                 key={tab.key}
@@ -478,7 +479,43 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
               </Button>
             )}
           </div>
+
+          {/* Instance filter */}
+          {availableInstances.length > 0 && (
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <Radio className="h-3 w-3 text-muted-foreground" />
+              <span className="text-[10px] text-muted-foreground">Instância:</span>
+              <Button
+                variant={docInstanceFilter === 'all' ? 'default' : 'outline'}
+                size="sm"
+                className="h-6 text-[10px] px-2"
+                onClick={() => setDocInstanceFilter('all')}
+              >
+                Todas
+              </Button>
+              {availableInstances.map((inst) => {
+                const count = dashboardFilteredItems.filter((i) => {
+                  const ii = i.instance_name || i._resolved_instance;
+                  return inst === '__none__' ? !ii : ii === inst;
+                }).length;
+                return (
+                  <Button
+                    key={inst}
+                    variant={docInstanceFilter === inst ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-6 text-[10px] px-2 gap-1"
+                    onClick={() => setDocInstanceFilter(inst)}
+                  >
+                    {inst === '__none__' ? 'Sem instância' : inst}
+                    <Badge variant="secondary" className="h-3.5 px-1 text-[9px]">{count}</Badge>
+                  </Button>
+                );
+              })}
+            </div>
+          )}
+          </>
         )}
+
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
