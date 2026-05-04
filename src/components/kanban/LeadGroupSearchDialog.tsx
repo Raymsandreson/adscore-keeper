@@ -102,7 +102,8 @@ export function LeadGroupSearchDialog({
       // (group_name e contact_name podem ou não ter o mesmo emoji).
       const cleanQuery = nameQuery
         .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu, ' ')
-        .replace(/[\u200d\uFE0F]/g, ' ')
+        .replace(/\u200d/g, ' ')
+        .replace(/\uFE0F/g, ' ')
         .replace(/[^\p{L}\p{N}\s]/gu, ' ')
         .replace(/\s+/g, ' ')
         .trim();
