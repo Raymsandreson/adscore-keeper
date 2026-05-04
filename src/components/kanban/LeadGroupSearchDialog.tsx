@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Search, Users, RefreshCw } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Loader2, Search, Users, RefreshCw, Crown, Mail, IdCard, ExternalLink } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -17,6 +19,13 @@ interface FoundGroup {
 interface Participant {
   phone: string;
   raw: string;
+  is_admin?: boolean;
+  name?: string | null;
+  image?: string | null;
+  lead_email?: string | null;
+  lead_personalid?: string | null;
+  lead_notes?: string | null;
+  common_groups?: Array<{ name: string; jid: string }>;
 }
 
 interface Props {
