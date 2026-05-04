@@ -157,6 +157,7 @@ Deno.serve(async (req) => {
         {
           p_tokens: queryTokens,
           p_instance_names: search_all_instances ? null : [instance_name],
+          p_preferred_instance: instance_name,
           p_limit: 200,
         },
       );
@@ -164,7 +165,7 @@ Deno.serve(async (req) => {
         console.warn("[find-contact-groups] RPC error:", rpcErr.message);
       } else {
         for (const r of (rpcRows as any[]) || []) {
-          const score = scoreName(String(r.contact_name || ""), queryTokens);
+          // RPC já faz dedup por group_jid e prioriza p_preferred_instance
           conversationMatches.push({
             jid: r.group_jid,
             name: r.contact_name,
@@ -172,25 +173,14 @@ Deno.serve(async (req) => {
             participants_count: 0,
             instance_name: r.instance_name,
             source: "groups_index",
-            _score: score || 0.5,
+            _score: r.score ?? 0.5,
           });
         }
       }
     }
 
     if (queryTokens.length > 0 && conversationMatches.length > 0 && !force_refresh) {
-      conversationMatches.sort((a, b) => (b._score || 0) - (a._score || 0));
-      // Dedup por JID — mantém só 1 entrada por grupo, preferindo a instância do lead.
-      const preferred = String(instance_name || "").toLowerCase();
-      const byJid = new Map<string, any>();
-      for (const m of conversationMatches) {
-        const cur = byJid.get(m.jid);
-        if (!cur) { byJid.set(m.jid, m); continue; }
-        const curIsPreferred = String(cur.instance_name || "").toLowerCase() === preferred;
-        const newIsPreferred = String(m.instance_name || "").toLowerCase() === preferred;
-        if (newIsPreferred && !curIsPreferred) byJid.set(m.jid, m);
-      }
-      const deduped = Array.from(byJid.values()).map((m) => { delete m._score; return m; });
+      const deduped = conversationMatches.map((m) => { delete m._score; return m; });
       return new Response(
         JSON.stringify({
           groups: deduped,
