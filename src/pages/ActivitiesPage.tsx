@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePageState } from '@/hooks/usePageState';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToCloud, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { useLeadActivities, LeadActivity } from '@/hooks/useLeadActivities';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { useAuthContext } from '@/contexts/AuthContext';
