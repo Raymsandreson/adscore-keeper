@@ -253,11 +253,15 @@ Deno.serve(async (req) => {
     // 2) extrai phones + admin flag
     const baseList = rawParts
       .map((p: any) => {
-        const raw = String(p?.JID || p?.PhoneNumber || p?.id || p?.jid || p?.phone || p?.participant || p || "");
-        const phone = digits(raw);
-        if (!phone) return null;
-        const isAdmin = !!(p?.IsAdmin || p?.isAdmin || p?.admin || p?.IsSuperAdmin || p?.superAdmin);
-        return { phone, raw, is_admin: isAdmin };
+        const extracted = extractParticipant(p);
+        if (!extracted.phone) return null;
+        return {
+          phone: extracted.phone,
+          raw: extracted.jid || extracted.phone,
+          lid: extracted.lid,
+          display_name: extracted.display_name,
+          is_admin: extracted.is_admin,
+        };
       })
       .filter(Boolean) as Array<{ phone: string; raw: string; is_admin: boolean }>;
 
