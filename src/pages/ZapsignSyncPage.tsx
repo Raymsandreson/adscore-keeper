@@ -202,11 +202,11 @@ export default function ZapsignSyncPage() {
         {/* DASHBOARD ---- */}
         <TabsContent value="dashboard" className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <Kpi label="Docs (7d)" value={totalDocs} icon={<FileSearch className="h-4 w-4" />} />
-            <Kpi label="Contatos" value={totalLinked} icon={<Link2 className="h-4 w-4" />} />
-            <Kpi label="Leads enriq." value={totalEnriched} icon={<CheckCircle2 className="h-4 w-4" />} />
-            <Kpi label="Grupos WA" value={totalGroups} icon={<Link2 className="h-4 w-4" />} />
-            <Kpi label="Erros" value={totalErrors} icon={<AlertTriangle className="h-4 w-4" />} variant="destructive" />
+            <Kpi label="Docs (7d)" value={totalDocs} icon={<FileSearch className="h-4 w-4" />} onClick={() => setKpiSheet('signed_docs')} />
+            <Kpi label="Contatos" value={totalLinked} icon={<Link2 className="h-4 w-4" />} onClick={() => setKpiSheet('contacts')} />
+            <Kpi label="Leads enriq." value={totalEnriched} icon={<CheckCircle2 className="h-4 w-4" />} onClick={() => setKpiSheet('cases')} />
+            <Kpi label="Grupos WA" value={totalGroups} icon={<Link2 className="h-4 w-4" />} onClick={() => setKpiSheet('groups')} />
+            <Kpi label="Erros" value={totalErrors} icon={<AlertTriangle className="h-4 w-4" />} variant="destructive" onClick={() => setErrorsSheetOpen(true)} />
           </div>
 
           <Card>
