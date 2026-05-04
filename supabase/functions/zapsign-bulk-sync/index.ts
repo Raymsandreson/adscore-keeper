@@ -1,15 +1,17 @@
 // zapsign-bulk-sync
 // Pagina /api/v1/docs/?include_signers=true, e por documento:
-//  1) Detalha (GET /docs/{token}/) -> answers + signed_file
+//  1) Detalha (GET /docs/{token}/) -> answers + signed_file + template
 //  2) Match contato por telefone (cria se não existir)
 //  3) Extrai answers -> contacts + leads.lead_field*  (CPF/RG/CEP/endereço/bairro/email)
-//  4) Upsert em zapsign_documents (com signed_file_url)
+//  4) Upsert em zapsign_documents (template_id/name, instance_name inferido, signed_file_url)
 //  5) Cruza phone com whatsapp_groups_cache.participants -> popula whatsapp_group_id
+//  6) Aplica zapsign_funnel_rules (cria lead em board/stage configurado p/ status/template/instance)
 //
 // Body:
 //  { dry_run?: boolean, mode?: 'incremental'|'restart'|'window',
 //    max_pages?: number (default 5), date_from?: 'YYYY-MM-DD', date_to?: 'YYYY-MM-DD',
-//    status?: 'signed'|'pending'|'refused' }
+//    status?: 'signed'|'pending'|'refused',
+//    template_id?: string, instance_name?: string, apply_funnel_rules?: boolean }
 // Retorna 200 sempre (success: true|false).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -21,7 +23,6 @@ const corsHeaders = {
 };
 
 const ZAPSIGN_API = "https://api.zapsign.com.br/api/v1";
-const PAGE_SIZE_HINT = 25;
 
 function digits(s?: string | null): string {
   return String(s || "").replace(/\D/g, "");
@@ -35,7 +36,6 @@ function normVar(s: string): string {
     .toUpperCase().replace(/[^A-Z0-9]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
 }
 
-// Mapeia answers ZapSign -> coluna de contacts/lead
 function mapAnswerToFields(variable: string, value: string) {
   const v = normVar(variable);
   const out: { contact?: Record<string, string>; lead?: Record<string, string> } = {};
@@ -78,17 +78,33 @@ async function zapsignGet(path: string, token: string): Promise<any> {
   return r.json();
 }
 
+function ruleMatches(rule: any, ctx: { status?: string; template_id?: string | null; template_name?: string | null; instance_name?: string | null }): boolean {
+  if (rule.status_filter && rule.status_filter !== ctx.status) return false;
+  if (rule.template_id && rule.template_id !== ctx.template_id) return false;
+  if (rule.template_name_pattern && ctx.template_name) {
+    const pat = String(rule.template_name_pattern).toLowerCase();
+    if (!String(ctx.template_name).toLowerCase().includes(pat)) return false;
+  } else if (rule.template_name_pattern && !ctx.template_name) {
+    return false;
+  }
+  if (rule.instance_name && String(rule.instance_name).toLowerCase() !== String(ctx.instance_name || "").toLowerCase()) return false;
+  return true;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const body = await req.json().catch(() => ({}));
     const dryRun: boolean = body.dry_run === true;
-    const mode: string = body.mode || "incremental"; // incremental | restart | window
+    const mode: string = body.mode || "incremental";
     const maxPages: number = Math.max(1, Math.min(20, Number(body.max_pages) || 5));
     const dateFrom: string | undefined = body.date_from;
     const dateTo: string | undefined = body.date_to;
     const statusFilter: string | undefined = body.status;
+    const templateFilter: string | undefined = body.template_id;
+    const instanceFilter: string | undefined = body.instance_name;
+    const applyFunnelRules: boolean = body.apply_funnel_rules !== false;
 
     const ZAPSIGN_TOKEN = (Deno.env.get("ZAPSIGN_API_TOKEN") || "").trim();
     const EXT_URL = (Deno.env.get("EXTERNAL_SUPABASE_URL") || "").trim();
@@ -104,6 +120,14 @@ Deno.serve(async (req) => {
     let startPage = mode === "restart" ? 1 : Math.max(1, stateRow?.last_page || 1);
     if (mode === "window") startPage = 1;
 
+    // funnel rules
+    let funnelRules: any[] = [];
+    if (applyFunnelRules) {
+      const { data: rulesData } = await sb.from("zapsign_funnel_rules")
+        .select("*").eq("active", true).order("priority", { ascending: true });
+      funnelRules = rulesData || [];
+    }
+
     // run record
     let runId: string | null = null;
     if (!dryRun) {
@@ -115,7 +139,7 @@ Deno.serve(async (req) => {
 
     const counts: Record<string, number> = {
       pages: 0, docs: 0, contacts_created: 0, contacts_updated: 0,
-      leads_enriched: 0, docs_upserted: 0, groups_linked: 0,
+      leads_enriched: 0, leads_created: 0, docs_upserted: 0, groups_linked: 0,
       skipped_no_phone: 0, errors: 0,
     };
     const errors: any[] = [];
@@ -124,7 +148,7 @@ Deno.serve(async (req) => {
     let page = startPage;
     let lastDocToken: string | null = stateRow?.last_doc_token || null;
 
-    pages: for (let i = 0; i < maxPages; i++) {
+    for (let i = 0; i < maxPages; i++) {
       const qs = new URLSearchParams({ page: String(page), include_signers: "true", sort_order: "desc" });
       if (dateFrom) qs.set("created_from", dateFrom);
       if (dateTo) qs.set("created_to", dateTo);
@@ -147,19 +171,57 @@ Deno.serve(async (req) => {
         const row: any = { doc_token: docToken, doc_name: doc.name, status: doc.status, signed_file: doc.signed_file };
 
         try {
-          // detail (only if has signers w/ phone or signed)
+          // detail (always, to get template + answers + signed_file)
           let detail = doc;
           let signers = doc.signers || [];
-          if (!signers.length || !signers[0]?.phone_number || !doc.signed_file) {
-            try { detail = await zapsignGet(`/docs/${docToken}/`, ZAPSIGN_TOKEN); signers = detail.signers || []; }
-            catch (e: any) { errors.push({ doc: docToken, stage: "detail", error: e.message }); }
+          try {
+            detail = await zapsignGet(`/docs/${docToken}/`, ZAPSIGN_TOKEN);
+            signers = detail.signers || signers;
+          } catch (e: any) {
+            errors.push({ doc: docToken, stage: "detail", error: e.message });
           }
           const answers: Array<{ variable: string; value: string }> = detail.answers || [];
           const signer = signers[0] || {};
           const signerPhone = `${signer.phone_country || ""}${signer.phone_number || ""}`;
           const signerName = signer.name || doc.name || "";
+          const templateId: string | null = detail.template?.id || detail.template_id || null;
+          const templateName: string | null = detail.template?.name || detail.template_name || null;
+          const docCreatedAt: string | null = detail.created_at || doc.created_at || null;
+
+          // filters (template/instance applied here too, since ZapSign doesn't filter)
+          if (templateFilter && templateFilter !== templateId) {
+            row.outcome = "filtered_template";
+            summary.push(row);
+            continue;
+          }
+
           row.signer_name = signerName;
           row.signer_phone = signerPhone || null;
+          row.template_id = templateId;
+          row.template_name = templateName;
+
+          // ---- infer instance via whatsapp_messages window
+          let inferredInstance: string | null = null;
+          const phoneKeyForInstance = matchKey(signerPhone);
+          if (phoneKeyForInstance && docCreatedAt) {
+            const dt = new Date(docCreatedAt);
+            const from = new Date(dt.getTime() - 7 * 86400000).toISOString();
+            const to = new Date(dt.getTime() + 7 * 86400000).toISOString();
+            const { data: wmsgs } = await sb.from("whatsapp_messages")
+              .select("instance_name")
+              .ilike("phone", `%${phoneKeyForInstance}`)
+              .gte("created_at", from).lte("created_at", to)
+              .limit(50);
+            const set = new Set((wmsgs || []).map((m: any) => m.instance_name).filter(Boolean));
+            if (set.size === 1) inferredInstance = [...set][0] as string;
+          }
+          row.instance_name = inferredInstance;
+
+          if (instanceFilter && (inferredInstance || "").toLowerCase() !== instanceFilter.toLowerCase()) {
+            row.outcome = "filtered_instance";
+            summary.push(row);
+            continue;
+          }
 
           const key = matchKey(signerPhone);
           let contactId: string | null = null;
@@ -169,9 +231,7 @@ Deno.serve(async (req) => {
             counts.skipped_no_phone++;
             row.outcome = "no_phone";
           } else {
-            // ---- contacts match
             const phoneNorm = digits(signerPhone);
-            // find existing
             const { data: existing } = await sb.from("contacts")
               .select("id, lead_id, full_name, cpf, rg, street, neighborhood, cep, email, whatsapp_group_id, deleted_at")
               .or(`phone.ilike.%${key}`)
@@ -181,7 +241,6 @@ Deno.serve(async (req) => {
             if (match) contactId = match.id;
             leadId = match?.lead_id || null;
 
-            // ---- merge enriched fields
             const contactPatch: Record<string, any> = {};
             const leadPatch: Record<string, any> = {};
             for (const ans of answers) {
@@ -193,7 +252,6 @@ Deno.serve(async (req) => {
               if (m.lead) Object.assign(leadPatch, m.lead);
             }
 
-            // signer email/cpf as fallback
             if (signer.email && !match?.email) contactPatch.email = signer.email;
             if (signer.cpf) {
               const cpfD = digits(signer.cpf);
@@ -221,7 +279,7 @@ Deno.serve(async (req) => {
               else if (Object.keys(contactPatch).length > 0) counts.contacts_updated++;
             }
 
-            // ---- enrich lead (only if linked)
+            // ---- enrich existing lead
             if (leadId && Object.keys(leadPatch).length > 0 && !dryRun) {
               const { data: lead } = await sb.from("leads")
                 .select("cpf, rg, cep, street, neighborhood, lead_field12, lead_field13, lead_field14, lead_field15, lead_field16, lead_email, city, state")
@@ -239,7 +297,7 @@ Deno.serve(async (req) => {
               }
             }
 
-            // ---- whatsapp group lookup (last 10 digits inside participants jsonb)
+            // ---- whatsapp group lookup
             if (!match?.whatsapp_group_id) {
               const { data: groups } = await sb.from("whatsapp_groups_cache")
                 .select("group_jid, instance_name, participants")
@@ -264,6 +322,47 @@ Deno.serve(async (req) => {
             } else {
               row.group_jid = match.whatsapp_group_id;
             }
+
+            // ---- apply funnel rules
+            if (applyFunnelRules && contactId && funnelRules.length > 0) {
+              const ctx = { status: doc.status, template_id: templateId, template_name: templateName, instance_name: inferredInstance };
+              const matchedRule = funnelRules.find((r) => ruleMatches(r, ctx));
+              if (matchedRule) {
+                // skip if contact already has lead in target board (or in any, depending on flag)
+                let shouldCreate = true;
+                if (matchedRule.skip_if_contact_has_lead) {
+                  const { data: existingLead } = await sb.from("leads")
+                    .select("id").eq("board_id", matchedRule.board_id)
+                    .or(`contact_id.eq.${contactId},lead_phone.ilike.%${key}`)
+                    .limit(1).maybeSingle();
+                  if (existingLead) shouldCreate = false;
+                }
+                if (shouldCreate && !dryRun) {
+                  const newLead: any = {
+                    lead_name: signerName || "Lead ZapSign",
+                    lead_phone: digits(signerPhone),
+                    board_id: matchedRule.board_id,
+                    status: matchedRule.stage_id,
+                    contact_id: contactId,
+                    source: "zapsign_funnel_rule",
+                    lead_status: "active",
+                  };
+                  if (matchedRule.inherit_lead_fields) Object.assign(newLead, leadPatch);
+                  const { data: createdLead, error: lcerr } = await sb.from("leads")
+                    .insert(newLead).select("id").single();
+                  if (lcerr) errors.push({ doc: docToken, stage: "lead_create_rule", error: lcerr.message, rule: matchedRule.name });
+                  else {
+                    counts.leads_created++;
+                    row.created_lead_id = createdLead?.id;
+                    row.applied_rule = matchedRule.name;
+                    if (createdLead?.id && !leadId) leadId = createdLead.id;
+                  }
+                } else if (shouldCreate && dryRun) {
+                  counts.leads_created++;
+                  row.applied_rule = matchedRule.name + " (dry)";
+                }
+              }
+            }
           }
 
           // ---- upsert zapsign_documents
@@ -282,9 +381,11 @@ Deno.serve(async (req) => {
               signer_status: signer?.status || null,
               signed_at: doc.status === "signed" ? (signer?.signed_at || new Date().toISOString()) : null,
               template_data: { answers },
+              template_id: templateId,
+              template_name: templateName,
               contact_id: contactId,
               lead_id: leadId,
-              instance_name: null,
+              instance_name: inferredInstance,
               sent_via_whatsapp: false,
               whatsapp_phone: digits(signerPhone) || null,
             };
@@ -310,7 +411,6 @@ Deno.serve(async (req) => {
       page++;
     }
 
-    // update checkpoint
     if (!dryRun) {
       await sb.from("zapsign_sync_state").update({
         last_page: mode === "window" ? (stateRow?.last_page || 1) : page,
@@ -325,6 +425,7 @@ Deno.serve(async (req) => {
           to_page: page - 1,
           pages_scanned: counts.pages,
           docs_scanned: counts.docs,
+          leads_created: counts.leads_created,
           counts, errors: errors.slice(0, 200),
           status: "done",
         }).eq("id", runId);
