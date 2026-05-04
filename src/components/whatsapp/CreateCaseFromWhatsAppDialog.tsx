@@ -259,7 +259,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
   const { nuclei, loading: nucleiLoading } = useSpecializedNuclei();
   const { createCase } = useLegalCases();
   const { boards } = useKanbanBoards();
-  const funnelBoards = useMemo(() => boards.filter(b => b.board_type === 'funnel'), [boards]);
+  const selectableBoards = useMemo(() => boards.filter(b => Array.isArray(b.stages) && b.stages.length > 0), [boards]);
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [duplicates, setDuplicates] = useState<DuplicateCase[]>([]);
@@ -314,7 +314,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       setDuplicates([]);
       setShowDuplicateWarning(false);
       setSelectedPredefinedProcesses(new Set());
-      const defaultBoard = funnelBoards.find(b => b.is_default) || funnelBoards[0];
+      const defaultBoard = selectableBoards.find(b => b.is_default) || selectableBoards[0];
       setSelectedBoardId(defaultBoard?.id || '');
       hasAutoExtracted.current = false;
 
@@ -331,13 +331,13 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       }
     }
     previousOpenRef.current = open;
-  }, [open, leadId, leadName, contactName, funnelBoards]);
+  }, [open, leadId, leadName, contactName, selectableBoards]);
 
   useEffect(() => {
-    if (!open || selectedBoardId || funnelBoards.length === 0) return;
-    const defaultBoard = funnelBoards.find(b => b.is_default) || funnelBoards[0];
+    if (!open || selectedBoardId || selectableBoards.length === 0) return;
+    const defaultBoard = selectableBoards.find(b => b.is_default) || selectableBoards[0];
     if (defaultBoard) setSelectedBoardId(defaultBoard.id);
-  }, [open, funnelBoards, selectedBoardId]);
+  }, [open, selectableBoards, selectedBoardId]);
 
   // Auto-trigger AI extraction when dialog opens with phone+instance or messages
   const canExtract = !!(contactPhone && instanceName) || !!(messages?.length);
@@ -552,7 +552,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
           return;
         }
 
-        const board = funnelBoards.find(b => b.id === selectedBoardId);
+        const board = selectableBoards.find(b => b.id === selectedBoardId);
         if (!board) {
           toast.error('Selecione um funil válido para o lead');
           setSaving(false);
@@ -845,7 +845,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
                     <SelectValue placeholder="Selecione o funil" />
                   </SelectTrigger>
                   <SelectContent>
-                    {funnelBoards.map(b => (
+                    {selectableBoards.map(b => (
                       <SelectItem key={b.id} value={b.id}>
                         <div className="flex items-center gap-2">
                           <span className="h-2 w-2 rounded-full" style={{ backgroundColor: b.color }} />
