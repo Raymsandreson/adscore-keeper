@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { externalSupabase, ensureExternalSession } from "@/integrations/supabase/external-client";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Play, RefreshCw, FileSearch, Target, AlertTriangle, CheckCircle2, Link2 } from "lucide-react";
 import { toast } from "sonner";
+import { OperationalDetailSheet, type OperationalMetricType } from "@/components/whatsapp/agent-monitor/components/OperationalDetailSheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface SyncState {
   last_page: number;
