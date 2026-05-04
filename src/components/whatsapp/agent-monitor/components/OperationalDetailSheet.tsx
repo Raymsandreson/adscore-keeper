@@ -9,8 +9,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { startOfDay, endOfDay, format, parseISO } from 'date-fns';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { toast } from 'sonner';
 import type { Lead } from '@/hooks/useLeads';
+import type { Contact } from '@/hooks/useContacts';
 
 export type OperationalMetricType = 'signed_docs' | 'groups' | 'cases' | 'processes' | 'contacts';
 
@@ -45,6 +47,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
   const [items, setItems] = useState<any[]>([]);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
+  const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [docStatusFilter, setDocStatusFilter] = useState<'all' | 'signed' | 'pending'>('all');
   const [sendingFollowup, setSendingFollowup] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
@@ -222,6 +225,12 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
       setEditingLead(data as Lead);
       setShowLeadEdit(true);
     }
+  };
+
+  const handleOpenContact = async (contactId: string) => {
+    if (!contactId) return;
+    const { data } = await supabase.from('contacts').select('*').eq('id', contactId).maybeSingle();
+    if (data) setEditingContact(data as Contact);
   };
 
   const handleOpenChat = (phone: string, instanceName?: string, contactName?: string) => {
