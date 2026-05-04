@@ -536,10 +536,13 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
                     <span>{item.signer_name || '—'}</span>
                     <span>{format(parseISO(item.created_at), 'dd/MM HH:mm')}</span>
                   </div>
-                  {item.instance_name && (
+                  {(item.instance_name || item._resolved_instance) && (
                     <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
                       <Radio className="h-2.5 w-2.5" />
-                      <span>{item.instance_name}</span>
+                      <span>{item.instance_name || item._resolved_instance}</span>
+                      {!item.instance_name && item._resolved_instance && (
+                        <Badge variant="outline" className="h-3.5 px-1 text-[8px] ml-1">via chat</Badge>
+                      )}
                     </div>
                   )}
                   <div className="flex items-center gap-1.5 pt-1 flex-wrap">
