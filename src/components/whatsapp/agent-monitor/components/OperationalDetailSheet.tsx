@@ -262,19 +262,37 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
     });
   }, [items, filters, filteredLeadIds, hasActiveFilter, metricType]);
 
-  // Then apply doc status filter on top of dashboard-filtered items
+  // List of available instances inside the sheet (combining real + resolved-via-chat)
+  const availableInstances = useMemo(() => {
+    if (metricType !== 'signed_docs') return [] as string[];
+    const set = new Set<string>();
+    let hasNone = false;
+    for (const it of dashboardFilteredItems) {
+      const inst = it.instance_name || it._resolved_instance;
+      if (inst) set.add(inst); else hasNone = true;
+    }
+    const arr = Array.from(set).sort((a, b) => a.localeCompare(b));
+    return hasNone ? [...arr, '__none__'] : arr;
+  }, [dashboardFilteredItems, metricType]);
+
+  // Apply doc status + instance filter on top of dashboard-filtered items
   const filteredItems = useMemo(() => {
+    let list = dashboardFilteredItems;
     if (metricType === 'signed_docs') {
-      if (docStatusFilter === 'signed') {
-        return dashboardFilteredItems.filter(item => item.signer_status === 'signed');
-      }
-      if (docStatusFilter === 'pending') {
-        return dashboardFilteredItems.filter(item => item.signer_status !== 'signed');
+      const isSigned = (i: any) => i.status === 'signed' || i.signer_status === 'signed';
+      if (docStatusFilter === 'signed') list = list.filter(isSigned);
+      else if (docStatusFilter === 'pending') list = list.filter((i) => !isSigned(i));
+
+      if (docInstanceFilter !== 'all') {
+        list = list.filter((i) => {
+          const inst = i.instance_name || i._resolved_instance;
+          if (docInstanceFilter === '__none__') return !inst;
+          return inst === docInstanceFilter;
+        });
       }
     }
-
-    return dashboardFilteredItems;
-  }, [dashboardFilteredItems, metricType, docStatusFilter]);
+    return list;
+  }, [dashboardFilteredItems, metricType, docStatusFilter, docInstanceFilter]);
 
   const { title, icon: Icon, color } = config[metricType];
 
