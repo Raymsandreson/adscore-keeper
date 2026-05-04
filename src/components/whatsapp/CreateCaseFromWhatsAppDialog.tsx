@@ -665,6 +665,8 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
                 await externalSupabase.from('lead_activities').insert({
                   lead_id: finalLeadId || null,
                   lead_name: title.trim(),
+                  case_id: result.id,
+                  case_title: title.trim(),
                   title: `Dar andamento - ${proc.title}`,
                   description: `Atividade criada automaticamente para o processo: ${proc.title}`,
                   activity_type: 'tarefa',
@@ -675,6 +677,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
                   created_by: extCreatedBy,
                   deadline: new Date().toISOString().slice(0, 10),
                   process_id: savedProcess.id,
+                  process_title: proc.title,
                 } as any);
               } catch (actErr) {
                 console.warn(`Error creating activity for process "${proc.title}":`, actErr);
