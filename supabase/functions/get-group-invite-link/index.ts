@@ -13,9 +13,10 @@ const RequestSchema = z.object({
   group_jid: z
     .string({ required_error: 'group_jid is required' })
     .trim()
-    .min(15, 'group_jid is too short')
-    .max(64, 'group_jid is too long')
-    .regex(/^(\d{15,}|\d{15,}@g\.us)$/, 'group_jid must be a numeric WhatsApp group ID (optionally suffixed with @g.us)'),
+    .min(10, 'group_jid is too short')
+    .max(80, 'group_jid is too long')
+    // Aceita: dígitos puros (>=10), formato novo `<digitos>@g.us`, ou legacy `<digitos>-<digitos>@g.us`.
+    .regex(/^(\d{10,}(-\d{5,})?)(@g\.us)?$/, 'group_jid must be a WhatsApp group ID (digits, optionally with -timestamp and @g.us)'),
   lead_id: z.string().uuid('lead_id must be a UUID').optional().nullable(),
   instance_id: z.string().uuid('instance_id must be a UUID').optional().nullable(),
   get_invite_link: z.boolean().optional(),
