@@ -383,6 +383,107 @@ export default function ZapsignSyncPage() {
         </TabsContent>
 
         {/* HISTORY ---- */}
+        {/* RULES ---- */}
+        <TabsContent value="rules" className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Regras de criação de Lead por Funil</CardTitle>
+                <CardDescription>
+                  Quando um documento bate com filtros (status, template, instância), cria um lead no funil/etapa configurado.
+                </CardDescription>
+              </div>
+              <Button size="sm" onClick={() => setEditingRule({ name: "", active: true, priority: 100, status_filter: "signed", board_id: "", stage_id: "", skip_if_contact_has_lead: true, inherit_lead_fields: true })}>
+                Nova regra
+              </Button>
+            </CardHeader>
+            <CardContent className="overflow-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b">
+                  <th className="text-left p-2">Nome</th>
+                  <th className="text-left p-2">Prio</th>
+                  <th className="text-left p-2">Status</th>
+                  <th className="text-left p-2">Template</th>
+                  <th className="text-left p-2">Instância</th>
+                  <th className="text-left p-2">Funil</th>
+                  <th className="text-left p-2">Ativa</th>
+                  <th></th>
+                </tr></thead>
+                <tbody>
+                  {rules.map((r) => {
+                    const board = boards.find((b) => b.id === r.board_id);
+                    return (
+                      <tr key={r.id} className="border-b hover:bg-muted/40">
+                        <td className="p-2">{r.name}</td>
+                        <td className="p-2">{r.priority}</td>
+                        <td className="p-2">{r.status_filter || "—"}</td>
+                        <td className="p-2 text-xs">{r.template_id || r.template_name_pattern || "—"}</td>
+                        <td className="p-2">{r.instance_name || "—"}</td>
+                        <td className="p-2">{board?.name || r.board_id?.slice(0, 8)}</td>
+                        <td className="p-2"><Badge variant={r.active ? "default" : "outline"}>{r.active ? "sim" : "não"}</Badge></td>
+                        <td className="p-2 text-right">
+                          <Button size="sm" variant="ghost" onClick={() => setEditingRule(r)}>Editar</Button>
+                          <Button size="sm" variant="ghost" onClick={() => deleteRule(r.id)}>X</Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {rules.length === 0 && (
+                    <tr><td colSpan={8} className="p-4 text-center text-muted-foreground">Nenhuma regra cadastrada</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+
+          {editingRule && (
+            <Card className="border-primary">
+              <CardHeader>
+                <CardTitle>{editingRule.id ? "Editar regra" : "Nova regra"}</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div><Label>Nome</Label><Input value={editingRule.name || ""} onChange={(e) => setEditingRule({ ...editingRule, name: e.target.value })} /></div>
+                <div><Label>Prioridade</Label><Input type="number" value={editingRule.priority || 100} onChange={(e) => setEditingRule({ ...editingRule, priority: +e.target.value })} /></div>
+                <div>
+                  <Label>Status do doc</Label>
+                  <select className="w-full border rounded px-2 py-2 text-sm bg-background" value={editingRule.status_filter || ""} onChange={(e) => setEditingRule({ ...editingRule, status_filter: e.target.value || null })}>
+                    <option value="">qualquer</option>
+                    <option value="signed">signed</option>
+                    <option value="pending">pending</option>
+                    <option value="refused">refused</option>
+                  </select>
+                </div>
+                <div><Label>Template ID</Label><Input value={editingRule.template_id || ""} onChange={(e) => setEditingRule({ ...editingRule, template_id: e.target.value || null })} /></div>
+                <div><Label>Template nome contém</Label><Input value={editingRule.template_name_pattern || ""} onChange={(e) => setEditingRule({ ...editingRule, template_name_pattern: e.target.value || null })} /></div>
+                <div><Label>Instância (nome)</Label><Input value={editingRule.instance_name || ""} onChange={(e) => setEditingRule({ ...editingRule, instance_name: e.target.value || null })} /></div>
+                <div>
+                  <Label>Funil (board)</Label>
+                  <select className="w-full border rounded px-2 py-2 text-sm bg-background" value={editingRule.board_id || ""} onChange={(e) => setEditingRule({ ...editingRule, board_id: e.target.value, stage_id: "" })}>
+                    <option value="">selecione...</option>
+                    {boards.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label>Etapa</Label>
+                  <select className="w-full border rounded px-2 py-2 text-sm bg-background" value={editingRule.stage_id || ""} onChange={(e) => setEditingRule({ ...editingRule, stage_id: e.target.value })}>
+                    <option value="">selecione...</option>
+                    {(boards.find((b) => b.id === editingRule.board_id)?.stages || []).map((s: any) => (
+                      <option key={s.id} value={s.id}>{s.name || s.title || s.id}</option>
+                    ))}
+                  </select>
+                </div>
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editingRule.active !== false} onChange={(e) => setEditingRule({ ...editingRule, active: e.target.checked })} /> Ativa</label>
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editingRule.skip_if_contact_has_lead !== false} onChange={(e) => setEditingRule({ ...editingRule, skip_if_contact_has_lead: e.target.checked })} /> Pular se contato já tem lead nesse funil</label>
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editingRule.inherit_lead_fields !== false} onChange={(e) => setEditingRule({ ...editingRule, inherit_lead_fields: e.target.checked })} /> Herdar campos extraídos (CPF/RG/...)</label>
+                <div className="md:col-span-2 flex gap-2 justify-end">
+                  <Button variant="outline" onClick={() => setEditingRule(null)}>Cancelar</Button>
+                  <Button onClick={() => saveRule(editingRule)} disabled={!editingRule.name || !editingRule.board_id || !editingRule.stage_id}>Salvar</Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
         <TabsContent value="history">
           <Card>
             <CardHeader>
