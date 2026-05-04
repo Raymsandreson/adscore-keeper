@@ -48,9 +48,9 @@ Deno.serve(async (req) => {
       const ph = normalizePhone(String(p?.phone || ""));
       if (ph) detailsByPhone.set(ph, p);
     });
-    if (!lead_id || !group_jid || phones.length === 0) {
+    if (!group_jid || phones.length === 0 || (!syncOnly && !lead_id)) {
       return new Response(
-        JSON.stringify({ success: false, error: "lead_id, group_jid and non-empty phones[] are required" }),
+        JSON.stringify({ success: false, error: "group_jid + phones[] (and lead_id unless sync_only) are required" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
