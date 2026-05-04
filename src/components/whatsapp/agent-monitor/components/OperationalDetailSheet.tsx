@@ -330,6 +330,47 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
           </SheetTitle>
         </SheetHeader>
 
+        {/* Date range filter */}
+        <div className="flex items-center gap-2 mt-3 flex-wrap">
+          <CalendarRange className="h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            type="date"
+            value={fromDate}
+            max={toDate || undefined}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="h-7 text-xs w-[140px]"
+          />
+          <span className="text-xs text-muted-foreground">até</span>
+          <Input
+            type="date"
+            value={toDate}
+            min={fromDate || undefined}
+            onChange={(e) => setToDate(e.target.value)}
+            className="h-7 text-xs w-[140px]"
+          />
+          {[
+            { label: 'Hoje', days: 0 },
+            { label: '7d', days: 6 },
+            { label: '30d', days: 29 },
+            { label: '90d', days: 89 },
+          ].map(p => (
+            <Button
+              key={p.label}
+              variant="outline"
+              size="sm"
+              className="h-7 text-[10px] px-2"
+              onClick={() => {
+                const to = new Date();
+                const from = subDays(to, p.days);
+                setFromDate(format(from, 'yyyy-MM-dd'));
+                setToDate(format(to, 'yyyy-MM-dd'));
+              }}
+            >
+              {p.label}
+            </Button>
+          ))}
+        </div>
+
         {/* Doc status filter tabs */}
         {metricType === 'signed_docs' && !loading && items.length > 0 && (
           <div className="flex items-center gap-2 mt-3">
