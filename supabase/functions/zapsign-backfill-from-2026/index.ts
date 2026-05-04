@@ -217,6 +217,7 @@ Deno.serve(async (req) => {
 
     // ---- Pré-resolve acolhedor (dono da instância)
     let acolhedor: string | null = null;
+    let createdByUserId: string | null = null;
     {
       const { data: instRow } = await cloud
         .from("whatsapp_instances")
@@ -230,6 +231,7 @@ Deno.serve(async (req) => {
           .eq("default_instance_id", instRow.id)
           .maybeSingle();
         acolhedor = ownerProfile?.full_name || ownerProfile?.email || (instRow as any).owner_name || null;
+        createdByUserId = ownerProfile?.user_id || null;
       }
     }
 
@@ -340,6 +342,7 @@ Deno.serve(async (req) => {
               acolhedor,
               action_source: "system",
               action_source_detail: "zapsign_backfill",
+              created_by: createdByUserId,
             };
             const { data: newLead, error: insErr } = await ext
               .from("leads")
@@ -373,6 +376,7 @@ Deno.serve(async (req) => {
             signer_status: signer.status || null,
             signed_at: signer.signed_at || null,
             instance_name: targetInstanceName,
+            created_by: createdByUserId,
           },
           { onConflict: "doc_token" },
         );
@@ -546,6 +550,8 @@ Deno.serve(async (req) => {
                   acolhedor,
                   action_source: "system",
                   action_source_detail: "zapsign_backfill",
+                  created_by: createdByUserId,
+                  assigned_to: createdByUserId,
                 })
                 .select("id")
                 .single();
