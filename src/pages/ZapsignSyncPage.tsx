@@ -48,7 +48,14 @@ interface RunResult {
 
 const TARGET_LINK_RATE = 95;
 
-export default function ZapsignSyncPage() {
+interface ZapsignSyncPageProps {
+  /** Quando fornecido (ex.: vindo do Monitor de IA), sobrescreve o período interno (default 7d). */
+  externalDateRange?: { from: Date; to: Date };
+  /** Rótulo do período (ex.: "hoje", "7d", "30d"). Usado no label dos KPIs. */
+  externalPeriodLabel?: string;
+}
+
+export default function ZapsignSyncPage({ externalDateRange, externalPeriodLabel }: ZapsignSyncPageProps = {}) {
   const [tab, setTab] = useState("dashboard");
   const [state, setState] = useState<SyncState | null>(null);
   const [runs, setRuns] = useState<SyncRun[]>([]);
