@@ -857,6 +857,8 @@ export function AccidentDataExtractor({
                   placeholder="https://g1.globo.com/... ou https://instagram.com/p/..."
                   value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
+                  className="w-full min-w-0 truncate text-ellipsis"
+                  title={urlInput}
                 />
                 {urlIsSocial ? (
                   <p className="text-xs text-primary mt-1 flex items-center gap-1">
