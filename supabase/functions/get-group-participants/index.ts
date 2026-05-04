@@ -25,6 +25,73 @@ function digits(s: string): string {
   return String(s || "").replace(/\D/g, "");
 }
 
+function firstText(...values: any[]): string | null {
+  for (const v of values) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  }
+  return null;
+}
+
+function phoneFromPhoneField(value: any): string {
+  const d = digits(String(value || ""));
+  return d.length >= 8 && d.length <= 15 ? d : "";
+}
+
+function phoneFromJid(value: any): string {
+  const s = String(value || "");
+  if (!s || /@lid\b|@g\.us\b/i.test(s)) return "";
+  const d = digits(s);
+  if (!d) return "";
+  if (/@s\.whatsapp\.net\b/i.test(s)) return d.length >= 8 && d.length <= 15 ? d : "";
+  // Bare 14–16 digit IDs from @lid caches were being shown as phones.
+  // For bare values, accept BR-like numbers; otherwise require a real WhatsApp phone JID.
+  if (d.startsWith("55") && d.length >= 12 && d.length <= 13) return d;
+  if (d.length >= 8 && d.length <= 11) return d;
+  return "";
+}
+
+function extractParticipant(p: any) {
+  const phone =
+    phoneFromPhoneField(firstText(
+      p?.PhoneNumber,
+      p?.phoneNumber,
+      p?.Phone,
+      p?.phone,
+      p?.Number,
+      p?.number,
+      p?.participantPn,
+      p?.sender_pn,
+      p?.Contact?.PhoneNumber,
+      p?.contact?.phone,
+    )) ||
+    phoneFromJid(firstText(p?.JID, p?.jid, p?.id, p?.participant, typeof p === "string" ? p : null));
+  const jid = firstText(p?.JID, p?.jid, p?.id, p?.participant, typeof p === "string" ? p : null);
+  const lid = firstText(p?.LID, p?.lid, jid && /@lid\b/i.test(jid) ? jid : null);
+  const display_name = firstText(
+    p?.DisplayName,
+    p?.displayName,
+    p?.Name,
+    p?.name,
+    p?.PushName,
+    p?.pushName,
+    p?.ContactName,
+    p?.contactName,
+    p?.NotifyName,
+    p?.notifyName,
+    p?.VerifiedName,
+    p?.verifiedName,
+    p?.Contact?.Name,
+    p?.contact?.name,
+  );
+  const is_admin = !!(p?.IsAdmin || p?.isAdmin || p?.admin || p?.IsSuperAdmin || p?.superAdmin);
+  return { phone, jid, lid, display_name, is_admin };
+}
+
+function hasRealPhoneParticipants(list: any[]): boolean {
+  return list.some((p) => !!extractParticipant(p).phone);
+}
+
 async function fetchGroupInfoFromUazapi(baseUrl: string, token: string, groupJid: string) {
   const res = await fetch(`${baseUrl.replace(/\/$/, "")}/group/info`, {
     method: "POST",
@@ -74,6 +141,21 @@ function pickName(d: any): string | null {
     d?.name ||
     null
   );
+}
+
+async function fetchChatDetailsAcrossInstances(instances: any[], preferredName: string, number: string) {
+  const ordered = [
+    ...instances.filter((i) => String(i.instance_name || "").toLowerCase() === preferredName.toLowerCase()),
+    ...instances.filter((i) => String(i.instance_name || "").toLowerCase() !== preferredName.toLowerCase()),
+  ].filter((i) => i?.base_url && i?.instance_token);
+
+  for (const inst of ordered) {
+    const details = await fetchChatDetails(inst.base_url, inst.instance_token, number);
+    if (details && (pickName(details) || details?.image || details?.imagePreview || details?.lead_email || details?.common_groups)) {
+      return { details, source_instance: inst.instance_name };
+    }
+  }
+  return null;
 }
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
