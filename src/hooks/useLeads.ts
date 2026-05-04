@@ -402,7 +402,7 @@ export const useLeads = (adAccountId?: string) => {
       
       // Track who updated
       if (user?.id) {
-        timestampUpdates.updated_by = user.id;
+        timestampUpdates.updated_by = await remapToExternal(user.id);
       }
       if (editSummary) {
         timestampUpdates.last_edit_summary = editSummary;
