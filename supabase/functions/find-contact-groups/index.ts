@@ -149,53 +149,29 @@ Deno.serve(async (req) => {
 
     const queryTokens = name_query ? tokenize(name_query) : [];
     const conversationMatches: Array<any & { _score?: number }> = [];
-    if (external && name_query && name_query.trim().length >= 2) {
-      // Busca direto em whatsapp_messages. No banco real, grupos chegam com
-      // `phone` numérico (ex: 120363...) e o JID completo fica no metadata
-      // (`chat.wa_chatid` / `message.chatid`). Por isso NÃO filtramos mais
-      // `phone LIKE %@g.us`; filtramos o nome no SQL e confirmamos grupo via metadata.
-      let q = external
-        .from("whatsapp_messages")
-        .select("phone, contact_name, instance_name, created_at, metadata")
-        .not("contact_name", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(1000);
-
-      for (const tok of queryTokens.length ? queryTokens : [name_query.trim()]) {
-        // escapa % e _ pra ILIKE
-        const safe = tok.replace(/[\\%_]/g, (m) => `\\${m}`);
-        q = q.ilike("contact_name", `%${safe}%`);
-      }
-
-      const { data: msgs, error: msgErr } = await q;
-      if (msgErr) {
-        console.warn("[find-contact-groups] whatsapp_messages lookup error:", msgErr.message);
+    if (external && name_query && queryTokens.length > 0) {
+      // Busca via RPC na tabela whatsapp_groups_index (populada pela sync diária).
+      // Cobre 100% dos grupos das instâncias conectadas, mesmo sem mensagens recentes.
+      const { data: rpcRows, error: rpcErr } = await external.rpc(
+        "search_whatsapp_groups_by_tokens",
+        {
+          p_tokens: queryTokens,
+          p_instance_names: search_all_instances ? null : [instance_name],
+          p_limit: 200,
+        },
+      );
+      if (rpcErr) {
+        console.warn("[find-contact-groups] RPC error:", rpcErr.message);
       } else {
-        const seen = new Set<string>();
-        for (const m of msgs || []) {
-          const chatId = String(
-            m.metadata?.chat?.wa_chatid ||
-              m.metadata?.message?.chatid ||
-              m.metadata?.chat?.id ||
-              "",
-          );
-          const isGroup = m.metadata?.chat?.wa_isGroup === true || chatId.includes("@g.us");
-          if (!isGroup) continue;
-
-          const groupJid = chatId.includes("@g.us") ? chatId : `${m.phone}@g.us`;
-          const key = `${String(m.instance_name || "").toLowerCase()}|${groupJid}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const score = queryTokens.length
-            ? scoreName(String(m.contact_name || ""), queryTokens)
-            : 1;
+        for (const r of (rpcRows as any[]) || []) {
+          const score = scoreName(String(r.contact_name || ""), queryTokens);
           conversationMatches.push({
-            jid: groupJid,
-            name: m.contact_name || m.phone,
+            jid: r.group_jid,
+            name: r.contact_name,
             invite_link: null,
             participants_count: 0,
-            instance_name: m.instance_name,
-            source: "whatsapp_messages",
+            instance_name: r.instance_name,
+            source: "groups_index",
             _score: score || 0.5,
           });
         }
