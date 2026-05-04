@@ -299,6 +299,7 @@ export const useLeads = (adAccountId?: string) => {
 
   const addLead = async (lead: Partial<Lead>, testEventCode?: string) => {
     try {
+      const externalUserId = user?.id ? await remapToExternal(user.id) : null;
       const { data, error } = await externalSupabase
         .from('leads')
         .insert([{
@@ -309,8 +310,8 @@ export const useLeads = (adAccountId?: string) => {
           in_progress_date: lead.in_progress_date ?? null,
           inviavel_date: lead.inviavel_date ?? null,
           ad_account_id: adAccountId || lead.ad_account_id,
-          created_by: user?.id,
-          updated_by: user?.id,
+          created_by: externalUserId,
+          updated_by: externalUserId,
         }])
         .select()
         .single();
