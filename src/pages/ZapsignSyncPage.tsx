@@ -78,6 +78,7 @@ export default function ZapsignSyncPage({ externalDateRange, externalPeriodLabel
   // KPI drill-down state
   const [kpiSheet, setKpiSheet] = useState<OperationalMetricType | null>(null);
   const [errorsSheetOpen, setErrorsSheetOpen] = useState(false);
+  const [docCounts, setDocCounts] = useState<{ total: number; signed: number; pending: number }>({ total: 0, signed: 0, pending: 0 });
   const dateRange = useMemo(() => {
     if (externalDateRange?.from && externalDateRange?.to) return externalDateRange;
     const to = new Date();
@@ -135,6 +136,24 @@ export default function ZapsignSyncPage({ externalDateRange, externalPeriodLabel
   }
 
   useEffect(() => { loadState(); loadRules(); }, []);
+
+  // Contagens reais de documentos no período (fonte: zapsign_documents — mesma do sheet)
+  useEffect(() => {
+    (async () => {
+      try {
+        await ensureExternalSession();
+        const startISO = new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate()).toISOString();
+        const endISO = new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate(), 23, 59, 59, 999).toISOString();
+        const [totalRes, signedRes] = await Promise.all([
+          externalSupabase.from('zapsign_documents').select('*', { count: 'exact', head: true }).gte('created_at', startISO).lte('created_at', endISO),
+          externalSupabase.from('zapsign_documents').select('*', { count: 'exact', head: true }).gte('created_at', startISO).lte('created_at', endISO).eq('status', 'signed'),
+        ]);
+        const total = totalRes.count || 0;
+        const signed = signedRes.count || 0;
+        setDocCounts({ total, signed, pending: Math.max(0, total - signed) });
+      } catch (e) { console.warn('docCounts', e); }
+    })();
+  }, [dateRange.from, dateRange.to]);
 
   async function run() {
     setRunning(true); setResult(null);
@@ -219,7 +238,10 @@ export default function ZapsignSyncPage({ externalDateRange, externalPeriodLabel
         {/* DASHBOARD ---- */}
         <TabsContent value="dashboard" className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <Kpi label={`Docs (${externalPeriodLabel || '7d'})`} value={totalDocs} icon={<FileSearch className="h-4 w-4" />} onClick={() => setKpiSheet('signed_docs')} />
+            <Kpi label={`Docs (${externalPeriodLabel || '7d'})`} value={docCounts.total} icon={<FileSearch className="h-4 w-4" />} onClick={() => setKpiSheet('signed_docs')} sublines={[
+              { label: 'Assinados', value: docCounts.signed, tone: 'success' },
+              { label: 'Pendentes', value: docCounts.pending, tone: 'warning' },
+            ]} />
             <Kpi label="Contatos" value={totalLinked} icon={<Link2 className="h-4 w-4" />} onClick={() => setKpiSheet('contacts')} />
             <Kpi label="Leads enriq." value={totalEnriched} icon={<CheckCircle2 className="h-4 w-4" />} onClick={() => setKpiSheet('cases')} />
             <Kpi label="Grupos WA" value={totalGroups} icon={<Link2 className="h-4 w-4" />} onClick={() => setKpiSheet('groups')} />
@@ -613,7 +635,7 @@ export default function ZapsignSyncPage({ externalDateRange, externalPeriodLabel
   );
 }
 
-function Kpi({ label, value, icon, variant, onClick }: { label: string; value: number; icon?: React.ReactNode; variant?: "destructive"; onClick?: () => void }) {
+function Kpi({ label, value, icon, variant, onClick, sublines }: { label: string; value: number; icon?: React.ReactNode; variant?: "destructive"; onClick?: () => void; sublines?: { label: string; value: number; tone?: 'success' | 'warning' | 'destructive' }[] }) {
   return (
     <Card
       onClick={onClick}
@@ -625,6 +647,21 @@ function Kpi({ label, value, icon, variant, onClick }: { label: string; value: n
         <div className={`text-2xl font-bold mt-1 ${variant === "destructive" && value > 0 ? "text-destructive" : ""}`}>
           {value}
         </div>
+        {sublines && sublines.length > 0 && (
+          <div className="mt-2 space-y-0.5">
+            {sublines.map((s, i) => (
+              <div key={i} className="flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">{s.label}</span>
+                <span className={
+                  s.tone === 'success' ? 'font-semibold text-green-600' :
+                  s.tone === 'warning' ? 'font-semibold text-orange-600' :
+                  s.tone === 'destructive' ? 'font-semibold text-destructive' :
+                  'font-semibold'
+                }>{s.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
