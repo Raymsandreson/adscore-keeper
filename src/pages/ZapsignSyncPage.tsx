@@ -137,6 +137,24 @@ export default function ZapsignSyncPage({ externalDateRange, externalPeriodLabel
 
   useEffect(() => { loadState(); loadRules(); }, []);
 
+  // Contagens reais de documentos no período (fonte: zapsign_documents — mesma do sheet)
+  useEffect(() => {
+    (async () => {
+      try {
+        await ensureExternalSession();
+        const startISO = new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate()).toISOString();
+        const endISO = new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate(), 23, 59, 59, 999).toISOString();
+        const [totalRes, signedRes] = await Promise.all([
+          externalSupabase.from('zapsign_documents').select('*', { count: 'exact', head: true }).gte('created_at', startISO).lte('created_at', endISO),
+          externalSupabase.from('zapsign_documents').select('*', { count: 'exact', head: true }).gte('created_at', startISO).lte('created_at', endISO).eq('status', 'signed'),
+        ]);
+        const total = totalRes.count || 0;
+        const signed = signedRes.count || 0;
+        setDocCounts({ total, signed, pending: Math.max(0, total - signed) });
+      } catch (e) { console.warn('docCounts', e); }
+    })();
+  }, [dateRange.from, dateRange.to]);
+
   async function run() {
     setRunning(true); setResult(null);
     try {
