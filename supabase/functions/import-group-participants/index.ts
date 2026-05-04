@@ -92,6 +92,7 @@ Deno.serve(async (req) => {
         const loc = getLocationFromDDD(phone);
 
         if (!contactId) {
+          if (syncOnly) { skipped++; continue; }
           const { data: ins, error: insErr } = await ext
             .from("contacts")
             .insert({
@@ -126,22 +127,25 @@ Deno.serve(async (req) => {
           if (Object.keys(patch).length > 0) {
             patch.wa_synced_at = new Date().toISOString();
             await ext.from("contacts").update(patch).eq("id", contactId);
+            updated++;
           }
         }
 
-        // 2) vincular ao lead se ainda não estiver
-        const { data: link } = await ext
-          .from("contact_leads")
-          .select("id")
-          .eq("contact_id", contactId!)
-          .eq("lead_id", lead_id)
-          .maybeSingle();
-        if (!link) {
-          const { error: linkErr } = await ext
+        // 2) vincular ao lead se ainda não estiver (pula em sync_only)
+        if (!syncOnly && lead_id) {
+          const { data: link } = await ext
             .from("contact_leads")
-            .insert({ contact_id: contactId, lead_id });
-          if (linkErr) throw linkErr;
-          linked++;
+            .select("id")
+            .eq("contact_id", contactId!)
+            .eq("lead_id", lead_id)
+            .maybeSingle();
+          if (!link) {
+            const { error: linkErr } = await ext
+              .from("contact_leads")
+              .insert({ contact_id: contactId, lead_id });
+            if (linkErr) throw linkErr;
+            linked++;
+          }
         }
       } catch (e: any) {
         errors.push({ phone, error: e?.message || String(e) });
