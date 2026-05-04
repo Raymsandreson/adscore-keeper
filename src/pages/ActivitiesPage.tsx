@@ -542,7 +542,7 @@ const ActivitiesPage = () => {
     setFormLeadId(activity.lead_id || '');
     setFormIsSystem(!!(activity as any).is_system);
     setFormLeadName(activity.lead_name || '');
-    setFormAssignedTo(activity.assigned_to || '');
+    setFormAssignedTo(((await remapToCloud(activity.assigned_to)) as string) || '');
     setFormAssignedToName(activity.assigned_to_name || '');
     setFormDeadline(activity.deadline || '');
     setFormNotificationDate(activity.notification_date || '');
