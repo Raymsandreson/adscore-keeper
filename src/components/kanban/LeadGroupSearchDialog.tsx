@@ -190,7 +190,7 @@ export function LeadGroupSearchDialog({
         if (!o) reset();
       }}
     >
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
             {step === 'groups' ? 'Buscar grupos do contato' : `Participantes de ${chosenGroup?.name || chosenGroup?.jid}`}
