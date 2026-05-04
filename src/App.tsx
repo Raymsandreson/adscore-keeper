@@ -147,6 +147,7 @@ const LandingPage = lazyRetry(() => import("./pages/LandingPage"), "LandingPage"
 const BookingPage = lazyRetry(() => import("./pages/BookingPage"), "BookingPage");
 const ExtensionPage = lazyRetry(() => import("./pages/ExtensionPage"), "ExtensionPage");
 const ZapsignBackfillPage = lazyRetry(() => import("./pages/ZapsignBackfillPage"), "ZapsignBackfillPage");
+const ZapsignSyncPage = lazyRetry(() => import("./pages/ZapsignSyncPage"), "ZapsignSyncPage");
 const ShareTargetPage = lazyRetry(() => import("./pages/ShareTargetPage"), "ShareTargetPage");
 const ArchivedItemsPage = lazyRetry(() => import("./pages/ArchivedItemsPage"), "ArchivedItemsPage");
 const HookDebugPage = lazyRetry(() => import("./pages/HookDebugPage"), "HookDebugPage");
@@ -245,6 +246,7 @@ function SidebarLayout() {
                 
                 <Route path="/extension" element={<ProtectedRoute><ExtensionPage /></ProtectedRoute>} />
                 <Route path="/settings/zapsign-backfill" element={<ProtectedRoute><ZapsignBackfillPage /></ProtectedRoute>} />
+                <Route path="/zapsign-sync" element={<ProtectedRoute><ZapsignSyncPage /></ProtectedRoute>} />
                 <Route path="/cases" element={<ProtectedRoute><CasesPage /></ProtectedRoute>} />
                 <Route path="/processes" element={<ProtectedRoute><ProcessesPage /></ProtectedRoute>} />
                 <Route path="/nuclei" element={<ProtectedRoute><NucleiPage /></ProtectedRoute>} />
