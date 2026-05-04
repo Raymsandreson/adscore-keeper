@@ -552,7 +552,12 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
           return;
         }
 
-        const board = boards.find(b => b.id === selectedBoardId);
+        const board = funnelBoards.find(b => b.id === selectedBoardId);
+        if (!board) {
+          toast.error('Selecione um funil válido para o lead');
+          setSaving(false);
+          return;
+        }
         const closedStageId = board ? findClosedStageId(board.stages) : null;
 
         const closingDateStr = format(closingDate, 'yyyy-MM-dd');
@@ -840,7 +845,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
                     <SelectValue placeholder="Selecione o funil" />
                   </SelectTrigger>
                   <SelectContent>
-                    {boards.map(b => (
+                    {funnelBoards.map(b => (
                       <SelectItem key={b.id} value={b.id}>
                         <div className="flex items-center gap-2">
                           <span className="h-2 w-2 rounded-full" style={{ backgroundColor: b.color }} />
