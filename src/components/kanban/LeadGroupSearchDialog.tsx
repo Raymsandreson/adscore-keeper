@@ -43,6 +43,14 @@ interface Props {
 
 type Step = 'groups' | 'participants';
 
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message?: unknown }).message || error);
+  }
+  return String(error);
+};
+
 export function LeadGroupSearchDialog({
   open,
   onOpenChange,
@@ -93,7 +101,8 @@ export function LeadGroupSearchDialog({
       // Remove emojis e símbolos — eles quebram o ILIKE no backend
       // (group_name e contact_name podem ou não ter o mesmo emoji).
       const cleanQuery = nameQuery
-        .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\u200d\uFE0F]/gu, ' ')
+        .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu, ' ')
+        .replace(/[\u200d\uFE0F]/g, ' ')
         .replace(/[^\p{L}\p{N}\s]/gu, ' ')
         .replace(/\s+/g, ' ')
         .trim();
@@ -113,8 +122,8 @@ export function LeadGroupSearchDialog({
       } else {
         toast.success(`${found.length} grupo(s) encontrado(s)${data.from_cache ? ' (cache)' : ''}.`);
       }
-    } catch (e: any) {
-      toast.error('Erro ao buscar grupos: ' + (e.message || e));
+    } catch (e: unknown) {
+      toast.error('Erro ao buscar grupos: ' + getErrorMessage(e));
     } finally {
       setLoadingGroups(false);
     }
@@ -137,8 +146,8 @@ export function LeadGroupSearchDialog({
       setParticipants(parts);
       setSelected(new Set(parts.map((p) => p.phone)));
       setParticipantStats({ enriched: data.enriched_count || 0, unresolved: data.unresolved_count || 0 });
-    } catch (e: any) {
-      toast.error('Erro ao listar participantes: ' + (e.message || e));
+    } catch (e: unknown) {
+      toast.error('Erro ao listar participantes: ' + getErrorMessage(e));
     } finally {
       setLoadingParticipants(false);
     }
@@ -179,8 +188,8 @@ export function LeadGroupSearchDialog({
       );
       onOpenChange(false);
       reset();
-    } catch (e: any) {
-      toast.error('Erro ao importar: ' + (e.message || e));
+    } catch (e: unknown) {
+      toast.error('Erro ao importar: ' + getErrorMessage(e));
     } finally {
       setImporting(false);
     }
