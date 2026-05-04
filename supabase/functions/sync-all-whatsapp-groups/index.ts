@@ -28,22 +28,29 @@ async function fetchGroupsFromUazapi(
   opts: { force: boolean; noParticipants: boolean },
 ): Promise<any[]> {
   const url = `${(baseUrl || "https://abraci.uazapi.com").replace(/\/$/, "")}/group/list`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", token },
-    body: JSON.stringify({
-      force: opts.force,
-      noParticipants: opts.noParticipants,
-      limit: 1000,
-    }),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`uazapi /group/list ${res.status}: ${text.slice(0, 200)}`);
+  const all: any[] = [];
+  const PAGE = 1000;
+  for (let offset = 0; offset < 50_000; offset += PAGE) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", token },
+      body: JSON.stringify({
+        force: opts.force && offset === 0, // só força no primeiro request
+        noParticipants: opts.noParticipants,
+        limit: PAGE,
+        offset,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`uazapi /group/list ${res.status}: ${text.slice(0, 200)}`);
+    }
+    const data = await res.json().catch(() => null);
+    const page: any[] = Array.isArray(data) ? data : (data?.groups || []);
+    all.push(...page);
+    if (page.length < PAGE) break;
   }
-  const data = await res.json().catch(() => null);
-  if (Array.isArray(data)) return data;
-  return data?.groups || [];
+  return all;
 }
 
 async function syncInstance(
