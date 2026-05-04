@@ -530,7 +530,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
             .insert([{
               full_name: contactName || 'Contato WhatsApp',
               phone: contactPhone,
-              source: 'whatsapp',
+              action_source: 'whatsapp',
               created_by: user?.id || null,
             }] as any)
             .select('id')
