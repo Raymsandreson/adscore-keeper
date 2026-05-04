@@ -302,6 +302,14 @@ export default function ZapsignSyncPage() {
                     </div>
                   </>
                 )}
+                <div>
+                  <Label>Template ID (ZapSign)</Label>
+                  <Input value={templateFilter} onChange={(e) => setTemplateFilter(e.target.value)} placeholder="opcional" />
+                </div>
+                <div>
+                  <Label>Instância WhatsApp</Label>
+                  <Input value={instanceFilter} onChange={(e) => setInstanceFilter(e.target.value)} placeholder="opcional (inferida)" />
+                </div>
               </div>
 
               <label className="flex items-center gap-2 text-sm">
