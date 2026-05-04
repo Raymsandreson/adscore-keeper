@@ -433,6 +433,25 @@ export function LeadGroupSearchDialog({
                             </div>
                           )}
                         </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 shrink-0"
+                          disabled={refreshingPhone === p.phone}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            refreshParticipant(p.phone);
+                          }}
+                          title="Reconsultar /chat/details para este participante"
+                        >
+                          {refreshingPhone === p.phone ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
                       </label>
                     );
                   })}
