@@ -351,6 +351,8 @@ Deno.serve(async (req) => {
         participants,
         excluded_instances_count: excluded,
         enriched_count: participants.filter((p) => p.name).length,
+        unresolved_count: baseList.length - filtered.length + rawParts.length - baseList.length,
+        unresolved_lid_count: rawParts.length - baseList.length,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
