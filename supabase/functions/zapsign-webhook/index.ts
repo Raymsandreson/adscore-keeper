@@ -45,6 +45,26 @@ async function fetchDocWithRetry(docToken: string, zapsignToken: string, retries
   return null
 }
 
+async function resolveOwnerByInstance(supabase: any, instanceName?: string | null): Promise<string | null> {
+  if (!instanceName) return null
+  const { data: instRow } = await supabase
+    .from('whatsapp_instances')
+    .select('id')
+    .ilike('instance_name', instanceName)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (!instRow?.id) return null
+
+  const { data: ownerProfile } = await supabase
+    .from('profiles')
+    .select('user_id')
+    .eq('default_instance_id', instRow.id)
+    .maybeSingle()
+
+  return ownerProfile?.user_id || null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -168,6 +188,34 @@ Deno.serve(async (req) => {
       } else {
         console.log(`[zapsign-webhook] No lead found for phone ${cleanPhone}`)
       }
+    }
+
+    let resolvedOwnerId: string | null = localDoc.created_by || null
+    if (!resolvedOwnerId && localDoc.contact_id) {
+      const { data: ownerContact } = await supabase
+        .from('contacts')
+        .select('created_by')
+        .eq('id', localDoc.contact_id)
+        .maybeSingle()
+      resolvedOwnerId = ownerContact?.created_by || null
+    }
+    if (!resolvedOwnerId && localDoc.lead_id) {
+      const { data: ownerLead } = await supabase
+        .from('leads')
+        .select('created_by')
+        .eq('id', localDoc.lead_id)
+        .maybeSingle()
+      resolvedOwnerId = ownerLead?.created_by || null
+    }
+    if (!resolvedOwnerId) {
+      resolvedOwnerId = await resolveOwnerByInstance(supabase, localDoc.instance_name)
+    }
+    if (resolvedOwnerId && localDoc.created_by !== resolvedOwnerId) {
+      localDoc.created_by = resolvedOwnerId
+      await supabase
+        .from('zapsign_documents')
+        .update({ created_by: resolvedOwnerId })
+        .eq('id', localDoc.id)
     }
 
     // ====================================================
