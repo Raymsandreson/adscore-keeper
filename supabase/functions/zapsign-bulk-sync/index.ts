@@ -279,6 +279,7 @@ Deno.serve(async (req) => {
                   phone: phoneNorm,
                   ...contactPatch,
                   action_source: "zapsign_bulk_sync",
+                  created_by: createdByUserId,
                 }).select("id").single();
                 if (ce) { errors.push({ doc: docToken, stage: "contact_insert", error: ce.message }); }
                 else { contactId = newC.id; counts.contacts_created++; }
