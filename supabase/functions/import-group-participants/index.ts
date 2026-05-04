@@ -74,8 +74,13 @@ Deno.serve(async (req) => {
         const det = detailsByPhone.get(phone) || {};
         const enrichName: string | null = det?.name || null;
         const enrichEmail: string | null = det?.lead_email || null;
-        const enrichCpfRaw: string | null = det?.lead_personalid || null;
+        const enrichCpfRaw: string | null = det?.lead_personalid || det?.lead_field12 || null;
         const enrichCpf = enrichCpfRaw ? String(enrichCpfRaw).replace(/\D/g, "").slice(0, 11) : null;
+        const enrichRg: string | null = det?.lead_field13 ? String(det.lead_field13).trim() : null;
+        const enrichStreet: string | null = det?.lead_field14 ? String(det.lead_field14).trim() : null;
+        const enrichNeighborhood: string | null = det?.lead_field15 ? String(det.lead_field15).trim() : null;
+        const enrichCepRaw: string | null = det?.lead_field16 || null;
+        const enrichCep = enrichCepRaw ? String(enrichCepRaw).replace(/\D/g, "").slice(0, 8) : null;
         const enrichAvatar: string | null = det?.image || null;
         const enrichNotes: string | null = det?.lead_notes || null;
 
@@ -83,7 +88,7 @@ Deno.serve(async (req) => {
         const last10 = phone.slice(-10);
         const { data: existing } = await ext
           .from("contacts")
-          .select("id, full_name, state, city, email, cpf, avatar_url")
+          .select("id, full_name, state, city, email, cpf, rg, avatar_url, street, neighborhood, cep")
           .ilike("phone", `%${last10}`)
           .is("deleted_at", null)
           .limit(1);
@@ -100,6 +105,10 @@ Deno.serve(async (req) => {
               phone,
               email: enrichEmail,
               cpf: enrichCpf && enrichCpf.length === 11 ? enrichCpf : null,
+              rg: enrichRg,
+              street: enrichStreet,
+              neighborhood: enrichNeighborhood,
+              cep: enrichCep && enrichCep.length === 8 ? enrichCep : null,
               avatar_url: enrichAvatar,
               notes: enrichNotes,
               state: loc?.state || null,
@@ -123,6 +132,10 @@ Deno.serve(async (req) => {
           if (enrichName && (!exRow.full_name || exRow.full_name.startsWith("Participante "))) patch.full_name = enrichName;
           if (enrichEmail && !exRow.email) patch.email = enrichEmail;
           if (enrichCpf && enrichCpf.length === 11 && !exRow.cpf) patch.cpf = enrichCpf;
+          if (enrichRg && !exRow.rg) patch.rg = enrichRg;
+          if (enrichStreet && !exRow.street) patch.street = enrichStreet;
+          if (enrichNeighborhood && !exRow.neighborhood) patch.neighborhood = enrichNeighborhood;
+          if (enrichCep && enrichCep.length === 8 && !exRow.cep) patch.cep = enrichCep;
           if (enrichAvatar && !exRow.avatar_url) patch.avatar_url = enrichAvatar;
           if (Object.keys(patch).length > 0) {
             patch.wa_synced_at = new Date().toISOString();

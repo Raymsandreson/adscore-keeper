@@ -312,6 +312,12 @@ Deno.serve(async (req) => {
         lead_status: d?.lead_status || null,
         lead_tags: Array.isArray(d?.lead_tags) ? d.lead_tags : null,
         lead_notes: d?.lead_notes || null,
+        // Mapping fixo: 12=CPF, 13=RG, 14=Endereço, 15=Bairro, 16=CEP
+        lead_field12: d?.lead_field12 || null, // CPF (alt)
+        lead_field13: d?.lead_field13 || null, // RG
+        lead_field14: d?.lead_field14 || null, // Endereço (rua + número)
+        lead_field15: d?.lead_field15 || null, // Bairro
+        lead_field16: d?.lead_field16 || null, // CEP
         common_groups: parseCommonGroups(d?.common_groups),
         raw: { ...d, __source_instance: found?.source_instance || instRow.instance_name },
         fetched_at: new Date().toISOString(),
@@ -338,7 +344,14 @@ Deno.serve(async (req) => {
         lead_email: d.lead_email || null,
         lead_personalid: d.lead_personalid || null,
         lead_notes: d.lead_notes || null,
+        lead_field12: d.lead_field12 || null,
+        lead_field13: d.lead_field13 || null,
+        lead_field14: d.lead_field14 || null,
+        lead_field15: d.lead_field15 || null,
+        lead_field16: d.lead_field16 || null,
         common_groups: d.common_groups || [],
+        source_instance: (d.raw as any)?.__source_instance || null,
+        enriched_from: d.name || d.image || d.lead_personalid ? 'chat' : null,
       };
     });
 
