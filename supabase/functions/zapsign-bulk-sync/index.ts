@@ -360,6 +360,8 @@ Deno.serve(async (req) => {
                     contact_id: contactId,
                     source: "zapsign_funnel_rule",
                     lead_status: "active",
+                    created_by: createdByUserId,
+                    assigned_to: createdByUserId,
                   };
                   if (matchedRule.inherit_lead_fields) Object.assign(newLead, leadPatch);
                   const { data: createdLead, error: lcerr } = await sb.from("leads")
