@@ -144,9 +144,10 @@ export default function ZapsignSyncPage({ externalDateRange, externalPeriodLabel
         await ensureExternalSession();
         const startISO = new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate()).toISOString();
         const endISO = new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate(), 23, 59, 59, 999).toISOString();
+        // Fonte de verdade: Supabase Externo (Cloud está dessincronizado)
         const [totalRes, signedRes] = await Promise.all([
-          externalSupabase.from('zapsign_documents').select('*', { count: 'exact', head: true }).gte('created_at', startISO).lte('created_at', endISO),
-          externalSupabase.from('zapsign_documents').select('*', { count: 'exact', head: true }).gte('created_at', startISO).lte('created_at', endISO).eq('status', 'signed'),
+          externalSupabase.from('zapsign_documents' as any).select('*', { count: 'exact', head: true }).gte('created_at', startISO).lte('created_at', endISO),
+          externalSupabase.from('zapsign_documents' as any).select('*', { count: 'exact', head: true }).gte('created_at', startISO).lte('created_at', endISO).eq('status', 'signed'),
         ]);
         const total = totalRes.count || 0;
         const signed = signedRes.count || 0;
