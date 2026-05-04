@@ -7,6 +7,7 @@ import { facebookCAPI } from '@/services/facebookCAPI';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { applyGeoRuleForLead } from '@/utils/applyGeoRuleForLead';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 
 // Columns to fetch - avoids pulling unnecessary large text columns
 const LEAD_SELECT_COLUMNS = [
@@ -298,6 +299,7 @@ export const useLeads = (adAccountId?: string) => {
 
   const addLead = async (lead: Partial<Lead>, testEventCode?: string) => {
     try {
+      const externalUserId = user?.id ? await remapToExternal(user.id) : null;
       const { data, error } = await externalSupabase
         .from('leads')
         .insert([{
@@ -308,8 +310,8 @@ export const useLeads = (adAccountId?: string) => {
           in_progress_date: lead.in_progress_date ?? null,
           inviavel_date: lead.inviavel_date ?? null,
           ad_account_id: adAccountId || lead.ad_account_id,
-          created_by: user?.id,
-          updated_by: user?.id,
+          created_by: externalUserId,
+          updated_by: externalUserId,
         }])
         .select()
         .single();
@@ -400,7 +402,7 @@ export const useLeads = (adAccountId?: string) => {
       
       // Track who updated
       if (user?.id) {
-        timestampUpdates.updated_by = user.id;
+        timestampUpdates.updated_by = await remapToExternal(user.id);
       }
       if (editSummary) {
         timestampUpdates.last_edit_summary = editSummary;
