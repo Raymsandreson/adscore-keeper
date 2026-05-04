@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePageState } from '@/hooks/usePageState';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToCloud, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { useLeadActivities, LeadActivity } from '@/hooks/useLeadActivities';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -345,6 +346,7 @@ const ActivitiesPage = () => {
       setTeamMembers(membersRes.data || []);
       setAvailableContacts(contactsRes.data || []);
       setAvailableCases(casesRes.data || []);
+      ensureRemapCache();
     };
     loadSupport();
   }, []);
@@ -541,7 +543,7 @@ const ActivitiesPage = () => {
     setFormLeadId(activity.lead_id || '');
     setFormIsSystem(!!(activity as any).is_system);
     setFormLeadName(activity.lead_name || '');
-    setFormAssignedTo(activity.assigned_to || '');
+    setFormAssignedTo(((await remapToCloud(activity.assigned_to)) as string) || '');
     setFormAssignedToName(activity.assigned_to_name || '');
     setFormDeadline(activity.deadline || '');
     setFormNotificationDate(activity.notification_date || '');
@@ -862,7 +864,7 @@ const ActivitiesPage = () => {
     setFormLeadId(activity.lead_id || '');
     setFormIsSystem(!!(activity as any).is_system);
     setFormLeadName(activity.lead_name || '');
-    setFormAssignedTo(activity.assigned_to || '');
+    setFormAssignedTo(((await remapToCloud(activity.assigned_to)) as string) || '');
     setFormAssignedToName(activity.assigned_to_name || '');
     setFormDeadline(activity.deadline || '');
     setFormNotificationDate(activity.notification_date || '');
