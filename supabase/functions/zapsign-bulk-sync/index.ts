@@ -115,6 +115,20 @@ Deno.serve(async (req) => {
     }
     const sb = createClient(EXT_URL, EXT_KEY, { auth: { persistSession: false } });
 
+    // executor user (fallback owner) — decode JWT sub
+    let executorUserId: string | null = body.executor_user_id || null;
+    if (!executorUserId) {
+      const auth = req.headers.get("Authorization") || "";
+      const tok = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      const parts = tok.split(".");
+      if (parts.length === 3) {
+        try {
+          const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+          if (payload?.sub && payload.sub !== "anon") executorUserId = payload.sub;
+        } catch { /* ignore */ }
+      }
+    }
+
     // checkpoint
     const { data: stateRow } = await sb.from("zapsign_sync_state").select("*").eq("id", true).maybeSingle();
     let startPage = mode === "restart" ? 1 : Math.max(1, stateRow?.last_page || 1);
@@ -217,7 +231,7 @@ Deno.serve(async (req) => {
           }
           row.instance_name = inferredInstance;
 
-          // ---- resolve owner (created_by) via instance -> profile.default_instance_id
+          // ---- resolve owner (created_by) via instance -> profile.default_instance_id, fallback to executor
           let createdByUserId: string | null = null;
           if (inferredInstance) {
             const { data: instRow } = await sb.from("whatsapp_instances")
@@ -228,6 +242,7 @@ Deno.serve(async (req) => {
               createdByUserId = ownerProfile?.user_id || null;
             }
           }
+          if (!createdByUserId) createdByUserId = executorUserId;
           row.owner_user_id = createdByUserId;
 
           if (instanceFilter && (inferredInstance || "").toLowerCase() !== instanceFilter.toLowerCase()) {
