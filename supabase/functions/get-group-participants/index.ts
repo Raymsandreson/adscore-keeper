@@ -46,6 +46,22 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+
+    // Busca telefones de TODAS as instâncias da org pra filtrar (atendentes != leads).
+    const { data: allInst } = await cloud
+      .from("whatsapp_instances")
+      .select("owner_phone");
+    const ownerKeys = new Set(
+      (allInst || [])
+        .map((r: any) => digits(r.owner_phone || "").slice(-10))
+        .filter((k: string) => k.length >= 8),
+    );
+
+    function isOwnerInstance(phoneDigits: string) {
+      const key = phoneDigits.slice(-10);
+      return key.length >= 8 && ownerKeys.has(key);
+    }
+
     const { data, error } = await cloud
       .from("whatsapp_groups_cache")
       .select("group_jid, group_name, participants, fetched_at")
@@ -53,47 +69,53 @@ Deno.serve(async (req) => {
       .eq("group_jid", group_jid)
       .maybeSingle();
     if (error) throw error;
-    if (!data) {
+
+    let parts: any[] = [];
+    let groupName: string | null = null;
+    let fetchedAt: string = new Date().toISOString();
+
+    if (data && Array.isArray(data.participants) && data.participants.length > 0) {
+      parts = data.participants;
+      groupName = data.group_name;
+      fetchedAt = data.fetched_at;
+    } else {
       const { data: instRow } = await cloud
         .from("whatsapp_instances")
         .select("base_url, instance_token")
         .ilike("instance_name", instance_name)
         .maybeSingle();
-
-      if (instRow?.base_url && instRow?.instance_token) {
-        const liveParts = await fetchGroupParticipantsFromUazapi(instRow.base_url, instRow.instance_token, group_jid);
-        const phones = liveParts
-          .map((p: any) => {
-            const raw = String(p?.id || p?.jid || p?.phone || p?.participant || p || "");
-            const ph = digits(raw);
-            return ph ? { phone: ph, raw } : null;
-          })
-          .filter(Boolean);
+      if (!instRow?.base_url || !instRow?.instance_token) {
         return new Response(
-          JSON.stringify({ success: true, group_jid, group_name: null, fetched_at: new Date().toISOString(), participants: phones }),
+          JSON.stringify({ success: false, error: "instance not found" }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      return new Response(
-        JSON.stringify({ success: false, error: "group not found in cache; run find-contact-groups first" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      parts = await fetchGroupParticipantsFromUazapi(
+        instRow.base_url,
+        instRow.instance_token,
+        group_jid,
       );
     }
-    const parts = Array.isArray(data.participants) ? data.participants : [];
+
     const phones = parts
       .map((p: any) => {
-        const raw = String(p?.id || p?.phone || p || "");
+        const raw = String(p?.id || p?.jid || p?.phone || p?.participant || p || "");
         const ph = digits(raw);
         return ph ? { phone: ph, raw } : null;
       })
-      .filter(Boolean);
+      .filter(Boolean) as { phone: string; raw: string }[];
+
+    const filtered = phones.filter((p) => !isOwnerInstance(p.phone));
+    const removed = phones.length - filtered.length;
+
     return new Response(
       JSON.stringify({
         success: true,
-        group_jid: data.group_jid,
-        group_name: data.group_name,
-        fetched_at: data.fetched_at,
-        participants: phones,
+        group_jid,
+        group_name: groupName,
+        fetched_at: fetchedAt,
+        participants: filtered,
+        excluded_instances_count: removed,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
