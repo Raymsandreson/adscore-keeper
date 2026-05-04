@@ -147,6 +147,28 @@ export function LeadGroupSearchDialog({
       setParticipants(parts);
       setSelected(new Set(parts.map((p) => p.phone)));
       setParticipantStats({ enriched: data.enriched_count || 0, unresolved: data.unresolved_count || 0 });
+
+      // Sincronização automática silenciosa: atualiza nome/foto/email/CPF dos
+      // contatos já cadastrados (não cria novos, não vincula ao lead).
+      const enrichedParts = parts.filter((p) => p.name || p.image || p.lead_email || p.lead_personalid);
+      if (enrichedParts.length > 0) {
+        supabase.functions
+          .invoke('import-group-participants', {
+            body: {
+              sync_only: true,
+              group_jid: g.jid,
+              group_name: g.name,
+              phones: enrichedParts.map((p) => p.phone),
+              participants: enrichedParts,
+            },
+          })
+          .then(({ data: syncData }) => {
+            if (syncData?.updated > 0) {
+              toast.success(`${syncData.updated} contato(s) atualizado(s) automaticamente.`);
+            }
+          })
+          .catch((err) => console.warn('[auto-sync] falhou:', err));
+      }
     } catch (e: unknown) {
       toast.error('Erro ao listar participantes: ' + getErrorMessage(e));
     } finally {

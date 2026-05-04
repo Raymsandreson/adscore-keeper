@@ -35,6 +35,9 @@ Deno.serve(async (req) => {
     const lead_id: string = body?.lead_id;
     const group_jid: string = body?.group_jid;
     const group_name: string | undefined = body?.group_name;
+    // Modo sync_only: apenas atualiza contatos existentes (não cria, não vincula).
+    // Usado para sincronização automática silenciosa ao abrir o modal/selecionar grupo.
+    const syncOnly: boolean = body?.sync_only === true;
     // Suporta dois formatos: phones[] (legado) OU participants[] (enriquecido)
     const participantsIn: Array<any> = Array.isArray(body?.participants) ? body.participants : [];
     const phones: string[] = participantsIn.length > 0
@@ -45,9 +48,9 @@ Deno.serve(async (req) => {
       const ph = normalizePhone(String(p?.phone || ""));
       if (ph) detailsByPhone.set(ph, p);
     });
-    if (!lead_id || !group_jid || phones.length === 0) {
+    if (!group_jid || phones.length === 0 || (!syncOnly && !lead_id)) {
       return new Response(
-        JSON.stringify({ success: false, error: "lead_id, group_jid and non-empty phones[] are required" }),
+        JSON.stringify({ success: false, error: "group_jid + phones[] (and lead_id unless sync_only) are required" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -61,6 +64,7 @@ Deno.serve(async (req) => {
     let created = 0;
     let linked = 0;
     let skipped = 0;
+    let updated = 0;
     const errors: Array<{ phone: string; error: string }> = [];
 
     for (const raw of phones) {
@@ -88,6 +92,7 @@ Deno.serve(async (req) => {
         const loc = getLocationFromDDD(phone);
 
         if (!contactId) {
+          if (syncOnly) { skipped++; continue; }
           const { data: ins, error: insErr } = await ext
             .from("contacts")
             .insert({
@@ -122,22 +127,25 @@ Deno.serve(async (req) => {
           if (Object.keys(patch).length > 0) {
             patch.wa_synced_at = new Date().toISOString();
             await ext.from("contacts").update(patch).eq("id", contactId);
+            updated++;
           }
         }
 
-        // 2) vincular ao lead se ainda não estiver
-        const { data: link } = await ext
-          .from("contact_leads")
-          .select("id")
-          .eq("contact_id", contactId!)
-          .eq("lead_id", lead_id)
-          .maybeSingle();
-        if (!link) {
-          const { error: linkErr } = await ext
+        // 2) vincular ao lead se ainda não estiver (pula em sync_only)
+        if (!syncOnly && lead_id) {
+          const { data: link } = await ext
             .from("contact_leads")
-            .insert({ contact_id: contactId, lead_id });
-          if (linkErr) throw linkErr;
-          linked++;
+            .select("id")
+            .eq("contact_id", contactId!)
+            .eq("lead_id", lead_id)
+            .maybeSingle();
+          if (!link) {
+            const { error: linkErr } = await ext
+              .from("contact_leads")
+              .insert({ contact_id: contactId, lead_id });
+            if (linkErr) throw linkErr;
+            linked++;
+          }
         }
       } catch (e: any) {
         errors.push({ phone, error: e?.message || String(e) });
@@ -145,7 +153,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, created, linked, skipped, errors }),
+      JSON.stringify({ success: true, created, linked, updated, skipped, errors }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
