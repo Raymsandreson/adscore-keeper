@@ -89,7 +89,7 @@ export function useDashboardMetrics() {
         monitorData('kpis', { period }),
         externalSupabase
           .from('zapsign_documents')
-          .select('id, document_name, signer_name, signer_status, lead_id, instance_name, created_at')
+          .select('id, document_name, signer_name, status, signer_status, lead_id, instance_name, created_at')
           .gte('created_at', startISO).lte('created_at', endISO),
         externalSupabase
           .from('leads')
