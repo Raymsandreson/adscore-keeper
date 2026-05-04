@@ -499,6 +499,7 @@ export default function ZapsignSyncPage() {
                   <th className="text-left p-2">Docs</th>
                   <th className="text-left p-2">Vinc.</th>
                   <th className="text-left p-2">Enriq.</th>
+                  <th className="text-left p-2">Criados</th>
                   <th className="text-left p-2">Grupos</th>
                   <th className="text-left p-2">Erros</th>
                   <th className="text-left p-2">Status</th>
@@ -512,6 +513,7 @@ export default function ZapsignSyncPage() {
                       <td className="p-2">{r.docs_scanned}</td>
                       <td className="p-2">{(r.counts?.contacts_created || 0) + (r.counts?.contacts_updated || 0)}</td>
                       <td className="p-2">{r.counts?.leads_enriched || 0}</td>
+                      <td className="p-2">{r.counts?.leads_created || 0}</td>
                       <td className="p-2">{r.counts?.groups_linked || 0}</td>
                       <td className="p-2">{(r.errors?.length || 0) + (r.counts?.skipped_no_phone || 0)}</td>
                       <td className="p-2">
@@ -520,7 +522,7 @@ export default function ZapsignSyncPage() {
                     </tr>
                   ))}
                   {runs.length === 0 && (
-                    <tr><td colSpan={9} className="p-4 text-center text-muted-foreground">Nenhuma execução ainda</td></tr>
+                    <tr><td colSpan={10} className="p-4 text-center text-muted-foreground">Nenhuma execução ainda</td></tr>
                   )}
                 </tbody>
               </table>
