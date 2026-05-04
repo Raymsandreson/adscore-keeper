@@ -243,7 +243,7 @@ export function useDashboardMetrics() {
       // Use KPI data for operational counts when available
       setMetrics({
         ...(convAndClosedMetrics as DashboardMetrics),
-        signedDocuments: kpiData.docs_assinados ?? signedDocsDetails.length,
+        signedDocuments: signedDocsDetails.length,
         pendingDocuments: pendingDocsDetails.length,
         groupsCreated: groupsDetails.length,
         casesCreated: kpiData.casos_criados ?? casesDetails.length,
