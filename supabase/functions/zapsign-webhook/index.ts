@@ -820,6 +820,19 @@ Deno.serve(async (req) => {
             }
           }
 
+          // 4a-bis. Resolve board by ZapSign template_id via funnel_zapsign_defaults
+          if (!boardId && localDoc.template_id) {
+            const { data: funnelDefault } = await supabase
+              .from('funnel_zapsign_defaults')
+              .select('board_id')
+              .eq('zapsign_template_token', localDoc.template_id)
+              .maybeSingle()
+            if (funnelDefault?.board_id) {
+              boardId = funnelDefault.board_id
+              console.log(`[zapsign-webhook] Board resolved from funnel_zapsign_defaults (template ${localDoc.template_id}): ${boardId}`)
+            }
+          }
+
           // 4b. Fallback: try from shortcut automation rules
           if (!boardId && localDoc.shortcut_name) {
             const { data: shortcut } = await supabase
