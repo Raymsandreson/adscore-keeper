@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { db, authClient } from '@/integrations/authClient';
-import { remapToExternal } from '@/integrations/authClient/uuid-remap';
+import { db, authClient } from '@/integrations/supabase';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { startOfDay, endOfDay, format } from 'date-fns';
 

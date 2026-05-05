@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { db, authClient } from '@/integrations/authClient';
+import { db, authClient } from '@/integrations/supabase';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
