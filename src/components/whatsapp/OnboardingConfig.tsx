@@ -92,8 +92,8 @@ export function OnboardingConfig() {
               value="procuracao"
               className="snap-center sm:snap-align-none flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-fuchsia-500/10 data-[state=active]:text-fuchsia-600 dark:data-[state=active]:text-fuchsia-400"
             >
-              <FileSignature className="h-4 w-4 shrink-0" />
-              <span className="text-sm font-medium">Procuração</span>
+              <FileText className="h-4 w-4 shrink-0" />
+              <span className="text-sm font-medium">Documentos</span>
             </TabsTrigger>
             <TabsTrigger
               value="grupo"
