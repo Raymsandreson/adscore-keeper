@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Users, Hash, Type, Eye, MessageSquare, FileText, Volume2, Sparkles, Send, Zap, Scale, Plus, Trash2, Lock, Archive, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
-import { OnboardingMeetingConfig } from './OnboardingMeetingConfig';
+
 
 interface Instance {
   id: string;
