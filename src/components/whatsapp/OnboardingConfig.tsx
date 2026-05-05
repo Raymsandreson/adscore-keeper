@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText, Users, Bell } from 'lucide-react';
+import { FileText, Users, Bell, Video } from 'lucide-react';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
 import { FunnelZapsignDefaultsConfig } from './FunnelZapsignDefaultsConfig';
+import { OnboardingMeetingConfig } from './OnboardingMeetingConfig';
 
-const TABS = ['documentos', 'grupo', 'notificacoes'] as const;
+const TABS = ['documentos', 'grupo', 'reuniao', 'notificacoes'] as const;
 type TabKey = (typeof TABS)[number];
 
 export function OnboardingConfig() {
@@ -86,7 +87,7 @@ export function OnboardingConfig() {
         <div className="sticky top-0 z-10 -mx-4 px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b">
           <TabsList
             ref={listRef as any}
-            className="w-full sm:w-auto inline-flex sm:grid sm:grid-cols-3 h-auto p-1 bg-muted/50 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-px-4 sm:snap-none scroll-smooth"
+            className="w-full sm:w-auto inline-flex sm:grid sm:grid-cols-4 h-auto p-1 bg-muted/50 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-px-4 sm:snap-none scroll-smooth"
           >
             <TabsTrigger
               value="documentos"
@@ -101,6 +102,13 @@ export function OnboardingConfig() {
             >
               <Users className="h-4 w-4 shrink-0" />
               <span className="text-sm font-medium">Grupo</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="reuniao"
+              className="snap-center sm:snap-align-none flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-sky-500/10 data-[state=active]:text-sky-600 dark:data-[state=active]:text-sky-400"
+            >
+              <Video className="h-4 w-4 shrink-0" />
+              <span className="text-sm font-medium">Reunião</span>
             </TabsTrigger>
             <TabsTrigger
               value="notificacoes"
@@ -123,6 +131,9 @@ export function OnboardingConfig() {
           <div className="snap-center shrink-0 w-full pr-4 sm:pr-0 space-y-6">
             <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="grupo" hideSaveButton />
             <BoardGroupInstancesConfig boardId={selectedBoardId} hideBoardSelector />
+          </div>
+          <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
+            {selectedBoardId && <OnboardingMeetingConfig boardId={selectedBoardId} />}
           </div>
           <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
             <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="notificacoes" />
