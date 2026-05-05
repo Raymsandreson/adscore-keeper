@@ -14,9 +14,6 @@ type TabKey = (typeof TABS)[number];
 export function OnboardingConfig() {
   const [tab, setTab] = useState<TabKey>('documentos');
   const listRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const isProgrammaticScroll = useRef(false);
-  const scrollEndTimer = useRef<number | null>(null);
 
   const { boards, loading: loadingBoards } = useKanbanBoards();
   const funnels = useMemo(() => boards.filter((b) => b.board_type === 'funnel'), [boards]);
@@ -33,34 +30,6 @@ export function OnboardingConfig() {
     const active = list.querySelector<HTMLElement>(`[data-state="active"]`);
     if (active) active.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   }, [tab]);
-
-  // When tab changes (via click), scroll the content carousel to the matching panel
-  useEffect(() => {
-    const container = contentRef.current;
-    if (!container) return;
-    const idx = TABS.indexOf(tab);
-    const target = container.children[idx] as HTMLElement | undefined;
-    if (!target) return;
-    isProgrammaticScroll.current = true;
-    container.scrollTo({ left: target.offsetLeft, behavior: 'smooth' });
-    window.setTimeout(() => {
-      isProgrammaticScroll.current = false;
-    }, 500);
-  }, [tab]);
-
-  const handleScroll = () => {
-    if (isProgrammaticScroll.current) return;
-    const container = contentRef.current;
-    if (!container) return;
-    if (scrollEndTimer.current) window.clearTimeout(scrollEndTimer.current);
-    scrollEndTimer.current = window.setTimeout(() => {
-      const width = container.clientWidth;
-      if (width === 0) return;
-      const idx = Math.round(container.scrollLeft / width);
-      const next = TABS[Math.max(0, Math.min(TABS.length - 1, idx))];
-      if (next && next !== tab) setTab(next);
-    }, 120);
-  };
 
   return (
     <div className="space-y-4">
@@ -120,24 +89,22 @@ export function OnboardingConfig() {
           </TabsList>
         </div>
 
-        <div
-          ref={contentRef}
-          onScroll={handleScroll}
-          className="mt-4 flex overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth -mx-4 px-4 sm:mx-0 sm:px-0"
-        >
-          <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
+        <div className="mt-4">
+          {tab === 'documentos' && (
             <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="documentos" />
-          </div>
-          <div className="snap-center shrink-0 w-full pr-4 sm:pr-0 space-y-6">
-            <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="grupo" hideSaveButton />
-            <BoardGroupInstancesConfig boardId={selectedBoardId} hideBoardSelector />
-          </div>
-          <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
-            {selectedBoardId && <OnboardingMeetingConfig boardId={selectedBoardId} />}
-          </div>
-          <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
+          )}
+          {tab === 'grupo' && (
+            <div className="space-y-6">
+              <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="grupo" hideSaveButton />
+              <BoardGroupInstancesConfig boardId={selectedBoardId} hideBoardSelector />
+            </div>
+          )}
+          {tab === 'reuniao' && selectedBoardId && (
+            <OnboardingMeetingConfig boardId={selectedBoardId} />
+          )}
+          {tab === 'notificacoes' && (
             <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="notificacoes" />
-          </div>
+          )}
         </div>
       </Tabs>
     </div>
