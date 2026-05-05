@@ -103,6 +103,9 @@ export function OnboardingConfig({ onOpenAgents }: OnboardingConfigProps = {}) {
           {tab === 'atendimento' && selectedBoardId && (
             <OnboardingPostCloseConfig boardId={selectedBoardId} onOpenAgents={onOpenAgents} />
           )}
+          {tab === 'caso' && selectedBoardId && (
+            <OnboardingCaseConfig boardId={selectedBoardId} />
+          )}
           {tab === 'reuniao' && selectedBoardId && (
             <OnboardingMeetingConfig boardId={selectedBoardId} />
           )}
