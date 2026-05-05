@@ -649,12 +649,13 @@ const ActivitiesPage = () => {
         return;
       }
 
-      supabase
+      (externalSupabase as any)
         .from('lead_activities')
         .select('*')
         .eq('id', openActivityId)
+        .is('deleted_at', null)
         .maybeSingle()
-        .then(({ data, error }) => {
+        .then(({ data, error }: { data: any; error: any }) => {
           if (error || !data) {
             toast.error('Esta atividade não existe mais ou foi excluída.');
             clearOpenActivityParam();
