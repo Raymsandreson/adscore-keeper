@@ -109,29 +109,42 @@ interface TeamMember {
  */
 function extractClientFirstName(raw: string): string {
   if (!raw) return '';
-  let s = raw.trim();
-  s = s.replace(/^[^\p{L}\p{N}]+/u, '');
-  if (s.includes('|')) s = s.split('|').slice(1).join('|').trim();
-  if (s.includes('/')) s = s.split('/')[0].trim();
-  for (const sep of [' - ', ' — ', ' – ', ':']) {
-    if (s.includes(sep)) s = s.split(sep).slice(-1)[0].trim();
+  const titleCase = (w: string) =>
+    w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '';
+  const lower = new Set(['da', 'de', 'do', 'das', 'dos', 'e']);
+  const formatTokens = (tokens: string[]) =>
+    tokens
+      .map((w, i) => (i > 0 && lower.has(w.toLowerCase()) ? w.toLowerCase() : titleCase(w)))
+      .join(' ')
+      .trim();
+  const isMeaningful = (str: string) => /\p{L}{2,}/u.test(str);
+
+  let s = raw.trim().replace(/^[^\p{L}\p{N}]+/u, '');
+
+  // Padrão esperado: "Cidade/Estado | Vítima x Empresa | (data) - lesão"
+  // Procura o segmento que contém " x " (vítima x empresa) e pega a parte antes do " x ".
+  if (s.includes('|')) {
+    const segments = s.split('|').map(p => p.trim()).filter(Boolean);
+    const victimSeg = segments.find(seg => / x /i.test(seg));
+    if (victimSeg) {
+      s = victimSeg.split(/ x /i)[0].trim();
+    } else {
+      // Sem "x": tenta o segundo segmento (após cidade/estado), senão o primeiro com letras
+      s = segments[1] && isMeaningful(segments[1]) ? segments[1] : (segments.find(isMeaningful) || segments[0] || '');
+    }
   }
-  const tokens = s.split(/\s+/);
-  // Remove códigos iniciais tipo "PREV", "123", "PREV291"
+
+  // Limpa códigos iniciais tipo "PREV", "123", "PREV291"
+  let tokens = s.split(/\s+/).filter(Boolean);
   while (tokens.length > 1) {
     const t = tokens[0];
     const looksLikeCode = /^[A-Z]{2,}$/.test(t) || /^\d+$/.test(t) || /^[A-Z]{2,}\d+$/.test(t);
     if (looksLikeCode) tokens.shift(); else break;
   }
-  // Preserva nome completo (ex: "Carlos Almeida"), aplicando title case
-  const titleCase = (w: string) =>
-    w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '';
-  // Conectivos comuns ficam em minúsculas
-  const lower = new Set(['da', 'de', 'do', 'das', 'dos', 'e']);
-  return tokens
-    .map((w, i) => (i > 0 && lower.has(w.toLowerCase()) ? w.toLowerCase() : titleCase(w)))
-    .join(' ')
-    .trim();
+
+  const result = formatTokens(tokens);
+  // Se sobrou algo sem letras (ex: ".", "-"), retorna vazio para o caller decidir o fallback
+  return isMeaningful(result) ? result : '';
 }
 
 const ActivitiesPage = () => {
@@ -1363,7 +1376,10 @@ const ActivitiesPage = () => {
     const clientFirstName = extractClientFirstName(formClientNameOverride || formLeadName || '');
     const hourFb = new Date().getHours();
     const saudacaoFb = hourFb < 12 ? 'Bom dia' : hourFb < 18 ? 'Boa tarde' : 'Boa noite';
-    return `*${saudacaoFb} Sr(a). ${clientFirstName}*\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${responsavelDrFb ? `*${responsavelDrFb} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.*` : ''}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    const greetingLine = clientFirstName
+      ? `*${saudacaoFb} Sr(a). ${clientFirstName}*`
+      : `*${saudacaoFb}*`;
+    return `${greetingLine}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${responsavelDrFb ? `*${responsavelDrFb} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.*` : ''}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
   const activityFormContent = (
