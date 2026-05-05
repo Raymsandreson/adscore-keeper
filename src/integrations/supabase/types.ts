@@ -3905,7 +3905,10 @@ export type Database = {
           default_message_template: string | null
           drive_folder_id: string | null
           id: string
+          notify_group_jids: string[]
           notify_on_signature: boolean
+          notify_phone_numbers: string[]
+          notify_team_user_ids: string[]
           send_signed_pdf: boolean
           signer_auth_mode: string | null
           signer_role: string | null
@@ -3922,7 +3925,10 @@ export type Database = {
           default_message_template?: string | null
           drive_folder_id?: string | null
           id?: string
+          notify_group_jids?: string[]
           notify_on_signature?: boolean
+          notify_phone_numbers?: string[]
+          notify_team_user_ids?: string[]
           send_signed_pdf?: boolean
           signer_auth_mode?: string | null
           signer_role?: string | null
@@ -3939,7 +3945,10 @@ export type Database = {
           default_message_template?: string | null
           drive_folder_id?: string | null
           id?: string
+          notify_group_jids?: string[]
           notify_on_signature?: boolean
+          notify_phone_numbers?: string[]
+          notify_team_user_ids?: string[]
           send_signed_pdf?: boolean
           signer_auth_mode?: string | null
           signer_role?: string | null
