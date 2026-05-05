@@ -1124,6 +1124,7 @@ Deno.serve(async (req) => {
                   creator_instance_id: creatorInstanceId,
                   lead_id: localDoc.lead_id,
                   creation_origin: 'auto_sign',
+                  phase: 'closed',
                 }),
               })
 
