@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase } from '@/integrations/supabase/external-client';
-import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { db, authClient } from '@/integrations/authClient';
+import { remapToExternal } from '@/integrations/authClient/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { startOfDay, endOfDay, format } from 'date-fns';
 
@@ -73,39 +72,39 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
         completedActivitiesRes, overdueActivitiesRes, goalsRes, defaultGoalsRes,
         userDefaultGoalsRes, callRecordsRes,
       ] = await Promise.all([
-        supabase.from('contacts').select('id').eq('created_by', userId)
+        authClient.from('contacts').select('id').eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
-        supabase.from('dm_history').select('id, action_type').eq('user_id', userId)
+        authClient.from('dm_history').select('id, action_type').eq('user_id', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
-        supabase.from('instagram_comments')
+        authClient.from('instagram_comments')
           .select('id, comment_type, replied_by, replied_at, created_at')
           .or(`replied_by.eq.${userId},and(comment_type.eq.sent,created_at.gte.${startDate},created_at.lte.${endDate})`)
           .order('created_at', { ascending: false }),
-        externalSupabase.from('lead_stage_history').select('id, lead_id, to_stage')
+        db.from('lead_stage_history').select('id, lead_id, to_stage')
           .eq('changed_by', userId)
           .gte('changed_at', startDate).lte('changed_at', endDate),
-        supabase.from('leads').select('id, status').eq('created_by', userId)
+        authClient.from('leads').select('id, status').eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
-        supabase.from('user_sessions').select('duration_seconds, started_at, last_activity_at, ended_at').eq('user_id', userId)
+        authClient.from('user_sessions').select('duration_seconds, started_at, last_activity_at, ended_at').eq('user_id', userId)
           .lte('started_at', endDate)
           .gte('last_activity_at', startDate)
           .or(`ended_at.is.null,ended_at.gte.${startDate}`),
-        supabase.from('user_activity_log').select('action_type').eq('user_id', userId)
+        authClient.from('user_activity_log').select('action_type').eq('user_id', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
-        supabase.from('cat_lead_contacts').select('id, contact_channel').eq('contacted_by', userId)
+        authClient.from('cat_lead_contacts').select('id, contact_channel').eq('contacted_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
-        (externalSupabase as any).from('lead_activities').select('id').eq('completed_by', extUserId)
+        (db as any).from('lead_activities').select('id').eq('completed_by', extUserId)
           .not('completed_at', 'is', null)
           .gte('completed_at', startDate).lte('completed_at', endDate),
-        (externalSupabase as any).from('lead_activities').select('id').eq('assigned_to', extUserId)
+        (db as any).from('lead_activities').select('id').eq('assigned_to', extUserId)
           .eq('status', 'pendente')
           .lt('deadline', format(now, 'yyyy-MM-dd'))
           .not('deadline', 'is', null),
-        supabase.from('workflow_daily_goals').select('*').eq('user_id', userId)
+        authClient.from('workflow_daily_goals').select('*').eq('user_id', userId)
           .eq('goal_date', format(now, 'yyyy-MM-dd')).maybeSingle(),
-        supabase.from('workflow_default_goals').select('*').limit(1).maybeSingle(),
-        supabase.from('user_daily_goal_defaults').select('*').eq('user_id', userId).maybeSingle(),
-        supabase.from('call_records').select('id, call_result').eq('user_id', userId)
+        authClient.from('workflow_default_goals').select('*').limit(1).maybeSingle(),
+        authClient.from('user_daily_goal_defaults').select('*').eq('user_id', userId).maybeSingle(),
+        authClient.from('call_records').select('id, call_result').eq('user_id', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
       ]);
 
@@ -300,7 +299,7 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
       const today = format(now, 'yyyy-MM-dd');
       const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
       if (userTargetDays.includes(dayOfWeek)) {
-        supabase.from('daily_goal_snapshots').upsert({
+        authClient.from('daily_goal_snapshots').upsert({
           user_id: userId,
           snapshot_date: today,
           progress_percent: progressPercent,

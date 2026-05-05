@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase } from '@/integrations/supabase/external-client';
-import { ensureRemapCache, remapToCloudSync } from '@/integrations/supabase/uuid-remap';
+import { db, authClient } from '@/integrations/authClient';
+import { ensureRemapCache, remapToCloudSync } from '@/integrations/authClient/uuid-remap';
 import { useUserRole } from './useUserRole';
 import { startOfDay, endOfDay, format } from 'date-fns';
 
@@ -124,52 +123,52 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         metaDailyRes,
       ] = await Promise.all([
         // Contacts created (has created_by)
-        supabase.from('contacts').select('id, created_by, created_at')
+        authClient.from('contacts').select('id, created_by, created_at')
           .gte('created_at', startDate).lte('created_at', endDate)
           .not('created_by', 'is', null),
         // Contacts linked to leads
-        externalSupabase.from('contact_leads').select('id, created_at')
+        db.from('contact_leads').select('id, created_at')
           .gte('created_at', startDate).lte('created_at', endDate),
         // DMs sent (has user_id)
-        supabase.from('dm_history').select('id, user_id, action_type, created_at')
+        authClient.from('dm_history').select('id, user_id, action_type, created_at')
           .gte('created_at', startDate).lte('created_at', endDate),
         // Comment replies (has replied_by)
-        supabase.from('instagram_comments').select('id, replied_by, replied_at')
+        authClient.from('instagram_comments').select('id, replied_by, replied_at')
           .gte('replied_at', startDate).lte('replied_at', endDate)
           .not('replied_by', 'is', null),
         // Stage changes (now with changed_by for per-user tracking)
-        externalSupabase.from('lead_stage_history').select('id, lead_id, changed_at, to_stage, changed_by')
+        db.from('lead_stage_history').select('id, lead_id, changed_at, to_stage, changed_by')
           .gte('changed_at', startDate).lte('changed_at', endDate),
         // Followups
-        externalSupabase.from('lead_followups').select('id, created_at, followup_type, outcome')
+        db.from('lead_followups').select('id, created_at, followup_type, outcome')
           .gte('created_at', startDate).lte('created_at', endDate),
         // Leads created (has created_by)
-        supabase.from('leads').select('id, created_by, created_at, status, lead_name')
+        authClient.from('leads').select('id, created_by, created_at, status, lead_name')
           .gte('created_at', startDate).lte('created_at', endDate),
         // Sessions
-        supabase.from('user_sessions').select('*')
+        authClient.from('user_sessions').select('*')
           .lte('started_at', endDate)
           .or(`ended_at.is.null,ended_at.gte.${startDate}`)
           .order('started_at', { ascending: false }),
         // Activity log for page visits and other actions
-        supabase.from('user_activity_log').select('*')
+        authClient.from('user_activity_log').select('*')
           .gte('created_at', startDate).lte('created_at', endDate)
           .order('created_at', { ascending: false }),
         // CAT contacts (calls, has contacted_by)
-        supabase.from('cat_lead_contacts').select('id, contacted_by, contact_channel, created_at')
+        authClient.from('cat_lead_contacts').select('id, contacted_by, contact_channel, created_at')
           .gte('created_at', startDate).lte('created_at', endDate)
           .not('contacted_by', 'is', null),
         // Lead activities - completed (External DB)
-        (externalSupabase as any).from('lead_activities').select('id, assigned_to, status, deadline, completed_at, completed_by')
+        (db as any).from('lead_activities').select('id, assigned_to, status, deadline, completed_at, completed_by')
           .eq('status', 'concluida')
           .gte('completed_at', startDate).lte('completed_at', endDate),
         // Lead activities - overdue (External DB)
-        (externalSupabase as any).from('lead_activities').select('id, assigned_to, status, deadline')
+        (db as any).from('lead_activities').select('id, assigned_to, status, deadline')
           .eq('status', 'pendente')
           .lt('deadline', format(new Date(), 'yyyy-MM-dd'))
           .not('deadline', 'is', null),
         // Meta daily metrics for traffic productivity
-        supabase.from('meta_daily_metrics').select('*')
+        authClient.from('meta_daily_metrics').select('*')
           .gte('metric_date', format(dateRange.start, 'yyyy-MM-dd'))
           .lte('metric_date', format(dateRange.end, 'yyyy-MM-dd')),
       ]);
@@ -205,7 +204,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       // Fetch profiles
       let profileMap = new Map<string, { full_name: string | null; email: string | null }>();
       if (allUserIds.size > 0) {
-        const { data: profiles } = await supabase.from('profiles')
+        const { data: profiles } = await authClient.from('profiles')
           .select('user_id, full_name, email')
           .in('user_id', Array.from(allUserIds));
         profileMap = new Map(profiles?.map(p => [p.user_id, { full_name: p.full_name, email: p.email }]) || []);

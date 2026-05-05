@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+import { db, authClient } from '@/integrations/authClient';
+import { ensureExternalSession } from '@/integrations/authClient/external-client';
 import {
   getConversationSummaries,
   getConversationMessages,
@@ -8,7 +8,7 @@ import {
   linkMessagesToLead,
   linkConversationContactToLead,
   linkMessagesToContact,
-} from '@/integrations/supabase/external-rpc';
+} from '@/integrations/authClient/external-rpc';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
@@ -151,7 +151,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     try {
       // Admins see all active instances
       if (isAdmin) {
-        const { data, error } = await supabase
+        const { data, error } = await authClient
           .from('whatsapp_instances')
           .select('*')
           .eq('is_active', true)
@@ -163,11 +163,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
       // Members: only see explicitly assigned instances
       const [{ data: permissions, error: permissionsError }, { data: profile, error: profileError }] = await Promise.all([
-        supabase
+        authClient
           .from('whatsapp_instance_users')
           .select('instance_id')
           .eq('user_id', user.id),
-        supabase
+        authClient
           .from('profiles')
           .select('default_instance_id')
           .eq('user_id', user.id)
@@ -188,7 +188,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         return;
       }
 
-      const { data: instData, error: instError } = await supabase
+      const { data: instData, error: instError } = await authClient
         .from('whatsapp_instances')
         .select('*')
         .eq('is_active', true)
@@ -217,7 +217,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     setStatsLoading(true);
     try {
       await ensureExternalSession().catch(() => {});
-      const ext = externalSupabase as any;
+      const ext = db as any;
 
       // Single aggregated RPC call returns stats for ALL instances at once.
       // Replaces previous N×4 COUNT(*) exact queries that scanned 370k+ rows per call.
@@ -312,7 +312,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
     syncInFlightRef.current = true;
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await authClient.auth.getSession();
       const { data, error } = await cloudFunctions.invoke('sync-whatsapp-recent', {
         body: {
           instance_id: instance.id,
@@ -581,11 +581,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
       // Run instance lookup and profile fetch in parallel
       const instancePromise = conversationInstanceName
-        ? supabase.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle()
+        ? authClient.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle()
         : Promise.resolve(null);
 
       const profilePromise = (user && identifySender && !profileCacheRef.current)
-        ? supabase.from('profiles').select('full_name, treatment_title').eq('user_id', user.id).single()
+        ? authClient.from('profiles').select('full_name, treatment_title').eq('user_id', user.id).single()
         : Promise.resolve(null);
 
       const [instanceResult, profileResult] = await Promise.all([instancePromise, profilePromise]);
@@ -695,7 +695,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     try {
       let targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
       if (conversationInstanceName) {
-        const { data } = await supabase.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle();
+        const { data } = await authClient.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle();
         if (data?.id) targetInstanceId = data.id;
       }
       if (!targetInstanceId) {
@@ -767,7 +767,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     try {
       let targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
       if (conversationInstanceName) {
-        const { data } = await supabase.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle();
+        const { data } = await authClient.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle();
         if (data?.id) targetInstanceId = data.id;
       }
       if (!targetInstanceId) {
@@ -822,7 +822,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     try {
       let instanceId: string | undefined;
       if (instanceName) {
-        const { data } = await supabase.from('whatsapp_instances').select('id').eq('instance_name', instanceName).eq('is_active', true).maybeSingle();
+        const { data } = await authClient.from('whatsapp_instances').select('id').eq('instance_name', instanceName).eq('is_active', true).maybeSingle();
         if (data?.id) instanceId = data.id;
       }
 
@@ -896,7 +896,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     }
     try {
       // Fetch contact name from Cloud (contacts table lives there)
-      const { data: contactData } = await supabase.from('contacts').select('full_name').eq('id', contactId).single();
+      const { data: contactData } = await authClient.from('contacts').select('full_name').eq('id', contactId).single();
       await ensureExternalSession().catch(() => {});
       await linkMessagesToContact(phone, instanceName, contactId);
       toast.success('Conversa vinculada ao contato!');
@@ -1213,7 +1213,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     // only broadcasts events for instances the user actually owns — a message
     // arriving on instance B for a phone the user also has on instance A
     // never reaches this client and can't accidentally disturb the list.
-    const externalChannels: Array<ReturnType<typeof externalSupabase.channel>> = [];
+    const externalChannels: Array<ReturnType<typeof db.channel>> = [];
 
     const targetInstanceNames = (() => {
       if (selectedInstanceId && selectedInstanceId !== 'all') {
@@ -1236,7 +1236,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
         // Canal 2 — whatsapp_messages (autoridade de messages[] na conversa ativa).
         const msgChannelName = `whatsapp-realtime-external-${safeName}-${timestamp}`;
-        const msgCh = externalSupabase
+        const msgCh = db
           .channel(msgChannelName)
           .on(
             'postgres_changes',
@@ -1265,7 +1265,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
         // Canal 1 — conversations (autoridade de last_message_*, contact_*, lead_id, ordem).
         const convChannelName = `conversations-realtime-${safeName}-${timestamp}`;
-        const convCh = externalSupabase
+        const convCh = db
           .channel(convChannelName)
           .on(
             'postgres_changes',
@@ -1290,7 +1290,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         realtimeRetryTimerRef.current = null;
       }
       for (const ch of externalChannels) {
-        externalSupabase.removeChannel(ch);
+        db.removeChannel(ch);
       }
     };
   }, [hasLoaded, selectedInstanceId, instances, fetchMessages, realtimeRetryNonce, getCanonicalInstanceName, realtimeHealthy]);
