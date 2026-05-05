@@ -7,11 +7,11 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
 import { FunnelZapsignDefaultsConfig } from './FunnelZapsignDefaultsConfig';
 
-const TABS = ['procuracao', 'grupo', 'notificacoes'] as const;
+const TABS = ['documentos', 'grupo', 'notificacoes'] as const;
 type TabKey = (typeof TABS)[number];
 
 export function OnboardingConfig() {
-  const [tab, setTab] = useState<TabKey>('procuracao');
+  const [tab, setTab] = useState<TabKey>('documentos');
   const listRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const isProgrammaticScroll = useRef(false);
@@ -89,7 +89,7 @@ export function OnboardingConfig() {
             className="w-full sm:w-auto inline-flex sm:grid sm:grid-cols-3 h-auto p-1 bg-muted/50 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-px-4 sm:snap-none scroll-smooth"
           >
             <TabsTrigger
-              value="procuracao"
+              value="documentos"
               className="snap-center sm:snap-align-none flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-fuchsia-500/10 data-[state=active]:text-fuchsia-600 dark:data-[state=active]:text-fuchsia-400"
             >
               <FileText className="h-4 w-4 shrink-0" />
@@ -118,7 +118,7 @@ export function OnboardingConfig() {
           className="mt-4 flex overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth -mx-4 px-4 sm:mx-0 sm:px-0"
         >
           <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
-            <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="procuracao" />
+            <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="documentos" />
           </div>
           <div className="snap-center shrink-0 w-full pr-4 sm:pr-0 space-y-6">
             <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="grupo" hideSaveButton />

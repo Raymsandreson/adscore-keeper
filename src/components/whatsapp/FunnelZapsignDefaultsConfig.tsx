@@ -51,7 +51,7 @@ const emptyDefaults = (board_id: string): DefaultsRow => ({
   notify_phone_numbers: [],
 });
 
-type Section = 'all' | 'procuracao' | 'grupo' | 'notificacoes';
+type Section = 'all' | 'documentos' | 'procuracao' | 'grupo' | 'notificacoes';
 
 interface Props {
   boardId?: string;
@@ -81,7 +81,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
   const [groupSearch, setGroupSearch] = useState('');
   const [phoneInput, setPhoneInput] = useState('');
 
-  const showProc = section === 'all' || section === 'procuracao';
+  const showProc = section === 'all' || section === 'procuracao' || section === 'documentos';
   const showGroup = section === 'all' || section === 'grupo';
   const showNotif = section === 'all' || section === 'notificacoes';
 
@@ -190,7 +190,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <FileSignature className="h-5 w-5 text-primary" /> Padrões de procuração por funil
+              <FileSignature className="h-5 w-5 text-primary" /> Padrões de documentos por funil
             </CardTitle>
             <CardDescription>Defina o modelo, comportamento e mensagem padrão usados ao gerar documentos a partir do chat.</CardDescription>
           </CardHeader>
@@ -216,7 +216,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
             <>
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Modelo de procuração</CardTitle>
+                  <CardTitle className="text-base">Modelo de documento</CardTitle>
                   <CardDescription>Modelo do ZapSign usado por padrão neste funil.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
