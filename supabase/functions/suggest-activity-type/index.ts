@@ -90,10 +90,13 @@ Responda APENAS com a key do tipo mais adequado, sem explicação.`,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
     console.error("suggest-activity-type error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error", suggested_type: null }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    // Gracefully degrade on upstream AI errors (503/429/etc) — UI just skips suggestion
+    const isUpstream = /\b(429|500|502|503|504)\b/.test(msg) || /unavailable|overload|rate/i.test(msg);
+    return new Response(
+      JSON.stringify({ suggested_type: null, error: msg, fallback: isUpstream }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 });
