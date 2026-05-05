@@ -129,11 +129,13 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
   useEffect(() => {
     if (!showNotif) return;
     (async () => {
-      const [{ data: pf }, { data: gr }] = await Promise.all([
+      const [{ data: pf }, { data: gr }, { data: ins }] = await Promise.all([
         (supabase as any).from('profiles').select('user_id, full_name').order('full_name'),
         (supabase as any).from('whatsapp_groups_cache').select('group_jid, group_name, instance_name').order('group_name'),
+        (supabase as any).from('whatsapp_instances').select('instance_name, owner_name, owner_phone').eq('is_active', true).order('instance_name'),
       ]);
       setProfiles(pf || []);
+      setInstances(ins || []);
       // dedupe by group_jid (cache may repeat across instances)
       const seen = new Set<string>();
       const dedup: any[] = [];
