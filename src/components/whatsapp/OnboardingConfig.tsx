@@ -89,24 +89,22 @@ export function OnboardingConfig() {
           </TabsList>
         </div>
 
-        <div
-          ref={contentRef}
-          onScroll={handleScroll}
-          className="mt-4 flex overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth -mx-4 px-4 sm:mx-0 sm:px-0"
-        >
-          <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
+        <div className="mt-4">
+          {tab === 'documentos' && (
             <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="documentos" />
-          </div>
-          <div className="snap-center shrink-0 w-full pr-4 sm:pr-0 space-y-6">
-            <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="grupo" hideSaveButton />
-            <BoardGroupInstancesConfig boardId={selectedBoardId} hideBoardSelector />
-          </div>
-          <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
-            {selectedBoardId && <OnboardingMeetingConfig boardId={selectedBoardId} />}
-          </div>
-          <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
+          )}
+          {tab === 'grupo' && (
+            <div className="space-y-6">
+              <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="grupo" hideSaveButton />
+              <BoardGroupInstancesConfig boardId={selectedBoardId} hideBoardSelector />
+            </div>
+          )}
+          {tab === 'reuniao' && selectedBoardId && (
+            <OnboardingMeetingConfig boardId={selectedBoardId} />
+          )}
+          {tab === 'notificacoes' && (
             <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="notificacoes" />
-          </div>
+          )}
         </div>
       </Tabs>
     </div>
