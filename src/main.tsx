@@ -4,9 +4,12 @@ import "./index.css";
 import { logAppInit } from "./utils/debugLogger";
 import { initPWAUpdater } from "./lib/pwaUpdater";
 import { initSentry } from "./lib/sentry";
+import { installDbRoutingGuard } from "./integrations/supabase/install-db-routing-guard";
 
 // Initialize Sentry before anything else
 initSentry();
+// Guard runtime: detecta uso do client Cloud para tabelas de negócio
+installDbRoutingGuard();
 
 const PRELOAD_RELOAD_KEY = "vite-preload-reload";
 const PREVIEW_CACHE_BUST_KEY = "preview-cache-busted-once";
